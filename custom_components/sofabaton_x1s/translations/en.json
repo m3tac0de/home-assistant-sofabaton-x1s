@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select Sofabaton hub",
+        "description": "Select the Sofabaton hub that was discovered on your network, or choose manual setup if yours isn’t listed."
+      },
+      "manual": {
+        "title": "Manual hub setup",
+        "description": "Enter the IP address and port of your Sofabaton hub. The default port is 8102."
+      },
+      "ports": {
+        "title": "Proxy ports",
+        "description": "These ports are used by the local proxy that emulates the hub. Most users can keep the defaults. Change them only if there is a conflict. Note that this setting currently applies to all configured hubs. The ports represents a base value, and the integration will try to find an open port within 32 ports of what you enter here."
+      },
+      "zeroconf_confirm": {
+        "title": "Discovered Sofabaton hub",
+        "description": "Home Assistant found a Sofabaton hub ({{name}} @ {{host}}). Confirm to set it up."
+      }
+    }
+  }
+}
