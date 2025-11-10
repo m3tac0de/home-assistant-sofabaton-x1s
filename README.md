@@ -186,4 +186,4 @@ commands:
 
 ## License
 
-MIT © 2025 m3tac0de
+MIT © 2025 m3tac0de.
