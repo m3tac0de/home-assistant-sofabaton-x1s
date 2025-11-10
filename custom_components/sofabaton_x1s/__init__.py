@@ -68,6 +68,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
+        if not hass.data[DOMAIN]:
+            hass.services.async_remove(DOMAIN, "send_command")
+            hass.services.async_remove(DOMAIN, "fetch_device_commands")
+            hass.data.pop(DOMAIN)
         if hub is not None:
             await hub.async_stop()
     return unload_ok

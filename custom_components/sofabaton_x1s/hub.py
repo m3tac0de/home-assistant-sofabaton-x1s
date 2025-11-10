@@ -352,7 +352,6 @@ class SofabatonHub:
     
     def get_button_name_map(self) -> dict[int, str]:
         """Return a static map of button_code -> human name."""
-        from .lib.x1_proxy import ButtonName  # you already import this at the top, so this can stay up there
         name_map: dict[int, str] = {}
         for attr, val in ButtonName.__dict__.items():
             if isinstance(val, int):
