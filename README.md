@@ -130,6 +130,11 @@ If the hub was already configured, the flow will just say “already configured�
 
 You should see (names simplified):
 
+- **Remote**: `remote.<hub>_remote`
+  - Power activities on/off
+  - send any command to any device or activity
+  - becomes unavailable when the official app is connected
+
 - **Select**: `select.<hub>_activity`
   - options = `Powered off` + all activities from hub
   - selecting an item sends `activate` to hub
@@ -150,25 +155,69 @@ You should see (names simplified):
 
 ---
 
-## Actions
+## Remote
 
-This integration exposes **services/actions** so you can send any Sofabaton key to any of your devices or activities.
+This integration exposes a **Home Assistant `remote` entity** for every Sofabaton hub you add.
 
-The Sofabaton hub distinguishes between **Devices** and **Activities**. Both can have **Buttons** and **Commands**:
+That remote:
 
-- **Buttons** = the fixed, well-known button IDs (volume up, mute, d-pad, etc.).
-- **Commands** = the long, device-specific list that comes from the hub (some devices have 100+). Activities only have commands if you configured them in the Sofabaton app.
+- shows the **current activity**
+- can switch between activities or power them down
+- can be used to send any command to any device or activity
 
-With the `send_key` action you can do (pseudo):
+So you can do this in an automation or in Developer Tools:
 
-```text
-send_key(<DEVICE_OR_ACTIVITY_ID>, <BUTTON_OR_COMMAND_ID>)
+```yaml
+service: remote.send_command
+target:
+  entity_id: remote.<hub>_remote
+data:
+  command: "VOL_UP"
 ```
 
-To find out what the IDs are, use the **Index** sensor. You can see it in **Developer Tools → States → `sensor.<your_hub_name>_index`**.
-Because retrieving commands for a device can be slow, the integration does **not** fetch all commands automatically. Use the **fetch** action/service to populate the sensor for a specific device or activity.
+Which will then send the Volume Up command to the hub in the context of the current activity.
+Available commands are:
+UP, DOWN, LEFT, RIGHT, OK, HOME, BACK, MENU, VOL_UP, VOL_DOWN, MUTE, CH_UP, CH_DOWN, REW, PAUSE, FWD, RED, GREEN, YELLOW, BLUE, POWER_ON, POWER_OFF
 
-The diagnostic sensor then shows you which commands are available for which entity in a readable format:
+Things to know:
+
+- if there is no current activity ("powered off"), sending commands in this way will fail
+- when the official Sofabaton app connects to our virtual hub, the remote becomes unavailable (same as the select/buttons)
+
+### Advanced: send to a specific device
+
+Sometimes you want to send a command directly to a device (or activity) by its numeric ID. You can do that with the same HA service:
+
+```yaml
+service: remote.send_command
+target:
+  entity_id: remote.<hub>_remote
+data:
+  command: "55"   # numeric command id
+  device: 3       # entity id on the hub (devices start at 1, activities at 101)
+```
+
+In this mode we **don’t** look at the current activity — we send straight to that entity on the hub.
+There is no difference here between a device and an activity, they exist in the same ID range (devices start at 1, activities at 101).
+You only need to know the IDs of your devices and activities, and then the command IDs for each of them.
+
+---
+
+## Fetching commands (Index sensor)
+
+The Sofabaton hub can have a *lot* of device commands (100+). Fetching all of them on every startup would be slow and noisy, so the integration doesn’t do that automatically.
+
+Instead we have:
+
+- a **diagnostic sensor**: `sensor.<hub>_index`
+  - shows activities, devices
+  - shows buttons we already have cached
+  - can also show **commands** per device/activity
+  - shows `loading` while we’re fetching
+
+- a **fetch service/action**: you call it to tell the integration “go to the hub, get me all commands for this device/activity, and put them on the Index sensor”.
+
+After you call the fetch service, the Index sensor will look something like this:
 
 ```yaml
 commands:
@@ -181,6 +230,10 @@ commands:
     - code: 1
       name: Power On
 ```
+
+Use this to discover the numeric command IDs you want to send with `remote.send_command` (advanced form with `device:`).
+
+That way we stay fast in normal operation, but you can still explore everything the hub knows.
 
 ---
 

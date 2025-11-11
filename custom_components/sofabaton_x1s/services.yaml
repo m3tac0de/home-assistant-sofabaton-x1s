@@ -1,30 +1,3 @@
-send_command:
-  name: Send Sofabaton command
-  description: Send a raw button/command to a Sofabaton hub via the proxy.
-  fields:
-    device:
-      name: Sofabaton hub
-      description: Select the Sofabaton hub to send the command to.
-      required: false
-      selector:
-        device:
-          integration: sofabaton_x1s
-    ent_id:
-      name: Activity or device id
-      required: true
-      selector:
-        number:
-          min: 1
-          max: 255
-          mode: box
-    key_code:
-      name: Button / command code
-      required: true
-      selector:
-        number:
-          min: 0
-          max: 255
-          mode: box
 fetch_device_commands:
   name: Fetch commands for device/activity
   description: Fetch (and cache) commands for this activity/device so they appear on the diagnostic sensor.

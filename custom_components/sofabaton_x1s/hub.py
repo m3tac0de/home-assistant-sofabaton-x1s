@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     DOMAIN,
@@ -352,6 +353,7 @@ class SofabatonHub:
     
     def get_button_name_map(self) -> dict[int, str]:
         """Return a static map of button_code -> human name."""
+        from .lib.x1_proxy import ButtonName  # you already import this at the top, so this can stay up there
         name_map: dict[int, str] = {}
         for attr, val in ButtonName.__dict__.items():
             if isinstance(val, int):
@@ -442,6 +444,46 @@ class SofabatonHub:
             self.current_activity,
             btn_code,
         )
+
+    async def async_send_key(self, key: str | int, device: int | None = None) -> None:
+        """Send either a Sofabaton ButtonName or a raw command ID.
+
+        - If 'device' is given, we send directly to that entity (device or activity).
+        - If 'device' is not given, we send in the context of the *current activity*.
+        - We do NOT remap/rename button names: you must use the names from ButtonName.
+          So "VOL_UP", "VOL_DOWN", "MUTE", etc.
+        """
+        # advanced path: user specified the target entity
+        if device is not None:
+            code = self._normalize_command_id(key)
+            await self.async_send_raw_command(device, code)
+            return
+
+        # normal path: use current activity
+        if self.current_activity is None:
+            raise HomeAssistantError("No activity active")
+
+        # string → try to treat as ButtonName first
+        if isinstance(key, str):
+            norm = key.strip().upper()
+            try:
+                btn = ButtonName[norm]
+            except KeyError:
+                # not a ButtonName → treat as numeric
+                code = self._normalize_command_id(key)
+                await self.async_send_raw_command(self.current_activity, code)
+            else:
+                await self.async_send_button(btn.value)
+            return
+
+        # int → just send as raw command to current activity
+        await self.async_send_raw_command(self.current_activity, int(key))
+
+    def _normalize_command_id(self, key: str | int) -> int:
+        if isinstance(key, int):
+            return key
+        return int(key, 10)
+
 
     async def async_send_raw_command(self, ent_id: int, key_code: int) -> None:
         """Send a command directly to an activity or device."""

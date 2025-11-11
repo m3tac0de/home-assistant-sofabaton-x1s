@@ -11,7 +11,7 @@ CONF_MDNS_TXT = "mdns_txt"
 DEFAULT_PROXY_UDP_PORT = 9102
 DEFAULT_HUB_LISTEN_BASE = 8200
 
-PLATFORMS = ["select", "switch", "binary_sensor", "button", "sensor"]
+PLATFORMS = ["select", "switch", "binary_sensor", "button", "sensor", "remote"]
 
 
 def signal_activity(entry_id: str) -> str:
