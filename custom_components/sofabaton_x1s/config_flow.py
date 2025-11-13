@@ -242,12 +242,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=schema,
             description_placeholders={
                 "explain": (
-                    "These ports are used by the local proxy that mimics the physical hub. "
+                    "These are ports that this integration binds to."
                     "Most users can keep the defaults. Change only if the ports are "
                     "already in use."
                     "Note that this setting currently applies to all configured hubs."
                     "The ports represents a base value, and the integration will try"
                     "to find an open port within 32 ports of what you enter here."
+                    "The UDP port is optional; if you disable the proxy capabilty of"
+                    "the integration, no UDP port is used."
                 )
             },
         )
@@ -361,7 +363,16 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
             step_id="init",
             data_schema=schema,
             description_placeholders={
-                "note": "These values apply to this Sofabaton integration entry and will be used when starting the local proxy."
+                "explain": (
+                    "These are ports that this integration binds to. "
+                    "Most users can keep the defaults. Change only if the ports are "
+                    "already in use."
+                    "Note that this setting currently applies to all configured hubs."
+                    "The ports represents a base value, and the integration will try"
+                    "to find an open port within 32 ports of what you enter here."
+                    "The UDP port is optional; if you disable the proxy capabilty of"
+                    "the integration, no UDP port is used."
+                )
             },
         )
 

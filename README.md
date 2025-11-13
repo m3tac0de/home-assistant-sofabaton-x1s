@@ -2,43 +2,50 @@
 
 Control your Sofabaton **X1S** hub directly from Home Assistant using 100% local APIs.
 
-This integration uses a small proxy that:
+This integration:
 
 1. connects to your *real* X1S hub (the physical one),
-2. exposes a *virtual* hub so the official Sofabaton app can still connect (the Sofabaton hub allows a single client at time only),
+2. exposes a *virtual* hub so the official Sofabaton app can still connect (the Sofabaton hub allows a single client at a time only),
 3. enables any command to be sent directly from Home Assistant
 
-Because the Sofabaton X1S hub only allows **one client at a time**, the proxy sits in the middle and lets HA “see” the hub while still allowing the official app to connect.
+Because the Sofabaton X1S hub only allows **one client at a time**, the integration sits in the middle and lets HA “see” the hub while still allowing the official app to connect.
+So essentially: this integration is a proxy service for the Sofabaton X1S hub and Home Assistant is an internal client to that proxy.
 
 ---
 
 ## Features
 
-- 🛰 **mDNS discovery** of Sofabaton hubs
+- 🛰 **Automatic discovery** of Sofabaton hubs
 - 🧩 **Multiple hubs** supported 
 - 🎛 **Activity select** entity:
   - shows all available activities
   - first option is “Powered off”
   - selecting an activity activates it
-  - becomes unavailable when the official app is connected to the proxy
+  - becomes unavailable when the official app is connected to the proxy (to prevent unexpected behavior in the app)
 - 🔘 **Dynamic button entities**:
-  - one fixed set of HA button entities
-  - they change availability based on the **currently active activity**
+  - one fixed set of HA button entities, mimicking all hard buttons of the physical remote
+  - functionality relative to the **currently active activity**
   - only buttons actually enabled for that activity are available
-  - become unavailable when a proxy client (official app) is connected
-- 🟢 **Connection sensors**:
-  - “hub connected” (are we connected to the physical hub?)
-  - “app connected” / “proxy client connected” (is the official app using our virtual hub?)
+  - become unavailable when a proxy client (official app) is connected (to prevent unexpected behavior in the app)
+- ⚙️ **Remote entity**:
+  - one HA remote entity per configured hub
+  - used in your automations and scripts to send any command to any device or activity
+  - used in combination with the **Index sensor entity** and the `sofabaton_x1s.fetch_device_commands` Action
+- 🛠 **Action**
+  - to fetch commands for a specific device/activity
+  - because key maps are both slow to retrieve from the hub, and static at the same time (until you change configuration through the official app), we do not need to retrieve these key maps all the time. We can just do it once (using the fetch Action), look at the mapping, and then use remote.send_command using those values.
 - 🧪 **Diagnostic “Index” sensor**:
   - shows current activity
   - lists activities and devices
   - lists cached buttons for each activity/device
   - lists cached commands for each device (after you fetch them)
+  - sensors maintain state accurately, regardless of how that state is set. So whether you change activity through Home Assistant, the official app, the physical remote or something like Alexa; the sensors will reflect accurate state.
   - shows `loading` when we’re actively retrieving commands
-- ⚙️ **Configurable proxy ports** (global options)
-- 🛠 **Actions**
-  - to fetch commands for a specific device/activity and send any command mapped to any device or activity.
-  - because key maps are both slow to retrieve from the hub, and static at the same time (until you change configuration through the official app), we do not need to retrieve these key maps all the time. We can just do it once (using the fetch Action), look at the mapping, and then use the send_key action using those values.
+- 🟢 **Connection sensors**:
+  - “hub connected” (are we connected to the physical hub?)
+  - “app connected” / “proxy client connected” (is the official app using our virtual hub?)
+- 🛰 **X1S Proxy**:
+  - although enabled by default, the proxy capability (the ability for the official app to connect while this integration is running) can be disabled in device settings (it will then no longer advertise and bind to a UDP port)
 
 ---
 
@@ -46,9 +53,8 @@ Because the Sofabaton X1S hub only allows **one client at a time**, the proxy si
 
 - The *real* hub is discovered via mDNS → we get IP, port, MAC, name, TXT.
 - The integration starts a Python proxy (bundled in `custom_components/sofabaton_x1s/lib/x1_proxy.py`).
-- The proxy connects to the real hub and **also** advertises a *virtual* `_x1hub._udp.local.`.
-- The proxy is enabled by default. You can disable it from the device’s “Configuration” panel in HA.
-- When the real Sofabaton app connects to our virtual hub, the integration temporarily goes into “read-only” mode and your HA entities become unavailable (this is intentional).
+- The integration connects to the real hub and **also** advertises a *virtual* `_x1hub._udp.local.`.
+- When the real Sofabaton app connects to our virtual hub, the integration temporarily goes into “read-only” mode and your HA entities that can send commands become unavailable (this is intentional, we're preventing unexpected behavior in the app by allowing only a single "writer" at a time).
 
 We add a small TXT flag to the virtual hub so Home Assistant **ignores** our own advertisement and doesn’t overwrite the real hub’s IP.
 
@@ -65,10 +71,11 @@ This integration follows the same 3-step flow as the official Sofabaton app:
 So, if you use VLANs / firewalls:
 
 - allow **mDNS** from hub → HA (or forward it)
-- allow **UDP** from HA → hub on the Sofabaton port (e.g. `8102`)
+- allow **UDP** from HA → hub on the Sofabaton port (`8102` i think is the standard port on these devices)
 - allow **TCP** from hub → HA on the proxy port (the one you configured in the integration)
 
 If discovery works but the entities never go “connected to hub”, it’s usually that last rule: the hub cannot open the TCP back to HA.
+Also keep in mind that as soon as a client is connected to the physical hub, the hub stops mDNS advertising. So if this integration is connected and running with "proxy" disabled, the official app will not find it. And vice versa, the integration cannot see the hub if the official app is connected directly to it.
 
 ---
 
@@ -76,7 +83,8 @@ If discovery works but the entities never go “connected to hub”, it’s usua
 
 - Home Assistant 2024.x or newer (async config flow, options flow)
 - A Sofabaton **X1S** hub on the same network, advertising `_x1hub._udp.local.`
-- Your HA instance must be able to open UDP and TCP ports (for the proxy’s listening ports)
+- Your HA instance must be able to open TCP ports (so the real hub can connect to our integration)
+- Your HA instance must be able to open UDP ports (optional; only if you want the official app to be able to connect to the hub while this integration is running)
 
 ---
 
@@ -85,7 +93,7 @@ If discovery works but the entities never go “connected to hub”, it’s usua
 ### Option 1 – HACS (recommended)
 
 1. Open **HACS → Integrations → … → Custom repositories**.
-2. Add your repo URL  
+2. Add the repo URL  
    `https://github.com/m3tac0de/home-assistant-sofabaton-x1s`  
    and select **Integration**.
 3. Install **Sofabaton X1S** from HACS.
@@ -128,7 +136,7 @@ If the hub was already configured, the flow will just say “already configured�
 
 ## Entities
 
-You should see (names simplified):
+You should see:
 
 - **Remote**: `remote.<hub>_remote`
   - Power activities on/off
@@ -144,7 +152,7 @@ You should see (names simplified):
   - `binary_sensor.<hub>_hub_status` → `connected` / `disconnected` is the physical hub connected to us
   - `binary_sensor.<hub>_app_connected` → `connected` / `disconnected` is the official app connected to our proxy
   - `sensor.<hub>_index` (diagnostic) → `ready` / `loading` / `offline`
-    - attributes: activities, devices, buttons per entity, commands per entity
+    - attributes: activities, currect_activity, devices, buttons per device and activity, commands per device and activity
 
 - **Buttons**:
   - `button.<hub>_volume_up`
@@ -205,15 +213,18 @@ You only need to know the IDs of your devices and activities, and then the comma
 
 ## Fetching commands (Index sensor)
 
-The Sofabaton hub can have a *lot* of device commands (100+). Fetching all of them on every startup would be slow and noisy, so the integration doesn’t do that automatically.
+The Sofabaton hub can have a *lot* of device commands. Fetching all of them on every startup would be slow and noisy, so the integration doesn’t do that automatically.
 
 Instead we have:
 
 - a **diagnostic sensor**: `sensor.<hub>_index`
+  - shows currect actvity
   - shows activities, devices
   - shows buttons we already have cached
   - can also show **commands** per device/activity
   - shows `loading` while we’re fetching
+  
+Go to Developer Tools → States → sensor.<hub>_index to seen the contents of the sensor.
 
 - a **fetch service/action**: you call it to tell the integration “go to the hub, get me all commands for this device/activity, and put them on the Index sensor”.
 
