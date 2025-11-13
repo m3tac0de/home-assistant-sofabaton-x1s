@@ -129,6 +129,9 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
    - connection sensors
    - button entities
    - diagnostic “index” sensor
+   - remote entity
+   - proxy switch
+   - 1 "Action"
 
 If the hub was already configured, the flow will just say “already configured” and won’t create a second one.
 
@@ -147,6 +150,10 @@ You should see:
   - options = `Powered off` + all activities from hub
   - selecting an item sends `activate` to hub
   - becomes unavailable when the official app is connected
+
+- **switch**: `switch.<hub>_proxy_enabled`
+  - switches proxy capability of the integration on and off (mDNS advertising and UDP port binding)
+  - note that active connections are not interupted when proxy is switched off, it will just stop accepting new ones
 
 - **Binary/normal sensors**:
   - `binary_sensor.<hub>_hub_status` → `connected` / `disconnected` is the physical hub connected to us
