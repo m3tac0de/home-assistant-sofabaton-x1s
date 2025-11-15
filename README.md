@@ -151,7 +151,7 @@ You should see:
   - selecting an item sends `activate` to hub
   - becomes unavailable when the official app is connected
 
-- **switch**: `switch.<hub>_proxy_enabled`
+- **Switch**: `switch.<hub>_proxy_enabled`
   - switches proxy capability of the integration on and off (mDNS advertising and UDP port binding)
   - note that active connections are not interupted when proxy is switched off, it will just stop accepting new ones
 

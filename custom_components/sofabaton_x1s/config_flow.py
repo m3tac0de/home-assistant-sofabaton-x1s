@@ -272,7 +272,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         name = props.get("NAME") or discovery_info.name.split(".")[0]
         mac = props.get("MAC") or discovery_info.name
+        host = discovery_info.host
 
+        self.context["title_placeholders"] = {"name": f"{name} ({host})"}
         # store so we can use it in confirm step
         self._discovered_from_zeroconf = {
             "name": name,

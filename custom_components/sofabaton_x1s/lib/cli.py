@@ -13,6 +13,7 @@ import argparse
 import sys
 import time
 import threading
+import logging
 
 from x1_proxy import (
     X1Proxy,
@@ -49,6 +50,18 @@ def resolve_button(code_or_name: str) -> int | None:
     return None
 
 
+def _kv_list_to_dict(items):
+    out: Dict[str, str] = {}
+    if not items:
+        return out
+    for it in items:
+        if "=" in it:
+            k, v = it.split("=", 1)
+            out[k.strip()] = v.strip()
+        else:
+            out[it.strip()] = ""
+    return out
+    
 # ----------------- CLI -----------------
 
 
@@ -228,22 +241,32 @@ class X1Shell:
 
 
 def main() -> None:
+    
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
+    
     ap = argparse.ArgumentParser(description="X1 proxy CLI")
     ap.add_argument("--hub", required=True, help="real hub IP (the real device)")
     ap.add_argument("--hub-udp", type=int, default=8102)
     ap.add_argument("--proxy-udp", type=int, default=9102)
     ap.add_argument("--listen-base", type=int, default=8200)
+    ap.add_argument("--mdns-txt", action="append", help="add TXT record kv pair, e.g. NAME=YourHub (repeatable)")
     ap.add_argument("--no-advertise", action="store_true", help="don't do mDNS")
     ap.add_argument("--mdns-name", default="X1-HUB-PROXY")
     ap.add_argument("--no-dump", dest="diag_dump", action="store_false")
     ap.add_argument("--no-parse", dest="diag_parse", action="store_false")
     args = ap.parse_args()
 
+    mdns_txt = _kv_list_to_dict(args.mdns_txt)
+
     proxy = X1Proxy(
         real_hub_ip=args.hub,
         real_hub_udp_port=args.hub_udp,
         proxy_udp_port=args.proxy_udp,
         hub_listen_base=args.listen_base,
+        mdns_txt=mdns_txt,
         mdns_instance=args.mdns_name,
         advertise_after_hub=not args.no_advertise,
         diag_dump=args.diag_dump,
