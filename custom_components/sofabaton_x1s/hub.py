@@ -401,7 +401,7 @@ class SofabatonHub:
         _LOGGER.debug("[%s] Activating activity %s", self.entry_id, act_id)
         await self.hass.async_add_executor_job(
             self._proxy.send_command,
-            act_id,
+            int(act_id),
             ButtonName.POWER_ON,
         )
 
@@ -411,7 +411,7 @@ class SofabatonHub:
         _LOGGER.debug("[%s] Powering off current activity %s", self.entry_id, self.current_activity)
         await self.hass.async_add_executor_job(
             self._proxy.send_command,
-            self.current_activity,
+            int(self.current_activity),
             ButtonName.POWER_OFF,
         )
 
@@ -441,8 +441,8 @@ class SofabatonHub:
         )
         await self.hass.async_add_executor_job(
             self._proxy.send_command,
-            self.current_activity,
-            btn_code,
+            int(self.current_activity),
+            int(btn_code),
         )
 
     async def async_send_key(self, key: str | int, device: int | None = None) -> None:
@@ -467,13 +467,13 @@ class SofabatonHub:
         if isinstance(key, str):
             norm = key.strip().upper()
             try:
-                btn = ButtonName[norm]
+                btn = getattr(ButtonName, norm)
             except KeyError:
                 # not a ButtonName → treat as numeric
                 code = self._normalize_command_id(key)
                 await self.async_send_raw_command(self.current_activity, code)
             else:
-                await self.async_send_button(btn.value)
+                await self.async_send_button(btn)
             return
 
         # int → just send as raw command to current activity
@@ -489,6 +489,6 @@ class SofabatonHub:
         """Send a command directly to an activity or device."""
         await self.hass.async_add_executor_job(
             self._proxy.send_command,
-            ent_id,
-            key_code,
+            int(ent_id),
+            int(key_code),
         )
