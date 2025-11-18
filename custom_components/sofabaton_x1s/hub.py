@@ -6,8 +6,11 @@ from typing import Any, Dict, Optional
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.config_entries import ConfigEntry
 
 from .const import (
+    CONF_HEX_LOGGING_ENABLED,
+    CONF_PROXY_ENABLED,
     DOMAIN,
     signal_activity,
     signal_client,
@@ -32,6 +35,8 @@ class SofabatonHub:
         mdns_txt: dict[str, str],
         proxy_udp_port: int,
         hub_listen_base: int,
+        proxy_enabled: bool,
+        hex_logging_enabled: bool,
     ) -> None:
         self.hass = hass
         self.entry_id = entry_id
@@ -49,7 +54,8 @@ class SofabatonHub:
         self.current_activity: Optional[int] = None
         self.client_connected: bool = False
         self.hub_connected: bool = False
-        self.proxy_enabled: bool = True
+        self.proxy_enabled: bool = proxy_enabled
+        self.hex_logging_enabled: bool = hex_logging_enabled
         # store mac so service can find us by mac
         self.mac = mdns_txt.get("MAC") or mdns_txt.get("mac") or None
 
@@ -74,24 +80,12 @@ class SofabatonHub:
             real_hub_udp_port=self.port,
             mdns_instance=self.name,
             mdns_txt=self.mdns_txt,
-            advertise_after_hub=True,
-            diag_dump=False,
+            diag_dump=self.hex_logging_enabled,
             diag_parse=True,
             proxy_udp_port=self._proxy_udp_port,
             hub_listen_base=self._hub_listen_base,
+            proxy_enabled=self.proxy_enabled,
         )
-
-        # self._proxy = X1Proxy(
-            # real_hub_ip=self.host,
-            # real_hub_udp_port=self.port,
-            # mdns_instance=name,
-            # mdns_txt=self.mdns_txt,
-            # advertise_after_hub=True,
-            # diag_dump=False,
-            # diag_parse=True,
-            # proxy_udp_port=proxy_udp_port,
-            # hub_listen_base=hub_listen_base,
-        # )
 
         proxy.on_activity_change(self._on_activity_change)
         proxy.on_burst_end("activities", self._on_activities_burst)
@@ -415,6 +409,18 @@ class SofabatonHub:
             ButtonName.POWER_OFF,
         )
 
+    async def async_find_remote(self) -> None:
+        _LOGGER.debug("[%s] Triggering find-remote signal", self.entry_id)
+        await self.hass.async_add_executor_job(self._proxy.find_remote)
+
+    def _async_update_options(self, key: str, value: Any) -> None:
+        """Update a key in the ConfigEntry options."""
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        if entry:
+            new_options = entry.options.copy()
+            new_options[key] = value
+            self.hass.config_entries.async_update_entry(entry, options=new_options)
+
     async def async_set_proxy_enabled(self, enable: bool) -> None:
         _LOGGER.debug("[%s] Setting proxy enabled=%s", self.entry_id, enable)
         if enable:
@@ -422,6 +428,17 @@ class SofabatonHub:
         else:
             await self.hass.async_add_executor_job(self._proxy.disable_proxy)
         self.proxy_enabled = enable
+        self.hass.loop.call_soon_threadsafe(
+            self._async_update_options, CONF_PROXY_ENABLED, enable
+        )
+
+    async def async_set_hex_logging_enabled(self, enable: bool) -> None:
+        _LOGGER.debug("[%s] Setting hex logging enabled=%s", self.entry_id, enable)
+        await self.hass.async_add_executor_job(self._proxy.set_diag_dump, enable)
+        self.hex_logging_enabled = enable
+        self.hass.loop.call_soon_threadsafe(
+            self._async_update_options, CONF_HEX_LOGGING_ENABLED, enable
+        )
 
     def get_buttons_for_current(self) -> tuple[list[int], bool]:
         # entities call this often; keep it cheap

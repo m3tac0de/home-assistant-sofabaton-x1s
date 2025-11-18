@@ -53,6 +53,7 @@ OP_REQ_ACTIVITIES = 0x003A  # yields CATALOG_ROW_ACTIVITY rows (0xD53B)
 OP_REQ_BUTTONS     = 0x023C  # payload: [act_lo, 0xFF]
 OP_REQ_COMMANDS   = 0x025C  # payload: [act_lo, 0xFF]
 OP_REQ_ACTIVATE   = 0x023F  # payload: [id_lo, key_code] (id_lo = activity id OR device id)
+OP_FIND_REMOTE    = 0x0023  # payload: [0x01] to trigger remote buzzer
 
 # H→A responses (from hub to app/client)
 OP_ACK_READY      = 0x0160
@@ -65,9 +66,12 @@ OP_DEVBTN_PAGE        = 0xD55D  # H→A: repeated pages with 2-3 entries each
 OP_DEVBTN_TAIL        = 0x495D  # H→A: tail/terminator
 OP_DEVBTN_EXTRA       = 0x303D  # H→A: small follow-up page sometimes present
 OP_DEVBTN_MORE        = 0x8F5D  # H→A: small follow-up page sometimes present (pff)
+
 OP_KEYMAP_TBL_A   = 0xF13D
 OP_KEYMAP_TBL_B   = 0xFA3D
+OP_KEYMAP_TBL_C   = 0x3D3D  # This is what Hue returns when we ask for buttons
 OP_KEYMAP_CONT    = 0x543D  # observed continuation page after MARKER
+
 
 # UDP CALL_ME (same frame used both directions over UDP)
 OP_CALL_ME        = 0x0CC3
@@ -94,6 +98,7 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_BUTTONS:    "REQ_BUTTONS",
     OP_REQ_COMMANDS:   "REQ_COMMANDS",
     OP_REQ_ACTIVATE:   "REQ_ACTIVATE",
+    OP_FIND_REMOTE:    "FIND_REMOTE",
 
     OP_ACK_READY:      "ACK_READY",
     OP_MARKER:         "MARKER",
@@ -103,6 +108,7 @@ OPNAMES: Dict[int, str] = {
 
     OP_KEYMAP_TBL_A:   "KEYMAP_TABLE_A",
     OP_KEYMAP_TBL_B:   "KEYMAP_TABLE_B",
+    OP_KEYMAP_TBL_C:   "KEYMAP_TABLE_C",
     OP_KEYMAP_CONT:    "KEYMAP_CONT",
 
     OP_DEVBTN_HEADER:    "DEVCTL_HEADER",
@@ -110,6 +116,7 @@ OPNAMES: Dict[int, str] = {
     OP_DEVBTN_TAIL:      "DEVCTL_LASTPAGE_TYPE1",
     OP_DEVBTN_EXTRA:     "DEVCTL_LASTPAGE_TYPE2",
     OP_DEVBTN_MORE:      "DEVCTL_LASTPAGE_TYPE3",
+
 
     # OP_BANNER:         "BANNER",
     # OP_WIFI_FW:        "WIFI_FW",
@@ -233,7 +240,7 @@ class X1Proxy:
         mdns_instance: str = "X1-HUB-PROXY",
         mdns_host: Optional[str] = None,
         mdns_txt: Optional[Dict[str, str]] = None,
-        advertise_after_hub: bool = True,
+        proxy_enabled: bool = True,
         diag_dump: bool = True,
         diag_parse: bool = True,
         ka_idle: int = 30,
@@ -247,7 +254,6 @@ class X1Proxy:
         self.mdns_instance = mdns_instance
         self.mdns_host = mdns_host or (mdns_instance + ".local")
         self.mdns_txt = mdns_txt or {}
-        self.advertise_after_hub = advertise_after_hub
         self.diag_dump = bool(diag_dump)
         self.diag_parse = bool(diag_parse)
         self.ka_idle = int(ka_idle)
@@ -305,7 +311,7 @@ class X1Proxy:
         self._activity_listeners: list[callable] = []
 
 
-        self._proxy_enabled = True  # runtime toggle, separate from advertise_after_hub
+        self._proxy_enabled = bool(proxy_enabled)  # runtime toggle, separate from advertise_after_hub
         self.on_burst_end("activities", self.handle_active_state)
         
         self._hub_state_listeners: list[callable] = []
@@ -345,6 +351,10 @@ class X1Proxy:
         self._stop_discovery()
         log.info("[PROXY] disabled (existing TCP sessions stay alive)")
     
+    def set_diag_dump(self, enable: bool) -> None:
+        self.diag_dump = bool(enable)
+        log.info("[PROXY] hex logging %s", "enabled" if enable else "disabled")
+
     def can_issue_commands(self) -> bool:
         with self._app_lock:
             return self._app_sock is None
@@ -480,6 +490,9 @@ class X1Proxy:
         id_lo = ent_id & 0xFF
         return self.enqueue_cmd(OP_REQ_ACTIVATE, bytes([id_lo, key_code]))
 
+    def find_remote(self) -> bool:
+        """Trigger the hub's "find my remote" feature."""
+        return self.enqueue_cmd(OP_FIND_REMOTE)
 
     # ---------------------------------------------------------------------
     # mDNS advertisement
@@ -597,7 +610,7 @@ class X1Proxy:
         my_ip = _route_local_ip(self.real_hub_ip)
         payload = b"\x00"*6 + socket.inet_aton(my_ip) + struct.pack(">H", self._hub_listen_port)
         frame = bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF]) + payload
-        frame += bytes([_sum8(frame)])  # checksum via shared helper
+        frame += bytes([_sum8(frame)])  
 
         last = 0.0
         hub_sock = None
@@ -635,7 +648,7 @@ class X1Proxy:
                 ok = self._claim_once()
                 if not ok:
                     time.sleep(0.2); continue
-                if self.advertise_after_hub and not self._adv_started:
+                if self._proxy_enabled and not self._adv_started:
                     self._start_discovery()
             else:
                 time.sleep(0.3)
@@ -731,7 +744,7 @@ class X1Proxy:
             if self._burst_active:
                 break
 
-    def _accumulate_keymap(self, act_lo: int, payload: bytes) -> None:
+    def _accumulate_keymap_old(self, act_lo: int, payload: bytes) -> None:
         if act_lo not in self._entity_buttons:
             self._entity_buttons[act_lo] = set()
         i, n = 0, len(payload)
@@ -744,6 +757,34 @@ class X1Proxy:
                     continue
             i += 1
 
+    def _accumulate_keymap(self, act_lo: int, payload: bytes) -> None:
+        if act_lo not in self._entity_buttons:
+            self._entity_buttons[act_lo] = set()
+        
+        i, n = 0, len(payload)
+        
+        while i + 1 < n:
+            # 1. Check for the start of a record with the correct Activity ID
+            if payload[i] == act_lo:
+                button_code = payload[i + 1]
+                
+                # 2. Check if the next byte is a known button code (to filter out random data)
+                if button_code in BUTTONNAME_BY_CODE:
+                    
+                    # 3. Check for the Hue-specific payload signature (00 00 00 00) at offset +3
+                    # This check requires at least 7 bytes from the start of the record (i+6)
+                    # The command data block starts at payload[i+3]
+                    if i + 7 < n and payload[i + 3:i + 7] == b'\x00\x00\x00\x00':
+                        stride = 16
+                    else:
+                        stride = 20
+
+                    self._entity_buttons[act_lo].add(button_code)
+                    
+                    # 4. Move 'i' to the expected start of the next record
+                    i += stride
+                    continue
+            i += 1
 
     def _bytes_to_hex(self, b: bytes) -> str:
         return b.hex()
@@ -752,26 +793,35 @@ class X1Proxy:
         """
         Processes a contiguous hex string for a single device to extract command IDs and labels.
         """
-        #print(raw_hex_data)
         commands_found: Dict[int, str] = {}
         target_dev_id_byte = dev_id & 0xFF
         
-        # CRITICAL FIX: Relaxing the Control Data pattern to allow any 5 bytes after the type (03|0D)
-        # The regex matches the 9-byte prefix:
-        # [Dev ID(1)] [Cmd ID(1)] [03|0D(1)] [Control Data(5 variable bytes)] [Payload(1)]
+        # Combined regex to match BOTH old (IR/BT) and new (Hue/special) patterns:
+        # 1. Dev ID (1 byte)
+        # 2. Command ID (1 byte) -> Group 1
+        # 3. Control Data Group (7 bytes total, 14 hex chars):
+        #    - EITHER: (03|0D) + 5 variable bytes + 1 payload byte (Old)
+        #    - OR: 1A 00 00 00 00 17 + 1 payload byte (New)
         command_prefix_re = re.compile(
             f'{target_dev_id_byte:02x}'                 # Device ID (1 byte)
             r'([0-9a-fA-F]{2})'                        # Command ID (1 byte) -> Group 1
-            r'(03|0d)'                                 # Control Type (1 byte)
-            r'[0-9a-fA-F]{10}'                         # Control Data (5 variable bytes: 10 hex chars)
-            r'([0-9a-fA-F]{2})'                        # Control Data payload (1 byte) -> Group 2
+            r'(?:'                                     # Non-capturing group for command/control data
+            r'(?:03|0d)[0-9a-fA-F]{10}[0-9a-fA-F]{2}' # Old IR/BT pattern (7 bytes)
+            r'|'
+            r'1a0000000017[0-9a-fA-F]{2}'            # New Hue/Special pattern (7 bytes)
+            r')'
             , re.IGNORECASE
         )
+
+        # The fixed prefix length is 9 bytes = 18 hex characters (1 Dev ID + 1 Cmd ID + 7 Control/Payload)
+        prefix_length = 18 
 
         # Split the full hex data by 0xFF delimiter.
         chunks = raw_hex_data.split('ff')
         for chunk in chunks:
             if not chunk: continue
+            
+            # Use search() to find the pattern anywhere in the chunk
             match = command_prefix_re.search(chunk)
             
             if match:
@@ -781,9 +831,6 @@ class X1Proxy:
                 except ValueError:
                     continue
                     
-                # The fixed prefix length is 9 bytes = 18 hex characters
-                prefix_length = 18 
-                
                 # Label data starts right after the fixed prefix.
                 label_data_start = match.start() + prefix_length
                 label_hex = chunk[label_data_start:]
@@ -828,10 +875,8 @@ class X1Proxy:
                     if ent_id in self._activities:
                         kind = "act"
                         name = self._activities[ent_id].get("name", "")
-                        print("about to do it")
                         if code == ButtonName.POWER_ON:
                             self._current_activity_hint = ent_id
-                            print("did it")
                     elif ent_id in self._devices:
                         kind = "dev"
                         name = self._devices[ent_id].get("name", "")
@@ -870,11 +915,11 @@ class X1Proxy:
                     
                     row_idx = payload[0] if len(payload) >= 1 else None
                     dev_id  = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
-                    name_bytes_raw = raw[36 : 36 + 36]
+                    name_bytes_raw = raw[36 : 36 + 60]
 
                     device_label = name_bytes_raw.decode('utf-16be').strip('\x00')                   
 
-                    brand_bytes_raw = raw[96 : 96 + 36]
+                    brand_bytes_raw = raw[96 : 96 + 60]
                     brand_label = brand_bytes_raw.decode('utf-16be', errors='ignore').strip('\x00')
 
                     if dev_id is not None:
@@ -919,7 +964,7 @@ class X1Proxy:
                     else:
                         log.info("[ACT] name='%s' state=%s", activity_label, state)
 
-                elif op in (OP_KEYMAP_TBL_A, OP_KEYMAP_TBL_B, OP_KEYMAP_CONT):
+                elif op in (OP_KEYMAP_TBL_A, OP_KEYMAP_TBL_B, OP_KEYMAP_TBL_C, OP_KEYMAP_CONT):
 
                     if (op == OP_KEYMAP_CONT):
                         activity_id_decimal = raw[16]
@@ -1090,6 +1135,8 @@ class X1Proxy:
     # ---------------------------------------------------------------------
 
     def _start_discovery(self) -> None:
+        if not self._proxy_enabled:
+            return
         if self._adv_started:
             return
             
@@ -1131,7 +1178,7 @@ class X1Proxy:
         t1.start(); self._claim_thr = t1
         t2 = threading.Thread(target=self._bridge_forever, name="x1proxy-bridge", daemon=True)
         t2.start(); self._bridge_thr = t2
-        if not self.advertise_after_hub and not self._adv_started:
+        if self._proxy_enabled and self._hub_sock is not None and not self._adv_started:
             self._start_discovery()
 
     def stop(self) -> None:

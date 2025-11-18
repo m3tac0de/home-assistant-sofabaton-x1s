@@ -27,6 +27,9 @@ So essentially: this integration is a proxy service for the Sofabaton X1S hub an
   - functionality relative to the **currently active activity**
   - only buttons actually enabled for that activity are available
   - become unavailable when a proxy client (official app) is connected (to prevent unexpected behavior in the app)
+- 🔔 **Find remote button**
+  - have your remote make an annoying beeping sound at will!
+  - becomes unavailable when a proxy client (official app) is connected (to prevent unexpected behavior in the app)
 - ⚙️ **Remote entity**:
   - one HA remote entity per configured hub
   - used in your automations and scripts to send any command to any device or activity
@@ -41,6 +44,9 @@ So essentially: this integration is a proxy service for the Sofabaton X1S hub an
   - lists cached commands for each device (after you fetch them)
   - sensors maintain state accurately, regardless of how that state is set. So whether you change activity through Home Assistant, the official app, the physical remote or something like Alexa; the sensors will reflect accurate state.
   - shows `loading` when we’re actively retrieving commands
+- 🔔 **Find Remote diagnostic button**:
+  - triggers the hub’s “find my remote” buzzer directly from Home Assistant
+  - available while the proxy can issue commands (when the official app is not connected)
 - 🟢 **Connection sensors**:
   - “hub connected” (are we connected to the physical hub?)
   - “app connected” / “proxy client connected” (is the official app using our virtual hub?)
@@ -151,9 +157,13 @@ You should see:
   - selecting an item sends `activate` to hub
   - becomes unavailable when the official app is connected
 
-- **Switch**: `switch.<hub>_proxy_enabled`
-  - switches proxy capability of the integration on and off (mDNS advertising and UDP port binding)
-  - note that active connections are not interupted when proxy is switched off, it will just stop accepting new ones
+- **Switch**: 
+  - `switch.<hub>_proxy_enabled`
+    - switches proxy capability of the integration on and off (mDNS advertising and UDP port binding)
+    - note that active connections are not interupted when proxy is switched off, it will just stop accepting new ones
+  - `switch.<hub>_hex_logging`
+	- when this is switched on, and you enable debug logging for the integration, all communication between hub and client is now dropped in the Home Assistant log.
+	- useful for improving the integration
 
 - **Binary/normal sensors**:
   - `binary_sensor.<hub>_hub_status` → `connected` / `disconnected` is the physical hub connected to us
@@ -162,6 +172,8 @@ You should see:
     - attributes: activities, currect_activity, devices, buttons per device and activity, commands per device and activity
 
 - **Buttons**:
+  - `button.<hub>_find_remote` (added as a "Diagnostic" button)
+  
   - `button.<hub>_volume_up`
   - `button.<hub>_volume_down`
   - `button.<hub>_mute`

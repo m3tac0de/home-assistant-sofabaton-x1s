@@ -7,7 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .const import DOMAIN, PLATFORMS, DEFAULT_PROXY_UDP_PORT, DEFAULT_HUB_LISTEN_BASE, CONF_MAC
+from .const import DOMAIN, PLATFORMS, DEFAULT_PROXY_UDP_PORT, DEFAULT_HUB_LISTEN_BASE, CONF_MAC, CONF_PROXY_ENABLED, CONF_HEX_LOGGING_ENABLED
 from .hub import SofabatonHub
 
 _LOGGER = logging.getLogger(__name__)
@@ -20,6 +20,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     proxy_udp_port = opts.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
     hub_listen_base = opts.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
 
+    proxy_enabled = opts.get(CONF_PROXY_ENABLED, True)
+    hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
+
     hub = SofabatonHub(
         hass=hass,
         entry_id=entry.entry_id,
@@ -29,6 +32,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         mdns_txt=data.get("mdns_txt", {}),
         proxy_udp_port=proxy_udp_port,
         hub_listen_base=hub_listen_base,
+        proxy_enabled=proxy_enabled,
+        hex_logging_enabled=hex_logging_enabled,
     )
     await hub.async_start()
 

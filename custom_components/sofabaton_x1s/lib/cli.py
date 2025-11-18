@@ -194,6 +194,13 @@ class X1Shell:
         else:
             print("sent")
 
+    def do_find_remote(self, _args: str) -> None:
+        ok = self.p.find_remote()
+        if ok:
+            print("sent find-remote signal")
+        else:
+            print("proxy refused to send (is a real client connected?)")
+
     def do_watch(self, _args: str) -> None:
         """
         Just keep the CLI alive and let event callbacks print stuff.
@@ -253,7 +260,7 @@ def main() -> None:
     ap.add_argument("--proxy-udp", type=int, default=9102)
     ap.add_argument("--listen-base", type=int, default=8200)
     ap.add_argument("--mdns-txt", action="append", help="add TXT record kv pair, e.g. NAME=YourHub (repeatable)")
-    ap.add_argument("--no-advertise", action="store_true", help="don't do mDNS")
+    ap.add_argument("--disable-proxy", action="store_true", help="start with proxy disabled")
     ap.add_argument("--mdns-name", default="X1-HUB-PROXY")
     ap.add_argument("--no-dump", dest="diag_dump", action="store_false")
     ap.add_argument("--no-parse", dest="diag_parse", action="store_false")
@@ -268,7 +275,7 @@ def main() -> None:
         hub_listen_base=args.listen_base,
         mdns_txt=mdns_txt,
         mdns_instance=args.mdns_name,
-        advertise_after_hub=not args.no_advertise,
+        proxy_enabled=not args.disable_proxy,
         diag_dump=args.diag_dump,
         diag_parse=args.diag_parse,
     )

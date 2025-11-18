@@ -7,6 +7,8 @@ CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_NAME = "name"
 CONF_MDNS_TXT = "mdns_txt"
+CONF_PROXY_ENABLED = "proxy_enabled"
+CONF_HEX_LOGGING_ENABLED = "hex_logging_enabled"
 
 DEFAULT_PROXY_UDP_PORT = 9102
 DEFAULT_HUB_LISTEN_BASE = 8200

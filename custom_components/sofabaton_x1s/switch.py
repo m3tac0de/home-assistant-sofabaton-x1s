@@ -18,7 +18,12 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     hub: SofabatonHub = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([SofabatonProxySwitch(hub, entry)])
+    async_add_entities(
+        [
+            SofabatonProxySwitch(hub, entry),
+            SofabatonHexLoggingSwitch(hub, entry),
+        ]
+    )
 
 
 class SofabatonProxySwitch(SwitchEntity):
@@ -48,4 +53,33 @@ class SofabatonProxySwitch(SwitchEntity):
 
     async def async_turn_off(self, **kwargs) -> None:
         await self._hub.async_set_proxy_enabled(False)
+        self.async_write_ha_state()
+
+class SofabatonHexLoggingSwitch(SwitchEntity):
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.CONFIG  # ← this makes it show under "Configuration"
+
+    def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
+        self._hub = hub
+        self._entry = entry
+        self._attr_unique_id = f"{entry.data[CONF_MAC]}_hex_logging"
+        self._attr_name = f"{entry.data[CONF_NAME]} Hex logging"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
+            name=self._entry.data[CONF_NAME],
+        )
+
+    @property
+    def is_on(self) -> bool:
+        return self._hub.hex_logging_enabled
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self._hub.async_set_hex_logging_enabled(True)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self._hub.async_set_hex_logging_enabled(False)
         self.async_write_ha_state()

@@ -4,9 +4,9 @@ import logging
 
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import callback
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
@@ -16,6 +16,7 @@ from .const import (
     signal_activity,
     signal_buttons,
     signal_client,
+    signal_hub,
 )
 from .hub import SofabatonHub
 from .lib.x1_proxy import ButtonName  # your proxy enum
@@ -59,11 +60,52 @@ async def async_setup_entry(
 ) -> None:
     hub: SofabatonHub = hass.data[DOMAIN][entry.entry_id]
 
-    entities: list[ButtonEntity] = []
+    entities: list[ButtonEntity] = [SofabatonFindRemoteButton(hub, entry)]
     for code, label, icon in BUTTON_DEFS:
         entities.append(SofabatonDynamicButton(hub, entry, code, label, icon))
 
     async_add_entities(entities)
+
+class SofabatonFindRemoteButton(ButtonEntity):
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:remote"
+
+    def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
+        self._hub = hub
+        self._entry = entry
+        self._attr_name = f"{entry.data[CONF_NAME]} find remote"
+        self._attr_unique_id = f"{entry.data[CONF_MAC]}_find_remote"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
+            name=self._entry.data[CONF_NAME],
+        )
+
+    async def async_added_to_hass(self) -> None:
+        for sig in (
+            signal_client(self._hub.entry_id),
+            signal_hub(self._hub.entry_id),
+        ):
+            self.async_on_remove(
+                async_dispatcher_connect(self.hass, sig, self._handle_update)
+            )
+
+    @callback
+    def _handle_update(self) -> None:
+        self.async_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        return self._hub.hub_connected and not self._hub.client_connected
+
+    async def async_press(self) -> None:
+        if not self.available:
+            return
+        await self._hub.async_find_remote()
+
 
 
 class SofabatonDynamicButton(ButtonEntity):
