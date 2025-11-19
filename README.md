@@ -270,3 +270,8 @@ That way we stay fast in normal operation, but you can still explore everything 
 ## License
 
 MIT © 2025 m3tac0de.
+### Code structure
+
+- **`TransportBridge`** (`custom_components/sofabaton_x1s/lib/transport_bridge.py`) owns the TCP sockets, keepalive, and select loop between the real hub and the virtual app client. It surfaces callbacks for framed traffic in either direction as well as connection state changes.
+- **`BurstScheduler`** (`custom_components/sofabaton_x1s/lib/helpers.py`) centralizes burst tracking and post-burst draining so command dispatchers can stay simple and testable.
+- **`ActivityCache`** (`custom_components/sofabaton_x1s/lib/helpers.py`) keeps activity/device metadata and emits change notifications, allowing entities and CLIs to share the same state holder.
