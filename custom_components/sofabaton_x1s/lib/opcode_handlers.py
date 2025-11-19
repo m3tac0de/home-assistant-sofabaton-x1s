@@ -148,14 +148,23 @@ class CatalogActivityHandler(BaseFrameHandler):
         payload = frame.payload
         raw = frame.raw
         row_idx = payload[0] if len(payload) >= 1 else None
-        act_id = payload[1] if len(payload) >= 2 else None
-        is_active = bool(payload[2] & 0x01) if len(payload) >= 3 else False
-        act_name = payload[4:7].decode("latin1", errors="ignore") if len(payload) >= 7 else ""
-        label = raw[7:-1]
-        activity_label = label.split(b"\x00")[0].decode("latin1", errors="ignore") if label else ""
-        proxy.state.activities[act_id] = {"name": activity_label, "raw": payload, "act": act_name}
-        if is_active and proxy.state.current_activity_hint is None:
-            proxy.state.set_hint(act_id)
+        # Start of a fresh activities list → reset 'active'
+        if row_idx == 1 and proxy.state.current_activity_hint is not None:
+            log.info("[ACT] reset active (start of new activities list)")
+            proxy.state.set_hint(None)
+
+        act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
+        label_bytes_raw = raw[36:128]
+        activity_label = label_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
+        active_state_byte = raw[35] if len(raw) > 35 else 0
+        is_active = active_state_byte == 0x01
+
+        if act_id is not None:
+            proxy.state.activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
+            if is_active:
+                proxy.state.set_hint(act_id)
+        elif activity_label:
+            log.info("[ACT] name='%s'", activity_label)
 
         state = "ACTIVE" if is_active else "idle"
         if row_idx is not None and act_id is not None:
