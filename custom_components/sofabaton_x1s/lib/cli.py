@@ -14,12 +14,10 @@ import sys
 import time
 import threading
 import logging
+from typing import Dict
 
-from x1_proxy import (
-    X1Proxy,
-    BUTTONNAME_BY_CODE,
-    ButtonName,
-)
+from protocol_const import BUTTONNAME_BY_CODE, ButtonName
+from x1_proxy import X1Proxy
 
 # ----------------- helpers -----------------
 

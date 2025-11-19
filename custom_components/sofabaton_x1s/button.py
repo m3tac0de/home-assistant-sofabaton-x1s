@@ -19,7 +19,7 @@ from .const import (
     signal_hub,
 )
 from .hub import SofabatonHub
-from .lib.x1_proxy import ButtonName  # your proxy enum
+from .lib.protocol_const import ButtonName  # your proxy enum
 
 _LOGGER = logging.getLogger(__name__)
 
