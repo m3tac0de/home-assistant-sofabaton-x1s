@@ -392,7 +392,7 @@ class TransportBridge:
                 rlist.append(app)
 
             wlist: List[socket.socket] = []
-            if hub is not None and (app_to_hub or local_to_hub):
+            if hub is not None and (app_to_hub or self._local_to_hub):
                 wlist.append(hub)
 
             if not rlist and not wlist:
