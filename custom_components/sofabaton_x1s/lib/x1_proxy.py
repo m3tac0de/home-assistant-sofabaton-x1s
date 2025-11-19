@@ -11,7 +11,8 @@ import threading
 import time
 from typing import Dict, List, Optional, Set, Tuple, Any
 from collections import defaultdict
-import re
+
+from .commands import DeviceCommandAssembler, parse_device_commands
 
 # ============================================================================
 # Protocol constants and fallbacks
@@ -130,6 +131,14 @@ OPNAMES: Dict[int, str] = {
     # OP_PING2:          "PING2",
 
 }
+
+COMMAND_FRAME_OPCODES = (
+    OP_DEVBTN_HEADER,
+    OP_DEVBTN_PAGE,
+    OP_DEVBTN_TAIL,
+    OP_DEVBTN_EXTRA,
+    OP_DEVBTN_MORE,
+)
 
 # ============================================================================
 # Utilities
@@ -297,9 +306,10 @@ class X1Proxy:
         self._activities: Dict[int, Dict[str, Any]] = {}  # act_id -> {"name": str, "active": bool}
         self._devices: Dict[int, Dict[str, Any]] = {}     # dev_id -> {"brand": str, "name": str, "guid": str|None}
         
-        self._commands_hexbuf: str = ""      # accumulates header+pages+tail
-
-        self._totalframes: int = 0
+        self._command_assembler = DeviceCommandAssembler(
+            header_opcodes={OP_DEVBTN_HEADER},
+            valid_opcodes=set(COMMAND_FRAME_OPCODES),
+        )
         
         self._burst_active = False
         self._burst_kind: str | None = None
@@ -786,79 +796,6 @@ class X1Proxy:
                     continue
             i += 1
 
-    def _bytes_to_hex(self, b: bytes) -> str:
-        return b.hex()
-
-    def parse_device_commands(self, raw_hex_data: str, dev_id: int) -> Dict[int, str]:
-        """
-        Processes a contiguous hex string for a single device to extract command IDs and labels.
-        """
-        commands_found: Dict[int, str] = {}
-        target_dev_id_byte = dev_id & 0xFF
-        
-        # Combined regex to match BOTH old (IR/BT) and new (Hue/special) patterns:
-        # 1. Dev ID (1 byte)
-        # 2. Command ID (1 byte) -> Group 1
-        # 3. Control Data Group (7 bytes total, 14 hex chars):
-        #    - EITHER: (03|0D) + 5 variable bytes + 1 payload byte (Old)
-        #    - OR: 1A 00 00 00 00 17 + 1 payload byte (New)
-        command_prefix_re = re.compile(
-            f'{target_dev_id_byte:02x}'                 # Device ID (1 byte)
-            r'([0-9a-fA-F]{2})'                        # Command ID (1 byte) -> Group 1
-            r'(?:'                                     # Non-capturing group for command/control data
-            r'(?:03|0d)[0-9a-fA-F]{10}[0-9a-fA-F]{2}' # Old IR/BT pattern (7 bytes)
-            r'|'
-            r'1a0000000017[0-9a-fA-F]{2}'            # New Hue/Special pattern (7 bytes)
-            r')'
-            , re.IGNORECASE
-        )
-
-        # The fixed prefix length is 9 bytes = 18 hex characters (1 Dev ID + 1 Cmd ID + 7 Control/Payload)
-        prefix_length = 18 
-
-        # Split the full hex data by 0xFF delimiter.
-        chunks = raw_hex_data.split('ff')
-        for chunk in chunks:
-            if not chunk: continue
-            
-            # Use search() to find the pattern anywhere in the chunk
-            match = command_prefix_re.search(chunk)
-            
-            if match:
-                command_id_hex = match.group(1)
-                try:
-                    command_id = int(command_id_hex, 16)
-                except ValueError:
-                    continue
-                    
-                # Label data starts right after the fixed prefix.
-                label_data_start = match.start() + prefix_length
-                label_hex = chunk[label_data_start:]
-                
-                # Remove the 4 bytes (8 hex chars) of control data remnants that prefix the UTF-16BE label.
-                label_hex = re.sub(r'^(00){4}', '', label_hex)
-
-                # Remove trailing null bytes for padding
-                cleaned_label_hex = re.sub(r'(00)+$', '', label_hex)
-
-                # Handle odd length (truncated UTF-16BE) by completing the last byte pair with '0'
-                initial_cleaned_length = len(cleaned_label_hex)
-                if initial_cleaned_length % 2 != 0:
-                    # Add '0' to the end to complete the final byte (e.g., '4' -> '40')
-                    cleaned_label_hex += '0'
-
-                try:
-                    label_bytes = bytes.fromhex(cleaned_label_hex)
-                    label = label_bytes.decode('utf-16be').strip('\x00')
-                    
-                    if (command_id, label) not in commands_found and label:
-                        commands_found[command_id] = label
-                        
-                except (ValueError, UnicodeDecodeError):
-                    continue
-
-        return commands_found
-
     # ---------------------------------------------------------------------
     # Structured frame logs
     # ---------------------------------------------------------------------
@@ -986,54 +923,31 @@ class X1Proxy:
                     dev_id = payload[0] if payload else 0
                     log.info("[DEVCTL] A→H requesting commands dev=0x%02X (%d)", dev_id, dev_id)
 
-                elif op == OP_DEVBTN_HEADER and direction == "H→A":
-                   
-                    self._totalframes = int.from_bytes(payload[4:6], byteorder='big')
-                    current_frame = int(payload[2])
-                    dev_id = payload[3]
+                elif op in COMMAND_FRAME_OPCODES and direction == "H→A":
+                    dev_id = payload[3] if len(payload) >= 4 else None
 
-                    self._burst_active = True
-                    if self._burst_kind is None:
-                        self._burst_kind = f"commands:{dev_id}"
-                    self._burst_last_ts = time.monotonic()  
+                    if dev_id is not None:
+                        self._burst_active = True
+                        if self._burst_kind is None:
+                            self._burst_kind = f"commands:{dev_id}"
+                        self._burst_last_ts = time.monotonic()
 
-                    try:
-                        self._commands_hexbuf = ""  # start fresh for the upcoming burst
-                        self._commands_hexbuf += self._bytes_to_hex(raw)
-                    except Exception as e:
-                        log.debug(f"{e}")
-                        
-                    try:
-                        if self._totalframes == current_frame and self._commands_hexbuf is not None:
-                            self._entity_commands[dev_id & 0xFF] = self.parse_device_commands(self._commands_hexbuf, dev_id)
-                    except Exception as e:
-                        log.debug(f"{e}")
-     
-                elif (op == OP_DEVBTN_PAGE or op == OP_DEVBTN_MORE or op == OP_DEVBTN_TAIL) and direction == "H→A":
-                   
-                    current_frame = int(payload[2])
-                    dev_id = payload[3]
-
-                    self._burst_active = True
-                    if self._burst_kind is None:
-                        self._burst_kind = f"commands:{dev_id}"
-                    self._burst_last_ts = time.monotonic()  
-
-                    if payload:
+                    completed_payloads = self._command_assembler.feed(op, raw)
+                    for completed_dev_id, assembled_bytes in completed_payloads:
                         try:
-                            self._commands_hexbuf += self._bytes_to_hex(raw)
-                        except Exception as e:
-                            log.debug(f"{e}")
-                    try:
-                        if self._totalframes == current_frame and self._commands_hexbuf is not None:
-                            self._entity_commands[dev_id & 0xFF] = self.parse_device_commands(self._commands_hexbuf, dev_id)
+                            commands = parse_device_commands(assembled_bytes, completed_dev_id)
+                        except Exception:
+                            log.debug("[PARSE] error while decoding device commands", exc_info=True)
+                            continue
+
+                        dev_key = completed_dev_id & 0xFF
+                        self._entity_commands[dev_key] = commands
+                        if commands:
                             log.info(" ".join(
-                                f"{cmd_id:2d} : {label}" 
-                                for cmd_id, label in self._entity_commands[dev_id].items()
+                                f"{cmd_id:2d} : {label}"
+                                for cmd_id, label in commands.items()
                             ))
-                    except Exception as e:
-                        log.debug(f"{e}")
-                            
+
             except Exception:
                 log.debug("[PARSE] error while decoding op 0x%04X", op, exc_info=True)
 
