@@ -66,6 +66,15 @@ We add a small TXT flag to the virtual hub so Home Assistant **ignores** our own
 
 ---
 
+## Proxy internals
+
+- **TransportBridge** in `custom_components/sofabaton_x1s/lib/transport_bridge.py` owns the TCP/UDP sockets and surfaces callbacks whenever hub/app frames arrive or connection state changes.
+- **BurstScheduler** in `custom_components/sofabaton_x1s/lib/state_helpers.py` coordinates burst-style hub responses so queued commands drain only after the hub finishes sending its data.
+- **ActivityCache** in `state_helpers.py` stores activity, device, button, and command metadata that both the CLI and Home Assistant entities consume.
+- **X1Proxy** now wires these pieces together, forwarding transport events into the parser/handler registry while keeping the coordination logic small and readable.
+
+---
+
 ### Networking
 
 This integration follows the same 3-step flow as the official Sofabaton app:
