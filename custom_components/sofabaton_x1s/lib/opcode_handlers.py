@@ -44,19 +44,19 @@ class ActivateRequestHandler(BaseFrameHandler):
         proxy: X1Proxy = frame.proxy
         ent_id, code = payload
 
-        if ent_id in proxy._activities:
+        if ent_id in proxy.state.activities:
             kind = "act"
-            name = proxy._activities[ent_id].get("name", "")
+            name = proxy.state.activities[ent_id].get("name", "")
             if code == ButtonName.POWER_ON:
-                proxy._current_activity_hint = ent_id
-        elif ent_id in proxy._devices:
+                proxy.state.set_hint(ent_id)
+        elif ent_id in proxy.state.devices:
             kind = "dev"
-            name = proxy._devices[ent_id].get("name", "")
+            name = proxy.state.devices[ent_id].get("name", "")
         else:
             kind = "id"
             name = ""
 
-        cmd = proxy._entity_commands.get(ent_id, {}).get(code)
+        cmd = proxy.state.commands.get(ent_id, {}).get(code)
         btn = BUTTONNAME_BY_CODE.get(code) if cmd is None else None
         extra = f" cmd='{cmd}'" if cmd else (f" btn='{btn}'" if btn else "")
 
@@ -82,8 +82,8 @@ class AckReadyHandler(BaseFrameHandler):
         if proxy.can_issue_commands():
             log.info("[HINT] no proxy client; auto-REQ_ACTIVITIES")
             proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
-            if proxy._current_activity_hint is not None:
-                ent_lo = proxy._current_activity_hint & 0xFF
+            if proxy.state.current_activity_hint is not None:
+                ent_lo = proxy.state.current_activity_hint & 0xFF
                 proxy.enqueue_cmd(
                     OP_REQ_BUTTONS,
                     bytes([ent_lo, 0xFF]),
@@ -98,11 +98,11 @@ class AckReadyHandler(BaseFrameHandler):
                 )
         else:
             log.info("[HINT] proxy client connected; skipping auto-requests")
-            if proxy._current_activity_hint is not proxy._current_activity:
+            if proxy.state.current_activity_hint is not proxy.state.current_activity:
                 log.info("[HINT] current activity differs from hint; notifying listeners")
                 proxy._notify_activity_change(
-                    proxy._current_activity_hint & 0xFF,
-                    proxy._current_activity & 0xFF if proxy._current_activity is not None else None,
+                    proxy.state.current_activity_hint & 0xFF,
+                    proxy.state.current_activity & 0xFF if proxy.state.current_activity is not None else None,
                 )
 
 
@@ -112,10 +112,7 @@ class CatalogDeviceHandler(BaseFrameHandler):
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
-        proxy._burst_active = True
-        if proxy._burst_kind is None:
-            proxy._burst_kind = "devices"
-        proxy._burst_last_ts = time.monotonic()
+        proxy._burst.start("devices", now=time.monotonic())
 
         payload = frame.payload
         raw = frame.raw
@@ -127,7 +124,7 @@ class CatalogDeviceHandler(BaseFrameHandler):
         brand_label = brand_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
 
         if dev_id is not None:
-            proxy._devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
+            proxy.state.devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
             log.info(
                 "[DEV] #%s id=0x%04X (%d) brand='%s' name='%s'",
                 row_idx,
@@ -146,10 +143,7 @@ class CatalogActivityHandler(BaseFrameHandler):
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
-        proxy._burst_active = True
-        if proxy._burst_kind is None:
-            proxy._burst_kind = "activities"
-        proxy._burst_last_ts = time.monotonic()
+        proxy._burst.start("activities", now=time.monotonic())
 
         payload = frame.payload
         raw = frame.raw
@@ -159,9 +153,9 @@ class CatalogActivityHandler(BaseFrameHandler):
         act_name = payload[4:7].decode("latin1", errors="ignore") if len(payload) >= 7 else ""
         label = raw[7:-1]
         activity_label = label.split(b"\x00")[0].decode("latin1", errors="ignore") if label else ""
-        proxy._activities[act_id] = {"name": activity_label, "raw": payload, "act": act_name}
-        if is_active and proxy._current_activity_hint is None:
-            proxy._current_activity_hint = act_id
+        proxy.state.activities[act_id] = {"name": activity_label, "raw": payload, "act": act_name}
+        if is_active and proxy.state.current_activity_hint is None:
+            proxy.state.set_hint(act_id)
 
         state = "ACTIVE" if is_active else "idle"
         if row_idx is not None and act_id is not None:
@@ -201,15 +195,12 @@ class KeymapHandler(BaseFrameHandler):
         else:
             activity_id_decimal = raw[11]
 
-        proxy._burst_active = True
-        if proxy._burst_kind is None:
-            proxy._burst_kind = f"buttons:{activity_id_decimal}"
-        proxy._burst_last_ts = time.monotonic()
+        proxy._burst.start(f"buttons:{activity_id_decimal}", now=time.monotonic())
 
         proxy._accumulate_keymap(activity_id_decimal, payload)
         keys = [
             f"{BUTTONNAME_BY_CODE.get(c, f'0x{c:02X}')}(0x{c:02X})"
-            for c in sorted(proxy._entity_buttons.get(activity_id_decimal, set()))
+            for c in sorted(proxy.state.buttons.get(activity_id_decimal, set()))
         ]
         log.info(
             "[KEYMAP] act=0x%02X mapped{%d}: %s",
@@ -243,20 +234,15 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
 
         dev_id = payload[3]
 
-        proxy._burst_active = True
-        if proxy._burst_kind is None:
-            proxy._burst_kind = f"commands:{dev_id}"
-        proxy._burst_last_ts = time.monotonic()
+        proxy._burst.start(f"commands:{dev_id}", now=time.monotonic())
 
         completed = proxy._command_assembler.feed(frame.opcode, raw)
         for complete_dev_id, assembled_payload in completed:
             commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
             if commands:
-                proxy._entity_commands[complete_dev_id & 0xFF] = commands
+                proxy.state.commands[complete_dev_id & 0xFF] = commands
                 log.info(
-                    " ".join(
-                        f"{cmd_id:2d} : {label}" for cmd_id, label in proxy._entity_commands[complete_dev_id].items()
-                    )
+                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[complete_dev_id].items())
                 )
 
 
