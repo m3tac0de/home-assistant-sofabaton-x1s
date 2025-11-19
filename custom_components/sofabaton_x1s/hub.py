@@ -19,7 +19,8 @@ from .const import (
     signal_devices,
     signal_commands,
 )
-from .lib.x1_proxy import X1Proxy, ButtonName
+from .lib.protocol_const import ButtonName
+from .lib.x1_proxy import X1Proxy
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -347,7 +348,7 @@ class SofabatonHub:
     
     def get_button_name_map(self) -> dict[int, str]:
         """Return a static map of button_code -> human name."""
-        from .lib.x1_proxy import ButtonName  # you already import this at the top, so this can stay up there
+        from .lib.protocol_const import ButtonName  # you already import this at the top, so this can stay up there
         name_map: dict[int, str] = {}
         for attr, val in ButtonName.__dict__.items():
             if isinstance(val, int):
