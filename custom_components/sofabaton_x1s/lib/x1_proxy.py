@@ -13,6 +13,13 @@ from typing import Dict, List, Optional, Set, Tuple, Any
 from collections import defaultdict
 import re
 
+from .frame_handlers import (
+    BaseFrameHandler,
+    FrameContext,
+    frame_handler_registry,
+    register_handler,
+)
+
 # ============================================================================
 # Protocol constants and fallbacks
 # ============================================================================
@@ -868,174 +875,20 @@ class X1Proxy:
             note = f"#{scid}→#{ecid}" if scid != ecid else f"#{ecid}"
             log.info("[FRAME %s] %s %s (0x%04X) len=%d", note, direction, name, op, len(raw))
 
-            try:
-                if op == OP_REQ_ACTIVATE and len(payload) == 2:
-                    ent_id, code = payload
+            context = FrameContext(
+                proxy=self,
+                opcode=op,
+                direction=direction,
+                payload=payload,
+                raw=raw,
+                name=name,
+            )
 
-                    if ent_id in self._activities:
-                        kind = "act"
-                        name = self._activities[ent_id].get("name", "")
-                        if code == ButtonName.POWER_ON:
-                            self._current_activity_hint = ent_id
-                    elif ent_id in self._devices:
-                        kind = "dev"
-                        name = self._devices[ent_id].get("name", "")
-                    else:
-                        kind = "id"
-                        name = ""
-
-                    cmd = self._entity_commands.get(ent_id, {}).get(code)
-                    btn = BUTTONNAME_BY_CODE.get(code) if cmd is None else None
-                    extra = f" cmd='{cmd}'" if cmd else (f" btn='{btn}'" if btn else "")
-
-                    log.info("[KEY] %s %s=0x%02X (%d) name='%s' key=0x%02X%s",
-                             direction, kind, ent_id, ent_id, name, code, extra)
-
-                elif op == OP_ACK_READY:
-                    log.info("[HINT] ACK_READY from hub")
-                    if direction == "H→A" and self.can_issue_commands():
-                        log.info("[HINT] no proxy client; auto-REQ_ACTIVITIES")
-                        self.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
-                        if self._current_activity_hint is not None:
-                            ent_lo = self._current_activity_hint & 0xFF
-                            self.enqueue_cmd(OP_REQ_BUTTONS,  bytes([ent_lo, 0xFF]), expects_burst=True, burst_kind=f"buttons:{ent_lo}")
-                            self.enqueue_cmd(OP_REQ_COMMANDS, bytes([ent_lo, 0xFF]), expects_burst=True, burst_kind=f"commands:{ent_lo}")
-                    elif not self.can_issue_commands():
-                        log.info("[HINT] proxy client connected; skipping auto-requests")
-                        if self._current_activity_hint is not self._current_activity:
-                            log.info("[HINT] current activity differs from hint; notifying listeners")
-                            self._notify_activity_change(self._current_activity_hint & 0xFF,
-                                                         self._current_activity & 0xFF if self._current_activity is not None else None)
-
-                elif op == OP_CATALOG_ROW_DEVICE:
-                    self._burst_active = True
-                    if self._burst_kind is None:
-                        self._burst_kind = "devices"
-                    self._burst_last_ts = time.monotonic()
-                    
-                    row_idx = payload[0] if len(payload) >= 1 else None
-                    dev_id  = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
-                    name_bytes_raw = raw[36 : 36 + 60]
-
-                    device_label = name_bytes_raw.decode('utf-16be').strip('\x00')                   
-
-                    brand_bytes_raw = raw[96 : 96 + 60]
-                    brand_label = brand_bytes_raw.decode('utf-16be', errors='ignore').strip('\x00')
-
-                    if dev_id is not None:
-                        self._devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
-                        log.info("[DEV] #%s id=0x%04X (%d) brand='%s' name='%s'",
-                                 row_idx, dev_id, dev_id, brand_label, device_label)
-                    else:
-                        log.info("[DEV] #%s brand='%s' name='%s'", row_idx, brand_label, device_label)
-
-                elif op == OP_CATALOG_ROW_ACTIVITY:
-                    self._burst_active = True
-                    if self._burst_kind is None:
-                        self._burst_kind = "activities"
-                    self._burst_last_ts = time.monotonic()                
-                    row_idx = payload[0] if len(payload) >= 1 else None
-
-                    # Start of a fresh activities list → reset 'active'
-                    if row_idx == 1 and self._current_activity_hint is not None:
-                        log.info("[ACT] reset active (start of new activities list)")
-                        self._current_activity_hint = None
-
-                    act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
-                    
-                    label_bytes_raw = raw[36:128]
-                    activity_label = label_bytes_raw.decode('utf-16be').strip('\x00')
-
-                    active_state_byte = raw[35]
-                    is_active = True if active_state_byte == 0x01 else False
-
-
-                    if act_id is not None:
-                        self._activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
-                        if is_active:
-                            self._current_activity_hint = act_id
-
-                    state = "ACTIVE" if is_active else "idle"
-                    if row_idx is not None and act_id is not None:
-                        log.info("[ACT] #%d name='%s' act_id=0x%04X (%d) state=%s",
-                                 row_idx, activity_label, act_id, act_id, state)
-                    elif act_id is not None:
-                        log.info("[ACT] name='%s' act_id=0x%04X (%d) state=%s", activity_label, act_id, act_id, state)
-                    else:
-                        log.info("[ACT] name='%s' state=%s", activity_label, state)
-
-                elif op in (OP_KEYMAP_TBL_A, OP_KEYMAP_TBL_B, OP_KEYMAP_TBL_C, OP_KEYMAP_CONT):
-
-                    if (op == OP_KEYMAP_CONT):
-                        activity_id_decimal = raw[16]
-                    else:
-                        activity_id_decimal = raw[11]
-
-                    self._burst_active = True
-                    if self._burst_kind is None:
-                        self._burst_kind = f"buttons:{activity_id_decimal}"
-                    self._burst_last_ts = time.monotonic()  
-                    
-                    self._accumulate_keymap(activity_id_decimal, payload)
-                    keys = [f"{BUTTONNAME_BY_CODE.get(c, f'0x{c:02X}')}(0x{c:02X})"
-                            for c in sorted(self._entity_buttons.get(activity_id_decimal, set()))]
-                    log.info("[KEYMAP] act=0x%02X mapped{%d}: %s",
-                             activity_id_decimal, len(keys), ", ".join(keys))
-                          
-                elif op == OP_REQ_COMMANDS and direction == "A→H":
-                    dev_id = payload[0] if payload else 0
-                    log.info("[DEVCTL] A→H requesting commands dev=0x%02X (%d)", dev_id, dev_id)
-
-                elif op == OP_DEVBTN_HEADER and direction == "H→A":
-                   
-                    self._totalframes = int.from_bytes(payload[4:6], byteorder='big')
-                    current_frame = int(payload[2])
-                    dev_id = payload[3]
-
-                    self._burst_active = True
-                    if self._burst_kind is None:
-                        self._burst_kind = f"commands:{dev_id}"
-                    self._burst_last_ts = time.monotonic()  
-
-                    try:
-                        self._commands_hexbuf = ""  # start fresh for the upcoming burst
-                        self._commands_hexbuf += self._bytes_to_hex(raw)
-                    except Exception as e:
-                        log.debug(f"{e}")
-                        
-                    try:
-                        if self._totalframes == current_frame and self._commands_hexbuf is not None:
-                            self._entity_commands[dev_id & 0xFF] = self.parse_device_commands(self._commands_hexbuf, dev_id)
-                    except Exception as e:
-                        log.debug(f"{e}")
-     
-                elif (op == OP_DEVBTN_PAGE or op == OP_DEVBTN_MORE or op == OP_DEVBTN_TAIL) and direction == "H→A":
-                   
-                    current_frame = int(payload[2])
-                    dev_id = payload[3]
-
-                    self._burst_active = True
-                    if self._burst_kind is None:
-                        self._burst_kind = f"commands:{dev_id}"
-                    self._burst_last_ts = time.monotonic()  
-
-                    if payload:
-                        try:
-                            self._commands_hexbuf += self._bytes_to_hex(raw)
-                        except Exception as e:
-                            log.debug(f"{e}")
-                    try:
-                        if self._totalframes == current_frame and self._commands_hexbuf is not None:
-                            self._entity_commands[dev_id & 0xFF] = self.parse_device_commands(self._commands_hexbuf, dev_id)
-                            log.info(" ".join(
-                                f"{cmd_id:2d} : {label}" 
-                                for cmd_id, label in self._entity_commands[dev_id].items()
-                            ))
-                    except Exception as e:
-                        log.debug(f"{e}")
-                            
-            except Exception:
-                log.debug("[PARSE] error while decoding op 0x%04X", op, exc_info=True)
+            for handler in frame_handler_registry.iter_for(op, direction):
+                try:
+                    handler.handle(context)
+                except Exception:
+                    log.debug("[PARSE] error while decoding op 0x%04X via %s", op, handler.__class__.__name__, exc_info=True)
 
     # ---------------------------------------------------------------------
     # Continuous bridge
@@ -1200,3 +1053,261 @@ class X1Proxy:
                 except Exception: pass
                 self._app_sock = None
         log.info("[STOP] proxy stopped")
+
+
+# ============================================================================
+# Frame handlers
+# ============================================================================
+@register_handler(opcodes=(OP_REQ_ACTIVATE,))
+class ActivateRequestHandler(BaseFrameHandler):
+    def handle(self, frame: FrameContext) -> None:
+        payload = frame.payload
+        if len(payload) != 2:
+            return
+
+        proxy = frame.proxy
+        ent_id, code = payload
+
+        if ent_id in proxy._activities:
+            kind = "act"
+            name = proxy._activities[ent_id].get("name", "")
+            if code == ButtonName.POWER_ON:
+                proxy._current_activity_hint = ent_id
+        elif ent_id in proxy._devices:
+            kind = "dev"
+            name = proxy._devices[ent_id].get("name", "")
+        else:
+            kind = "id"
+            name = ""
+
+        cmd = proxy._entity_commands.get(ent_id, {}).get(code)
+        btn = BUTTONNAME_BY_CODE.get(code) if cmd is None else None
+        extra = f" cmd='{cmd}'" if cmd else (f" btn='{btn}'" if btn else "")
+
+        log.info(
+            "[KEY] %s %s=0x%02X (%d) name='%s' key=0x%02X%s",
+            frame.direction,
+            kind,
+            ent_id,
+            ent_id,
+            name,
+            code,
+            extra,
+        )
+
+
+@register_handler(opcodes=(OP_ACK_READY,))
+class AckReadyHandler(BaseFrameHandler):
+    def handle(self, frame: FrameContext) -> None:
+        proxy = frame.proxy
+        log.info("[HINT] ACK_READY from hub")
+        if frame.direction == "H→A" and proxy.can_issue_commands():
+            log.info("[HINT] no proxy client; auto-REQ_ACTIVITIES")
+            proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+            if proxy._current_activity_hint is not None:
+                ent_lo = proxy._current_activity_hint & 0xFF
+                proxy.enqueue_cmd(
+                    OP_REQ_BUTTONS,
+                    bytes([ent_lo, 0xFF]),
+                    expects_burst=True,
+                    burst_kind=f"buttons:{ent_lo}",
+                )
+                proxy.enqueue_cmd(
+                    OP_REQ_COMMANDS,
+                    bytes([ent_lo, 0xFF]),
+                    expects_burst=True,
+                    burst_kind=f"commands:{ent_lo}",
+                )
+        elif not proxy.can_issue_commands():
+            log.info("[HINT] proxy client connected; skipping auto-requests")
+            if proxy._current_activity_hint is not proxy._current_activity:
+                log.info("[HINT] current activity differs from hint; notifying listeners")
+                proxy._notify_activity_change(
+                    proxy._current_activity_hint & 0xFF,
+                    proxy._current_activity & 0xFF if proxy._current_activity is not None else None,
+                )
+
+
+@register_handler(opcodes=(OP_CATALOG_ROW_DEVICE,), directions=("H→A",))
+class CatalogDeviceHandler(BaseFrameHandler):
+    def handle(self, frame: FrameContext) -> None:
+        proxy = frame.proxy
+        proxy._burst_active = True
+        if proxy._burst_kind is None:
+            proxy._burst_kind = "devices"
+        proxy._burst_last_ts = time.monotonic()
+
+        payload = frame.payload
+        raw = frame.raw
+        row_idx = payload[0] if len(payload) >= 1 else None
+        dev_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
+        name_bytes_raw = raw[36 : 36 + 60]
+        device_label = name_bytes_raw.decode("utf-16be").strip("\x00")
+        brand_bytes_raw = raw[96 : 96 + 60]
+        brand_label = brand_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
+
+        if dev_id is not None:
+            proxy._devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
+            log.info(
+                "[DEV] #%s id=0x%04X (%d) brand='%s' name='%s'",
+                row_idx,
+                dev_id,
+                dev_id,
+                brand_label,
+                device_label,
+            )
+        else:
+            log.info("[DEV] #%s brand='%s' name='%s'", row_idx, brand_label, device_label)
+
+
+@register_handler(opcodes=(OP_CATALOG_ROW_ACTIVITY,), directions=("H→A",))
+class CatalogActivityHandler(BaseFrameHandler):
+    def handle(self, frame: FrameContext) -> None:
+        proxy = frame.proxy
+        proxy._burst_active = True
+        if proxy._burst_kind is None:
+            proxy._burst_kind = "activities"
+        proxy._burst_last_ts = time.monotonic()
+
+        payload = frame.payload
+        raw = frame.raw
+        row_idx = payload[0] if len(payload) >= 1 else None
+
+        if row_idx == 1 and proxy._current_activity_hint is not None:
+            log.info("[ACT] reset active (start of new activities list)")
+            proxy._current_activity_hint = None
+
+        act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
+        label_bytes_raw = raw[36:128]
+        activity_label = label_bytes_raw.decode("utf-16be").strip("\x00")
+        active_state_byte = raw[35]
+        is_active = True if active_state_byte == 0x01 else False
+
+        if act_id is not None:
+            proxy._activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
+            if is_active:
+                proxy._current_activity_hint = act_id
+
+        state = "ACTIVE" if is_active else "idle"
+        if row_idx is not None and act_id is not None:
+            log.info(
+                "[ACT] #%d name='%s' act_id=0x%04X (%d) state=%s",
+                row_idx,
+                activity_label,
+                act_id,
+                act_id,
+                state,
+            )
+        elif act_id is not None:
+            log.info(
+                "[ACT] name='%s' act_id=0x%04X (%d) state=%s",
+                activity_label,
+                act_id,
+                act_id,
+                state,
+            )
+        else:
+            log.info("[ACT] name='%s' state=%s", activity_label, state)
+
+
+@register_handler(
+    opcodes=(OP_KEYMAP_TBL_A, OP_KEYMAP_TBL_B, OP_KEYMAP_TBL_C, OP_KEYMAP_CONT),
+    directions=("H→A",),
+)
+class KeymapHandler(BaseFrameHandler):
+    def handle(self, frame: FrameContext) -> None:
+        proxy = frame.proxy
+        raw = frame.raw
+        payload = frame.payload
+        if frame.opcode == OP_KEYMAP_CONT:
+            activity_id_decimal = raw[16]
+        else:
+            activity_id_decimal = raw[11]
+
+        proxy._burst_active = True
+        if proxy._burst_kind is None:
+            proxy._burst_kind = f"buttons:{activity_id_decimal}"
+        proxy._burst_last_ts = time.monotonic()
+
+        proxy._accumulate_keymap(activity_id_decimal, payload)
+        keys = [
+            f"{BUTTONNAME_BY_CODE.get(c, f'0x{c:02X}')}(0x{c:02X})"
+            for c in sorted(proxy._entity_buttons.get(activity_id_decimal, set()))
+        ]
+        log.info(
+            "[KEYMAP] act=0x%02X mapped{%d}: %s",
+            activity_id_decimal,
+            len(keys),
+            ", ".join(keys),
+        )
+
+
+@register_handler(opcodes=(OP_REQ_COMMANDS,), directions=("A→H",))
+class RequestCommandsHandler(BaseFrameHandler):
+    def handle(self, frame: FrameContext) -> None:
+        payload = frame.payload
+        dev_id = payload[0] if payload else 0
+        log.info("[DEVCTL] A→H requesting commands dev=0x%02X (%d)", dev_id, dev_id)
+
+
+@register_handler(opcodes=(OP_DEVBTN_HEADER,), directions=("H→A",))
+class DeviceButtonHeaderHandler(BaseFrameHandler):
+    def handle(self, frame: FrameContext) -> None:
+        proxy = frame.proxy
+        payload = frame.payload
+        raw = frame.raw
+
+        proxy._totalframes = int.from_bytes(payload[4:6], byteorder="big")
+        current_frame = int(payload[2])
+        dev_id = payload[3]
+
+        proxy._burst_active = True
+        if proxy._burst_kind is None:
+            proxy._burst_kind = f"commands:{dev_id}"
+        proxy._burst_last_ts = time.monotonic()
+
+        try:
+            proxy._commands_hexbuf = ""
+            proxy._commands_hexbuf += proxy._bytes_to_hex(raw)
+        except Exception as err:
+            log.debug("%s", err)
+
+        try:
+            if proxy._totalframes == current_frame and proxy._commands_hexbuf is not None:
+                proxy._entity_commands[dev_id & 0xFF] = proxy.parse_device_commands(proxy._commands_hexbuf, dev_id)
+        except Exception as err:
+            log.debug("%s", err)
+
+
+@register_handler(
+    opcodes=(OP_DEVBTN_PAGE, OP_DEVBTN_MORE, OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA),
+    directions=("H→A",),
+)
+class DeviceButtonPayloadHandler(BaseFrameHandler):
+    def handle(self, frame: FrameContext) -> None:
+        proxy = frame.proxy
+        payload = frame.payload
+        raw = frame.raw
+        current_frame = int(payload[2])
+        dev_id = payload[3]
+
+        proxy._burst_active = True
+        if proxy._burst_kind is None:
+            proxy._burst_kind = f"commands:{dev_id}"
+        proxy._burst_last_ts = time.monotonic()
+
+        if payload:
+            try:
+                proxy._commands_hexbuf += proxy._bytes_to_hex(raw)
+            except Exception as err:
+                log.debug("%s", err)
+        try:
+            if proxy._totalframes == current_frame and proxy._commands_hexbuf is not None:
+                proxy._entity_commands[dev_id & 0xFF] = proxy.parse_device_commands(proxy._commands_hexbuf, dev_id)
+                log.info(
+                    " ".join(
+                        f"{cmd_id:2d} : {label}" for cmd_id, label in proxy._entity_commands[dev_id].items()
+                    )
+                )
+        except Exception as err:
+            log.debug("%s", err)
