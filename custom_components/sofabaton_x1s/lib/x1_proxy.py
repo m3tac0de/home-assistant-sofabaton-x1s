@@ -666,41 +666,74 @@ class X1Proxy:
             if self._burst_active:
                 break
 
-    def _accumulate_keymap_old(self, act_lo: int, payload: bytes) -> None:
-        if act_lo not in self._entity_buttons:
-            self._entity_buttons[act_lo] = set()
-        i, n = 0, len(payload)
-        while i + 1 < n:
-            if payload[i] == act_lo:
-                k = payload[i + 1]
-                if k in BUTTONNAME_BY_CODE:
-                    self._entity_buttons[act_lo].add(k)
-                    i += 8  # stride observed in dumps
-                    continue
-            i += 1
-
     def _accumulate_keymap(self, act_lo: int, payload: bytes) -> None:
+        """
+        Processes a keymap frame payload, intelligently prioritizing the 
+        fixed 18-byte record structure (0xFA3D, 0xF13D, 0x543D, 0xBB3D, etc.) by 
+        dynamically finding the record start based on the Activity ID.
+        
+        This version is robust against variable prefixes and unmapped button codes.
+        """
         if act_lo not in self._entity_buttons:
             self._entity_buttons[act_lo] = set()
         
         i, n = 0, len(payload)
         
+        RECORD_SIZE = 18 
+        
+        # --- FIXED-STRIDE LOGIC ---
+        start_index = -1
+        
+        # 1. Search for a reliable start index for the 18-byte records
+        if n >= RECORD_SIZE:
+            
+            # Search within the first 20 bytes for the *first* occurrence of the Activity ID.
+            # This handles all known prefixes (0-byte, 7-byte, 10-byte) and finds the start of the records.
+            for j in range(min(n - RECORD_SIZE + 1, 20)): 
+                # A record must start with the Act ID.
+                # We remove the check for 'payload[j+1] in BUTTONNAME_BY_CODE' to handle unmapped buttons.
+                if payload[j] == act_lo:
+                    start_index = j
+                    break
+        
+        # 2. Execute fixed-stride parsing if a reliable start index was found
+        if start_index >= 0:
+            log.debug("Keymap: Parsing fixed 18-byte record format.")
+            
+            i = start_index 
+            while i + RECORD_SIZE <= n:
+                # The Act ID is payload[i] and Button ID is payload[i + 1]
+                button_code = payload[i + 1]
+                
+                # We commit to the 18-byte stride from start_index.
+                # We only add the button if its code is *known* (mapped to a name).
+                if payload[i] == act_lo and button_code in BUTTONNAME_BY_CODE:
+                    self._entity_buttons[act_lo].add(button_code)
+                
+                # Move to the start of the next record (fixed stride)
+                i += RECORD_SIZE
+            return
+
+        # ----------------------------------------------------------------------
+        # === ORIGINAL LOGIC: The old, variable-stride format (fallback) ===
+        # ----------------------------------------------------------------------
+        log.debug("Keymap: Parsing original variable-stride format (fallback).")
+        
+        i = 0 
         while i + 1 < n:
             # 1. Check for the start of a record with the correct Activity ID
             if payload[i] == act_lo:
                 button_code = payload[i + 1]
                 
-                # 2. Check if the next byte is a known button code (to filter out random data)
+                # 2. Check if the next byte is a known button code
                 if button_code in BUTTONNAME_BY_CODE:
                     
-                    # 3. Check for the Hue-specific payload signature (00 00 00 00) at offset +3
-                    # This check requires at least 7 bytes from the start of the record (i+6)
-                    # The command data block starts at payload[i+3]
+                    # 3. Use original stride determination (16 or 20 bytes)
                     if i + 7 < n and payload[i + 3:i + 7] == b'\x00\x00\x00\x00':
                         stride = 16
                     else:
                         stride = 20
-
+                        
                     self._entity_buttons[act_lo].add(button_code)
                     
                     # 4. Move 'i' to the expected start of the next record
