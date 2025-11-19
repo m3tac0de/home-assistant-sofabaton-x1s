@@ -10,16 +10,18 @@ x1cli.py – tiny command-line client for proxy.py
 """
 
 import argparse
-import sys
-import time
-import threading
 import logging
+import sys
+import threading
+import time
+from typing import Dict
 
-from x1_proxy import (
-    X1Proxy,
-    BUTTONNAME_BY_CODE,
-    ButtonName,
-)
+if __package__:
+    from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
+    from .x1_proxy import X1Proxy
+else:  # pragma: no cover - exercised by direct script usage
+    from protocol_const import BUTTONNAME_BY_CODE, ButtonName
+    from x1_proxy import X1Proxy
 
 # ----------------- helpers -----------------
 
