@@ -26,9 +26,7 @@ from .protocol_const import (
     OP_REQ_COMMANDS,
     OP_REQ_ACTIVITIES,
 )
-from .xl_proxy import (
-    log,
-)
+from .x1_proxy import log
 
 if TYPE_CHECKING:
     from .x1_proxy import X1Proxy
@@ -240,8 +238,9 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
         payload = frame.payload
         raw = frame.raw
 
-        proxy._totalframes = int.from_bytes(payload[4:6], byteorder="big")
-        current_frame = int(payload[2])
+        if len(payload) < 4:
+            return
+
         dev_id = payload[3]
 
         proxy._burst_active = True
@@ -249,17 +248,16 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
             proxy._burst_kind = f"commands:{dev_id}"
         proxy._burst_last_ts = time.monotonic()
 
-        try:
-            proxy._commands_hexbuf = ""
-            proxy._commands_hexbuf += proxy._bytes_to_hex(raw)
-        except Exception as err:
-            log.debug("%s", err)
-
-        try:
-            if proxy._totalframes == current_frame and proxy._commands_hexbuf is not None:
-                proxy._entity_commands[dev_id & 0xFF] = proxy.parse_device_commands(proxy._commands_hexbuf, dev_id)
-        except Exception as err:
-            log.debug("%s", err)
+        completed = proxy._command_assembler.feed(frame.opcode, raw)
+        for complete_dev_id, assembled_payload in completed:
+            commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
+            if commands:
+                proxy._entity_commands[complete_dev_id & 0xFF] = commands
+                log.info(
+                    " ".join(
+                        f"{cmd_id:2d} : {label}" for cmd_id, label in proxy._entity_commands[complete_dev_id].items()
+                    )
+                )
 
 
 @register_handler(
@@ -273,7 +271,10 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
         proxy: X1Proxy = frame.proxy
         payload = frame.payload
         raw = frame.raw
-        current_frame = int(payload[2])
+
+        if len(payload) < 4:
+            return
+
         dev_id = payload[3]
 
         proxy._burst_active = True
@@ -281,18 +282,13 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
             proxy._burst_kind = f"commands:{dev_id}"
         proxy._burst_last_ts = time.monotonic()
 
-        if payload:
-            try:
-                proxy._commands_hexbuf += proxy._bytes_to_hex(raw)
-            except Exception as err:
-                log.debug("%s", err)
-        try:
-            if proxy._totalframes == current_frame and proxy._commands_hexbuf is not None:
-                proxy._entity_commands[dev_id & 0xFF] = proxy.parse_device_commands(proxy._commands_hexbuf, dev_id)
+        completed = proxy._command_assembler.feed(frame.opcode, raw)
+        for complete_dev_id, assembled_payload in completed:
+            commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
+            if commands:
+                proxy._entity_commands[complete_dev_id & 0xFF] = commands
                 log.info(
                     " ".join(
-                        f"{cmd_id:2d} : {label}" for cmd_id, label in proxy._entity_commands[dev_id].items()
+                        f"{cmd_id:2d} : {label}" for cmd_id, label in proxy._entity_commands[complete_dev_id].items()
                     )
                 )
-        except Exception as err:
-            log.debug("%s", err)
