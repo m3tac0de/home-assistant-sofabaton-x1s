@@ -6,7 +6,7 @@ import time
 from typing import TYPE_CHECKING
 
 from .frame_handlers import BaseFrameHandler, FrameContext, register_handler
-from .x1_proxy import (
+from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
     OP_ACK_READY,
@@ -25,6 +25,8 @@ from .x1_proxy import (
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_ACTIVITIES,
+)
+from .xl_proxy import (
     log,
 )
 
