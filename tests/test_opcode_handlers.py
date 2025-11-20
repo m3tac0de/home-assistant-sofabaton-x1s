@@ -42,6 +42,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
     OP_KEYMAP_TBL_D,
     OP_KEYMAP_TBL_E,
+    OP_KEYMAP_TBL_F,
 )
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -99,4 +100,29 @@ def test_keymap_table_e_adds_volume_and_transport() -> None:
         ButtonName.REW,
         ButtonName.PAUSE,
         ButtonName.FWD,
+    }
+
+
+def test_keymap_table_f_adds_color_buttons() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    frame = _build_context(
+        proxy,
+        "a5 5a 78 3d 01 00 02 3c 00 00 00 00 00 00 00 00 67 bc 01 00 00 00 00 00 a6 1f 00 00 00 00 00 00 00 00 67 bd 01 00 00 00 00 1b 46 31 00 00 00 00 00 00 00 00 67 be 01 00 00 00 00 00 e7 3b 00 00 00 00 00 00 00 00 67 bf 01 00 00 00 00 00 ec 32 00 00 00 00 00 00 00 00 67 c0 01 00 00 00 00 00 f6 3f 00 00 00 00 00 00 00 00 67 c1 01 00 00 00 00 00 f1 2e 00 00 00 00 00 00 00 00 c5",
+        OP_KEYMAP_TBL_F,
+        "KEYMAP_TABLE_F",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x67) == {
+        ButtonName.PAUSE,
+        ButtonName.FWD,
+        ButtonName.RED,
+        ButtonName.GREEN,
+        ButtonName.YELLOW,
+        ButtonName.BLUE,
     }

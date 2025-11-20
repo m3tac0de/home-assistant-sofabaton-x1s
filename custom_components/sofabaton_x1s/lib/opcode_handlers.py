@@ -22,6 +22,7 @@ from .protocol_const import (
     OP_KEYMAP_TBL_B,
     OP_KEYMAP_TBL_C,
     OP_KEYMAP_TBL_D,
+    OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_E,
     OP_REQ_ACTIVATE,
     OP_REQ_BUTTONS,
@@ -213,6 +214,7 @@ class CatalogActivityHandler(BaseFrameHandler):
         OP_KEYMAP_TBL_B,
         OP_KEYMAP_TBL_C,
         OP_KEYMAP_TBL_D,
+        OP_KEYMAP_TBL_F,
         OP_KEYMAP_TBL_E,
         OP_KEYMAP_CONT,
     ),
@@ -228,6 +230,7 @@ class KeymapHandler(BaseFrameHandler):
         activity_offsets = {
             OP_KEYMAP_CONT: 16,
             OP_KEYMAP_TBL_D: 16,
+            OP_KEYMAP_TBL_F: 16,
         }
         activity_idx = activity_offsets.get(frame.opcode, 11)
         activity_id_decimal = raw[activity_idx] if len(raw) > activity_idx else None
