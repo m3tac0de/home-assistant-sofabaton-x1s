@@ -7,8 +7,12 @@ CONF_HOST = "host"
 CONF_PORT = "port"
 CONF_NAME = "name"
 CONF_MDNS_TXT = "mdns_txt"
+CONF_MDNS_VERSION = "mdns_version"
 CONF_PROXY_ENABLED = "proxy_enabled"
 CONF_HEX_LOGGING_ENABLED = "hex_logging_enabled"
+
+# X1S devices report a higher NO field in their mDNS TXT records
+X1S_NO_THRESHOLD = 20221120
 
 DEFAULT_PROXY_UDP_PORT = 9102
 DEFAULT_HUB_LISTEN_BASE = 8200
