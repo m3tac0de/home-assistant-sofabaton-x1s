@@ -352,6 +352,7 @@ class KeymapHandler(BaseFrameHandler):
             OP_KEYMAP_CONT: 16,
             OP_KEYMAP_TBL_D: 16,
             OP_KEYMAP_TBL_F: 16,
+            OP_DEVBTN_EXTRA: 16,
         }
         activity_idx = activity_offsets.get(frame.opcode, 11)
         activity_id_decimal = raw[activity_idx] if len(raw) > activity_idx else None

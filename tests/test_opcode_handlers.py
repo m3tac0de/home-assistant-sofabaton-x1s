@@ -44,6 +44,7 @@ from custom_components.sofabaton_x1s.lib.opcode_handlers import (
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
+    OP_DEVBTN_EXTRA,
     OP_KEYMAP_TBL_D,
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_F,
@@ -144,6 +145,24 @@ def test_keymap_table_f_adds_color_buttons() -> None:
         ButtonName.YELLOW,
         ButtonName.BLUE,
     }
+
+
+def test_devbtn_extra_contains_pause_and_red() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    frame = _build_context(
+        proxy,
+        "a5 5a 30 3d 01 00 02 14 00 00 00 00 00 00 00 00 65 bc 02 00 00 00 00 00 a6 0e 02 00 00 00 00 00 92 0f 65 be 02 00 00 00 00 00 00 20 00 00 00 00 00 00 00 00 42",
+        OP_DEVBTN_EXTRA,
+        "DEVBTN_EXTRA",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x65) == {ButtonName.PAUSE, ButtonName.RED}
 
 
 def test_x1_device_row_updates_state_and_burst() -> None:
