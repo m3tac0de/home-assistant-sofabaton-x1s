@@ -60,6 +60,10 @@ OP_DEVBTN_TAIL = 0x495D  # H→A: tail/terminator
 OP_DEVBTN_EXTRA = 0x303D  # H→A: small follow-up page sometimes present
 OP_DEVBTN_MORE = 0x8F5D  # H→A: small follow-up page sometimes present
 
+# X1 hub responses
+OP_X1_DEVICE = 0x7B0B  # Row from list of devices (X1 firmware)
+OP_X1_ACTIVITY = 0x7B3B  # Row from list of activities (X1 firmware)
+
 OP_KEYMAP_TBL_A = 0xF13D
 OP_KEYMAP_TBL_B = 0xFA3D
 OP_KEYMAP_TBL_C = 0x3D3D  # Returned when Hue buttons requested
@@ -108,6 +112,8 @@ OPNAMES: Dict[int, str] = {
     OP_DEVBTN_TAIL: "DEVCTL_LASTPAGE_TYPE1",
     OP_DEVBTN_EXTRA: "DEVCTL_LASTPAGE_TYPE2",
     OP_DEVBTN_MORE: "DEVCTL_LASTPAGE_TYPE3",
+    OP_X1_DEVICE: "X1_DEVICE",
+    OP_X1_ACTIVITY: "X1_ACTIVITY",
     # The rest are unused but kept for completeness
     OP_BANNER: "BANNER",
     OP_WIFI_FW: "WIFI_FW",
@@ -142,6 +148,8 @@ __all__ = [
     "OP_DEVBTN_TAIL",
     "OP_DEVBTN_EXTRA",
     "OP_DEVBTN_MORE",
+    "OP_X1_DEVICE",
+    "OP_X1_ACTIVITY",
     "OP_KEYMAP_TBL_A",
     "OP_KEYMAP_TBL_B",
     "OP_KEYMAP_TBL_C",

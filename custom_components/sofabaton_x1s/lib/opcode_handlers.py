@@ -28,11 +28,49 @@ from .protocol_const import (
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_ACTIVITIES,
+    OP_X1_ACTIVITY,
+    OP_X1_DEVICE,
 )
 from .x1_proxy import log
 
 if TYPE_CHECKING:
     from .x1_proxy import X1Proxy
+
+
+def _consume_length_prefixed_string(buf: bytes, offset: int) -> tuple[str, int]:
+    """Decode a length-prefixed UTF-8 string from ``buf`` starting at ``offset``."""
+
+    if offset >= len(buf):
+        return "", offset
+
+    length = buf[offset]
+    start = offset + 1
+    end = min(len(buf), start + length)
+    try:
+        return buf[start:end].decode("utf-8", errors="ignore").strip("\x00"), end
+    except Exception:
+        return "", end
+
+
+def _extract_text_fields(payload: bytes, start: int, count: int = 2) -> list[str]:
+    """Return up to ``count`` decoded fields from a length-prefixed payload segment."""
+
+    cursor = start
+    fields: list[str] = []
+    for _ in range(count):
+        text, cursor = _consume_length_prefixed_string(payload, cursor)
+        fields.append(text)
+
+    remaining = payload[cursor:]
+    if remaining:
+        parts = [p.decode("utf-8", errors="ignore").strip("\x00") for p in remaining.split(b"\x00") if p]
+        for idx, part in enumerate(parts):
+            if idx >= len(fields):
+                break
+            if not fields[idx]:
+                fields[idx] = part
+
+    return fields
 
 def _infer_command_entity(proxy: "X1Proxy", payload: bytes) -> int:
     """Best-effort guess of the entity a command burst belongs to."""
@@ -157,6 +195,39 @@ class CatalogDeviceHandler(BaseFrameHandler):
             log.info("[DEV] name='%s'", device_label)
 
 
+@register_handler(opcodes=(OP_X1_DEVICE,), directions=("H→A",))
+class X1CatalogDeviceHandler(BaseFrameHandler):
+    """Handle X1 firmware device rows."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        now = time.monotonic()
+        proxy._burst.start("devices", now=now)
+
+        payload = frame.payload
+        row_idx = payload[0] if payload else None
+        dev_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
+
+        name_bytes = payload[32:62]
+        device_label = name_bytes.split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
+
+        brand_bytes = payload[62:]
+        brand_label = brand_bytes.split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
+
+        if dev_id is not None:
+            proxy.state.devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
+            log.info(
+                "[DEV] #%s id=0x%04X (%d) brand='%s' name='%s'",
+                row_idx,
+                dev_id,
+                dev_id,
+                brand_label,
+                device_label,
+            )
+        elif device_label:
+            log.info("[DEV] name='%s'", device_label)
+
+
 @register_handler(opcodes=(OP_CATALOG_ROW_ACTIVITY,), directions=("H→A",))
 class CatalogActivityHandler(BaseFrameHandler):
     """Handle activity catalog rows."""
@@ -178,6 +249,55 @@ class CatalogActivityHandler(BaseFrameHandler):
         activity_label = label_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
         active_state_byte = raw[35] if len(raw) > 35 else 0
         is_active = active_state_byte == 0x01
+
+        if act_id is not None:
+            proxy.state.activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
+            if is_active:
+                proxy.state.set_hint(act_id)
+        elif activity_label:
+            log.info("[ACT] name='%s'", activity_label)
+
+        state = "ACTIVE" if is_active else "idle"
+        if row_idx is not None and act_id is not None:
+            log.info(
+                "[ACT] #%d name='%s' act_id=0x%04X (%d) state=%s",
+                row_idx,
+                activity_label,
+                act_id,
+                act_id,
+                state,
+            )
+        elif act_id is not None:
+            log.info(
+                "[ACT] name='%s' act_id=0x%04X (%d) state=%s",
+                activity_label,
+                act_id,
+                act_id,
+                state,
+            )
+        else:
+            log.info("[ACT] name='%s' state=%s", activity_label, state)
+
+
+@register_handler(opcodes=(OP_X1_ACTIVITY,), directions=("H→A",))
+class X1CatalogActivityHandler(BaseFrameHandler):
+    """Handle activity catalog rows emitted by X1 firmware."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        now = time.monotonic()
+        proxy._burst.start("activities", now=now)
+
+        payload = frame.payload
+        row_idx = payload[0] if payload else None
+        if row_idx == 1 and proxy.state.current_activity_hint is not None:
+            log.info("[ACT] reset active (start of new activities list)")
+            proxy.state.set_hint(None)
+
+        act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
+        active_flag = payload[10] if len(payload) >= 11 else 0
+        activity_label = payload[32:].split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
+        is_active = active_flag == 1
 
         if act_id is not None:
             proxy.state.activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}

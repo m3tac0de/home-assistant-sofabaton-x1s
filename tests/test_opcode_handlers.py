@@ -37,12 +37,18 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
-from custom_components.sofabaton_x1s.lib.opcode_handlers import KeymapHandler
+from custom_components.sofabaton_x1s.lib.opcode_handlers import (
+    KeymapHandler,
+    X1CatalogActivityHandler,
+    X1CatalogDeviceHandler,
+)
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
     OP_KEYMAP_TBL_D,
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_F,
+    OP_X1_ACTIVITY,
+    OP_X1_DEVICE,
 )
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -50,6 +56,18 @@ from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 def _build_context(proxy: X1Proxy, raw_hex: str, opcode: int, name: str) -> FrameContext:
     raw = bytes.fromhex(raw_hex)
     payload = raw[4:-1]
+    return FrameContext(
+        proxy=proxy,
+        opcode=opcode,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name=name,
+    )
+
+
+def _build_payload_context(proxy: X1Proxy, opcode: int, payload: bytes, name: str) -> FrameContext:
+    raw = bytes([0xA5, 0x5A, (opcode >> 8) & 0xFF, opcode & 0xFF]) + payload + b"\x00"
     return FrameContext(
         proxy=proxy,
         opcode=opcode,
@@ -126,3 +144,45 @@ def test_keymap_table_f_adds_color_buttons() -> None:
         ButtonName.YELLOW,
         ButtonName.BLUE,
     }
+
+
+def test_x1_device_row_updates_state_and_burst() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = X1CatalogDeviceHandler()
+
+    frame = _build_context(
+        proxy,
+        "a5 5a 7b 0b 09 00 01 09 00 01 00 01 0f 01 0a 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 80 00 52 6f 6b 75 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 53 74 72 65 61 6d 69 6e 67 20 53 74 69 63 6b 20 34 4b 00 00 00 00 00 00 00 00 00 00 00 00 fc 55 c0 a8 01 80 fc 00 00 fc 01 01 02 00 fc 01 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 e0 5c",
+        OP_X1_DEVICE,
+        "X1_DEVICE",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.devices[0x01] == {
+        "brand": "Streaming Stick 4K",
+        "name": "Roku",
+    }
+    assert proxy._burst.kind == "devices"
+
+
+def test_x1_activity_row_updates_state_and_hint() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = X1CatalogActivityHandler()
+
+    frame = _build_context(
+        proxy,
+        "a5 5a 7b 3b 01 00 01 0a 00 01 00 65 02 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4a 65 6c 6c 79 66 69 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 fc 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3c 9c",
+        OP_X1_ACTIVITY,
+        "X1_ACTIVITY",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.activities[0x65] == {"name": "Jellyfin", "active": False}
+    assert proxy.state.current_activity_hint is None
+    assert proxy._burst.kind == "activities"
