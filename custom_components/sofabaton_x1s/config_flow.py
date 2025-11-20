@@ -20,11 +20,28 @@ from .const import (
     CONF_PORT,
     CONF_NAME,
     CONF_MDNS_TXT,
+    CONF_MDNS_VERSION,
     DEFAULT_PROXY_UDP_PORT,
     DEFAULT_HUB_LISTEN_BASE,
+    X1S_NO_THRESHOLD,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _classify_version(props: Dict[str, str]) -> str:
+    no_field = props.get("NO")
+    if no_field is not None:
+        try:
+            no_value = int(str(no_field))
+        except ValueError:
+            pass
+        else:
+            if no_value >= X1S_NO_THRESHOLD:
+                return "X1S"
+            return "X1"
+
+    return "X1"
 
 class _X1Listener:
     def __init__(self) -> None:
@@ -48,15 +65,28 @@ class _X1Listener:
             props[k] = v
 
         mac = props.get("MAC") or name
+        host = info.parsed_addresses()[0]
+        version = _classify_version(props)
+        no_field = props.get("NO")
 
         self.services[mac] = {
             "name": props.get("NAME") or name.split(".")[0],
-            "host": info.parsed_addresses()[0],
+            "host": host,
             "port": info.port,
             "props": props,
             "service_name": name,
+            "version": version,
         }
-        _LOGGER.debug("Found Sofabaton hub %s at %s:%s", name, info.parsed_addresses()[0], info.port)
+        _LOGGER.info(
+            "Discovered Sofabaton hub %s (%s) at %s:%s model %s (NO=%s) with TXT %s",
+            self.services[mac]["name"],
+            mac,
+            host,
+            info.port,
+            version,
+            no_field,
+            props,
+        )
 
     def add_service(self, zc, type_, name) -> None:
         self._tasks.append(asyncio.create_task(self._add(zc, type_, name)))
@@ -213,12 +243,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             # build data
+            version = hub_info.get("version") or _classify_version(hub_info.get("props", {}))
             data = {
                 CONF_MAC: mac,
                 CONF_NAME: hub_info["name"],
                 CONF_HOST: hub_info["host"],
                 CONF_PORT: hub_info["port"],
                 CONF_MDNS_TXT: hub_info.get("props", {}),
+                CONF_MDNS_VERSION: version,
             }
 
             # store ports in options (per entry)
@@ -228,6 +260,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 options={
                     "proxy_udp_port": proxy_udp_port,
                     "hub_listen_base": hub_listen_base,
+                    CONF_MDNS_VERSION: version,
                 },
             )
             
@@ -273,6 +306,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         name = props.get("NAME") or discovery_info.name.split(".")[0]
         mac = props.get("MAC") or discovery_info.name
         host = discovery_info.host
+        version = _classify_version(props)
+        no_field = props.get("NO")
+
+        _LOGGER.info(
+            "Zeroconf discovered Sofabaton hub %s (%s) at %s:%s model %s (NO=%s) with TXT %s",
+            name,
+            mac,
+            host,
+            discovery_info.port,
+            version,
+            no_field,
+            props,
+        )
 
         self.context["title_placeholders"] = {"name": f"{name} ({host})"}
         # store so we can use it in confirm step
@@ -282,6 +328,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "host": discovery_info.host,
             "port": discovery_info.port,
             "props": props,
+            "version": version,
         }
 
         # set unique id so HA can match/ignore properly
@@ -291,6 +338,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 CONF_HOST: discovery_info.host,
                 CONF_PORT: discovery_info.port,
                 CONF_MDNS_TXT: props,
+                CONF_MDNS_VERSION: version,
             }
         )
 
@@ -310,6 +358,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "port": info["port"],
             "props": info.get("props", {}),
             "mac": info["mac"],
+            "version": info.get("version"),
         }
 
         # now ask for ports, just like the other path
