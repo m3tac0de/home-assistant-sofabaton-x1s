@@ -47,7 +47,13 @@ class DeviceCommandAssembler:
     def _data_offset(self, opcode: int) -> int:
         return 6
 
-    def feed(self, opcode: int, raw_frame: bytes) -> List[Tuple[int, bytes]]:
+    def feed(
+        self,
+        opcode: int,
+        raw_frame: bytes,
+        *,
+        dev_id_override: int | None = None,
+    ) -> List[Tuple[int, bytes]]:
         """Feed a raw frame and return completed payloads when available."""
 
         if len(raw_frame) < 7:
@@ -57,7 +63,7 @@ class DeviceCommandAssembler:
         if len(payload) < 4:
             return []
 
-        dev_id = payload[3]
+        dev_id = dev_id_override if dev_id_override is not None else payload[3]
         frame_no = payload[2]
         burst = self._get_buffer(dev_id)
 

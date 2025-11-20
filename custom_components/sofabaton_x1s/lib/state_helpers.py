@@ -49,7 +49,7 @@ class ActivityCache:
 
         if start_index >= 0:
             i = start_index
-            while i + RECORD_SIZE <= n:
+            while i + 2 <= n:
                 button_code = payload[i + 1]
                 if payload[i] == act_lo and button_code in BUTTONNAME_BY_CODE:
                     self.buttons[act_lo].add(button_code)

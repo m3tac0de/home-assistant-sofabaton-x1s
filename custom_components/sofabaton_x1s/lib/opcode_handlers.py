@@ -31,6 +31,23 @@ from .x1_proxy import log
 if TYPE_CHECKING:
     from .x1_proxy import X1Proxy
 
+def _infer_command_entity(proxy: "X1Proxy", payload: bytes) -> int:
+    """Best-effort guess of the entity a command burst belongs to."""
+
+    burst_kind = getattr(proxy._burst, "kind", None)
+    if burst_kind and ":" in burst_kind:
+        prefix, ent_str = burst_kind.split(":", 1)
+        if prefix == "commands":
+            try:
+                return int(ent_str)
+            except ValueError:
+                pass
+
+    if len(payload) >= 8:
+        return payload[7]
+
+    return payload[3] if len(payload) >= 4 else 0
+
 
 @register_handler(opcodes=(OP_REQ_ACTIVATE,), directions=("A→H",))
 class ActivateRequestHandler(BaseFrameHandler):
@@ -241,11 +258,11 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
         if len(payload) < 4:
             return
 
-        dev_id = payload[3]
+        dev_id = _infer_command_entity(proxy, payload)
 
         proxy._burst.start(f"commands:{dev_id}", now=time.monotonic())
 
-        completed = proxy._command_assembler.feed(frame.opcode, raw)
+        completed = proxy._command_assembler.feed(frame.opcode, raw, dev_id_override=dev_id)
         for complete_dev_id, assembled_payload in completed:
             commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
             if commands:
@@ -270,20 +287,19 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
         if len(payload) < 4:
             return
 
-        dev_id = payload[3]
+        dev_id = _infer_command_entity(proxy, payload)
 
-        proxy._burst_active = True
-        if proxy._burst_kind is None:
-            proxy._burst_kind = f"commands:{dev_id}"
-        proxy._burst_last_ts = time.monotonic()
+        now = time.monotonic()
+        if not proxy._burst.active:
+            proxy._burst.start(f"commands:{dev_id}", now=now)
+        else:
+            proxy._burst.last_ts = now + proxy._burst.response_grace
 
-        completed = proxy._command_assembler.feed(frame.opcode, raw)
+        completed = proxy._command_assembler.feed(frame.opcode, raw, dev_id_override=dev_id)
         for complete_dev_id, assembled_payload in completed:
             commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
             if commands:
-                proxy._entity_commands[complete_dev_id & 0xFF] = commands
+                proxy.state.commands[complete_dev_id & 0xFF] = commands
                 log.info(
-                    " ".join(
-                        f"{cmd_id:2d} : {label}" for cmd_id, label in proxy._entity_commands[complete_dev_id].items()
-                    )
+                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[complete_dev_id].items())
                 )
