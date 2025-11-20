@@ -21,6 +21,8 @@ from .protocol_const import (
     OP_KEYMAP_TBL_A,
     OP_KEYMAP_TBL_B,
     OP_KEYMAP_TBL_C,
+    OP_KEYMAP_TBL_D,
+    OP_KEYMAP_TBL_E,
     OP_REQ_ACTIVATE,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
@@ -206,7 +208,14 @@ class CatalogActivityHandler(BaseFrameHandler):
 
 
 @register_handler(
-    opcodes=(OP_KEYMAP_TBL_A, OP_KEYMAP_TBL_B, OP_KEYMAP_TBL_C, OP_KEYMAP_CONT),
+    opcodes=(
+        OP_KEYMAP_TBL_A,
+        OP_KEYMAP_TBL_B,
+        OP_KEYMAP_TBL_C,
+        OP_KEYMAP_TBL_D,
+        OP_KEYMAP_TBL_E,
+        OP_KEYMAP_CONT,
+    ),
     directions=("H→A",),
 )
 class KeymapHandler(BaseFrameHandler):
@@ -216,24 +225,27 @@ class KeymapHandler(BaseFrameHandler):
         proxy: X1Proxy = frame.proxy
         raw = frame.raw
         payload = frame.payload
-        if frame.opcode == OP_KEYMAP_CONT:
-            activity_id_decimal = raw[16]
-        else:
-            activity_id_decimal = raw[11]
+        activity_offsets = {
+            OP_KEYMAP_CONT: 16,
+            OP_KEYMAP_TBL_D: 16,
+        }
+        activity_idx = activity_offsets.get(frame.opcode, 11)
+        activity_id_decimal = raw[activity_idx] if len(raw) > activity_idx else None
 
-        proxy._burst.start(f"buttons:{activity_id_decimal}", now=time.monotonic())
+        if activity_id_decimal is not None:
+            proxy._burst.start(f"buttons:{activity_id_decimal}", now=time.monotonic())
 
-        proxy._accumulate_keymap(activity_id_decimal, payload)
-        keys = [
-            f"{BUTTONNAME_BY_CODE.get(c, f'0x{c:02X}')}(0x{c:02X})"
-            for c in sorted(proxy.state.buttons.get(activity_id_decimal, set()))
-        ]
-        log.info(
-            "[KEYMAP] act=0x%02X mapped{%d}: %s",
-            activity_id_decimal,
-            len(keys),
-            ", ".join(keys),
-        )
+            proxy._accumulate_keymap(activity_id_decimal, payload)
+            keys = [
+                f"{BUTTONNAME_BY_CODE.get(c, f'0x{c:02X}')}(0x{c:02X})"
+                for c in sorted(proxy.state.buttons.get(activity_id_decimal, set()))
+            ]
+            log.info(
+                "[KEYMAP] act=0x%02X mapped{%d}: %s",
+                activity_id_decimal,
+                len(keys),
+                ", ".join(keys),
+            )
 
 
 @register_handler(opcodes=(OP_REQ_COMMANDS,), directions=("A→H",))

@@ -32,6 +32,8 @@ from .protocol_const import (
     OP_KEYMAP_TBL_A,
     OP_KEYMAP_TBL_B,
     OP_KEYMAP_TBL_C,
+    OP_KEYMAP_TBL_D,
+    OP_KEYMAP_TBL_E,
     OP_LABELS_A1,
     OP_LABELS_A2,
     OP_LABELS_B1,
