@@ -337,6 +337,7 @@ class X1CatalogActivityHandler(BaseFrameHandler):
         OP_KEYMAP_TBL_F,
         OP_KEYMAP_TBL_E,
         OP_KEYMAP_CONT,
+        OP_DEVBTN_EXTRA,
     ),
     directions=("H→A",),
 )
@@ -408,7 +409,7 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
 
 
 @register_handler(
-    opcodes=(OP_DEVBTN_PAGE, OP_DEVBTN_MORE, OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA),
+    opcodes=(OP_DEVBTN_PAGE, OP_DEVBTN_MORE, OP_DEVBTN_TAIL),
     directions=("H→A",),
 )
 class DeviceButtonPayloadHandler(BaseFrameHandler):
