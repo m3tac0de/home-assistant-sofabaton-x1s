@@ -6,12 +6,10 @@ from typing import Any, Dict, Optional
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.config_entries import ConfigEntry
 
 from .const import (
     CONF_HEX_LOGGING_ENABLED,
     CONF_PROXY_ENABLED,
-    DOMAIN,
     signal_activity,
     signal_client,
     signal_hub,
