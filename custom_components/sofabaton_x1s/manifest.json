@@ -9,7 +9,7 @@
   "issue_tracker": "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues",
   "loggers": ["custom_components.sofabaton_x1s", "x1proxy"],
   "requirements": [],
-  "version": "0.2.3",
+  "version": "0.2.9",
   "zeroconf": [
     {
       "type": "_x1hub._udp.local."
