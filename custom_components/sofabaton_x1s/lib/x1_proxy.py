@@ -187,6 +187,7 @@ class X1Proxy:
         self.state = ActivityCache()
         self._command_assembler = DeviceCommandAssembler()
         self._burst = BurstScheduler()
+        self._pending_button_requests: set[int] = set()
         self._activity_listeners: list[callable] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
@@ -207,6 +208,7 @@ class X1Proxy:
         self.transport.on_client_state(self._notify_client_state)
         self.transport.on_idle(self._handle_idle)
 
+        self._burst.on_burst_end("buttons", self._on_buttons_burst_end)
         self.on_burst_end("activities", self.handle_active_state)
 
         self._hub_connected: bool = False
@@ -303,8 +305,22 @@ class X1Proxy:
     def request_buttons_for_entity(self, ent_id: int) -> bool:
         if not self.can_issue_commands():
             log.info("[CMD] request_buttons_for_entity ignored: proxy client is connected"); return False
+
         ent_lo = ent_id & 0xFF
-        return self.enqueue_cmd(OP_REQ_BUTTONS, bytes([ent_lo, 0xFF]), expects_burst=True, burst_kind=f"buttons:{ent_lo}")
+        if ent_lo in self._pending_button_requests:
+            log.debug(
+                "[CMD] request_buttons_for_entity ignored: burst already pending for 0x%02X",
+                ent_lo,
+            )
+            return False
+
+        self._pending_button_requests.add(ent_lo)
+        return self.enqueue_cmd(
+            OP_REQ_BUTTONS,
+            bytes([ent_lo, 0xFF]),
+            expects_burst=True,
+            burst_kind=f"buttons:{ent_lo}",
+        )
 
     def request_commands_for_entity(self, ent_id: int) -> bool:
         if not self.can_issue_commands():
@@ -332,15 +348,18 @@ class X1Proxy:
     def get_buttons_for_entity(self, ent_id: int, *, fetch_if_missing: bool = True) -> tuple[list[int], bool]:
         ent_lo = ent_id & 0xFF
         if ent_lo in self.state.buttons:
+            self._pending_button_requests.discard(ent_lo)
             return (sorted(self.state.buttons[ent_lo]), True)
 
         if fetch_if_missing and self.can_issue_commands():
-            self.enqueue_cmd(
-                OP_REQ_BUTTONS,
-                bytes([ent_lo, 0xFF]),
-                expects_burst=True,
-                burst_kind=f"buttons:{ent_lo}",
-            )
+            if ent_lo not in self._pending_button_requests:
+                self._pending_button_requests.add(ent_lo)
+                self.enqueue_cmd(
+                    OP_REQ_BUTTONS,
+                    bytes([ent_lo, 0xFF]),
+                    expects_burst=True,
+                    burst_kind=f"buttons:{ent_lo}",
+                )
 
         return ([], False)
 
@@ -436,12 +455,28 @@ class X1Proxy:
                 cb(new_id, old_id, name)
             except Exception:
                 log.exception("activity listener failed")
+
+    def _on_buttons_burst_end(self, key: str) -> None:
+        if ":" in key:
+            try:
+                ent_lo = int(key.split(":", 1)[1])
+                self._pending_button_requests.discard(ent_lo)
+            except ValueError:
+                self._pending_button_requests.clear()
+        else:
+            self._pending_button_requests.clear()
     
     def _handle_idle(self, now: float) -> None:
         self._burst.tick(now, can_issue=self.can_issue_commands, sender=self._send_cmd_frame)
 
     def _send_cmd_frame(self, opcode: int, payload: bytes) -> None:
         frame = self._build_frame(opcode, payload)
+        log.info(
+            "[SEND] hub %s (0x%04X) %dB",
+            OPNAMES.get(opcode, f"OP_{opcode:04X}"),
+            opcode,
+            len(payload),
+        )
         self.transport.send_local(frame)
 
     def _handle_hub_frame(self, data: bytes, cid: int) -> None:

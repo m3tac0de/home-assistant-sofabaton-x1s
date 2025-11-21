@@ -464,6 +464,7 @@ class TransportBridge:
                     try:
                         sent = hub.send(self._local_to_hub)
                         if sent:
+                            log.info("[TCP→HUB][local] sent %dB", sent)
                             del self._local_to_hub[:sent]
                     except (BlockingIOError, InterruptedError, OSError):
                         pass
@@ -471,6 +472,7 @@ class TransportBridge:
                     try:
                         sent = hub.send(app_to_hub)
                         if sent:
+                            log.info("[TCP→HUB][client] forwarded %dB", sent)
                             del app_to_hub[:sent]
                     except (BlockingIOError, InterruptedError, OSError):
                         pass
