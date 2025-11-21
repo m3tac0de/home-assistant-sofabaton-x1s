@@ -44,9 +44,11 @@ from custom_components.sofabaton_x1s.lib.opcode_handlers import (
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
+    OP_DEVBTN_EXTRA,
     OP_KEYMAP_TBL_D,
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_F,
+    OP_KEYMAP_TBL_G,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
 )
@@ -144,6 +146,50 @@ def test_keymap_table_f_adds_color_buttons() -> None:
         ButtonName.YELLOW,
         ButtonName.BLUE,
     }
+
+
+def test_keymap_table_g_adds_volume_transport_and_red() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    frame = _build_context(
+        proxy,
+        "a5 5a cd 3d 01 00 01 01 00 01 0b 68 01 04 00 00 00 00 00 33 13 00 00 00 00 00 00 00 00 68 02 04 00 00 00 00 2e 77 14 00 00 00 00 00 00 00 00 68 03 04 00 00 00 00 00 6a 0f 00 00 00 00 00 00 00 00 68 04 04 00 00 00 00 ea 60 0e 00 00 00 00 00 00 00 00 68 b6 04 00 00 00 00 2e 77 14 04 00 00 00 00 2e 77 14 68 b8 04 00 00 00 00 00 6a 0f 04 00 00 00 00 ea 60 0e 68 b9 04 00 00 00 00 00 33 13 04 00 00 00 00 00 33 13 68 bb 04 00 00 00 00 00 c9 12 00 00 00 00 00 00 00 00 68 bc 04 00 00 00 00 00 92 11 00 00 00 00 00 00 00 00 68 bd 04 00 00 00 00 00 ce 10 00 00 00 00 00 00 00 00 68 be 04 00 00 00 00 ea 60 0e 00 00 00 00 00 00 00 00 4a",
+        OP_KEYMAP_TBL_G,
+        "KEYMAP_TABLE_G",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x68) == {
+        ButtonName.VOL_UP,
+        ButtonName.MUTE,
+        ButtonName.VOL_DOWN,
+        ButtonName.REW,
+        ButtonName.PAUSE,
+        ButtonName.FWD,
+        ButtonName.RED,
+    }
+
+
+def test_devbtn_extra_contains_pause_and_red() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    frame = _build_context(
+        proxy,
+        "a5 5a 30 3d 01 00 02 14 00 00 00 00 00 00 00 00 65 bc 02 00 00 00 00 00 a6 0e 02 00 00 00 00 00 92 0f 65 be 02 00 00 00 00 00 00 20 00 00 00 00 00 00 00 00 42",
+        OP_DEVBTN_EXTRA,
+        "DEVBTN_EXTRA",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x65) == {ButtonName.PAUSE, ButtonName.RED}
 
 
 def test_x1_device_row_updates_state_and_burst() -> None:
