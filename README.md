@@ -114,7 +114,7 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
 3. Install **Sofabaton X1S** from HACS.
 4. **Restart Home Assistant.**
 5. Go to **Settings → Devices & services → Add integration** and search for **Sofabaton X1S**.
-6. Pick the hub from the list of discovered hubs.
+6. Confirm the discovered hub or choose manual entry to provide its IP and port.
 7. Done.
 
 > HACS looks for `custom_components/sofabaton_x1s/` in this repo. The integration lives there.
@@ -133,11 +133,9 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
 
 ## Configuration flow (what you’ll see)
 
-1. HA discovers `Sofabaton X1S`.
-2. You start the integration.
-3. The integration lists all `_x1hub._udp.local.` hubs it can see.
-4. You pick your hub by **name** (and optionally IP/port).
-5. Global proxy options are shown (proxy base port, hub-listen base). Defaults usually work.
+1. HA discovers `Sofabaton X1S` via mDNS and asks you to confirm, **or** you start the flow manually.
+2. If you started the flow manually, you provide the hub’s IP, port, and a name for the entry.
+3. Global proxy options are shown (proxy base port, hub-listen base). Defaults usually work.
 6. The integration creates:
    - 1 device (“\<your hub name\>”)
    - activity select

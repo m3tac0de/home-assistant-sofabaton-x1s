@@ -1,20 +1,16 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Dict, Optional
 
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.components.zeroconf import async_get_instance, ZeroconfServiceInfo
-from homeassistant.core import HomeAssistant, callback
-
-from zeroconf.asyncio import AsyncServiceBrowser
+from homeassistant.components.zeroconf import ZeroconfServiceInfo
+from homeassistant.core import callback
 
 from .const import (
     DOMAIN,
-    MDNS_TYPE,
     CONF_MAC,
     CONF_HOST,
     CONF_PORT,
@@ -43,133 +39,19 @@ def _classify_version(props: Dict[str, str]) -> str:
 
     return "X1"
 
-class _X1Listener:
-    def __init__(self) -> None:
-        self.services: Dict[str, Dict[str, Any]] = {}
-        self._tasks: list[asyncio.Task] = []
-
-    def remove_service(self, zc, type_, name) -> None:
-        pass
-
-    async def _add(self, zc, type_, name) -> None:
-        info = await zc.async_get_service_info(type_, name)
-        if not info:
-            return
-
-        props: Dict[str, str] = {}
-        for k, v in (info.properties or {}).items():
-            if isinstance(k, bytes):
-                k = k.decode("utf-8")
-            if isinstance(v, bytes):
-                v = v.decode("utf-8")
-            props[k] = v
-
-        mac = props.get("MAC") or name
-        host = info.parsed_addresses()[0]
-        version = _classify_version(props)
-        no_field = props.get("NO")
-
-        self.services[mac] = {
-            "name": props.get("NAME") or name.split(".")[0],
-            "host": host,
-            "port": info.port,
-            "props": props,
-            "service_name": name,
-            "version": version,
-        }
-        _LOGGER.info(
-            "Discovered Sofabaton hub %s (%s) at %s:%s model %s (NO=%s) with TXT %s",
-            self.services[mac]["name"],
-            mac,
-            host,
-            info.port,
-            version,
-            no_field,
-            props,
-        )
-
-    def add_service(self, zc, type_, name) -> None:
-        self._tasks.append(asyncio.create_task(self._add(zc, type_, name)))
-
-    def update_service(self, zc, type_, name) -> None:
-        #self._tasks.append(asyncio.create_task(self._add(zc, type_, name)))
-        return
-
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
-        self._discovered: Dict[str, Dict[str, Any]] = {}
         self._chosen_hub: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------
     # step 1: pick hub (discovered or manual)
     # ------------------------------------------------------------------
     async def async_step_user(self, user_input: Dict[str, Any] | None = None):
-        """Let user pick a discovered hub, or choose manual entry."""
-        if user_input is not None:
-            choice = user_input["hub"]
+        """Start manual entry when the user initiates the flow."""
 
-            if choice == "__manual__":
-                # go to manual step
-                return await self.async_step_manual()
-
-            # discovered hub selected
-            hub_info = self._discovered[choice]
-            self._chosen_hub = hub_info
-            # go to advanced (ports) step
-            return await self.async_step_ports()
-
-        # discover first
-        zc = await async_get_instance(self.hass)
-        listener = _X1Listener()
-        browser = AsyncServiceBrowser(zc, MDNS_TYPE, listener)
-        await asyncio.sleep(1.5)
-        await browser.async_cancel()
-        await asyncio.gather(*listener._tasks, return_exceptions=True)
-
-        # remove already-configured hubs
-        configured_macs = {
-            entry.data.get(CONF_MAC)
-            for entry in self._async_current_entries()
-        }
-        
-        self._discovered = {}
-        for mac, info in listener.services.items():
-            props = info.get("props") or {}
-            # skip our own virtual hub
-            if props.get("HA_PROXY") == "1":
-                continue
-            # skip already configured
-            if mac in configured_macs:
-                continue
-            self._discovered[mac] = info
-
-        options: Dict[str, str] = {}
-
-        if self._discovered:
-            for mac, info in self._discovered.items():
-                options[mac] = f"{info['name']} ({info['host']})"
-                
-            _LOGGER.debug("Discovered Sofabaton hubs: %s", list(self._discovered.keys()))
-
-        # always add manual option
-        options["__manual__"] = "Manually enter IP and port of your hub"
-
-        schema = vol.Schema({
-            vol.Required("hub"): vol.In(options)
-        })
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=schema,
-            description_placeholders={
-                "info": (
-                    "Select the Sofabaton hub that was discovered on your network, "
-                    "or choose manual setup if yours isn’t listed."
-                )
-            },
-        )
+        return await self.async_step_manual(user_input)
 
     # ------------------------------------------------------------------
     # step manual: user types IP + port + name
