@@ -143,12 +143,7 @@ class AckReadyHandler(BaseFrameHandler):
             proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
             if proxy.state.current_activity_hint is not None:
                 ent_lo = proxy.state.current_activity_hint & 0xFF
-                proxy.enqueue_cmd(
-                    OP_REQ_BUTTONS,
-                    bytes([ent_lo, 0xFF]),
-                    expects_burst=True,
-                    burst_kind=f"buttons:{ent_lo}",
-                )
+                proxy.request_buttons_for_entity(ent_lo)
                 proxy.enqueue_cmd(
                     OP_REQ_COMMANDS,
                     bytes([ent_lo, 0xFF]),
