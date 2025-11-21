@@ -70,6 +70,7 @@ OP_KEYMAP_TBL_C = 0x3D3D  # Returned when Hue buttons requested
 OP_KEYMAP_TBL_D = 0x1E3D  # Observed keymap table variant
 OP_KEYMAP_TBL_F = 0x783D  # Observed keymap table variant
 OP_KEYMAP_TBL_E = 0xBB3D  # Observed keymap table variant
+OP_KEYMAP_TBL_G = 0xCD3D  # Observed keymap table variant
 OP_KEYMAP_CONT = 0x543D  # Observed continuation page after MARKER
 
 # UDP CALL_ME (same frame used both directions over UDP)
@@ -106,6 +107,7 @@ OPNAMES: Dict[int, str] = {
     OP_KEYMAP_TBL_D: "KEYMAP_TABLE_D",
     OP_KEYMAP_TBL_F: "KEYMAP_TABLE_F",
     OP_KEYMAP_TBL_E: "KEYMAP_TABLE_E",
+    OP_KEYMAP_TBL_G: "KEYMAP_TABLE_G",
     OP_KEYMAP_CONT: "KEYMAP_CONT",
     OP_DEVBTN_HEADER: "DEVCTL_HEADER",
     OP_DEVBTN_PAGE: "DEVCTL_PAGE",
@@ -156,6 +158,7 @@ __all__ = [
     "OP_KEYMAP_TBL_D",
     "OP_KEYMAP_TBL_F",
     "OP_KEYMAP_TBL_E",
+    "OP_KEYMAP_TBL_G",
     "OP_KEYMAP_CONT",
     "OP_CALL_ME",
     "OP_REQ_VERSION",
