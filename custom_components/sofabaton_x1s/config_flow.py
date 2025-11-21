@@ -333,14 +333,36 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         # set unique id so HA can match/ignore properly
         await self.async_set_unique_id(mac)
-        self._abort_if_unique_id_configured(
-            {
-                CONF_HOST: discovery_info.host,
+
+        existing_entry = next(
+            (
+                entry
+                for entry in self._async_current_entries()
+                if entry.unique_id == mac
+            ),
+            None,
+        )
+
+        if existing_entry is not None:
+            if (
+                existing_entry.data.get(CONF_HOST) == host
+                and existing_entry.data.get(CONF_PORT) == discovery_info.port
+                and existing_entry.data.get(CONF_MDNS_TXT, {}) == props
+            ):
+                return self.async_abort(reason="already_configured")
+
+            new_data = {
+                **existing_entry.data,
+                CONF_HOST: host,
                 CONF_PORT: discovery_info.port,
                 CONF_MDNS_TXT: props,
                 CONF_MDNS_VERSION: version,
             }
-        )
+            self.hass.config_entries.async_update_entry(
+                existing_entry,
+                data=new_data,
+            )
+            return self.async_abort(reason="already_configured")
 
         # show a confirm form instead of auto-creating
         return self.async_show_form(
