@@ -234,7 +234,7 @@ Instead we have:
   - can also show **commands** per device/activity
   - shows `loading` while we’re fetching
   
-Go to Developer Tools → States → sensor.<hub>_index to see the contents of the sensor.
+Go to `Developer Tools → States → sensor.<hub>_index` to see the contents of the sensor.
 
 - a **fetch service/action**: you call it to tell the integration “go to the hub, get me all commands for this device/activity, and put them on the Index sensor”.
 
