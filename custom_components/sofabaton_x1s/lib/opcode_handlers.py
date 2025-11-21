@@ -329,20 +329,7 @@ class X1CatalogActivityHandler(BaseFrameHandler):
             log.info("[ACT] name='%s' state=%s", activity_label, state)
 
 
-@register_handler(
-    opcodes=(
-        OP_KEYMAP_TBL_A,
-        OP_KEYMAP_TBL_B,
-        OP_KEYMAP_TBL_C,
-        OP_KEYMAP_TBL_D,
-        OP_KEYMAP_TBL_F,
-        OP_KEYMAP_TBL_E,
-        OP_KEYMAP_TBL_G,
-        OP_KEYMAP_CONT,
-        OP_DEVBTN_EXTRA,
-    ),
-    directions=("H→A",),
-)
+@register_handler(directions=("H→A",))
 class KeymapHandler(BaseFrameHandler):
     """Accumulate keymap table pages for activities."""
 
@@ -350,6 +337,9 @@ class KeymapHandler(BaseFrameHandler):
         proxy: X1Proxy = frame.proxy
         raw = frame.raw
         payload = frame.payload
+        now = time.monotonic()
+
+        burst_act_lo = self._burst_activity(proxy)
         activity_offsets = {
             OP_KEYMAP_CONT: 16,
             OP_KEYMAP_TBL_D: 16,
@@ -357,22 +347,60 @@ class KeymapHandler(BaseFrameHandler):
             OP_DEVBTN_EXTRA: 16,
         }
         activity_idx = activity_offsets.get(frame.opcode, 11)
-        activity_id_decimal = raw[activity_idx] if len(raw) > activity_idx else None
+        activity_id_decimal = burst_act_lo
+        if activity_id_decimal is None and len(raw) > activity_idx:
+            activity_id_decimal = raw[activity_idx]
 
-        if activity_id_decimal is not None:
-            proxy._burst.start(f"buttons:{activity_id_decimal}", now=time.monotonic())
+        if activity_id_decimal is None:
+            activity_id_decimal = self._infer_activity_from_payload(payload)
 
-            proxy._accumulate_keymap(activity_id_decimal, payload)
-            keys = [
-                f"{BUTTONNAME_BY_CODE.get(c, f'0x{c:02X}')}(0x{c:02X})"
-                for c in sorted(proxy.state.buttons.get(activity_id_decimal, set()))
-            ]
-            log.info(
-                "[KEYMAP] act=0x%02X mapped{%d}: %s",
-                activity_id_decimal,
-                len(keys),
-                ", ".join(keys),
-            )
+        if activity_id_decimal is None:
+            return
+
+        if not self._looks_like_keymap_payload(payload, activity_id_decimal):
+            # Only treat the payload as a keymap if a buttons burst is active or
+            # the payload matches known record layouts.
+            if burst_act_lo is None:
+                return
+
+        burst_key = f"buttons:{activity_id_decimal}"
+        if proxy._burst.active and proxy._burst.kind == burst_key:
+            proxy._burst.last_ts = now + proxy._burst.response_grace
+        else:
+            proxy._burst.start(burst_key, now=now)
+
+        proxy._accumulate_keymap(activity_id_decimal, payload)
+        keys = [
+            f"{BUTTONNAME_BY_CODE.get(c, f'0x{c:02X}')}(0x{c:02X})"
+            for c in sorted(proxy.state.buttons.get(activity_id_decimal, set()))
+        ]
+        log.info(
+            "[KEYMAP] act=0x%02X mapped{%d}: %s",
+            activity_id_decimal,
+            len(keys),
+            ", ".join(keys),
+        )
+
+    def _burst_activity(self, proxy: "X1Proxy") -> int | None:
+        burst_kind = getattr(proxy._burst, "kind", None)
+        if proxy._burst.active and burst_kind and burst_kind.startswith("buttons:"):
+            try:
+                return int(burst_kind.split(":", 1)[1])
+            except ValueError:
+                return None
+        return None
+
+    def _infer_activity_from_payload(self, payload: bytes) -> int | None:
+        for i in range(len(payload) - 1):
+            if payload[i + 1] in BUTTONNAME_BY_CODE:
+                return payload[i]
+        return None
+
+    def _looks_like_keymap_payload(self, payload: bytes, act_lo: int) -> bool:
+        for i in range(len(payload) - 1):
+            if payload[i] == act_lo and payload[i + 1] in BUTTONNAME_BY_CODE:
+                return True
+        return False
 
 
 @register_handler(opcodes=(OP_REQ_COMMANDS,), directions=("A→H",))
