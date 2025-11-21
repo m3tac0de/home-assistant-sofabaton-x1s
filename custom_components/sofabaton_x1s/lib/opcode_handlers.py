@@ -339,6 +339,13 @@ class KeymapHandler(BaseFrameHandler):
         payload = frame.payload
         now = time.monotonic()
 
+        # Never treat responses as keymap data while a command burst is active.
+        # Command bursts re-use some of the same frame shapes as keymaps and we
+        # must avoid misclassifying those frames while device commands are
+        # being assembled.
+        if proxy._burst.active and getattr(proxy._burst, "kind", "").startswith("commands:"):
+            return
+
         keymap_opcodes = {
             OP_KEYMAP_CONT,
             OP_KEYMAP_TBL_A,
