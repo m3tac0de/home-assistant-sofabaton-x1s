@@ -66,15 +66,6 @@ We add a small TXT flag to the virtual hub so Home Assistant **ignores** our own
 
 ---
 
-## Proxy internals
-
-- **TransportBridge** in `custom_components/sofabaton_x1s/lib/transport_bridge.py` owns the TCP/UDP sockets and surfaces callbacks whenever hub/app frames arrive or connection state changes.
-- **BurstScheduler** in `custom_components/sofabaton_x1s/lib/state_helpers.py` coordinates burst-style hub responses so queued commands drain only after the hub finishes sending its data.
-- **ActivityCache** in `state_helpers.py` stores activity, device, button, and command metadata that both the CLI and Home Assistant entities consume.
-- **X1Proxy** now wires these pieces together, forwarding transport events into the parser/handler registry while keeping the coordination logic small and readable.
-
----
-
 ### Networking
 
 This integration follows the same 3-step flow as the official Sofabaton app:
@@ -107,17 +98,13 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
 
 ### Option 1 – HACS (recommended)
 
-1. Open **HACS → Integrations → … → Custom repositories**.
-2. Add the repo URL  
-   `https://github.com/m3tac0de/home-assistant-sofabaton-x1s`  
-   and select **Integration**.
-3. Install **Sofabaton X1S** from HACS.
-4. **Restart Home Assistant.**
-5. Go to **Settings → Devices & services → Add integration** and search for **Sofabaton X1S**.
+1. Open **HACS → Integrations**.
+2. Search for **Sofabaton X1S** and download it.
+3. **Restart Home Assistant.**
+4. Go to **Settings → Devices & Services.**
+5. You should see **Sofabaton X1S** discovered automatically. Click **Add/Configure**.
 6. Confirm the discovered hub or choose manual entry to provide its IP and port.
-7. Done.
-
-> HACS looks for `custom_components/sofabaton_x1s/` in this repo. The integration lives there.
+- (If not discovered automatically: Click **Add Integration**, search for **Sofabaton X1S**, and enter the IP/Port manually.)
 
 ---
 
