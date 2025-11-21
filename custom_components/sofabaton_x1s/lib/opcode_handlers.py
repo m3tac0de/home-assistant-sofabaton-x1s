@@ -339,6 +339,18 @@ class KeymapHandler(BaseFrameHandler):
         payload = frame.payload
         now = time.monotonic()
 
+        keymap_opcodes = {
+            OP_KEYMAP_CONT,
+            OP_KEYMAP_TBL_A,
+            OP_KEYMAP_TBL_B,
+            OP_KEYMAP_TBL_C,
+            OP_KEYMAP_TBL_D,
+            OP_KEYMAP_TBL_E,
+            OP_KEYMAP_TBL_F,
+            OP_KEYMAP_TBL_G,
+            OP_DEVBTN_EXTRA,
+        }
+
         burst_act_lo = self._burst_activity(proxy)
         activity_offsets = {
             OP_KEYMAP_CONT: 16,
@@ -357,10 +369,11 @@ class KeymapHandler(BaseFrameHandler):
         if activity_id_decimal is None:
             return
 
-        if not self._looks_like_keymap_payload(payload, activity_id_decimal):
+        looks_like_keymap = self._looks_like_keymap_payload(payload, activity_id_decimal)
+        if not looks_like_keymap:
             # Only treat the payload as a keymap if a buttons burst is active or
-            # the payload matches known record layouts.
-            if burst_act_lo is None:
+            # the payload matches known record layouts or opcodes.
+            if burst_act_lo is None or frame.opcode not in keymap_opcodes:
                 return
 
         burst_key = f"buttons:{activity_id_decimal}"
