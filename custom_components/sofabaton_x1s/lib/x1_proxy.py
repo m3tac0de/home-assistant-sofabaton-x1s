@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import socket
 import struct
 import threading
@@ -61,6 +62,12 @@ log = logging.getLogger("x1proxy")
 
 def _sum8(b: bytes) -> int: return sum(b) & 0xFF
 def _hexdump(data: bytes) -> str: return data.hex(" ")
+
+def _normalize_mdns_instance(name: str) -> str:
+    """Return an mDNS-friendly instance name without whitespace."""
+
+    normalized = re.sub(r"\s+", "-", name.strip())
+    return normalized or "X1-HUB-PROXY"
 
 def _route_local_ip(peer_ip: str) -> str:
     try:
@@ -174,8 +181,8 @@ class X1Proxy:
         self.real_hub_udp_port = int(real_hub_udp_port)
         self.proxy_udp_port = int(proxy_udp_port)
         self.hub_listen_base = int(hub_listen_base)
-        self.mdns_instance = mdns_instance
-        self.mdns_host = mdns_host or (mdns_instance + ".local")
+        self.mdns_instance = _normalize_mdns_instance(mdns_instance)
+        self.mdns_host = mdns_host or (self.mdns_instance + ".local")
         self.mdns_txt = mdns_txt or {}
         self.diag_dump = bool(diag_dump)
         self.diag_parse = bool(diag_parse)
