@@ -95,17 +95,14 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
 
 ### Option 1 – HACS (recommended)
 
-1. Open **HACS → Integrations → … → Custom repositories**.
-2. Add the repo URL  
-   `https://github.com/m3tac0de/home-assistant-sofabaton-x1s`  
-   and select **Integration**.
-3. Install **Sofabaton X1S** from HACS.
-4. **Restart Home Assistant.**
-5. Go to **Settings → Devices & services → Add integration** and search for **Sofabaton X1S**.
+1. Open **HACS → Integrations**.
+2. Search for **Sofabaton X1S** and download it.
+3. **Restart Home Assistant.**
+4. Go to **Settings → Devices & Services.**
+5. You should see **Sofabaton X1S** discovered automatically. Click **Add/Configure**.
 6. Confirm the discovered hub or choose manual entry to provide its IP and port.
-7. Done.
 
-> HACS looks for `custom_components/sofabaton_x1s/` in this repo. The integration lives there.
+If not discovered automatically: Click **Add Integration**, search for **Sofabaton X1S**, and enter the IP/Port manually.
 
 ---
 
