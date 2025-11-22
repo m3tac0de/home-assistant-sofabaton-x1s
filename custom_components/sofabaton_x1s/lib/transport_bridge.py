@@ -270,25 +270,46 @@ class TransportBridge:
                 pkt, (src_ip, src_port) = sock.recvfrom(2048)
             except OSError:
                 break
-            if len(pkt) < 16 or pkt[0] != SYNC0 or pkt[1] != SYNC1:
+            if len(pkt) < 4 or pkt[0] != SYNC0 or pkt[1] != SYNC1:
                 continue
             op = (pkt[2] << 8) | pkt[3]
             if op != OP_CALL_ME:
                 continue
+            app_addr: Optional[Tuple[str, int]] = None
+            variant = "CALL_ME"
+            if len(pkt) >= 16:
+                try:
+                    app_ip = socket.inet_ntoa(pkt[10:14])
+                    app_port = struct.unpack(">H", pkt[14:16])[0]
+                    app_addr = (app_ip, app_port)
+                except Exception:
+                    app_addr = None
+            if app_addr is None:
+                app_addr = (src_ip, src_port)
+                variant = "CALL_ME (short)"
             try:
-                app_ip = socket.inet_ntoa(pkt[10:14])
-                app_port = struct.unpack(">H", pkt[14:16])[0]
-            except Exception:
+                app_ip, app_port = app_addr
+            except ValueError:
                 continue
             if not self._proxy_enabled:
                 continue
-            log.info(
-                "[UDP] APP CALL_ME from %s:%d -> app tcp %s:%d",
-                src_ip,
-                src_port,
-                app_ip,
-                app_port,
-            )
+            if variant == "CALL_ME":
+                log.info(
+                    "[UDP] APP CALL_ME from %s:%d -> app tcp %s:%d",
+                    src_ip,
+                    src_port,
+                    app_ip,
+                    app_port,
+                )
+            else:
+                log.info(
+                    "[UDP] APP CALL_ME (short) from %s:%d -> app tcp %s:%d (len=%d)",
+                    src_ip,
+                    src_port,
+                    app_ip,
+                    app_port,
+                    len(pkt),
+                )
             threading.Thread(
                 target=self._handle_app_session,
                 args=((app_ip, app_port),),
