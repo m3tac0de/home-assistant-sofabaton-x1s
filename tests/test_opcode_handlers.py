@@ -232,3 +232,22 @@ def test_x1_activity_row_updates_state_and_hint() -> None:
     assert proxy.state.activities[0x65] == {"name": "Jellyfin", "active": False}
     assert proxy.state.current_activity_hint is None
     assert proxy._burst.kind == "activities"
+
+
+def test_x1_activity_active_flag_uses_correct_offset() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = X1CatalogActivityHandler()
+
+    frame = _build_context(
+        proxy,
+        "a5 5a 7b 3b 01 00 01 0a 00 01 00 66 02 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 52 6f 6f 6d 20 43 6f 6e 74 72 6f 6c 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 fc 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3c 9c",
+        OP_X1_ACTIVITY,
+        "X1_ACTIVITY",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.activities[0x66] == {"name": "Room Control", "active": True}
+    assert proxy.state.current_activity_hint == 0x66
