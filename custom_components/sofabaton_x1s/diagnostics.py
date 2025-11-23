@@ -7,16 +7,13 @@ import re
 import socket
 from collections import deque
 from typing import Any, Iterable
-
-from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_HOST, CONF_MAC, CONF_NAME, DOMAIN
+from .const import CONF_HOST, CONF_MAC, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-SENSITIVE_FIELDS = {CONF_HOST, CONF_MAC, CONF_NAME}
 _MAX_LOG_RECORDS = 5000
 _MAX_LOG_CHARACTERS = 512 * 1024  # ~512KB cap to avoid long-term growth
 _LOG_FORMAT = "%(asctime)s %(name)s %(levelname)s: %(message)s"
@@ -24,6 +21,10 @@ _LOGGER_NAMES = (
     "custom_components.sofabaton_x1s",
     "x1proxy",
 )
+_IP_ADDRESS_PATTERN = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
+_MAC_ADDRESS_PATTERN = re.compile(r"\b[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}\b")
+_HOST_KEYS = {CONF_HOST.lower()}
+_MAC_KEYS = {CONF_MAC.lower()}
 
 
 class _InMemoryLogHandler(logging.Handler):
@@ -106,6 +107,48 @@ def _attach_capture(hass: HomeAssistant) -> None:
         logger.propagate = False
 
 
+def _redact_value(value: Any) -> Any:
+    """Scrub IP and MAC addresses from a value."""
+
+    if isinstance(value, str):
+        value = _IP_ADDRESS_PATTERN.sub("[REDACTED_IP]", value)
+        value = _MAC_ADDRESS_PATTERN.sub("[REDACTED_MAC]", value)
+
+    return value
+
+
+def _redact_data_structure(data: Any) -> Any:
+    """Remove non-essential diagnostic details and redact sensitive fields."""
+
+    if isinstance(data, dict):
+        redacted: dict[Any, Any] = {}
+        for key, value in data.items():
+            key_lower = str(key).lower()
+
+            if key_lower == "custom_components":
+                continue
+
+            if key_lower in _HOST_KEYS:
+                redacted[key] = "[REDACTED_IP]"
+                continue
+
+            if key_lower in _MAC_KEYS:
+                redacted[key] = "[REDACTED_MAC]"
+                continue
+
+            redacted[key] = _redact_data_structure(value)
+
+        return redacted
+
+    if isinstance(data, (list, tuple)):
+        return type(data)(_redact_data_structure(item) for item in data)
+
+    if isinstance(data, set):
+        return [_redact_data_structure(item) for item in data]
+
+    return _redact_value(data)
+
+
 def async_enable_hex_logging_capture(hass: HomeAssistant, entry_id: str) -> None:
     """Start capturing logs while hex logging is enabled."""
 
@@ -174,7 +217,8 @@ def _sanitize_log_lines(lines: Iterable[str], entry: ConfigEntry) -> list[str]:
     host = entry.data.get(CONF_HOST)
     hostname = socket.gethostname()
     patterns: list[tuple[re.Pattern[str], str]] = [
-        (re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b"), "[REDACTED_IP]"),
+        (_IP_ADDRESS_PATTERN, "[REDACTED_IP]"),
+        (_MAC_ADDRESS_PATTERN, "[REDACTED_MAC]"),
     ]
 
     if isinstance(host, str) and host:
@@ -200,15 +244,15 @@ async def async_get_config_entry_diagnostics(
     handler = _get_handler(hass)
 
     entry_dict = {
-        "data": async_redact_data(entry.data, SENSITIVE_FIELDS),
-        "options": async_redact_data(entry.options, SENSITIVE_FIELDS),
+        "data": _redact_data_structure(entry.data),
+        "options": _redact_data_structure(entry.options),
     }
 
     # Collect any cached hub information without exposing sensitive fields
     hub = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     hub_state: dict[str, Any] = {}
     if hub is not None:
-        hub_state = async_redact_data(
+        hub_state = _redact_data_structure(
             {
                 "name": getattr(hub, "name", None),
                 "host": getattr(hub, "host", None),
@@ -221,8 +265,7 @@ async def async_get_config_entry_diagnostics(
                 "current_activity": getattr(hub, "current_activity", None),
                 "client_connected": getattr(hub, "client_connected", None),
                 "hub_connected": getattr(hub, "hub_connected", None),
-            },
-            SENSITIVE_FIELDS,
+            }
         )
 
     logs = _sanitize_log_lines(handler.get_records(), entry)
