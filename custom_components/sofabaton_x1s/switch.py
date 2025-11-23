@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN, CONF_MAC, CONF_NAME
-from .hub import SofabatonHub
+from .hub import SofabatonHub, get_hub_model
 
 
 async def async_setup_entry(
@@ -41,6 +41,7 @@ class SofabatonProxySwitch(SwitchEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=self._entry.data[CONF_NAME],
+            model=get_hub_model(self._entry),
         )
 
     @property
@@ -70,6 +71,7 @@ class SofabatonHexLoggingSwitch(SwitchEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=self._entry.data[CONF_NAME],
+            model=get_hub_model(self._entry),
         )
 
     @property
