@@ -61,11 +61,14 @@ body:
     attributes:
       label: Logs or diagnostics
       description: |
-        Attach the Home Assistant log file or integration diagnostics. Follow the steps below to capture them and redact any personal data. See the [logging guide](../../docs/logging.md) for details.
+        Attach the Home Assistant log file or integration diagnostics. Follow the steps below to capture them. See the [logging guide](../../docs/logging.md) for details.
       placeholder: |
-        1. In Home Assistant, go to **Settings → System → Logs** and download `home-assistant.log` after reproducing the issue.
-        2. Alternatively, go to **Settings → Devices & services → Sofabaton X1/X1S → ⋮ → Download diagnostics**.
-        3. Redact access tokens, email addresses, and hostnames before attaching.
+        1. In Home Assistant, open **Settings → Devices & services**.
+        2. Select **Sofabaton X1/X1S** and open the hub device.
+        3. Toggle `switch.<hub>_hex_logging` **on** to capture full hub traffic.
+        4. Perform the actions that demonstrate the issue while hex logging is enabled.
+        5. With hex logging still on, open the **⋮** menu (three dots) on the **Sofabaton X1/X1S** integration card and choose **Download diagnostics**. This downloads the log file we need along with structured diagnostics.
+        6. Toggle `switch.<hub>_hex_logging` **off** when finished to reduce noise.
   - type: markdown
     attributes:
       value: |
