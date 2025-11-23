@@ -1,0 +1,72 @@
+name: Bug report
+description: Report an issue with the Sofabaton X1/X1S Home Assistant integration
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve the integration. Please complete all required fields and attach logs/diagnostics so we can troubleshoot quickly.
+  - type: dropdown
+    id: hub_model
+    attributes:
+      label: Hub model
+      description: Select the hub model you are using.
+      options:
+        - X1
+        - X1S
+    validations:
+      required: true
+  - type: input
+    id: integration_version
+    attributes:
+      label: Integration version
+      description: Installed version of `sofabatons_x1s` (e.g., from HACS or manifest version).
+      placeholder: 1.2.3
+    validations:
+      required: true
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      description: e.g., 2024.4.0
+      placeholder: 2024.4.0
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Reproduction steps
+      description: Provide numbered steps to reproduce the issue.
+      placeholder: |
+        1. Go to ...
+        2. Click on ...
+        3. Scroll down to ...
+        4. See error
+    validations:
+      required: true
+  - type: checkboxes
+    id: logging_checklist
+    attributes:
+      label: Logging requirements
+      description: Enable detailed logging before reproducing the issue.
+      options:
+        - label: I enabled `switch.<hub>_hex_logging` on the hub device.
+          required: true
+        - label: I enabled debug logging for `custom_components.sofabaton_x1s`.
+          required: true
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or diagnostics
+      description: |
+        Attach the Home Assistant log file or integration diagnostics. Follow the steps below to capture them and redact any personal data. See the [logging guide](../../docs/logging.md) for details.
+      placeholder: |
+        1. In Home Assistant, go to **Settings → System → Logs** and download `home-assistant.log` after reproducing the issue.
+        2. Alternatively, go to **Settings → Devices & services → Sofabaton X1/X1S → ⋮ → Download diagnostics**.
+        3. Redact access tokens, email addresses, and hostnames before attaching.
+  - type: markdown
+    attributes:
+      value: |
+        Need help enabling logging? See the [logging guide](../../docs/logging.md).
