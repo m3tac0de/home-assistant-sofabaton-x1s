@@ -84,24 +84,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unload_ok:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
-            hass.services.async_remove(DOMAIN, "send_command")
             hass.services.async_remove(DOMAIN, "fetch_device_commands")
             async_teardown_diagnostics(hass)
             hass.data.pop(DOMAIN)
         if hub is not None:
             await hub.async_stop()
     return unload_ok
-    
-async def _async_handle_send_command(call: ServiceCall):
-    hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
-    if hub is None:
-        raise ValueError("Could not resolve Sofabaton hub from service call")
-
-    ent_id = call.data["ent_id"]
-    key_code = call.data["key_code"]
-
-    await hub.async_send_raw_command(ent_id, key_code)
     
 async def _async_handle_fetch_device_commands(call: ServiceCall):
     hass = call.hass
