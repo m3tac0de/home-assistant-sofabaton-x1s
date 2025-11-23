@@ -291,7 +291,7 @@ class X1CatalogActivityHandler(BaseFrameHandler):
             proxy.state.set_hint(None)
 
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
-        active_flag = payload[10] if len(payload) >= 11 else 0
+        active_flag = frame.raw[35] if len(frame.raw) > 35 else 0
         activity_label = payload[32:].split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
         is_active = active_flag == 1
 
@@ -334,11 +334,12 @@ class KeymapHandler(BaseFrameHandler):
         payload = frame.payload
         now = time.monotonic()
 
-        # Never treat responses as keymap data while a command burst is active.
-        # Command bursts re-use some of the same frame shapes as keymaps and we
-        # must avoid misclassifying those frames while device commands are
-        # being assembled.
-        if proxy._burst.active and getattr(proxy._burst, "kind", "").startswith("commands:"):
+        # Only treat responses as keymap data while a buttons burst is active.
+        # Other bursts re-use some of the same frame shapes as keymaps and we
+        # must avoid misclassifying those frames while other data is being
+        # assembled.
+        burst_kind = getattr(proxy._burst, "kind", "")
+        if proxy._burst.active and not burst_kind.startswith("buttons:"):
             return
 
         keymap_opcodes = {

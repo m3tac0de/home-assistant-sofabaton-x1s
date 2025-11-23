@@ -101,7 +101,8 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
 4. Go to **Settings → Devices & Services.**
 5. You should see **Sofabaton X1S** discovered automatically. Click **Add/Configure**.
 6. Confirm the discovered hub or choose manual entry to provide its IP and port.
-- (If not discovered automatically: Click **Add Integration**, search for **Sofabaton X1S**, and enter the IP/Port manually.)
+
+If not discovered automatically: Click **Add Integration**, search for **Sofabaton X1S**, and enter the IP/Port manually.
 
 ---
 
