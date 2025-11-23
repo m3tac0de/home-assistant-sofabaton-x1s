@@ -81,3 +81,62 @@ def test_parse_device_commands_handles_legacy_and_hue_formats() -> None:
     parsed = proxy.parse_device_commands(assembled_payload, dev_id)
 
     assert parsed == {1: "Power", 2: "Hue On"}
+
+
+def test_parse_device_commands_handles_ascii_labels() -> None:
+    proxy = X1Proxy("127.0.0.1")
+    dev_id = 0x07
+
+    ascii_payload = bytes.fromhex(
+        "a5 5a f7 5d 01 00 01 01 00 02 0a 07 01 0d 00 00 00 00 00 ba 45 6a 65 63 74 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 02 0d 00 00 00 00 1d "
+        "c1 47 72 65 61 74 65 72 31 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff "
+        "07 03 0d 00 00 00 00 14 0c 4e 65 78 74 20 74 72 61 63 6b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 ff 07 04 0d 00 00 00 00 00 a6 50 61 75 73 65 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 ff 07 05 0d 00 00 00 00 00 92 50 6c 61 79 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 06 0d 00 00 00 00 33 72 50 72 65 76 69 6f 75 73 20 74 "
+        "72 61 63 6b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 8e"
+    )
+
+    payload = ascii_payload[4:-1]
+    opcode = int.from_bytes(ascii_payload[2:4], "big")
+    data_offset = proxy._command_assembler._data_offset(opcode)  # type: ignore[attr-defined]
+    assembled_payload = payload[data_offset:]
+
+    parsed = proxy.parse_device_commands(assembled_payload, dev_id)
+
+    assert parsed == {
+        1: "Eject",
+        2: "Greater10",
+        3: "Next track",
+        4: "Pause",
+        5: "Play",
+        6: "Previous track",
+    }
+
+
+def test_parse_device_commands_handles_early_data_offset() -> None:
+    proxy = X1Proxy("127.0.0.1")
+    dev_id = 0x07
+
+    early_offset_payload = bytes.fromhex(
+        "a5 5a a3 5d 01 00 02 07 07 0d 00 00 00 00 00 a1 53 74 6f 70 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 08 0d 00 00 00 00 34 40 54 69 6d 65 20 6d 6f 64 65 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 09 0d 00 00 00 00 00 97 46 61 73 74 5f 66 6f 72 77 61 72 64 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 ff 07 0a 0d 00 00 00 00 01 88 4f 6b 2f 73 65 6c 65 63 74 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 ff ea"
+    )
+
+    payload = early_offset_payload[4:-1]
+    opcode = int.from_bytes(early_offset_payload[2:4], "big")
+    data_offset = proxy._command_assembler._data_offset(opcode)  # type: ignore[attr-defined]
+    assembled_payload = payload[data_offset:]
+
+    parsed = proxy.parse_device_commands(assembled_payload, dev_id)
+
+    assert parsed == {
+        13: "Stop",
+        8: "Time mode",
+        9: "Fast_forward",
+        10: "Ok/select",
+    }
