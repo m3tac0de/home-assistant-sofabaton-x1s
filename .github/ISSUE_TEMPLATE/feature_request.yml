@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest an enhancement for the Sofabaton X1/X1S integration
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing an idea! Please provide enough context so we can evaluate and prioritize your request.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: Short description of the feature or improvement you want.
+      placeholder: e.g., Support configuring button repeat rate per device
+    validations:
+      required: true
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Problem to solve / use case
+      description: What problem does this feature solve? How would you use it?
+      placeholder: | 
+        I want to...
+        This helps when...
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Desired behavior
+      description: Describe how you expect the feature to work. Include any UI, service, or automation changes.
+      placeholder: | 
+        When I...
+        I expect...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you tried other approaches or workarounds?
+      placeholder: | 
+        I tried...
+        It works but...
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional context
+      description: Links, screenshots, or anything else that helps us understand the request.
+      placeholder: Add screenshots, logs, or references here.

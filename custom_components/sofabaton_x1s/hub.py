@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.exceptions import HomeAssistantError
@@ -16,11 +17,23 @@ from .const import (
     signal_buttons,
     signal_devices,
     signal_commands,
+    CONF_MDNS_VERSION,
 )
+from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
 from .lib.protocol_const import ButtonName
 from .lib.x1_proxy import X1Proxy
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def get_hub_model(entry: ConfigEntry) -> str:
+    """Return the model string for this hub, with a sensible default."""
+
+    model = entry.options.get(CONF_MDNS_VERSION) or entry.data.get(CONF_MDNS_VERSION)
+    if isinstance(model, str) and model:
+        return model
+
+    return "X1"
 
 
 class SofabatonHub:
@@ -63,7 +76,7 @@ class SofabatonHub:
         self._command_entities: set[int] = set()
         self._buttons_ready_for: set[int] = set()
         self._commands_in_flight: set[int] = set()    # entities we are currently fetching
-        
+
         _LOGGER.debug(
             "[%s] Creating X1Proxy for hub %s (%s:%s)",
             self.entry_id,
@@ -72,6 +85,9 @@ class SofabatonHub:
             port,
         )
         self._proxy = self._create_proxy()
+
+        if self.hex_logging_enabled:
+            async_enable_hex_logging_capture(self.hass, self.entry_id)
 
     def _create_proxy(self) -> X1Proxy:
         proxy = X1Proxy(
@@ -434,6 +450,10 @@ class SofabatonHub:
         _LOGGER.debug("[%s] Setting hex logging enabled=%s", self.entry_id, enable)
         await self.hass.async_add_executor_job(self._proxy.set_diag_dump, enable)
         self.hex_logging_enabled = enable
+        if enable:
+            async_enable_hex_logging_capture(self.hass, self.entry_id)
+        else:
+            async_disable_hex_logging_capture(self.hass, self.entry_id)
         self.hass.loop.call_soon_threadsafe(
             self._async_update_options, CONF_HEX_LOGGING_ENABLED, enable
         )

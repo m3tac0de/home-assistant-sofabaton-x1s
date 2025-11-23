@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/m3tac0de/home-assistant-sofabaton-x1s#readme
+    about: Review the README and docs for setup and troubleshooting guidance.
