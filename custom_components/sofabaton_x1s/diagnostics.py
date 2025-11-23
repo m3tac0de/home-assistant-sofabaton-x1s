@@ -244,8 +244,8 @@ async def async_get_config_entry_diagnostics(
     handler = _get_handler(hass)
 
     entry_dict = {
-        "data": _redact_data_structure(entry.data),
-        "options": _redact_data_structure(entry.options),
+        "data": _redact_data_structure(dict(entry.data)),
+        "options": _redact_data_structure(dict(entry.options)),
     }
 
     # Collect any cached hub information without exposing sensitive fields
