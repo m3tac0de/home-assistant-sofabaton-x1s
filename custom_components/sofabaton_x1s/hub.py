@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.exceptions import HomeAssistantError
@@ -16,11 +17,22 @@ from .const import (
     signal_buttons,
     signal_devices,
     signal_commands,
+    CONF_MDNS_VERSION,
 )
 from .lib.protocol_const import ButtonName
 from .lib.x1_proxy import X1Proxy
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def get_hub_model(entry: ConfigEntry) -> str:
+    """Return the model string for this hub, with a sensible default."""
+
+    model = entry.options.get(CONF_MDNS_VERSION) or entry.data.get(CONF_MDNS_VERSION)
+    if isinstance(model, str) and model:
+        return model
+
+    return "X1"
 
 
 class SofabatonHub:

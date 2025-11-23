@@ -17,7 +17,7 @@ from .const import (
     signal_activity,
     signal_client,
 )
-from .hub import SofabatonHub
+from .hub import SofabatonHub, get_hub_model
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ class SofabatonActivitySelect(SelectEntity):
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=self._entry.data[CONF_NAME],
             manufacturer="Sofabaton",
-            model="X1S via proxy",
+            model=f"{get_hub_model(self._entry)} via proxy",
         )
 
     async def async_added_to_hass(self) -> None:

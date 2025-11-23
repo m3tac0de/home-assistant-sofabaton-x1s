@@ -17,6 +17,7 @@ from .const import (
     signal_client,
     signal_buttons,
 )
+from .hub import get_hub_model
 
 
 async def async_setup_entry(
@@ -74,7 +75,7 @@ class SofabatonRemote(RemoteEntity):
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=self._entry.data[CONF_NAME],
             manufacturer="Sofabaton",
-            model="X1S",
+            model=get_hub_model(self._entry),
         )
 
     async def async_added_to_hass(self) -> None:

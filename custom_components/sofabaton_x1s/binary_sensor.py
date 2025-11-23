@@ -18,7 +18,7 @@ from .const import (
     signal_client,
     signal_hub,
 )
-from .hub import SofabatonHub
+from .hub import SofabatonHub, get_hub_model
 
 
 async def async_setup_entry(
@@ -52,6 +52,7 @@ class SofabatonClientSensor(BinarySensorEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=self._entry.data[CONF_NAME],
+            model=get_hub_model(self._entry),
         )
 
     async def async_added_to_hass(self) -> None:
@@ -89,6 +90,7 @@ class SofabatonHubConnectionSensor(BinarySensorEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=self._entry.data[CONF_NAME],
+            model=get_hub_model(self._entry),
         )
 
     async def async_added_to_hass(self) -> None:

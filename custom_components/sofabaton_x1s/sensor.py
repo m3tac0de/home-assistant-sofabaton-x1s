@@ -15,7 +15,7 @@ from .const import (
     signal_devices,
     signal_commands,
 )
-from .hub import SofabatonHub
+from .hub import SofabatonHub, get_hub_model
 
 
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
@@ -38,6 +38,7 @@ class SofabatonIndexSensor(SensorEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=self._entry.data[CONF_NAME],
+            model=get_hub_model(self._entry),
         )
 
     async def async_added_to_hass(self) -> None:

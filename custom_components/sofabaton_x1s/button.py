@@ -18,7 +18,7 @@ from .const import (
     signal_client,
     signal_hub,
 )
-from .hub import SofabatonHub
+from .hub import SofabatonHub, get_hub_model
 from .lib.protocol_const import ButtonName  # your proxy enum
 
 _LOGGER = logging.getLogger(__name__)
@@ -82,6 +82,7 @@ class SofabatonFindRemoteButton(ButtonEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=self._entry.data[CONF_NAME],
+            model=get_hub_model(self._entry),
         )
 
     async def async_added_to_hass(self) -> None:
@@ -132,6 +133,7 @@ class SofabatonDynamicButton(ButtonEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
             name=self._entry.data[CONF_NAME],
+            model=get_hub_model(self._entry),
         )
 
     async def async_added_to_hass(self) -> None:
