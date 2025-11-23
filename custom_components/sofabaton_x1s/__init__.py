@@ -7,13 +7,28 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
-from .const import DOMAIN, PLATFORMS, DEFAULT_PROXY_UDP_PORT, DEFAULT_HUB_LISTEN_BASE, CONF_MAC, CONF_PROXY_ENABLED, CONF_HEX_LOGGING_ENABLED
+from .const import (
+    DOMAIN,
+    PLATFORMS,
+    DEFAULT_PROXY_UDP_PORT,
+    DEFAULT_HUB_LISTEN_BASE,
+    CONF_MAC,
+    CONF_PROXY_ENABLED,
+    CONF_HEX_LOGGING_ENABLED,
+)
+from .diagnostics import (
+    async_disable_hex_logging_capture,
+    async_setup_diagnostics,
+    async_teardown_diagnostics,
+)
 from .hub import SofabatonHub
 
 _LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    async_setup_diagnostics(hass)
+
     data = entry.data
     opts = entry.options
 
@@ -74,7 +89,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, "fetch_device_commands")
+            async_teardown_diagnostics(hass)
             hass.data.pop(DOMAIN)
+        async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
             await hub.async_stop()
     return unload_ok
