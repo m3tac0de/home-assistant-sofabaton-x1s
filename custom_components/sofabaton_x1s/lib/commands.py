@@ -9,6 +9,8 @@ from .protocol_const import (
     OP_DEVBTN_EXTRA,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
+    OP_DEVBTN_PAGE_ALT1,
+    OP_DEVBTN_PAGE_ALT2,
     OP_DEVBTN_TAIL,
 )
 
@@ -45,6 +47,16 @@ class DeviceCommandAssembler:
         return self._buffers[dev_id]
 
     def _data_offset(self, opcode: int) -> int:
+        """Return the start offset for command data within a frame payload."""
+
+        # Some hubs send command pages using slightly different layouts. In
+        # particular, opcodes 0xF75D and 0xA35D place the device ID and command
+        # records two bytes earlier than the typical DEVBTN_* frames. Account
+        # for this to avoid trimming off the first record (e.g. the "Stop"
+        # command in the newly observed response).
+        if opcode in (OP_DEVBTN_PAGE_ALT1, OP_DEVBTN_PAGE_ALT2):
+            return 4
+
         return 6
 
     def feed(
@@ -92,11 +104,30 @@ def _decode_label(label_bytes: bytes) -> str:
         trimmed = trimmed[4:]
 
     trimmed = trimmed.rstrip(b"\x00")
+    if not trimmed:
+        return ""
+
+    # Modern hubs sometimes send labels as plain ASCII instead of UTF-16.
+    if b"\x00" not in trimmed:
+        try:
+            ascii_label = trimmed.decode("ascii").strip()
+            if ascii_label:
+                return ascii_label
+        except UnicodeDecodeError:
+            pass
+
     if len(trimmed) % 2:
         trimmed += b"\x00"
 
     try:
-        return trimmed.decode("utf-16-be").strip("\x00")
+        utf_label = trimmed.decode("utf-16-be").strip("\x00")
+        if utf_label:
+            return utf_label
+    except UnicodeDecodeError:
+        pass
+
+    try:
+        return trimmed.decode("latin-1", errors="ignore").strip("\x00")
     except UnicodeDecodeError:
         return ""
 
@@ -105,6 +136,8 @@ def _matches_control_block(block: bytes) -> bool:
     if len(block) != 7:
         return False
     if block[0] in (0x03, 0x0D):
+        return True
+    if block[:5] == b"\x00\x00\x00\x00\x00":
         return True
     return block[:6] == b"\x1a\x00\x00\x00\x00\x17"
 
@@ -127,6 +160,8 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
                 continue
 
             label_start = control_start + 7
+            if control_block[:5] == b"\x00\x00\x00\x00\x00":
+                label_start -= 1
             label = _decode_label(chunk[label_start:])
             if not label:
                 continue
