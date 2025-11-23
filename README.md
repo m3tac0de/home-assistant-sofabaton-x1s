@@ -1,15 +1,17 @@
-# Sofabaton X1S – Home Assistant Custom Integration
+# Sofabaton X1/X1S – Home Assistant Custom Integration
 
-Control your Sofabaton **X1S** hub directly from Home Assistant using 100% local APIs.
+Control your Sofabaton **X1** or **X1S** hub directly from Home Assistant using 100% local APIs.
+
+**Compatibility note:** the X1 and X1S share the same local API surface. The integration is developed and tested primarily on the X1S, but X1 users should see identical behavior; please report any differences you encounter.
 
 This integration:
 
-1. connects to your *real* X1S hub (the physical one),
+1. connects to your *real* X1/X1S hub (the physical one),
 2. exposes a *virtual* hub so the official Sofabaton app can still connect (the Sofabaton hub allows a single client at a time only),
 3. enables any command to be sent directly from Home Assistant
 
-Because the Sofabaton X1S hub only allows **one client at a time**, the integration sits in the middle and lets HA “see” the hub while still allowing the official app to connect.
-So essentially: this integration is a proxy service for the Sofabaton X1S hub and Home Assistant is an internal client to that proxy.
+Because the Sofabaton X1/X1S hub only allows **one client at a time**, the integration sits in the middle and lets HA “see” the hub while still allowing the official app to connect.
+So essentially: this integration is a proxy service for the Sofabaton X1/X1S hub and Home Assistant is an internal client to that proxy.
 
 ---
 
@@ -47,7 +49,7 @@ So essentially: this integration is a proxy service for the Sofabaton X1S hub an
 - 🟢 **Connection sensors**:
   - “hub connected” (are we connected to the physical hub?)
   - “app connected” / “proxy client connected” (is the official app using our virtual hub?)
-- 🛰 **X1S Proxy**:
+- 🛰 **X1/X1S Proxy**:
   - although enabled by default, the proxy capability (the ability for the official app to connect while this integration is running) can be disabled in device settings (it will then no longer advertise and bind to a UDP port)
 
 ---
@@ -85,7 +87,7 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
 ## Requirements
 
 - Home Assistant 2024.x or newer (async config flow, options flow)
-- A Sofabaton **X1S** hub on the same network, advertising `_x1hub._udp.local.`
+- A Sofabaton **X1** or **X1S** hub on the same network, advertising `_x1hub._udp.local.`
 - Your HA instance must be able to open TCP ports (so the real hub can connect to our integration)
 - Your HA instance must be able to open UDP ports (optional; only if you want the official app to be able to connect to the hub while this integration is running)
 
@@ -96,13 +98,13 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
 ### Option 1 – HACS (recommended)
 
 1. Open **HACS → Integrations**.
-2. Search for **Sofabaton X1S** and download it.
+2. Search for **Sofabaton X1S** and download it (the listing name uses X1S but works for both X1 and X1S hubs).
 3. **Restart Home Assistant.**
 4. Go to **Settings → Devices & Services.**
-5. You should see **Sofabaton X1S** discovered automatically. Click **Add/Configure**.
+5. You should see **Sofabaton X1/X1S** discovered automatically. Click **Add/Configure**.
 6. Confirm the discovered hub or choose manual entry to provide its IP and port.
 
-If not discovered automatically: Click **Add Integration**, search for **Sofabaton X1S**, and enter the IP/Port manually.
+If not discovered automatically: Click **Add Integration**, search for **Sofabaton X1S** (works for both hub models), and enter the IP/Port manually.
 
 ---
 
@@ -118,7 +120,7 @@ If not discovered automatically: Click **Add Integration**, search for **Sofabat
 
 ## Configuration flow (what you’ll see)
 
-1. HA discovers `Sofabaton X1S` via mDNS and asks you to confirm, **or** you start the flow manually.
+1. HA discovers `Sofabaton X1/X1S` via mDNS and asks you to confirm, **or** you start the flow manually.
 2. If you started the flow manually, you provide the hub’s IP, port, and a name for the entry.
 3. Global proxy options are shown (proxy base port, hub-listen base). Defaults usually work.
 6. The integration creates:
