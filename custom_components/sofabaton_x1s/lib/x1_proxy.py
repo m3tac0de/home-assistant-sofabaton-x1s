@@ -438,6 +438,8 @@ class X1Proxy:
     
     def _notify_hub_state(self, connected: bool) -> None:
         self._hub_connected = connected
+        if connected and self._proxy_enabled and not self._adv_started:
+            self._start_discovery()
         for cb in self._hub_state_listeners:
             try:
                 cb(connected)
