@@ -291,7 +291,7 @@ class X1CatalogActivityHandler(BaseFrameHandler):
             proxy.state.set_hint(None)
 
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
-        active_flag = payload[10] if len(payload) >= 11 else 0
+        active_flag = frame.raw[35] if len(frame.raw) > 35 else 0
         activity_label = payload[32:].split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
         is_active = active_flag == 1
 
