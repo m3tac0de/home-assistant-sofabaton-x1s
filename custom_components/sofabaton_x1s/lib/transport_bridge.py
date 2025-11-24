@@ -7,10 +7,10 @@ import socket
 import struct
 import threading
 import time
-import ipaddress
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
+from .notify_demuxer import get_notify_demuxer
 
 log = logging.getLogger("x1proxy.transport")
 
@@ -74,9 +74,6 @@ def _enable_keepalive(
         pass
 
 
-NOTIFY_ME_PAYLOAD = bytes.fromhex("a55a00c1c0")
-
-
 class TransportBridge:
     """Own TCP/UDP sockets and bridge app↔hub traffic.
 
@@ -91,6 +88,7 @@ class TransportBridge:
         proxy_udp_port: int,
         hub_listen_base: int,
         *,
+        proxy_id: str,
         mdns_instance: str,
         mdns_txt: Dict[str, str],
         enable_broadcast_listener: bool = False,
@@ -102,6 +100,7 @@ class TransportBridge:
         self.real_hub_udp_port = int(real_hub_udp_port)
         self.proxy_udp_port = int(proxy_udp_port)
         self.hub_listen_base = int(hub_listen_base)
+        self.proxy_id = proxy_id
         self.ka_idle = int(ka_idle)
         self.ka_interval = int(ka_interval)
         self.ka_count = int(ka_count)
@@ -110,7 +109,6 @@ class TransportBridge:
         self._broadcast_listener_enabled = bool(enable_broadcast_listener)
 
         self._stop = threading.Event()
-        self._notify_stop = threading.Event()
         self._hub_sock: Optional[socket.socket] = None
         self._app_sock: Optional[socket.socket] = None
         self._hub_lock = threading.Lock()
@@ -118,11 +116,9 @@ class TransportBridge:
 
         self._udp_sock: Optional[socket.socket] = None
         self._udp_thr: Optional[threading.Thread] = None
-        self._notify_sock: Optional[socket.socket] = None
-        self._notify_thr: Optional[threading.Thread] = None
         self._claim_thr: Optional[threading.Thread] = None
         self._bridge_thr: Optional[threading.Thread] = None
-        self._last_notify_reply: Dict[Tuple[str, int], float] = {}
+        self._notify_registered = False
 
         self._hub_listen_port: Optional[int] = None
         self._local_to_hub = bytearray()
@@ -173,10 +169,13 @@ class TransportBridge:
     def enable_proxy(self) -> None:
         self._proxy_enabled = True
         log.info("[PROXY] enabled")
+        if self._broadcast_listener_enabled and not self._notify_registered:
+            self._register_demuxer()
 
     def disable_proxy(self) -> None:
         self._proxy_enabled = False
         log.info("[PROXY] disabled (existing TCP sessions stay alive)")
+        self._stop_notify_listener()
 
     def can_issue_commands(self) -> bool:
         return not self.is_client_connected
@@ -189,7 +188,6 @@ class TransportBridge:
     # ------------------------------------------------------------------
     def start(self, *, udp_port: Optional[int] = None) -> None:
         self._stop.clear()
-        self._notify_stop.clear()
         if udp_port is not None:
             self.proxy_udp_port = udp_port
         self._udp_sock = self._open_udp_listener()
@@ -199,14 +197,7 @@ class TransportBridge:
         self._udp_thr.start()
 
         if self._broadcast_listener_enabled and self._proxy_enabled:
-            self._notify_sock = self._open_notify_listener()
-            if self._notify_sock is not None:
-                self._notify_thr = threading.Thread(
-                    target=self._notify_loop,
-                    name="x1proxy-broadcast",
-                    daemon=True,
-                )
-                self._notify_thr.start()
+            self._register_demuxer()
 
         self._claim_thr = threading.Thread(
             target=self._hub_guard_loop, name="x1proxy-hub-guard", daemon=True
@@ -286,39 +277,6 @@ class TransportBridge:
         s.close()
         raise OSError(f"could not bind UDP near {base}: {last_err}")
 
-    def _compute_broadcast_ip(self) -> str:
-        local_ip = _route_local_ip(self.real_hub_ip)
-        try:
-            iface = ipaddress.ip_interface(f"{local_ip}/24")
-            return str(iface.network.broadcast_address)
-        except ValueError:
-            return "255.255.255.255"
-
-    def _open_notify_listener(self) -> Optional[socket.socket]:
-        broadcast_ip = self._compute_broadcast_ip()
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        try:
-            s.bind((broadcast_ip, self.real_hub_udp_port))
-        except OSError as err:
-            log.warning(
-                "[UDP][BCST] failed to bind %s:%d: %s",
-                broadcast_ip,
-                self.real_hub_udp_port,
-                err,
-            )
-            s.close()
-            return None
-
-        s.settimeout(1.0)
-        log.info(
-            "[UDP][BCST] bound on %s:%d for NOTIFY_ME",
-            broadcast_ip,
-            self.real_hub_udp_port,
-        )
-        return s
-
     def _udp_loop(self) -> None:
         if self._udp_sock is None:
             return
@@ -355,90 +313,14 @@ class TransportBridge:
                 daemon=True,
             ).start()
 
-    def _notify_loop(self) -> None:
-        sock = self._notify_sock
-        if sock is None:
-            return
-
-        log.info(
-            "[UDP][BCST] listening for NOTIFY_ME on %s:%d",
-            sock.getsockname()[0],
-            self.real_hub_udp_port,
+    def _register_demuxer(self) -> None:
+        get_notify_demuxer().register_proxy(
+            proxy_id=self.proxy_id,
+            real_hub_ip=self.real_hub_ip,
+            mdns_txt=self._mdns_txt,
+            call_me_port=self.proxy_udp_port,
         )
-
-        while not self._stop.is_set() and not self._notify_stop.is_set():
-            if self.is_client_connected:
-                break
-
-            try:
-                pkt, (src_ip, src_port) = sock.recvfrom(2048)
-            except socket.timeout:
-                continue
-            except OSError:
-                break
-
-            if pkt != NOTIFY_ME_PAYLOAD:
-                continue
-
-            if not self._proxy_enabled:
-                continue
-
-            now = time.monotonic()
-            last = self._last_notify_reply.get((src_ip, src_port), 0.0)
-            if now - last < 2.0:
-                continue
-
-            self._last_notify_reply[(src_ip, src_port)] = now
-            reply = self._build_notify_reply(src_ip)
-            if reply is None:
-                continue
-
-            log.info(
-                "[UDP][BCST] NOTIFY_ME from %s:%d (replying)",
-                src_ip,
-                src_port,
-            )
-            try:
-                sock.sendto(reply, (src_ip, src_port))
-            except OSError:
-                log.exception("[UDP][BCST] failed to send NOTIFY_ME reply")
-
-    def _build_notify_reply(self, app_ip: str) -> Optional[bytes]:
-        try:
-            mac_raw = (
-                self._mdns_txt.get("MAC")
-                or self._mdns_txt.get("mac")
-                or self._mdns_txt.get("macaddress")
-            )
-            mac_bytes = (
-                bytes.fromhex(str(mac_raw).replace(":", "").replace("-", ""))
-                if mac_raw
-                else b""
-            )
-        except ValueError:
-            mac_bytes = b""
-
-        if len(mac_bytes) < 6:
-            mac_bytes = mac_bytes.ljust(6, b"\x00")
-        else:
-            mac_bytes = mac_bytes[:6]
-
-        try:
-            advertised_ip = _route_local_ip(app_ip)
-            ip_bytes = socket.inet_aton(advertised_ip)
-        except OSError:
-            return None
-
-        payload = mac_bytes + ip_bytes + struct.pack(">H", self.proxy_udp_port)
-        frame = bytes([SYNC0, SYNC1, 0x00, 0xC2]) + payload
-        frame += bytes([_sum8(frame)])
-        log.info(
-            "[UDP][BCST] reply host=%s:%d mac=%s",
-            socket.inet_ntoa(ip_bytes),
-            self.proxy_udp_port,
-            mac_bytes.hex(":"),
-        )
-        return frame
+        self._notify_registered = True
 
     def _hub_guard_loop(self) -> None:
         while not self._stop.is_set():
@@ -649,11 +531,7 @@ class TransportBridge:
                 log.exception("client state listener failed")
 
     def _stop_notify_listener(self) -> None:
-        self._notify_stop.set()
-        if self._notify_sock is not None:
-            try:
-                self._notify_sock.close()
-            except Exception:
-                pass
-            self._notify_sock = None
+        if self._notify_registered:
+            get_notify_demuxer().unregister_proxy(self.proxy_id)
+            self._notify_registered = False
 
