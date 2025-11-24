@@ -170,16 +170,6 @@ class TransportBridge:
     def send_local(self, payload: bytes) -> None:
         self._local_to_hub.extend(payload)
 
-    def handle_app_call_me(self, app_addr: Tuple[str, int]) -> None:
-        if not self._proxy_enabled:
-            return
-        threading.Thread(
-            target=self._handle_app_session,
-            args=(app_addr,),
-            name="x1proxy-app-connect",
-            daemon=True,
-        ).start()
-
     # ------------------------------------------------------------------
     # Networking lifecycle
     # ------------------------------------------------------------------
@@ -299,7 +289,12 @@ class TransportBridge:
                 app_ip,
                 app_port,
             )
-            self.handle_app_call_me((app_ip, app_port))
+            threading.Thread(
+                target=self._handle_app_session,
+                args=((app_ip, app_port),),
+                name="x1proxy-app-connect",
+                daemon=True,
+            ).start()
 
     def _hub_guard_loop(self) -> None:
         while not self._stop.is_set():
