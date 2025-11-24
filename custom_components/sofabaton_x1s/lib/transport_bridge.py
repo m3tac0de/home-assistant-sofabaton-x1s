@@ -524,6 +524,8 @@ class TransportBridge:
     def _notify_client_state(self, connected: bool) -> None:
         if connected:
             self._stop_notify_listener()
+        elif self._broadcast_listener_enabled and self._proxy_enabled:
+            self._register_demuxer()
         for cb in self._client_state_cbs:
             try:
                 cb(connected)
