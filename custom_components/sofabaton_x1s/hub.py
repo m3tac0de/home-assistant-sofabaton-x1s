@@ -97,6 +97,7 @@ class SofabatonHub:
             real_hub_udp_port=self.port,
             mdns_instance=self.name,
             mdns_txt=self.mdns_txt,
+            proxy_id=self.entry_id,
             diag_dump=self.hex_logging_enabled,
             diag_parse=True,
             proxy_udp_port=self._proxy_udp_port,

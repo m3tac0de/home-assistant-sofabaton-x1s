@@ -170,6 +170,7 @@ class X1Proxy:
         mdns_instance: str = "X1-HUB-PROXY",
         mdns_host: Optional[str] = None,
         mdns_txt: Optional[Dict[str, str]] = None,
+        proxy_id: Optional[str] = None,
         proxy_enabled: bool = True,
         notify_broadcasts: bool = False,
         diag_dump: bool = True,
@@ -185,6 +186,7 @@ class X1Proxy:
         self.mdns_instance = _normalize_mdns_instance(mdns_instance)
         self.mdns_host = mdns_host or (self.mdns_instance + ".local")
         self.mdns_txt = mdns_txt or {}
+        self.proxy_id = proxy_id or self.mdns_instance
         self.diag_dump = bool(diag_dump)
         self.diag_parse = bool(diag_parse)
         # deframers
@@ -207,6 +209,7 @@ class X1Proxy:
             hub_listen_base,
             mdns_instance=self.mdns_instance,
             mdns_txt=self.mdns_txt,
+            proxy_id=self.proxy_id,
             enable_broadcast_listener=notify_broadcasts,
             ka_idle=ka_idle,
             ka_interval=ka_interval,
