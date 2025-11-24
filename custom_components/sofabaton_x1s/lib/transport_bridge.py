@@ -280,7 +280,8 @@ class TransportBridge:
                 pkt, (src_ip, src_port) = sock.recvfrom(2048)
             except OSError:
                 break
-            if len(pkt) < 16 or pkt[0] != SYNC0 or pkt[1] != SYNC1:
+            pkt_len = len(pkt)
+            if pkt_len < 4 or pkt[0] != SYNC0 or pkt[1] != SYNC1:
                 continue
             op = (pkt[2] << 8) | pkt[3]
             if op != OP_CALL_ME:
@@ -288,17 +289,25 @@ class TransportBridge:
             try:
                 app_ip = socket.inet_ntoa(pkt[10:14])
                 app_port = struct.unpack(">H", pkt[14:16])[0]
+                advertised = True
             except Exception:
-                continue
+                app_ip, app_port, advertised = src_ip, src_port, False
             if not self._proxy_enabled:
                 continue
-            log.info(
-                "[UDP] APP CALL_ME from %s:%d -> app tcp %s:%d",
-                src_ip,
-                src_port,
-                app_ip,
-                app_port,
-            )
+            if advertised:
+                log.info(
+                    "[UDP] APP CALL_ME from %s:%d -> app tcp %s:%d",
+                    src_ip,
+                    src_port,
+                    app_ip,
+                    app_port,
+                )
+            else:
+                log.info(
+                    "[UDP] APP CALL_ME from %s:%d (no payload; replying to source)",
+                    src_ip,
+                    src_port,
+                )
             self.handle_app_call_me((app_ip, app_port))
 
     def _hub_guard_loop(self) -> None:
