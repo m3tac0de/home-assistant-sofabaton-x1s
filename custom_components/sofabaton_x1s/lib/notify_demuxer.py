@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+import ipaddress
 import socket
-import struct
 import threading
 import time
 from dataclasses import dataclass
@@ -13,10 +13,6 @@ from .protocol_const import SYNC0, SYNC1
 log = logging.getLogger("x1proxy.notify")
 
 NOTIFY_ME_PAYLOAD = bytes.fromhex("a55a00c1c0")
-
-
-def _sum8(b: bytes) -> int:
-    return sum(b) & 0xFF
 
 
 def _route_local_ip(peer_ip: str) -> str:
@@ -31,6 +27,15 @@ def _route_local_ip(peer_ip: str) -> str:
             s.close()
         except Exception:
             pass
+
+
+def _broadcast_ip(peer_ip: str) -> str:
+    try:
+        addr = ipaddress.ip_address(peer_ip)
+        network = ipaddress.ip_network(f"{addr}/24", strict=False)
+        return str(network.broadcast_address)
+    except ValueError:
+        return "255.255.255.255"
 
 
 @dataclass(frozen=True)
@@ -152,26 +157,26 @@ class NotifyDemuxer:
                 if now - last < 2.0:
                     continue
 
-                reply = self._build_notify_reply(reg, src_ip)
+                reply = self._build_notify_reply(reg)
                 if reply is None:
                     continue
 
                 self._last_reply[key] = now
+                dest_ip = _broadcast_ip(src_ip)
                 log.info(
-                    "[DEMUX] NOTIFY_ME from %s:%d -> proxy=%s CALL_ME=%d",
+                    "[DEMUX] NOTIFY_ME from %s:%d -> proxy=%s CALL_ME=%d broadcast=%s",
                     src_ip,
                     src_port,
                     reg.proxy_id,
                     reg.call_me_port,
+                    dest_ip,
                 )
                 try:
-                    sock.sendto(reply, (src_ip, src_port))
+                    sock.sendto(reply, (dest_ip, src_port))
                 except OSError:
                     log.exception("[DEMUX] failed to send NOTIFY_ME reply for %s", reg.proxy_id)
 
-    def _build_notify_reply(
-        self, reg: NotifyRegistration, app_ip: str
-    ) -> Optional[bytes]:
+    def _build_notify_reply(self, reg: NotifyRegistration) -> Optional[bytes]:
         try:
             mac_raw = (
                 reg.mdns_txt.get("MAC")
@@ -191,21 +196,32 @@ class NotifyDemuxer:
         else:
             mac_bytes = mac_bytes[:6]
 
-        try:
-            advertised_ip = _route_local_ip(app_ip)
-            ip_bytes = socket.inet_aton(advertised_ip)
-        except OSError:
-            return None
+        name = (
+            reg.mdns_txt.get("NAME")
+            or reg.mdns_txt.get("name")
+            or reg.mdns_txt.get("Name")
+            or "X1 Hub"
+        ).encode("utf-8")
 
-        payload = mac_bytes + ip_bytes + struct.pack(">H", reg.call_me_port)
-        frame = bytes([SYNC0, SYNC1, 0x00, 0xC2]) + payload
-        frame += bytes([_sum8(frame)])
+        name_bytes = name[:14].ljust(14, b"\x00")
+
+        version_block = bytes.fromhex("640220221120050100")
+        status_byte = b"\x45"
+
+        frame = (
+            bytes([SYNC0, SYNC1, 0x1D])
+            + mac_bytes
+            + status_byte
+            + version_block
+            + name_bytes
+            + b"\xBE"
+        )
+
         log.info(
-            "[DEMUX][REPLY] proxy=%s host=%s:%d mac=%s",
+            "[DEMUX][REPLY] proxy=%s mac=%s name=%s",
             reg.proxy_id,
-            socket.inet_ntoa(ip_bytes),
-            reg.call_me_port,
             mac_bytes.hex(":"),
+            name.decode("utf-8", "ignore"),
         )
         return frame
 
