@@ -7,9 +7,9 @@
       },
       "manual": {
         "title": "Manual hub setup",
-        "description": "Enter the IP address and port of your Sofabaton hub. The default port is 8102.",
+        "description": "Provide a name, IP address, and port for your Sofabaton hub. The name is broadcast via mDNS. The default port is 8102.",
         "data": {
-          "name": "Entry name (for Home Assistant)",
+          "name": "Hub name (broadcast on your network)",
           "host": "Hub IP address",
           "port": "Hub TCP port"
         }
