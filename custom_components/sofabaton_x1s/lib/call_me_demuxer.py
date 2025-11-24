@@ -75,6 +75,11 @@ class CallMeDemuxer:
     def register(self, registration: CallMeRegistration) -> Callable[[], None]:
         with self._lock:
             self._registrations[registration.key] = registration
+            log.info(
+                "[UDP] registered CALL_ME responder %s (mac=%s)",
+                registration.name,
+                registration.mac.hex(":"),
+            )
             if self._thread is None or not self._thread.is_alive():
                 self._start()
 
@@ -89,6 +94,7 @@ class CallMeDemuxer:
             if not self._registrations:
                 self._stop.set()
                 self._close_sock()
+                log.info("[UDP] no CALL_ME registrations remain; listener stopping")
 
     def _start(self) -> None:
         self._stop.clear()
@@ -142,20 +148,45 @@ class CallMeDemuxer:
             try:
                 pkt, (src_ip, src_port) = sock.recvfrom(2048)
             except OSError:
+                log.info("[UDP] broadcast listener socket closed")
                 break
 
-            if len(pkt) < 16 or pkt[0] != SYNC0 or pkt[1] != SYNC1:
+            pkt_len = len(pkt)
+            if pkt_len < 16 or pkt[0] != SYNC0 or pkt[1] != SYNC1:
+                log.debug(
+                    "[UDP] ignored packet len=%d from %s:%d (sync/size)",
+                    pkt_len,
+                    src_ip,
+                    src_port,
+                )
                 continue
             op = (pkt[2] << 8) | pkt[3]
             if op != OP_CALL_ME:
+                log.debug(
+                    "[UDP] ignored opcode 0x%04X from %s:%d", op, src_ip, src_port
+                )
                 continue
 
             try:
                 app_ip = socket.inet_ntoa(pkt[10:14])
                 app_port = struct.unpack(">H", pkt[14:16])[0]
             except Exception:
+                log.debug(
+                    "[UDP] failed to parse CALL_ME from %s:%d (len=%d)",
+                    src_ip,
+                    src_port,
+                    pkt_len,
+                    exc_info=True,
+                )
                 continue
 
+            log.info(
+                "[UDP] CALL_ME broadcast from %s:%d advertising app %s:%d",
+                src_ip,
+                src_port,
+                app_ip,
+                app_port,
+            )
             self._handle_call_me(app_ip, app_port, src_ip, src_port)
 
         self._close_sock()
@@ -167,10 +198,12 @@ class CallMeDemuxer:
 
         for reg in regs:
             if not reg.is_enabled():
+                log.debug("[UDP] skipping %s (disabled)", reg.name)
                 continue
 
             key = (app_ip, app_port, reg.key)
             if now - self._last_sent.get(key, 0) < self.throttle:
+                log.debug("[UDP] throttling CALL_ME reply for %s", reg.name)
                 continue
 
             try:
@@ -185,6 +218,7 @@ class CallMeDemuxer:
                 continue
 
             if udp_port <= 0:
+                log.info("[UDP] skipping CALL_ME reply for %s (invalid port %d)", reg.name, udp_port)
                 continue
 
             my_ip = _route_local_ip(src_ip)
