@@ -19,7 +19,8 @@
         "description": "These ports are used by the local proxy that emulates the hub. Most users can keep the defaults. Change them only if there is a conflict. Note that this setting currently applies to all configured hubs. The ports represents a base value, and the integration will try to find an open port within 32 ports of what you enter here.",
         "data": {
           "proxy_udp_port": "Proxy UDP base port",
-          "hub_listen_base": "Hub TCP listen base"
+          "hub_listen_base": "Hub TCP listen base",
+          "broadcast_call_me": "Enable iOS advertising (responds to CALL_ME on 8102)"
         }
       },
       "zeroconf_confirm": {
@@ -35,7 +36,8 @@
         "description": "{explain}",
         "data": {
           "proxy_udp_port": "Proxy UDP base port",
-          "hub_listen_base": "Hub TCP listen base"
+          "hub_listen_base": "Hub TCP listen base",
+          "broadcast_call_me": "Enable iOS advertising (responds to CALL_ME on 8102)"
         }
       }
     }

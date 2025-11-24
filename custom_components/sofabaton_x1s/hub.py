@@ -10,6 +10,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     CONF_HEX_LOGGING_ENABLED,
+    CONF_IOS_ADVERTISING,
     CONF_PROXY_ENABLED,
     signal_activity,
     signal_client,
@@ -49,6 +50,7 @@ class SofabatonHub:
         hub_listen_base: int,
         proxy_enabled: bool,
         hex_logging_enabled: bool,
+        broadcast_call_me: bool,
     ) -> None:
         self.hass = hass
         self.entry_id = entry_id
@@ -68,6 +70,7 @@ class SofabatonHub:
         self.hub_connected: bool = False
         self.proxy_enabled: bool = proxy_enabled
         self.hex_logging_enabled: bool = hex_logging_enabled
+        self.broadcast_call_me: bool = broadcast_call_me
         # store mac so service can find us by mac
         self.mac = mdns_txt.get("MAC") or mdns_txt.get("mac") or None
 
@@ -100,6 +103,8 @@ class SofabatonHub:
             proxy_udp_port=self._proxy_udp_port,
             hub_listen_base=self._hub_listen_base,
             proxy_enabled=self.proxy_enabled,
+            broadcast_listener=self.broadcast_call_me,
+            proxy_id=self.entry_id,
         )
 
         proxy.on_activity_change(self._on_activity_change)
@@ -126,34 +131,39 @@ class SofabatonHub:
         port: int | str,
         proxy_udp_port: int | str,
         hub_listen_base: int | str,
+        broadcast_call_me: bool | str,
     ) -> None:
         # normalize types first
         port = port
         proxy_udp_port = proxy_udp_port
         hub_listen_base = hub_listen_base
+        broadcast_call_me = bool(broadcast_call_me)
 
         changed = (
             str(host) != str(self.host)
             or str(port) != str(self.port)
             or str(proxy_udp_port) != str(self._proxy_udp_port)
             or str(hub_listen_base) != str(self._hub_listen_base)
+            or bool(broadcast_call_me) != bool(self.broadcast_call_me)
         )
         if not changed:
             return
 
         _LOGGER.debug(
-            "[%s] Updating hub settings to %s:%s (proxy_udp_port=%s, hub_listen_base=%s)",
+            "[%s] Updating hub settings to %s:%s (proxy_udp_port=%s, hub_listen_base=%s, ios_advertising=%s)",
             self.entry_id,
             self.host,
             self.port,
             proxy_udp_port,
             hub_listen_base,
+            broadcast_call_me,
         )
 
         self.host = host
         self.port = port
         self._proxy_udp_port = proxy_udp_port
         self._hub_listen_base = hub_listen_base
+        self.broadcast_call_me = broadcast_call_me
 
         await self.async_stop()
         self._proxy = self._create_proxy()
@@ -456,6 +466,25 @@ class SofabatonHub:
             async_disable_hex_logging_capture(self.hass, self.entry_id)
         self.hass.loop.call_soon_threadsafe(
             self._async_update_options, CONF_HEX_LOGGING_ENABLED, enable
+        )
+
+    async def async_set_ios_advertising(self, enable: bool) -> None:
+        if not self.proxy_enabled:
+            _LOGGER.debug(
+                "[%s] Ignoring iOS advertising change while proxy disabled", self.entry_id
+            )
+            return
+
+        if bool(enable) == bool(self.broadcast_call_me):
+            return
+
+        _LOGGER.debug("[%s] Setting iOS advertising enabled=%s", self.entry_id, enable)
+        self.broadcast_call_me = bool(enable)
+        await self.hass.async_add_executor_job(
+            self._proxy.set_broadcast_listener, self.broadcast_call_me
+        )
+        self.hass.loop.call_soon_threadsafe(
+            self._async_update_options, CONF_IOS_ADVERTISING, self.broadcast_call_me
         )
 
     def get_buttons_for_current(self) -> tuple[list[int], bool]:

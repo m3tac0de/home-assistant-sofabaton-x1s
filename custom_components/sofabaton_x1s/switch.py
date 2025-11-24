@@ -1,4 +1,3 @@
-# custom_components/sofabaton_x1s/switch.py
 from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity
@@ -21,6 +20,7 @@ async def async_setup_entry(
     async_add_entities(
         [
             SofabatonProxySwitch(hub, entry),
+            SofabatonIosAdvertisingSwitch(hub, entry),
             SofabatonHexLoggingSwitch(hub, entry),
         ]
     )
@@ -55,6 +55,42 @@ class SofabatonProxySwitch(SwitchEntity):
     async def async_turn_off(self, **kwargs) -> None:
         await self._hub.async_set_proxy_enabled(False)
         self.async_write_ha_state()
+
+
+class SofabatonIosAdvertisingSwitch(SwitchEntity):
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.CONFIG  # ← this makes it show under "Configuration"
+
+    def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
+        self._hub = hub
+        self._entry = entry
+        self._attr_unique_id = f"{entry.data[CONF_MAC]}_ios_advertising"
+        self._attr_name = f"{entry.data[CONF_NAME]} iOS advertising"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
+            name=self._entry.data[CONF_NAME],
+            model=get_hub_model(self._entry),
+        )
+
+    @property
+    def available(self) -> bool:
+        return self._hub.proxy_enabled
+
+    @property
+    def is_on(self) -> bool:
+        return self._hub.broadcast_call_me
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self._hub.async_set_ios_advertising(True)
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self._hub.async_set_ios_advertising(False)
+        self.async_write_ha_state()
+
 
 class SofabatonHexLoggingSwitch(SwitchEntity):
     _attr_should_poll = False
