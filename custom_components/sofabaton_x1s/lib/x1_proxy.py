@@ -54,6 +54,10 @@ from .protocol_const import (
 )
 from .state_helpers import ActivityCache, BurstScheduler
 from .transport_bridge import TransportBridge
+from .call_me_demuxer import (
+    notify_call_me_client_state,
+    register_call_me_proxy,
+)
 
 # ============================================================================
 # Utilities
@@ -176,6 +180,9 @@ class X1Proxy:
         ka_idle: int = 30,
         ka_interval: int = 10,
         ka_count: int = 3,
+        *,
+        broadcast_listener: bool = False,
+        proxy_id: Optional[str] = None,
     ) -> None:
         self.real_hub_ip = real_hub_ip
         self.real_hub_udp_port = int(real_hub_udp_port)
@@ -223,6 +230,9 @@ class X1Proxy:
 
         self._zc = None  # type: ignore[assignment]
         self._mdns_info = None  # type: ignore[assignment]
+        self._broadcast_listener_enabled = bool(broadcast_listener)
+        self._call_me_unregister: Optional[callable] = None
+        self._proxy_id = proxy_id or self.mdns_instance
 
     # ---------------------------------------------------------------------
     # Local command API
@@ -245,7 +255,17 @@ class X1Proxy:
         self._proxy_enabled = False
         self.transport.disable_proxy()
         self._stop_discovery()
-    
+
+    def set_broadcast_listener(self, enable: bool) -> None:
+        enable = bool(enable)
+        if enable == self._broadcast_listener_enabled:
+            return
+        self._broadcast_listener_enabled = enable
+        if enable:
+            self._register_broadcast_listener()
+            return
+        self._unregister_broadcast_listener()
+
     def set_diag_dump(self, enable: bool) -> None:
         self.diag_dump = bool(enable)
         log.info("[PROXY] hex logging %s", "enabled" if enable else "disabled")
@@ -448,6 +468,8 @@ class X1Proxy:
 
     def _notify_client_state(self, connected: bool) -> None:
         self._client_connected = connected
+        if connected and self._broadcast_listener_enabled:
+            notify_call_me_client_state(True)
         for cb in self._client_state_listeners:
             try:
                 cb(connected)
@@ -562,14 +584,43 @@ class X1Proxy:
                 self._mdns_info = None
 
         self._adv_started = False
+
+    def _register_broadcast_listener(self) -> None:
+        if not self._broadcast_listener_enabled:
+            return
+        if self._call_me_unregister is not None:
+            return
+        mac = self.mdns_txt.get("MAC") or self.mdns_txt.get("mac")
+        try:
+            self._call_me_unregister = register_call_me_proxy(
+                key=str(self._proxy_id),
+                name=self.mdns_instance,
+                mac=mac,
+                get_udp_port=lambda: self.transport.proxy_udp_port,
+                connect_handler=self.transport.handle_app_call_me,
+                is_enabled=lambda: self._proxy_enabled,
+            )
+        except Exception:
+            log.exception("[UDP] failed to register broadcast listener")
+
+    def _unregister_broadcast_listener(self) -> None:
+        if self._call_me_unregister is not None:
+            try:
+                self._call_me_unregister()
+            except Exception:
+                log.exception("[UDP] failed to unregister broadcast listener")
+            finally:
+                self._call_me_unregister = None
     
     def start(self) -> None:
         self.transport.start()
+        self._register_broadcast_listener()
         if self._proxy_enabled and self.transport.is_hub_connected and not self._adv_started:
             self._start_discovery()
 
     def stop(self) -> None:
         self._stop_discovery()
+        self._unregister_broadcast_listener()
         self.transport.stop()
         log.info("[STOP] proxy stopped")
 

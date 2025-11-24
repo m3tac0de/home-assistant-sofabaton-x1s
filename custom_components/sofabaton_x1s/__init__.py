@@ -12,9 +12,11 @@ from .const import (
     PLATFORMS,
     DEFAULT_PROXY_UDP_PORT,
     DEFAULT_HUB_LISTEN_BASE,
+    DEFAULT_BROADCAST_CALL_ME,
     CONF_MAC,
     CONF_PROXY_ENABLED,
     CONF_HEX_LOGGING_ENABLED,
+    CONF_BROADCAST_CALL_ME,
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
@@ -37,6 +39,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     proxy_enabled = opts.get(CONF_PROXY_ENABLED, True)
     hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
+    broadcast_call_me = opts.get(CONF_BROADCAST_CALL_ME, DEFAULT_BROADCAST_CALL_ME)
 
     hub = SofabatonHub(
         hass=hass,
@@ -49,6 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hub_listen_base=hub_listen_base,
         proxy_enabled=proxy_enabled,
         hex_logging_enabled=hex_logging_enabled,
+        broadcast_call_me=broadcast_call_me,
     )
     await hub.async_start()
 
@@ -75,12 +79,14 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     new_port = entry.data.get("port", hub.port)
     proxy_udp_port = entry.options.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
     hub_listen_base = entry.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
+    broadcast_call_me = entry.options.get(CONF_BROADCAST_CALL_ME, DEFAULT_BROADCAST_CALL_ME)
 
     await hub.async_apply_new_settings(
         host=new_host,
         port=new_port,
         proxy_udp_port=proxy_udp_port,
         hub_listen_base=hub_listen_base,
+        broadcast_call_me=broadcast_call_me,
     )
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
