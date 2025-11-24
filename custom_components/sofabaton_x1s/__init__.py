@@ -15,6 +15,7 @@ from .const import (
     CONF_MAC,
     CONF_PROXY_ENABLED,
     CONF_HEX_LOGGING_ENABLED,
+    CONF_NOTIFY_BROADCASTS,
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
@@ -34,6 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     proxy_udp_port = opts.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
     hub_listen_base = opts.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
+    notify_broadcasts = opts.get(CONF_NOTIFY_BROADCASTS, False)
 
     proxy_enabled = opts.get(CONF_PROXY_ENABLED, True)
     hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
@@ -49,6 +51,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hub_listen_base=hub_listen_base,
         proxy_enabled=proxy_enabled,
         hex_logging_enabled=hex_logging_enabled,
+        notify_broadcasts=notify_broadcasts,
     )
     await hub.async_start()
 
@@ -75,12 +78,14 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     new_port = entry.data.get("port", hub.port)
     proxy_udp_port = entry.options.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
     hub_listen_base = entry.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
+    notify_broadcasts = entry.options.get(CONF_NOTIFY_BROADCASTS, False)
 
     await hub.async_apply_new_settings(
         host=new_host,
         port=new_port,
         proxy_udp_port=proxy_udp_port,
         hub_listen_base=hub_listen_base,
+        notify_broadcasts=notify_broadcasts,
     )
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
