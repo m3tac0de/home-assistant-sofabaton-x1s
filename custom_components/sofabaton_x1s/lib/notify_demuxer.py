@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import ipaddress
 import socket
 import struct
 import threading
@@ -14,7 +13,6 @@ from .protocol_const import SYNC0, SYNC1
 log = logging.getLogger("x1proxy.notify")
 
 NOTIFY_ME_PAYLOAD = bytes.fromhex("a55a00c1c0")
-NOTIFY_REPLY_OPCODE = 0x1DC2
 
 
 def _sum8(b: bytes) -> int:
@@ -33,39 +31,6 @@ def _route_local_ip(peer_ip: str) -> str:
             s.close()
         except Exception:
             pass
-
-
-def _broadcast_ip(peer_ip: str) -> str:
-    try:
-        addr = ipaddress.ip_address(peer_ip)
-        network = ipaddress.ip_network(f"{addr}/24", strict=False)
-        return str(network.broadcast_address)
-    except ValueError:
-        return "255.255.255.255"
-
-
-def _parse_int(raw: Optional[str]) -> int:
-    if raw is None:
-        return 0
-    try:
-        return int(str(raw), 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _parse_fw_version(raw: Optional[str]) -> tuple[int, int, int]:
-    if not raw:
-        return 0, 0, 0
-    parts = str(raw).split(".")
-    out = []
-    for p in parts[:3]:
-        try:
-            out.append(int(p, 0) & 0xFF)
-        except ValueError:
-            out.append(0)
-    while len(out) < 3:
-        out.append(0)
-    return out[0], out[1], out[2]
 
 
 @dataclass(frozen=True)
@@ -187,26 +152,26 @@ class NotifyDemuxer:
                 if now - last < 2.0:
                     continue
 
-                reply = self._build_notify_reply(reg)
+                reply = self._build_notify_reply(reg, src_ip)
                 if reply is None:
                     continue
 
                 self._last_reply[key] = now
-                dest_ip = _broadcast_ip(src_ip)
                 log.info(
-                    "[DEMUX] NOTIFY_ME from %s:%d -> proxy=%s CALL_ME=%d broadcast=%s",
+                    "[DEMUX] NOTIFY_ME from %s:%d -> proxy=%s CALL_ME=%d",
                     src_ip,
                     src_port,
                     reg.proxy_id,
                     reg.call_me_port,
-                    dest_ip,
                 )
                 try:
-                    sock.sendto(reply, (dest_ip, reg.call_me_port))
+                    sock.sendto(reply, (src_ip, src_port))
                 except OSError:
                     log.exception("[DEMUX] failed to send NOTIFY_ME reply for %s", reg.proxy_id)
 
-    def _build_notify_reply(self, reg: NotifyRegistration) -> Optional[bytes]:
+    def _build_notify_reply(
+        self, reg: NotifyRegistration, app_ip: str
+    ) -> Optional[bytes]:
         try:
             mac_raw = (
                 reg.mdns_txt.get("MAC")
@@ -226,45 +191,21 @@ class NotifyDemuxer:
         else:
             mac_bytes = mac_bytes[:6]
 
-        model = _parse_int(reg.mdns_txt.get("MODEL") or reg.mdns_txt.get("model"))
-        model_bytes = struct.pack(">H", model & 0xFFFF)
+        try:
+            advertised_ip = _route_local_ip(app_ip)
+            ip_bytes = socket.inet_aton(advertised_ip)
+        except OSError:
+            return None
 
-        build_raw = _parse_int(reg.mdns_txt.get("BUILD") or reg.mdns_txt.get("build"))
-        build_bytes = struct.pack(">I", build_raw & 0xFFFFFFFF)
-
-        fw_major, fw_minor, fw_patch = _parse_fw_version(
-            reg.mdns_txt.get("FW")
-            or reg.mdns_txt.get("fw")
-            or reg.mdns_txt.get("version")
-            or reg.mdns_txt.get("ver")
-        )
-
-        name = (
-            reg.mdns_txt.get("NAME")
-            or reg.mdns_txt.get("name")
-            or reg.mdns_txt.get("Name")
-            or "X1 Hub"
-        ).encode("utf-8")
-
-        payload = (
-            mac_bytes
-            + model_bytes
-            + build_bytes
-            + bytes([fw_major, fw_minor, fw_patch])
-            + name
-        )
-        frame = bytes([SYNC0, SYNC1, NOTIFY_REPLY_OPCODE >> 8, NOTIFY_REPLY_OPCODE & 0xFF]) + payload
+        payload = mac_bytes + ip_bytes + struct.pack(">H", reg.call_me_port)
+        frame = bytes([SYNC0, SYNC1, 0x00, 0xC2]) + payload
         frame += bytes([_sum8(frame)])
         log.info(
-            "[DEMUX][REPLY] proxy=%s model=0x%04x build=%08x fw=%d.%d.%d mac=%s name=%s",
+            "[DEMUX][REPLY] proxy=%s host=%s:%d mac=%s",
             reg.proxy_id,
-            model,
-            build_raw,
-            fw_major,
-            fw_minor,
-            fw_patch,
+            socket.inet_ntoa(ip_bytes),
+            reg.call_me_port,
             mac_bytes.hex(":"),
-            name.decode("utf-8", "ignore"),
         )
         return frame
 
