@@ -152,8 +152,13 @@ class CallMeDemuxer:
                 break
 
             pkt_len = len(pkt)
-            if pkt_len < 4 or pkt[0] != SYNC0 or pkt[1] != SYNC1:
-                self._handle_ios_discovery(src_ip, src_port)
+            if pkt_len < 16 or pkt[0] != SYNC0 or pkt[1] != SYNC1:
+                log.debug(
+                    "[UDP] ignored packet len=%d from %s:%d (sync/size)",
+                    pkt_len,
+                    src_ip,
+                    src_port,
+                )
                 continue
             op = (pkt[2] << 8) | pkt[3]
             if op != OP_CALL_ME:
@@ -162,22 +167,26 @@ class CallMeDemuxer:
                 )
                 continue
 
-            app_ip, app_port, advertised = self._extract_app_endpoint(pkt, src_ip, src_port)
+            try:
+                app_ip = socket.inet_ntoa(pkt[10:14])
+                app_port = struct.unpack(">H", pkt[14:16])[0]
+            except Exception:
+                log.debug(
+                    "[UDP] failed to parse CALL_ME from %s:%d (len=%d)",
+                    src_ip,
+                    src_port,
+                    pkt_len,
+                    exc_info=True,
+                )
+                continue
 
-            if advertised:
-                log.info(
-                    "[UDP] CALL_ME broadcast from %s:%d advertising app %s:%d",
-                    src_ip,
-                    src_port,
-                    app_ip,
-                    app_port,
-                )
-            else:
-                log.info(
-                    "[UDP] CALL_ME broadcast from %s:%d (no payload; replying to source)",
-                    src_ip,
-                    src_port,
-                )
+            log.info(
+                "[UDP] CALL_ME broadcast from %s:%d advertising app %s:%d",
+                src_ip,
+                src_port,
+                app_ip,
+                app_port,
+            )
             self._handle_call_me(app_ip, app_port, src_ip, src_port)
 
         self._close_sock()
@@ -213,109 +222,26 @@ class CallMeDemuxer:
                 continue
 
             my_ip = _route_local_ip(src_ip)
-            frame = self._build_call_me_frame(reg.mac, my_ip, udp_port)
-            self._send_frame(frame, (app_ip, app_port), key, now, reg.name, src_ip, src_port, advertised_ip=my_ip, advertised_port=udp_port)
-
-    def _handle_ios_discovery(self, src_ip: str, src_port: int) -> None:
-        now = time.time()
-        with self._lock:
-            regs = list(self._registrations.values())
-
-        for reg in regs:
-            if not reg.is_enabled():
-                log.debug("[UDP] skipping %s (disabled)", reg.name)
-                continue
+            payload = reg.mac[:6].ljust(6, b"\x00") + socket.inet_aton(my_ip) + struct.pack(">H", udp_port)
+            frame = bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF]) + payload
+            frame += bytes([_sum8(frame)])
 
             try:
-                udp_port = reg.get_udp_port()
-            except Exception:
-                log.exception("[UDP] failed to read udp port for %s", reg.name)
-                continue
-
-            if udp_port <= 0:
-                log.info("[UDP] skipping iOS discovery reply for %s (invalid port %d)", reg.name, udp_port)
-                continue
-
-            my_ip = _route_local_ip(src_ip)
-            frame = self._build_call_me_frame(reg.mac, my_ip, udp_port)
-            key = (src_ip, src_port, f"discovery-{reg.key}")
-            self._send_frame(
-                frame,
-                (src_ip, src_port),
-                key,
-                now,
-                reg.name,
-                src_ip,
-                src_port,
-                advertised_ip=my_ip,
-                advertised_port=udp_port,
-                log_prefix="iOS discovery",
-            )
-
-    @staticmethod
-    def _extract_app_endpoint(
-        pkt: bytes, src_ip: str, src_port: int
-    ) -> Tuple[str, int, bool]:
-        """Extract the app endpoint from a CALL_ME broadcast.
-
-        The app may omit the payload (yielding a 5-byte frame). In that case we
-        fall back to replying to the source IP/port that sent the broadcast.
-        """
-
-        if len(pkt) >= 16:
-            try:
-                return (
-                    socket.inet_ntoa(pkt[10:14]),
-                    struct.unpack(">H", pkt[14:16])[0],
-                    True,
+                if self._sock:
+                    self._sock.sendto(frame, (app_ip, app_port))
+                self._last_sent[key] = now
+                log.info(
+                    "[UDP] replied CALL_ME for %s -> app %s:%d (src %s:%d) advertising %s:%d",
+                    reg.name,
+                    app_ip,
+                    app_port,
+                    src_ip,
+                    src_port,
+                    my_ip,
+                    udp_port,
                 )
             except Exception:
-                log.debug("[UDP] failed to parse CALL_ME payload", exc_info=True)
-
-        return src_ip, src_port, False
-
-    @staticmethod
-    def _build_call_me_frame(mac: bytes, my_ip: str, udp_port: int) -> bytes:
-        payload = mac[:6].ljust(6, b"\x00") + socket.inet_aton(my_ip) + struct.pack(">H", udp_port)
-        frame = bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF]) + payload
-        frame += bytes([_sum8(frame)])
-        return frame
-
-    def _send_frame(
-        self,
-        frame: bytes,
-        dest: Tuple[str, int],
-        key: Tuple[str, int, str],
-        now: float,
-        reg_name: str,
-        src_ip: str,
-        src_port: int,
-        *,
-        advertised_ip: str,
-        advertised_port: int,
-        log_prefix: str = "CALL_ME",
-    ) -> None:
-        if now - self._last_sent.get(key, 0) < self.throttle:
-            log.debug("[UDP] throttling %s reply for %s", log_prefix, reg_name)
-            return
-
-        try:
-            if self._sock:
-                self._sock.sendto(frame, dest)
-            self._last_sent[key] = now
-            log.info(
-                "[UDP] replied %s for %s -> app %s:%d (src %s:%d) advertising %s:%d",
-                log_prefix,
-                reg_name,
-                dest[0],
-                dest[1],
-                src_ip,
-                src_port,
-                advertised_ip,
-                advertised_port,
-            )
-        except Exception:
-            log.exception("[UDP] failed to send %s reply for %s", log_prefix, reg_name)
+                log.exception("[UDP] failed to send CALL_ME reply for %s", reg.name)
 
 
 _DEMUXER = CallMeDemuxer()
