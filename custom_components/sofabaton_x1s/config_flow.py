@@ -20,8 +20,6 @@ from .const import (
     CONF_MDNS_VERSION,
     DEFAULT_PROXY_UDP_PORT,
     DEFAULT_HUB_LISTEN_BASE,
-    CONF_BROADCAST_CALL_ME,
-    DEFAULT_BROADCAST_CALL_ME,
     X1S_NO_THRESHOLD,
 )
 
@@ -121,16 +119,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             first = existing_entries[0]
             current_proxy_udp = first.options.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
             current_hub_listen_base = first.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
-            current_broadcast = first.options.get(CONF_BROADCAST_CALL_ME, DEFAULT_BROADCAST_CALL_ME)
         else:
             current_proxy_udp = DEFAULT_PROXY_UDP_PORT
             current_hub_listen_base = DEFAULT_HUB_LISTEN_BASE
-            current_broadcast = DEFAULT_BROADCAST_CALL_ME
 
         if user_input is not None:
             proxy_udp_port = user_input["proxy_udp_port"]
             hub_listen_base = user_input["hub_listen_base"]
-            broadcast_call_me = user_input.get(CONF_BROADCAST_CALL_ME, DEFAULT_BROADCAST_CALL_ME)
 
             # finish
             hub_info = self._chosen_hub
@@ -162,15 +157,13 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "proxy_udp_port": proxy_udp_port,
                     "hub_listen_base": hub_listen_base,
                     CONF_MDNS_VERSION: version,
-                    CONF_BROADCAST_CALL_ME: broadcast_call_me,
                 },
             )
-
+            
         PORT_VALIDATOR = vol.All(int, vol.Range(min=1, max=65535))
         schema = vol.Schema({
             vol.Required("proxy_udp_port", default=current_proxy_udp): PORT_VALIDATOR,
             vol.Required("hub_listen_base", default=current_hub_listen_base): PORT_VALIDATOR,
-            vol.Optional(CONF_BROADCAST_CALL_ME, default=current_broadcast): bool,
         })
 
         return self.async_show_form(
@@ -333,10 +326,6 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 "hub_listen_base",
                 default=self.entry.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE),
             ): PORT_VALIDATOR,
-            vol.Optional(
-                CONF_BROADCAST_CALL_ME,
-                default=self.entry.options.get(CONF_BROADCAST_CALL_ME, DEFAULT_BROADCAST_CALL_ME),
-            ): bool,
         })
 
         return self.async_show_form(
