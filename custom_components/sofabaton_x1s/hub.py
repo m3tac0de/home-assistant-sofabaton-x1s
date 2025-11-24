@@ -49,6 +49,7 @@ class SofabatonHub:
         hub_listen_base: int,
         proxy_enabled: bool,
         hex_logging_enabled: bool,
+        notify_broadcasts: bool,
     ) -> None:
         self.hass = hass
         self.entry_id = entry_id
@@ -60,6 +61,7 @@ class SofabatonHub:
 
         self._proxy_udp_port = proxy_udp_port
         self._hub_listen_base = hub_listen_base
+        self._notify_broadcasts = notify_broadcasts
 
         self.activities: Dict[int, Dict[str, Any]] = {}
         self.devices: Dict[int, Dict[str, Any]] = {}
@@ -100,6 +102,7 @@ class SofabatonHub:
             proxy_udp_port=self._proxy_udp_port,
             hub_listen_base=self._hub_listen_base,
             proxy_enabled=self.proxy_enabled,
+            notify_broadcasts=self._notify_broadcasts,
         )
 
         proxy.on_activity_change(self._on_activity_change)
@@ -126,6 +129,7 @@ class SofabatonHub:
         port: int | str,
         proxy_udp_port: int | str,
         hub_listen_base: int | str,
+        notify_broadcasts: bool,
     ) -> None:
         # normalize types first
         port = port
@@ -137,6 +141,7 @@ class SofabatonHub:
             or str(port) != str(self.port)
             or str(proxy_udp_port) != str(self._proxy_udp_port)
             or str(hub_listen_base) != str(self._hub_listen_base)
+            or bool(notify_broadcasts) != bool(self._notify_broadcasts)
         )
         if not changed:
             return
@@ -154,6 +159,7 @@ class SofabatonHub:
         self.port = port
         self._proxy_udp_port = proxy_udp_port
         self._hub_listen_base = hub_listen_base
+        self._notify_broadcasts = notify_broadcasts
 
         await self.async_stop()
         self._proxy = self._create_proxy()
