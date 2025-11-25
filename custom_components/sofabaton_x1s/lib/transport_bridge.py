@@ -74,6 +74,35 @@ def _enable_keepalive(
         pass
 
 
+def _disable_nagle(sock: socket.socket) -> None:
+    """Disable Nagle's algorithm to avoid coalescing adjacent frames."""
+
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    except Exception:
+        pass
+
+
+def _flush_buffer(sock: socket.socket, buf: bytearray, label: str) -> None:
+    """Try to write the entire buffer to the given socket."""
+
+    while buf:
+        try:
+            sent = sock.send(buf)
+        except (BlockingIOError, InterruptedError):
+            break
+        except OSError:
+            buf.clear()
+            break
+
+        if not sent:
+            break
+
+        if log.isEnabledFor(logging.DEBUG):
+            log.debug("[TCP→HUB][%s] sent %dB", label, sent)
+        del buf[:sent]
+
+
 class TransportBridge:
     """Own TCP/UDP sockets and bridge app↔hub traffic.
 
@@ -391,6 +420,7 @@ class TransportBridge:
                 return False
 
             hub_sock.settimeout(0.0)
+            _disable_nagle(hub_sock)
             _enable_keepalive(
                 hub_sock, idle=self.ka_idle, interval=self.ka_interval, count=self.ka_count
             )
@@ -414,6 +444,7 @@ class TransportBridge:
         s.settimeout(5.0)
         s.connect(app_addr)
         s.settimeout(0.0)
+        _disable_nagle(s)
         _enable_keepalive(s, idle=self.ka_idle, interval=self.ka_interval, count=self.ka_count)
         with self._app_lock:
             if self._app_sock is not None:
@@ -512,23 +543,17 @@ class TransportBridge:
                         cb(data, cid)
                     app_to_hub.extend(data)
 
+                    # Flush immediately so the first app frames do not wait
+                    # for the next select() cycle (which can batch multiple
+                    # app writes into a single hub send).
+                    if hub is not None:
+                        _flush_buffer(hub, app_to_hub, "client")
+
             if hub is not None and hub in w:
                 if self._local_to_hub:
-                    try:
-                        sent = hub.send(self._local_to_hub)
-                        if sent:
-                            log.info("[TCP→HUB][local] sent %dB", sent)
-                            del self._local_to_hub[:sent]
-                    except (BlockingIOError, InterruptedError, OSError):
-                        pass
+                    _flush_buffer(hub, self._local_to_hub, "local")
                 if app_to_hub:
-                    try:
-                        sent = hub.send(app_to_hub)
-                        if sent:
-                            log.info("[TCP→HUB][client] forwarded %dB", sent)
-                            del app_to_hub[:sent]
-                    except (BlockingIOError, InterruptedError, OSError):
-                        pass
+                    _flush_buffer(hub, app_to_hub, "client")
 
             for cb in self._idle_cbs:
                 cb(time.monotonic())
