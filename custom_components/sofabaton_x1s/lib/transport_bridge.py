@@ -166,6 +166,8 @@ class TransportBridge:
         self._client_state_cbs: list[Callable[[bool], None]] = []
         self._idle_cbs: list[Callable[[float], None]] = []
 
+        self._inter_command_gap = 0.2
+
         self._chunk_id = 0
         self._proxy_enabled = True
 
@@ -512,6 +514,7 @@ class TransportBridge:
                     if start == -1:
                         app_partial_frame.extend(buffer)
                     else:
+                        frames_to_send: list[bytes] = []
                         if start:
                             buffer = buffer[start:]
                         frame_start = 0
@@ -525,10 +528,8 @@ class TransportBridge:
                                     and remaining[1] == SYNC1
                                     and remaining[-1] == (_sum8(remaining[:-1]) & 0xFF)
                                 ):
-                                    app_to_hub.extend(remaining)
+                                    frames_to_send.append(remaining)
                                     app_partial_frame.clear()
-                                    if hub is not None:
-                                        _flush_buffer(hub, app_to_hub, "client")
                                 else:
                                     app_partial_frame.extend(remaining)
                                 break
@@ -540,9 +541,7 @@ class TransportBridge:
                                 and frame[1] == SYNC1
                                 and frame[-1] == (_sum8(frame[:-1]) & 0xFF)
                             ):
-                                app_to_hub.extend(frame)
-                                if hub is not None:
-                                    _flush_buffer(hub, app_to_hub, "client")
+                                frames_to_send.append(frame)
                             elif frame and log.isEnabledFor(logging.DEBUG):
                                 log.debug(
                                     "[TCP→HUB][client] drop malformed fragment len=%d",
@@ -554,6 +553,16 @@ class TransportBridge:
                         # ensure the leading marker is preserved for the next read.
                         if not app_to_hub and not app_partial_frame and buffer.startswith(sync):
                             app_partial_frame.extend(sync)
+
+                        for idx, frame in enumerate(frames_to_send):
+                            app_to_hub.extend(frame)
+                            if hub is not None:
+                                _flush_buffer(hub, app_to_hub, "client")
+                                if (
+                                    self._inter_command_gap > 0
+                                    and idx + 1 < len(frames_to_send)
+                                ):
+                                    time.sleep(self._inter_command_gap)
 
             if hub is not None and hub in w:
                 if self._local_to_hub:
