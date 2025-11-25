@@ -171,13 +171,10 @@ class NotifyDemuxer:
                     reg.call_me_port,
                     dest_ip,
                 )
-                if not self._send_reply_from_call_me_port(reply, dest_ip, src_port, reg):
-                    try:
-                        sock.sendto(reply, (dest_ip, src_port))
-                    except OSError:
-                        log.exception(
-                            "[DEMUX] failed to send NOTIFY_ME reply for %s", reg.proxy_id
-                        )
+                try:
+                    sock.sendto(reply, (dest_ip, src_port))
+                except OSError:
+                    log.exception("[DEMUX] failed to send NOTIFY_ME reply for %s", reg.proxy_id)
 
     def _build_notify_reply(self, reg: NotifyRegistration) -> Optional[bytes]:
         try:
@@ -227,53 +224,6 @@ class NotifyDemuxer:
             name.decode("utf-8", "ignore"),
         )
         return frame
-
-    def _send_reply_from_call_me_port(
-        self, reply: bytes, dest_ip: str, dest_port: int, reg: NotifyRegistration
-    ) -> bool:
-        """Try to send NOTIFY_ME reply from the port apps should CALL_ME back on."""
-
-        reuseport = getattr(socket, "SO_REUSEPORT", None)
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if reuseport is not None:
-                try:
-                    s.setsockopt(socket.SOL_SOCKET, reuseport, 1)
-                except OSError:
-                    pass
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            s.bind(("0.0.0.0", reg.call_me_port))
-        except OSError:
-            log.warning(
-                "[DEMUX] failed to bind CALL_ME reply socket on *:%d; using default port",
-                reg.call_me_port,
-            )
-            try:
-                s.close()
-            except Exception:
-                pass
-            return False
-
-        try:
-            s.sendto(reply, (dest_ip, dest_port))
-            log.info(
-                "[DEMUX] sent NOTIFY_ME reply for %s from CALL_ME port %d",
-                reg.proxy_id,
-                reg.call_me_port,
-            )
-            return True
-        except OSError:
-            log.exception(
-                "[DEMUX] failed to send NOTIFY_ME reply for %s from CALL_ME port",
-                reg.proxy_id,
-            )
-            return False
-        finally:
-            try:
-                s.close()
-            except Exception:
-                pass
 
 
 _GLOBAL_DEMUXER: Optional[NotifyDemuxer] = None
