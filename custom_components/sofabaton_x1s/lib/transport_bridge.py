@@ -558,7 +558,19 @@ class TransportBridge:
                         while True:
                             next_frame = buffer.find(sync, frame_start + len(sync))
                             if next_frame == -1:
-                                app_partial_frame.extend(buffer[frame_start:])
+                                remaining = buffer[frame_start:]
+                                if (
+                                    len(remaining) >= 5
+                                    and remaining[0] == SYNC0
+                                    and remaining[1] == SYNC1
+                                    and remaining[-1] == (_sum8(remaining[:-1]) & 0xFF)
+                                ):
+                                    app_to_hub.extend(remaining)
+                                    app_partial_frame.clear()
+                                    if hub is not None:
+                                        _flush_buffer(hub, app_to_hub, "client")
+                                else:
+                                    app_partial_frame.extend(remaining)
                                 break
 
                             frame = buffer[frame_start:next_frame]
