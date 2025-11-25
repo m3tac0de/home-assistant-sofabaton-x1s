@@ -16,14 +16,3 @@ It also improves anonimity as it exclusively contains log data from the integrat
 ## Attaching logs to an issue
 Include the downloaded diagnostics JSON in your GitHub issue.
 
-## Interpreting transport debug lines
-Hex logging shows raw frames, while transport-level debug entries such as
-`[TCP→HUB][client] sent 7B in 2 chunks` come from the non-blocking socket write
-loop in `transport_bridge._flush_buffer`. The proxy asks the OS to write the
-entire buffered frame, but TCP may accept only part of it in one `send` call, so
-`_flush_buffer` records how many chunks were needed to hand that single frame to
-the kernel. The chunk count reflects TCP bookkeeping, not extra bytes being
-prepended or injected. If you see `drop malformed fragment`, the proxy discarded
-bytes between two sync markers because the segment was shorter than a full frame
-or failed the checksum, preventing stray prefix bytes (for example, a repeated
-`a5 5a`) from being flushed toward the hub.
