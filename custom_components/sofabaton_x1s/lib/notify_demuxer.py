@@ -126,10 +126,22 @@ class NotifyDemuxer:
     def _open_socket(self) -> socket.socket:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        reuseport_enabled = False
+        reuseport_opt = getattr(socket, "SO_REUSEPORT", None)
+        if reuseport_opt is not None:
+            try:
+                s.setsockopt(socket.SOL_SOCKET, reuseport_opt, 1)
+                reuseport_enabled = True
+            except OSError:
+                log.warning("[DEMUX] SO_REUSEPORT not available")
         s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         s.bind(("0.0.0.0", self.listen_port))
         s.settimeout(1.0)
-        log.info("[DEMUX] listening for NOTIFY_ME on *:%d", self.listen_port)
+        log.info(
+            "[DEMUX] listening for NOTIFY_ME on *:%d (SO_REUSEPORT=%s)",
+            self.listen_port,
+            reuseport_enabled,
+        )
         return s
 
     def _notify_loop(self) -> None:
