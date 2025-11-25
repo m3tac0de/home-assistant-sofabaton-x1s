@@ -61,4 +61,4 @@ def test_notify_me_reply_targets_source_port():
     demuxer._notify_loop()
 
     assert demuxer._sock.sent
-    assert demuxer._sock.sent[0][1] == ("192.168.2.255", 12345)
+    assert demuxer._sock.sent[0][1] == ("192.168.2.255", 8100)

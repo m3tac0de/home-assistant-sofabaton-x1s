@@ -13,6 +13,7 @@ from .protocol_const import SYNC0, SYNC1
 log = logging.getLogger("x1proxy.notify")
 
 NOTIFY_ME_PAYLOAD = bytes.fromhex("a55a00c1c0")
+BROADCAST_LISTEN_PORT = 8100
 
 
 def _route_local_ip(peer_ip: str) -> str:
@@ -184,7 +185,7 @@ class NotifyDemuxer:
                     dest_ip,
                 )
                 try:
-                    sock.sendto(reply, (dest_ip, src_port))
+                    sock.sendto(reply, (dest_ip, BROADCAST_LISTEN_PORT))
                 except OSError:
                     log.exception("[DEMUX] failed to send NOTIFY_ME reply for %s", reg.proxy_id)
 

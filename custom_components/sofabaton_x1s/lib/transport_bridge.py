@@ -10,7 +10,7 @@ import time
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
-from .notify_demuxer import get_notify_demuxer
+from .notify_demuxer import BROADCAST_LISTEN_PORT, get_notify_demuxer, _broadcast_ip
 
 log = logging.getLogger("x1proxy.transport")
 
@@ -449,25 +449,55 @@ class TransportBridge:
                 pass
 
     def _handle_app_session(self, app_addr: Tuple[str, int]) -> None:
+        self._stop_notify_listener()
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(5.0)
-        s.connect(app_addr)
-        s.settimeout(0.0)
-        _disable_nagle(s)
-        _enable_keepalive(s, idle=self.ka_idle, interval=self.ka_interval, count=self.ka_count)
-        with self._app_lock:
-            if self._app_sock is not None:
+        try:
+            s.settimeout(5.0)
+            s.connect(app_addr)
+            s.settimeout(0.0)
+            _disable_nagle(s)
+            _enable_keepalive(
+                s, idle=self.ka_idle, interval=self.ka_interval, count=self.ka_count
+            )
+            with self._app_lock:
+                if self._app_sock is not None:
+                    try:
+                        self._app_sock.shutdown(socket.SHUT_RDWR)
+                    except Exception:
+                        pass
+                    try:
+                        self._app_sock.close()
+                    except Exception:
+                        pass
+                self._app_sock = s
+            log.info("[TCP] connected -> APP %s:%d", *app_addr)
+            self._notify_client_state(True)
+            self._emit_connect_ready_beacon(app_addr[0])
+        except Exception:
+            try:
+                s.close()
+            except Exception:
+                pass
+            if self._broadcast_listener_enabled and self._proxy_enabled:
+                self._register_demuxer()
+            log.exception("[TCP] failed to connect -> APP %s:%d", *app_addr)
+            return
+
+    def _emit_connect_ready_beacon(self, app_ip: str) -> None:
+        dest_ip = _broadcast_ip(app_ip)
+        s: Optional[socket.socket] = None
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+            s.sendto(CONNECT_READY_BROADCAST, (dest_ip, BROADCAST_LISTEN_PORT))
+        except OSError:
+            log.exception("[UDP] failed to broadcast connect beacon to %s", dest_ip)
+        finally:
+            if s is not None:
                 try:
-                    self._app_sock.shutdown(socket.SHUT_RDWR)
+                    s.close()
                 except Exception:
                     pass
-                try:
-                    self._app_sock.close()
-                except Exception:
-                    pass
-            self._app_sock = s
-        log.info("[TCP] connected -> APP %s:%d", *app_addr)
-        self._notify_client_state(True)
 
     def _bridge_forever(self) -> None:
         app_to_hub = bytearray()
@@ -644,3 +674,4 @@ class TransportBridge:
             get_notify_demuxer().unregister_proxy(self.proxy_id)
             self._notify_registered = False
 
+CONNECT_READY_BROADCAST = bytes.fromhex("a55a07c4e26a44861b450040")
