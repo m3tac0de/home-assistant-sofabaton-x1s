@@ -254,12 +254,6 @@ class TransportBridge:
     def _open_udp_listener(self) -> socket.socket:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        reuseport = getattr(socket, "SO_REUSEPORT", None)
-        if reuseport is not None:
-            try:
-                s.setsockopt(socket.SOL_SOCKET, reuseport, 1)
-            except OSError:
-                pass
 
         base = self.proxy_udp_port
         last_err: Optional[Exception] = None
