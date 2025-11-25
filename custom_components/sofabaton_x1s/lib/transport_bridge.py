@@ -254,6 +254,25 @@ class TransportBridge:
     def _open_udp_listener(self) -> socket.socket:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        reuseport_enabled = False
+        reuseport_opt = getattr(socket, "SO_REUSEPORT", None)
+        if reuseport_opt is not None:
+            try:
+                s.setsockopt(socket.SOL_SOCKET, reuseport_opt, 1)
+                reuseport_enabled = True
+            except OSError:
+                log.warning("[UDP] SO_REUSEPORT not available")
+
+        if self._broadcast_listener_enabled:
+            demuxer = get_notify_demuxer()
+            s.bind(("0.0.0.0", demuxer.listen_port))
+            self.proxy_udp_port = s.getsockname()[1]
+            log.info(
+                "[UDP] bound on *:%d (shared with NOTIFY_ME, SO_REUSEPORT=%s)",
+                self.proxy_udp_port,
+                reuseport_enabled,
+            )
+            return s
 
         base = self.proxy_udp_port
         last_err: Optional[Exception] = None
@@ -261,14 +280,22 @@ class TransportBridge:
         if base == 0:
             s.bind(("0.0.0.0", 0))
             self.proxy_udp_port = s.getsockname()[1]
-            log.info("[UDP] bound on *:%d (os-picked)", self.proxy_udp_port)
+            log.info(
+                "[UDP] bound on *:%d (os-picked, SO_REUSEPORT=%s)",
+                self.proxy_udp_port,
+                reuseport_enabled,
+            )
             return s
 
         for port in range(base, base + 32):
             try:
                 s.bind(("0.0.0.0", port))
                 self.proxy_udp_port = port
-                log.info("[UDP] bound on *:%d", port)
+                log.info(
+                    "[UDP] bound on *:%d (SO_REUSEPORT=%s)",
+                    port,
+                    reuseport_enabled,
+                )
                 return s
             except OSError as e:
                 last_err = e
