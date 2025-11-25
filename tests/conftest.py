@@ -30,6 +30,20 @@ def _install_homeassistant_stubs() -> None:
     helpers = types.ModuleType("homeassistant.helpers")
     sys.modules.setdefault("homeassistant.helpers", helpers)
 
+    dispatcher = types.ModuleType("homeassistant.helpers.dispatcher")
+    dispatcher.async_dispatcher_send = lambda hass=None, signal=None, *args, **kwargs: None
+    dispatcher.async_dispatcher_connect = lambda hass=None, signal=None, target=None: None
+    dispatcher.dispatcher_send = lambda *args, **kwargs: None
+    dispatcher.dispatcher_connect = lambda *args, **kwargs: None
+    sys.modules.setdefault("homeassistant.helpers.dispatcher", dispatcher)
+
+    exceptions = types.ModuleType("homeassistant.exceptions")
+    class HomeAssistantError(Exception):
+        pass
+
+    exceptions.HomeAssistantError = HomeAssistantError
+    sys.modules.setdefault("homeassistant.exceptions", exceptions)
+
     device_registry = types.ModuleType("homeassistant.helpers.device_registry")
     device_registry.async_get = lambda hass=None: None
     sys.modules.setdefault("homeassistant.helpers.device_registry", device_registry)
