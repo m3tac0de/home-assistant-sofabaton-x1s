@@ -165,7 +165,7 @@ class X1Proxy:
         self,
         real_hub_ip: str,
         real_hub_udp_port: int = 8102,
-        proxy_udp_port: int = 9102,
+        proxy_udp_port: int = 8102,
         hub_listen_base: int = 8200,
         mdns_instance: str = "X1-HUB-PROXY",
         mdns_host: Optional[str] = None,

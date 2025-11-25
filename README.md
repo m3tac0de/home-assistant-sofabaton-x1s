@@ -76,11 +76,15 @@ This integration follows the same 3-step flow as the official Sofabaton app:
 So, if you use VLANs / firewalls:
 
 - allow **mDNS** from hub → HA (or forward it)
-- allow **UDP** from HA → hub on the Sofabaton port (`8102` i think is the standard port on these devices)
+- allow **UDP** from HA → hub on the Sofabaton port (`8102` is the standard port on these devices)
 - allow **TCP** from hub → HA on the proxy port (the one you configured in the integration)
 
 If discovery works but the entities never go “connected to hub”, it’s usually that last rule: the hub cannot open the TCP back to HA.
 Also keep in mind that as soon as a client is connected to the physical hub, the hub stops mDNS advertising. So if this integration is connected and running with "proxy" disabled, the official app will not find it. And vice versa, the integration cannot see the hub if the official app is connected directly to it.
+
+### Upgrading note: single CALL_ME/NOTIFY_ME listener on 8102
+
+The proxy now uses one UDP listener for both CALL_ME and NOTIFY_ME, shared across all configured hubs. New installs default this listener to `8102` so Android and iOS discovery both work. If you previously overrode the **Proxy UDP base port** (for example, to `9102`), consider changing it back to `8102`. Using a different UDP port applies to all hubs and may prevent the iOS app from discovering the proxy.
 
 ---
 

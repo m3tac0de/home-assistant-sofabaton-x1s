@@ -16,7 +16,7 @@
       },
       "ports": {
         "title": "Proxy ports",
-        "description": "These ports are used by the local proxy that emulates the hub. Most users can keep the defaults. Change them only if there is a conflict. Note that this setting currently applies to all configured hubs. The ports represents a base value, and the integration will try to find an open port within 32 ports of what you enter here.",
+        "description": "These ports are used by the local proxy that emulates the hub. UDP now defaults to 8102 so CALL_ME and NOTIFY_ME share a single listener that works for Android and iOS; changing it applies to all hubs and may prevent iOS discovery. The port values are bases, and the integration will try to find an open port within 32 ports of what you enter here.",
         "data": {
           "proxy_udp_port": "Proxy UDP base port",
           "hub_listen_base": "Hub TCP listen base",

@@ -180,14 +180,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=schema,
             description_placeholders={
                 "explain": (
-                    "These are ports that this integration binds to."
-                    "Most users can keep the defaults. Change only if the ports are "
-                    "already in use."
-                    "Note that this setting currently applies to all configured hubs."
-                    "The ports represents a base value, and the integration will try"
-                    "to find an open port within 32 ports of what you enter here."
-                    "The UDP port is optional; if you disable the proxy capabilty of"
-                    "the integration, no UDP port is used."
+                    "These are ports that this integration binds to. Most users can keep "
+                    "the defaults: UDP now defaults to 8102 so CALL_ME and NOTIFY_ME share a "
+                    "single listener compatible with Android and iOS. Change only if the port "
+                    "is already in use; a non-8102 UDP port may prevent iOS discovery. "
+                    "This setting currently applies to all configured hubs. The ports represent "
+                    "a base value, and the integration will try to find an open port within 32 "
+                    "ports of what you enter here. The UDP port is optional; if you disable the "
+                    "proxy capability of the integration, no UDP port is used."
                 )
             },
         )

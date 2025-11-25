@@ -15,7 +15,7 @@ CONF_NOTIFY_BROADCASTS = "notify_broadcasts"
 # X1S devices report a higher NO field in their mDNS TXT records
 X1S_NO_THRESHOLD = 20221120
 
-DEFAULT_PROXY_UDP_PORT = 9102
+DEFAULT_PROXY_UDP_PORT = 8102
 DEFAULT_HUB_LISTEN_BASE = 8200
 
 PLATFORMS = ["select", "switch", "binary_sensor", "button", "sensor", "remote"]
