@@ -86,6 +86,9 @@ def _disable_nagle(sock: socket.socket) -> None:
 def _flush_buffer(sock: socket.socket, buf: bytearray, label: str) -> None:
     """Try to write the entire buffer to the given socket."""
 
+    total = 0
+    chunks = 0
+
     while buf:
         try:
             sent = sock.send(buf)
@@ -98,9 +101,15 @@ def _flush_buffer(sock: socket.socket, buf: bytearray, label: str) -> None:
         if not sent:
             break
 
-        if log.isEnabledFor(logging.DEBUG):
-            log.debug("[TCP→HUB][%s] sent %dB", label, sent)
+        total += sent
+        chunks += 1
         del buf[:sent]
+
+    if total and log.isEnabledFor(logging.DEBUG):
+        if chunks == 1:
+            log.debug("[TCP→HUB][%s] sent %dB", label, total)
+        else:
+            log.debug("[TCP→HUB][%s] sent %dB in %d chunks", label, total, chunks)
 
 
 class TransportBridge:
@@ -574,10 +583,20 @@ class TransportBridge:
                                 break
 
                             frame = buffer[frame_start:next_frame]
-                            if frame:
+                            if (
+                                len(frame) >= 5
+                                and frame[0] == SYNC0
+                                and frame[1] == SYNC1
+                                and frame[-1] == (_sum8(frame[:-1]) & 0xFF)
+                            ):
                                 app_to_hub.extend(frame)
                                 if hub is not None:
                                     _flush_buffer(hub, app_to_hub, "client")
+                            elif frame and log.isEnabledFor(logging.DEBUG):
+                                log.debug(
+                                    "[TCP→HUB][client] drop malformed fragment len=%d",
+                                    len(frame),
+                                )
                             frame_start = next_frame
 
                         # If nothing was emitted but the buffer starts with SYNC,
