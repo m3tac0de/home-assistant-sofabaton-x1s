@@ -462,6 +462,7 @@ class TransportBridge:
 
     def _bridge_forever(self) -> None:
         app_to_hub = bytearray()
+        app_partial_frame = bytearray()
 
         while not self._stop.is_set():
             with self._hub_lock:
@@ -535,19 +536,42 @@ class TransportBridge:
                             pass
                         self._app_sock = None
                     app_to_hub.clear()
+                    app_partial_frame.clear()
                     self._notify_client_state(False)
                 else:
                     self._chunk_id += 1
                     cid = self._chunk_id
                     for cb in self._app_frame_cbs:
                         cb(data, cid)
-                    app_to_hub.extend(data)
+                    buffer = app_partial_frame + data
+                    app_partial_frame.clear()
 
-                    # Flush immediately so the first app frames do not wait
-                    # for the next select() cycle (which can batch multiple
-                    # app writes into a single hub send).
-                    if hub is not None:
-                        _flush_buffer(hub, app_to_hub, "client")
+                    sync = bytes([SYNC0, SYNC1])
+                    start = buffer.find(sync)
+
+                    if start == -1:
+                        app_partial_frame.extend(buffer)
+                    else:
+                        if start:
+                            buffer = buffer[start:]
+                        frame_start = 0
+                        while True:
+                            next_frame = buffer.find(sync, frame_start + len(sync))
+                            if next_frame == -1:
+                                app_partial_frame.extend(buffer[frame_start:])
+                                break
+
+                            frame = buffer[frame_start:next_frame]
+                            if frame:
+                                app_to_hub.extend(frame)
+                                if hub is not None:
+                                    _flush_buffer(hub, app_to_hub, "client")
+                            frame_start = next_frame
+
+                        # If nothing was emitted but the buffer starts with SYNC,
+                        # ensure the leading marker is preserved for the next read.
+                        if not app_to_hub and not app_partial_frame and buffer.startswith(sync):
+                            app_partial_frame.extend(sync)
 
             if hub is not None and hub in w:
                 if self._local_to_hub:
