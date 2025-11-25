@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
+from homeassistant.components.zeroconf import async_get_instance
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -117,6 +118,8 @@ class SofabatonHub:
 
     async def async_start(self) -> None:
         _LOGGER.debug("[%s] Starting proxy threads", self.entry_id)
+        zc = await async_get_instance(self.hass)
+        self._proxy.set_zeroconf(zc)
         await self.hass.async_add_executor_job(self._proxy.start)
 
     async def async_stop(self) -> None:
