@@ -74,6 +74,15 @@ def _enable_keepalive(
         pass
 
 
+def _disable_nagle(sock: socket.socket) -> None:
+    """Disable Nagle's algorithm to avoid coalescing adjacent frames."""
+
+    try:
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    except Exception:
+        pass
+
+
 class TransportBridge:
     """Own TCP/UDP sockets and bridge app↔hub traffic.
 
@@ -391,6 +400,7 @@ class TransportBridge:
                 return False
 
             hub_sock.settimeout(0.0)
+            _disable_nagle(hub_sock)
             _enable_keepalive(
                 hub_sock, idle=self.ka_idle, interval=self.ka_interval, count=self.ka_count
             )
@@ -414,6 +424,7 @@ class TransportBridge:
         s.settimeout(5.0)
         s.connect(app_addr)
         s.settimeout(0.0)
+        _disable_nagle(s)
         _enable_keepalive(s, idle=self.ka_idle, interval=self.ka_interval, count=self.ka_count)
         with self._app_lock:
             if self._app_sock is not None:
