@@ -178,6 +178,7 @@ class X1Proxy:
         ka_idle: int = 30,
         ka_interval: int = 10,
         ka_count: int = 3,
+        zeroconf=None,
     ) -> None:
         self.real_hub_ip = real_hub_ip
         self.real_hub_udp_port = int(real_hub_udp_port)
@@ -230,8 +231,18 @@ class X1Proxy:
         self._hub_connected: bool = False
         self._client_connected: bool = False
 
-        self._zc = None  # type: ignore[assignment]
+        self._zc = zeroconf  # type: ignore[assignment]
+        self._zc_owned = False
         self._mdns_info = None  # type: ignore[assignment]
+
+    # ---------------------------------------------------------------------
+    # Helpers
+    # ---------------------------------------------------------------------
+    def set_zeroconf(self, zc) -> None:
+        """Use an existing Zeroconf instance (e.g., Home Assistant shared)."""
+
+        self._zc = zc
+        self._zc_owned = False
 
     # ---------------------------------------------------------------------
     # Local command API
@@ -433,10 +444,14 @@ class X1Proxy:
             server=host,
         )
 
-        zc = Zeroconf(ip_version=IPVersion.V4Only)
+        zc = self._zc
+        if zc is None:
+            zc = Zeroconf(ip_version=IPVersion.V4Only)
+            self._zc_owned = True
+            self._zc = zc
+
         zc.register_service(info)
 
-        self._zc = zc
         self._mdns_info = info
         self._adv_started = True
         log.info("[mDNS] registered %s on %s:%d", info.name, socket.inet_ntoa(ip_bytes), self.proxy_udp_port)
@@ -597,8 +612,9 @@ class X1Proxy:
             except Exception:
                 log.exception("[mDNS] failed to unregister service")
             finally:
-                self._zc.close()
-                self._zc = None
+                if self._zc_owned:
+                    self._zc.close()
+                    self._zc = None
                 self._mdns_info = None
 
         self._adv_started = False
