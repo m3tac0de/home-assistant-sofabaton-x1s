@@ -259,7 +259,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="X1 proxy CLI")
     ap.add_argument("--hub", required=True, help="real hub IP (the real device)")
     ap.add_argument("--hub-udp", type=int, default=8102)
-    ap.add_argument("--proxy-udp", type=int, default=9102)
+    ap.add_argument(
+        "--proxy-udp",
+        type=int,
+        default=8102,
+        help="Single CALL_ME/NOTIFY_ME UDP port for all proxies (8102 recommended for iOS)",
+    )
     ap.add_argument("--listen-base", type=int, default=8200)
     ap.add_argument("--mdns-txt", action="append", help="add TXT record kv pair, e.g. NAME=YourHub (repeatable)")
     ap.add_argument("--disable-proxy", action="store_true", help="start with proxy disabled")

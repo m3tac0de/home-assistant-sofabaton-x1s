@@ -1,64 +1,46 @@
-import threading
+import socket
+import struct
 
-from custom_components.sofabaton_x1s.lib.notify_demuxer import (
-    NOTIFY_ME_PAYLOAD,
-    NotifyDemuxer,
-    NotifyRegistration,
-    _broadcast_ip,
-)
+from custom_components.sofabaton_x1s.lib.notify_demuxer import NotifyDemuxer
+from custom_components.sofabaton_x1s.lib.protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
 
-def test_build_notify_reply_matches_capture():
-    mdns_txt = {
-        "MAC": "e2:6a:44:86:1b:45",
-        "MODEL": "0x6402",
-        "BUILD": "0x20221120",
-        "FW": "5.1.0",
-        "NAME": "Souterrain hub",
-    }
-    reg = NotifyRegistration("proxy", "192.168.2.151", mdns_txt, 8100)
-
-    demuxer = NotifyDemuxer()
-    frame = demuxer._build_notify_reply(reg)
-
-    assert frame is not None
-    assert frame.hex() == (
-        "a55a1de26a44861b4545640220221120050100536f757465727261696e20687562be"
-    )
+def _build_call_me(mac_bytes: bytes, app_ip: str, app_port: int) -> bytes:
+    payload = mac_bytes + socket.inet_aton(app_ip) + struct.pack(">H", app_port)
+    return bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF]) + payload + b"\x00"
 
 
-def test_broadcast_ip():
-    assert _broadcast_ip("192.168.2.151") == "192.168.2.255"
-    assert _broadcast_ip("invalid") == "255.255.255.255"
+def test_call_me_routes_by_mac(monkeypatch):
+    demux = NotifyDemuxer()
+    demux._ensure_running_locked = lambda: None  # type: ignore[assignment]
+
+    called = []
+
+    def cb(src_ip: str, src_port: int, app_ip: str, app_port: int) -> None:
+        called.append((src_ip, src_port, app_ip, app_port))
+
+    mdns_txt = {"MAC": "AA:BB:CC:DD:EE:FF"}
+    demux.register_proxy("proxy1", "192.168.1.10", mdns_txt, 8102, cb)
+
+    pkt = _build_call_me(bytes.fromhex("aabbccddeeff"), "10.0.0.5", 1234)
+    demux._handle_call_me(pkt, "10.0.0.5", 5678)
+
+    assert called == [("10.0.0.5", 5678, "10.0.0.5", 1234)]
 
 
-def test_notify_me_reply_targets_source_port():
-    mdns_txt = {
-        "MAC": "e2:6a:44:86:1b:45",
-        "NAME": "Souterrain hub",
-    }
-    reg = NotifyRegistration("proxy", "192.168.2.151", mdns_txt, 8100)
+def test_call_me_ignored_when_no_match(monkeypatch):
+    demux = NotifyDemuxer()
+    demux._ensure_running_locked = lambda: None  # type: ignore[assignment]
 
-    demuxer = NotifyDemuxer()
-    demuxer._registrations = {"proxy": reg}
-    demuxer._stop_event = threading.Event()
+    called = []
 
-    class FakeSocket:
-        def __init__(self) -> None:
-            self.sent = []
-            self.recv_called = False
+    def cb(src_ip: str, src_port: int, app_ip: str, app_port: int) -> None:
+        called.append((src_ip, src_port, app_ip, app_port))
 
-        def recvfrom(self, _max: int):
-            if self.recv_called:
-                raise OSError()
-            self.recv_called = True
-            return NOTIFY_ME_PAYLOAD, ("192.168.2.10", 12345)
+    demux.register_proxy("proxy1", "192.168.1.10", {"MAC": "AA:BB:CC:DD:EE:FF"}, 8102, cb)
+    demux.register_proxy("proxy2", "192.168.1.11", {"MAC": "11:22:33:44:55:66"}, 8102, cb)
 
-        def sendto(self, data: bytes, addr):
-            self.sent.append((data, addr))
+    pkt = _build_call_me(b"\x00\x00\x00\x00\x00\x00", "10.0.0.5", 1234)
+    demux._handle_call_me(pkt, "10.0.0.5", 5678)
 
-    demuxer._sock = FakeSocket()
-    demuxer._notify_loop()
-
-    assert demuxer._sock.sent
-    assert demuxer._sock.sent[0][1] == ("192.168.2.255", 8100)
+    assert not called

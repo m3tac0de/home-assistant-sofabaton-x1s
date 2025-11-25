@@ -152,8 +152,6 @@ class TransportBridge:
         self._hub_lock = threading.Lock()
         self._app_lock = threading.Lock()
 
-        self._udp_sock: Optional[socket.socket] = None
-        self._udp_thr: Optional[threading.Thread] = None
         self._claim_thr: Optional[threading.Thread] = None
         self._bridge_thr: Optional[threading.Thread] = None
         self._notify_registered = False
@@ -207,7 +205,7 @@ class TransportBridge:
     def enable_proxy(self) -> None:
         self._proxy_enabled = True
         log.info("[PROXY] enabled")
-        if self._broadcast_listener_enabled and not self._notify_registered:
+        if not self._notify_registered:
             self._register_demuxer()
 
     def disable_proxy(self) -> None:
@@ -228,13 +226,9 @@ class TransportBridge:
         self._stop.clear()
         if udp_port is not None:
             self.proxy_udp_port = udp_port
-        self._udp_sock = self._open_udp_listener()
-        self._udp_thr = threading.Thread(
-            target=self._udp_loop, name="x1proxy-udp", daemon=True
-        )
-        self._udp_thr.start()
-
-        if self._broadcast_listener_enabled and self._proxy_enabled:
+        demuxer = get_notify_demuxer(self.proxy_udp_port)
+        self.proxy_udp_port = demuxer.listen_port
+        if self._proxy_enabled:
             self._register_demuxer()
 
         self._claim_thr = threading.Thread(
@@ -250,13 +244,6 @@ class TransportBridge:
     def stop(self) -> None:
         self._stop.set()
         self._stop_notify_listener()
-
-        if self._udp_sock is not None:
-            try:
-                self._udp_sock.close()
-            except Exception:
-                pass
-            self._udp_sock = None
 
         with self._hub_lock:
             if self._hub_sock:
@@ -289,103 +276,37 @@ class TransportBridge:
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
-    def _open_udp_listener(self) -> socket.socket:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        reuseport_enabled = False
-        reuseport_opt = getattr(socket, "SO_REUSEPORT", None)
-        if reuseport_opt is not None:
-            try:
-                s.setsockopt(socket.SOL_SOCKET, reuseport_opt, 1)
-                reuseport_enabled = True
-            except OSError:
-                log.warning("[UDP] SO_REUSEPORT not available")
-
-        if self._broadcast_listener_enabled:
-            demuxer = get_notify_demuxer()
-            s.bind(("0.0.0.0", demuxer.listen_port))
-            self.proxy_udp_port = s.getsockname()[1]
-            log.info(
-                "[UDP] bound on *:%d (shared with NOTIFY_ME, SO_REUSEPORT=%s)",
-                self.proxy_udp_port,
-                reuseport_enabled,
-            )
-            return s
-
-        base = self.proxy_udp_port
-        last_err: Optional[Exception] = None
-
-        if base == 0:
-            s.bind(("0.0.0.0", 0))
-            self.proxy_udp_port = s.getsockname()[1]
-            log.info(
-                "[UDP] bound on *:%d (os-picked, SO_REUSEPORT=%s)",
-                self.proxy_udp_port,
-                reuseport_enabled,
-            )
-            return s
-
-        for port in range(base, base + 32):
-            try:
-                s.bind(("0.0.0.0", port))
-                self.proxy_udp_port = port
-                log.info(
-                    "[UDP] bound on *:%d (SO_REUSEPORT=%s)",
-                    port,
-                    reuseport_enabled,
-                )
-                return s
-            except OSError as e:
-                last_err = e
-                continue
-
-        s.close()
-        raise OSError(f"could not bind UDP near {base}: {last_err}")
-
-    def _udp_loop(self) -> None:
-        if self._udp_sock is None:
-            return
-        sock = self._udp_sock
-        log.info("[UDP] listening for APP CALL_ME on *:%d", self.proxy_udp_port)
-        while not self._stop.is_set():
-            try:
-                pkt, (src_ip, src_port) = sock.recvfrom(2048)
-            except OSError:
-                break
-            if len(pkt) < 16 or pkt[0] != SYNC0 or pkt[1] != SYNC1:
-                continue
-            op = (pkt[2] << 8) | pkt[3]
-            if op != OP_CALL_ME:
-                continue
-            try:
-                app_ip = socket.inet_ntoa(pkt[10:14])
-                app_port = struct.unpack(">H", pkt[14:16])[0]
-            except Exception:
-                continue
-            if not self._proxy_enabled:
-                continue
-            log.info(
-                "[UDP] APP CALL_ME from %s:%d -> app tcp %s:%d",
-                src_ip,
-                src_port,
-                app_ip,
-                app_port,
-            )
-            threading.Thread(
-                target=self._handle_app_session,
-                args=((app_ip, app_port),),
-                name="x1proxy-app-connect",
-                daemon=True,
-            ).start()
-
     def _register_demuxer(self) -> None:
-        get_notify_demuxer().register_proxy(
+        if self._notify_registered:
+            return
+        get_notify_demuxer(self.proxy_udp_port).register_proxy(
             proxy_id=self.proxy_id,
             real_hub_ip=self.real_hub_ip,
             mdns_txt=self._mdns_txt,
             call_me_port=self.proxy_udp_port,
+            call_me_cb=self._handle_call_me,
         )
         self._notify_registered = True
+
+    def _handle_call_me(
+        self, src_ip: str, src_port: int, app_ip: str, app_port: int
+    ) -> None:
+        if not self._proxy_enabled or self._stop.is_set():
+            return
+
+        log.info(
+            "[UDP] APP CALL_ME from %s:%d -> app tcp %s:%d",
+            src_ip,
+            src_port,
+            app_ip,
+            app_port,
+        )
+        threading.Thread(
+            target=self._handle_app_session,
+            args=((app_ip, app_port),),
+            name="x1proxy-app-connect",
+            daemon=True,
+        ).start()
 
     def _hub_guard_loop(self) -> None:
         while not self._stop.is_set():
@@ -478,7 +399,7 @@ class TransportBridge:
                 s.close()
             except Exception:
                 pass
-            if self._broadcast_listener_enabled and self._proxy_enabled:
+            if self._proxy_enabled:
                 self._register_demuxer()
             log.exception("[TCP] failed to connect -> APP %s:%d", *app_addr)
             return
@@ -661,7 +582,7 @@ class TransportBridge:
     def _notify_client_state(self, connected: bool) -> None:
         if connected:
             self._stop_notify_listener()
-        elif self._broadcast_listener_enabled and self._proxy_enabled:
+        elif self._proxy_enabled:
             self._register_demuxer()
         for cb in self._client_state_cbs:
             try:

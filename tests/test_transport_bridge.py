@@ -25,7 +25,7 @@ def test_connect_beacon_targets_broadcast_port(monkeypatch):
     monkeypatch.setattr(transport_bridge.socket, "socket", lambda *a, **k: FakeSocket())
 
     bridge = TransportBridge(
-        "192.168.2.10", 8102, 9102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
+        "192.168.2.10", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
     )
     bridge._emit_connect_ready_beacon("192.168.2.15")
 
@@ -37,7 +37,7 @@ def test_connect_beacon_targets_broadcast_port(monkeypatch):
 
 def test_notify_listener_stops_when_connecting(monkeypatch):
     bridge = TransportBridge(
-        "192.168.2.10", 8102, 9102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
+        "192.168.2.10", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
     )
     stopped = False
 
@@ -46,6 +46,15 @@ def test_notify_listener_stops_when_connecting(monkeypatch):
         stopped = True
 
     bridge._stop_notify_listener = fake_stop  # type: ignore[assignment]
+
+    class FakeDemuxer:
+        def register_proxy(self, *args, **kwargs):
+            pass
+
+        def unregister_proxy(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(transport_bridge, "get_notify_demuxer", lambda *a, **k: FakeDemuxer())
 
     class FailingSocket:
         def __init__(self, *_args, **_kwargs):
