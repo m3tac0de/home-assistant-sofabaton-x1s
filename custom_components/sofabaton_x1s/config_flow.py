@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
+from homeassistant.components.zeroconf import ZeroconfServiceInfo
 from homeassistant.core import callback
 
 from .const import (
