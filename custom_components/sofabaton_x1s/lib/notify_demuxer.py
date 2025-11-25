@@ -48,6 +48,8 @@ class NotifyRegistration:
     call_me_port: int
     call_me_cb: Callable[[str, int, str, int], None]
     mac_bytes: bytes
+    device_id: bytes
+    call_me_hint: bytes
 
 
 class NotifyDemuxer:
@@ -73,13 +75,17 @@ class NotifyDemuxer:
         call_me_port: int,
         call_me_cb: Callable[[str, int, str, int], None],
     ) -> None:
+        mac_bytes = self._extract_mac_bytes(mdns_txt)
+        device_id, call_me_hint = self._build_device_identifiers(mac_bytes)
         reg = NotifyRegistration(
             proxy_id,
             real_hub_ip,
             dict(mdns_txt),
             int(call_me_port),
             call_me_cb,
-            self._extract_mac_bytes(mdns_txt),
+            mac_bytes,
+            device_id,
+            call_me_hint,
         )
         with self._lock:
             self._registrations[proxy_id] = reg
@@ -189,11 +195,7 @@ class NotifyDemuxer:
 
         version_block = bytes.fromhex("640220221120050100")
 
-        required_prefix_byte = b"\xc2"
-        unique_tail_mac = reg.mac_bytes[0:5]
-        #device_id_payload = bytes.fromhex("c2e26a44861b")
-        static_id_suffix_byte = b"\x45"
-        unique_device_id_payload = required_prefix_byte + unique_tail_mac + static_id_suffix_byte
+        unique_device_id_payload = reg.device_id
 
         frame = (
             bytes([SYNC0, SYNC1, 0x1D])
@@ -286,6 +288,9 @@ class NotifyDemuxer:
         has_hint = mac_hint and any(mac_hint)
         if has_hint:
             for reg in registrations:
+                if reg.call_me_hint == mac_hint:
+                    return reg
+            for reg in registrations:
                 if reg.mac_bytes == mac_hint:
                     return reg
 
@@ -315,6 +320,18 @@ class NotifyDemuxer:
             mac_bytes = mac_bytes[:6]
 
         return mac_bytes
+
+    def _build_device_identifiers(self, mac_bytes: bytes) -> tuple[bytes, bytes]:
+        """Return the device id used in NOTIFY_ME replies and the CALL_ME hint."""
+
+        required_prefix_byte = b"\xc2"
+        static_id_suffix_byte = b"\x45"
+        unique_tail_mac = mac_bytes[0:5]
+
+        device_id = required_prefix_byte + unique_tail_mac + static_id_suffix_byte
+        call_me_hint = unique_tail_mac + static_id_suffix_byte
+
+        return device_id, call_me_hint
 
 
 _GLOBAL_DEMUXER: Optional[NotifyDemuxer] = None

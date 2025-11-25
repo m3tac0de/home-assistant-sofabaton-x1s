@@ -5,8 +5,8 @@ from custom_components.sofabaton_x1s.lib.notify_demuxer import NotifyDemuxer
 from custom_components.sofabaton_x1s.lib.protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
 
-def _build_call_me(mac_bytes: bytes, app_ip: str, app_port: int) -> bytes:
-    payload = mac_bytes + socket.inet_aton(app_ip) + struct.pack(">H", app_port)
+def _build_call_me(device_id_hint: bytes, app_ip: str, app_port: int) -> bytes:
+    payload = device_id_hint + socket.inet_aton(app_ip) + struct.pack(">H", app_port)
     return bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF]) + payload + b"\x00"
 
 
@@ -22,7 +22,7 @@ def test_call_me_routes_by_mac(monkeypatch):
     mdns_txt = {"MAC": "AA:BB:CC:DD:EE:FF"}
     demux.register_proxy("proxy1", "192.168.1.10", mdns_txt, 8102, cb)
 
-    pkt = _build_call_me(bytes.fromhex("aabbccddeeff"), "10.0.0.5", 1234)
+    pkt = _build_call_me(bytes.fromhex("aabbccddee45"), "10.0.0.5", 1234)
     demux._handle_call_me(pkt, "10.0.0.5", 5678)
 
     assert called == [("10.0.0.5", 5678, "10.0.0.5", 1234)]
