@@ -201,6 +201,8 @@ class X1Proxy:
         self._activity_listeners: list[callable] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
+        self._app_devices_deadline: float | None = None
+        self._app_devices_retry_sent = False
 
         self.transport = TransportBridge(
             real_hub_ip,
@@ -460,6 +462,8 @@ class X1Proxy:
                 cb(connected)
             except Exception:
                 log.exception("client state listener failed")
+        if not connected:
+            self._clear_app_device_retry()
 
     
     def _notify_activity_change(self, new_id: int | None, old_id: int | None) -> None:
@@ -481,9 +485,21 @@ class X1Proxy:
                 self._pending_button_requests.clear()
         else:
             self._pending_button_requests.clear()
-    
+
     def _handle_idle(self, now: float) -> None:
         self._burst.tick(now, can_issue=self.can_issue_commands, sender=self._send_cmd_frame)
+        self._maybe_retry_app_devices(now)
+
+    def _maybe_retry_app_devices(self, now: float) -> None:
+        if self._app_devices_deadline is None:
+            return
+
+        if now >= self._app_devices_deadline:
+            if not self._app_devices_retry_sent:
+                log.info("[CMD] retrying app-sourced REQ_DEVICES after timeout")
+                self._send_cmd_frame(OP_REQ_DEVICES, b"")
+                self._app_devices_retry_sent = True
+            self._app_devices_deadline = None
 
     def _send_cmd_frame(self, opcode: int, payload: bytes) -> None:
         frame = self._build_frame(opcode, payload)
@@ -498,18 +514,35 @@ class X1Proxy:
     def _handle_hub_frame(self, data: bytes, cid: int) -> None:
         if self.diag_dump:
             log.info("[DUMP #%d] H→A %s", cid, _hexdump(data))
-        if self.diag_parse:
-            frames = self._df_h2a.feed(data, cid)
-            if frames:
+        frames = self._df_h2a.feed(data, cid)
+        if frames:
+            self._handle_hub_frames(frames)
+            if self.diag_parse:
                 self._log_frames("H→A", frames)
 
     def _handle_app_frame(self, data: bytes, cid: int) -> None:
         if self.diag_dump:
             log.info("[DUMP #%d] A→H %s", cid, _hexdump(data))
-        if self.diag_parse:
-            frames = self._df_a2h.feed(data, cid)
-            if frames:
+        frames = self._df_a2h.feed(data, cid)
+        if frames:
+            self._handle_app_frames(frames)
+            if self.diag_parse:
                 self._log_frames("A→H", frames)
+
+    def _handle_app_frames(self, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
+        for opcode, _raw, _payload, _scid, _ecid in frames:
+            if opcode == OP_REQ_DEVICES:
+                self._app_devices_deadline = time.monotonic() + 1.0
+                self._app_devices_retry_sent = False
+
+    def _handle_hub_frames(self, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
+        for opcode, _raw, _payload, _scid, _ecid in frames:
+            if opcode == OP_CATALOG_ROW_DEVICE:
+                self._clear_app_device_retry()
+
+    def _clear_app_device_retry(self) -> None:
+        self._app_devices_deadline = None
+        self._app_devices_retry_sent = False
 
     def _accumulate_keymap(self, act_lo: int, payload: bytes) -> None:
         self.state.accumulate_keymap(act_lo, payload)
