@@ -188,12 +188,16 @@ class NotifyDemuxer:
         name_bytes = name[:14].ljust(14, b"\x00")
 
         version_block = bytes.fromhex("640220221120050100")
-        status_byte = b"\x45"
+
+        required_prefix_byte = b"\xc2"
+        unique_tail_mac = reg.mac_bytes[0:5]
+        #device_id_payload = bytes.fromhex("c2e26a44861b")
+        static_id_suffix_byte = b"\x45"
+        unique_device_id_payload = required_prefix_byte + unique_tail_mac + static_id_suffix_byte
 
         frame = (
             bytes([SYNC0, SYNC1, 0x1D])
-            + reg.mac_bytes
-            + status_byte
+            + unique_device_id_payload
             + version_block
             + name_bytes
             + b"\xBE"
