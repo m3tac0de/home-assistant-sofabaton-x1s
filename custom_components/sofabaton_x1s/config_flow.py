@@ -21,7 +21,6 @@ from .const import (
     DEFAULT_PROXY_UDP_PORT,
     DEFAULT_HUB_LISTEN_BASE,
     X1S_NO_THRESHOLD,
-    CONF_NOTIFY_BROADCASTS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -120,11 +119,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             first = existing_entries[0]
             current_proxy_udp = first.options.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
             current_hub_listen_base = first.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
-            current_notify_broadcasts = first.options.get(CONF_NOTIFY_BROADCASTS, False)
         else:
             current_proxy_udp = DEFAULT_PROXY_UDP_PORT
             current_hub_listen_base = DEFAULT_HUB_LISTEN_BASE
-            current_notify_broadcasts = False
 
         if user_input is not None:
             proxy_udp_port = user_input["proxy_udp_port"]
@@ -160,9 +157,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     "proxy_udp_port": proxy_udp_port,
                     "hub_listen_base": hub_listen_base,
                     CONF_MDNS_VERSION: version,
-                    CONF_NOTIFY_BROADCASTS: user_input.get(
-                        CONF_NOTIFY_BROADCASTS, False
-                    ),
                 },
             )
             
@@ -170,9 +164,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({
             vol.Required("proxy_udp_port", default=current_proxy_udp): PORT_VALIDATOR,
             vol.Required("hub_listen_base", default=current_hub_listen_base): PORT_VALIDATOR,
-            vol.Optional(
-                CONF_NOTIFY_BROADCASTS, default=current_notify_broadcasts
-            ): bool,
         })
 
         return self.async_show_form(
@@ -335,10 +326,6 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 "hub_listen_base",
                 default=self.entry.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE),
             ): PORT_VALIDATOR,
-            vol.Optional(
-                CONF_NOTIFY_BROADCASTS,
-                default=self.entry.options.get(CONF_NOTIFY_BROADCASTS, False),
-            ): bool,
         })
 
         return self.async_show_form(
