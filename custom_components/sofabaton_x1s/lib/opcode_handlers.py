@@ -16,6 +16,11 @@ from .protocol_const import (
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
     OP_DEVBTN_PAGE,
+    OP_DEVBTN_PAGE_ALT1,
+    OP_DEVBTN_PAGE_ALT2,
+    OP_DEVBTN_PAGE_ALT3,
+    OP_DEVBTN_PAGE_ALT4,
+    OP_DEVBTN_PAGE_ALT5,
     OP_DEVBTN_TAIL,
     OP_KEYMAP_CONT,
     OP_KEYMAP_TBL_A,
@@ -88,7 +93,19 @@ def _infer_command_entity(proxy: "X1Proxy", payload: bytes) -> int:
     if len(payload) >= 8:
         return payload[7]
 
-    return payload[3] if len(payload) >= 4 else 0
+    return 0
+
+
+def _extract_dev_id(raw: bytes, payload: bytes, opcode: int) -> int:
+    """Determine device ID for a command burst frame."""
+
+    if opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1) and len(raw) > 11:
+        return raw[11]
+
+    if len(payload) >= 4:
+        return payload[3]
+
+    return 0
 
 
 @register_handler(opcodes=(OP_REQ_ACTIVATE,), directions=("A→H",))
@@ -429,7 +446,7 @@ class RequestCommandsHandler(BaseFrameHandler):
         log.info("[DEVCTL] A→H requesting commands dev=0x%02X (%d)", dev_id, dev_id)
 
 
-@register_handler(opcodes=(OP_DEVBTN_HEADER,), directions=("H→A",))
+@register_handler(opcodes=(OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1), directions=("H→A",))
 class DeviceButtonHeaderHandler(BaseFrameHandler):
     """Start device-command burst parsing."""
 
@@ -441,7 +458,7 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
         if len(payload) < 4:
             return
 
-        dev_id = _infer_command_entity(proxy, payload)
+        dev_id = _extract_dev_id(raw, payload, frame.opcode)
 
         proxy._burst.start(f"commands:{dev_id}", now=time.monotonic())
 
@@ -456,7 +473,16 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
 
 
 @register_handler(
-    opcodes=(OP_DEVBTN_PAGE, OP_DEVBTN_MORE, OP_DEVBTN_TAIL),
+    opcodes=(
+        OP_DEVBTN_PAGE,
+        OP_DEVBTN_MORE,
+        OP_DEVBTN_TAIL,
+        OP_DEVBTN_PAGE_ALT1,
+        OP_DEVBTN_PAGE_ALT2,
+        OP_DEVBTN_PAGE_ALT3,
+        OP_DEVBTN_PAGE_ALT4,
+        OP_DEVBTN_PAGE_ALT5,
+    ),
     directions=("H→A",),
 )
 class DeviceButtonPayloadHandler(BaseFrameHandler):
@@ -468,6 +494,9 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
         raw = frame.raw
 
         if len(payload) < 4:
+            return
+
+        if frame.opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1):
             return
 
         dev_id = _infer_command_entity(proxy, payload)
