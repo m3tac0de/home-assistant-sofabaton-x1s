@@ -20,7 +20,12 @@ from .hub import SofabatonHub, get_hub_model
 
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
     hub: SofabatonHub = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([SofabatonIndexSensor(hub, entry)])
+    async_add_entities(
+        [
+            SofabatonIndexSensor(hub, entry),
+            SofabatonActivitySensor(hub, entry),
+        ]
+    )
 
 
 class SofabatonIndexSensor(SensorEntity):
@@ -133,3 +138,57 @@ class SofabatonIndexSensor(SensorEntity):
             "buttons": decorated_buttons,
             "commands": decorated_commands,
         }
+
+class SofabatonActivitySensor(SensorEntity):
+    """Shows the current activity name (or 'Powered Off')."""
+
+    _attr_should_poll = False
+    # No entity_category here -> it's a normal sensor, not diagnostic
+
+    def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
+        self._hub = hub
+        self._entry = entry
+        self._attr_name = f"{entry.data[CONF_NAME]} activity"
+        self._attr_unique_id = f"{entry.data[CONF_MAC]}_activity"
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
+            name=self._entry.data[CONF_NAME],
+            model=get_hub_model(self._entry),
+        )
+
+    async def async_added_to_hass(self) -> None:
+        # Update when the activity changes
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_activity(self._hub.entry_id),
+                self._handle_update,
+            )
+        )
+
+    @callback
+    def _handle_update(self) -> None:
+        self.async_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        return self._hub.hub_connected
+
+    @property
+    def state(self) -> str:
+        """Return the current activity name, or 'Powered Off' if none."""
+        # If the hub isn't connected you *could* return None or 'offline';
+        # for now we'll just base it purely on the activity.
+        act_id = self._hub.current_activity
+        if act_id is None:
+            return "Powered Off"
+
+        name = self._hub.get_activity_name_by_id(act_id)
+        if name:
+            return name
+
+        # Fallback if name lookup fails
+        return f"Activity {act_id}"

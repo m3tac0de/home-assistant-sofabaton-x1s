@@ -21,7 +21,7 @@ from .hub import SofabatonHub, get_hub_model
 
 _LOGGER = logging.getLogger(__name__)
 
-POWERED_OFF = "Powered off"
+POWERED_OFF = "Powered Off"
 
 
 async def async_setup_entry(
