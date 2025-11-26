@@ -59,13 +59,15 @@ So essentially: this integration is a proxy service for the Sofabaton X1/X1S hub
 - The *real* hub is discovered via mDNS → we get IP, port, MAC, name, TXT.
 - The integration starts a Python proxy (bundled in `custom_components/sofabaton_x1s/lib/x1_proxy.py`).
 - The integration connects to the real hub and **also** advertises a *virtual* `_x1hub._udp.local.`.
-- When the real Sofabaton app connects to our virtual hub, the integration temporarily goes into “read-only” mode and your HA entities that can send commands become unavailable (this is intentional, we're preventing unexpected behavior in the app by allowing only a single "writer" at a time).
+- When the real Sofabaton app wants to control the virtual hub, it first sends a **CALL_ME** packet to the proxy's UDP listener (broadcast for iOS, unicast is fine for Android). The proxy then opens the TCP session **back into the app** on a port in the 8100–8110 range. While that session is active, your HA entities that can send commands become unavailable (this is intentional, we're preventing unexpected behavior in the app by allowing only a single "writer" at a time).
 
 We add a small TXT flag to the virtual hub so Home Assistant **ignores** our own advertisement and doesn’t overwrite the real hub’s IP.
 
 ---
 
 ### Networking
+
+For a deeper walkthrough (multiple hubs, VLANs, firewalls, containers, and mobile app quirks), see [`docs/networking.md`](docs/networking.md).
 
 This integration follows the same 3-step flow as the official Sofabaton app:
 
