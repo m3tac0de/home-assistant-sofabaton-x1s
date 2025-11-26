@@ -261,3 +261,31 @@ def test_parse_device_commands_handles_dev_id_one_sequence() -> None:
         24: "Volume_down",
         25: "Volume_up",
     }
+
+
+def test_parse_device_commands_handles_req_commands_responses() -> None:
+    frames_hex = (
+        "a5 5a 2f 5d 01 00 01 01 00 01 01 01 1d 0a 00 00 00 00 00 2e 55 70 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff aa",
+        "a5 5a 2f 5d 01 00 01 01 00 01 01 02 9e 0d 00 00 00 00 2e 77 56 6f 6c 75 6d 65 5f 75 70 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 9d",
+        "a5 5a 2f 5d 01 00 01 01 00 01 01 06 0b 0d 00 00 00 00 00 6a 4d 75 74 65 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff b2",
+    )
+
+    frames = [bytes.fromhex(block) for block in frames_hex]
+    assembler = DeviceCommandAssembler()
+    completed: list[tuple[int, bytes]] = []
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        dev_id = raw[11]
+        completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id))
+
+    assert len(completed) == 3
+
+    proxy = X1Proxy("127.0.0.1")
+    parsed = {dev_id: proxy.parse_device_commands(payload, dev_id) for dev_id, payload in completed}
+
+    assert parsed == {
+        1: {29: "Up"},
+        2: {158: "Volume_up"},
+        6: {11: "Mute"},
+    }

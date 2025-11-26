@@ -89,13 +89,27 @@ class DeviceCommandAssembler:
         frame_no = payload[2]
         burst = self._get_buffer(dev_id)
 
-        if opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1):
-            burst.total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
-            burst.frames.clear()
+        if opcode in (
+            OP_DEVBTN_HEADER,
+            OP_DEVBTN_PAGE_ALT1,
+            OP_DEVBTN_PAGE_ALT2,
+            OP_DEVBTN_PAGE_ALT3,
+            OP_DEVBTN_PAGE_ALT4,
+            OP_DEVBTN_PAGE_ALT5,
+        ):
+            if frame_no == 1 or burst.total_frames is None:
+                burst.total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
+                burst.frames.clear()
         elif burst.total_frames is None and opcode in (OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA, OP_DEVBTN_MORE):
             burst.total_frames = frame_no
 
         data_start = self._data_offset(opcode)
+        if opcode in (
+            OP_DEVBTN_PAGE_ALT3,
+            OP_DEVBTN_PAGE_ALT4,
+            OP_DEVBTN_PAGE_ALT5,
+        ) and payload[:6] == b"\x01\x00\x01\x01\x00\x01":
+            data_start = 7
         if opcode in (
             OP_DEVBTN_HEADER,
             OP_DEVBTN_PAGE,
