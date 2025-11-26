@@ -16,7 +16,7 @@
       },
       "ports": {
         "title": "Proxy ports",
-        "description": "These ports are used by the local proxy that emulates the hub. UDP now defaults to 8102 for iOS compatibility; changing it applies to all hubs and may prevent iOS from discovering the virtual hub. UDP is there so that the official app can find the virtual hubs. TCP is there so that the physical hub can connect to the integration. Each hub that you add to this integration will share the same UDP port, but will bind its own TCP port. The integration will try up to 32 ports, starting at TCP Listener port base, to find an available port.",
+        "description": "These ports are used by the local Sofabaton proxy. UDP (default 8102) lets the official app discover the virtual hub and is shared by all hubs, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
         "data": {
           "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
           "proxy_udp_port": "UDP Listener port (for the app to connect)"
@@ -32,7 +32,7 @@
     "step": {
       "init": {
         "title": "Proxy ports",
-        "description": "These ports are used by the local proxy that emulates the hub. UDP now defaults to 8102 for iOS compatibility; changing it applies to all hubs and may prevent iOS from discovering the virtual hub. UDP is there so that the official app can find the virtual hubs. TCP is there so that the physical hub can connect to the integration. Each hub that you add to this integration will share the same UDP port, but will bind its own TCP port. The integration will try up to 32 ports, starting at TCP Listener port base, to find an available port.",
+        "description": "These ports are used by the local Sofabaton proxy. UDP (default 8102) lets the official app discover the virtual hub and is shared by all hubs, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
         "data": {
           "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
           "proxy_udp_port": "UDP Listener port (for the app to connect)"
