@@ -7,19 +7,19 @@
       },
       "manual": {
         "title": "Manual hub setup",
-        "description": "Provide a name, IP address, and port for your Sofabaton hub. The name is broadcast via mDNS. The default port is 8102.",
+        "description": "Provide a name, IP address, and port for your Sofabaton hub. The name you choose here will become the name of your virtual hub and cannot be changed later. Leave the hub port at its default, this setting will be removed in the future.",
         "data": {
-          "name": "Hub name (broadcast on your network)",
+          "name": "Hub name",
           "host": "Hub IP address",
           "port": "Hub TCP port"
         }
       },
       "ports": {
         "title": "Proxy ports",
-        "description": "These ports are used by the local proxy that emulates the hub. UDP now defaults to 8102 so CALL_ME and NOTIFY_ME share a single listener that works for Android and iOS; changing it applies to all hubs and may prevent iOS discovery. The port values are bases, and the integration will try to find an open port within 32 ports of what you enter here.",
+        "description": "These ports are used by the local proxy that emulates the hub. UDP now defaults to 8102 for iOS compatibility; changing it applies to all hubs and may prevent iOS from discovering the virtual hub. UDP is there so that the official app can find the virtual hubs. TCP is there so that the physical hub can connect to the integration. Each hub that you add to this integration will share the same UDP port, but will bind its own TCP port. The integration will try up to 32 ports, starting at TCP Listener port base, to find an available port.",
         "data": {
-          "proxy_udp_port": "Proxy UDP base port",
-          "hub_listen_base": "Hub TCP listen base"
+          "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
+          "proxy_udp_port": "UDP Listener port (for the app to connect)"
         }
       },
       "zeroconf_confirm": {
@@ -32,10 +32,10 @@
     "step": {
       "init": {
         "title": "Proxy ports",
-        "description": "{explain}",
+        "description": "These ports are used by the local proxy that emulates the hub. UDP now defaults to 8102 for iOS compatibility; changing it applies to all hubs and may prevent iOS from discovering the virtual hub. UDP is there so that the official app can find the virtual hubs. TCP is there so that the physical hub can connect to the integration. Each hub that you add to this integration will share the same UDP port, but will bind its own TCP port. The integration will try up to 32 ports, starting at TCP Listener port base, to find an available port.",
         "data": {
-          "proxy_udp_port": "Proxy UDP base port",
-          "hub_listen_base": "Hub TCP listen base"
+          "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
+          "proxy_udp_port": "UDP Listener port (for the app to connect)"
         }
       }
     }
