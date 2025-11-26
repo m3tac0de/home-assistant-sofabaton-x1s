@@ -10,7 +10,6 @@ CONF_MDNS_TXT = "mdns_txt"
 CONF_MDNS_VERSION = "mdns_version"
 CONF_PROXY_ENABLED = "proxy_enabled"
 CONF_HEX_LOGGING_ENABLED = "hex_logging_enabled"
-CONF_NOTIFY_BROADCASTS = "notify_broadcasts"
 
 # X1S devices report a higher NO field in their mDNS TXT records
 X1S_NO_THRESHOLD = 20221120

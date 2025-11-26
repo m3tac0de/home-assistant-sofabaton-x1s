@@ -129,7 +129,6 @@ class TransportBridge:
         proxy_id: str,
         mdns_instance: str,
         mdns_txt: Dict[str, str],
-        enable_broadcast_listener: bool = False,
         ka_idle: int = 30,
         ka_interval: int = 10,
         ka_count: int = 3,
@@ -144,7 +143,6 @@ class TransportBridge:
         self.ka_count = int(ka_count)
         self._mdns_instance = mdns_instance
         self._mdns_txt = mdns_txt
-        self._broadcast_listener_enabled = bool(enable_broadcast_listener)
 
         self._stop = threading.Event()
         self._hub_sock: Optional[socket.socket] = None
