@@ -67,8 +67,6 @@ We add a small TXT flag to the virtual hub so Home Assistant **ignores** our own
 
 ### Networking
 
-For a deeper walkthrough (multiple hubs, VLANs, firewalls, containers, and mobile app quirks), see [`docs/networking.md`](docs/networking.md).
-
 This integration follows the same 3-step flow as the official Sofabaton app:
 
 1. **mDNS / Bonjour** – the hub advertises `_x1hub._udp.local.`. Home Assistant (and the bundled proxy) listen for this. If your hub is on another VLAN and mDNS isn’t forwarded, discovery won’t work. In that case, use the manual IP/port option in the config flow.
