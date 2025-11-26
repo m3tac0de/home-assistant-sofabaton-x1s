@@ -162,6 +162,9 @@ def test_parse_device_commands_handles_alt_command_pages() -> None:
         opcode = int.from_bytes(raw[2:4], "big")
         completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id))
 
+    if not completed:
+        completed.extend(assembler.finalize_contiguous(dev_id))
+
     assert len(completed) == 1
     assembled_dev_id, assembled_payload = completed[0]
 
@@ -228,6 +231,9 @@ def test_parse_device_commands_handles_dev_id_one_sequence() -> None:
         opcode = int.from_bytes(raw[2:4], "big")
         completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id))
 
+    if not completed:
+        completed.extend(assembler.finalize_contiguous(dev_id))
+
     assert len(completed) == 1
     assembled_dev_id, assembled_payload = completed[0]
 
@@ -288,4 +294,54 @@ def test_parse_device_commands_handles_req_commands_responses() -> None:
         1: {29: "Up"},
         2: {158: "Volume_up"},
         6: {11: "Mute"},
+    }
+
+
+def test_parse_device_commands_handles_extended_req_commands_sequence() -> None:
+    frames_hex = (
+        "a5 5a d9 5d 01 00 01 01 00 07 14 02 01 1a 00 00 00 00 17 18 00 43 00 6c 00 65 00 6f 00 20 00 6b 00 61 00 6d 00 65 00 72 00 20 00 6f 00 66 00 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 02 1a 00 00 00 00 17 13 00 43 00 6c 00 65 00 6f 00 20 00 6b 00 61 00 6d 00 65 00 72 00 20 00 6f 00 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 03 1a 00 00 00 00 17 18 00 47 00 61 00 72 00 61 00 67 00 65 00 20 00 6f 00 66 00 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 92",
+        "a5 5a d5 5d 01 00 02 02 04 1a 00 00 00 00 17 13 00 47 00 61 00 72 00 61 00 67 00 65 00 20 00 6f 00 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 05 1a 00 00 00 00 17 18 00 48 00 61 00 6c 00 6c 00 77 00 61 00 79 00 20 00 6f 00 66 00 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 06 1a 00 00 00 00 17 13 00 48 00 61 00 6c 00 6c 00 77 00 61 00 79 00 20 00 6f 00 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 57",
+        "a5 5a d5 5d 01 00 03 02 07 1a 00 00 00 00 17 18 00 48 00 75 00 69 00 73 00 20 00 61 00 72 00 65 00 61 00 20 00 6f 00 66 00 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 08 1a 00 00 00 00 17 13 00 48 00 75 00 69 00 73 00 20 00 61 00 72 00 65 00 61 00 20 00 6f 00 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 09 1a 00 00 00 00 17 18 00 48 00 75 00 69 00 73 00 20 00 6f 00 66 00 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 16",
+        "a5 5a d5 5d 01 00 04 02 0a 1a 00 00 00 00 17 13 00 48 00 75 00 69 00 73 00 20 00 6f 00 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 0b 1a 00 00 00 00 17 18 00 49 00 6e 00 6e 00 65 00 20 00 4b 00 61 00 6d 00 65 00 72 00 20 00 6f 00 66 00 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 0c 1a 00 00 00 00 17 13 00 49 00 6e 00 6e 00 65 00 20 00 4b 00 61 00 6d 00 65 00 72 00 20 00 6f 00 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 4d",
+        "a5 5a d5 5d 01 00 05 02 0d 1a 00 00 00 00 17 18 00 6b 00 61 00 6e 00 74 00 6f 00 6f 00 72 00 20 00 6f 00 66 00 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 0e 1a 00 00 00 00 17 13 00 6b 00 61 00 6e 00 74 00 6f 00 6f 00 72 00 20 00 6f 00 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 0f 1a 00 00 00 00 17 18 00 4b 00 65 00 72 00 73 00 74 00 76 00 65 00 72 00 6c 00 69 00 63 00 68 00 74 00 69 00 6e 00 67 00 20 00 6f 00 66 00 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 91",
+        "a5 5a d5 5d 01 00 06 02 10 1a 00 00 00 00 17 13 00 4b 00 65 00 72 00 73 00 74 00 76 00 65 00 72 00 6c 00 69 00 63 00 68 00 74 00 69 00 6e 00 67 00 20 00 6f 00 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 11 1a 00 00 00 00 17 18 00 53 00 6f 00 75 00 73 00 74 00 65 00 72 00 72 00 61 00 69 00 6e 00 20 00 6f 00 66 00 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 12 1a 00 00 00 00 17 13 00 53 00 6f 00 75 00 73 00 74 00 65 00 72 00 72 00 61 00 69 00 6e 00 20 00 6f 00 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 7a",
+    )
+
+    frames = [bytes.fromhex(block) for block in frames_hex]
+    assembler = DeviceCommandAssembler()
+    completed: list[tuple[int, bytes]] = []
+    dev_id = frames[0][11]
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id))
+
+    if not completed:
+        completed.extend(assembler.finalize_contiguous(dev_id))
+
+    assert len(completed) == 1
+    assembled_dev_id, assembled_payload = completed[0]
+
+    proxy = X1Proxy("127.0.0.1")
+    parsed = proxy.parse_device_commands(assembled_payload, assembled_dev_id)
+
+    assert parsed == {
+        1: "Cleo kamer off",
+        2: "Cleo kamer on",
+        3: "Garage off",
+        4: "Garage on",
+        5: "Hallway off",
+        6: "Hallway on",
+        7: "Huis area off",
+        8: "Huis area on",
+        9: "Huis off",
+        10: "Huis on",
+        11: "Inne Kamer off",
+        12: "Inne Kamer on",
+        13: "kantoor off",
+        14: "kantoor on",
+        15: "Kerstverlichting off",
+        16: "Kerstverlichting on",
+        17: "Sousterrain off",
+        18: "Sousterrain on",
     }
