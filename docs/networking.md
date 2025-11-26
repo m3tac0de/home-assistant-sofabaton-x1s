@@ -37,14 +37,14 @@ Two discovery mechanisms run in parallel:
 Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Android can discover on other ports, but iOS discovery is lost if you move away from 8102.
 
 ### Connect flow (app side)
-1. **CALL_ME from app → proxy (UDP):** all platforms send a call-me packet to the proxy listener once discovery completes. iOS uses broadcast; Android can use unicast.
+1. **CALL_ME from app → proxy (UDP):** the app sends a call-me packet to the proxy listener once discovery completes (on the configured UDP listening port, **8102** by default).
 2. **TCP connect-back from proxy → app:** after the call-me, the proxy opens a TCP connection into the app on a port in the **8100–8110** range that the app exposes.
 3. **Relay to the real hub:** once the TCP session is up, the proxy bridges app commands to the already-established hub connection.
 
 When the app is connected, command-sending entities in Home Assistant intentionally become unavailable to avoid conflicting control writers.
 
 ### Firewall and container tips
-- Allow UDP from the app network/VLAN to Home Assistant on the proxy UDP port (ideally 8102 for iOS support). The proxy must be able to send and receive both unicast and **broadcast** UDP on that port for iOS discovery.
+- Allow UDP from the app network/VLAN to Home Assistant on the proxy UDP port (ideally 8102 for iOS support). The proxy must be able to send and receive both unicast and **broadcast** UDP on that port (broadcast for iOS discovery).
 - Allow TCP **outbound from Home Assistant to the app** on the port range **8100–8110**. This directionality is important: the proxy calls back into the app after the call-me, not the other way around.
 - Allow the app to use UDP (unicast and broadcast) and TCP within **8100–8110** toward Home Assistant so it can send the call-me and handle the connect-back. Broadcast is only required for iOS compatibility.
 - If Home Assistant runs in a container, bind the proxy UDP/TCP ports to the host interfaces that your mobile devices can reach.
