@@ -132,10 +132,53 @@ class DeviceCommandAssembler:
         burst.frames[frame_no] = frame_payload
 
         completed: List[Tuple[int, bytes]] = []
+        if burst.frames:
+            max_frame_no = max(burst.frames)
+            frames_are_contiguous = len(burst.frames) == max_frame_no and 1 in burst.frames
+        else:
+            max_frame_no = 0
+            frames_are_contiguous = False
+
         if burst.total_frames and burst.received >= burst.total_frames:
             ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
             completed.append((dev_id, ordered_payload))
             del self._buffers[dev_id]
+        elif (
+            burst.total_frames
+            and frames_are_contiguous
+            and burst.total_frames > max_frame_no
+            and burst.total_frames - max_frame_no <= 1
+            and opcode in (OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA, OP_DEVBTN_MORE)
+        ):
+            ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
+            completed.append((dev_id, ordered_payload))
+            del self._buffers[dev_id]
+
+        return completed
+
+    def finalize_contiguous(self, dev_id: int | None = None) -> List[Tuple[int, bytes]]:
+        """Flush buffered bursts whose frames are contiguous starting at 1.
+
+        Some hubs over-report the total frame count and never send a tail. In
+        those cases, complete bursts manually once all contiguous frames have
+        arrived.
+        """
+
+        targets = [dev_id] if dev_id is not None else list(self._buffers)
+        completed: List[Tuple[int, bytes]] = []
+
+        for target in targets:
+            burst = self._buffers.get(target)
+            if not burst or not burst.frames:
+                continue
+
+            max_frame = max(burst.frames)
+            if len(burst.frames) != max_frame or 1 not in burst.frames:
+                continue
+
+            ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
+            completed.append((target, ordered_payload))
+            del self._buffers[target]
 
         return completed
 
