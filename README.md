@@ -84,9 +84,9 @@ So, if you use VLANs / firewalls:
 If discovery works but the entities never go “connected to hub”, it’s usually that last rule: the hub cannot open the TCP back to HA.
 Also keep in mind that as soon as a client is connected to the physical hub, the hub stops mDNS advertising. So if this integration is connected and running with "proxy" disabled, the official app will not find it. And vice versa, the integration cannot see the hub if the official app is connected directly to it.
 
-### Upgrading note: single CALL_ME/NOTIFY_ME listener on 8102
+### Upgrading note: single UDP listener on 8102 for all configured hubs
 
-The proxy now uses one UDP listener for both CALL_ME and NOTIFY_ME, shared across all configured hubs. New installs default this listener to `8102` so Android and iOS discovery both work. If you previously overrode the **Proxy UDP base port** (for example, to `9102`), consider changing it back to `8102`. Using a different UDP port applies to all hubs and may prevent the iOS app from discovering the proxy.
+This integration now uses one UDP listener for both CALL_ME and the broadcast capabilities needed for iOS, shared across all configured hubs. New installs default this listener to `8102` so Android and iOS discovery both work. If you previously overrode the **Proxy UDP base port** (for example, to `9102` which was the previous default), consider changing it to `8102`. Using a different UDP port applies to all hubs and may prevent the iOS app from discovering the proxy.
 
 ---
 
