@@ -56,7 +56,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hub.async_start()
 
     if DOMAIN not in hass.data:
-        hass.data[DOMAIN] = {}
+            hass.data[DOMAIN] = {}
+            
+    if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
         
     hass.data[DOMAIN][entry.entry_id] = hub
