@@ -50,17 +50,6 @@ graph LR
 RED ARROWS   : You need these for your Sofabaton iOS app
 BLUE ARROW   : You need this for your Sofabaton Android app
 BLACK ARROWS : Needed for everybody
-
-| From          | To            | Protocol | Port(s)              | Used for                              | Needed for                          |
-|---------------|---------------|----------|----------------------|---------------------------------------|-------------------------------------|
-| Hub network   | HA host       | UDP      | 5353                 | mDNS `_x1hub._udp.local.` hub advert. | Hub discovery by integration        |
-| HA host       | Hub network   | UDP      | 8102                 | `CALL_ME` from proxy to hub           | Hub connect flow                    |
-| Hub network   | HA host       | TCP      | base .. base+31      | Hub connects back to proxy            | Hub control and status              |
-| HA host       | App network   | UDP      | 5353                 | mDNS `_x1hub._udp.local.` to app      | Sofabaton Android app (blue arrow)  |
-| App network   | HA host       | UDP      | 8102                 | iOS broadcast discovery to proxy      | Sofabaton iOS app (red arrow)       |
-| HA host       | App network   | UDP      | 8100                 | iOS broadcast reply from proxy        | Sofabaton iOS app (red arrow)       |
-| App network   | HA host       | UDP      | 8102                 | `CALL_ME` from app to proxy           | iOS and Android app                 |
-| HA host       | App network   | TCP      | 8100–8110            | Proxy connects back to app            | iOS and Android app                 |
 ```
 ## Segment 1 – Hub ↔ Integration
 
@@ -82,8 +71,6 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 If discovery works but the integration never shows the hub as connected, the TCP connect-back from the hub to Home Assistant is usually being blocked.
 
 ## Segment 2 – Integration ↔ Official app (proxy)
-
-The integration advertises a virtual `_x1hub._udp.local.` instance so the official app can talk to the proxy instead of the physical hub.
 
 ### Discovery (app side)
 Two discovery mechanisms run in parallel:
@@ -121,3 +108,16 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 - **App cannot find the proxy:** confirm the proxy UDP port is reachable (and set to 8102 for iOS).
 - **Port already in use:** pick a different TCP base port; the integration will try the next 31 ports automatically.
 
+## For the road
+```
+| From          | To            | Protocol | Port(s)              | Used for                              | Needed for                          |
+|---------------|---------------|----------|----------------------|---------------------------------------|-------------------------------------|
+| Hub network   | HA host       | UDP      | 5353                 | mDNS `_x1hub._udp.local.` hub advert. | Hub discovery by integration        |
+| HA host       | Hub network   | UDP      | 8102                 | `CALL_ME` from proxy to hub           | Hub connect flow                    |
+| Hub network   | HA host       | TCP      | base .. base+31      | Hub connects back to proxy            | Hub control and status              |
+| HA host       | App network   | UDP      | 5353                 | mDNS `_x1hub._udp.local.` to app      | Sofabaton Android app (blue arrow)  |
+| App network   | HA host       | UDP      | 8102                 | iOS broadcast discovery to proxy      | Sofabaton iOS app (red arrow)       |
+| HA host       | App network   | UDP      | 8100                 | iOS broadcast reply from proxy        | Sofabaton iOS app (red arrow)       |
+| App network   | HA host       | UDP      | 8102                 | `CALL_ME` from app to proxy           | iOS and Android app                 |
+| HA host       | App network   | TCP      | 8100–8110            | Proxy connects back to app            | iOS and Android app                 |
+```
