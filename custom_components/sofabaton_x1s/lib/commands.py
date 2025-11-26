@@ -9,6 +9,7 @@ from .protocol_const import (
     OP_DEVBTN_EXTRA,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
+    OP_DEVBTN_PAGE,
     OP_DEVBTN_PAGE_ALT1,
     OP_DEVBTN_PAGE_ALT2,
     OP_DEVBTN_PAGE_ALT3,
@@ -95,6 +96,24 @@ class DeviceCommandAssembler:
             burst.total_frames = frame_no
 
         data_start = self._data_offset(opcode)
+        if opcode in (
+            OP_DEVBTN_HEADER,
+            OP_DEVBTN_PAGE,
+            OP_DEVBTN_TAIL,
+            OP_DEVBTN_EXTRA,
+            OP_DEVBTN_MORE,
+        ) and payload[:2] == b"\x01\x00":
+            data_start = 7 if opcode == OP_DEVBTN_HEADER else 3
+
+        if (
+            opcode == OP_DEVBTN_HEADER
+            and len(payload) > data_start
+            and payload[data_start] != dev_id
+            and len(payload) > data_start + 1
+            and payload[data_start + 1] == dev_id
+        ):
+            data_start += 1
+
         frame_payload = payload[data_start:] if len(payload) > data_start else b""
         burst.frames[frame_no] = frame_payload
 

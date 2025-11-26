@@ -458,7 +458,7 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
         if len(payload) < 4:
             return
 
-        dev_id = _extract_dev_id(proxy, raw, payload, frame.opcode)
+        dev_id = _extract_dev_id(raw, payload, frame.opcode)
 
         proxy._burst.start(f"commands:{dev_id}", now=time.monotonic())
 
