@@ -61,6 +61,9 @@ OP_DEVBTN_EXTRA = 0x303D  # H→A: small follow-up page sometimes present
 OP_DEVBTN_MORE = 0x8F5D  # H→A: small follow-up page sometimes present
 OP_DEVBTN_PAGE_ALT1 = 0xF75D  # H→A: variant page layout with earlier payload offset
 OP_DEVBTN_PAGE_ALT2 = 0xA35D  # H→A: variant page layout with earlier payload offset
+OP_DEVBTN_PAGE_ALT3 = 0x2F5D  # H→A: variant page layout with earlier payload offset
+OP_DEVBTN_PAGE_ALT4 = 0xF35D  # H→A: variant page layout with earlier payload offset
+OP_DEVBTN_PAGE_ALT5 = 0x7B5D  # H→A: variant page layout with earlier payload offset
 
 # X1 hub responses
 OP_X1_DEVICE = 0x7B0B  # Row from list of devices (X1 firmware)
@@ -118,6 +121,9 @@ OPNAMES: Dict[int, str] = {
     OP_DEVBTN_MORE: "DEVCTL_LASTPAGE_TYPE3",
     OP_DEVBTN_PAGE_ALT1: "DEVCTL_PAGE_ALT1",
     OP_DEVBTN_PAGE_ALT2: "DEVCTL_PAGE_ALT2",
+    OP_DEVBTN_PAGE_ALT3: "DEVCTL_PAGE_ALT3",
+    OP_DEVBTN_PAGE_ALT4: "DEVCTL_PAGE_ALT4",
+    OP_DEVBTN_PAGE_ALT5: "DEVCTL_PAGE_ALT5",
     OP_X1_DEVICE: "X1_DEVICE",
     OP_X1_ACTIVITY: "X1_ACTIVITY",
     # The rest are unused but kept for completeness
@@ -156,6 +162,9 @@ __all__ = [
     "OP_DEVBTN_MORE",
     "OP_DEVBTN_PAGE_ALT1",
     "OP_DEVBTN_PAGE_ALT2",
+    "OP_DEVBTN_PAGE_ALT3",
+    "OP_DEVBTN_PAGE_ALT4",
+    "OP_DEVBTN_PAGE_ALT5",
     "OP_X1_DEVICE",
     "OP_X1_ACTIVITY",
     "OP_KEYMAP_TBL_A",

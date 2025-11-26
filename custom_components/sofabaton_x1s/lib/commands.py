@@ -11,6 +11,9 @@ from .protocol_const import (
     OP_DEVBTN_MORE,
     OP_DEVBTN_PAGE_ALT1,
     OP_DEVBTN_PAGE_ALT2,
+    OP_DEVBTN_PAGE_ALT3,
+    OP_DEVBTN_PAGE_ALT4,
+    OP_DEVBTN_PAGE_ALT5,
     OP_DEVBTN_TAIL,
 )
 
@@ -54,7 +57,13 @@ class DeviceCommandAssembler:
         # records two bytes earlier than the typical DEVBTN_* frames. Account
         # for this to avoid trimming off the first record (e.g. the "Stop"
         # command in the newly observed response).
-        if opcode in (OP_DEVBTN_PAGE_ALT1, OP_DEVBTN_PAGE_ALT2):
+        if opcode in (
+            OP_DEVBTN_PAGE_ALT1,
+            OP_DEVBTN_PAGE_ALT2,
+            OP_DEVBTN_PAGE_ALT3,
+            OP_DEVBTN_PAGE_ALT4,
+            OP_DEVBTN_PAGE_ALT5,
+        ):
             return 4
 
         return 6
@@ -79,7 +88,7 @@ class DeviceCommandAssembler:
         frame_no = payload[2]
         burst = self._get_buffer(dev_id)
 
-        if opcode == OP_DEVBTN_HEADER:
+        if opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1):
             burst.total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
             burst.frames.clear()
         elif burst.total_frames is None and opcode in (OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA, OP_DEVBTN_MORE):
@@ -150,23 +159,40 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
         if len(chunk) < 9:
             continue
 
-        for idx in range(len(chunk) - 8):
-            if chunk[idx] != target:
+        candidates = [i for i in range(len(chunk) - 1) if chunk[i] == target]
+        if not candidates:
+            candidates = [0]
+
+        for idx in candidates:
+            has_target = chunk[idx] == target
+            command_index = idx + 1 if has_target else idx
+            if command_index >= len(chunk):
                 continue
 
-            control_start = idx + 2
+            command_id = chunk[command_index]
+            control_start = command_index + 1
             control_block = chunk[control_start : control_start + 7]
-            if not _matches_control_block(control_block):
+
+            if len(control_block) == 7 and _matches_control_block(control_block):
+                label_start = control_start + 7
+                if control_block[:5] == b"\x00\x00\x00\x00\x00":
+                    label_start -= 1
+                label = _decode_label(chunk[label_start:])
+                if not label:
+                    continue
+
+                yield CommandRecord(target, command_id, control_block, label)
+                break
+
+            label_start = command_index + 8
+            if label_start >= len(chunk):
                 continue
 
-            label_start = control_start + 7
-            if control_block[:5] == b"\x00\x00\x00\x00\x00":
-                label_start -= 1
             label = _decode_label(chunk[label_start:])
             if not label:
                 continue
 
-            command_id = chunk[idx + 1]
+            control_block = chunk[control_start:label_start]
             yield CommandRecord(target, command_id, control_block, label)
             break
 
