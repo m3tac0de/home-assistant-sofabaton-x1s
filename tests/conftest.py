@@ -52,6 +52,13 @@ def _install_homeassistant_stubs() -> None:
     entity_registry.async_get = lambda hass=None: None
     sys.modules.setdefault("homeassistant.helpers.entity_registry", entity_registry)
 
+    components = types.ModuleType("homeassistant.components")
+    sys.modules.setdefault("homeassistant.components", components)
+
+    zeroconf = types.ModuleType("homeassistant.components.zeroconf")
+    zeroconf.async_get_instance = lambda *args, **kwargs: None
+    sys.modules.setdefault("homeassistant.components.zeroconf", zeroconf)
+
 
 _install_homeassistant_stubs()
 
