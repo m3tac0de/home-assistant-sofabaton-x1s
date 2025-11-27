@@ -122,14 +122,17 @@ class ActivateRequestHandler(BaseFrameHandler):
 
         if ent_id in proxy.state.activities:
             kind = "act"
+            record_kind = "activity"
             name = proxy.state.activities[ent_id].get("name", "")
             if code == ButtonName.POWER_ON:
                 proxy.state.set_hint(ent_id)
         elif ent_id in proxy.state.devices:
             kind = "dev"
+            record_kind = "device"
             name = proxy.state.devices[ent_id].get("name", "")
         else:
             kind = "id"
+            record_kind = "unknown"
             name = ""
 
         cmd = proxy.state.commands.get(ent_id, {}).get(code)
@@ -145,6 +148,16 @@ class ActivateRequestHandler(BaseFrameHandler):
             name,
             code,
             extra,
+        )
+
+        proxy.record_app_activation(
+            ent_id=ent_id,
+            ent_kind=record_kind,
+            ent_name=name,
+            command_id=code,
+            command_label=cmd,
+            button_label=btn,
+            direction=frame.direction,
         )
 
 

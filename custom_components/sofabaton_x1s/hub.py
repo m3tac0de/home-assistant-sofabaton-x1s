@@ -18,6 +18,7 @@ from .const import (
     signal_buttons,
     signal_devices,
     signal_commands,
+    signal_app_activations,
     CONF_MDNS_VERSION,
 )
 from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
@@ -76,6 +77,7 @@ class SofabatonHub:
         self._command_entities: set[int] = set()
         self._buttons_ready_for: set[int] = set()
         self._commands_in_flight: set[int] = set()    # entities we are currently fetching
+        self._app_activations: list[dict[str, Any]] = []
 
         _LOGGER.debug(
             "[%s] Creating X1Proxy for hub %s (%s:%s)",
@@ -110,6 +112,7 @@ class SofabatonHub:
         proxy.on_hub_state_change(self._on_hub_state_change)
         proxy.on_burst_end("devices", self._on_devices_burst)
         proxy.on_burst_end("commands", self._on_commands_burst)
+        proxy.on_app_activation(self._on_app_activation)
         return proxy
 
     async def async_start(self) -> None:
@@ -280,6 +283,13 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
 
+    def _on_app_activation(self, record: dict[str, Any]) -> None:
+        def _inner() -> None:
+            self._app_activations = self._proxy.get_app_activations()
+            async_dispatcher_send(self.hass, signal_app_activations(self.entry_id))
+
+        self.hass.loop.call_soon_threadsafe(_inner)
+
     # ------------------------------------------------------------------
     # async helpers
     # ------------------------------------------------------------------
@@ -397,6 +407,10 @@ class SofabatonHub:
             if ready and cmds:
                 result[ent_id] = cmds
         return result
+
+    def get_app_activations(self) -> list[dict[str, Any]]:
+        """Return recent app-originated activation requests."""
+        return list(self._app_activations)
 
     def get_activity_name_by_id(self, act_id: int) -> Optional[str]:
         act = self.activities.get(act_id)
