@@ -201,6 +201,7 @@ class X1Proxy:
         self._activity_listeners: list[callable] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
+        self._activation_listeners: list[callable] = []
         self._app_devices_deadline: float | None = None
         self._app_devices_retry_sent = False
 
@@ -315,6 +316,10 @@ class X1Proxy:
         """cb(new_id: int | None, old_id: int | None, name: str | None)"""
         self._activity_listeners.append(cb)
 
+    def on_app_activation(self, cb) -> None:
+        """cb(record: dict[str, Any])"""
+        self._activation_listeners.append(cb)
+
     def on_burst_end(self, key: str, cb):
         # key can be:
         #  "buttons"         -> all buttons updates
@@ -402,6 +407,9 @@ class X1Proxy:
             )
 
         return ({}, False)
+
+    def get_app_activations(self) -> list[dict[str, Any]]:
+        return self.state.get_app_activations()
     
     def get_proxy_status(self) -> bool:
         return self._proxy_enabled
@@ -415,6 +423,29 @@ class X1Proxy:
 
         id_lo = ent_id & 0xFF
         return self.enqueue_cmd(OP_REQ_ACTIVATE, bytes([id_lo, key_code]))
+
+    def record_app_activation(
+        self,
+        *,
+        ent_id: int,
+        ent_kind: str,
+        ent_name: str,
+        command_id: int,
+        command_label: str | None,
+        button_label: str | None,
+        direction: str,
+    ) -> dict[str, Any]:
+        record = self.state.record_app_activation(
+            ent_id=ent_id,
+            ent_kind=ent_kind,
+            ent_name=ent_name,
+            command_id=command_id,
+            command_label=command_label,
+            button_label=button_label,
+            direction=direction,
+        )
+        self._notify_app_activation(record)
+        return record
 
     def find_remote(self) -> bool:
         """Trigger the hub's "find my remote" feature."""
@@ -488,6 +519,13 @@ class X1Proxy:
                 cb(new_id, old_id, name)
             except Exception:
                 log.exception("activity listener failed")
+
+    def _notify_app_activation(self, record: dict[str, Any]) -> None:
+        for cb in self._activation_listeners:
+            try:
+                cb(record)
+            except Exception:
+                log.exception("app activation listener failed")
 
     def _on_buttons_burst_end(self, key: str) -> None:
         if ":" in key:

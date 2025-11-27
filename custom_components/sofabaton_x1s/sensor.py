@@ -14,6 +14,7 @@ from .const import (
     signal_buttons,
     signal_devices,
     signal_commands,
+    signal_app_activations,
 )
 from .hub import SofabatonHub, get_hub_model
 
@@ -52,6 +53,7 @@ class SofabatonIndexSensor(SensorEntity):
             signal_buttons(self._hub.entry_id),
             signal_devices(self._hub.entry_id),
             signal_commands(self._hub.entry_id),
+            signal_app_activations(self._hub.entry_id),
         ):
             self.async_on_remove(
                 async_dispatcher_connect(self.hass, sig, self._handle_update)
@@ -130,6 +132,32 @@ class SofabatonIndexSensor(SensorEntity):
                 for code, name in cmd_map.items()
             ]
 
+        # 4) app-sourced activation requests
+        recent_app_requests = []
+        for record in self._hub.get_app_activations():
+            ent_id = int(record.get("entity_id", -1))
+            label = self._label_for_ent(ent_id) if ent_id >= 0 else None
+            service_data = {
+                "command": record.get("command_id"),
+                "device": ent_id if ent_id >= 0 else None,
+            }
+
+            recent_app_requests.append(
+                {
+                    "timestamp": record.get("iso_time") or record.get("timestamp"),
+                    "direction": record.get("direction"),
+                    "entity_id": ent_id,
+                    "entity_label": label,
+                    "entity_kind": record.get("entity_kind"),
+                    "entity_name": record.get("entity_name"),
+                    "command_id": record.get("command_id"),
+                    "command_label": record.get("command_label")
+                    or record.get("button_label"),
+                    "button_label": record.get("button_label"),
+                    "example_remote_send_command": service_data,
+                }
+            )
+
         return {
             "activities": self._hub.activities,
             "devices": getattr(self._hub, "devices", {}),
@@ -137,6 +165,7 @@ class SofabatonIndexSensor(SensorEntity):
             "current_activity_buttons": current_activity_buttons,
             "buttons": decorated_buttons,
             "commands": decorated_commands,
+            "recent_app_activations": recent_app_requests,
         }
 
 class SofabatonActivitySensor(SensorEntity):

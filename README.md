@@ -171,6 +171,7 @@ You should see:
   - `binary_sensor.<hub>_app_connected` → `connected` / `disconnected` is the official app connected to our proxy
   - `sensor.<hub>_index` (diagnostic) → `ready` / `loading` / `offline`
     - attributes: activities, currect_activity, devices, buttons per device and activity, commands per device and activity
+    - also keeps a small history of app-sourced `OP_REQ_ACTIVATE` events with decoded labels and a ready-to-copy `remote.send_command` payload for automations
   - `sensor.<hub>_activity`→ Shows the current activity, or `Powered Off` if none is active. Maintains accurate state regardless of how the Activity was changed (through Home Assistant, the physical remote, the official app).
 
 - **Buttons**:
