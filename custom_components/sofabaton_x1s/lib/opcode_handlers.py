@@ -169,11 +169,12 @@ class AckReadyHandler(BaseFrameHandler):
                 )
         else:
             log.info("[HINT] proxy client connected; skipping auto-requests")
-            if proxy.state.current_activity_hint is not proxy.state.current_activity:
+            new_id, old_id = proxy.state.update_activity_state()
+            if new_id != old_id:
                 log.info("[HINT] current activity differs from hint; notifying listeners")
                 proxy._notify_activity_change(
-                    proxy.state.current_activity_hint & 0xFF,
-                    proxy.state.current_activity & 0xFF if proxy.state.current_activity is not None else None,
+                    new_id & 0xFF if new_id is not None else None,
+                    old_id & 0xFF if old_id is not None else None,
                 )
 
 
