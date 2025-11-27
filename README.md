@@ -46,9 +46,10 @@ So essentially: this integration is a proxy service for the Sofabaton X1/X1S hub
 - 🔔 **Find Remote diagnostic button**:
   - triggers the hub’s “find my remote” buzzer directly from Home Assistant
   - available while the proxy can issue commands (when the official app is not connected)
-- 🟢 **Connection sensors**:
+- 🟢 **Sensors**:
+  - "activity" (shows the current Activity)
   - “hub connected” (are we connected to the physical hub?)
-  - “app connected” / “proxy client connected” (is the official app using our virtual hub?)
+  - “app connected” (is the official app using our virtual hub?)
 - 🛰 **X1/X1S Proxy**:
   - although enabled by default, the proxy capability (the ability for the official app to connect while this integration is running) can be disabled in device settings (it will then no longer advertise and bind to a UDP port)
 
@@ -170,6 +171,7 @@ You should see:
   - `binary_sensor.<hub>_app_connected` → `connected` / `disconnected` is the official app connected to our proxy
   - `sensor.<hub>_index` (diagnostic) → `ready` / `loading` / `offline`
     - attributes: activities, currect_activity, devices, buttons per device and activity, commands per device and activity
+  - `sensor.<hub>_activity`→ Shows the current activity, or `Powered Off` if none is active. Maintains accurate state regardless of how the Activity was changed (through Home Assistant, the physical remote, the official app).
 
 - **Buttons**:
   - `button.<hub>_find_remote` (added as a "Diagnostic" button)
