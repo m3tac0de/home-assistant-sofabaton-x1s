@@ -83,6 +83,22 @@ Two discovery mechanisms run in parallel:
 
 Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Android can discover on other ports, but iOS discovery is lost if you move away from 8102.
 
+
+> ⚠️ iOS discovery and VLANs
+> 
+> The iOS app’s discovery uses **UDP broadcast** on port 8102. By default, routers do **not**
+> forward broadcasts across VLANs/subnets, even if normal unicast traffic (HTTP, TCP, etc.)
+> works fine between them. This means:
+> 
+> - If the app and Home Assistant live on different VLANs with only normal routing, iOS
+>   broadcast discovery will *not* reach the proxy.
+> - To keep them on different VLANs *and* have iOS discovery work, you need a **UDP
+>   broadcast relay** between the VLANs (many router firmwares like OpenWRT, pfSense, etc.
+>   can do this), or you must rely on manual configuration (although that supports only a single hub
+> - Once discovery is done, all further communication is unicast UDP and TCP and will happily
+>   traverse your routed VLANs.
+
+
 ### Connect flow (app side)
 1. **CALL_ME from app → proxy (UDP):** the app sends a call-me packet to the proxy listener once discovery completes (on the configured UDP listening port, **8102** by default).
 2. **TCP connect-back from proxy → app:** after the call-me, the proxy opens a TCP connection into the app on a port in the **8100–8110** range that the app exposes.
@@ -99,7 +115,12 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 ## Multiple hubs and VLANs checklist
 - Ensure each hub's mDNS traffic reaches Home Assistant (multicast forwarding or manual configuration).
 - Reserve a contiguous TCP port range large enough for your hubs (base port + up to 31). Avoid collisions with other services on the host.
-- If you split hubs and apps across VLANs, permit the UDP advertisement/handshake paths in both directions and the TCP connect-back from each hub.
+- If you split hubs and apps across VLANs:
+  - For Android / mDNS-based discovery, make sure multicast is forwarded (e.g. mDNS
+    reflector) and UDP/TCP paths are allowed.
+  - For **iOS broadcast discovery**, either keep the app and Home Assistant in the same
+    VLAN/broadcast domain or run a UDP broadcast relay between VLANs. Plain inter-VLAN
+    routing is not enough for broadcast traffic.
 - Keep the proxy UDP listener on 8102 whenever iOS discovery is required.
 
 ## Troubleshooting
@@ -107,6 +128,9 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 - **No discovery across VLANs:** forward mDNS or configure the hub manually.
 - **App cannot find the proxy:** confirm the proxy UDP port is reachable (and set to 8102 for iOS).
 - **Port already in use:** pick a different TCP base port; the integration will try the next 31 ports automatically.
+- **iOS app can’t discover across VLANs but manual connections work:** this is expected
+  without a UDP broadcast relay. iOS discovery uses broadcast, which does not cross VLAN
+  boundaries by default.
 
 ## For the road
 ```
