@@ -16,7 +16,8 @@ class ActivityCache:
         self.devices: Dict[int, Dict[str, Any]] = {}
         self.buttons: Dict[int, set[int]] = {}
         self.commands: dict[int, dict[int, str]] = defaultdict(dict)
-        self.app_activations: Deque[dict[str, Any]] = deque(maxlen=50)
+        # Only track the most recent activation to avoid unbounded growth
+        self.app_activations: Deque[dict[str, Any]] = deque(maxlen=1)
 
     def set_hint(self, activity_id: Optional[int]) -> None:
         self.current_activity_hint = activity_id
