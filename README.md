@@ -84,9 +84,9 @@ So, if you use VLANs / firewalls:
 If discovery works but the entities never go “connected to hub”, it’s usually that last rule: the hub cannot open the TCP back to HA.
 Also keep in mind that as soon as a client is connected to the physical hub, the hub stops mDNS advertising. So if this integration is connected and running with "proxy" disabled, the official app will not find it. And vice versa, the integration cannot see the hub if the official app is connected directly to it.
 
-### Upgrading note: single UDP listener on 8102 for all configured hubs
-
-This integration now uses one UDP listener for both CALL_ME and the broadcast capabilities needed for iOS, shared across all configured hubs. New installs default this listener to `8102` so Android and iOS discovery both work. If you previously overrode the **Proxy UDP base port** (for example, to `9102` which was the previous default), consider changing it to `8102`. Using a different UDP port applies to all hubs and may prevent the iOS app from discovering the proxy.
+> ### Upgrading note: single UDP listener on 8102 for all configured hubs
+> 
+> This integration now uses one UDP listener for both CALL_ME and the broadcast capabilities needed for iOS, shared across all configured hubs. New installs default this listener to `8102` so Android and iOS discovery both work. If you previously overrode the **Proxy > > UDP base port** (for example, to `9102` which was the previous default), consider changing it to `8102`. Using a different UDP port applies to all hubs and may prevent the iOS app from discovering the proxy.
 
 ---
 
@@ -172,6 +172,7 @@ You should see:
     - attributes: activities, currect_activity, devices, buttons per device and activity, commands per device and activity
     - also keeps a small history of app-sourced `OP_REQ_ACTIVATE` events with decoded labels and a ready-to-copy `remote.send_command` payload for automations
   - `sensor.<hub>_activity`→ Shows the current activity, or `Powered Off` if none is active. Maintains accurate state regardless of how the Activity was changed (through Home Assistant, the physical remote, the official app).
+  - `sensor.<hub>_recorded_keypress` → Shows the codes needed to replay the most recently pressed button in the Sofabaton app.
 
 - **Buttons**:
   - `button.<hub>_find_remote` (added as a "Diagnostic" button)
@@ -193,6 +194,7 @@ That remote:
 - shows the **current activity**
 - can switch between activities or power them down
 - can be used to send any command to any device or activity
+- becomes unavailable when the app is connected to the virtual hub
 
 So you can do this in an automation or in Developer Tools:
 
@@ -206,31 +208,60 @@ data:
 
 Which will then send the Volume Up command to the hub in the context of the current activity.
 Available commands are:
-UP, DOWN, LEFT, RIGHT, OK, HOME, BACK, MENU, VOL_UP, VOL_DOWN, MUTE, CH_UP, CH_DOWN, REW, PAUSE, FWD, RED, GREEN, YELLOW, BLUE, POWER_ON, POWER_OFF
+UP, DOWN, LEFT, RIGHT, OK, HOME, BACK, MENU, VOL_UP, VOL_DOWN, MUTE, CH_UP, CH_DOWN, REW, PAUSE, FWD, RED, GREEN, YELLOW, BLUE, POWER_OFF
 
-Things to know:
-
-- if there is no current activity ("powered off"), sending commands in this way will fail
-- when the official Sofabaton app connects to our virtual hub, the remote becomes unavailable (same as the select/buttons)
-
-### Advanced: send to a specific device
-
-Sometimes you want to send a command directly to a device (or activity) by its numeric ID. You can do that with the same HA service:
+You can also directly send any command to any device or activity, you just need to know the IDs for them.
 
 ```yaml
 service: remote.send_command
 target:
   entity_id: remote.<hub>_remote
 data:
-  command: "55"   # numeric command id
-  device: 3       # entity id on the hub (devices start at 1, activities at 101)
+  command: 12
+  device: 3
 ```
-
 In this mode we **don’t** look at the current activity — we send straight to that entity on the hub.
 There is no difference here between a device and an activity, they exist in the same ID range (devices start at 1, activities at 101).
-You only need to know the IDs of your devices and activities, and then the command IDs for each of them.
+
+### Retrieving command and device IDs
+
+You have two ways to find the numeric `device` and `command` values used by `remote.send_command`:
+
+1. **Recorded keypress sensor (recommended for quick use)**: `sensor.<hub>_recorded_keypress`
+   - Shows the most recently pressed button when you use the official Sofabaton app against the virtual hub.
+   - Includes ready-to-copy `remote.send_command` payloads for both the corresponding device and activity command.
+   - Most convenient when you want to capture a single button press and replay it in an automation.
+2. **Index sensor**: `sensor.<hub>_index`
+   - Run the fetch service/action to populate commands for a device or activity.
+   - Best when you need to explore the full command list for a device or build several automations at once.
+
+Either sensor gives you the IDs you need to target specific devices or activities when sending commands.
 
 ---
+
+## Recorded commands (Recorded Keypress sensor)
+
+Whenever you connect the Sofabaton app to the virtual hub, the integration can see what commands the app is sending to the hub.
+In the `recorder_keypress sensor` we record the most recently performed command, so you can replay that easily in your own automation etc.
+
+Go to `Developer Tools → States → sensor.<hub>_recorded_keypress` to see the contents of the sensor.
+It contains a ready to paste remote.send_command.
+
+Note that in this view it does not automatically update every time you press a key.
+
+You can do this: Go to `Developer Tools → Template` and paste this into the Template editor (update for the correct hub name):
+
+```yaml
+{% set command_data = state_attr('sensor.[YOUR_HUB_NAME]_recorded_keypress', 'example_remote_send_command') %}
+action: {{ command_data.action }}
+data:
+  command: {{ command_data.data.command }}
+  device: {{ command_data.data.device }}
+target:
+  entity_id: {{ command_data.target.entity_id }}
+```
+Now connect your Sofabaton app to the virtual hub and you'll see ready to paste updates as you press buttons in the app.
+
 
 ## Fetching commands (Index sensor)
 
@@ -239,10 +270,9 @@ The Sofabaton hub can have a *lot* of device commands. Fetching all of them on e
 Instead we have:
 
 - a **diagnostic sensor**: `sensor.<hub>_index`
-  - shows currect actvity
   - shows activities, devices
   - shows buttons we already have cached
-  - can also show **commands** per device/activity
+  - can also show **commands** per device
   - shows `loading` while we’re fetching
   
 Go to `Developer Tools → States → sensor.<hub>_index` to see the contents of the sensor.
