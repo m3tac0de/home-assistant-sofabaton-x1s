@@ -37,19 +37,18 @@ So essentially: this integration is a proxy service for the Sofabaton X1/X1S hub
   - to fetch commands for a specific device/activity
   - because key maps are both slow to retrieve from the hub, and static at the same time (until you change configuration through the official app), we do not need to retrieve these key maps all the time. We can just do it once (using the fetch Action), look at the mapping, and then use remote.send_command using those values.
 - 🧪 **Diagnostic “Index” sensor**:
-  - shows current activity
   - lists activities and devices
-  - lists cached buttons for each activity/device
-  - lists cached commands for each device (after you fetch them)
-  - sensors maintain state accurately, regardless of how that state is set. So whether you change activity through Home Assistant, the official app, the physical remote or something like Alexa; the sensors will reflect accurate state.
+  - lists cached commands for each device (after you fetch them) and buttons for activities
   - shows `loading` when we’re actively retrieving commands
 - 🔔 **Find Remote diagnostic button**:
   - triggers the hub’s “find my remote” buzzer directly from Home Assistant
   - available while the proxy can issue commands (when the official app is not connected)
 - 🟢 **Sensors**:
-  - "activity" (shows the current Activity)
+  - “activity” (shows the current Activity)
+  - “recorded_keypress” (shows how to replay the most recently pressed button in the Sofabaton app, while it is connected to the virtual hub)
   - “hub connected” (are we connected to the physical hub?)
   - “app connected” (is the official app using our virtual hub?)
+  - sensors maintain state accurately, regardless of how that state is set. So whether you change activity through Home Assistant, the official app, the physical remote or something like Alexa; the sensors will reflect accurate state.
 - 🛰 **X1/X1S Proxy**:
   - although enabled by default, the proxy capability (the ability for the official app to connect while this integration is running) can be disabled in device settings (it will then no longer advertise and bind to a UDP port)
 
