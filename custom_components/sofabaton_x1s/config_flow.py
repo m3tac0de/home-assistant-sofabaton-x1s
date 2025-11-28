@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Any, Dict, Optional
 
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.components.zeroconf import ZeroconfServiceInfo
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 from homeassistant.core import callback
 
 from .const import (
@@ -39,6 +40,18 @@ def _classify_version(props: Dict[str, str]) -> str:
 
     return "X1"
 
+
+def generate_static_mac(host: str, port: int) -> str:
+    """Generate a stable, locally administered MAC-like address."""
+
+    raw_str = f"{host}:{port}"
+    hash_bytes = hashlib.md5(raw_str.encode()).digest()
+
+    mac_int = bytearray(hash_bytes[:6])
+    mac_int[0] = (mac_int[0] & 0xFE) | 0x02
+
+    return ":".join(f"{b:02x}" for b in mac_int)
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
@@ -62,13 +75,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             name = user_input["name"]
             host = user_input["host"]
             port = user_input["port"]
-            mac = f"manual-{host.replace('.', '_')}-{port}"
+            mac = generate_static_mac(host, port)
+            props = {"MAC": mac, "NAME": name}
 
             self._chosen_hub = {
                 "name": name,
                 "host": host,
                 "port": port,
-                "props": {},
+                "props": props,
                 "mac": mac,
             }
             return await self.async_step_ports()
@@ -157,14 +171,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=schema,
             description_placeholders={
                 "explain": (
-                    "These are ports that this integration binds to."
-                    "Most users can keep the defaults. Change only if the ports are "
-                    "already in use."
-                    "Note that this setting currently applies to all configured hubs."
-                    "The ports represents a base value, and the integration will try"
-                    "to find an open port within 32 ports of what you enter here."
-                    "The UDP port is optional; if you disable the proxy capabilty of"
-                    "the integration, no UDP port is used."
+                    "These are ports that this integration binds to. Most users can keep "
+                    "the defaults: UDP now defaults to 8102 so CALL_ME and NOTIFY_ME share a "
+                    "single listener compatible with Android and iOS. Change only if the port "
+                    "is already in use; a non-8102 UDP port may prevent iOS discovery. "
+                    "This setting currently applies to all configured hubs. The ports represent "
+                    "a base value, and the integration will try to find an open port within 32 "
+                    "ports of what you enter here. The UDP port is optional; if you disable the "
+                    "proxy capability of the integration, no UDP port is used."
                 )
             },
         )

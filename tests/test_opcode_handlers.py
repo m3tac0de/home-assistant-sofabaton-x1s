@@ -45,6 +45,8 @@ from custom_components.sofabaton_x1s.lib.opcode_handlers import (
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
     OP_DEVBTN_EXTRA,
+    OP_KEYMAP_CONT,
+    OP_KEYMAP_TBL_B,
     OP_KEYMAP_TBL_D,
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_F,
@@ -78,6 +80,60 @@ def _build_payload_context(proxy: X1Proxy, opcode: int, payload: bytes, name: st
         raw=raw,
         name=name,
     )
+
+
+def test_keymap_table_b_parses_buttons_response() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    frames = (
+        (
+            "a5 5a fa 3d 01 00 01 01 00 02 12 68 ae 07 00 00 00 00 00 2e 34 00 00 00 00 00 00 00 00 68 af 07"
+            " 00 00 00 00 00 30 32 00 00 00 00 00 00 00 00 68 b1 07 00 00 00 00 00 31 33 00 00 00 00 00 00 00 00"
+            " 68 b2 07 00 00 00 00 00 2f 31 00 00 00 00 00 00 00 00 68 b3 07 00 00 00 00 00 74 29 00 00 00 00 00 00"
+            " 00 00 68 b5 07 00 00 00 00 00 2d 2f 00 00 00 00 00 00 00 00 68 b6 03 00 00 00 00 2e 77 79 00 00 00 00"
+            " 00 00 00 00 68 b7 07 00 00 00 00 2e 78 2c 00 00 00 00 00 00 00 00 68 b8 03 00 00 00 00 00 6a 71 00 00"
+            " 00 00 00 00 00 00 68 b9 03 00 00 00 00 00 33 78 00 00 00 00 00 00 00 00 68 ba 07 00 00 00 00 00 2c 2b"
+            " 00 00 00 00 00 00 00 00 68 bb 07 00 00 00 00 00 8d 37 00 00 00 00 00 00 00 00 68 bc 07 00 00 00 00 27"
+            " 78 35 00 00 00 00 00 00 00 00 68 bd 07 00 00 00 00 00 97 c4",
+            OP_KEYMAP_TBL_B,
+            "KEYMAP_TABLE_B",
+        ),
+        (
+            "a5 5a 54 3d 01 00 02 2d 00 00 00 00 00 00 00 00 68 be 07 00 00 00 00 00 e7 36 00 00 00 00 00 00 00 00"
+            " 68 bf 07 00 00 00 00 00 ec 2e 00 00 00 00 00 00 00 00 68 c0 07 00 00 00 00 00 f6 3a 00 00 00 00 00 00"
+            " 00 00 68 c1 07 00 00 00 00 00 f1 2a 00 00 00 00 00 00 00 00 fc",
+            OP_KEYMAP_CONT,
+            "KEYMAP_CONT",
+        ),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x68) == {
+        ButtonName.UP,
+        ButtonName.LEFT,
+        ButtonName.RIGHT,
+        ButtonName.DOWN,
+        ButtonName.BACK,
+        ButtonName.MENU,
+        ButtonName.VOL_UP,
+        ButtonName.CH_UP,
+        ButtonName.MUTE,
+        ButtonName.VOL_DOWN,
+        ButtonName.CH_DOWN,
+        ButtonName.REW,
+        ButtonName.PAUSE,
+        ButtonName.FWD,
+        ButtonName.RED,
+        ButtonName.GREEN,
+        ButtonName.YELLOW,
+        ButtonName.BLUE,
+    }
 
 
 def test_keymap_table_d_includes_pause() -> None:

@@ -34,10 +34,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     proxy_udp_port = opts.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
     hub_listen_base = opts.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
-
     proxy_enabled = opts.get(CONF_PROXY_ENABLED, True)
     hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
-
     hub = SofabatonHub(
         hass=hass,
         entry_id=entry.entry_id,
@@ -53,7 +51,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hub.async_start()
 
     if DOMAIN not in hass.data:
-        hass.data[DOMAIN] = {}
+            hass.data[DOMAIN] = {}
+            
+    if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
         
     hass.data[DOMAIN][entry.entry_id] = hub
@@ -75,7 +75,6 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     new_port = entry.data.get("port", hub.port)
     proxy_udp_port = entry.options.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
     hub_listen_base = entry.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
-
     await hub.async_apply_new_settings(
         host=new_host,
         port=new_port,

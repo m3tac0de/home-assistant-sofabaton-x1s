@@ -9,8 +9,12 @@ from .protocol_const import (
     OP_DEVBTN_EXTRA,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
+    OP_DEVBTN_PAGE,
     OP_DEVBTN_PAGE_ALT1,
     OP_DEVBTN_PAGE_ALT2,
+    OP_DEVBTN_PAGE_ALT3,
+    OP_DEVBTN_PAGE_ALT4,
+    OP_DEVBTN_PAGE_ALT5,
     OP_DEVBTN_TAIL,
 )
 
@@ -54,7 +58,13 @@ class DeviceCommandAssembler:
         # records two bytes earlier than the typical DEVBTN_* frames. Account
         # for this to avoid trimming off the first record (e.g. the "Stop"
         # command in the newly observed response).
-        if opcode in (OP_DEVBTN_PAGE_ALT1, OP_DEVBTN_PAGE_ALT2):
+        if opcode in (
+            OP_DEVBTN_PAGE_ALT1,
+            OP_DEVBTN_PAGE_ALT2,
+            OP_DEVBTN_PAGE_ALT3,
+            OP_DEVBTN_PAGE_ALT4,
+            OP_DEVBTN_PAGE_ALT5,
+        ):
             return 4
 
         return 6
@@ -79,21 +89,96 @@ class DeviceCommandAssembler:
         frame_no = payload[2]
         burst = self._get_buffer(dev_id)
 
-        if opcode == OP_DEVBTN_HEADER:
-            burst.total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
-            burst.frames.clear()
+        if opcode in (
+            OP_DEVBTN_HEADER,
+            OP_DEVBTN_PAGE_ALT1,
+            OP_DEVBTN_PAGE_ALT2,
+            OP_DEVBTN_PAGE_ALT3,
+            OP_DEVBTN_PAGE_ALT4,
+            OP_DEVBTN_PAGE_ALT5,
+        ):
+            if frame_no == 1 or burst.total_frames is None:
+                burst.total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
+                burst.frames.clear()
         elif burst.total_frames is None and opcode in (OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA, OP_DEVBTN_MORE):
             burst.total_frames = frame_no
 
         data_start = self._data_offset(opcode)
+        if opcode in (
+            OP_DEVBTN_PAGE_ALT3,
+            OP_DEVBTN_PAGE_ALT4,
+            OP_DEVBTN_PAGE_ALT5,
+        ) and payload[:6] == b"\x01\x00\x01\x01\x00\x01":
+            data_start = 7
+        if opcode in (
+            OP_DEVBTN_HEADER,
+            OP_DEVBTN_PAGE,
+            OP_DEVBTN_TAIL,
+            OP_DEVBTN_EXTRA,
+            OP_DEVBTN_MORE,
+        ) and payload[:2] == b"\x01\x00":
+            data_start = 7 if opcode == OP_DEVBTN_HEADER else 3
+
+        if (
+            opcode == OP_DEVBTN_HEADER
+            and len(payload) > data_start
+            and payload[data_start] != dev_id
+            and len(payload) > data_start + 1
+            and payload[data_start + 1] == dev_id
+        ):
+            data_start += 1
+
         frame_payload = payload[data_start:] if len(payload) > data_start else b""
         burst.frames[frame_no] = frame_payload
 
         completed: List[Tuple[int, bytes]] = []
+        if burst.frames:
+            max_frame_no = max(burst.frames)
+            frames_are_contiguous = len(burst.frames) == max_frame_no and 1 in burst.frames
+        else:
+            max_frame_no = 0
+            frames_are_contiguous = False
+
         if burst.total_frames and burst.received >= burst.total_frames:
             ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
             completed.append((dev_id, ordered_payload))
             del self._buffers[dev_id]
+        elif (
+            burst.total_frames
+            and frames_are_contiguous
+            and burst.total_frames > max_frame_no
+            and burst.total_frames - max_frame_no <= 1
+            and opcode in (OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA, OP_DEVBTN_MORE)
+        ):
+            ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
+            completed.append((dev_id, ordered_payload))
+            del self._buffers[dev_id]
+
+        return completed
+
+    def finalize_contiguous(self, dev_id: int | None = None) -> List[Tuple[int, bytes]]:
+        """Flush buffered bursts whose frames are contiguous starting at 1.
+
+        Some hubs over-report the total frame count and never send a tail. In
+        those cases, complete bursts manually once all contiguous frames have
+        arrived.
+        """
+
+        targets = [dev_id] if dev_id is not None else list(self._buffers)
+        completed: List[Tuple[int, bytes]] = []
+
+        for target in targets:
+            burst = self._buffers.get(target)
+            if not burst or not burst.frames:
+                continue
+
+            max_frame = max(burst.frames)
+            if len(burst.frames) != max_frame or 1 not in burst.frames:
+                continue
+
+            ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
+            completed.append((target, ordered_payload))
+            del self._buffers[target]
 
         return completed
 
@@ -150,23 +235,40 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
         if len(chunk) < 9:
             continue
 
-        for idx in range(len(chunk) - 8):
-            if chunk[idx] != target:
+        candidates = [i for i in range(len(chunk) - 1) if chunk[i] == target]
+        if not candidates:
+            candidates = [0]
+
+        for idx in candidates:
+            has_target = chunk[idx] == target
+            command_index = idx + 1 if has_target else idx
+            if command_index >= len(chunk):
                 continue
 
-            control_start = idx + 2
+            command_id = chunk[command_index]
+            control_start = command_index + 1
             control_block = chunk[control_start : control_start + 7]
-            if not _matches_control_block(control_block):
+
+            if len(control_block) == 7 and _matches_control_block(control_block):
+                label_start = control_start + 7
+                if control_block[:5] == b"\x00\x00\x00\x00\x00":
+                    label_start -= 1
+                label = _decode_label(chunk[label_start:])
+                if not label:
+                    continue
+
+                yield CommandRecord(target, command_id, control_block, label)
+                break
+
+            label_start = command_index + 8
+            if label_start >= len(chunk):
                 continue
 
-            label_start = control_start + 7
-            if control_block[:5] == b"\x00\x00\x00\x00\x00":
-                label_start -= 1
             label = _decode_label(chunk[label_start:])
             if not label:
                 continue
 
-            command_id = chunk[idx + 1]
+            control_block = chunk[control_start:label_start]
             yield CommandRecord(target, command_id, control_block, label)
             break
 

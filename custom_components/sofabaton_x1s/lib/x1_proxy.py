@@ -165,17 +165,19 @@ class X1Proxy:
         self,
         real_hub_ip: str,
         real_hub_udp_port: int = 8102,
-        proxy_udp_port: int = 9102,
+        proxy_udp_port: int = 8102,
         hub_listen_base: int = 8200,
         mdns_instance: str = "X1-HUB-PROXY",
         mdns_host: Optional[str] = None,
         mdns_txt: Optional[Dict[str, str]] = None,
+        proxy_id: Optional[str] = None,
         proxy_enabled: bool = True,
         diag_dump: bool = True,
         diag_parse: bool = True,
         ka_idle: int = 30,
         ka_interval: int = 10,
         ka_count: int = 3,
+        zeroconf=None,
     ) -> None:
         self.real_hub_ip = real_hub_ip
         self.real_hub_udp_port = int(real_hub_udp_port)
@@ -184,6 +186,7 @@ class X1Proxy:
         self.mdns_instance = _normalize_mdns_instance(mdns_instance)
         self.mdns_host = mdns_host or (self.mdns_instance + ".local")
         self.mdns_txt = mdns_txt or {}
+        self.proxy_id = proxy_id or self.mdns_instance
         self.diag_dump = bool(diag_dump)
         self.diag_parse = bool(diag_parse)
         # deframers
@@ -198,12 +201,18 @@ class X1Proxy:
         self._activity_listeners: list[callable] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
+        self._activation_listeners: list[callable] = []
+        self._app_devices_deadline: float | None = None
+        self._app_devices_retry_sent = False
 
         self.transport = TransportBridge(
             real_hub_ip,
             real_hub_udp_port,
             proxy_udp_port,
             hub_listen_base,
+            mdns_instance=self.mdns_instance,
+            mdns_txt=self.mdns_txt,
+            proxy_id=self.proxy_id,
             ka_idle=ka_idle,
             ka_interval=ka_interval,
             ka_count=ka_count,
@@ -221,8 +230,18 @@ class X1Proxy:
         self._hub_connected: bool = False
         self._client_connected: bool = False
 
-        self._zc = None  # type: ignore[assignment]
+        self._zc = zeroconf  # type: ignore[assignment]
+        self._zc_owned = False
         self._mdns_info = None  # type: ignore[assignment]
+
+    # ---------------------------------------------------------------------
+    # Helpers
+    # ---------------------------------------------------------------------
+    def set_zeroconf(self, zc) -> None:
+        """Use an existing Zeroconf instance (e.g., Home Assistant shared)."""
+
+        self._zc = zc
+        self._zc_owned = False
 
     # ---------------------------------------------------------------------
     # Local command API
@@ -296,6 +315,10 @@ class X1Proxy:
     def on_activity_change(self, cb) -> None:
         """cb(new_id: int | None, old_id: int | None, name: str | None)"""
         self._activity_listeners.append(cb)
+
+    def on_app_activation(self, cb) -> None:
+        """cb(record: dict[str, Any])"""
+        self._activation_listeners.append(cb)
 
     def on_burst_end(self, key: str, cb):
         # key can be:
@@ -384,6 +407,9 @@ class X1Proxy:
             )
 
         return ({}, False)
+
+    def get_app_activations(self) -> list[dict[str, Any]]:
+        return self.state.get_app_activations()
     
     def get_proxy_status(self) -> bool:
         return self._proxy_enabled
@@ -397,6 +423,29 @@ class X1Proxy:
 
         id_lo = ent_id & 0xFF
         return self.enqueue_cmd(OP_REQ_ACTIVATE, bytes([id_lo, key_code]))
+
+    def record_app_activation(
+        self,
+        *,
+        ent_id: int,
+        ent_kind: str,
+        ent_name: str,
+        command_id: int,
+        command_label: str | None,
+        button_label: str | None,
+        direction: str,
+    ) -> dict[str, Any]:
+        record = self.state.record_app_activation(
+            ent_id=ent_id,
+            ent_kind=ent_kind,
+            ent_name=ent_name,
+            command_id=command_id,
+            command_label=command_label,
+            button_label=button_label,
+            direction=direction,
+        )
+        self._notify_app_activation(record)
+        return record
 
     def find_remote(self) -> bool:
         """Trigger the hub's "find my remote" feature."""
@@ -424,10 +473,14 @@ class X1Proxy:
             server=host,
         )
 
-        zc = Zeroconf(ip_version=IPVersion.V4Only)
+        zc = self._zc
+        if zc is None:
+            zc = Zeroconf(ip_version=IPVersion.V4Only)
+            self._zc_owned = True
+            self._zc = zc
+
         zc.register_service(info)
 
-        self._zc = zc
         self._mdns_info = info
         self._adv_started = True
         log.info("[mDNS] registered %s on %s:%d", info.name, socket.inet_ntoa(ip_bytes), self.proxy_udp_port)
@@ -453,6 +506,8 @@ class X1Proxy:
                 cb(connected)
             except Exception:
                 log.exception("client state listener failed")
+        if not connected:
+            self._clear_app_device_retry()
 
     
     def _notify_activity_change(self, new_id: int | None, old_id: int | None) -> None:
@@ -465,6 +520,13 @@ class X1Proxy:
             except Exception:
                 log.exception("activity listener failed")
 
+    def _notify_app_activation(self, record: dict[str, Any]) -> None:
+        for cb in self._activation_listeners:
+            try:
+                cb(record)
+            except Exception:
+                log.exception("app activation listener failed")
+
     def _on_buttons_burst_end(self, key: str) -> None:
         if ":" in key:
             try:
@@ -474,9 +536,21 @@ class X1Proxy:
                 self._pending_button_requests.clear()
         else:
             self._pending_button_requests.clear()
-    
+
     def _handle_idle(self, now: float) -> None:
         self._burst.tick(now, can_issue=self.can_issue_commands, sender=self._send_cmd_frame)
+        self._maybe_retry_app_devices(now)
+
+    def _maybe_retry_app_devices(self, now: float) -> None:
+        if self._app_devices_deadline is None:
+            return
+
+        if now >= self._app_devices_deadline:
+            if not self._app_devices_retry_sent:
+                log.info("[CMD] retrying app-sourced REQ_DEVICES after timeout")
+                self._send_cmd_frame(OP_REQ_DEVICES, b"")
+                self._app_devices_retry_sent = True
+            self._app_devices_deadline = None
 
     def _send_cmd_frame(self, opcode: int, payload: bytes) -> None:
         frame = self._build_frame(opcode, payload)
@@ -491,18 +565,35 @@ class X1Proxy:
     def _handle_hub_frame(self, data: bytes, cid: int) -> None:
         if self.diag_dump:
             log.info("[DUMP #%d] H→A %s", cid, _hexdump(data))
-        if self.diag_parse:
-            frames = self._df_h2a.feed(data, cid)
-            if frames:
+        frames = self._df_h2a.feed(data, cid)
+        if frames:
+            self._handle_hub_frames(frames)
+            if self.diag_parse:
                 self._log_frames("H→A", frames)
 
     def _handle_app_frame(self, data: bytes, cid: int) -> None:
         if self.diag_dump:
             log.info("[DUMP #%d] A→H %s", cid, _hexdump(data))
-        if self.diag_parse:
-            frames = self._df_a2h.feed(data, cid)
-            if frames:
+        frames = self._df_a2h.feed(data, cid)
+        if frames:
+            self._handle_app_frames(frames)
+            if self.diag_parse:
                 self._log_frames("A→H", frames)
+
+    def _handle_app_frames(self, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
+        for opcode, _raw, _payload, _scid, _ecid in frames:
+            if opcode == OP_REQ_DEVICES:
+                self._app_devices_deadline = time.monotonic() + 1.0
+                self._app_devices_retry_sent = False
+
+    def _handle_hub_frames(self, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
+        for opcode, _raw, _payload, _scid, _ecid in frames:
+            if opcode == OP_CATALOG_ROW_DEVICE:
+                self._clear_app_device_retry()
+
+    def _clear_app_device_retry(self) -> None:
+        self._app_devices_deadline = None
+        self._app_devices_retry_sent = False
 
     def _accumulate_keymap(self, act_lo: int, payload: bytes) -> None:
         self.state.accumulate_keymap(act_lo, payload)
@@ -557,8 +648,9 @@ class X1Proxy:
             except Exception:
                 log.exception("[mDNS] failed to unregister service")
             finally:
-                self._zc.close()
-                self._zc = None
+                if self._zc_owned:
+                    self._zc.close()
+                    self._zc = None
                 self._mdns_info = None
 
         self._adv_started = False

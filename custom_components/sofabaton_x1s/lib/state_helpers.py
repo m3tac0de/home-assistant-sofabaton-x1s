@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import time
-from collections import defaultdict
-from typing import Any, Callable, Dict, Optional
+from collections import defaultdict, deque
+from typing import Any, Callable, Deque, Dict, Optional
 
 from .commands import iter_command_records
 from .protocol_const import BUTTONNAME_BY_CODE
@@ -16,6 +16,8 @@ class ActivityCache:
         self.devices: Dict[int, Dict[str, Any]] = {}
         self.buttons: Dict[int, set[int]] = {}
         self.commands: dict[int, dict[int, str]] = defaultdict(dict)
+        # Only track the most recent activation to avoid unbounded growth
+        self.app_activations: Deque[dict[str, Any]] = deque(maxlen=1)
 
     def set_hint(self, activity_id: Optional[int]) -> None:
         self.current_activity_hint = activity_id
@@ -76,6 +78,36 @@ class ActivityCache:
             if record.command_id not in commands_found and record.label:
                 commands_found[record.command_id] = record.label
         return commands_found
+
+    def record_app_activation(
+        self,
+        *,
+        ent_id: int,
+        ent_kind: str,
+        ent_name: str,
+        command_id: int,
+        command_label: str | None,
+        button_label: str | None,
+        direction: str,
+        ts: Optional[float] = None,
+    ) -> dict[str, Any]:
+        timestamp = ts if ts is not None else time.time()
+        record = {
+            "timestamp": timestamp,
+            "iso_time": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(timestamp)),
+            "direction": direction,
+            "entity_id": ent_id,
+            "entity_kind": ent_kind,
+            "entity_name": ent_name,
+            "command_id": command_id,
+            "command_label": command_label,
+            "button_label": button_label,
+        }
+        self.app_activations.append(record)
+        return record
+
+    def get_app_activations(self) -> list[dict[str, Any]]:
+        return list(self.app_activations)
 
 
 class BurstScheduler:

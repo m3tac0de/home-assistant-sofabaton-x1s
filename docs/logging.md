@@ -15,3 +15,4 @@ It also improves anonimity as it exclusively contains log data from the integrat
 
 ## Attaching logs to an issue
 Include the downloaded diagnostics JSON in your GitHub issue.
+

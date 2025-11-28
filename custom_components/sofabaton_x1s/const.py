@@ -14,7 +14,7 @@ CONF_HEX_LOGGING_ENABLED = "hex_logging_enabled"
 # X1S devices report a higher NO field in their mDNS TXT records
 X1S_NO_THRESHOLD = 20221120
 
-DEFAULT_PROXY_UDP_PORT = 9102
+DEFAULT_PROXY_UDP_PORT = 8102
 DEFAULT_HUB_LISTEN_BASE = 8200
 
 PLATFORMS = ["select", "switch", "binary_sensor", "button", "sensor", "remote"]
@@ -42,3 +42,7 @@ def signal_devices(entry_id: str) -> str:
     
 def signal_commands(entry_id: str) -> str:
     return f"sofabaton_x1s_commands_{entry_id}"
+
+
+def signal_app_activations(entry_id: str) -> str:
+    return f"sofabaton_x1s_app_activations_{entry_id}"

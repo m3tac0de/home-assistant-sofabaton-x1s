@@ -7,19 +7,19 @@
       },
       "manual": {
         "title": "Manual hub setup",
-        "description": "Enter the IP address and port of your Sofabaton hub. The default port is 8102.",
+        "description": "Provide a name, IP address, and port for your Sofabaton hub. The name you choose here will become the name of your virtual hub and cannot be changed later. Leave the hub port at its default, this setting will be removed in the future.",
         "data": {
-          "name": "Entry name (for Home Assistant)",
+          "name": "Hub name",
           "host": "Hub IP address",
           "port": "Hub TCP port"
         }
       },
       "ports": {
         "title": "Proxy ports",
-        "description": "These ports are used by the local proxy that emulates the hub. Most users can keep the defaults. Change them only if there is a conflict. Note that this setting currently applies to all configured hubs. The ports represents a base value, and the integration will try to find an open port within 32 ports of what you enter here.",
+        "description": "These ports are used by the local Sofabaton proxy. UDP (default 8102) lets the official app discover the virtual hub and is shared by all hubs, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
         "data": {
-          "proxy_udp_port": "Proxy UDP base port",
-          "hub_listen_base": "Hub TCP listen base"
+          "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
+          "proxy_udp_port": "UDP Listener port (for the app to connect)"
         }
       },
       "zeroconf_confirm": {
@@ -32,10 +32,10 @@
     "step": {
       "init": {
         "title": "Proxy ports",
-        "description": "{explain}",
+        "description": "These ports are used by the local Sofabaton proxy. UDP (default 8102) lets the official app discover the virtual hub and is shared by all hubs, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
         "data": {
-          "proxy_udp_port": "Proxy UDP base port",
-          "hub_listen_base": "Hub TCP listen base"
+          "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
+          "proxy_udp_port": "UDP Listener port (for the app to connect)"
         }
       }
     }
