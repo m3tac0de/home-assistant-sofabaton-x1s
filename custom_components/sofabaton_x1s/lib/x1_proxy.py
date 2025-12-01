@@ -29,6 +29,12 @@ from .protocol_const import (
     OP_DEVBTN_TAIL,
     OP_FIND_REMOTE,
     OP_INFO_BANNER,
+    OP_CREATE_DEVICE_HEAD,
+    OP_DEFINE_IP_CMD,
+    OP_PREPARE_SAVE,
+    OP_FINALIZE_DEVICE,
+    OP_DEVICE_SAVE_HEAD,
+    OP_SAVE_COMMIT,
     OP_KEYMAP_CONT,
     OP_KEYMAP_TBL_A,
     OP_KEYMAP_TBL_B,
@@ -204,6 +210,9 @@ class X1Proxy:
         self._activation_listeners: list[callable] = []
         self._app_devices_deadline: float | None = None
         self._app_devices_retry_sent = False
+        self._pending_virtual: dict[str, Any] | None = None
+        self._pending_virtual_event = threading.Event()
+        self._pending_virtual_lock = threading.Lock()
 
         self.transport = TransportBridge(
             real_hub_ip,
@@ -276,6 +285,18 @@ class X1Proxy:
         head = bytes([SYNC0, SYNC1, (opcode >> 8) & 0xFF, opcode & 0xFF])
         frame = head + payload
         return frame + bytes([_sum8(frame)])
+
+    def _utf16le_padded(self, text: str, *, length: int) -> bytes:
+        data = text.encode("utf-16le")
+        truncated = data[:length]
+        return truncated + b"\x00" * max(0, length - len(truncated))
+
+    def _encode_len_prefixed(self, blob: bytes, *, max_len: int = 255) -> bytes:
+        limited = blob[:max_len]
+        return bytes([len(limited)]) + limited
+
+    def _encode_headers(self, headers: dict[str, str]) -> bytes:
+        return "\r\n".join(f"{k}: {v}" for k, v in headers.items()).encode("utf-8")
 
     def enqueue_cmd(
         self,
@@ -450,6 +471,145 @@ class X1Proxy:
     def find_remote(self) -> bool:
         """Trigger the hub's "find my remote" feature."""
         return self.enqueue_cmd(OP_FIND_REMOTE)
+
+    # ------------------------------------------------------------------
+    # Virtual IP device/button creation
+    # ------------------------------------------------------------------
+    def start_virtual_device(
+        self,
+        *,
+        device_name: str | None = None,
+        button_name: str | None = None,
+        method: str | None = None,
+        url: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        with self._pending_virtual_lock:
+            self._pending_virtual_event.clear()
+            self._pending_virtual = {
+                "device_name": device_name or "",
+                "button_name": button_name,
+                "method": method,
+                "url": url,
+                "headers": headers or {},
+                "device_id": None,
+                "button_id": None,
+                "status": "pending",
+            }
+
+    def update_virtual_device(self, **kwargs) -> dict[str, Any]:
+        with self._pending_virtual_lock:
+            if self._pending_virtual is None:
+                self._pending_virtual = {"headers": {}, "status": "pending"}
+            if "headers" in kwargs and kwargs["headers"] is not None:
+                merged = dict(self._pending_virtual.get("headers", {}))
+                merged.update(kwargs["headers"])
+                kwargs["headers"] = merged
+            self._pending_virtual.update({k: v for k, v in kwargs.items() if v is not None or k == "status"})
+            snapshot = dict(self._pending_virtual)
+
+        if snapshot.get("device_id") is not None and snapshot.get("device_name"):
+            self.state.record_virtual_device(
+                snapshot["device_id"],
+                name=snapshot.get("device_name", ""),
+                button_id=snapshot.get("button_id"),
+                method=snapshot.get("method"),
+                url=snapshot.get("url"),
+                headers=snapshot.get("headers"),
+                button_name=snapshot.get("button_name"),
+            )
+
+        if kwargs.get("status") == "success" or kwargs.get("device_id") is not None:
+            self._pending_virtual_event.set()
+
+        return snapshot
+
+    def wait_for_virtual_device(self, timeout: float = 5.0) -> dict[str, Any] | None:
+        self._pending_virtual_event.wait(timeout)
+        with self._pending_virtual_lock:
+            if self._pending_virtual is None:
+                return None
+            snapshot = dict(self._pending_virtual)
+            if snapshot.get("status") == "success":
+                self._pending_virtual = None
+        return snapshot
+
+    def _build_virtual_device_frames(
+        self,
+        *,
+        device_name: str,
+        button_name: str,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+    ) -> list[tuple[int, bytes]]:
+        name_blob = self._utf16le_padded(device_name, length=64)
+        button_blob = self._utf16le_padded(button_name, length=64)
+        method_blob = method.encode("utf-8")
+        url_blob = url.encode("utf-8")
+        header_blob = self._encode_headers(headers)
+
+        create_payload = b"\x01\x00\x00\x00" + name_blob
+        define_payload = (
+            button_blob
+            + self._encode_len_prefixed(method_blob)
+            + self._encode_len_prefixed(url_blob)
+            + self._encode_len_prefixed(header_blob)
+        )
+        prepare_payload = b"\x01\x00"
+        finalize_payload = name_blob[:8] + button_blob[:8]
+
+        return [
+            (OP_CREATE_DEVICE_HEAD, create_payload),
+            (OP_DEFINE_IP_CMD, define_payload),
+            (OP_PREPARE_SAVE, prepare_payload),
+            (OP_FINALIZE_DEVICE, finalize_payload),
+            (OP_SAVE_COMMIT, b""),
+        ]
+
+    def create_ip_button(
+        self,
+        *,
+        device_name: str,
+        button_name: str,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+    ) -> dict[str, Any] | None:
+        if not self.can_issue_commands():
+            log.info("[CREATE] create_ip_button ignored: proxy client is connected")
+            return None
+
+        frames = self._build_virtual_device_frames(
+            device_name=device_name,
+            button_name=button_name,
+            method=method,
+            url=url,
+            headers=headers,
+        )
+
+        self.start_virtual_device(
+            device_name=device_name,
+            button_name=button_name,
+            method=method,
+            url=url,
+            headers=headers,
+        )
+
+        for opcode, payload in frames:
+            self._send_cmd_frame(opcode, payload)
+            time.sleep(0.05)
+
+        result = self.wait_for_virtual_device(timeout=3.0)
+        if result and result.get("device_id") is not None:
+            log.info(
+                "[CREATE] virtual dev=0x%04X btn=%s method=%s url=%s",
+                result.get("device_id", 0),
+                result.get("button_id"),
+                result.get("method"),
+                result.get("url"),
+            )
+        return result
 
     # ---------------------------------------------------------------------
     # mDNS advertisement
