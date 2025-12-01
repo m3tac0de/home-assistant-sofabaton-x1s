@@ -44,6 +44,15 @@ create_ip_button:
       required: true
       selector:
         text:
+    device_id:
+      name: Existing device id
+      description: Optional hub device id to append the button to instead of creating a new device.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
     button_name:
       name: Button name
       description: Label for the HTTP command.
