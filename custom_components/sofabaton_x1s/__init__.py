@@ -115,7 +115,6 @@ async def _async_handle_create_ip_button(call: ServiceCall):
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
-    device_id = call.data.get("device_id")
     device_name = call.data["device_name"].strip()
     button_name = call.data["button_name"].strip()
     method = call.data.get("method", "GET").upper()
@@ -133,24 +132,14 @@ async def _async_handle_create_ip_button(call: ServiceCall):
     if not isinstance(headers, dict):
         raise ValueError("headers must be a mapping")
 
-    if device_id is not None:
-        result = await hass.async_add_executor_job(
-            hub._proxy.add_ip_button_to_device,
-            int(device_id),
-            button_name,
-            method,
-            url,
-            headers,
-        )
-    else:
-        result = await hass.async_add_executor_job(
-            hub._proxy.create_ip_button,
-            device_name,
-            button_name,
-            method,
-            url,
-            headers,
-        )
+    result = await hass.async_add_executor_job(
+        hub._proxy.create_ip_button,
+        device_name,
+        button_name,
+        method,
+        url,
+        headers,
+    )
 
     return result or {}
 

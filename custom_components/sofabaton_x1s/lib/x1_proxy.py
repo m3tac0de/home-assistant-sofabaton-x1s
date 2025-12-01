@@ -31,7 +31,6 @@ from .protocol_const import (
     OP_INFO_BANNER,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
-    OP_DEFINE_IP_CMD_EXISTING,
     OP_PREPARE_SAVE,
     OP_FINALIZE_DEVICE,
     OP_DEVICE_SAVE_HEAD,
@@ -52,7 +51,6 @@ from .protocol_const import (
     OP_REQ_ACTIVATE,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
-    OP_REQ_IPCMD_SYNC,
     OP_REQ_DEVICES,
     OP_REQ_KEYLABELS,
     OP_REQ_VERSION,
@@ -381,33 +379,6 @@ class X1Proxy:
         ent_lo = ent_id & 0xFF
         self.enqueue_cmd(OP_REQ_COMMANDS, bytes([ent_lo, 0xFF]), expects_burst=True, burst_kind=f"commands:{ent_lo}")
         return True
-
-    def request_ip_commands_for_device(self, dev_id: int, *, wait: bool = False, timeout: float = 1.0) -> bool:
-        """Fetch IP command definitions for an existing device."""
-
-        if not self.can_issue_commands():
-            log.info("[CMD] request_ip_commands_for_device ignored: proxy client is connected"); return False
-
-        dev_lo = dev_id & 0xFF
-        event = threading.Event() if wait else None
-
-        if event:
-            def _done(_: str) -> None:
-                event.set()
-
-            self._burst.on_burst_end(f"commands:{dev_lo}", _done)
-
-        ok = self.enqueue_cmd(
-            OP_REQ_IPCMD_SYNC,
-            bytes([dev_lo, 0xFF, 0x14]),
-            expects_burst=True,
-            burst_kind=f"commands:{dev_lo}",
-        )
-
-        if event:
-            event.wait(timeout)
-
-        return ok
         
     def get_activities(self) -> tuple[dict[int, dict], bool]:
         if self.state.activities:
@@ -596,42 +567,6 @@ class X1Proxy:
             (OP_SAVE_COMMIT, b""),
         ]
 
-    def _encode_http_request(self, method: str, url: str, headers: dict[str, str]) -> bytes:
-        header_lines = "".join(f"{k}:{v}\r\n" for k, v in headers.items())
-        request = f"{method} {url} HTTP/1.1\r\n{header_lines}\r\n"
-        return request.encode("utf-8")
-
-    def _build_existing_device_frame(
-        self,
-        *,
-        device_id: int,
-        button_id: int,
-        button_name: str,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-    ) -> tuple[int, bytes]:
-        """Construct the opcode/payload needed to add an IP command to an existing device."""
-
-        header = bytes(
-            [
-                button_id & 0xFF,
-                0x00,
-                0x01,
-                0x01,
-                0x00,
-                0x01,
-                device_id & 0xFF,
-                button_id & 0xFF,
-                0x1C,
-            ]
-        ) + b"\x00" * 7
-
-        payload = bytearray(header)
-        payload.extend(self._utf16le_padded(button_name, length=64))
-        payload.extend(self._encode_http_request(method, url, headers))
-        return OP_DEFINE_IP_CMD_EXISTING, bytes(payload)
-
     def create_ip_button(
         self,
         *,
@@ -674,50 +609,6 @@ class X1Proxy:
                 result.get("method"),
                 result.get("url"),
             )
-        return result
-
-    def add_ip_button_to_device(
-        self,
-        *,
-        device_id: int,
-        button_name: str,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-    ) -> dict[str, Any] | None:
-        """Add an IP-backed command to an existing device."""
-
-        if not self.can_issue_commands():
-            log.info("[CREATE] add_ip_button_to_device ignored: proxy client is connected")
-            return None
-
-        self.request_ip_commands_for_device(device_id, wait=True)
-        existing = self.state.ip_buttons.get(device_id & 0xFF, {})
-        next_button_id = (max(existing.keys()) + 1) if existing else 1
-
-        device_name = self.state.devices.get(device_id & 0xFF, {}).get("name", f"Device {device_id}")
-
-        opcode, payload = self._build_existing_device_frame(
-            device_id=device_id,
-            button_id=next_button_id,
-            button_name=button_name,
-            method=method,
-            url=url,
-            headers=headers,
-        )
-
-        self.start_virtual_device(
-            device_name=device_name,
-            button_name=button_name,
-            method=method,
-            url=url,
-            headers=headers,
-        )
-
-        self._send_cmd_frame(opcode, payload)
-
-        result = self.wait_for_virtual_device(timeout=3.0)
-        self.request_ip_commands_for_device(device_id, wait=True)
         return result
 
     # ---------------------------------------------------------------------
