@@ -187,7 +187,7 @@ You should see:
 
 ## Creating virtual IP buttons
 
-The integration can provision a simple HTTP-backed virtual device/button on the hub using the `sofabaton_x1s.create_ip_button` service. Provide a device name, button label, HTTP method, full URL (including scheme/host), and optional headers mapping. You can also supply an existing `device_id` to append the new command as another button on that device instead of creating a fresh device. The proxy mirrors the app’s observed frame layout (UTF-16LE padded names plus length-prefixed method/URL/header blobs) and returns the hub-assigned `device_id`/`button_id` when the transaction succeeds. Be sure the proxy can issue commands (the official app must not be connected) before invoking the service.
+The integration can provision a simple HTTP-backed virtual device/button on the hub using the `sofabaton_x1s.create_ip_button` service. Provide a device name, button label, HTTP method, full URL (including scheme/host), and optional headers mapping. The proxy mirrors the app’s observed frame layout (UTF-16LE padded names plus length-prefixed method/URL/header blobs) and returns the hub-assigned `device_id`/`button_id` when the transaction succeeds. Be sure the proxy can issue commands (the official app must not be connected) before invoking the service.
 
 Verbose logging is emitted while the frame sequence is sent and while the hub acknowledges creation. Enabling the hex logging switch can help if the hub rejects a payload; the diagnostics will contain the exact frames sent and responses received.
 

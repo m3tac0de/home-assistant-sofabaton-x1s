@@ -49,19 +49,11 @@ OP_REQ_ACTIVATE = 0x023F  # payload: [id_lo, key_code] (activity or device ID)
 OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
 OP_CREATE_DEVICE_HEAD = 0x07D5  # payload includes UTF-16LE device name
 OP_DEFINE_IP_CMD = 0x0ED3  # payload includes HTTP method/URL/headers
-OP_DEFINE_IP_CMD_EXISTING = 0x0EAE  # payload defines IP command for an existing device
 OP_PREPARE_SAVE = 0x4102  # payload triggers save transaction start
 OP_FINALIZE_DEVICE = 0x4677
 OP_DEVICE_SAVE_HEAD = 0x8D5D  # hub assigns device id
 OP_SAVE_COMMIT = 0x6501
 ACK_SUCCESS = 0x0301
-
-# IP command synchronization (existing devices)
-OP_REQ_IPCMD_SYNC = 0x0C02
-OP_IPCMD_ROW_A = 0x0DD3
-OP_IPCMD_ROW_B = 0x0DAC
-OP_IPCMD_ROW_C = 0x0D9B
-OP_IPCMD_ROW_D = 0x0DAE
 
 # H→A responses (from hub to app/client)
 OP_ACK_READY = 0x0160
@@ -119,16 +111,10 @@ OPNAMES: Dict[int, str] = {
     OP_FIND_REMOTE: "FIND_REMOTE",
     OP_CREATE_DEVICE_HEAD: "CREATE_DEVICE_HEAD",
     OP_DEFINE_IP_CMD: "DEFINE_IP_CMD",
-    OP_DEFINE_IP_CMD_EXISTING: "DEFINE_IP_CMD_EXISTING",
     OP_PREPARE_SAVE: "PREPARE_SAVE",
     OP_FINALIZE_DEVICE: "FINALIZE_DEVICE",
     OP_DEVICE_SAVE_HEAD: "DEVICE_SAVE_HEAD",
     OP_SAVE_COMMIT: "SAVE_COMMIT",
-    OP_REQ_IPCMD_SYNC: "REQ_IPCMD_SYNC",
-    OP_IPCMD_ROW_A: "IPCMD_ROW_A",
-    OP_IPCMD_ROW_B: "IPCMD_ROW_B",
-    OP_IPCMD_ROW_C: "IPCMD_ROW_C",
-    OP_IPCMD_ROW_D: "IPCMD_ROW_D",
     ACK_SUCCESS: "ACK_SUCCESS",
     OP_ACK_READY: "ACK_READY",
     OP_MARKER: "MARKER",
@@ -181,17 +167,11 @@ __all__ = [
     "OP_FIND_REMOTE",
     "OP_CREATE_DEVICE_HEAD",
     "OP_DEFINE_IP_CMD",
-    "OP_DEFINE_IP_CMD_EXISTING",
     "OP_PREPARE_SAVE",
     "OP_FINALIZE_DEVICE",
     "OP_DEVICE_SAVE_HEAD",
     "OP_SAVE_COMMIT",
     "ACK_SUCCESS",
-    "OP_REQ_IPCMD_SYNC",
-    "OP_IPCMD_ROW_A",
-    "OP_IPCMD_ROW_B",
-    "OP_IPCMD_ROW_C",
-    "OP_IPCMD_ROW_D",
     "OP_ACK_READY",
     "OP_MARKER",
     "OP_CATALOG_ROW_DEVICE",

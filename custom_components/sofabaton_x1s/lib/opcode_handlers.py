@@ -32,16 +32,10 @@ from .protocol_const import (
     OP_KEYMAP_TBL_G,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
-    OP_DEFINE_IP_CMD_EXISTING,
     OP_PREPARE_SAVE,
     OP_FINALIZE_DEVICE,
     OP_DEVICE_SAVE_HEAD,
     OP_SAVE_COMMIT,
-    OP_REQ_IPCMD_SYNC,
-    OP_IPCMD_ROW_A,
-    OP_IPCMD_ROW_B,
-    OP_IPCMD_ROW_C,
-    OP_IPCMD_ROW_D,
     ACK_SUCCESS,
     OP_REQ_ACTIVATE,
     OP_REQ_BUTTONS,
@@ -221,68 +215,6 @@ class DefineIpCommandHandler(BaseFrameHandler):
             method or "?",
             url,
             ", ".join(f"{k}: {v}" for k, v in headers.items()) if headers else "{}",
-        )
-
-
-@register_handler(opcodes=(OP_DEFINE_IP_CMD_EXISTING,), directions=("A→H",))
-class DefineExistingIpCommandHandler(BaseFrameHandler):
-    """Capture metadata when the app adds an IP command to an existing device."""
-
-    def handle(self, frame: FrameContext) -> None:
-        proxy: X1Proxy = frame.proxy
-        payload = frame.payload
-        button_name = _decode_utf16le_segment(payload, start=16, length=64) or _decode_utf16le_segment(payload, start=16)
-        method, url, headers = _parse_ip_command_fields(payload[64:])
-        proxy.update_virtual_device(button_name=button_name, method=method, url=url, headers=headers)
-        log.info(
-            "[CREATE] existing dev button='%s' method=%s url='%s' headers=%s",
-            button_name,
-            method or "?",
-            url,
-            ", ".join(f"{k}: {v}" for k, v in headers.items()) if headers else "{}",
-        )
-
-
-@register_handler(
-    opcodes=(OP_IPCMD_ROW_A, OP_IPCMD_ROW_B, OP_IPCMD_ROW_C, OP_IPCMD_ROW_D),
-    directions=("H→A",),
-)
-class IpCommandSyncRowHandler(BaseFrameHandler):
-    """Decode IP command rows returned when syncing commands for an existing device."""
-
-    def handle(self, frame: FrameContext) -> None:
-        proxy: X1Proxy = frame.proxy
-        payload = frame.payload
-        proxy._burst.start("commands", now=time.monotonic())
-        if len(payload) > 6:
-            proxy._burst.start(f"commands:{payload[6]}", now=time.monotonic())
-
-        device_id = payload[6] if len(payload) > 6 else None
-        button_id = payload[7] if len(payload) > 7 else None
-        button_name = _decode_utf16le_segment(payload, start=16, length=64) or _decode_utf16le_segment(payload, start=16)
-        method, url, headers = _parse_ip_command_fields(payload[64:])
-
-        if device_id is None:
-            return
-
-        device_meta = proxy.state.devices.get(device_id & 0xFF, {})
-        proxy.state.record_virtual_device(
-            device_id,
-            name=device_meta.get("name") or f"Device {device_id}",
-            button_id=button_id,
-            method=method,
-            url=url,
-            headers=headers,
-            button_name=button_name,
-        )
-
-        log.info(
-            "[CREATE] sync dev=0x%04X btn=0x%02X name='%s' method=%s url='%s'",
-            device_id,
-            button_id or 0,
-            button_name,
-            method or "?",
-            url,
         )
 
 
