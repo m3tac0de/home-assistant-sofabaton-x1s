@@ -47,6 +47,13 @@ OP_REQ_BUTTONS = 0x023C  # payload: [act_lo, 0xFF]
 OP_REQ_COMMANDS = 0x025C  # payload: [act_lo, 0xFF]
 OP_REQ_ACTIVATE = 0x023F  # payload: [id_lo, key_code] (activity or device ID)
 OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
+OP_CREATE_DEVICE_HEAD = 0x07D5  # payload includes UTF-16LE device name
+OP_DEFINE_IP_CMD = 0x0ED3  # payload includes HTTP method/URL/headers
+OP_PREPARE_SAVE = 0x4102  # payload triggers save transaction start
+OP_FINALIZE_DEVICE = 0x4677
+OP_DEVICE_SAVE_HEAD = 0x8D5D  # hub assigns device id
+OP_SAVE_COMMIT = 0x6501
+ACK_SUCCESS = 0x0301
 
 # H→A responses (from hub to app/client)
 OP_ACK_READY = 0x0160
@@ -102,6 +109,13 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_COMMANDS: "REQ_COMMANDS",
     OP_REQ_ACTIVATE: "REQ_ACTIVATE",
     OP_FIND_REMOTE: "FIND_REMOTE",
+    OP_CREATE_DEVICE_HEAD: "CREATE_DEVICE_HEAD",
+    OP_DEFINE_IP_CMD: "DEFINE_IP_CMD",
+    OP_PREPARE_SAVE: "PREPARE_SAVE",
+    OP_FINALIZE_DEVICE: "FINALIZE_DEVICE",
+    OP_DEVICE_SAVE_HEAD: "DEVICE_SAVE_HEAD",
+    OP_SAVE_COMMIT: "SAVE_COMMIT",
+    ACK_SUCCESS: "ACK_SUCCESS",
     OP_ACK_READY: "ACK_READY",
     OP_MARKER: "MARKER",
     OP_CATALOG_ROW_DEVICE: "CATALOG_ROW_DEVICE",
@@ -151,6 +165,13 @@ __all__ = [
     "OP_REQ_COMMANDS",
     "OP_REQ_ACTIVATE",
     "OP_FIND_REMOTE",
+    "OP_CREATE_DEVICE_HEAD",
+    "OP_DEFINE_IP_CMD",
+    "OP_PREPARE_SAVE",
+    "OP_FINALIZE_DEVICE",
+    "OP_DEVICE_SAVE_HEAD",
+    "OP_SAVE_COMMIT",
+    "ACK_SUCCESS",
     "OP_ACK_READY",
     "OP_MARKER",
     "OP_CATALOG_ROW_DEVICE",

@@ -30,6 +30,13 @@ from .protocol_const import (
     OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_G,
+    OP_CREATE_DEVICE_HEAD,
+    OP_DEFINE_IP_CMD,
+    OP_PREPARE_SAVE,
+    OP_FINALIZE_DEVICE,
+    OP_DEVICE_SAVE_HEAD,
+    OP_SAVE_COMMIT,
+    ACK_SUCCESS,
     OP_REQ_ACTIVATE,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
@@ -78,6 +85,78 @@ def _extract_text_fields(payload: bytes, start: int, count: int = 2) -> list[str
 
     return fields
 
+
+def _decode_utf16le_segment(payload: bytes, *, start: int = 0, length: int | None = None) -> str:
+    """Decode a UTF-16LE string from ``payload`` with optional bounds."""
+
+    end = None if length is None else start + length
+    segment = payload[start:end]
+    if not segment:
+        return ""
+    try:
+        return segment.decode("utf-16le", errors="ignore").strip("\x00")
+    except Exception:
+        return ""
+
+
+def _decode_ascii_blocks(payload: bytes) -> list[str]:
+    """Split an ASCII-ish payload into human-readable blocks."""
+
+    decoded = payload.decode("utf-8", errors="ignore")
+    parts = [p.strip("\x00") for p in decoded.replace("\r", "\n").split("\n") if p.strip("\x00")]
+    return parts
+
+
+def _parse_header_lines(lines: list[str]) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for line in lines:
+        if ":" not in line:
+            continue
+        key, val = line.split(":", 1)
+        headers[key.strip()] = val.strip()
+    return headers
+
+
+def _parse_ip_command_fields(payload: bytes) -> tuple[str, str, dict[str, str]]:
+    """Extract HTTP method, URL, and headers from an IP command payload."""
+
+    method = ""
+    url = ""
+    headers: dict[str, str] = {}
+
+    if payload:
+        try:
+            cursor = 0
+            if cursor < len(payload):
+                m_len = payload[cursor]
+                cursor += 1
+                method = payload[cursor : cursor + m_len].decode("utf-8", errors="ignore")
+                cursor += m_len
+            if cursor < len(payload):
+                u_len = payload[cursor]
+                cursor += 1
+                url = payload[cursor : cursor + u_len].decode("utf-8", errors="ignore")
+                cursor += u_len
+            if cursor < len(payload):
+                h_len = payload[cursor]
+                cursor += 1
+                header_blob = payload[cursor : cursor + h_len].decode("utf-8", errors="ignore")
+                headers = _parse_header_lines(header_blob.split("\n"))
+        except Exception:
+            # fall through to heuristics
+            pass
+
+    ascii_parts = _decode_ascii_blocks(payload)
+    for part in ascii_parts:
+        if not method and part.isalpha():
+            method = part.upper()
+        if not url and part.lower().startswith("http"):
+            url = part
+        if ":" in part:
+            headers |= _parse_header_lines([part])
+
+    return method, url, headers
+
 def _infer_command_entity(proxy: "X1Proxy", payload: bytes) -> int:
     """Best-effort guess of the entity a command burst belongs to."""
 
@@ -106,6 +185,88 @@ def _extract_dev_id(raw: bytes, payload: bytes, opcode: int) -> int:
         return payload[3]
 
     return 0
+
+
+@register_handler(opcodes=(OP_CREATE_DEVICE_HEAD,), directions=("A→H",))
+class CreateVirtualDeviceHandler(BaseFrameHandler):
+    """Capture app-initiated virtual device creation requests."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        device_name = _decode_utf16le_segment(payload, start=0, length=64) or _decode_utf16le_segment(payload)
+        proxy.start_virtual_device(device_name=device_name)
+        log.info("[CREATE] device name='%s' (%dB payload)", device_name, len(payload))
+
+
+@register_handler(opcodes=(OP_DEFINE_IP_CMD,), directions=("A→H",))
+class DefineIpCommandHandler(BaseFrameHandler):
+    """Decode IP command metadata sent from the app."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        button_name = _decode_utf16le_segment(payload, start=0, length=64) or _decode_utf16le_segment(payload)
+        method, url, headers = _parse_ip_command_fields(payload[64:])
+        proxy.update_virtual_device(button_name=button_name, method=method, url=url, headers=headers)
+        log.info(
+            "[CREATE] button='%s' method=%s url='%s' headers=%s",
+            button_name,
+            method or "?",
+            url,
+            ", ".join(f"{k}: {v}" for k, v in headers.items()) if headers else "{}",
+        )
+
+
+@register_handler(opcodes=(OP_PREPARE_SAVE,), directions=("A→H", "H→A"))
+class PrepareSaveHandler(BaseFrameHandler):
+    """Track the start of a save transaction for IP buttons."""
+
+    def handle(self, frame: FrameContext) -> None:
+        log.info("[CREATE] prepare/save transaction len=%d", len(frame.payload))
+
+
+@register_handler(opcodes=(OP_DEVICE_SAVE_HEAD,), directions=("H→A",))
+class DeviceSaveHeadHandler(BaseFrameHandler):
+    """Record hub-assigned device identifiers for virtual devices."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        device_id = int.from_bytes(payload[:2], "big") if len(payload) >= 2 else None
+        button_id = payload[2] if len(payload) > 2 else None
+        proxy.update_virtual_device(device_id=device_id, button_id=button_id)
+        log.info(
+            "[CREATE] hub assigned dev=0x%04X btn=0x%02X", device_id or 0, button_id or 0
+        )
+
+
+@register_handler(opcodes=(OP_FINALIZE_DEVICE,), directions=("H→A",))
+class FinalizeDeviceHandler(BaseFrameHandler):
+    """Note finalize frames emitted during virtual device creation."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        if len(payload) >= 3:
+            device_id = int.from_bytes(payload[:2], "big")
+            button_id = payload[2]
+            proxy.update_virtual_device(device_id=device_id, button_id=button_id)
+            log.info("[CREATE] finalize dev=0x%04X btn=0x%02X", device_id, button_id)
+        else:
+            log.info("[CREATE] finalize len=%d", len(payload))
+
+
+@register_handler(opcodes=(OP_SAVE_COMMIT, ACK_SUCCESS), directions=("H→A",))
+class SaveCommitHandler(BaseFrameHandler):
+    """Acknowledge successful save of a virtual device/button."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        if getattr(proxy, "_pending_virtual", None) is None:
+            return
+        proxy.update_virtual_device(status="success")
+        log.info("[CREATE] save commit/ack success")
 
 
 @register_handler(opcodes=(OP_REQ_ACTIVATE,), directions=("A→H",))

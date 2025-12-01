@@ -16,6 +16,8 @@ class ActivityCache:
         self.devices: Dict[int, Dict[str, Any]] = {}
         self.buttons: Dict[int, set[int]] = {}
         self.commands: dict[int, dict[int, str]] = defaultdict(dict)
+        self.ip_devices: Dict[int, Dict[str, Any]] = {}
+        self.ip_buttons: Dict[int, Dict[int, Dict[str, Any]]] = defaultdict(dict)
         # Only track the most recent activation to avoid unbounded growth
         self.app_activations: Deque[dict[str, Any]] = deque(maxlen=1)
 
@@ -78,6 +80,38 @@ class ActivityCache:
             if record.command_id not in commands_found and record.label:
                 commands_found[record.command_id] = record.label
         return commands_found
+
+    def record_virtual_device(
+        self,
+        device_id: int,
+        *,
+        name: str,
+        button_id: int | None = None,
+        method: str | None = None,
+        url: str | None = None,
+        headers: dict[str, str] | None = None,
+        button_name: str | None = None,
+    ) -> None:
+        brand = "Virtual HTTP"
+        self.devices[device_id & 0xFF] = {"brand": brand, "name": name}
+        if button_id is not None:
+            self.buttons.setdefault(device_id & 0xFF, set()).add(button_id)
+        meta: Dict[str, Any] = {
+            "device_id": device_id & 0xFF,
+            "name": name,
+            "brand": brand,
+        }
+        if method is not None:
+            meta["method"] = method
+        if url is not None:
+            meta["url"] = url
+        if headers is not None:
+            meta["headers"] = headers
+        if button_name is not None:
+            meta["button_name"] = button_name
+        if button_id is not None:
+            self.ip_buttons[device_id & 0xFF][button_id] = meta
+        self.ip_devices[device_id & 0xFF] = meta
 
     def record_app_activation(
         self,
