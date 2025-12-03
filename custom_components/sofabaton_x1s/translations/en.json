@@ -31,8 +31,16 @@
   "options": {
     "step": {
       "init": {
+        "title": "Hub connection",
+        "description": "Update the IP address or TCP port for this hub. You can adjust proxy ports for all hubs on the next screen.",
+        "data": {
+          "host": "Hub IP address",
+          "port": "Hub TCP port"
+        }
+      },
+      "ports": {
         "title": "Proxy ports",
-        "description": "These ports are used by the local Sofabaton proxy. UDP (default 8102) lets the official app discover the virtual hub and is shared by all hubs, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
+        "description": "These ports are used by the local Sofabaton proxy and apply to all hubs. UDP (default 8102) lets the official app discover the virtual hub, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
         "data": {
           "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
           "proxy_udp_port": "UDP Listener port (for the app to connect)"
