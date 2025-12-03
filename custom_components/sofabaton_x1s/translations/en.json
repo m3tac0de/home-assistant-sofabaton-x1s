@@ -7,11 +7,10 @@
       },
       "manual": {
         "title": "Manual hub setup",
-        "description": "Provide a name, IP address, and port for your Sofabaton hub. The name you choose here will become the name of your virtual hub and cannot be changed later. Leave the hub port at its default, this setting will be removed in the future.",
+        "description": "Provide a name and IP address for your Sofabaton hub. The name you choose here will become the name of your virtual hub and cannot be changed later.",
         "data": {
           "name": "Hub name",
-          "host": "Hub IP address",
-          "port": "Hub TCP port"
+          "host": "Hub IP address"
         }
       },
       "ports": {
@@ -30,14 +29,6 @@
   },
   "options": {
     "step": {
-      "init": {
-        "title": "Hub connection",
-        "description": "Update the IP address or TCP port for this hub. You can adjust proxy ports for all hubs on the next screen.",
-        "data": {
-          "host": "Hub IP address",
-          "port": "Hub TCP port"
-        }
-      },
       "ports": {
         "title": "Proxy ports",
         "description": "These ports are used by the local Sofabaton proxy and apply to all hubs. UDP (default 8102) lets the official app discover the virtual hub, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
