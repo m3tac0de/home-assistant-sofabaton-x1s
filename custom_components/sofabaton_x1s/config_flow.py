@@ -74,7 +74,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # build a hub-like dict
             name = user_input["name"]
             host = user_input["host"]
-            port = user_input["port"]
+            port = DEFAULT_PROXY_UDP_PORT
             mac = generate_static_mac(host, port)
             props = {"MAC": mac, "NAME": name}
 
@@ -90,16 +90,12 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({
             vol.Required("name"): str,
             vol.Required("host"): str,
-            vol.Required("port", default=8102): int,
         })
         return self.async_show_form(
             step_id="manual",
             data_schema=schema,
             description_placeholders={
-                "help": (
-                    "Enter the IP address and port of your Sofabaton hub. "
-                    "The default port is 8102."
-                )
+                "help": "Enter the IP address of your Sofabaton hub. The default port 8102 is used automatically."
             },
         )
 
@@ -311,38 +307,9 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
         self.entry = entry
-        self._host: str | None = None
-        self._port: int | None = None
 
     async def async_step_init(self, user_input: Dict[str, Any] | None = None):
-        if user_input is not None:
-            self._host = user_input[CONF_HOST]
-            self._port = user_input[CONF_PORT]
-
-            return await self.async_step_ports()
-
-        PORT_VALIDATOR = vol.All(int, vol.Range(min=1, max=65535))
-        schema = vol.Schema({
-            vol.Required(
-                CONF_HOST,
-                default=self.entry.data.get(CONF_HOST),
-            ): str,
-            vol.Required(
-                CONF_PORT,
-                default=self.entry.data.get(CONF_PORT),
-            ): PORT_VALIDATOR,
-        })
-
-        return self.async_show_form(
-            step_id="init",
-            data_schema=schema,
-            description_placeholders={
-                "explain": (
-                    "Update the IP address or TCP port for this Sofabaton hub. "
-                    "You’ll adjust proxy ports for all hubs on the next screen."
-                )
-            },
-        )
+        return await self.async_step_ports(user_input)
 
 
     async def async_step_ports(self, user_input: Dict[str, Any] | None = None):
@@ -354,8 +321,6 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 self.entry,
                 data={
                     **self.entry.data,
-                    CONF_HOST: self._host or self.entry.data.get(CONF_HOST),
-                    CONF_PORT: self._port or self.entry.data.get(CONF_PORT),
                 },
             )
 
