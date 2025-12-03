@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Opcode-specific frame handlers used by :class:`~.x1_proxy.X1Proxy`."""
 
+import re
 import time
 from typing import TYPE_CHECKING
 
@@ -32,10 +33,16 @@ from .protocol_const import (
     OP_KEYMAP_TBL_G,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
+    OP_DEFINE_IP_CMD_EXISTING,
     OP_PREPARE_SAVE,
     OP_FINALIZE_DEVICE,
     OP_DEVICE_SAVE_HEAD,
     OP_SAVE_COMMIT,
+    OP_REQ_IPCMD_SYNC,
+    OP_IPCMD_ROW_A,
+    OP_IPCMD_ROW_B,
+    OP_IPCMD_ROW_C,
+    OP_IPCMD_ROW_D,
     ACK_SUCCESS,
     OP_REQ_ACTIVATE,
     OP_REQ_BUTTONS,
@@ -94,7 +101,9 @@ def _decode_utf16le_segment(payload: bytes, *, start: int = 0, length: int | Non
     if not segment:
         return ""
     try:
-        return segment.decode("utf-16le", errors="ignore").strip("\x00")
+        text = segment.decode("utf-16le", errors="ignore").replace("\x00", "")
+        text = re.sub(r"[^\x20-\x7E]", "", text)
+        return text.strip()
     except Exception:
         return ""
 
@@ -148,12 +157,63 @@ def _parse_ip_command_fields(payload: bytes) -> tuple[str, str, dict[str, str]]:
 
     ascii_parts = _decode_ascii_blocks(payload)
     for part in ascii_parts:
-        if not method and part.isalpha():
-            method = part.upper()
-        if not url and part.lower().startswith("http"):
-            url = part
-        if ":" in part:
-            headers |= _parse_header_lines([part])
+        clean = re.sub(r"[^\x20-\x7E]", "", part)
+        upper_clean = clean.upper()
+
+        if not method:
+            for verb in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"):
+                if verb in upper_clean:
+                    method = verb
+                    break
+            if not method and clean.isalpha():
+                method = upper_clean
+        if not url:
+            lower_clean = clean.lower()
+            if lower_clean.startswith("http"):
+                url = clean
+            elif method and "http" in lower_clean:
+                for tok in clean.split():
+                    if tok.lower().startswith("http/"):
+                        continue
+                    if tok.lower().startswith("http"):
+                        url = tok
+                        break
+        if method and not url and "http/" not in clean.lower():
+            tokens = clean.split()
+            if method in tokens and len(tokens) > tokens.index(method) + 1:
+                candidate = tokens[tokens.index(method) + 1]
+                if not candidate.lower().startswith("http/" ):
+                    url = candidate
+        if ":" in clean:
+            headers |= _parse_header_lines([clean])
+
+    if method and not method.isalpha():
+        match = re.search(r"\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b", method, re.IGNORECASE)
+        if match:
+            method = match.group(1).upper()
+
+    if url.upper().startswith("HTTP/"):
+        url = ""
+
+    if not url or url.startswith("-") or url.lower().startswith("content-"):
+        for part in ascii_parts:
+            if method:
+                tokens = part.split()
+                for idx, tok in enumerate(tokens):
+                    if method in tok.upper() and idx + 1 < len(tokens):
+                        candidate = tokens[idx + 1]
+                        if not candidate.lower().startswith("http/"):
+                            url = candidate if candidate.startswith("/") else url
+                            if candidate.startswith("/"):
+                                break
+                    if tok.lower().startswith("http/"):
+                        continue
+                    if tok.startswith("/") or tok.lower().startswith("http"):
+                        url = tok
+                        break
+            if url:
+                break
+
 
     return method, url, headers
 
@@ -215,6 +275,68 @@ class DefineIpCommandHandler(BaseFrameHandler):
             method or "?",
             url,
             ", ".join(f"{k}: {v}" for k, v in headers.items()) if headers else "{}",
+        )
+
+
+@register_handler(opcodes=(OP_DEFINE_IP_CMD_EXISTING,), directions=("A→H",))
+class DefineExistingIpCommandHandler(BaseFrameHandler):
+    """Capture metadata when the app adds an IP command to an existing device."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        button_name = _decode_utf16le_segment(payload, start=16, length=64) or _decode_utf16le_segment(payload, start=16)
+        method, url, headers = _parse_ip_command_fields(payload[64:])
+        proxy.update_virtual_device(button_name=button_name, method=method, url=url, headers=headers)
+        log.info(
+            "[CREATE] existing dev button='%s' method=%s url='%s' headers=%s",
+            button_name,
+            method or "?",
+            url,
+            ", ".join(f"{k}: {v}" for k, v in headers.items()) if headers else "{}",
+        )
+
+
+@register_handler(
+    opcodes=(OP_IPCMD_ROW_A, OP_IPCMD_ROW_B, OP_IPCMD_ROW_C, OP_IPCMD_ROW_D),
+    directions=("H→A",),
+)
+class IpCommandSyncRowHandler(BaseFrameHandler):
+    """Decode IP command rows returned when syncing commands for an existing device."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        proxy._burst.start("commands", now=time.monotonic())
+        if len(payload) > 6:
+            proxy._burst.start(f"commands:{payload[6]}", now=time.monotonic())
+
+        device_id = payload[6] if len(payload) > 6 else None
+        button_id = payload[7] if len(payload) > 7 else None
+        button_name = _decode_utf16le_segment(payload, start=16, length=64) or _decode_utf16le_segment(payload, start=16)
+        method, url, headers = _parse_ip_command_fields(payload[64:])
+
+        if device_id is None:
+            return
+
+        device_meta = proxy.state.devices.get(device_id & 0xFF, {})
+        proxy.state.record_virtual_device(
+            device_id,
+            name=device_meta.get("name") or f"Device {device_id}",
+            button_id=button_id,
+            method=method,
+            url=url,
+            headers=headers,
+            button_name=button_name,
+        )
+
+        log.info(
+            "[CREATE] sync dev=0x%04X btn=0x%02X name='%s' method=%s url='%s'",
+            device_id,
+            button_id or 0,
+            button_name,
+            method or "?",
+            url,
         )
 
 
