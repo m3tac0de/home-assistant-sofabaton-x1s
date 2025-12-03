@@ -16,7 +16,6 @@ from .commands import DeviceCommandAssembler
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
-    OPNAMES,
     OP_ACK_READY,
     OP_BANNER,
     OP_CALL_ME,
@@ -59,6 +58,7 @@ from .protocol_const import (
     OP_WIFI_FW,
     SYNC0,
     SYNC1,
+    opcode_name,
 )
 from .state_helpers import ActivityCache, BurstScheduler
 from .transport_bridge import TransportBridge
@@ -317,11 +317,11 @@ class X1Proxy:
             sender=self._send_cmd_frame,
         )
         if sent:
-            log.info("[CMD] queued %s (0x%04X) %dB", OPNAMES.get(opcode, f"OP_{opcode:04X}"), opcode, len(payload))
+            log.info("[CMD] queued %s (0x%04X) %dB", opcode_name(opcode), opcode, len(payload))
         else:
             log.info(
                 "[CMD] ignoring %s: proxy client is connected",
-                OPNAMES.get(opcode, f"OP_{opcode:04X}"),
+                opcode_name(opcode),
             )
         return sent
 
@@ -825,7 +825,7 @@ class X1Proxy:
         frame = self._build_frame(opcode, payload)
         log.info(
             "[SEND] hub %s (0x%04X) %dB",
-            OPNAMES.get(opcode, f"OP_{opcode:04X}"),
+            opcode_name(opcode),
             opcode,
             len(payload),
         )
@@ -875,7 +875,7 @@ class X1Proxy:
     # ---------------------------------------------------------------------
     def _log_frames(self, direction: str, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
         for op, raw, payload, scid, ecid in frames:
-            name = OPNAMES.get(op, f"OP_{op:04X}")
+            name = opcode_name(op)
             note = f"#{scid}→#{ecid}" if scid != ecid else f"#{ecid}"
             log.info("[FRAME %s] %s %s (0x%04X) len=%d", note, direction, name, op, len(raw))
 

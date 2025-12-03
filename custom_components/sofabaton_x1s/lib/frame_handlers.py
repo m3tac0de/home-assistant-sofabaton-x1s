@@ -18,7 +18,15 @@ by passing ``directions=("A→H",)`` (or ``("H→A",)``) to ``register_handler``
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, Sequence, Iterator, Optional, runtime_checkable, TYPE_CHECKING
+from typing import (
+    Callable,
+    Protocol,
+    Sequence,
+    Iterator,
+    Optional,
+    runtime_checkable,
+    TYPE_CHECKING,
+)
 
 if TYPE_CHECKING:
     from .x1_proxy import X1Proxy
@@ -36,6 +44,9 @@ class FrameContext:
     name: str
 
 
+OpcodeMatcher = int | Callable[[int], bool]
+
+
 @runtime_checkable
 class FrameHandler(Protocol):
     """Interface implemented by opcode handlers."""
@@ -50,11 +61,27 @@ class FrameHandler(Protocol):
 class BaseFrameHandler(FrameHandler):
     """Convenience base class implementing ``matches`` via attributes."""
 
-    opcodes: tuple[int, ...] | None = None
+    opcodes: tuple[OpcodeMatcher, ...] | None = None
     directions: tuple[str, ...] | None = None
 
+    def _matches_opcode(self, opcode: int) -> bool:
+        if self.opcodes is None:
+            return True
+
+        for candidate in self.opcodes:
+            if callable(candidate):
+                try:
+                    if candidate(opcode):
+                        return True
+                except Exception:
+                    continue
+            elif opcode == candidate:
+                return True
+
+        return False
+
     def matches(self, opcode: int, direction: str) -> bool:
-        opcode_match = True if self.opcodes is None else opcode in self.opcodes
+        opcode_match = self._matches_opcode(opcode)
         direction_match = True if self.directions is None else direction in self.directions
         return opcode_match and direction_match
 
@@ -84,7 +111,7 @@ frame_handler_registry = FrameHandlerRegistry()
 def register_handler(
     handler: Optional[type[BaseFrameHandler] | FrameHandler] = None,
     *,
-    opcodes: Sequence[int] | None = None,
+    opcodes: Sequence[OpcodeMatcher] | None = None,
     directions: Sequence[str] | None = None,
     registry: FrameHandlerRegistry = frame_handler_registry,
 ):

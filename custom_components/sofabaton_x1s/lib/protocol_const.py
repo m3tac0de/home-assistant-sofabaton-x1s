@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from dataclasses import dataclass
+from typing import Callable, Dict, Iterable
 
 # Frame markers used by the hub protocol
 SYNC0, SYNC1 = 0xA5, 0x5A
@@ -62,6 +63,46 @@ OP_IPCMD_ROW_A = 0x0DD3
 OP_IPCMD_ROW_B = 0x0DAC
 OP_IPCMD_ROW_C = 0x0D9B
 OP_IPCMD_ROW_D = 0x0DAE
+
+# Families of related opcodes (mask/value pairs)
+
+
+@dataclass(frozen=True)
+class OpcodeFamily:
+    """Grouping of related opcodes that share a matching predicate."""
+
+    name: str
+    matcher: Callable[[int], bool]
+    describer: Callable[[int], str] | None = None
+
+    def __call__(self, opcode: int) -> bool:
+        return self.matcher(opcode)
+
+    def describe(self, opcode: int) -> str:
+        if self.describer:
+            return self.describer(opcode)
+        return f"{self.name}_{opcode:04X}"
+
+
+def _masked_family(name: str, *, mask: int, value: int, suffix_mask: int) -> OpcodeFamily:
+    suffix_bits = suffix_mask.bit_count()
+    suffix_width = max(2, (suffix_bits + 3) // 4)
+    return OpcodeFamily(
+        name,
+        matcher=lambda opcode: opcode & mask == value,
+        describer=lambda opcode: f"{name}_{opcode & suffix_mask:0{suffix_width}X}",
+    )
+
+
+OP_IPCMD_ROWS = _masked_family("IPCMD_ROW", mask=0xFF00, value=0x0D00, suffix_mask=0x00FF)
+OP_3D_FAMILY = _masked_family("OP_3D", mask=0x00FF, value=0x003D, suffix_mask=0xFF00)
+OP_5D_FAMILY = _masked_family("OP_5D", mask=0x00FF, value=0x005D, suffix_mask=0xFF00)
+
+OPCODE_FAMILIES: tuple[OpcodeFamily, ...] = (
+    OP_IPCMD_ROWS,
+    OP_3D_FAMILY,
+    OP_5D_FAMILY,
+)
 
 # H→A responses (from hub to app/client)
 OP_ACK_READY = 0x0160
@@ -168,6 +209,19 @@ OPNAMES: Dict[int, str] = {
 }
 
 
+def opcode_name(opcode: int, *, families: Iterable[OpcodeFamily] | None = None) -> str:
+    """Return a human-readable opcode label."""
+
+    if opcode in OPNAMES:
+        return OPNAMES[opcode]
+
+    for family in families or OPCODE_FAMILIES:
+        if family(opcode):
+            return family.describe(opcode)
+
+    return f"OP_{opcode:04X}"
+
+
 __all__ = [
     "SYNC0",
     "SYNC1",
@@ -228,4 +282,10 @@ __all__ = [
     "OP_WIFI_FW",
     "OP_INFO_BANNER",
     "OPNAMES",
+    "OPCODE_FAMILIES",
+    "OP_IPCMD_ROWS",
+    "OP_3D_FAMILY",
+    "OP_5D_FAMILY",
+    "OpcodeFamily",
+    "opcode_name",
 ]
