@@ -311,12 +311,56 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
         self.entry = entry
+        self._host: str | None = None
+        self._port: int | None = None
 
     async def async_step_init(self, user_input: Dict[str, Any] | None = None):
         if user_input is not None:
-            return self.async_create_entry(title="Sofabaton options", data=user_input)
-            
+            self._host = user_input[CONF_HOST]
+            self._port = user_input[CONF_PORT]
+
+            return await self.async_step_ports()
+
         PORT_VALIDATOR = vol.All(int, vol.Range(min=1, max=65535))
+        schema = vol.Schema({
+            vol.Required(
+                CONF_HOST,
+                default=self.entry.data.get(CONF_HOST),
+            ): str,
+            vol.Required(
+                CONF_PORT,
+                default=self.entry.data.get(CONF_PORT),
+            ): PORT_VALIDATOR,
+        })
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            description_placeholders={
+                "explain": (
+                    "Update the IP address or TCP port for this Sofabaton hub. "
+                    "You’ll adjust proxy ports for all hubs on the next screen."
+                )
+            },
+        )
+
+
+    async def async_step_ports(self, user_input: Dict[str, Any] | None = None):
+        PORT_VALIDATOR = vol.All(int, vol.Range(min=1, max=65535))
+
+        if user_input is not None:
+            new_options = {**self.entry.options, **user_input}
+            self.hass.config_entries.async_update_entry(
+                self.entry,
+                data={
+                    **self.entry.data,
+                    CONF_HOST: self._host or self.entry.data.get(CONF_HOST),
+                    CONF_PORT: self._port or self.entry.data.get(CONF_PORT),
+                },
+            )
+
+            return self.async_create_entry(title="Sofabaton options", data=new_options)
+
         schema = vol.Schema({
             vol.Required(
                 "proxy_udp_port",
@@ -329,18 +373,16 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
         })
 
         return self.async_show_form(
-            step_id="init",
+            step_id="ports",
             data_schema=schema,
             description_placeholders={
                 "explain": (
                     "These are ports that this integration binds to. "
-                    "Most users can keep the defaults. Change only if the ports are "
-                    "already in use."
-                    "Note that this setting currently applies to all configured hubs."
-                    "The ports represents a base value, and the integration will try"
-                    "to find an open port within 32 ports of what you enter here."
-                    "The UDP port is optional; if you disable the proxy capabilty of"
-                    "the integration, no UDP port is used."
+                    "Most users can keep the defaults. Change only if the ports are already in use. "
+                    "Note that this setting applies to all configured hubs. "
+                    "The ports represent a base value, and the integration will try to find an open port within 32 ports "
+                    "of what you enter here. The UDP port is optional; if you disable the proxy capability of the integration, "
+                    "no UDP port is used."
                 )
             },
         )
