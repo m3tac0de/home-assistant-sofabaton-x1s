@@ -17,12 +17,14 @@ from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
     OPNAMES,
+    opcode_family,
+    opcode_hi,
+    opcode_lo,
     OP_ACK_READY,
     OP_BANNER,
     OP_CALL_ME,
     OP_CATALOG_ROW_ACTIVITY,
     OP_CATALOG_ROW_DEVICE,
-    OP_DEVBTN_EXTRA,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
     OP_DEVBTN_PAGE,
@@ -42,6 +44,7 @@ from .protocol_const import (
     OP_KEYMAP_TBL_C,
     OP_KEYMAP_TBL_D,
     OP_KEYMAP_TBL_E,
+    OP_KEYMAP_EXTRA,
     OP_LABELS_A1,
     OP_LABELS_A2,
     OP_LABELS_B1,
@@ -876,8 +879,19 @@ class X1Proxy:
     def _log_frames(self, direction: str, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
         for op, raw, payload, scid, ecid in frames:
             name = OPNAMES.get(op, f"OP_{op:04X}")
+            hi = opcode_hi(op)
+            fam = opcode_family(op)
             note = f"#{scid}→#{ecid}" if scid != ecid else f"#{ecid}"
             log.info("[FRAME %s] %s %s (0x%04X) len=%d", note, direction, name, op, len(raw))
+
+            if op not in OPNAMES:
+                log.debug(
+                    "[FRAME %s] unknown opcode 0x%04X hi=0x%02X family(lo)=0x%02X",
+                    direction,
+                    op,
+                    hi,
+                    fam,
+                )
 
             context = FrameContext(
                 proxy=self,

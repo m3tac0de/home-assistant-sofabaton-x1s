@@ -10,10 +10,10 @@ from .frame_handlers import BaseFrameHandler, FrameContext, register_handler
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
+    FAMILY_KEYMAP,
     OP_ACK_READY,
     OP_CATALOG_ROW_ACTIVITY,
     OP_CATALOG_ROW_DEVICE,
-    OP_DEVBTN_EXTRA,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
     OP_DEVBTN_PAGE,
@@ -50,6 +50,7 @@ from .protocol_const import (
     OP_REQ_ACTIVITIES,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
+    OP_KEYMAP_EXTRA,
 )
 from .x1_proxy import log
 
@@ -638,7 +639,10 @@ class X1CatalogActivityHandler(BaseFrameHandler):
             log.info("[ACT] name='%s' state=%s", activity_label, state)
 
 
-@register_handler(directions=("H→A",))
+@register_handler(
+    opcode_families_low=(FAMILY_KEYMAP,),
+    directions=("H→A",),
+)
 class KeymapHandler(BaseFrameHandler):
     """Accumulate keymap table pages for activities."""
 
@@ -665,7 +669,7 @@ class KeymapHandler(BaseFrameHandler):
             OP_KEYMAP_TBL_E,
             OP_KEYMAP_TBL_F,
             OP_KEYMAP_TBL_G,
-            OP_DEVBTN_EXTRA,
+            OP_KEYMAP_EXTRA,
         }
 
         burst_act_lo = self._burst_activity(proxy)
@@ -673,7 +677,7 @@ class KeymapHandler(BaseFrameHandler):
             OP_KEYMAP_CONT: 16,
             OP_KEYMAP_TBL_D: 16,
             OP_KEYMAP_TBL_F: 16,
-            OP_DEVBTN_EXTRA: 16,
+            OP_KEYMAP_EXTRA: 16,
         }
         activity_idx = activity_offsets.get(frame.opcode, 11)
         activity_id_decimal = burst_act_lo

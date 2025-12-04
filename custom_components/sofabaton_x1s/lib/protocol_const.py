@@ -72,7 +72,7 @@ OP_CATALOG_ROW_ACTIVITY = 0xD53B  # Row from list of activities
 OP_DEVBTN_HEADER = 0xD95D  # H→A: header page
 OP_DEVBTN_PAGE = 0xD55D  # H→A: repeated pages with 2-3 entries each
 OP_DEVBTN_TAIL = 0x495D  # H→A: tail/terminator
-OP_DEVBTN_EXTRA = 0x303D  # H→A: small follow-up page sometimes present
+OP_KEYMAP_EXTRA = 0x303D  # H→A: small follow-up page sometimes present (keymap family)
 OP_DEVBTN_MORE = 0x8F5D  # H→A: small follow-up page sometimes present
 OP_DEVBTN_PAGE_ALT1 = 0xF75D  # H→A: variant page layout with earlier payload offset
 OP_DEVBTN_PAGE_ALT2 = 0xA35D  # H→A: variant page layout with earlier payload offset
@@ -145,7 +145,7 @@ OPNAMES: Dict[int, str] = {
     OP_DEVBTN_HEADER: "DEVCTL_HEADER",
     OP_DEVBTN_PAGE: "DEVCTL_PAGE",
     OP_DEVBTN_TAIL: "DEVCTL_LASTPAGE_TYPE1",
-    OP_DEVBTN_EXTRA: "DEVCTL_LASTPAGE_TYPE2",
+    OP_KEYMAP_EXTRA: "DEVCTL_LASTPAGE_TYPE2",
     OP_DEVBTN_MORE: "DEVCTL_LASTPAGE_TYPE3",
     OP_DEVBTN_PAGE_ALT1: "DEVCTL_PAGE_ALT1",
     OP_DEVBTN_PAGE_ALT2: "DEVCTL_PAGE_ALT2",
@@ -239,7 +239,7 @@ __all__ = [
     "OP_DEVBTN_HEADER",
     "OP_DEVBTN_PAGE",
     "OP_DEVBTN_TAIL",
-    "OP_DEVBTN_EXTRA",
+    "OP_KEYMAP_EXTRA",
     "OP_DEVBTN_MORE",
     "OP_DEVBTN_PAGE_ALT1",
     "OP_DEVBTN_PAGE_ALT2",
