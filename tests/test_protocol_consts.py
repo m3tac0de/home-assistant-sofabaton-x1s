@@ -51,7 +51,7 @@ def test_family_constants_align_with_examples() -> None:
     assert const.FAMILY_LABELS == const.opcode_lo(const.OP_LABELS_B2)
 
     assert const.FAMILY_KEYMAP == const.opcode_lo(const.OP_KEYMAP_TBL_A)
-    assert const.FAMILY_KEYMAP == const.opcode_lo(const.OP_DEVBTN_EXTRA)
+    assert const.FAMILY_KEYMAP == const.opcode_lo(const.OP_KEYMAP_EXTRA)
 
     assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_HEADER)
     assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_TAIL)

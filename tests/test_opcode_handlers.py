@@ -44,7 +44,7 @@ from custom_components.sofabaton_x1s.lib.opcode_handlers import (
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
-    OP_DEVBTN_EXTRA,
+    OP_KEYMAP_EXTRA,
     OP_KEYMAP_CONT,
     OP_KEYMAP_TBL_B,
     OP_KEYMAP_TBL_D,
@@ -239,8 +239,8 @@ def test_devbtn_extra_contains_pause_and_red() -> None:
     frame = _build_context(
         proxy,
         "a5 5a 30 3d 01 00 02 14 00 00 00 00 00 00 00 00 65 bc 02 00 00 00 00 00 a6 0e 02 00 00 00 00 00 92 0f 65 be 02 00 00 00 00 00 00 20 00 00 00 00 00 00 00 00 42",
-        OP_DEVBTN_EXTRA,
-        "DEVBTN_EXTRA",
+        OP_KEYMAP_EXTRA,
+        "KEYMAP_EXTRA",
     )
 
     handler.handle(frame)

@@ -9,7 +9,6 @@ from typing import Dict, Iterable, Iterator, List, Tuple
 from .protocol_const import (
     FAMILY_DEVBTNS,
     opcode_family,
-    OP_DEVBTN_EXTRA,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
     OP_DEVBTN_PAGE,
@@ -19,6 +18,7 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
     OP_DEVBTN_TAIL,
+    OP_KEYMAP_EXTRA,
 )
 
 
@@ -29,7 +29,6 @@ def _is_devbtn_family(opcode: int) -> bool:
 
 
 _KNOWN_DEVBTN_OPCODES: set[int] = {
-    OP_DEVBTN_EXTRA,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
     OP_DEVBTN_PAGE,
@@ -39,6 +38,7 @@ _KNOWN_DEVBTN_OPCODES: set[int] = {
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
     OP_DEVBTN_TAIL,
+    OP_KEYMAP_EXTRA,
 }
 
 
@@ -132,7 +132,7 @@ class DeviceCommandAssembler:
             if frame_no == 1 or burst.total_frames is None:
                 burst.total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
                 burst.frames.clear()
-        elif burst.total_frames is None and opcode in (OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA, OP_DEVBTN_MORE):
+        elif burst.total_frames is None and opcode in (OP_DEVBTN_TAIL, OP_KEYMAP_EXTRA, OP_DEVBTN_MORE):
             burst.total_frames = frame_no
 
         data_start = self._data_offset(opcode)
@@ -146,7 +146,7 @@ class DeviceCommandAssembler:
             OP_DEVBTN_HEADER,
             OP_DEVBTN_PAGE,
             OP_DEVBTN_TAIL,
-            OP_DEVBTN_EXTRA,
+            OP_KEYMAP_EXTRA,
             OP_DEVBTN_MORE,
         ) and payload[:2] == b"\x01\x00":
             data_start = 7 if opcode == OP_DEVBTN_HEADER else 3
@@ -180,7 +180,7 @@ class DeviceCommandAssembler:
             and frames_are_contiguous
             and burst.total_frames > max_frame_no
             and burst.total_frames - max_frame_no <= 1
-            and opcode in (OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA, OP_DEVBTN_MORE)
+            and opcode in (OP_DEVBTN_TAIL, OP_KEYMAP_EXTRA, OP_DEVBTN_MORE)
         ):
             ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
             completed.append((dev_id, ordered_payload))
