@@ -192,6 +192,22 @@ def _decode_label(label_bytes: bytes) -> str:
     if not trimmed:
         return ""
 
+    if len(trimmed) >= 4 and all(trimmed[i] == 0 for i in range(1, len(trimmed), 4)):
+        try:
+            utf32_label = trimmed.decode("utf-32-le").strip("\x00")
+            if utf32_label:
+                return utf32_label
+        except UnicodeDecodeError:
+            pass
+
+    without_nulls = bytes(b for b in trimmed if b)
+    try:
+        ascii_label = without_nulls.decode("ascii").strip()
+        if ascii_label:
+            return ascii_label
+    except UnicodeDecodeError:
+        pass
+
     # Modern hubs sometimes send labels as plain ASCII instead of UTF-16.
     if b"\x00" not in trimmed:
         try:

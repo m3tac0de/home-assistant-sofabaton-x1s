@@ -346,6 +346,38 @@ def test_parse_device_commands_handles_extended_req_commands_sequence() -> None:
         18: "Sousterrain on",
     }
 
+
+def test_parse_device_commands_handles_req_commands_toggle_office() -> None:
+    frames_hex = (
+        "a5 5a d9 5d 01 00 01 01 00 02 05 08 01 1c 00 00 00 00 00 00 00 54 00 00 00 6f 00 00 00 67 00 00 00 67 00 00 00 6c 00 00 00 65 00 00 00 20 00 00 00 4f 00 00 00 66 00 00 00 66 00 00 00 69 00 00 00 63 00 00 00 65 00 00 00 20 00 00 00 4c 00 00 ff 08 02 1c 00 00 00 00 00 00 00 74 00 65 00 73 00 74 00 62 00 75 00 74 00 74 00 6f 00 6e 00 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 08 03 1c 00 00 00 00 00 00 00 74 00 65 00 73 00 74 00 62 00 74 00 6e 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff ad",
+        "a5 5a 8f 5d 01 00 02 08 04 1c 00 00 00 00 00 00 00 74 00 73 00 74 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 08 05 1c 00 00 00 00 00 00 00 74 00 73 00 74 00 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 5c",
+    )
+
+    frames = [bytes.fromhex(block) for block in frames_hex]
+    assembler = DeviceCommandAssembler()
+
+    dev_id = 0x08
+    completed: list[tuple[int, bytes]] = []
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id))
+
+    assert len(completed) == 1
+
+    proxy = X1Proxy("127.0.0.1")
+    assembled_dev_id, assembled_payload = completed[0]
+    parsed = proxy.parse_device_commands(assembled_payload, assembled_dev_id)
+
+    assert parsed == {
+        1: "Toggle Office L",
+        2: "testbutton2",
+        3: "testbtn3",
+        4: "tst4",
+        5: "tst5",
+    }
+
+
 def test_parse_device_commands_handles_dev_id_three_sequence() -> None:
     """Full command table for dev_id == 3 should be parsed correctly."""
 
