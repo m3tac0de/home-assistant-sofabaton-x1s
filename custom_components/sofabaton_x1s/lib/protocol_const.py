@@ -71,6 +71,7 @@ OP_CATALOG_ROW_DEVICE = 0xD50B  # Row from list of devices
 OP_CATALOG_ROW_ACTIVITY = 0xD53B  # Row from list of activities
 OP_DEVBTN_HEADER = 0xD95D  # H→A: header page
 OP_DEVBTN_PAGE = 0xD55D  # H→A: repeated pages with 2-3 entries each
+OP_DEVBTN_SINGLE = 0x4D5D  # H→A: single-command metadata page (response to targeted REQ_COMMANDS)
 OP_DEVBTN_TAIL = 0x495D  # H→A: tail/terminator
 OP_KEYMAP_EXTRA = 0x303D  # H→A: small follow-up page sometimes present (keymap family)
 OP_DEVBTN_MORE = 0x8F5D  # H→A: small follow-up page sometimes present
@@ -144,6 +145,7 @@ OPNAMES: Dict[int, str] = {
     OP_KEYMAP_CONT: "KEYMAP_CONT",
     OP_DEVBTN_HEADER: "DEVCTL_HEADER",
     OP_DEVBTN_PAGE: "DEVCTL_PAGE",
+    OP_DEVBTN_SINGLE: "DEVCTL_SINGLE_CMD",
     OP_DEVBTN_TAIL: "DEVCTL_LASTPAGE_TYPE1",
     OP_KEYMAP_EXTRA: "DEVCTL_LASTPAGE_TYPE2",
     OP_DEVBTN_MORE: "DEVCTL_LASTPAGE_TYPE3",
@@ -238,6 +240,7 @@ __all__ = [
     "OP_CATALOG_ROW_ACTIVITY",
     "OP_DEVBTN_HEADER",
     "OP_DEVBTN_PAGE",
+    "OP_DEVBTN_SINGLE",
     "OP_DEVBTN_TAIL",
     "OP_KEYMAP_EXTRA",
     "OP_DEVBTN_MORE",

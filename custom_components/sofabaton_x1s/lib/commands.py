@@ -17,6 +17,7 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT3,
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
     OP_KEYMAP_EXTRA,
 )
@@ -37,6 +38,7 @@ _KNOWN_DEVBTN_OPCODES: set[int] = {
     OP_DEVBTN_PAGE_ALT3,
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
     OP_KEYMAP_EXTRA,
 }
@@ -121,6 +123,12 @@ class DeviceCommandAssembler:
                 opcode,
             )
 
+        is_single_cmd = False
+        if opcode == OP_DEVBTN_SINGLE:
+            burst.frames.clear()
+            burst.total_frames = 1
+            is_single_cmd = True
+
         if opcode in (
             OP_DEVBTN_HEADER,
             OP_DEVBTN_PAGE_ALT1,
@@ -171,7 +179,11 @@ class DeviceCommandAssembler:
             max_frame_no = 0
             frames_are_contiguous = False
 
-        if burst.total_frames and burst.received >= burst.total_frames:
+        if is_single_cmd:
+            ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
+            completed.append((dev_id, ordered_payload))
+            del self._buffers[dev_id]
+        elif burst.total_frames and burst.received >= burst.total_frames:
             ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
             completed.append((dev_id, ordered_payload))
             del self._buffers[dev_id]

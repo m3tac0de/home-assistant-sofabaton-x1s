@@ -1,6 +1,6 @@
-from pathlib import Path
 import sys
 import types
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -23,6 +23,7 @@ from custom_components.sofabaton_x1s.lib.commands import DeviceCommandAssembler
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_DEVBTN_HEADER,
     OP_DEVBTN_TAIL,
+    OP_DEVBTN_SINGLE,
     SYNC0,
     SYNC1,
 )
@@ -56,6 +57,27 @@ def test_device_command_assembly_tracks_frames() -> None:
     assembled_dev_id, assembled_payload = completed[0]
     assert assembled_dev_id == dev_id
     assert assembled_payload == payload
+
+
+def test_device_command_assembly_handles_single_command_page() -> None:
+    assembler = DeviceCommandAssembler()
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+    )
+
+    opcode = int.from_bytes(raw[2:4], "big")
+    assert opcode == OP_DEVBTN_SINGLE
+
+    completed = assembler.feed(opcode, raw)
+
+    assert len(completed) == 1
+    dev_id, payload = completed[0]
+    proxy = X1Proxy("127.0.0.1")
+    parsed = proxy.parse_device_commands(payload, dev_id)
+
+    assert parsed == {1: "yExit"}
 
 
 def test_parse_device_commands_handles_legacy_and_hue_formats() -> None:
