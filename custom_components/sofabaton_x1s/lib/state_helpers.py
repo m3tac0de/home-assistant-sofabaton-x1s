@@ -4,7 +4,7 @@ import time
 from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Optional
 
-from .commands import iter_command_records
+from .commands import _matches_control_block, iter_command_records
 from .protocol_const import BUTTONNAME_BY_CODE
 
 
@@ -79,6 +79,23 @@ class ActivityCache:
         for record in iter_command_records(payload, dev_id):
             if record.command_id not in commands_found and record.label:
                 commands_found[record.command_id] = record.label
+
+        # Some hubs omit the device ID prefix inside command bursts. If nothing was
+        # parsed with the expected device ID, make a best-effort attempt to infer
+        # the target by scanning for control blocks and treating the preceding
+        # byte as the device ID.
+        if not commands_found and len(payload) >= 9:
+            inferred_dev_id: int | None = None
+            for i in range(len(payload) - 8):
+                if _matches_control_block(payload[i + 1 : i + 8]):
+                    inferred_dev_id = payload[i]
+                    break
+
+            if inferred_dev_id is not None:
+                for record in iter_command_records(payload, inferred_dev_id):
+                    if record.command_id not in commands_found and record.label:
+                        commands_found[record.command_id] = record.label
+
         return commands_found
 
     def record_virtual_device(
