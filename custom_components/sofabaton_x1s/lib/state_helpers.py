@@ -18,6 +18,8 @@ class ActivityCache:
         self.commands: dict[int, dict[int, str]] = defaultdict(dict)
         self.ip_devices: Dict[int, Dict[str, Any]] = {}
         self.ip_buttons: Dict[int, Dict[int, Dict[str, Any]]] = defaultdict(dict)
+        self.activity_command_refs: dict[int, set[tuple[int, int]]] = defaultdict(set)
+        self.activity_favorite_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
         # Only track the most recent activation to avoid unbounded growth
         self.app_activations: Deque[dict[str, Any]] = deque(maxlen=1)
 
@@ -54,9 +56,28 @@ class ActivityCache:
         if start_index >= 0:
             i = start_index
             while i + 2 <= n:
-                button_code = payload[i + 1]
-                if payload[i] == act_lo and button_code in BUTTONNAME_BY_CODE:
-                    self.buttons[act_lo].add(button_code)
+                act = payload[i]
+                button_id = payload[i + 1]
+                device_id = payload[i + 2]
+
+                has_command = i + 12 <= n
+                if act == act_lo:
+                    if has_command:
+                        command_id = int.from_bytes(payload[i + 8 : i + 12], "little")
+                        self.activity_command_refs[act_lo].add((device_id, command_id))
+
+                        if button_id in BUTTONNAME_BY_CODE:
+                            self.buttons[act_lo].add(button_id)
+                        else:
+                            self.activity_favorite_slots[act_lo].append(
+                                {
+                                    "button_id": button_id,
+                                    "device_id": device_id,
+                                    "command_id": command_id,
+                                }
+                            )
+                    elif button_id in BUTTONNAME_BY_CODE:
+                        self.buttons[act_lo].add(button_id)
                 i += RECORD_SIZE
             return
 
@@ -73,6 +94,16 @@ class ActivityCache:
                     i += stride
                     continue
             i += 1
+
+    def get_activity_command_refs(self, act_lo: int) -> set[tuple[int, int]]:
+        """Return the set of (device_id, command_id) pairs for the activity."""
+
+        return set(self.activity_command_refs.get(act_lo, set()))
+
+    def get_activity_favorite_slots(self, act_lo: int) -> list[dict[str, int]]:
+        """Return metadata for favorite slots in this activity."""
+
+        return list(self.activity_favorite_slots.get(act_lo, []))
 
     def parse_device_commands(self, payload: bytes, dev_id: int) -> Dict[int, str]:
         commands_found: Dict[int, str] = {}
