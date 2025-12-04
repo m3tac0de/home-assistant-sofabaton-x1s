@@ -218,8 +218,12 @@ def _parse_ip_command_fields(payload: bytes) -> tuple[str, str, dict[str, str]]:
 
     return method, url, headers
 
-def _infer_command_entity(proxy: "X1Proxy", payload: bytes) -> int:
+def _infer_command_entity(proxy: "X1Proxy", payload: bytes, *, opcode: int | None = None, raw: bytes = b"") -> int:
     """Best-effort guess of the entity a command burst belongs to."""
+
+    family_dev_id = _dev_id_from_family(opcode, raw, payload) if opcode is not None else None
+    if family_dev_id is not None:
+        return family_dev_id
 
     burst_kind = getattr(proxy._burst, "kind", None)
     if burst_kind and ":" in burst_kind:
@@ -236,8 +240,28 @@ def _infer_command_entity(proxy: "X1Proxy", payload: bytes) -> int:
     return 0
 
 
+def _dev_id_from_family(opcode: int, raw: bytes, payload: bytes) -> int | None:
+    if opcode & 0xFF != FAMILY_SUFFIX_COMMANDS:
+        return None
+
+    if len(payload) >= 8 and payload[:2] == b"\x01\x00":
+        return payload[7]
+
+    if len(payload) >= 4:
+        return payload[3]
+
+    if len(raw) > 11:
+        return raw[11]
+
+    return None
+
+
 def _extract_dev_id(raw: bytes, payload: bytes, opcode: int) -> int:
     """Determine device ID for a command burst frame."""
+
+    family_dev_id = _dev_id_from_family(opcode, raw, payload)
+    if family_dev_id is not None:
+        return family_dev_id
 
     if opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1) and len(raw) > 11:
         return raw[11]
@@ -636,6 +660,10 @@ class X1CatalogActivityHandler(BaseFrameHandler):
             log.info("[ACT] name='%s' state=%s", activity_label, state)
 
 
+FAMILY_SUFFIX_KEYMAP = 0x3D
+FAMILY_SUFFIX_COMMANDS = 0x5D
+
+
 @register_handler(directions=("H→A",))
 class KeymapHandler(BaseFrameHandler):
     """Accumulate keymap table pages for activities."""
@@ -654,6 +682,11 @@ class KeymapHandler(BaseFrameHandler):
         if proxy._burst.active and not burst_kind.startswith("buttons:"):
             return
 
+        family_suffix = frame.opcode & 0xFF
+        is_keymap_family = family_suffix == FAMILY_SUFFIX_KEYMAP
+        if family_suffix == FAMILY_SUFFIX_COMMANDS:
+            return
+
         keymap_opcodes = {
             OP_KEYMAP_CONT,
             OP_KEYMAP_TBL_A,
@@ -667,16 +700,11 @@ class KeymapHandler(BaseFrameHandler):
         }
 
         burst_act_lo = self._burst_activity(proxy)
-        activity_offsets = {
-            OP_KEYMAP_CONT: 16,
-            OP_KEYMAP_TBL_D: 16,
-            OP_KEYMAP_TBL_F: 16,
-            OP_DEVBTN_EXTRA: 16,
-        }
-        activity_idx = activity_offsets.get(frame.opcode, 11)
-        activity_id_decimal = burst_act_lo
-        if activity_id_decimal is None and len(raw) > activity_idx:
-            activity_id_decimal = raw[activity_idx]
+        activity_id_decimal = self._family_activity_id(raw, frame.opcode) if is_keymap_family else None
+        if activity_id_decimal is None:
+            activity_id_decimal = burst_act_lo
+        if activity_id_decimal is None and len(raw) > 11:
+            activity_id_decimal = raw[11]
 
         if activity_id_decimal is None:
             activity_id_decimal = self._infer_activity_from_payload(payload)
@@ -684,12 +712,13 @@ class KeymapHandler(BaseFrameHandler):
         if activity_id_decimal is None:
             return
 
-        looks_like_keymap = self._looks_like_keymap_payload(payload, activity_id_decimal)
-        if not looks_like_keymap:
-            # Only treat the payload as a keymap if a buttons burst is active or
-            # the payload matches known record layouts or opcodes.
-            if burst_act_lo is None or frame.opcode not in keymap_opcodes:
-                return
+        if not is_keymap_family:
+            looks_like_keymap = self._looks_like_keymap_payload(payload, activity_id_decimal)
+            if not looks_like_keymap:
+                # Only treat the payload as a keymap if a buttons burst is active or
+                # the payload matches known record layouts or opcodes.
+                if burst_act_lo is None or frame.opcode not in keymap_opcodes:
+                    return
 
         burst_key = f"buttons:{activity_id_decimal}"
         if proxy._burst.active and proxy._burst.kind == burst_key:
@@ -716,6 +745,22 @@ class KeymapHandler(BaseFrameHandler):
                 return int(burst_kind.split(":", 1)[1])
             except ValueError:
                 return None
+        return None
+
+    def _family_activity_id(self, raw: bytes, opcode: int) -> int | None:
+        if opcode & 0xFF != FAMILY_SUFFIX_KEYMAP:
+            return None
+
+        activity_offsets = {
+            OP_KEYMAP_CONT: 16,
+            OP_KEYMAP_TBL_D: 16,
+            OP_KEYMAP_TBL_F: 16,
+            OP_DEVBTN_EXTRA: 16,
+        }
+        activity_idx = activity_offsets.get(opcode, 11)
+        if len(raw) > activity_idx:
+            return raw[activity_idx]
+
         return None
 
     def _infer_activity_from_payload(self, payload: bytes) -> int | None:
@@ -777,6 +822,7 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
         OP_DEVBTN_PAGE_ALT3,
         OP_DEVBTN_PAGE_ALT4,
         OP_DEVBTN_PAGE_ALT5,
+        lambda opcode: opcode & 0xFF == FAMILY_SUFFIX_COMMANDS,
     ),
     directions=("H→A",),
 )
@@ -794,7 +840,7 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
         if frame.opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1):
             return
 
-        dev_id = _infer_command_entity(proxy, payload)
+        dev_id = _infer_command_entity(proxy, payload, opcode=frame.opcode, raw=raw)
 
         now = time.monotonic()
         if not proxy._burst.active:
