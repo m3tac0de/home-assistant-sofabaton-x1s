@@ -38,6 +38,7 @@ if str(ROOT) not in sys.path:
 
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
+    DeviceButtonPayloadHandler,
     KeymapHandler,
     X1CatalogActivityHandler,
     X1CatalogDeviceHandler,
@@ -246,6 +247,53 @@ def test_devbtn_extra_contains_pause_and_red() -> None:
     handler.handle(frame)
 
     assert proxy.state.buttons.get(0x65) == {ButtonName.PAUSE, ButtonName.RED}
+
+
+def test_keymap_family_frame_without_known_buttons_starts_burst() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    act_id = 0x5A
+    payload = b"\x01\x00\x01\x01\x00\x02\x10" + bytes([act_id]) + b"\x00" * 12
+    frame = _build_payload_context(proxy, 0xAA3D, payload, "UNKNOWN_KEYMAP_FAMILY")
+
+    handler.handle(frame)
+
+    assert proxy._burst.kind == f"buttons:{act_id}"
+    assert proxy.state.buttons.get(act_id) == set()
+
+
+def test_keymap_handler_ignores_command_family_payloads() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    act_id = 0x44
+    payload = b"\x01\x00\x01\x01\x00\x02\x10" + bytes([act_id, ButtonName.UP]) + b"\x00" * 10
+    frame = _build_payload_context(proxy, 0xAA5D, payload, "UNKNOWN_COMMAND_FAMILY")
+
+    handler.handle(frame)
+
+    assert act_id not in proxy.state.buttons
+    assert proxy._burst.kind is None
+
+
+def test_unknown_5d_payload_starts_command_burst() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = DeviceButtonPayloadHandler()
+
+    dev_id = 0xAA
+    payload = b"\x01\x00\x01\x01\x00\x02\x05" + bytes([dev_id, 0x0D, 0x00, 0x00])
+    frame = _build_payload_context(proxy, 0x995D, payload, "UNSEEN_DEVBTN_FAMILY")
+
+    handler.handle(frame)
+
+    assert proxy._burst.kind == f"commands:{dev_id}"
 
 
 def test_x1_device_row_updates_state_and_burst() -> None:
