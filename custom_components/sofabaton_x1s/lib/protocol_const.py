@@ -168,6 +168,46 @@ OPNAMES: Dict[int, str] = {
 }
 
 
+def opcode_hi(opcode: int) -> int:
+    """Return the high byte of an opcode."""
+
+    return (opcode >> 8) & 0xFF
+
+
+def opcode_lo(opcode: int) -> int:
+    """Return the low byte of an opcode."""
+
+    return opcode & 0xFF
+
+
+def opcode_family(opcode: int) -> int:
+    """Return the low-byte "family" for list/table opcodes."""
+
+    return opcode_lo(opcode)
+
+
+# Known opcode families (low byte) grouped by semantic row/page type
+FAMILY_DEV_ROW = 0x0B  # device catalog rows (OP_CATALOG_ROW_DEVICE, OP_X1_DEVICE)
+FAMILY_ACT_ROW = 0x3B  # activity catalog rows (OP_CATALOG_ROW_ACTIVITY, OP_X1_ACTIVITY)
+FAMILY_LABELS = 0x13  # key label pages (OP_LABELS_A1/B1/A2/B2)
+FAMILY_KEYMAP = 0x3D  # keymap / continuation / devbtn-extra pages
+FAMILY_DEVBTNS = 0x5D  # device button pages (header, body, tail, variants)
+
+
+def group_known_opcodes_by_family() -> dict[int, list[str]]:
+    """Return a mapping of low-byte opcode families to names defined here."""
+
+    family_map: dict[int, list[str]] = {}
+    for name, value in globals().items():
+        if not name.startswith("OP_"):
+            continue
+        if not isinstance(value, int):
+            continue
+        low = opcode_lo(value)
+        family_map.setdefault(low, []).append(name)
+    return family_map
+
+
 __all__ = [
     "SYNC0",
     "SYNC1",
@@ -228,4 +268,12 @@ __all__ = [
     "OP_WIFI_FW",
     "OP_INFO_BANNER",
     "OPNAMES",
+    "opcode_hi",
+    "opcode_lo",
+    "opcode_family",
+    "FAMILY_DEV_ROW",
+    "FAMILY_ACT_ROW",
+    "FAMILY_LABELS",
+    "FAMILY_KEYMAP",
+    "FAMILY_DEVBTNS",
 ]

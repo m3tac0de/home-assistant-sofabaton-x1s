@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, Iterator, List, Tuple
 
 from .protocol_const import (
+    FAMILY_DEVBTNS,
+    opcode_family,
     OP_DEVBTN_EXTRA,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
@@ -17,6 +20,29 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT5,
     OP_DEVBTN_TAIL,
 )
+
+
+def _is_devbtn_family(opcode: int) -> bool:
+    """Return True if the opcode belongs to the dev-button page family."""
+
+    return opcode_family(opcode) == FAMILY_DEVBTNS
+
+
+_KNOWN_DEVBTN_OPCODES: set[int] = {
+    OP_DEVBTN_EXTRA,
+    OP_DEVBTN_HEADER,
+    OP_DEVBTN_MORE,
+    OP_DEVBTN_PAGE,
+    OP_DEVBTN_PAGE_ALT1,
+    OP_DEVBTN_PAGE_ALT2,
+    OP_DEVBTN_PAGE_ALT3,
+    OP_DEVBTN_PAGE_ALT4,
+    OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_TAIL,
+}
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -88,6 +114,12 @@ class DeviceCommandAssembler:
         dev_id = dev_id_override if dev_id_override is not None else payload[3]
         frame_no = payload[2]
         burst = self._get_buffer(dev_id)
+
+        if _is_devbtn_family(opcode) and opcode not in _KNOWN_DEVBTN_OPCODES:
+            _LOGGER.debug(
+                "Unknown dev-button family opcode 0x%04X seen in DeviceCommandAssembler.feed",
+                opcode,
+            )
 
         if opcode in (
             OP_DEVBTN_HEADER,

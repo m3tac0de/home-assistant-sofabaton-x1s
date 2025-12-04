@@ -20,6 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, Sequence, Iterator, Optional, runtime_checkable, TYPE_CHECKING
 
+from .protocol_const import opcode_family
+
 if TYPE_CHECKING:
     from .x1_proxy import X1Proxy
 
@@ -51,10 +53,22 @@ class BaseFrameHandler(FrameHandler):
     """Convenience base class implementing ``matches`` via attributes."""
 
     opcodes: tuple[int, ...] | None = None
+    opcode_families_low: tuple[int, ...] | None = None
     directions: tuple[str, ...] | None = None
 
     def matches(self, opcode: int, direction: str) -> bool:
-        opcode_match = True if self.opcodes is None else opcode in self.opcodes
+        if self.opcodes is None and self.opcode_families_low is None:
+            opcode_match = True
+        else:
+            opcode_match = False
+            if self.opcodes is not None and opcode in self.opcodes:
+                opcode_match = True
+            if (
+                not opcode_match
+                and self.opcode_families_low is not None
+                and opcode_family(opcode) in self.opcode_families_low
+            ):
+                opcode_match = True
         direction_match = True if self.directions is None else direction in self.directions
         return opcode_match and direction_match
 
@@ -85,6 +99,7 @@ def register_handler(
     handler: Optional[type[BaseFrameHandler] | FrameHandler] = None,
     *,
     opcodes: Sequence[int] | None = None,
+    opcode_families_low: Sequence[int] | None = None,
     directions: Sequence[str] | None = None,
     registry: FrameHandlerRegistry = frame_handler_registry,
 ):
@@ -94,6 +109,8 @@ def register_handler(
         instance = obj() if isinstance(obj, type) else obj
         if opcodes is not None:
             instance.opcodes = tuple(opcodes)  # type: ignore[attr-defined]
+        if opcode_families_low is not None:
+            instance.opcode_families_low = tuple(opcode_families_low)  # type: ignore[attr-defined]
         if directions is not None:
             instance.directions = tuple(directions)  # type: ignore[attr-defined]
         registry.register(instance)
