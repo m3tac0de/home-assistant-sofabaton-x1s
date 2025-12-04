@@ -40,6 +40,7 @@ from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     DeviceButtonPayloadHandler,
     KeymapHandler,
+    RequestCommandsHandler,
     X1CatalogActivityHandler,
     X1CatalogDeviceHandler,
 )
@@ -52,6 +53,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_G,
+    OP_REQ_COMMANDS,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
 )
@@ -81,6 +83,20 @@ def _build_payload_context(proxy: X1Proxy, opcode: int, payload: bytes, name: st
         raw=raw,
         name=name,
     )
+
+
+def test_req_commands_response_payload_is_parsed() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = RequestCommandsHandler()
+
+    payload = bytes([0x01, 0x05, 0x03]) + b"\x00" * 6 + b"Test"
+    frame = _build_payload_context(proxy, OP_REQ_COMMANDS, payload, "REQ_COMMANDS")
+
+    handler.handle(frame)
+
+    assert proxy.state.commands.get(0x01) == {5: "Test"}
 
 
 def test_keymap_table_b_parses_buttons_response() -> None:
