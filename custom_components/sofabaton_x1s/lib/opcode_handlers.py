@@ -776,29 +776,13 @@ class KeymapHandler(BaseFrameHandler):
         return False
 
 
-@register_handler(opcodes=(OP_REQ_COMMANDS,), directions=("A→H", "H→A"))
+@register_handler(opcodes=(OP_REQ_COMMANDS,), directions=("A→H",))
 class RequestCommandsHandler(BaseFrameHandler):
-    """Log command list requests/responses and parse inline payloads."""
+    """Log command list requests from the app."""
 
     def handle(self, frame: FrameContext) -> None:
-        proxy: X1Proxy = frame.proxy
         payload = frame.payload
         dev_id = payload[0] if payload else 0
-
-        if frame.direction == "H→A":
-            commands = proxy.parse_device_commands(payload, dev_id)
-            if commands:
-                proxy.state.commands[dev_id & 0xFF] = commands
-                log.info(
-                    "[DEVCTL] H→A REQ_COMMANDS dev=0x%02X (%d) %s",
-                    dev_id,
-                    dev_id,
-                    " ".join(
-                        f"{cmd_id:2d} : {label}" for cmd_id, label in commands.items()
-                    ),
-                )
-            return
-
         log.info("[DEVCTL] A→H requesting commands dev=0x%02X (%d)", dev_id, dev_id)
 
 
