@@ -468,18 +468,33 @@ class X1Proxy:
         *,
         fetch_if_missing: bool = True,
     ) -> tuple[dict[int, str], bool]:
-        """Return a single command label for an entity if known.
+        """Fetch metadata for a single command on a device.
 
-        NOTE: This currently reuses the existing full-device behavior. It is a
-        structural hook for a future optimization that could use single-command
-        REQ_COMMANDS once that protocol path is implemented.
+        Returns:
+            (commands, ready)
+
+            commands: mapping {command_id: label} if known; may be empty.
+            ready:    True if we have the answer (either from cache or after a completed burst),
+                      False if we have just enqueued a targeted request and are still waiting.
         """
 
-        dev_cmds, ready = self.get_commands_for_entity(ent_id, fetch_if_missing=fetch_if_missing)
-        if not dev_cmds or command_id not in dev_cmds:
-            return ({}, ready)
+        ent_lo = ent_id & 0xFF
 
-        return ({command_id: dev_cmds[command_id]}, ready)
+        device_cmds = self.state.commands.get(ent_lo)
+        if device_cmds is not None and command_id in device_cmds:
+            return ({command_id: device_cmds[command_id]}, True)
+
+        if fetch_if_missing and self.can_issue_commands():
+            payload = bytes([ent_lo]) + int(command_id).to_bytes(4, "little")
+
+            self.enqueue_cmd(
+                OP_REQ_COMMANDS,
+                payload,
+                expects_burst=True,
+                burst_kind=f"commands:{ent_lo}:{command_id}",
+            )
+
+        return ({}, False)
 
     def ensure_commands_for_activity(
         self,
@@ -499,30 +514,29 @@ class X1Proxy:
         if not refs:
             return ({}, False)
 
-        refs_by_device: dict[int, set[int]] = {}
-        for dev_id, command_id in refs:
-            if dev_id not in refs_by_device:
-                refs_by_device[dev_id] = set()
-            refs_by_device[dev_id].add(command_id)
-
         commands_by_device: dict[int, dict[int, str]] = {}
         all_ready = True
 
-        for dev_id, command_ids in refs_by_device.items():
-            dev_cmds, ready = self.get_commands_for_entity(
-                dev_id, fetch_if_missing=fetch_if_missing
+        seen_pairs: set[tuple[int, int]] = set()
+
+        for dev_id, command_id in refs:
+            pair = (dev_id, command_id)
+            if pair in seen_pairs:
+                continue
+
+            seen_pairs.add(pair)
+
+            single_cmds, ready = self.get_single_command_for_entity(
+                dev_id, command_id, fetch_if_missing=fetch_if_missing
             )
             if not ready:
                 all_ready = False
 
-            if dev_cmds:
+            if single_cmds:
                 dev_lo = dev_id & 0xFF
                 if dev_lo not in commands_by_device:
                     commands_by_device[dev_lo] = {}
-                for command_id in command_ids:
-                    label = dev_cmds.get(command_id)
-                    if label:
-                        commands_by_device[dev_lo][command_id] = label
+                commands_by_device[dev_lo].update(single_cmds)
 
         return (commands_by_device, all_ready)
 

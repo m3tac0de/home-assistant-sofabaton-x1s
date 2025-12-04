@@ -55,3 +55,4 @@ def test_family_constants_align_with_examples() -> None:
 
     assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_HEADER)
     assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_TAIL)
+    assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_SINGLE)
