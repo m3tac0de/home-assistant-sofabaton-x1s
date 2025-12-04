@@ -6,6 +6,7 @@ from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import IpCommandSyncRowHandler
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_DEFINE_IP_CMD_EXISTING,
+    OP_IPCMD_ROW,
     OP_IPCMD_ROW_A,
     OP_IPCMD_ROW_B,
     OP_IPCMD_ROW_C,
@@ -82,6 +83,15 @@ def test_ip_command_sync_rows_decode_http_metadata() -> None:
         "Host": "111.111.111.111:80",
         "Content-Type": "application/x-www-form-urlencoded",
     }
+
+
+def test_ip_command_handler_matches_all_ip_row_variants() -> None:
+    handler = IpCommandSyncRowHandler()
+
+    assert handler.matches(OP_IPCMD_ROW | 0x00A1, "H→A")
+    assert handler.matches(OP_IPCMD_ROW_A, "H→A")
+    assert not handler.matches(0x0C02, "H→A")
+    assert not handler.matches(OP_IPCMD_ROW_B, "A→H")
 
 
 def test_build_existing_device_frame_encodes_http_request() -> None:
