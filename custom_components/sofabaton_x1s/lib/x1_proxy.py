@@ -461,6 +461,71 @@ class X1Proxy:
 
         return ({}, False)
 
+    def get_single_command_for_entity(
+        self,
+        ent_id: int,
+        command_id: int,
+        *,
+        fetch_if_missing: bool = True,
+    ) -> tuple[dict[int, str], bool]:
+        """Return a single command label for an entity if known.
+
+        NOTE: This currently reuses the existing full-device behavior. It is a
+        structural hook for a future optimization that could use single-command
+        REQ_COMMANDS once that protocol path is implemented.
+        """
+
+        dev_cmds, ready = self.get_commands_for_entity(ent_id, fetch_if_missing=fetch_if_missing)
+        if not dev_cmds or command_id not in dev_cmds:
+            return ({}, ready)
+
+        return ({command_id: dev_cmds[command_id]}, ready)
+
+    def ensure_commands_for_activity(
+        self,
+        act_id: int,
+        *,
+        fetch_if_missing: bool = True,
+    ) -> tuple[dict[int, dict[int, str]], bool]:
+        """Ensure commands for devices referenced by an activity's keymap are fetched.
+
+        Currently this uses get_commands_for_entity, which fetches the full
+        command list for each device. References are grouped by device so each
+        device is fetched at most once.
+        """
+
+        act_lo = act_id & 0xFF
+        refs = self.state.get_activity_command_refs(act_lo)
+        if not refs:
+            return ({}, False)
+
+        refs_by_device: dict[int, set[int]] = {}
+        for dev_id, command_id in refs:
+            if dev_id not in refs_by_device:
+                refs_by_device[dev_id] = set()
+            refs_by_device[dev_id].add(command_id)
+
+        commands_by_device: dict[int, dict[int, str]] = {}
+        all_ready = True
+
+        for dev_id, command_ids in refs_by_device.items():
+            dev_cmds, ready = self.get_commands_for_entity(
+                dev_id, fetch_if_missing=fetch_if_missing
+            )
+            if not ready:
+                all_ready = False
+
+            if dev_cmds:
+                dev_lo = dev_id & 0xFF
+                if dev_lo not in commands_by_device:
+                    commands_by_device[dev_lo] = {}
+                for command_id in command_ids:
+                    label = dev_cmds.get(command_id)
+                    if label:
+                        commands_by_device[dev_lo][command_id] = label
+
+        return (commands_by_device, all_ready)
+
     def get_app_activations(self) -> list[dict[str, Any]]:
         return self.state.get_app_activations()
     

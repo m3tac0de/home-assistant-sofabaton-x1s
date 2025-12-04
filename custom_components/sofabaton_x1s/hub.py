@@ -327,14 +327,26 @@ class SofabatonHub:
 
 
 
+    def _looks_like_activity(self, ent_id: int) -> bool:
+        ent_lo = ent_id & 0xFF
+        return ent_lo in self._proxy.state.activities
+
+    def _looks_like_device(self, ent_id: int) -> bool:
+        ent_lo = ent_id & 0xFF
+        return ent_lo in self._proxy.state.devices or ent_lo in self._proxy.state.ip_devices
+
     async def async_fetch_device_commands(self, ent_id: int) -> None:
         """User asked to fetch commands for this device/activity."""
         self._commands_in_flight.add(ent_id)
         async_dispatcher_send(self.hass, signal_commands(self.entry_id))
-        # executor so we can pass keyword
-        await self.hass.async_add_executor_job(
-            lambda: self._proxy.get_commands_for_entity(ent_id, fetch_if_missing=True)
-        )
+
+        def _do_fetch() -> None:
+            if self._looks_like_activity(ent_id):
+                self._proxy.ensure_commands_for_activity(ent_id, fetch_if_missing=True)
+            else:
+                self._proxy.get_commands_for_entity(ent_id, fetch_if_missing=True)
+
+        await self.hass.async_add_executor_job(_do_fetch)
 
     async def _async_prime_buttons_for(self, act_id: int) -> None:
         # dedupe here

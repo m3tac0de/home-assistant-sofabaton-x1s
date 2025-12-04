@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from custom_components.sofabaton_x1s.lib.state_helpers import BurstScheduler
+from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName
+from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache, BurstScheduler
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 
@@ -50,3 +51,62 @@ def test_state_listeners_receive_notifications() -> None:
 
     assert hub_states == [False, True]
     assert client_states == [False, True]
+
+
+def test_accumulate_keymap_tracks_favorites_and_commands() -> None:
+    cache = ActivityCache()
+    act = 0x66
+    favorite_button_id = 0x01
+    normal_button_id = ButtonName.OK
+
+    rec_fav = bytes(
+        [
+            act,
+            favorite_button_id,
+            0x03,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x38,
+            0x03,
+            0x00,
+            0x00,
+        ]
+        + [0x00] * 6
+    )
+    rec_normal = bytes(
+        [
+            act,
+            normal_button_id,
+            0x04,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x4C,
+            0x07,
+            0x00,
+            0x00,
+        ]
+        + [0x00] * 6
+    )
+
+    cache.accumulate_keymap(act, rec_fav + rec_normal)
+
+    assert normal_button_id in cache.buttons[act]
+    assert favorite_button_id not in cache.buttons[act]
+
+    refs = cache.get_activity_command_refs(act)
+    assert (0x03, 0x0338) in refs
+    assert (0x04, 0x074C) in refs
+
+    favorite_slots = cache.get_activity_favorite_slots(act)
+    assert any(
+        slot["button_id"] == favorite_button_id
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x0338
+        for slot in favorite_slots
+    )
