@@ -39,7 +39,6 @@ from .protocol_const import (
     OP_DEVICE_SAVE_HEAD,
     OP_SAVE_COMMIT,
     OP_REQ_IPCMD_SYNC,
-    OP_IPCMD_ROWS,
     OP_IPCMD_ROW_A,
     OP_IPCMD_ROW_B,
     OP_IPCMD_ROW_C,
@@ -298,7 +297,10 @@ class DefineExistingIpCommandHandler(BaseFrameHandler):
         )
 
 
-@register_handler(opcodes=(OP_IPCMD_ROWS,), directions=("H→A",))
+@register_handler(
+    opcodes=(OP_IPCMD_ROW_A, OP_IPCMD_ROW_B, OP_IPCMD_ROW_C, OP_IPCMD_ROW_D),
+    directions=("H→A",),
+)
 class IpCommandSyncRowHandler(BaseFrameHandler):
     """Decode IP command rows returned when syncing commands for an existing device."""
 
