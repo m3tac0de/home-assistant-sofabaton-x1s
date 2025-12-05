@@ -1,6 +1,6 @@
 """Tests for x1_proxy helpers."""
 
-from custom_components.sofabaton_x1s.lib.protocol_const import OP_REQ_COMMANDS
+from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName, OP_REQ_COMMANDS
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -192,4 +192,29 @@ def test_build_frame_for_single_command_payloads() -> None:
     assert single_01 == bytes.fromhex("a55a025c010260")
     assert single_03 == bytes.fromhex("a55a025c030363")
     assert single_full == bytes.fromhex("a55a025c12ff6e")
+
+
+def test_clear_entity_cache_resets_all(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    ent_id = 0x42
+    ent_lo = ent_id & 0xFF
+
+    proxy.state.commands[ent_lo] = {0x01: "One"}
+    proxy.state.buttons[ent_lo] = {ButtonName.VOL_UP}
+    proxy.state.activity_command_refs[ent_lo] = {(0x10, 0x99)}
+    proxy.state.activity_favorite_slots[ent_lo] = [
+        {"button_id": 0xFE, "device_id": 0x10, "command_id": 0x99}
+    ]
+    proxy._pending_command_requests[ent_lo] = {0xFF}
+    proxy._pending_button_requests.add(ent_lo)
+
+    proxy.clear_entity_cache(ent_id, clear_buttons=True, clear_favorites=True)
+
+    assert ent_lo not in proxy.state.commands
+    assert ent_lo not in proxy.state.buttons
+    assert ent_lo not in proxy.state.activity_command_refs
+    assert ent_lo not in proxy.state.activity_favorite_slots
+    assert ent_lo not in proxy._pending_command_requests
+    assert ent_lo not in proxy._pending_button_requests
 

@@ -78,6 +78,7 @@ class SofabatonHub:
         self._buttons_ready_for: set[int] = set()
         self._commands_in_flight: set[int] = set()    # entities we are currently fetching
         self._app_activations: list[dict[str, Any]] = []
+        self._button_waiters: dict[int, list] = {}
 
         _LOGGER.debug(
             "[%s] Creating X1Proxy for hub %s (%s:%s)",
@@ -217,6 +218,11 @@ class SofabatonHub:
                 # also, if you had a "pending" set, clear just this one
                 self._pending_button_fetch.discard(ent_id)
 
+                waiters = self._button_waiters.pop(ent_id, [])
+                for waiter in waiters:
+                    if not waiter.done():
+                        waiter.set_result(None)
+
             async_dispatcher_send(self.hass, signal_buttons(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -340,13 +346,76 @@ class SofabatonHub:
         self._commands_in_flight.add(ent_id)
         async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
-        def _do_fetch() -> None:
-            if self._looks_like_activity(ent_id):
-                self._proxy.ensure_commands_for_activity(ent_id, fetch_if_missing=True)
-            else:
-                self._proxy.get_commands_for_entity(ent_id, fetch_if_missing=True)
+        if self._looks_like_activity(ent_id):
+            await self._async_fetch_activity_commands(ent_id)
+        else:
+            await self._async_fetch_device_commands(ent_id)
 
-        await self.hass.async_add_executor_job(_do_fetch)
+    async def _async_fetch_activity_commands(self, act_id: int) -> None:
+        self._reset_entity_cache(act_id, clear_buttons=True, clear_favorites=True)
+        await self.hass.async_add_executor_job(
+            self._proxy.clear_entity_cache,
+            act_id,
+            True,
+            True,
+        )
+
+        _, buttons_ready = await self.hass.async_add_executor_job(
+            self._proxy.get_buttons_for_entity, act_id
+        )
+
+        if not buttons_ready:
+            await self._async_wait_for_buttons_ready(act_id)
+
+        await self.hass.async_add_executor_job(
+            self._proxy.ensure_commands_for_activity, act_id, True
+        )
+
+    async def _async_fetch_device_commands(self, ent_id: int) -> None:
+        self._reset_entity_cache(ent_id, clear_buttons=True, clear_favorites=False)
+        await self.hass.async_add_executor_job(
+            self._proxy.clear_entity_cache,
+            ent_id,
+            True,
+            False,
+        )
+
+        await self.hass.async_add_executor_job(
+            self._proxy.get_commands_for_entity, ent_id, True
+        )
+
+    async def _async_wait_for_buttons_ready(self, ent_id: int) -> None:
+        if ent_id in self._buttons_ready_for:
+            return
+
+        future = self.hass.loop.create_future()
+        self._button_waiters.setdefault(ent_id, []).append(future)
+        try:
+            await future
+        finally:
+            waiters = self._button_waiters.get(ent_id)
+            if waiters and future in waiters:
+                waiters.remove(future)
+                if not waiters:
+                    self._button_waiters.pop(ent_id, None)
+
+    def _reset_entity_cache(
+        self,
+        ent_id: int,
+        *,
+        clear_buttons: bool,
+        clear_favorites: bool,
+    ) -> None:
+        self._command_entities.discard(ent_id)
+
+        if clear_buttons:
+            self._buttons_ready_for.discard(ent_id)
+            self._pending_button_fetch.discard(ent_id)
+            self._button_waiters.pop(ent_id, None)
+
+        if clear_favorites:
+            self._proxy.state.activity_command_refs.pop(ent_id & 0xFF, None)
+            self._proxy.state.activity_favorite_slots.pop(ent_id & 0xFF, None)
 
     async def _async_prime_buttons_for(self, act_id: int) -> None:
         # dedupe here

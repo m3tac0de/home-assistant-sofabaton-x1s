@@ -577,6 +577,28 @@ class X1Proxy:
 
         return (commands_by_device, all_ready)
 
+    def clear_entity_cache(
+        self,
+        ent_id: int,
+        *,
+        clear_buttons: bool = False,
+        clear_favorites: bool = False,
+    ) -> None:
+        """Remove cached data for a given entity."""
+
+        ent_lo = ent_id & 0xFF
+
+        self.state.commands.pop(ent_lo, None)
+        self._pending_command_requests.pop(ent_lo, None)
+
+        if clear_buttons:
+            self.state.buttons.pop(ent_lo, None)
+            self._pending_button_requests.discard(ent_lo)
+
+        if clear_favorites:
+            self.state.activity_command_refs.pop(ent_lo, None)
+            self.state.activity_favorite_slots.pop(ent_lo, None)
+
     def get_app_activations(self) -> list[dict[str, Any]]:
         return self.state.get_app_activations()
     
