@@ -162,6 +162,26 @@ def test_get_single_command_for_entity_falls_back_for_high_byte(monkeypatch) -> 
     ]
 
 
+def test_get_single_command_allows_multiple_pending_commands(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    enqueued: list[tuple[int, bytes, bool, str | None]] = []
+
+    def fake_enqueue(opcode, payload, expects_burst=False, burst_kind=None):
+        enqueued.append((opcode, payload, expects_burst, burst_kind))
+
+    monkeypatch.setattr(proxy, "enqueue_cmd", fake_enqueue)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    proxy.get_single_command_for_entity(0x05, 0x01)
+    proxy.get_single_command_for_entity(0x05, 0x02)
+
+    assert enqueued == [
+        (OP_REQ_COMMANDS, b"\x05\x01", True, "commands:5:1"),
+        (OP_REQ_COMMANDS, b"\x05\x02", True, "commands:5:2"),
+    ]
+
+
 def test_build_frame_for_single_command_payloads() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
