@@ -5,16 +5,16 @@ from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 
-def test_ensure_commands_for_activity_groups_by_device(monkeypatch) -> None:
+def test_ensure_commands_for_activity_groups_favorites(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     cache = ActivityCache()
     act = 0x10
-    cache.activity_command_refs[act] = {
-        (0x01, 0x1111),
-        (0x01, 0x2222),
-        (0x02, 0x3333),
-    }
+    cache.activity_favorite_slots[act] = [
+        {"button_id": 0xFE, "device_id": 0x01, "command_id": 0x1111},
+        {"button_id": 0xFD, "device_id": 0x01, "command_id": 0x2222},
+        {"button_id": 0xFC, "device_id": 0x02, "command_id": 0x3333},
+    ]
     proxy.state = cache
 
     calls: list[tuple[int, int, bool]] = []
@@ -42,6 +42,58 @@ def test_ensure_commands_for_activity_groups_by_device(monkeypatch) -> None:
         0x01: {0x1111: "one", 0x2222: "two"},
         0x02: {0x3333: "three"},
     }
+
+
+def test_ensure_commands_for_activity_only_favorites(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    cache = ActivityCache()
+    act = 0x10
+    cache.activity_favorite_slots[act] = [
+        {"button_id": 0xFE, "device_id": 0x01, "command_id": 0xAAAA},
+        {"button_id": 0xFD, "device_id": 0x03, "command_id": 0xCCCC},
+    ]
+    proxy.state = cache
+
+    calls: list[tuple[int, int, bool]] = []
+
+    def fake_get_single(ent_id: int, command_id: int, fetch_if_missing: bool = True):
+        calls.append((ent_id, command_id, fetch_if_missing))
+        mappings = {
+            (0x01, 0xAAAA): ({0xAAAA: "alpha"}, True),
+            (0x03, 0xCCCC): ({0xCCCC: "charlie"}, False),
+        }
+        return mappings.get((ent_id, command_id), ({}, False))
+
+    monkeypatch.setattr(proxy, "get_single_command_for_entity", fake_get_single)
+
+    commands_by_device, ready = proxy.ensure_commands_for_activity(act)
+
+    assert ready is False
+    assert set(calls) == {
+        (0x01, 0xAAAA, True),
+        (0x03, 0xCCCC, True),
+    }
+    assert commands_by_device == {0x01: {0xAAAA: "alpha"}, 0x03: {0xCCCC: "charlie"}}
+
+
+def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    cache = ActivityCache()
+    act = 0x10
+    cache.activity_command_refs[act] = {(0x01, 0xAAAA), (0x02, 0xBBBB)}
+    proxy.state = cache
+
+    def fake_get_single(ent_id: int, command_id: int, fetch_if_missing: bool = True):
+        raise AssertionError("should not fetch commands when no favorites")
+
+    monkeypatch.setattr(proxy, "get_single_command_for_entity", fake_get_single)
+
+    commands_by_device, ready = proxy.ensure_commands_for_activity(act)
+
+    assert ready is True
+    assert commands_by_device == {}
 
 
 def test_get_single_command_for_entity_uses_cache(monkeypatch) -> None:

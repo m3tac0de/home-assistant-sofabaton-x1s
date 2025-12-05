@@ -209,6 +209,7 @@ class X1Proxy:
         self._command_assembler = DeviceCommandAssembler()
         self._burst = BurstScheduler()
         self._pending_button_requests: set[int] = set()
+        self._pending_command_requests: set[int] = set()
         self._activity_listeners: list[callable] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
@@ -239,6 +240,7 @@ class X1Proxy:
         self.transport.on_idle(self._handle_idle)
 
         self._burst.on_burst_end("buttons", self._on_buttons_burst_end)
+        self._burst.on_burst_end("commands", self._on_commands_burst_end)
         self.on_burst_end("activities", self.handle_active_state)
 
         self._hub_connected: bool = False
@@ -385,6 +387,14 @@ class X1Proxy:
         if not self.can_issue_commands():
             log.info("[CMD] request_commands_for_entity ignored: proxy client is connected"); return False
         ent_lo = ent_id & 0xFF
+        if ent_lo in self._pending_command_requests:
+            log.debug(
+                "[CMD] request_commands_for_entity ignored: burst already pending for 0x%02X",
+                ent_lo,
+            )
+            return False
+
+        self._pending_command_requests.add(ent_lo)
         self.enqueue_cmd(OP_REQ_COMMANDS, bytes([ent_lo, 0xFF]), expects_burst=True, burst_kind=f"commands:{ent_lo}")
         return True
 
@@ -455,12 +465,14 @@ class X1Proxy:
             return (dict(self.state.commands[ent_lo]), True)
 
         if fetch_if_missing and self.can_issue_commands():
-            self.enqueue_cmd(
-                OP_REQ_COMMANDS,
-                bytes([ent_lo, 0xFF]),
-                expects_burst=True,
-                burst_kind=f"commands:{ent_lo}",
-            )
+            if ent_lo not in self._pending_command_requests:
+                self._pending_command_requests.add(ent_lo)
+                self.enqueue_cmd(
+                    OP_REQ_COMMANDS,
+                    bytes([ent_lo, 0xFF]),
+                    expects_burst=True,
+                    burst_kind=f"commands:{ent_lo}",
+                )
 
         return ({}, False)
 
@@ -490,12 +502,14 @@ class X1Proxy:
         if fetch_if_missing and self.can_issue_commands():
             payload = bytes([ent_lo, int(command_id) & 0xFF])
 
-            self.enqueue_cmd(
-                OP_REQ_COMMANDS,
-                payload,
-                expects_burst=True,
-                burst_kind=f"commands:{ent_lo}:{command_id}",
-            )
+            if ent_lo not in self._pending_command_requests:
+                self._pending_command_requests.add(ent_lo)
+                self.enqueue_cmd(
+                    OP_REQ_COMMANDS,
+                    payload,
+                    expects_burst=True,
+                    burst_kind=f"commands:{ent_lo}:{command_id}",
+                )
 
         return ({}, False)
 
@@ -505,17 +519,21 @@ class X1Proxy:
         *,
         fetch_if_missing: bool = True,
     ) -> tuple[dict[int, dict[int, str]], bool]:
-        """Ensure commands for devices referenced by an activity's keymap are fetched.
+        """Fetch command labels for an activity's favorite slots.
 
-        Currently this uses get_commands_for_entity, which fetches the full
-        command list for each device. References are grouped by device so each
-        device is fetched at most once.
+        The REQ_BUTTONS response already describes physical button mappings, so
+        the only follow-up requests we need are for favorite commands that
+        require labels. If no favorites exist, nothing is fetched.
         """
 
         act_lo = act_id & 0xFF
-        refs = self.state.get_activity_command_refs(act_lo)
-        if not refs:
-            return ({}, False)
+        favorites = self.state.get_activity_favorite_slots(act_lo)
+        if not favorites:
+            return ({}, True)
+
+        refs: set[tuple[int, int]] = {
+            (slot["device_id"], slot["command_id"]) for slot in favorites
+        }
 
         commands_by_device: dict[int, dict[int, str]] = {}
         all_ready = True
@@ -880,6 +898,16 @@ class X1Proxy:
                 cb(record)
             except Exception:
                 log.exception("app activation listener failed")
+
+    def _on_commands_burst_end(self, key: str) -> None:
+        if ":" in key:
+            try:
+                ent_lo = int(key.split(":", 1)[1])
+                self._pending_command_requests.discard(ent_lo)
+            except ValueError:
+                self._pending_command_requests.clear()
+        else:
+            self._pending_command_requests.clear()
 
     def _on_buttons_burst_end(self, key: str) -> None:
         if ":" in key:
