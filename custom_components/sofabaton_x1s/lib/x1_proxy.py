@@ -209,7 +209,9 @@ class X1Proxy:
         self._command_assembler = DeviceCommandAssembler()
         self._burst = BurstScheduler()
         self._pending_button_requests: set[int] = set()
-        self._pending_command_requests: set[int] = set()
+        # Track pending command fetches per device, so multiple targeted
+        # lookups for the same device (different commands) can be queued.
+        self._pending_command_requests: dict[int, set[int]] = {}
         self._activity_listeners: list[callable] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
@@ -387,14 +389,14 @@ class X1Proxy:
         if not self.can_issue_commands():
             log.info("[CMD] request_commands_for_entity ignored: proxy client is connected"); return False
         ent_lo = ent_id & 0xFF
-        if ent_lo in self._pending_command_requests:
+        if 0xFF in self._pending_command_requests.get(ent_lo, set()):
             log.debug(
                 "[CMD] request_commands_for_entity ignored: burst already pending for 0x%02X",
                 ent_lo,
             )
             return False
 
-        self._pending_command_requests.add(ent_lo)
+        self._pending_command_requests.setdefault(ent_lo, set()).add(0xFF)
         self.enqueue_cmd(OP_REQ_COMMANDS, bytes([ent_lo, 0xFF]), expects_burst=True, burst_kind=f"commands:{ent_lo}")
         return True
 
@@ -465,8 +467,9 @@ class X1Proxy:
             return (dict(self.state.commands[ent_lo]), True)
 
         if fetch_if_missing and self.can_issue_commands():
-            if ent_lo not in self._pending_command_requests:
-                self._pending_command_requests.add(ent_lo)
+            pending = self._pending_command_requests.setdefault(ent_lo, set())
+            if 0xFF not in pending:
+                pending.add(0xFF)
                 self.enqueue_cmd(
                     OP_REQ_COMMANDS,
                     bytes([ent_lo, 0xFF]),
@@ -502,21 +505,27 @@ class X1Proxy:
         if not fetch_if_missing or not self.can_issue_commands():
             return ({}, False)
 
+        pending = self._pending_command_requests.setdefault(ent_lo, set())
+
         if command_id <= 0xFF:
+            if command_id in pending or 0xFF in pending:
+                return ({}, False)
             payload = bytes([ent_lo, command_id & 0xFF])
             burst_kind = f"commands:{ent_lo}:{command_id}"
+            pending.add(command_id)
         else:
+            if 0xFF in pending:
+                return ({}, False)
             payload = bytes([ent_lo, 0xFF])
             burst_kind = f"commands:{ent_lo}"
+            pending.add(0xFF)
 
-        if ent_lo not in self._pending_command_requests:
-            self._pending_command_requests.add(ent_lo)
-            self.enqueue_cmd(
-                OP_REQ_COMMANDS,
-                payload,
-                expects_burst=True,
-                burst_kind=burst_kind,
-            )
+        self.enqueue_cmd(
+            OP_REQ_COMMANDS,
+            payload,
+            expects_burst=True,
+            burst_kind=burst_kind,
+        )
 
         return ({}, False)
 
@@ -907,12 +916,29 @@ class X1Proxy:
                 log.exception("app activation listener failed")
 
     def _on_commands_burst_end(self, key: str) -> None:
-        if ":" in key:
+        parts = key.split(":")
+        if len(parts) >= 2 and parts[0] == "commands":
             try:
-                ent_lo = int(key.split(":", 1)[1])
-                self._pending_command_requests.discard(ent_lo)
+                ent_lo = int(parts[1])
             except ValueError:
-                self._pending_command_requests.clear()
+                self._pending_command_requests.clear(); return
+
+            pending = self._pending_command_requests.get(ent_lo)
+            if pending is None:
+                return
+
+            if len(parts) >= 3:
+                try:
+                    cmd_id = int(parts[2])
+                except ValueError:
+                    pending.clear()
+                else:
+                    pending.discard(cmd_id)
+            else:
+                pending.discard(0xFF)
+
+            if not pending:
+                self._pending_command_requests.pop(ent_lo, None)
         else:
             self._pending_command_requests.clear()
 
