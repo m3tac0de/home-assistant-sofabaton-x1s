@@ -734,6 +734,23 @@ class KeymapHandler(BaseFrameHandler):
         for i in range(len(payload) - 1):
             if payload[i] == act_lo and payload[i + 1] in BUTTONNAME_BY_CODE:
                 return True
+
+        # Some payloads (favorites) only contain button IDs that are not part of
+        # the known mapping table. These still follow a recognizable layout of
+        # 18-byte records with zeroed padding between the device and command
+        # identifiers, so look for that structure as a fallback.
+        RECORD_SIZE = 18
+        for i in range(len(payload) - RECORD_SIZE + 1):
+            if payload[i] != act_lo:
+                continue
+
+            looks_like_favorite_record = (
+                payload[i + 3 : i + 7] == b"\x00" * 4
+                and payload[i + 12 : i + 18] == b"\x00" * 6
+            )
+
+            if looks_like_favorite_record:
+                return True
         return False
 
 
