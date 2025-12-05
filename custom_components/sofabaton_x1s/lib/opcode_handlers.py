@@ -22,6 +22,7 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT3,
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
     OP_KEYMAP_CONT,
     OP_KEYMAP_TBL_A,
@@ -762,6 +763,34 @@ class RequestCommandsHandler(BaseFrameHandler):
         payload = frame.payload
         dev_id = payload[0] if payload else 0
         log.info("[DEVCTL] A→H requesting commands dev=0x%02X (%d)", dev_id, dev_id)
+
+
+@register_handler(opcodes=(OP_DEVBTN_SINGLE,), directions=("H→A",))
+class DeviceButtonSingleHandler(BaseFrameHandler):
+    """Handle single-command payloads returned by :opcode:`OP_REQ_COMMANDS`."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        raw = frame.raw
+
+        if len(payload) < 4:
+            return
+
+        dev_id = _extract_dev_id(raw, payload, frame.opcode)
+
+        proxy._burst.start(f"commands:{dev_id}", now=time.monotonic())
+
+        completed = proxy._command_assembler.feed(frame.opcode, raw, dev_id_override=dev_id)
+        for complete_dev_id, assembled_payload in completed:
+            commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
+            if commands:
+                proxy.state.commands[complete_dev_id & 0xFF] = commands
+                log.info(
+                    " ".join(
+                        f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[complete_dev_id].items()
+                    )
+                )
 
 
 @register_handler(opcodes=(OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1), directions=("H→A",))

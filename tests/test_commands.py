@@ -1,3 +1,4 @@
+import logging
 import sys
 import types
 from pathlib import Path
@@ -20,6 +21,8 @@ _ensure_stub_package("custom_components.sofabaton_x1s", ROOT / "custom_component
 _ensure_stub_package("custom_components.sofabaton_x1s.lib", ROOT / "custom_components" / "sofabaton_x1s" / "lib")
 
 from custom_components.sofabaton_x1s.lib.commands import DeviceCommandAssembler
+from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
+from custom_components.sofabaton_x1s.lib.opcode_handlers import DeviceButtonSingleHandler
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_DEVBTN_HEADER,
     OP_DEVBTN_TAIL,
@@ -78,6 +81,33 @@ def test_device_command_assembly_handles_single_command_page() -> None:
     parsed = proxy.parse_device_commands(payload, dev_id)
 
     assert parsed == {1: "yExit"}
+
+
+def test_single_command_handler_logs_and_stores_state(caplog) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+    )
+
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    with caplog.at_level(logging.INFO):
+        handler.handle(frame)
+
+    assert proxy.state.commands[1] == {1: "yExit"}
+    assert "1 : yExit" in caplog.text
 
 
 def test_parse_device_commands_handles_legacy_and_hue_formats() -> None:
