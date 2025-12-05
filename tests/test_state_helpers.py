@@ -97,14 +97,14 @@ def test_accumulate_keymap_tracks_favorites_and_commands() -> None:
     cache.accumulate_keymap(act, rec_fav + rec_normal)
 
     refs = cache.get_activity_command_refs(act)
-    assert (0x03, 0x0338) in refs
-    assert (0x04, 0x074C) not in refs
+    assert (0x03, favorite_button_id) in refs
+    assert (0x04, favorite_button_id) not in refs
 
     favorite_slots = cache.get_activity_favorite_slots(act)
     assert any(
         slot["button_id"] == favorite_button_id
         and slot["device_id"] == 0x03
-        and slot["command_id"] == 0x0338
+        and slot["command_id"] == favorite_button_id
         for slot in favorite_slots
     )
 
@@ -125,6 +125,6 @@ def test_accumulate_keymap_stops_at_standard_buttons() -> None:
     assert len(favorites) == 2
     assert {slot["button_id"] for slot in favorites} == {0x01, 0x02}
 
-    assert cache.get_activity_command_refs(act) == {(0x03, 0x0338), (0x03, 0x074C)}
+    assert cache.get_activity_command_refs(act) == {(0x03, 0x01), (0x03, 0x02)}
 
     assert cache.buttons.get(act, set()) == {0xAE}

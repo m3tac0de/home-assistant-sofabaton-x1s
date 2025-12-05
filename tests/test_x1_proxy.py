@@ -134,14 +134,14 @@ def test_get_single_command_for_entity_enqueues_targeted_request(monkeypatch) ->
     assert enqueued == [
         (
             OP_REQ_COMMANDS,
-            bytes([0x12, command_id & 0xFF]),
+            b"\x12\r",
             True,
             "commands:18:13",
         )
     ]
 
 
-def test_get_single_command_for_entity_requests_full_list_for_high_byte(monkeypatch) -> None:
+def test_get_single_command_for_entity_falls_back_for_high_byte(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     enqueued: list[tuple[int, bytes, bool, str | None]] = []
@@ -158,11 +158,18 @@ def test_get_single_command_for_entity_requests_full_list_for_high_byte(monkeypa
     assert commands == {}
     assert ready is False
     assert enqueued == [
-        (
-            OP_REQ_COMMANDS,
-            bytes([0x12, 0xFF]),
-            True,
-            "commands:18",
-        )
+        (OP_REQ_COMMANDS, b"\x12\xff", True, "commands:18"),
     ]
+
+
+def test_build_frame_for_single_command_payloads() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    single_01 = proxy._build_frame(OP_REQ_COMMANDS, b"\x01\x02")
+    single_03 = proxy._build_frame(OP_REQ_COMMANDS, b"\x03\x03")
+    single_full = proxy._build_frame(OP_REQ_COMMANDS, b"\x12\xff")
+
+    assert single_01 == bytes.fromhex("a55a025c010260")
+    assert single_03 == bytes.fromhex("a55a025c030363")
+    assert single_full == bytes.fromhex("a55a025c12ff6e")
 

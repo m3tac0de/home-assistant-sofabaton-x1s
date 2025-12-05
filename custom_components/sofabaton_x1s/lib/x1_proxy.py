@@ -502,12 +502,12 @@ class X1Proxy:
         if not fetch_if_missing or not self.can_issue_commands():
             return ({}, False)
 
-        if command_id > 0xFF:
-            if ent_lo not in self._pending_command_requests:
-                self.request_commands_for_entity(ent_lo)
-            return ({}, False)
-
-        payload = bytes([ent_lo, int(command_id) & 0xFF])
+        if command_id <= 0xFF:
+            payload = bytes([ent_lo, command_id & 0xFF])
+            burst_kind = f"commands:{ent_lo}:{command_id}"
+        else:
+            payload = bytes([ent_lo, 0xFF])
+            burst_kind = f"commands:{ent_lo}"
 
         if ent_lo not in self._pending_command_requests:
             self._pending_command_requests.add(ent_lo)
@@ -515,7 +515,7 @@ class X1Proxy:
                 OP_REQ_COMMANDS,
                 payload,
                 expects_burst=True,
-                burst_kind=f"commands:{ent_lo}:{command_id}",
+                burst_kind=burst_kind,
             )
 
         return ({}, False)

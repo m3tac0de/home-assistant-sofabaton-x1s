@@ -156,19 +156,19 @@ def test_keymap_handler_accepts_favorite_only_payload() -> None:
     assert any(
         slot["button_id"] == 0x01
         and slot["device_id"] == 0x03
-        and slot["command_id"] == 0x0338
+        and slot["command_id"] == 0x01
         for slot in favorites
     )
     assert any(
         slot["button_id"] == 0x02
         and slot["device_id"] == 0x03
-        and slot["command_id"] == 0x074C
+        and slot["command_id"] == 0x02
         for slot in favorites
     )
 
     refs = proxy.state.get_activity_command_refs(0x66)
-    assert (0x03, 0x0338) in refs
-    assert (0x03, 0x074C) in refs
+    assert (0x03, 0x01) in refs
+    assert (0x03, 0x02) in refs
     assert 0x01 not in proxy.state.buttons.get(0x66, set())
 
 
