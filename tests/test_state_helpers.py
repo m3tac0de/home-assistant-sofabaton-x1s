@@ -105,7 +105,6 @@ def test_accumulate_keymap_tracks_favorites_and_commands() -> None:
         slot["button_id"] == favorite_button_id
         and slot["device_id"] == 0x03
         and slot["command_id"] == favorite_button_id
-        and slot["composite_id"] == 0x0338
         for slot in favorite_slots
     )
 

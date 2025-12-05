@@ -69,14 +69,12 @@ class ActivityCache:
                     self.buttons[act_lo].add(button_id)
                 elif favorites_allowed:
                     command_id = button_id  # simple command code used for label lookups
-                    composite_id = int.from_bytes(payload[i + 8 : i + 12], "little")
                     self.activity_command_refs[act_lo].add((device_id, command_id))
                     self.activity_favorite_slots[act_lo].append(
                         {
                             "button_id": button_id,
                             "device_id": device_id,
                             "command_id": command_id,
-                            "composite_id": composite_id,
                         }
                     )
                 else:

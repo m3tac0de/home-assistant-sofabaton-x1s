@@ -157,14 +157,12 @@ def test_keymap_handler_accepts_favorite_only_payload() -> None:
         slot["button_id"] == 0x01
         and slot["device_id"] == 0x03
         and slot["command_id"] == 0x01
-        and slot["composite_id"] == 0x0338
         for slot in favorites
     )
     assert any(
         slot["button_id"] == 0x02
         and slot["device_id"] == 0x03
         and slot["command_id"] == 0x02
-        and slot["composite_id"] == 0x074C
         for slot in favorites
     )
 

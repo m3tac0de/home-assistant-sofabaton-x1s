@@ -506,8 +506,8 @@ class X1Proxy:
             payload = bytes([ent_lo, command_id & 0xFF])
             burst_kind = f"commands:{ent_lo}:{command_id}"
         else:
-            payload = bytes([ent_lo]) + command_id.to_bytes(4, "little")
-            burst_kind = f"commands:{ent_lo}:{command_id}"
+            payload = bytes([ent_lo, 0xFF])
+            burst_kind = f"commands:{ent_lo}"
 
         if ent_lo not in self._pending_command_requests:
             self._pending_command_requests.add(ent_lo)
