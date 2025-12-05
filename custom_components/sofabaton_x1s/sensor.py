@@ -268,10 +268,6 @@ class SofabatonRecordedKeypressSensor(SensorEntity):
                 self._time_unsub = None
 
     @property
-    def available(self) -> bool:
-        return self._hub.hub_connected
-
-    @property
     def state(self) -> str:
         if not self._last_activation:
             return "No keypress recorded"
