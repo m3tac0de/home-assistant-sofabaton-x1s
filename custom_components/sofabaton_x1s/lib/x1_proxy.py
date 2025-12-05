@@ -580,7 +580,6 @@ class X1Proxy:
     def clear_entity_cache(
         self,
         ent_id: int,
-        *,
         clear_buttons: bool = False,
         clear_favorites: bool = False,
     ) -> None:

@@ -209,7 +209,7 @@ def test_clear_entity_cache_resets_all(monkeypatch) -> None:
     proxy._pending_command_requests[ent_lo] = {0xFF}
     proxy._pending_button_requests.add(ent_lo)
 
-    proxy.clear_entity_cache(ent_id, clear_buttons=True, clear_favorites=True)
+    proxy.clear_entity_cache(ent_id, True, True)
 
     assert ent_lo not in proxy.state.commands
     assert ent_lo not in proxy.state.buttons
