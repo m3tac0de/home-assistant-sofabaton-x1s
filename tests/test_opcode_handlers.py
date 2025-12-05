@@ -136,6 +136,42 @@ def test_keymap_table_b_parses_buttons_response() -> None:
     }
 
 
+def test_keymap_handler_accepts_favorite_only_payload() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    favorite_records = bytes.fromhex(
+        "66 01 03 00 00 00 00 00 38 03 00 00 00 00 00 00 00 00"
+        " 66 02 03 00 00 00 00 00 4c 07 00 00 00 00 00 00 00 00"
+    )
+    payload = b"\x00" * 7 + favorite_records
+
+    frame = _build_payload_context(proxy, OP_KEYMAP_TBL_B, payload, "KEYMAP_TABLE_B")
+
+    handler.handle(frame)
+
+    favorites = proxy.state.get_activity_favorite_slots(0x66)
+    assert any(
+        slot["button_id"] == 0x01
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x0338
+        for slot in favorites
+    )
+    assert any(
+        slot["button_id"] == 0x02
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x074C
+        for slot in favorites
+    )
+
+    refs = proxy.state.get_activity_command_refs(0x66)
+    assert (0x03, 0x0338) in refs
+    assert (0x03, 0x074C) in refs
+    assert 0x01 not in proxy.state.buttons.get(0x66, set())
+
+
 def test_keymap_table_d_includes_pause() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
