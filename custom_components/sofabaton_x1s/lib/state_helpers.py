@@ -54,32 +54,37 @@ class ActivityCache:
                     break
 
         if start_index >= 0:
+            favorites_allowed = True
             i = start_index
-            while i + 2 <= n:
+            while i + RECORD_SIZE <= n:
                 act = payload[i]
                 button_id = payload[i + 1]
                 device_id = payload[i + 2]
 
-                has_command = i + 12 <= n
-                if act == act_lo:
-                    if has_command:
-                        command_id = int.from_bytes(payload[i + 8 : i + 12], "little")
-                        self.activity_command_refs[act_lo].add((device_id, command_id))
+                if act != act_lo:
+                    break
 
-                        if button_id in BUTTONNAME_BY_CODE:
-                            self.buttons[act_lo].add(button_id)
-                        else:
-                            self.activity_favorite_slots[act_lo].append(
-                                {
-                                    "button_id": button_id,
-                                    "device_id": device_id,
-                                    "command_id": command_id,
-                                }
-                            )
-                    elif button_id in BUTTONNAME_BY_CODE:
-                        self.buttons[act_lo].add(button_id)
+                if button_id in BUTTONNAME_BY_CODE:
+                    favorites_allowed = False
+                    self.buttons[act_lo].add(button_id)
+                elif favorites_allowed:
+                    command_id = button_id  # simple command code used for label lookups
+                    composite_id = int.from_bytes(payload[i + 8 : i + 12], "little")
+                    self.activity_command_refs[act_lo].add((device_id, command_id))
+                    self.activity_favorite_slots[act_lo].append(
+                        {
+                            "button_id": button_id,
+                            "device_id": device_id,
+                            "command_id": command_id,
+                            "composite_id": composite_id,
+                        }
+                    )
+                else:
+                    break
+
                 i += RECORD_SIZE
-            return
+            if self.activity_favorite_slots.get(act_lo):
+                return
 
         i = 0
         while i + 1 < n:

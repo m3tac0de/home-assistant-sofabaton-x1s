@@ -499,17 +499,20 @@ class X1Proxy:
         if device_cmds is not None and command_id in device_cmds:
             return ({command_id: device_cmds[command_id]}, True)
 
-        if fetch_if_missing and self.can_issue_commands():
-            payload = bytes([ent_lo, int(command_id) & 0xFF])
+        if not fetch_if_missing or not self.can_issue_commands():
+            return ({}, False)
 
-            if ent_lo not in self._pending_command_requests:
-                self._pending_command_requests.add(ent_lo)
-                self.enqueue_cmd(
-                    OP_REQ_COMMANDS,
-                    payload,
-                    expects_burst=True,
-                    burst_kind=f"commands:{ent_lo}:{command_id}",
-                )
+        is_targeted = command_id <= 0xFF
+        payload = bytes([ent_lo, command_id & 0xFF]) if is_targeted else bytes([ent_lo, 0xFF])
+
+        if ent_lo not in self._pending_command_requests:
+            self._pending_command_requests.add(ent_lo)
+            self.enqueue_cmd(
+                OP_REQ_COMMANDS,
+                payload,
+                expects_burst=True,
+                burst_kind=f"commands:{ent_lo}:{command_id}" if is_targeted else f"commands:{ent_lo}",
+            )
 
         return ({}, False)
 
