@@ -311,6 +311,7 @@ class X1Proxy:
         expects_burst: bool = False,
         burst_kind: str | None = None,
     ) -> bool:
+        frame = self._build_frame(opcode, payload) if self.diag_dump else None
         sent = self._burst.queue_or_send(
             opcode=opcode,
             payload=payload,
@@ -321,6 +322,8 @@ class X1Proxy:
         )
         if sent:
             log.info("[CMD] queued %s (0x%04X) %dB", OPNAMES.get(opcode, f"OP_{opcode:04X}"), opcode, len(payload))
+            if frame is not None:
+                log.info("[DUMP] queued %s", _hexdump(frame))
         else:
             log.info(
                 "[CMD] ignoring %s: proxy client is connected",
