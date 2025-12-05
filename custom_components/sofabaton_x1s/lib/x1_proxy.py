@@ -488,7 +488,7 @@ class X1Proxy:
             return ({command_id: device_cmds[command_id]}, True)
 
         if fetch_if_missing and self.can_issue_commands():
-            payload = bytes([ent_lo]) + int(command_id).to_bytes(4, "little")
+            payload = bytes([ent_lo, int(command_id) & 0xFF])
 
             self.enqueue_cmd(
                 OP_REQ_COMMANDS,

@@ -82,7 +82,7 @@ def test_get_single_command_for_entity_enqueues_targeted_request(monkeypatch) ->
     assert enqueued == [
         (
             OP_REQ_COMMANDS,
-            bytes([0x12]) + command_id.to_bytes(4, "little"),
+            bytes([0x12, command_id & 0xFF]),
             True,
             "commands:18:168496141",
         )
