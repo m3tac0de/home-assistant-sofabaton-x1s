@@ -502,7 +502,12 @@ class X1Proxy:
         if not fetch_if_missing or not self.can_issue_commands():
             return ({}, False)
 
-        payload = bytes([ent_lo]) + int(command_id).to_bytes(4, "little")
+        if command_id > 0xFF:
+            if ent_lo not in self._pending_command_requests:
+                self.request_commands_for_entity(ent_lo)
+            return ({}, False)
+
+        payload = bytes([ent_lo, int(command_id) & 0xFF])
 
         if ent_lo not in self._pending_command_requests:
             self._pending_command_requests.add(ent_lo)
