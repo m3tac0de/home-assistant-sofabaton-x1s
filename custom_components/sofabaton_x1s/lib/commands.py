@@ -309,26 +309,34 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
             control_start = command_index + 1
             control_block = chunk[control_start : control_start + 7]
 
+            label_start = None
             if len(control_block) == 7 and _matches_control_block(control_block):
                 label_start = control_start + 7
                 if control_block[:5] == b"\x00\x00\x00\x00\x00":
                     label_start -= 1
-                label = _decode_label(chunk[label_start:])
-                if not label:
-                    continue
+            else:
+                label_start = command_index + 8
 
-                yield CommandRecord(target, command_id, control_block, label)
-                break
-
-            label_start = command_index + 8
             if label_start >= len(chunk):
                 continue
+
+            # Some hubs send labels that are misaligned by one byte, leaving the
+            # text prefixed with the last byte of the control block. Detect the
+            # offset and realign before decoding.
+            if (
+                label_start % 2
+                and label_start + 1 < len(chunk)
+                and chunk[label_start + 1] == 0x00
+            ):
+                label_start += 1
 
             label = _decode_label(chunk[label_start:])
             if not label:
                 continue
 
-            control_block = chunk[control_start:label_start]
+            if len(control_block) < 7:
+                control_block = chunk[control_start:label_start]
+
             yield CommandRecord(target, command_id, control_block, label)
             break
 

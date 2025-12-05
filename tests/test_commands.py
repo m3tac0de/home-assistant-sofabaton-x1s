@@ -80,7 +80,7 @@ def test_device_command_assembly_handles_single_command_page() -> None:
     proxy = X1Proxy("127.0.0.1")
     parsed = proxy.parse_device_commands(payload, dev_id)
 
-    assert parsed == {1: "yExit"}
+    assert parsed == {1: "Exit"}
 
 
 def test_single_command_handler_logs_and_stores_state(caplog) -> None:
@@ -106,8 +106,29 @@ def test_single_command_handler_logs_and_stores_state(caplog) -> None:
     with caplog.at_level(logging.INFO):
         handler.handle(frame)
 
-    assert proxy.state.commands[1] == {1: "yExit"}
-    assert "1 : yExit" in caplog.text
+    assert proxy.state.commands[1] == {1: "Exit"}
+    assert "1 : Exit" in caplog.text
+
+
+def test_parse_device_commands_realigns_utf16_label() -> None:
+    proxy = X1Proxy("127.0.0.1")
+    assembler = proxy._command_assembler
+
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 03 03 0d 00 00 00 00 00 38 00 30 00 "
+        + "00 " * 57
+        + "ff 28"
+    )
+
+    opcode = int.from_bytes(raw[2:4], "big")
+    completed = assembler.feed(opcode, raw)
+
+    assert completed
+    dev_id, payload = completed[0]
+
+    parsed = proxy.parse_device_commands(payload, dev_id)
+
+    assert parsed == {3: "0"}
 
 
 def test_parse_device_commands_handles_legacy_and_hue_formats() -> None:
