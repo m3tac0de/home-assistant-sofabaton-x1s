@@ -386,7 +386,7 @@ class SofabatonHub:
         )
 
         await self.hass.async_add_executor_job(
-            self._proxy.get_commands_for_entity, ent_id, True
+            partial(self._proxy.get_commands_for_entity, ent_id, fetch_if_missing=True)
         )
 
     async def _async_wait_for_buttons_ready(self, ent_id: int) -> None:
