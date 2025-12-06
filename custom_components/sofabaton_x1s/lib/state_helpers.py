@@ -68,7 +68,7 @@ class ActivityCache:
                     favorites_allowed = False
                     self.buttons[act_lo].add(button_id)
                 elif favorites_allowed:
-                    command_id = button_id  # simple command code used for label lookups
+                    command_id = payload[i + 9] if i + 10 <= n else button_id
                     self.activity_command_refs[act_lo].add((device_id, command_id))
                     self.activity_favorite_slots[act_lo].append(
                         {
