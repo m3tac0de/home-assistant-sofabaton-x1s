@@ -156,20 +156,118 @@ def test_keymap_handler_accepts_favorite_only_payload() -> None:
     assert any(
         slot["button_id"] == 0x01
         and slot["device_id"] == 0x03
-        and slot["command_id"] == 0x01
+        and slot["command_id"] == 0x03
         for slot in favorites
     )
     assert any(
         slot["button_id"] == 0x02
         and slot["device_id"] == 0x03
-        and slot["command_id"] == 0x02
+        and slot["command_id"] == 0x07
         for slot in favorites
     )
 
     refs = proxy.state.get_activity_command_refs(0x66)
-    assert (0x03, 0x01) in refs
-    assert (0x03, 0x02) in refs
+    assert (0x03, 0x03) in refs
+    assert (0x03, 0x07) in refs
     assert 0x01 not in proxy.state.buttons.get(0x66, set())
+
+
+def test_keymap_handler_parses_favorites_from_complete_response() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    frames = (
+        (
+            "a5 5a fa 3d 01 00 01 01 00 02 0f 66 01 03 00 00 00 00 00 38 03 00 00 00 00"
+            " 00 00 00 00 66 02 03 00 00 00 00 00 4c 07 00 00 00 00 00 00 00 00 66 ae 01"
+            " 00 00 00 00 00 2e 16 00 00 00 00 00 00 00 00 66 af 01 00 00 00 00 00 30 14"
+            " 00 00 00 00 00 00 00 00 66 b0 01 00 00 00 00 01 88 17 00 00 00 00 00 00 00"
+            " 00 66 b1 01 00 00 00 00 00 31 15 00 00 00 00 00 00 00 00 66 b2 01 00 00 00"
+            " 00 00 2f 13 00 00 00 00 00 00 00 00 66 b3 01 00 00 00 00 00 74 0d 00 00 00"
+            " 00 00 00 00 00 66 b4 01 00 00 00 00 07 c7 10 00 00 00 00 00 00 00 00 66 b5"
+            " 01 00 00 00 00 00 2d 11 00 00 00 00 00 00 00 00 66 b6 03 00 00 00 00 2e 77"
+            " 79 00 00 00 00 00 00 00 00 66 b7 01 00 00 00 00 2e 78 0f 00 00 00 00 00 00"
+            " 00 00 66 b8 03 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 66 b9 03 00 00"
+            " 00 00 00 33 1f",
+            OP_KEYMAP_TBL_B,
+            "KEYMAP_TABLE_B",
+        ),
+        (
+            "a5 5a 1e 3d 01 00 02 78 00 00 00 00 00 00 00 00 66 ba 01 00 00 00 00 00 2c"
+            " 0e 00 00 00 00 00 00 00 00 30",
+            OP_KEYMAP_CONT,
+            "KEYMAP_CONT",
+        ),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    favorites = proxy.state.get_activity_favorite_slots(0x66)
+    assert any(
+        slot["button_id"] == 0x01
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x03
+        for slot in favorites
+    )
+    assert any(
+        slot["button_id"] == 0x02
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x07
+        for slot in favorites
+    )
+
+
+def test_keymap_handler_parses_additional_favorites_from_response() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    frames = (
+        (
+            "a5 5a fa 3d 01 00 01 01 00 02 0f 67 02 01 00 00 00 00 00 79 02 00 00 00 00"
+            " 00 00 00 00 67 03 03 00 00 00 00 00 38 03 00 00 00 00 00 00 00 00 67 ae 01"
+            " 00 00 00 00 00 2e 16 00 00 00 00 00 00 00 00 67 af 01 00 00 00 00 00 30 14"
+            " 00 00 00 00 00 00 00 00 67 b0 01 00 00 00 00 01 88 17 00 00 00 00 00 00 00"
+            " 00 67 b1 01 00 00 00 00 00 31 15 00 00 00 00 00 00 00 00 67 b2 01 00 00 00"
+            " 00 00 2f 13 00 00 00 00 00 00 00 00 67 b3 01 00 00 00 00 00 74 0d 00 00 00"
+            " 00 00 00 00 00 67 b4 01 00 00 00 00 07 c7 10 00 00 00 00 00 00 00 00 67 b5"
+            " 01 00 00 00 00 00 2d 11 00 00 00 00 00 00 00 00 67 b6 03 00 00 00 00 2e 77"
+            " 79 00 00 00 00 00 00 00 00 67 b7 01 00 00 00 00 2e 78 0f 00 00 00 00 00 00"
+            " 00 00 67 b8 03 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 67 b9 03 00 00"
+            " 00 00 00 33 55",
+            OP_KEYMAP_TBL_B,
+            "KEYMAP_TABLE_B",
+        ),
+        (
+            "a5 5a 1e 3d 01 00 02 78 00 00 00 00 00 00 00 00 67 ba 01 00 00 00 00 00 2c"
+            " 0e 00 00 00 00 00 00 00 00 31",
+            OP_KEYMAP_CONT,
+            "KEYMAP_CONT",
+        ),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    favorites = proxy.state.get_activity_favorite_slots(0x67)
+    assert any(
+        slot["button_id"] == 0x02
+        and slot["device_id"] == 0x01
+        and slot["command_id"] == 0x02
+        for slot in favorites
+    )
+    assert any(
+        slot["button_id"] == 0x03
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x03
+        for slot in favorites
+    )
 
 
 def test_keymap_table_d_includes_pause() -> None:
