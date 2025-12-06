@@ -421,6 +421,8 @@ class SofabatonHub:
         if clear_favorites:
             self._proxy.state.activity_command_refs.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_favorite_slots.pop(ent_id & 0xFF, None)
+            self._proxy.state.activity_favorite_labels.pop(ent_id & 0xFF, None)
+            self._proxy._clear_favorite_label_requests_for_activity(ent_id & 0xFF)
 
     async def _async_prime_buttons_for(self, act_id: int) -> None:
         # dedupe here
@@ -493,6 +495,18 @@ class SofabatonHub:
             if ready and cmds:
                 result[ent_id] = cmds
         return result
+
+    def get_activity_favorites(self) -> dict[int, list[dict[str, int | str]]]:
+        """Return favorite commands with labels for activities."""
+
+        favorites: dict[int, list[dict[str, int | str]]] = {}
+
+        for act_id in self.activities:
+            labels = self._proxy.state.get_activity_favorite_labels(act_id & 0xFF)
+            if labels:
+                favorites[act_id] = labels
+
+        return favorites
 
     def get_app_activations(self) -> list[dict[str, Any]]:
         """Return recent app-originated activation requests."""

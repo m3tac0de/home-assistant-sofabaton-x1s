@@ -112,6 +112,34 @@ def test_single_command_handler_logs_and_stores_state(caplog) -> None:
     assert "1 : Exit" in caplog.text
 
 
+def test_single_command_handler_routes_favorite_labels() -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    proxy._favorite_label_requests[(1, 1)] = {0x66}
+
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+    )
+
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands == {}
+    assert proxy.state.activity_favorite_labels[0x66] == {(1, 1): "Exit"}
+
+
 @pytest.mark.parametrize(
     ("raw_hex", "expected_dev_id", "expected_cmd_id", "expected_label"),
     [
