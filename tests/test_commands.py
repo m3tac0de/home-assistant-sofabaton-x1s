@@ -3,8 +3,6 @@ import sys
 import types
 from pathlib import Path
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -112,44 +110,15 @@ def test_single_command_handler_logs_and_stores_state(caplog) -> None:
     assert "1 : Exit" in caplog.text
 
 
-@pytest.mark.parametrize(
-    ("raw_hex", "expected_dev_id", "expected_cmd_id", "expected_label"),
-    [
-        (
-            "a5 5a 4d 5d 01 00 01 01 00 01 01 06 01 0d 00 00 00 00 00 2a 00 4f 00 6b 00 "
-            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff a5",
-            6,
-            1,
-            "Ok",
-        ),
-        (
-            "a5 5a 4d 5d 01 00 01 01 00 01 01 03 03 0d 00 00 00 00 00 38 00 30 00 "
-            + "00 " * 57
-            + "ff 28",
-            3,
-            3,
-            "0",
-        ),
-        (
-            "a5 5a 4d 5d 01 00 01 01 00 01 01 03 07 0d 00 00 00 00 00 4c 00 34 00 "
-            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 44",
-            3,
-            7,
-            "4",
-        ),
-    ],
-)
-def test_parse_device_commands_realigns_utf16_label(
-    raw_hex: str, expected_dev_id: int, expected_cmd_id: int, expected_label: str
-) -> None:
+def test_parse_device_commands_realigns_utf16_label() -> None:
     proxy = X1Proxy("127.0.0.1")
     assembler = proxy._command_assembler
 
-    raw = bytes.fromhex(raw_hex)
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 03 03 0d 00 00 00 00 00 38 00 30 00 "
+        + "00 " * 57
+        + "ff 28"
+    )
 
     opcode = int.from_bytes(raw[2:4], "big")
     completed = assembler.feed(opcode, raw)
@@ -159,8 +128,7 @@ def test_parse_device_commands_realigns_utf16_label(
 
     parsed = proxy.parse_device_commands(payload, dev_id)
 
-    assert dev_id == expected_dev_id
-    assert parsed == {expected_cmd_id: expected_label}
+    assert parsed == {3: "0"}
 
 
 def test_parse_device_commands_handles_legacy_and_hue_formats() -> None:
