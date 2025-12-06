@@ -42,6 +42,12 @@ def test_ensure_commands_for_activity_groups_favorites(monkeypatch) -> None:
         0x01: {0x1111: "one", 0x2222: "two"},
         0x02: {0x3333: "three"},
     }
+    assert proxy.state.activity_favorite_labels[act] == {
+        (0x01, 0x1111): "one",
+        (0x01, 0x2222): "two",
+        (0x02, 0x3333): "three",
+    }
+    assert proxy._favorite_label_requests == {(0x01, 0x2222): {act}}
 
 
 def test_ensure_commands_for_activity_only_favorites(monkeypatch) -> None:
@@ -75,6 +81,10 @@ def test_ensure_commands_for_activity_only_favorites(monkeypatch) -> None:
         (0x03, 0xCCCC, True),
     }
     assert commands_by_device == {0x01: {0xAAAA: "alpha"}, 0x03: {0xCCCC: "charlie"}}
+    assert proxy.state.activity_favorite_labels[act] == {
+        (0x01, 0xAAAA): "alpha",
+        (0x03, 0xCCCC): "charlie",
+    }
 
 
 def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch) -> None:

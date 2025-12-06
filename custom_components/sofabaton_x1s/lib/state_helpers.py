@@ -20,6 +20,7 @@ class ActivityCache:
         self.ip_buttons: Dict[int, Dict[int, Dict[str, Any]]] = defaultdict(dict)
         self.activity_command_refs: dict[int, set[tuple[int, int]]] = defaultdict(set)
         self.activity_favorite_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
+        self.activity_favorite_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
         # Only track the most recent activation to avoid unbounded growth
         self.app_activations: Deque[dict[str, Any]] = deque(maxlen=1)
 
@@ -107,6 +108,43 @@ class ActivityCache:
         """Return metadata for favorite slots in this activity."""
 
         return list(self.activity_favorite_slots.get(act_lo, []))
+
+    def record_favorite_label(
+        self, act_lo: int, device_id: int, command_id: int, label: str
+    ) -> None:
+        """Store the resolved label for a favorite command."""
+
+        self.activity_favorite_labels[act_lo][(device_id, command_id)] = label
+
+    def get_favorite_label(
+        self, act_lo: int, device_id: int, command_id: int
+    ) -> str | None:
+        """Return the known label for a favorite command, if any."""
+
+        return self.activity_favorite_labels.get(act_lo, {}).get((device_id, command_id))
+
+    def get_activity_favorite_labels(self, act_lo: int) -> list[dict[str, int | str]]:
+        """Return favorite slots decorated with resolved labels."""
+
+        slots = self.activity_favorite_slots.get(act_lo, [])
+        labels = self.activity_favorite_labels.get(act_lo, {})
+
+        favorites: list[dict[str, int | str]] = []
+        for slot in slots:
+            pair = (slot["device_id"], slot["command_id"])
+            label = labels.get(pair)
+            if not label:
+                continue
+
+            favorites.append(
+                {
+                    "name": label,
+                    "device_id": slot["device_id"],
+                    "command_id": slot["command_id"],
+                }
+            )
+
+        return favorites
 
     def parse_device_commands(self, payload: bytes, dev_id: int) -> Dict[int, str]:
         commands_found: Dict[int, str] = {}

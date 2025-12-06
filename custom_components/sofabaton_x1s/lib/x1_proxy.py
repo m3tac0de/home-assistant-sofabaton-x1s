@@ -8,6 +8,7 @@ import socket
 import struct
 import threading
 import time
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 from .frame_handlers import FrameContext, frame_handler_registry
@@ -212,6 +213,7 @@ class X1Proxy:
         # Track pending command fetches per device, so multiple targeted
         # lookups for the same device (different commands) can be queued.
         self._pending_command_requests: dict[int, set[int]] = {}
+        self._favorite_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._activity_listeners: list[callable] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
@@ -563,6 +565,20 @@ class X1Proxy:
 
             seen_pairs.add(pair)
 
+            existing_label = self.state.get_favorite_label(act_lo, dev_id, command_id)
+            if existing_label:
+                self.state.record_favorite_label(act_lo, dev_id, command_id, existing_label)
+                continue
+
+            device_cmds = self.state.commands.get(dev_id & 0xFF)
+            if device_cmds and command_id in device_cmds:
+                self.state.record_favorite_label(
+                    act_lo, dev_id, command_id, device_cmds[command_id]
+                )
+                continue
+
+            self._favorite_label_requests[pair].add(act_id)
+
             single_cmds, ready = self.get_single_command_for_entity(
                 dev_id, command_id, fetch_if_missing=fetch_if_missing
             )
@@ -574,6 +590,13 @@ class X1Proxy:
                 if dev_lo not in commands_by_device:
                     commands_by_device[dev_lo] = {}
                 commands_by_device[dev_lo].update(single_cmds)
+
+                label = single_cmds.get(command_id)
+                if label:
+                    self.state.record_favorite_label(act_lo, dev_id, command_id, label)
+
+            if ready:
+                self._favorite_label_requests.pop(pair, None)
 
         return (commands_by_device, all_ready)
 
@@ -597,6 +620,19 @@ class X1Proxy:
         if clear_favorites:
             self.state.activity_command_refs.pop(ent_lo, None)
             self.state.activity_favorite_slots.pop(ent_lo, None)
+            self.state.activity_favorite_labels.pop(ent_lo, None)
+            self._clear_favorite_label_requests_for_activity(ent_lo)
+
+    def _clear_favorite_label_requests_for_activity(self, act_lo: int) -> None:
+        to_delete: list[tuple[int, int]] = []
+
+        for pair, act_ids in self._favorite_label_requests.items():
+            act_ids.discard(act_lo)
+            if not act_ids:
+                to_delete.append(pair)
+
+        for pair in to_delete:
+            self._favorite_label_requests.pop(pair, None)
 
     def get_app_activations(self) -> list[dict[str, Any]]:
         return self.state.get_app_activations()

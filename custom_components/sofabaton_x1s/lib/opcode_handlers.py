@@ -792,12 +792,24 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
         for complete_dev_id, assembled_payload in completed:
             commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
             if commands:
-                proxy.state.commands[complete_dev_id & 0xFF] = commands
-                log.info(
-                    " ".join(
-                        f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[complete_dev_id].items()
+                dev_key = complete_dev_id & 0xFF
+                for cmd_id, label in commands.items():
+                    pair = (complete_dev_id, cmd_id)
+                    awaiting = proxy._favorite_label_requests.get(pair)
+                    if awaiting:
+                        for act_id in awaiting:
+                            proxy.state.record_favorite_label(act_id, complete_dev_id, cmd_id, label)
+                        proxy._favorite_label_requests.pop(pair, None)
+                        continue
+
+                    proxy.state.commands.setdefault(dev_key, {})[cmd_id] = label
+
+                if dev_key in proxy.state.commands:
+                    log.info(
+                        " ".join(
+                            f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[dev_key].items()
+                        )
                     )
-                )
 
 
 @register_handler(opcodes=(OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1), directions=("H→A",))

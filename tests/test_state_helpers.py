@@ -128,3 +128,23 @@ def test_accumulate_keymap_stops_at_standard_buttons() -> None:
     assert cache.get_activity_command_refs(act) == {(0x03, 0x03), (0x03, 0x07)}
 
     assert cache.buttons.get(act, set()) == {0xAE}
+
+
+def test_activity_favorite_labels_with_slots() -> None:
+    cache = ActivityCache()
+    act = 0x21
+
+    cache.activity_favorite_slots[act] = [
+        {"button_id": 0xFE, "device_id": 0x10, "command_id": 0x05},
+        {"button_id": 0xFD, "device_id": 0x11, "command_id": 0x06},
+    ]
+
+    cache.record_favorite_label(act, 0x10, 0x05, "Fav One")
+    cache.record_favorite_label(act, 0x11, 0x06, "Fav Two")
+
+    favorites = cache.get_activity_favorite_labels(act)
+
+    assert favorites == [
+        {"name": "Fav One", "device_id": 0x10, "command_id": 0x05},
+        {"name": "Fav Two", "device_id": 0x11, "command_id": 0x06},
+    ]
