@@ -240,6 +240,13 @@ def _infer_command_entity(proxy: "X1Proxy", payload: bytes) -> int:
 def _extract_dev_id(raw: bytes, payload: bytes, opcode: int) -> int:
     """Determine device ID for a command burst frame."""
 
+    if (
+        opcode == OP_DEVBTN_SINGLE
+        and len(payload) > 7
+        and payload[:6] == b"\x01\x00\x01\x01\x00\x01"
+    ):
+        return payload[7]
+
     if opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1) and len(raw) > 11:
         return raw[11]
 
