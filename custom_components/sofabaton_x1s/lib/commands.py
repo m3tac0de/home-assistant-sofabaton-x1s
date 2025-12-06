@@ -114,6 +114,13 @@ class DeviceCommandAssembler:
             return []
 
         dev_id = dev_id_override if dev_id_override is not None else payload[3]
+        if (
+            opcode == OP_DEVBTN_SINGLE
+            and dev_id_override is None
+            and payload[:6] == b"\x01\x00\x01\x01\x00\x01"
+            and len(payload) > 7
+        ):
+            dev_id = payload[7]
         frame_no = payload[2]
         burst = self._get_buffer(dev_id)
 
