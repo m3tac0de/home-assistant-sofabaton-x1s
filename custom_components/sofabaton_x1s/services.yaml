@@ -61,7 +61,7 @@ create_ip_button:
         text:
     url:
       name: Request URL
-      description: Full HTTP/HTTPS URL for the command.
+      description: Full HTTP URL for the command.
       required: true
       selector:
         text:
