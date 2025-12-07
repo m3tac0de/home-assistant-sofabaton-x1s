@@ -290,15 +290,33 @@ Go to `Developer Tools → States → sensor.<hub>_index` to see the contents of
 After you call the fetch service, the Index sensor will look something like this:
 
 ```yaml
-commands:
-  "3 (Denon AVR)":
-    - code: 11
-      name: Sleep
-    - code: 55
-      name: Set Disco Mode
-  "102 (Watch a Movie)":
-    - code: 1
-      name: Power On
+activities:
+  "103":
+    name: Play Switch 2
+    active: false
+    macros:
+      - name: Test Macro 1
+        code: 1
+      - name: Test Macro 2
+        code: 5
+    favorites:
+      - name: Exit
+        device: 1
+        code: 2
+      - name: "0"
+        device: 3
+        code: 3
+devices:
+  "1":
+    brand: AWOL Vision
+    name: AWOLVision LTV-3500
+    commands:
+      - code: 1
+        name: Brightness
+      - code: 2
+        name: Exit
+      - code: 3
+        name: Guide
 ```
 
 Use this to discover the numeric command IDs you want to send with `remote.send_command` (advanced form with `device:`).

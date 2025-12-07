@@ -96,10 +96,9 @@ class SofabatonIndexSensor(SensorEntity):
     def extra_state_attributes(self) -> dict:
         # commands (per-entity, already in proxy cache)
         commands_raw = self._hub.get_all_cached_commands()
-        decorated_commands: dict[str, list[dict[str, str | int]]] = {}
+        decorated_commands: dict[int, list[dict[str, str | int]]] = {}
         for ent_id, cmd_map in commands_raw.items():
-            label = self._label_for_ent(ent_id)
-            decorated_commands[label] = [
+            decorated_commands[ent_id] = [
                 {
                     "code": int(code),
                     "name": name,
@@ -107,22 +106,9 @@ class SofabatonIndexSensor(SensorEntity):
                 for code, name in cmd_map.items()
             ]
 
-        # activity favorites
-        favorite_commands = self._hub.get_activity_favorites()
-        decorated_favorites: dict[str, list[dict[str, str | int]]] = {}
-        for ent_id, favorites in favorite_commands.items():
-            label = self._label_for_ent(ent_id)
-            decorated_favorites[label] = [
-                {
-                    "name": fav.get("name"),
-                    "device": fav.get("device_id"),
-                    "code": fav.get("command_id"),
-                }
-                for fav in favorites
-            ]
-
         macros_by_activity = self._hub.get_all_cached_macros()
-        decorated_activities: dict[int, dict[str, object]] = {}
+        favorite_commands = self._hub.get_activity_favorites()
+        decorated_activities: dict[str, dict[str, object]] = {}
         for act_id, activity in self._hub.activities.items():
             activity_attrs: dict[str, object] = dict(activity)
             macros = macros_by_activity.get(act_id, [])
@@ -135,14 +121,32 @@ class SofabatonIndexSensor(SensorEntity):
                 if macro.get("command_id") is not None
             ]
 
-            decorated_activities[act_id] = activity_attrs
+            favorites = favorite_commands.get(act_id, [])
+            activity_attrs["favorites"] = [
+                {
+                    "name": fav.get("name"),
+                    "device": fav.get("device_id"),
+                    "code": fav.get("command_id"),
+                }
+                for fav in favorites
+            ]
+
+            if act_id in decorated_commands:
+                activity_attrs["commands"] = decorated_commands[act_id]
+
+            decorated_activities[str(act_id)] = activity_attrs
+
+        decorated_devices: dict[str, dict[str, object]] = {}
+        for dev_id, device in getattr(self._hub, "devices", {}).items():
+            device_attrs: dict[str, object] = dict(device)
+
+            device_attrs["commands"] = decorated_commands.get(dev_id, [])
+
+            decorated_devices[str(dev_id)] = device_attrs
 
         return {
             "activities": decorated_activities,
-            "devices": getattr(self._hub, "devices", {}),
-            "current_activity": self._hub.current_activity,
-            "commands": decorated_commands,
-            "activity_favorites": decorated_favorites,
+            "devices": decorated_devices,
         }
 
 class SofabatonActivitySensor(SensorEntity):
