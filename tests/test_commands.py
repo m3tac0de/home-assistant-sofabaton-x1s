@@ -27,6 +27,7 @@ from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     DeviceButtonHeaderHandler,
     DeviceButtonPayloadHandler,
+    DeviceButtonFamilyHandler,
     DeviceButtonSingleHandler,
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
@@ -148,6 +149,84 @@ def test_device_button_header_handler_merges_existing_commands(monkeypatch) -> N
     handler.handle(frame)
 
     assert proxy.state.commands[dev_id] == {1: "Existing", 2: "New"}
+
+
+def test_device_button_family_handler_handles_header_family_variants(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonFamilyHandler()
+
+    captured: list[tuple[int, bytes]] = []
+
+    monkeypatch.setattr(proxy, "parse_device_commands", lambda payload, dev_id: captured.append((dev_id, payload)) or {})
+
+    dev_id = 0x2A
+    alt_header_opcode = OP_DEVBTN_HEADER ^ 0x0100
+    header_raw = _build_frame(alt_header_opcode, 1, 2, dev_id, b"abc")
+    tail_raw = _build_frame(OP_DEVBTN_TAIL, 2, 2, dev_id, b"def")
+
+    header_frame = FrameContext(
+        proxy=proxy,
+        opcode=alt_header_opcode,
+        direction="H→A",
+        payload=header_raw[4:-1],
+        raw=header_raw,
+        name="DEVBTN_HEADER_ALT",
+    )
+
+    tail_frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_TAIL,
+        direction="H→A",
+        payload=tail_raw[4:-1],
+        raw=tail_raw,
+        name="DEVBTN_TAIL",
+    )
+
+    handler.handle(header_frame)
+    handler.handle(tail_frame)
+
+    assert captured[0][0] == dev_id
+    assert captured[0][1] == b"abcdef"
+
+
+def test_device_button_family_handler_handles_single_family_variants(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonFamilyHandler()
+
+    parsed: list[tuple[int, dict[int, str]]] = []
+
+    monkeypatch.setattr(
+        proxy,
+        "parse_device_commands",
+        lambda payload, dev_id: parsed.append((dev_id, {2: "Exit"})) or {2: "Exit"},
+    )
+
+    raw = bytearray(
+        bytes.fromhex(
+            "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+        )
+    )
+
+    raw[2] = 0x6D
+    raw[-1] = sum(raw[:-1]) & 0xFF
+    opcode = (raw[2] << 8) | raw[3]
+    payload = bytes(raw[4:-1])
+
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=opcode,
+        direction="H→A",
+        payload=payload,
+        raw=bytes(raw),
+        name="DEVBTN_SINGLE_ALT",
+    )
+
+    handler.handle(frame)
+
+    assert parsed and parsed[0][0] == 1
+    assert parsed[0][1] == {2: "Exit"}
 
 
 def test_device_button_payload_handler_merges_existing_commands(monkeypatch) -> None:

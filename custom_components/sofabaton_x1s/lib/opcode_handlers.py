@@ -12,6 +12,7 @@ from .macros import MacroAssembler, decode_macro_records
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
+    FAMILY_DEVBTNS,
     FAMILY_MACROS,
     FAMILY_KEYMAP,
     OP_ACK_READY,
@@ -59,6 +60,7 @@ from .protocol_const import (
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
     OP_KEYMAP_EXTRA,
+    opcode_family,
 )
 from .x1_proxy import log
 
@@ -123,6 +125,30 @@ def _decode_ascii_blocks(payload: bytes) -> list[str]:
     decoded = payload.decode("utf-8", errors="ignore")
     parts = [p.strip("\x00") for p in decoded.replace("\r", "\n").split("\n") if p.strip("\x00")]
     return parts
+
+
+def _is_probable_header_frame(payload: bytes) -> bool:
+    """Heuristic to identify DEVBTN header pages when only the family matches."""
+
+    if len(payload) < 6:
+        return False
+
+    frame_no = payload[2]
+    total_frames = int.from_bytes(payload[4:6], "big")
+
+    return frame_no == 1 and total_frames > 1
+
+
+def _is_probable_single_command(payload: bytes) -> bool:
+    """Heuristic to identify single-command DEVBTN responses within the family."""
+
+    if len(payload) < 6:
+        return False
+
+    frame_no = payload[2]
+    total_frames = int.from_bytes(payload[4:6], "big")
+
+    return frame_no == 1 and total_frames <= 1
 
 
 @register_handler(opcode_families_low=(FAMILY_MACROS,), directions=("H→A",))
@@ -819,7 +845,6 @@ class RequestCommandsHandler(BaseFrameHandler):
         log.info("[DEVCTL] A→H requesting commands dev=0x%02X (%d)", dev_id, dev_id)
 
 
-@register_handler(opcodes=(OP_DEVBTN_SINGLE,), directions=("H→A",))
 class DeviceButtonSingleHandler(BaseFrameHandler):
     """Handle single-command payloads returned by :opcode:`OP_REQ_COMMANDS`."""
 
@@ -828,10 +853,16 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
         payload = frame.payload
         raw = frame.raw
 
+        effective_opcode = (
+            OP_DEVBTN_SINGLE
+            if opcode_family(frame.opcode) == FAMILY_DEVBTNS
+            else frame.opcode
+        )
+
         if len(payload) < 4:
             return
 
-        dev_id = _extract_dev_id(raw, payload, frame.opcode)
+        dev_id = _extract_dev_id(raw, payload, effective_opcode)
 
         now = time.monotonic()
         if proxy._burst.active and (proxy._burst.kind or "").startswith("commands:"):
@@ -839,7 +870,9 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
         else:
             proxy._burst.start(f"commands:{dev_id}", now=now)
 
-        completed = proxy._command_assembler.feed(frame.opcode, raw, dev_id_override=dev_id)
+        completed = proxy._command_assembler.feed(
+            effective_opcode, raw, dev_id_override=dev_id
+        )
         for complete_dev_id, assembled_payload in completed:
             commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
             if commands:
@@ -883,7 +916,6 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
                     )
 
 
-@register_handler(opcodes=(OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1), directions=("H→A",))
 class DeviceButtonHeaderHandler(BaseFrameHandler):
     """Start device-command burst parsing."""
 
@@ -911,19 +943,6 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
                 )
 
 
-@register_handler(
-    opcodes=(
-        OP_DEVBTN_PAGE,
-        OP_DEVBTN_MORE,
-        OP_DEVBTN_TAIL,
-        OP_DEVBTN_PAGE_ALT1,
-        OP_DEVBTN_PAGE_ALT2,
-        OP_DEVBTN_PAGE_ALT3,
-        OP_DEVBTN_PAGE_ALT4,
-        OP_DEVBTN_PAGE_ALT5,
-    ),
-    directions=("H→A",),
-)
 class DeviceButtonPayloadHandler(BaseFrameHandler):
     """Accumulate device command pages."""
 
@@ -956,3 +975,27 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
                 log.info(
                     " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in existing.items())
                 )
+
+
+@register_handler(opcode_families_low=(FAMILY_DEVBTNS,), directions=("H→A",))
+class DeviceButtonFamilyHandler(BaseFrameHandler):
+    """Route all device-button family responses using heuristics."""
+
+    def __init__(self) -> None:
+        self._single = DeviceButtonSingleHandler()
+        self._header = DeviceButtonHeaderHandler()
+        self._payload = DeviceButtonPayloadHandler()
+
+    def handle(self, frame: FrameContext) -> None:
+        opcode = frame.opcode
+        payload = frame.payload
+
+        if opcode == OP_DEVBTN_SINGLE or _is_probable_single_command(payload):
+            self._single.handle(frame)
+            return
+
+        if opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1) or _is_probable_header_frame(payload):
+            self._header.handle(frame)
+            return
+
+        self._payload.handle(frame)
