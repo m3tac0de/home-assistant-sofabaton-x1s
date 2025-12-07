@@ -45,10 +45,10 @@ def test_family_constants_align_with_examples() -> None:
     assert const.FAMILY_ACT_ROW == const.opcode_lo(const.OP_CATALOG_ROW_ACTIVITY)
     assert const.FAMILY_ACT_ROW == const.opcode_lo(const.OP_X1_ACTIVITY)
 
-    assert const.FAMILY_LABELS == const.opcode_lo(const.OP_LABELS_A1)
-    assert const.FAMILY_LABELS == const.opcode_lo(const.OP_LABELS_B1)
-    assert const.FAMILY_LABELS == const.opcode_lo(const.OP_LABELS_A2)
-    assert const.FAMILY_LABELS == const.opcode_lo(const.OP_LABELS_B2)
+    assert const.FAMILY_MACROS == const.opcode_lo(const.OP_MACROS_A1)
+    assert const.FAMILY_MACROS == const.opcode_lo(const.OP_MACROS_B1)
+    assert const.FAMILY_MACROS == const.opcode_lo(const.OP_MACROS_A2)
+    assert const.FAMILY_MACROS == const.opcode_lo(const.OP_MACROS_B2)
 
     assert const.FAMILY_KEYMAP == const.opcode_lo(const.OP_KEYMAP_TBL_A)
     assert const.FAMILY_KEYMAP == const.opcode_lo(const.OP_KEYMAP_EXTRA)

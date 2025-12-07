@@ -100,11 +100,11 @@ OP_CALL_ME = 0x0CC3
 # noise we're not using (kept for reference)
 OP_REQ_VERSION = 0x0058  # yields WIFI_FW (0x0359) then INFO_BANNER (0x112F)
 OP_PING2 = 0x0140
-OP_REQ_KEYLABELS = 0x024D  # payload: [act_lo, 0xFF]
-OP_LABELS_A1 = 0x6E13
-OP_LABELS_B1 = 0x5A13
-OP_LABELS_A2 = 0x8213
-OP_LABELS_B2 = 0x6413
+OP_REQ_MACROS = 0x024D  # payload: [act_lo, 0xFF]
+OP_MACROS_A1 = 0x6E13
+OP_MACROS_B1 = 0x5A13
+OP_MACROS_A2 = 0x8213
+OP_MACROS_B2 = 0x6413
 OP_BANNER = 0x1D02  # hub ident, name, batch, hub fw (first screen)
 OP_WIFI_FW = 0x0359  # WiFi firmware ver (Vx.y.z)
 OP_INFO_BANNER = 0x112F  # vendor tag, batch date, remote fw byte, etc.
@@ -160,11 +160,11 @@ OPNAMES: Dict[int, str] = {
     OP_BANNER: "BANNER",
     OP_WIFI_FW: "WIFI_FW",
     OP_INFO_BANNER: "INFO_BANNER",
-    OP_LABELS_A1: "KEY_LABELS_A1",
-    OP_LABELS_B1: "KEY_LABELS_B1",
-    OP_LABELS_A2: "KEY_LABELS_A2",
-    OP_LABELS_B2: "KEY_LABELS_B2",
-    OP_REQ_KEYLABELS: "REQ_KEYLABELS",
+    OP_MACROS_A1: "MACROS_A1",
+    OP_MACROS_B1: "MACROS_B1",
+    OP_MACROS_A2: "MACROS_A2",
+    OP_MACROS_B2: "MACROS_B2",
+    OP_REQ_MACROS: "REQ_MACROS",
     OP_REQ_VERSION: "REQ_VERSION",
     OP_PING2: "PING2",
 }
@@ -191,7 +191,7 @@ def opcode_family(opcode: int) -> int:
 # Known opcode families (low byte) grouped by semantic row/page type
 FAMILY_DEV_ROW = 0x0B  # device catalog rows (OP_CATALOG_ROW_DEVICE, OP_X1_DEVICE)
 FAMILY_ACT_ROW = 0x3B  # activity catalog rows (OP_CATALOG_ROW_ACTIVITY, OP_X1_ACTIVITY)
-FAMILY_LABELS = 0x13  # key label pages (OP_LABELS_A1/B1/A2/B2)
+FAMILY_MACROS = 0x13  # macro pages (OP_MACROS_A1/B1/A2/B2)
 FAMILY_KEYMAP = 0x3D  # keymap / continuation / devbtn-extra pages
 FAMILY_DEVBTNS = 0x5D  # device button pages (header, body, tail, variants)
 
@@ -262,11 +262,11 @@ __all__ = [
     "OP_CALL_ME",
     "OP_REQ_VERSION",
     "OP_PING2",
-    "OP_REQ_KEYLABELS",
-    "OP_LABELS_A1",
-    "OP_LABELS_B1",
-    "OP_LABELS_A2",
-    "OP_LABELS_B2",
+    "OP_REQ_MACROS",
+    "OP_MACROS_A1",
+    "OP_MACROS_B1",
+    "OP_MACROS_A2",
+    "OP_MACROS_B2",
     "OP_BANNER",
     "OP_WIFI_FW",
     "OP_INFO_BANNER",
@@ -276,7 +276,7 @@ __all__ = [
     "opcode_family",
     "FAMILY_DEV_ROW",
     "FAMILY_ACT_ROW",
-    "FAMILY_LABELS",
+    "FAMILY_MACROS",
     "FAMILY_KEYMAP",
     "FAMILY_DEVBTNS",
 ]
