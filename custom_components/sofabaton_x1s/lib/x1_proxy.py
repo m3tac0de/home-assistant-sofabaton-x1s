@@ -213,6 +213,7 @@ class X1Proxy:
         # Track pending command fetches per device, so multiple targeted
         # lookups for the same device (different commands) can be queued.
         self._pending_command_requests: dict[int, set[int]] = {}
+        self._commands_complete: set[int] = set()
         self._favorite_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._activity_listeners: list[callable] = []
         self._hub_state_listeners: list[callable] = []
@@ -465,8 +466,11 @@ class X1Proxy:
 
     def get_commands_for_entity(self, ent_id: int, *, fetch_if_missing: bool = True) -> tuple[dict[int, str], bool]:
         ent_lo = ent_id & 0xFF
-        if ent_lo in self.state.commands:
-            return (dict(self.state.commands[ent_lo]), True)
+        commands = self.state.commands.get(ent_lo)
+        complete = ent_lo in self._commands_complete
+
+        if commands is not None and complete:
+            return (dict(commands), True)
 
         if fetch_if_missing and self.can_issue_commands():
             pending = self._pending_command_requests.setdefault(ent_lo, set())
@@ -478,6 +482,9 @@ class X1Proxy:
                     expects_burst=True,
                     burst_kind=f"commands:{ent_lo}",
                 )
+
+        if commands is not None:
+            return (dict(commands), complete)
 
         return ({}, False)
 
@@ -611,6 +618,7 @@ class X1Proxy:
         ent_lo = ent_id & 0xFF
 
         self.state.commands.pop(ent_lo, None)
+        self._commands_complete.discard(ent_lo)
         self._pending_command_requests.pop(ent_lo, None)
 
         if clear_buttons:
@@ -993,6 +1001,7 @@ class X1Proxy:
                     pending.discard(cmd_id)
             else:
                 pending.discard(0xFF)
+                self._commands_complete.add(ent_lo)
 
             if not pending:
                 self._pending_command_requests.pop(ent_lo, None)
