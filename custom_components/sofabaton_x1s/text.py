@@ -29,6 +29,7 @@ class SofabatonHubIpText(TextEntity):
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.CONFIG
     _attr_icon = "mdi:ip"
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
