@@ -95,6 +95,9 @@ class DeviceCommandAssembler:
         ):
             return 4
 
+        if opcode == OP_DEVBTN_SINGLE:
+            return 7
+        
         return 6
 
     def feed(
