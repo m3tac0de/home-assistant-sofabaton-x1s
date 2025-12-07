@@ -36,19 +36,17 @@ So essentially: this integration is a proxy service for the Sofabaton X1/X1S hub
 - 🛠 **Action**
   - to fetch commands for a specific device/activity
   - because key maps are both slow to retrieve from the hub, and static at the same time (until you change configuration through the official app), we do not need to retrieve these key maps all the time. We can just do it once (using the fetch Action), look at the mapping, and then use remote.send_command using those values.
-- 🧪 **Diagnostic “Index” sensor**:
-  - lists activities and devices
-  - lists cached commands for each device (after you fetch them) and buttons for activities
-  - shows `loading` when we’re actively retrieving commands
 - 🔔 **Find Remote diagnostic button**:
   - triggers the hub’s “find my remote” buzzer directly from Home Assistant
   - available while the proxy can issue commands (when the official app is not connected)
 - 🟢 **Sensors**:
   - “activity” (shows the current Activity)
-  - “recorded_keypress” (shows how to replay the most recently pressed button in the Sofabaton app, while it is connected to the virtual hub)
+  - “recorded keypress” (shows how to replay the most recently pressed button in the Sofabaton app, while it is connected to the virtual hub)
   - “hub connected” (are we connected to the physical hub?)
   - “app connected” (is the official app using our virtual hub?)
   - sensors maintain state accurately, regardless of how that state is set. So whether you change activity through Home Assistant, the official app, the physical remote or something like Alexa; the sensors will reflect accurate state.
+- 🧪 **Diagnostic “Index” sensor**:
+  - used in combination with the “fetch_device_commands” Action to retrieve the commands the hub knows about
 - 🛰 **X1/X1S Proxy**:
   - although enabled by default, the proxy capability (the ability for the official app to connect while this integration is running) can be disabled in device settings (it will then no longer advertise and bind to a UDP port)
 
@@ -162,8 +160,8 @@ You should see:
     - switches proxy capability of the integration on and off (mDNS advertising and UDP port binding)
     - note that active connections are not interupted when proxy is switched off, it will just stop accepting new ones
   - `switch.<hub>_hex_logging`
-	- when this is switched on, and you enable debug logging for the integration, all communication between hub and client is now dropped in the Home Assistant log.
-	- useful for improving the integration
+	- when this is switched on, all communication between hub and client is now available in logs via "Diagnostic download".
+	- sharing your logs is useful for improving the integration
 
 - **Binary/normal sensors**:
   - `binary_sensor.<hub>_hub_status` → `connected` / `disconnected` is the physical hub connected to us
@@ -182,14 +180,6 @@ You should see:
   - `button.<hub>_mute`
   - … plus the other Sofabaton button codes
   - availability depends on the **currently active activity**
-
----
-
-## Creating virtual IP buttons
-
-The integration can provision a simple HTTP-backed virtual device/button on the hub using the `sofabaton_x1s.create_ip_button` service. Provide a device name, button label, HTTP method, full URL (including scheme/host), and optional headers mapping. You can also supply an existing `device_id` to append the new command as another button on that device instead of creating a fresh device. The proxy mirrors the app’s observed frame layout (UTF-16LE padded names plus length-prefixed method/URL/header blobs) and returns the hub-assigned `device_id`/`button_id` when the transaction succeeds. Be sure the proxy can issue commands (the official app must not be connected) before invoking the service.
-
-Verbose logging is emitted while the frame sequence is sent and while the hub acknowledges creation. Enabling the hex logging switch can help if the hub rejects a payload; the diagnostics will contain the exact frames sent and responses received.
 
 ---
 
@@ -295,9 +285,9 @@ activities:
     name: Play Switch 2
     active: false
     macros:
-      - name: Test Macro 1
+      - name: Dim all lights
         code: 1
-      - name: Test Macro 2
+      - name: Order a pizza
         code: 5
     favorites:
       - name: Exit
@@ -320,8 +310,6 @@ devices:
 ```
 
 Use this to discover the numeric command IDs you want to send with `remote.send_command` (advanced form with `device:`).
-
-That way we stay fast in normal operation, but you can still explore everything the hub knows.
 
 ---
 
