@@ -56,8 +56,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
-    if not hass.services.has_service(DOMAIN, "create_ip_button"):
-        hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
+    #if not hass.services.has_service(DOMAIN, "create_ip_button"):
+    #    hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
         
     hass.data[DOMAIN][entry.entry_id] = hub
 
@@ -91,7 +91,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, "fetch_device_commands")
-            hass.services.async_remove(DOMAIN, "create_ip_button")
+            #hass.services.async_remove(DOMAIN, "create_ip_button")
             async_teardown_diagnostics(hass)
             hass.data.pop(DOMAIN)
         async_disable_hex_logging_capture(hass, entry.entry_id)
