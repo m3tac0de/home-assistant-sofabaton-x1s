@@ -217,6 +217,7 @@ def test_clear_entity_cache_resets_all(monkeypatch) -> None:
         {"button_id": 0xFE, "device_id": 0x10, "command_id": 0x99}
     ]
     proxy._pending_command_requests[ent_lo] = {0xFF}
+    proxy._commands_complete.add(ent_lo)
     proxy._pending_button_requests.add(ent_lo)
 
     proxy.clear_entity_cache(ent_id, True, True)
@@ -226,5 +227,66 @@ def test_clear_entity_cache_resets_all(monkeypatch) -> None:
     assert ent_lo not in proxy.state.activity_command_refs
     assert ent_lo not in proxy.state.activity_favorite_slots
     assert ent_lo not in proxy._pending_command_requests
+    assert ent_lo not in proxy._commands_complete
     assert ent_lo not in proxy._pending_button_requests
+
+
+def test_partial_commands_still_trigger_full_fetch(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    ent_id = 0x07
+    ent_lo = ent_id & 0xFF
+    proxy.state.commands[ent_lo] = {0x01: "Exit"}
+
+    enqueued: list[tuple] = []
+
+    def fake_enqueue(opcode, payload, expects_burst=False, burst_kind=None):
+        enqueued.append((opcode, payload, expects_burst, burst_kind))
+
+    monkeypatch.setattr(proxy, "enqueue_cmd", fake_enqueue)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    cmds, ready = proxy.get_commands_for_entity(ent_id)
+
+    assert cmds == {0x01: "Exit"}
+    assert not ready
+    assert enqueued == [
+        (OP_REQ_COMMANDS, b"\x07\xff", True, "commands:7"),
+    ]
+
+    # When the burst for the full list ends, the cache becomes authoritative
+    proxy._on_commands_burst_end("commands:7")
+
+    enqueued.clear()
+    cmds, ready = proxy.get_commands_for_entity(ent_id)
+
+    assert cmds == {0x01: "Exit"}
+    assert ready
+    assert enqueued == []
+
+
+def test_single_command_burst_end_clears_pending_without_completion() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    ent_id = 0x09
+    ent_lo = ent_id & 0xFF
+    proxy._pending_command_requests[ent_lo] = {0x03}
+
+    proxy._on_commands_burst_end("commands:9")
+
+    assert ent_lo not in proxy._pending_command_requests
+    assert ent_lo not in proxy._commands_complete
+
+
+def test_targeted_command_burst_end_only_drops_matching_pending() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    ent_id = 0x0A
+    ent_lo = ent_id & 0xFF
+    proxy._pending_command_requests[ent_lo] = {0x01, 0x02}
+
+    proxy._on_commands_burst_end("commands:10:1")
+
+    assert proxy._pending_command_requests[ent_lo] == {0x02}
+    assert ent_lo not in proxy._commands_complete
 
