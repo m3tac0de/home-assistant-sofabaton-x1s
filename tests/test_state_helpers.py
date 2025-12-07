@@ -148,3 +148,17 @@ def test_activity_favorite_labels_with_slots() -> None:
         {"name": "Fav One", "device_id": 0x10, "command_id": 0x05},
         {"name": "Fav Two", "device_id": 0x11, "command_id": 0x06},
     ]
+
+
+def test_activity_macros_are_replaced_and_deduped() -> None:
+    cache = ActivityCache()
+    act = 0x12
+
+    cache.replace_activity_macros(act, [{"command_id": 1, "label": "Macro One"}])
+    cache.append_activity_macro(act, 1, "Updated Macro One")
+    cache.append_activity_macro(act, 2, "Macro Two")
+
+    macros = cache.get_activity_macros(act)
+
+    assert {entry["command_id"] for entry in macros} == {1, 2}
+    assert any(entry["command_id"] == 1 and entry["label"] == "Updated Macro One" for entry in macros)
