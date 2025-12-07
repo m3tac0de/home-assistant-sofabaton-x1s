@@ -59,7 +59,7 @@ from .protocol_const import (
     OP_REQ_COMMANDS,
     OP_REQ_IPCMD_SYNC,
     OP_REQ_DEVICES,
-    OP_REQ_MACROS,
+    OP_REQ_MACRO_LABELS,
     OP_REQ_VERSION,
     OP_WIFI_FW,
     SYNC0,
@@ -216,6 +216,8 @@ class X1Proxy:
         # lookups for the same device (different commands) can be queued.
         self._pending_command_requests: dict[int, set[int]] = {}
         self._commands_complete: set[int] = set()
+        self._pending_macro_requests: set[int] = set()
+        self._macros_complete: set[int] = set()
         self._favorite_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._activity_listeners: list[callable] = []
         self._hub_state_listeners: list[callable] = []
@@ -248,6 +250,7 @@ class X1Proxy:
 
         self._burst.on_burst_end("buttons", self._on_buttons_burst_end)
         self._burst.on_burst_end("commands", self._on_commands_burst_end)
+        self._burst.on_burst_end("macros", self._on_macros_burst_end)
         self.on_burst_end("activities", self.handle_active_state)
 
         self._hub_connected: bool = False
@@ -405,6 +408,26 @@ class X1Proxy:
         self.enqueue_cmd(OP_REQ_COMMANDS, bytes([ent_lo, 0xFF]), expects_burst=True, burst_kind=f"commands:{ent_lo}")
         return True
 
+    def request_macros_for_activity(self, act_id: int) -> bool:
+        if not self.can_issue_commands():
+            log.info("[CMD] request_macros_for_activity ignored: proxy client is connected"); return False
+
+        act_lo = act_id & 0xFF
+        if act_lo in self._pending_macro_requests:
+            log.debug(
+                "[CMD] request_macros_for_activity ignored: burst already pending for 0x%02X",
+                act_lo,
+            )
+            return False
+
+        self._pending_macro_requests.add(act_lo)
+        return self.enqueue_cmd(
+            OP_REQ_MACRO_LABELS,
+            bytes([act_lo, 0xFF]),
+            expects_burst=True,
+            burst_kind=f"macros:{act_lo}",
+        )
+
     def request_ip_commands_for_device(self, dev_id: int, *, wait: bool = False, timeout: float = 1.0) -> bool:
         """Fetch IP command definitions for an existing device."""
 
@@ -489,6 +512,26 @@ class X1Proxy:
             return (dict(commands), complete)
 
         return ({}, False)
+
+    def get_macros_for_activity(self, act_id: int, *, fetch_if_missing: bool = True) -> tuple[list[dict[str, int | str]], bool]:
+        act_lo = act_id & 0xFF
+        macros = self.state.get_activity_macros(act_lo)
+        ready = act_lo in self._macros_complete
+
+        if macros and ready:
+            return (macros, True)
+
+        if fetch_if_missing and self.can_issue_commands():
+            if act_lo not in self._pending_macro_requests:
+                self._pending_macro_requests.add(act_lo)
+                self.enqueue_cmd(
+                    OP_REQ_MACRO_LABELS,
+                    bytes([act_lo, 0xFF]),
+                    expects_burst=True,
+                    burst_kind=f"macros:{act_lo}",
+                )
+
+        return (macros, ready)
 
     def get_single_command_for_entity(
         self,
@@ -614,6 +657,7 @@ class X1Proxy:
         ent_id: int,
         clear_buttons: bool = False,
         clear_favorites: bool = False,
+        clear_macros: bool = False,
     ) -> None:
         """Remove cached data for a given entity."""
 
@@ -632,6 +676,11 @@ class X1Proxy:
             self.state.activity_favorite_slots.pop(ent_lo, None)
             self.state.activity_favorite_labels.pop(ent_lo, None)
             self._clear_favorite_label_requests_for_activity(ent_lo)
+
+        if clear_macros:
+            self.state.activity_macros.pop(ent_lo, None)
+            self._macros_complete.discard(ent_lo)
+            self._pending_macro_requests.discard(ent_lo)
 
     def _clear_favorite_label_requests_for_activity(self, act_lo: int) -> None:
         to_delete: list[tuple[int, int]] = []
@@ -1013,6 +1062,20 @@ class X1Proxy:
                 self._pending_command_requests.pop(ent_lo, None)
         else:
             self._pending_command_requests.clear()
+
+    def _on_macros_burst_end(self, key: str) -> None:
+        parts = key.split(":")
+        if len(parts) >= 2 and parts[0] == "macros":
+            try:
+                act_lo = int(parts[1])
+            except ValueError:
+                self._pending_macro_requests.clear()
+                return
+
+            self._pending_macro_requests.discard(act_lo)
+            self._macros_complete.add(act_lo)
+        else:
+            self._pending_macro_requests.clear()
 
     def _on_buttons_burst_end(self, key: str) -> None:
         if ":" in key:
