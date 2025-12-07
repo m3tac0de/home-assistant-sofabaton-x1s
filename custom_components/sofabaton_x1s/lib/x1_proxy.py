@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import DeviceCommandAssembler
+from .macros import MacroAssembler
 
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
@@ -208,6 +209,7 @@ class X1Proxy:
 
         self.state = ActivityCache()
         self._command_assembler = DeviceCommandAssembler()
+        self._macro_assembler = MacroAssembler()
         self._burst = BurstScheduler()
         self._pending_button_requests: set[int] = set()
         # Track pending command fetches per device, so multiple targeted

@@ -21,6 +21,7 @@ class ActivityCache:
         self.activity_command_refs: dict[int, set[tuple[int, int]]] = defaultdict(set)
         self.activity_favorite_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
         self.activity_favorite_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
+        self.activity_macros: dict[int, list[dict[str, int | str]]] = defaultdict(list)
         # Only track the most recent activation to avoid unbounded growth
         self.app_activations: Deque[dict[str, Any]] = deque(maxlen=1)
 
@@ -145,6 +146,29 @@ class ActivityCache:
             )
 
         return favorites
+
+    def replace_activity_macros(
+        self, act_lo: int, macros: list[dict[str, int | str]]
+    ) -> None:
+        """Replace the cached macro list for ``act_lo``."""
+
+        self.activity_macros[act_lo & 0xFF] = list(macros)
+
+    def append_activity_macro(self, act_lo: int, command_id: int, label: str) -> None:
+        """Record a single macro entry for an activity."""
+
+        target = self.activity_macros.setdefault(act_lo & 0xFF, [])
+        for entry in target:
+            if entry.get("command_id") == command_id:
+                entry["label"] = label
+                return
+
+        target.append({"command_id": command_id, "label": label})
+
+    def get_activity_macros(self, act_lo: int) -> list[dict[str, int | str]]:
+        """Return the known macro definitions for ``act_lo``."""
+
+        return list(self.activity_macros.get(act_lo & 0xFF, []))
 
     def parse_device_commands(self, payload: bytes, dev_id: int) -> Dict[int, str]:
         commands_found: Dict[int, str] = {}

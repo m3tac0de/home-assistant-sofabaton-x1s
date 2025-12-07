@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import re
 import time
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from .frame_handlers import BaseFrameHandler, FrameContext, register_handler
+from .macros import MacroAssembler, decode_macro_records
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
+    FAMILY_MACROS,
     FAMILY_KEYMAP,
     OP_ACK_READY,
     OP_CATALOG_ROW_ACTIVITY,
@@ -24,6 +27,10 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT5,
     OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
+    OP_MACROS_A1,
+    OP_MACROS_A2,
+    OP_MACROS_B1,
+    OP_MACROS_B2,
     OP_KEYMAP_CONT,
     OP_KEYMAP_TBL_A,
     OP_KEYMAP_TBL_B,
@@ -116,6 +123,39 @@ def _decode_ascii_blocks(payload: bytes) -> list[str]:
     decoded = payload.decode("utf-8", errors="ignore")
     parts = [p.strip("\x00") for p in decoded.replace("\r", "\n").split("\n") if p.strip("\x00")]
     return parts
+
+
+@register_handler(opcode_families_low=(FAMILY_MACROS,), directions=("H→A",))
+class MacroHandler(BaseFrameHandler):
+    """Decode macro pages and populate the activity cache."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+
+        now = time.monotonic()
+        if proxy._burst.active and proxy._burst.kind == "macros":
+            proxy._burst.last_ts = now + proxy._burst.response_grace
+        else:
+            proxy._burst.start("macros", now=now)
+
+        completed = proxy._macro_assembler.feed(frame.opcode, frame.payload, frame.raw)
+        if not completed:
+            return
+
+        grouped: dict[int, list[dict[str, int | str]]] = defaultdict(list)
+
+        for activity_id, assembled in completed:
+            for act, command_id, label in decode_macro_records(assembled, activity_id):
+                grouped[act & 0xFF].append({"command_id": command_id, "label": label})
+
+        for act_lo, macros in grouped.items():
+            proxy.state.replace_activity_macros(act_lo, macros)
+            log.info(
+                "[MACRO] act=0x%02X macros{%d}: %s",
+                act_lo,
+                len(macros),
+                ", ".join(f"{m['command_id']}: {m['label']}" for m in macros),
+            )
 
 
 def _parse_header_lines(lines: list[str]) -> dict[str, str]:
