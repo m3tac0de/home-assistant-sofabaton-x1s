@@ -24,9 +24,14 @@ _ensure_stub_package("custom_components.sofabaton_x1s.lib", ROOT / "custom_compo
 
 from custom_components.sofabaton_x1s.lib.commands import DeviceCommandAssembler
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
-from custom_components.sofabaton_x1s.lib.opcode_handlers import DeviceButtonSingleHandler
+from custom_components.sofabaton_x1s.lib.opcode_handlers import (
+    DeviceButtonHeaderHandler,
+    DeviceButtonPayloadHandler,
+    DeviceButtonSingleHandler,
+)
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_DEVBTN_HEADER,
+    OP_DEVBTN_PAGE,
     OP_DEVBTN_TAIL,
     OP_DEVBTN_SINGLE,
     SYNC0,
@@ -110,6 +115,72 @@ def test_single_command_handler_logs_and_stores_state(caplog) -> None:
 
     assert proxy.state.commands[1] == {1: "Exit"}
     assert "1 : Exit" in caplog.text
+
+
+def test_device_button_header_handler_merges_existing_commands(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonHeaderHandler()
+
+    dev_id = 0x2A
+    proxy.state.commands[dev_id] = {1: "Existing"}
+
+    def fake_parse(payload: bytes, parsed_dev_id: int) -> dict[int, str]:
+        return {2: "New"}
+
+    monkeypatch.setattr(proxy, "parse_device_commands", fake_parse)
+    monkeypatch.setattr(
+        proxy._command_assembler,
+        "feed",
+        lambda opcode, raw, dev_id_override=None: [(dev_id, b"payload")],
+    )
+
+    raw = _build_frame(OP_DEVBTN_HEADER, 1, 1, dev_id, bytes([dev_id]))
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_HEADER,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_HEADER",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands[dev_id] == {1: "Existing", 2: "New"}
+
+
+def test_device_button_payload_handler_merges_existing_commands(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonPayloadHandler()
+
+    dev_id = 0x2A
+    proxy.state.commands[dev_id] = {1: "Existing"}
+
+    def fake_parse(payload: bytes, parsed_dev_id: int) -> dict[int, str]:
+        return {2: "New"}
+
+    monkeypatch.setattr(proxy, "parse_device_commands", fake_parse)
+    monkeypatch.setattr(
+        proxy._command_assembler,
+        "feed",
+        lambda opcode, raw, dev_id_override=None: [(dev_id, b"payload")],
+    )
+
+    raw = _build_frame(OP_DEVBTN_PAGE, 1, 1, dev_id, b"\x00\x00")
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_PAGE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_PAGE",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands[dev_id] == {1: "Existing", 2: "New"}
 
 
 def test_single_command_handler_routes_favorite_labels() -> None:

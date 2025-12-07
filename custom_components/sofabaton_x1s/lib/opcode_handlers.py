@@ -832,9 +832,11 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
         for complete_dev_id, assembled_payload in completed:
             commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
             if commands:
-                proxy.state.commands[complete_dev_id & 0xFF] = commands
+                dev_key = complete_dev_id & 0xFF
+                existing = proxy.state.commands.setdefault(dev_key, {})
+                existing.update(commands)
                 log.info(
-                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[complete_dev_id].items())
+                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in existing.items())
                 )
 
 
@@ -877,7 +879,9 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
         for complete_dev_id, assembled_payload in completed:
             commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
             if commands:
-                proxy.state.commands[complete_dev_id & 0xFF] = commands
+                dev_key = complete_dev_id & 0xFF
+                existing = proxy.state.commands.setdefault(dev_key, {})
+                existing.update(commands)
                 log.info(
-                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[complete_dev_id].items())
+                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in existing.items())
                 )
