@@ -992,16 +992,20 @@ class X1Proxy:
             if pending is None:
                 return
 
+            targeted_cmd: int | None = None
             if len(parts) >= 3:
                 try:
-                    cmd_id = int(parts[2])
+                    targeted_cmd = int(parts[2])
                 except ValueError:
-                    pending.clear()
-                else:
-                    pending.discard(cmd_id)
-            else:
+                    targeted_cmd = None
+
+            if targeted_cmd is not None:
+                pending.discard(targeted_cmd)
+            elif 0xFF in pending:
                 pending.discard(0xFF)
                 self._commands_complete.add(ent_lo)
+            else:
+                pending.clear()
 
             if not pending:
                 self._pending_command_requests.pop(ent_lo, None)

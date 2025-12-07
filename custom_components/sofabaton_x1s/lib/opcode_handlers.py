@@ -786,7 +786,11 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
 
         dev_id = _extract_dev_id(raw, payload, frame.opcode)
 
-        proxy._burst.start(f"commands:{dev_id}", now=time.monotonic())
+        now = time.monotonic()
+        if proxy._burst.active and (proxy._burst.kind or "").startswith("commands:"):
+            proxy._burst.last_ts = now + proxy._burst.response_grace
+        else:
+            proxy._burst.start(f"commands:{dev_id}", now=now)
 
         completed = proxy._command_assembler.feed(frame.opcode, raw, dev_id_override=dev_id)
         for complete_dev_id, assembled_payload in completed:

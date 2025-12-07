@@ -264,3 +264,29 @@ def test_partial_commands_still_trigger_full_fetch(monkeypatch) -> None:
     assert ready
     assert enqueued == []
 
+
+def test_single_command_burst_end_clears_pending_without_completion() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    ent_id = 0x09
+    ent_lo = ent_id & 0xFF
+    proxy._pending_command_requests[ent_lo] = {0x03}
+
+    proxy._on_commands_burst_end("commands:9")
+
+    assert ent_lo not in proxy._pending_command_requests
+    assert ent_lo not in proxy._commands_complete
+
+
+def test_targeted_command_burst_end_only_drops_matching_pending() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    ent_id = 0x0A
+    ent_lo = ent_id & 0xFF
+    proxy._pending_command_requests[ent_lo] = {0x01, 0x02}
+
+    proxy._on_commands_burst_end("commands:10:1")
+
+    assert proxy._pending_command_requests[ent_lo] == {0x02}
+    assert ent_lo not in proxy._commands_complete
+
