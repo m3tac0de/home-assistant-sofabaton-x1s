@@ -115,6 +115,34 @@ def test_parse_device_commands_handles_ascii_labels() -> None:
     }
 
 
+def test_parse_device_commands_handles_0x4d5d_pages() -> None:
+    proxy = X1Proxy("127.0.0.1")
+
+    frames = [
+        bytes.fromhex(
+            "a5 5a 4d 5d 01 00 01 01 00 01 01 01 03 0d 00 00 00 00 01 4b 00 47 00 75 00 69 00 64 00 65 00 00 00 00 00 00 00 00 00 00"
+            " 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+            " 00 00 ff f8"
+        ),
+        bytes.fromhex(
+            "a5 5a 4d 5d 01 00 01 01 00 01 01 01 05 0d 00 00 00 00 00 a6 00 50 00 61 00 75 00 73 00 65 00 00 00 00 00 00 00 00 00 00"
+            " 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+            " 00 00 ff 64"
+        ),
+    ]
+
+    parsed: dict[int, str] = {}
+
+    for frame in frames:
+        payload = frame[4:-1]
+        opcode = int.from_bytes(frame[2:4], "big")
+        data_offset = proxy._command_assembler._data_offset(opcode)  # type: ignore[attr-defined]
+        assembled_payload = payload[data_offset:]
+        parsed.update(proxy.parse_device_commands(assembled_payload, frame[11]))
+
+    assert parsed == {3: "Guide", 5: "Pause"}
+
+
 def test_parse_device_commands_handles_early_data_offset() -> None:
     proxy = X1Proxy("127.0.0.1")
     dev_id = 0x07

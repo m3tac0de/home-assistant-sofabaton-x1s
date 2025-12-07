@@ -59,6 +59,7 @@ OP_DEVBTN_PAGE = 0xD55D  # H→A: repeated pages with 2-3 entries each
 OP_DEVBTN_TAIL = 0x495D  # H→A: tail/terminator
 OP_DEVBTN_EXTRA = 0x303D  # H→A: small follow-up page sometimes present
 OP_DEVBTN_MORE = 0x8F5D  # H→A: small follow-up page sometimes present
+OP_DEVBTN_SINGLE = 0x4D5D  # H→A: single-command metadata page (response to targeted REQ_COMMANDS)
 OP_DEVBTN_PAGE_ALT1 = 0xF75D  # H→A: variant page layout with earlier payload offset
 OP_DEVBTN_PAGE_ALT2 = 0xA35D  # H→A: variant page layout with earlier payload offset
 OP_DEVBTN_PAGE_ALT3 = 0x2F5D  # H→A: variant page layout with earlier payload offset
@@ -124,6 +125,7 @@ OPNAMES: Dict[int, str] = {
     OP_DEVBTN_PAGE_ALT3: "DEVCTL_PAGE_ALT3",
     OP_DEVBTN_PAGE_ALT4: "DEVCTL_PAGE_ALT4",
     OP_DEVBTN_PAGE_ALT5: "DEVCTL_PAGE_ALT5",
+    OP_DEVBTN_SINGLE: "DEVCTL_PAGE_SINGLE",
     OP_X1_DEVICE: "X1_DEVICE",
     OP_X1_ACTIVITY: "X1_ACTIVITY",
     # The rest are unused but kept for completeness
@@ -165,6 +167,7 @@ __all__ = [
     "OP_DEVBTN_PAGE_ALT3",
     "OP_DEVBTN_PAGE_ALT4",
     "OP_DEVBTN_PAGE_ALT5",
+    "OP_DEVBTN_SINGLE",
     "OP_X1_DEVICE",
     "OP_X1_ACTIVITY",
     "OP_KEYMAP_TBL_A",

@@ -15,6 +15,7 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT3,
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
 )
 
@@ -66,6 +67,9 @@ class DeviceCommandAssembler:
             OP_DEVBTN_PAGE_ALT5,
         ):
             return 4
+
+        if opcode == OP_DEVBTN_SINGLE:
+            return 7
 
         return 6
 
