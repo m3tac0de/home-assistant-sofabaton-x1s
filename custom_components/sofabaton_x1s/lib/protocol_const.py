@@ -100,7 +100,8 @@ OP_CALL_ME = 0x0CC3
 # noise we're not using (kept for reference)
 OP_REQ_VERSION = 0x0058  # yields WIFI_FW (0x0359) then INFO_BANNER (0x112F)
 OP_PING2 = 0x0140
-OP_REQ_MACROS = 0x024D  # payload: [act_lo, 0xFF]
+OP_REQ_MACRO_LABELS = 0x024D  # payload: [act_lo, 0xFF]
+OP_REQ_MACROS = OP_REQ_MACRO_LABELS  # backward-compat alias
 OP_MACROS_A1 = 0x6E13
 OP_MACROS_B1 = 0x5A13
 OP_MACROS_A2 = 0x8213
@@ -164,7 +165,7 @@ OPNAMES: Dict[int, str] = {
     OP_MACROS_B1: "MACROS_B1",
     OP_MACROS_A2: "MACROS_A2",
     OP_MACROS_B2: "MACROS_B2",
-    OP_REQ_MACROS: "REQ_MACROS",
+    OP_REQ_MACRO_LABELS: "REQ_MACRO_LABELS",
     OP_REQ_VERSION: "REQ_VERSION",
     OP_PING2: "PING2",
 }
@@ -262,7 +263,7 @@ __all__ = [
     "OP_CALL_ME",
     "OP_REQ_VERSION",
     "OP_PING2",
-    "OP_REQ_MACROS",
+    "OP_REQ_MACRO_LABELS",
     "OP_MACROS_A1",
     "OP_MACROS_B1",
     "OP_MACROS_A2",

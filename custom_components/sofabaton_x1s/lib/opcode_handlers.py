@@ -133,12 +133,17 @@ class MacroHandler(BaseFrameHandler):
         proxy: X1Proxy = frame.proxy
 
         now = time.monotonic()
-        if proxy._burst.active and proxy._burst.kind == "macros":
-            proxy._burst.last_ts = now + proxy._burst.response_grace
-        else:
-            proxy._burst.start("macros", now=now)
-
         completed = proxy._macro_assembler.feed(frame.opcode, frame.payload, frame.raw)
+        activity_hint = proxy._macro_assembler._last_activity_id
+        burst_key = "macros" if activity_hint is None else f"macros:{activity_hint & 0xFF}"
+
+        if proxy._burst.active and proxy._burst.kind and proxy._burst.kind.startswith("macros"):
+            proxy._burst.last_ts = now + proxy._burst.response_grace
+            if proxy._burst.kind == "macros":
+                proxy._burst.kind = burst_key
+        else:
+            proxy._burst.start(burst_key, now=now)
+
         if not completed:
             return
 
@@ -150,6 +155,8 @@ class MacroHandler(BaseFrameHandler):
 
         for act_lo, macros in grouped.items():
             proxy.state.replace_activity_macros(act_lo, macros)
+            proxy._macros_complete.add(act_lo)
+            proxy._pending_macro_requests.discard(act_lo)
             log.info(
                 "[MACRO] act=0x%02X macros{%d}: %s",
                 act_lo,

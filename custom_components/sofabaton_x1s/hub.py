@@ -116,6 +116,7 @@ class SofabatonHub:
         proxy.on_hub_state_change(self._on_hub_state_change)
         proxy.on_burst_end("devices", self._on_devices_burst)
         proxy.on_burst_end("commands", self._on_commands_burst)
+        proxy.on_burst_end("macros", self._on_macros_burst)
         proxy.on_app_activation(self._on_app_activation)
         return proxy
 
@@ -293,27 +294,37 @@ class SofabatonHub:
             if ent_id is not None:
                 # remember that this entity now has commands cached in the proxy
                 self._command_entities.add(ent_id)
-                self._commands_in_flight.discard(ent_id)
+                self._maybe_complete_command_fetch(ent_id)
 
             if self._commands_in_flight:
                 completed: list[int] = []
 
-                for act_id in self._commands_in_flight:
-                    if not self._looks_like_activity(act_id):
-                        continue
+                for ent_id in self._commands_in_flight:
+                    if self._commands_ready_for(ent_id):
+                        completed.append(ent_id)
 
-                    _, ready = self._proxy.ensure_commands_for_activity(
-                        act_id, fetch_if_missing=False
-                    )
-
-                    if ready:
-                        completed.append(act_id)
-
-                for act_id in completed:
-                    self._commands_in_flight.discard(act_id)
+                for ent_id in completed:
+                    self._commands_in_flight.discard(ent_id)
 
             # tell HA to refresh the sensor
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+        self.hass.loop.call_soon_threadsafe(_inner)
+
+    def _on_macros_burst(self, key: str) -> None:
+        def _inner() -> None:
+            ent_id = None
+            if ":" in key:
+                _, ent_str = key.split(":", 1)
+                try:
+                    ent_id = int(ent_str)
+                except ValueError:
+                    ent_id = None
+
+            if ent_id is not None:
+                self._maybe_complete_command_fetch(ent_id)
+
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+
         self.hass.loop.call_soon_threadsafe(_inner)
 
     def _on_app_activation(self, record: dict[str, Any]) -> None:
@@ -370,6 +381,27 @@ class SofabatonHub:
         ent_lo = ent_id & 0xFF
         return ent_lo in self._proxy.state.devices or ent_lo in self._proxy.state.ip_devices
 
+    def _commands_ready_for(self, ent_id: int) -> bool:
+        if self._looks_like_activity(ent_id):
+            _, commands_ready = self._proxy.ensure_commands_for_activity(
+                ent_id, fetch_if_missing=False
+            )
+            _, macros_ready = self._proxy.get_macros_for_activity(
+                ent_id, fetch_if_missing=False
+            )
+            return commands_ready and macros_ready
+
+        _, ready = self._proxy.get_commands_for_entity(ent_id, fetch_if_missing=False)
+        return ready
+
+    def _maybe_complete_command_fetch(self, ent_id: int) -> None:
+        if ent_id not in self._commands_in_flight:
+            return
+
+        if self._commands_ready_for(ent_id):
+            self._commands_in_flight.discard(ent_id)
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+
     async def async_fetch_device_commands(self, ent_id: int) -> None:
         """User asked to fetch commands for this device/activity."""
         self._commands_in_flight.add(ent_id)
@@ -381,12 +413,23 @@ class SofabatonHub:
             await self._async_fetch_device_commands(ent_id)
 
     async def _async_fetch_activity_commands(self, act_id: int) -> None:
-        self._reset_entity_cache(act_id, clear_buttons=True, clear_favorites=True)
+        self._reset_entity_cache(
+            act_id, clear_buttons=True, clear_favorites=True, clear_macros=True
+        )
         await self.hass.async_add_executor_job(
             self._proxy.clear_entity_cache,
             act_id,
             True,
             True,
+            True,
+        )
+
+        _, macros_ready = await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.get_macros_for_activity,
+                act_id,
+                fetch_if_missing=True,
+            )
         )
 
         _, buttons_ready = await self.hass.async_add_executor_job(
@@ -404,25 +447,23 @@ class SofabatonHub:
             )
         )
 
-        if act_id in self._commands_in_flight:
-            _, ready = await self.hass.async_add_executor_job(
-                partial(
-                    self._proxy.ensure_commands_for_activity,
-                    act_id,
-                    fetch_if_missing=False,
-                )
-            )
-
-            if ready:
-                self._commands_in_flight.discard(act_id)
-                async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+        if macros_ready:
+            self._maybe_complete_command_fetch(act_id)
+        else:
+            # Make sure in-flight state reflects macro completion later.
+            self._commands_in_flight.add(act_id)
+            self._maybe_complete_command_fetch(act_id)
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
     async def _async_fetch_device_commands(self, ent_id: int) -> None:
-        self._reset_entity_cache(ent_id, clear_buttons=True, clear_favorites=False)
+        self._reset_entity_cache(
+            ent_id, clear_buttons=True, clear_favorites=False, clear_macros=False
+        )
         await self.hass.async_add_executor_job(
             self._proxy.clear_entity_cache,
             ent_id,
             True,
+            False,
             False,
         )
 
@@ -451,6 +492,7 @@ class SofabatonHub:
         *,
         clear_buttons: bool,
         clear_favorites: bool,
+        clear_macros: bool,
     ) -> None:
         self._command_entities.discard(ent_id)
 
@@ -464,6 +506,11 @@ class SofabatonHub:
             self._proxy.state.activity_favorite_slots.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_favorite_labels.pop(ent_id & 0xFF, None)
             self._proxy._clear_favorite_label_requests_for_activity(ent_id & 0xFF)
+
+        if clear_macros:
+            self._proxy.state.activity_macros.pop(ent_id & 0xFF, None)
+            self._proxy._pending_macro_requests.discard(ent_id & 0xFF)
+            self._proxy._macros_complete.discard(ent_id & 0xFF)
 
     async def _async_prime_buttons_for(self, act_id: int) -> None:
         # dedupe here
@@ -535,6 +582,19 @@ class SofabatonHub:
             )
             if ready and cmds:
                 result[ent_id] = cmds
+        return result
+
+    def get_all_cached_macros(self) -> dict[int, list[dict[str, int | str]]]:
+        """Return cached macros for activities that are fully ready."""
+
+        result: dict[int, list[dict[str, int | str]]] = {}
+        for ent_id in self.activities:
+            macros, ready = self._proxy.get_macros_for_activity(
+                ent_id, fetch_if_missing=False
+            )
+            if ready and macros:
+                result[ent_id] = macros
+
         return result
 
     def get_activity_favorites(self) -> dict[int, list[dict[str, int | str]]]:
