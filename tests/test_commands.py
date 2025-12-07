@@ -87,7 +87,7 @@ def test_device_command_assembly_handles_single_command_page() -> None:
     proxy = X1Proxy("127.0.0.1")
     parsed = proxy.parse_device_commands(payload, dev_id)
 
-    assert parsed == {1: "Exit"}
+    assert parsed == {2: "Exit"}
 
 
 def test_single_command_handler_logs_and_stores_state(caplog) -> None:
@@ -113,8 +113,74 @@ def test_single_command_handler_logs_and_stores_state(caplog) -> None:
     with caplog.at_level(logging.INFO):
         handler.handle(frame)
 
-    assert proxy.state.commands[1] == {1: "Exit"}
-    assert "1 : Exit" in caplog.text
+    assert proxy.state.commands[1] == {2: "Exit"}
+    assert "2 : Exit" in caplog.text
+
+
+def test_device_button_header_handler_merges_existing_commands(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonHeaderHandler()
+
+    dev_id = 0x2A
+    proxy.state.commands[dev_id] = {1: "Existing"}
+
+    def fake_parse(payload: bytes, parsed_dev_id: int) -> dict[int, str]:
+        return {2: "New"}
+
+    monkeypatch.setattr(proxy, "parse_device_commands", fake_parse)
+    monkeypatch.setattr(
+        proxy._command_assembler,
+        "feed",
+        lambda opcode, raw, dev_id_override=None: [(dev_id, b"payload")],
+    )
+
+    raw = _build_frame(OP_DEVBTN_HEADER, 1, 1, dev_id, bytes([dev_id]))
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_HEADER,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_HEADER",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands[dev_id] == {1: "Existing", 2: "New"}
+
+
+def test_device_button_payload_handler_merges_existing_commands(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonPayloadHandler()
+
+    dev_id = 0x2A
+    proxy.state.commands[dev_id] = {1: "Existing"}
+
+    def fake_parse(payload: bytes, parsed_dev_id: int) -> dict[int, str]:
+        return {2: "New"}
+
+    monkeypatch.setattr(proxy, "parse_device_commands", fake_parse)
+    monkeypatch.setattr(
+        proxy._command_assembler,
+        "feed",
+        lambda opcode, raw, dev_id_override=None: [(dev_id, b"payload")],
+    )
+
+    raw = _build_frame(OP_DEVBTN_PAGE, 1, 1, dev_id, b"\x00\x00")
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_PAGE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_PAGE",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands[dev_id] == {1: "Existing", 2: "New"}
 
 
 def test_device_button_header_handler_merges_existing_commands(monkeypatch) -> None:
@@ -187,7 +253,7 @@ def test_single_command_handler_routes_favorite_labels() -> None:
     proxy = X1Proxy("127.0.0.1")
     handler = DeviceButtonSingleHandler()
 
-    proxy._favorite_label_requests[(1, 1)] = {0x66}
+    proxy._favorite_label_requests[(1, 2)] = {0x66}
 
     raw = bytes.fromhex(
         "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
@@ -208,21 +274,54 @@ def test_single_command_handler_routes_favorite_labels() -> None:
     handler.handle(frame)
 
     assert proxy.state.commands == {}
-    assert proxy.state.activity_favorite_labels[0x66] == {(1, 1): "Exit"}
+    assert proxy.state.activity_favorite_labels[0x66] == {(1, 2): "Exit"}
+
+
+def test_single_command_handler_matches_pending_device_when_id_differs(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    proxy._favorite_label_requests[(1, 2)] = {0x66}
+
+    def fake_parse(payload: bytes, parsed_dev_id: int) -> dict[int, str]:
+        return {1: "Exit"}
+
+    monkeypatch.setattr(proxy, "parse_device_commands", fake_parse)
+    monkeypatch.setattr(
+        proxy._command_assembler,
+        "feed",
+        lambda opcode, raw, dev_id_override=None: [(1, b"payload")],
+    )
+
+    raw = _build_frame(OP_DEVBTN_SINGLE, 1, 1, 1, b"\x00\x00")
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands[1] == {1: "Exit", 2: "Exit"}
+    assert proxy.state.activity_favorite_labels[0x66] == {(1, 2): "Exit"}
 
 
 @pytest.mark.parametrize(
     ("raw_hex", "expected_dev_id", "expected_cmd_id", "expected_label"),
     [
-        (
-            "a5 5a 4d 5d 01 00 01 01 00 01 01 06 01 0d 00 00 00 00 00 2a 00 4f 00 6b 00 "
-            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff a5",
-            6,
-            1,
-            "Ok",
-        ),
+            (
+                "a5 5a 4d 5d 01 00 01 01 00 01 01 06 01 0d 00 00 00 00 00 2a 00 4f 00 6b 00 "
+                + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff a5",
+                6,
+                1,
+                "Ok",
+            ),
         (
             "a5 5a 4d 5d 01 00 01 01 00 01 01 03 03 0d 00 00 00 00 00 38 00 30 00 "
             + "00 " * 57

@@ -802,6 +802,26 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
                         proxy._favorite_label_requests.pop(pair, None)
                         continue
 
+                    pending_for_device = [
+                        candidate
+                        for candidate in proxy._favorite_label_requests
+                        if candidate[0] == complete_dev_id
+                    ]
+
+                    if len(pending_for_device) == 1:
+                        pending_pair = pending_for_device[0]
+                        pending_cmd_id = pending_pair[1]
+                        for act_id in proxy._favorite_label_requests.get(pending_pair, set()):
+                            proxy.state.record_favorite_label(
+                                act_id, complete_dev_id, pending_cmd_id, label
+                            )
+                        proxy._favorite_label_requests.pop(pending_pair, None)
+
+                        cmds = proxy.state.commands.setdefault(dev_key, {})
+                        cmds[cmd_id] = label
+                        cmds[pending_cmd_id] = label
+                        continue
+
                     proxy.state.commands.setdefault(dev_key, {})[cmd_id] = label
 
                 if dev_key in proxy.state.commands:

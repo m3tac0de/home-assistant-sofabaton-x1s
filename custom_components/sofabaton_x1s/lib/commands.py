@@ -306,6 +306,8 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
         if not candidates:
             candidates = [0]
 
+        best_record: CommandRecord | None = None
+
         for idx in candidates:
             has_target = chunk[idx] == target
             command_index = idx + 1 if has_target else idx
@@ -317,7 +319,8 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
             control_block = chunk[control_start : control_start + 7]
 
             label_start = None
-            if len(control_block) == 7 and _matches_control_block(control_block):
+            matched_control = len(control_block) == 7 and _matches_control_block(control_block)
+            if matched_control:
                 label_start = control_start + 7
                 if control_block[:5] == b"\x00\x00\x00\x00\x00":
                     label_start -= 1
@@ -344,8 +347,17 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
             if len(control_block) < 7:
                 control_block = chunk[control_start:label_start]
 
-            yield CommandRecord(target, command_id, control_block, label)
-            break
+            record = CommandRecord(target, command_id, control_block, label)
+            if matched_control:
+                yield record
+                break
+
+            if best_record is None:
+                best_record = record
+        else:
+            # Exhausted candidates without yielding
+            if best_record:
+                yield best_record
 
 
 __all__ = [
