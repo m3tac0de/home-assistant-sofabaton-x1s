@@ -20,6 +20,7 @@ from .const import (
     signal_devices,
     signal_commands,
     signal_hub,
+    signal_macros,
     signal_app_activations,
 )
 from .hub import SofabatonHub, get_hub_model
@@ -61,6 +62,7 @@ class SofabatonIndexSensor(SensorEntity):
             signal_commands(self._hub.entry_id),
             signal_buttons(self._hub.entry_id),
             signal_hub(self._hub.entry_id),
+            signal_macros(self._hub.entry_id),
         ):
             self.async_on_remove(
                 async_dispatcher_connect(self.hass, sig, self._handle_update)
@@ -119,8 +121,24 @@ class SofabatonIndexSensor(SensorEntity):
                 for fav in favorites
             ]
 
+        macros_by_activity = self._hub.get_all_cached_macros()
+        decorated_activities: dict[int, dict[str, object]] = {}
+        for act_id, activity in self._hub.activities.items():
+            activity_attrs: dict[str, object] = dict(activity)
+            macros = macros_by_activity.get(act_id, [])
+            activity_attrs["macros"] = [
+                {
+                    "name": macro.get("label") or macro.get("name"),
+                    "code": macro.get("command_id"),
+                }
+                for macro in macros
+                if macro.get("command_id") is not None
+            ]
+
+            decorated_activities[act_id] = activity_attrs
+
         return {
-            "activities": self._hub.activities,
+            "activities": decorated_activities,
             "devices": getattr(self._hub, "devices", {}),
             "current_activity": self._hub.current_activity,
             "commands": decorated_commands,
