@@ -295,6 +295,23 @@ class SofabatonHub:
                 self._command_entities.add(ent_id)
                 self._commands_in_flight.discard(ent_id)
 
+            if self._commands_in_flight:
+                completed: list[int] = []
+
+                for act_id in self._commands_in_flight:
+                    if not self._looks_like_activity(act_id):
+                        continue
+
+                    _, ready = self._proxy.ensure_commands_for_activity(
+                        act_id, fetch_if_missing=False
+                    )
+
+                    if ready:
+                        completed.append(act_id)
+
+                for act_id in completed:
+                    self._commands_in_flight.discard(act_id)
+
             # tell HA to refresh the sensor
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
@@ -386,6 +403,19 @@ class SofabatonHub:
                 fetch_if_missing=True,
             )
         )
+
+        if act_id in self._commands_in_flight:
+            _, ready = await self.hass.async_add_executor_job(
+                partial(
+                    self._proxy.ensure_commands_for_activity,
+                    act_id,
+                    fetch_if_missing=False,
+                )
+            )
+
+            if ready:
+                self._commands_in_flight.discard(act_id)
+                async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
     async def _async_fetch_device_commands(self, ent_id: int) -> None:
         self._reset_entity_cache(ent_id, clear_buttons=True, clear_favorites=False)
