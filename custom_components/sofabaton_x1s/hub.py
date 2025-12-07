@@ -12,15 +12,16 @@ from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
     CONF_HEX_LOGGING_ENABLED,
+    CONF_MDNS_VERSION,
     CONF_PROXY_ENABLED,
     signal_activity,
-    signal_client,
-    signal_hub,
-    signal_buttons,
-    signal_devices,
-    signal_commands,
     signal_app_activations,
-    CONF_MDNS_VERSION,
+    signal_buttons,
+    signal_client,
+    signal_commands,
+    signal_devices,
+    signal_hub,
+    signal_macros,
 )
 from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
 from .lib.protocol_const import ButtonName
@@ -324,6 +325,7 @@ class SofabatonHub:
                 self._maybe_complete_command_fetch(ent_id)
 
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+            async_dispatcher_send(self.hass, signal_macros(self.entry_id))
 
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -449,6 +451,7 @@ class SofabatonHub:
 
         if macros_ready:
             self._maybe_complete_command_fetch(act_id)
+            async_dispatcher_send(self.hass, signal_macros(self.entry_id))
         else:
             # Make sure in-flight state reflects macro completion later.
             self._commands_in_flight.add(act_id)

@@ -52,5 +52,9 @@ def signal_commands(entry_id: str) -> str:
     return f"sofabaton_x1s_commands_{entry_id}"
 
 
+def signal_macros(entry_id: str) -> str:
+    return f"sofabaton_x1s_macros_{entry_id}"
+
+
 def signal_app_activations(entry_id: str) -> str:
     return f"sofabaton_x1s_app_activations_{entry_id}"
