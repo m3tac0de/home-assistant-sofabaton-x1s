@@ -68,6 +68,8 @@ class SofabatonHub:
         self.current_activity: Optional[int] = None
         self.client_connected: bool = False
         self.hub_connected: bool = False
+        self.activities_ready: bool = False
+        self.devices_ready: bool = False
         self.proxy_enabled: bool = proxy_enabled
         self.hex_logging_enabled: bool = hex_logging_enabled
         # store mac so service can find us by mac
@@ -198,6 +200,7 @@ class SofabatonHub:
                 ready,
                 len(acts) if acts else 0,
             )
+            self.activities_ready = ready
             if ready:
                 self.activities = acts
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
@@ -256,6 +259,11 @@ class SofabatonHub:
                 connected,
             )
             self.hub_connected = connected
+            if not connected:
+                self.activities_ready = False
+                self.devices_ready = False
+                self._pending_button_fetch.clear()
+                self._commands_in_flight.clear()
             async_dispatcher_send(self.hass, signal_hub(self.entry_id))
 
             if connected:
@@ -266,6 +274,7 @@ class SofabatonHub:
     def _on_devices_burst(self, key: str) -> None:
         def _inner() -> None:
             devs, ready = self._proxy.get_devices()
+            self.devices_ready = ready
             if ready:
                 self.devices = devs
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
@@ -308,7 +317,8 @@ class SofabatonHub:
             acts_ready,
             len(acts) if acts else 0,
         )
-        
+        self.activities_ready = acts_ready
+
         devs, devs_ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
         _LOGGER.debug(
             "[%s] initial_sync: got devices ready=%s count=%s",
@@ -316,10 +326,11 @@ class SofabatonHub:
             devs_ready,
             len(devs) if devs else 0,
         )
+        self.devices_ready = devs_ready
         if devs_ready:
             self.devices = devs
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
-        
+
         if acts_ready:
             self.activities = acts
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
@@ -521,6 +532,18 @@ class SofabatonHub:
             if act.get("name") == name:
                 return act_id
         return None
+
+    def get_index_state(self) -> str:
+        if not self.hub_connected:
+            return "offline"
+
+        if not (self.activities_ready and self.devices_ready):
+            return "loading"
+
+        if self._commands_in_flight or self._pending_button_fetch:
+            return "loading"
+
+        return "ready"
 
     async def async_activate_activity(self, act_id: int) -> None:
         _LOGGER.debug("[%s] Activating activity %s", self.entry_id, act_id)

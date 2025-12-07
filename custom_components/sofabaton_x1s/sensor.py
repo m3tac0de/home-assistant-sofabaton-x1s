@@ -16,8 +16,10 @@ from .const import (
     CONF_MAC,
     CONF_NAME,
     signal_activity,
+    signal_buttons,
     signal_devices,
     signal_commands,
+    signal_hub,
     signal_app_activations,
 )
 from .hub import SofabatonHub, get_hub_model
@@ -57,6 +59,8 @@ class SofabatonIndexSensor(SensorEntity):
             signal_activity(self._hub.entry_id),
             signal_devices(self._hub.entry_id),
             signal_commands(self._hub.entry_id),
+            signal_buttons(self._hub.entry_id),
+            signal_hub(self._hub.entry_id),
         ):
             self.async_on_remove(
                 async_dispatcher_connect(self.hass, sig, self._handle_update)
@@ -68,7 +72,7 @@ class SofabatonIndexSensor(SensorEntity):
 
     @property
     def state(self) -> str | None:
-        return None
+        return self._hub.get_index_state()
 
     def _label_for_ent(self, ent_id: int) -> str:
         """Return something like '3 (Playstation 5)' or '102 (Watch TV)'."""
