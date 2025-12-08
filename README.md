@@ -292,30 +292,53 @@ activities:
     active: false
     macros:
       - name: Dim all lights
-        code: 1
+        command: 1
       - name: Order a pizza
-        code: 5
+        command: 5
     favorites:
       - name: Exit
+        command: 2
         device: 1
-        code: 2
       - name: "0"
+        command: 3
         device: 3
-        code: 3
 devices:
   "1":
     brand: AWOL Vision
     name: AWOLVision LTV-3500
     commands:
-      - code: 1
-        name: Brightness
-      - code: 2
-        name: Exit
-      - code: 3
-        name: Guide
+      - name: Brightness
+ 		command: 1
+      - name: Exit
+    	command: 2
+      - name: Guide
+    	command: 3
+        
 ```
 
 Use this to discover the numeric command IDs you want to send with `remote.send_command` (advanced form with `device:`).
+
+Based on the above, to trigger the "Guide" command on the "AWOLVision LTV-3500", you would do:
+
+```yaml
+service: remote.send_command
+target:
+  entity_id: remote.<hub>_remote
+data:
+  command: 3
+  device: 1
+```
+
+And to trigger the Order a Pizza macro, you would do:
+
+```yaml
+service: remote.send_command
+target:
+  entity_id: remote.<hub>_remote
+data:
+  command: 5
+  device: 103
+```
 
 ---
 
