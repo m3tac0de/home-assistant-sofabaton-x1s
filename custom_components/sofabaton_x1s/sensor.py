@@ -100,8 +100,8 @@ class SofabatonIndexSensor(SensorEntity):
         for ent_id, cmd_map in commands_raw.items():
             decorated_commands[ent_id] = [
                 {
-                    "code": int(code),
                     "name": name,
+                    "command": int(code),
                 }
                 for code, name in cmd_map.items()
             ]
@@ -115,7 +115,7 @@ class SofabatonIndexSensor(SensorEntity):
             activity_attrs["macros"] = [
                 {
                     "name": macro.get("label") or macro.get("name"),
-                    "code": macro.get("command_id"),
+                    "command": macro.get("command_id"),
                 }
                 for macro in macros
                 if macro.get("command_id") is not None
@@ -125,8 +125,8 @@ class SofabatonIndexSensor(SensorEntity):
             activity_attrs["favorites"] = [
                 {
                     "name": fav.get("name"),
+                    "command": fav.get("command_id"),
                     "device": fav.get("device_id"),
-                    "code": fav.get("command_id"),
                 }
                 for fav in favorites
             ]
