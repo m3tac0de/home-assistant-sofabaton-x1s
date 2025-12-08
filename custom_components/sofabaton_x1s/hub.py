@@ -388,9 +388,12 @@ class SofabatonHub:
             _, commands_ready = self._proxy.ensure_commands_for_activity(
                 ent_id, fetch_if_missing=False
             )
-            _, macros_ready = self._proxy.get_macros_for_activity(
+            act_lo = ent_id & 0xFF
+            macros, macros_ready = self._proxy.get_macros_for_activity(
                 ent_id, fetch_if_missing=False
             )
+            if not macros:
+                macros_ready = True
             return commands_ready and macros_ready
 
         _, ready = self._proxy.get_commands_for_entity(ent_id, fetch_if_missing=False)
