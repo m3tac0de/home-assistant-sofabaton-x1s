@@ -1097,8 +1097,8 @@ class X1Proxy:
 
         if now >= self._app_devices_deadline:
             if not self._app_devices_retry_sent:
-                log.info("[CMD] retrying app-sourced REQ_DEVICES after timeout")
-                self._send_cmd_frame(OP_REQ_DEVICES, b"")
+                #log.info("[CMD] retrying app-sourced REQ_DEVICES after timeout")
+                #self._send_cmd_frame(OP_REQ_DEVICES, b"")
                 self._app_devices_retry_sent = True
             self._app_devices_deadline = None
 
