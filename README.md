@@ -181,6 +181,12 @@ You should see:
   - … plus the other Sofabaton button codes
   - availability depends on the **currently active activity**
 
+- **Text entity**:
+  - `text.<hub>_hub_ip_address` (added as a "Configuration" entity)
+    - Editable text box that shows the IP address of the physical hub as it's stored in configuration.
+    - Enables manual changing of the hub's IP address in the integration's configuration. The proxy will instantly restart with the new configuration after changes have been made.
+    - This entity is disabled by default! If your hub is configured through automatic discovery (you never manually had to enter the IP address of your hub), your hub's IP changes will continue to be automatically picked up by the integration and there should be no need to manually intervene.
+
 ---
 
 ## Remote
