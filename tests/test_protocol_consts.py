@@ -26,3 +26,33 @@ def test_all_opcodes_have_names() -> None:
     }
 
     assert not missing, f"Missing opcode names: {sorted(missing)}"
+
+
+def test_opcode_byte_helpers() -> None:
+    """Ensure opcode helpers split into high and low bytes correctly."""
+
+    assert const.opcode_hi(0xD50B) == 0xD5
+    assert const.opcode_lo(0xD50B) == 0x0B
+    assert const.opcode_family(0xD50B) == const.opcode_lo(0xD50B)
+
+
+def test_family_constants_align_with_examples() -> None:
+    """Known low-byte families should match documented opcode examples."""
+
+    assert const.FAMILY_DEV_ROW == const.opcode_lo(const.OP_CATALOG_ROW_DEVICE)
+    assert const.FAMILY_DEV_ROW == const.opcode_lo(const.OP_X1_DEVICE)
+
+    assert const.FAMILY_ACT_ROW == const.opcode_lo(const.OP_CATALOG_ROW_ACTIVITY)
+    assert const.FAMILY_ACT_ROW == const.opcode_lo(const.OP_X1_ACTIVITY)
+
+    assert const.FAMILY_MACROS == const.opcode_lo(const.OP_MACROS_A1)
+    assert const.FAMILY_MACROS == const.opcode_lo(const.OP_MACROS_B1)
+    assert const.FAMILY_MACROS == const.opcode_lo(const.OP_MACROS_A2)
+    assert const.FAMILY_MACROS == const.opcode_lo(const.OP_MACROS_B2)
+
+    assert const.FAMILY_KEYMAP == const.opcode_lo(const.OP_KEYMAP_TBL_A)
+    assert const.FAMILY_KEYMAP == const.opcode_lo(const.OP_KEYMAP_EXTRA)
+
+    assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_HEADER)
+    assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_TAIL)
+    assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_SINGLE)

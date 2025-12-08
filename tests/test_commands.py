@@ -1,6 +1,9 @@
-from pathlib import Path
+import logging
 import sys
 import types
+from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -20,9 +23,18 @@ _ensure_stub_package("custom_components.sofabaton_x1s", ROOT / "custom_component
 _ensure_stub_package("custom_components.sofabaton_x1s.lib", ROOT / "custom_components" / "sofabaton_x1s" / "lib")
 
 from custom_components.sofabaton_x1s.lib.commands import DeviceCommandAssembler
+from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
+from custom_components.sofabaton_x1s.lib.opcode_handlers import (
+    DeviceButtonHeaderHandler,
+    DeviceButtonPayloadHandler,
+    DeviceButtonFamilyHandler,
+    DeviceButtonSingleHandler,
+)
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_DEVBTN_HEADER,
+    OP_DEVBTN_PAGE,
     OP_DEVBTN_TAIL,
+    OP_DEVBTN_SINGLE,
     SYNC0,
     SYNC1,
 )
@@ -56,6 +68,370 @@ def test_device_command_assembly_tracks_frames() -> None:
     assembled_dev_id, assembled_payload = completed[0]
     assert assembled_dev_id == dev_id
     assert assembled_payload == payload
+
+
+def test_device_command_assembly_handles_single_command_page() -> None:
+    assembler = DeviceCommandAssembler()
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+    )
+
+    opcode = int.from_bytes(raw[2:4], "big")
+    assert opcode == OP_DEVBTN_SINGLE
+
+    completed = assembler.feed(opcode, raw)
+
+    assert len(completed) == 1
+    dev_id, payload = completed[0]
+    proxy = X1Proxy("127.0.0.1")
+    parsed = proxy.parse_device_commands(payload, dev_id)
+
+    assert parsed == {2: "Exit"}
+
+
+def test_single_command_handler_logs_and_stores_state(caplog) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+    )
+
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    with caplog.at_level(logging.INFO):
+        handler.handle(frame)
+
+    assert proxy.state.commands[1] == {2: "Exit"}
+    assert "2 : Exit" in caplog.text
+
+
+def test_device_button_header_handler_merges_existing_commands(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonHeaderHandler()
+
+    dev_id = 0x2A
+    proxy.state.commands[dev_id] = {1: "Existing"}
+
+    def fake_parse(payload: bytes, parsed_dev_id: int) -> dict[int, str]:
+        return {2: "New"}
+
+    monkeypatch.setattr(proxy, "parse_device_commands", fake_parse)
+    monkeypatch.setattr(
+        proxy._command_assembler,
+        "feed",
+        lambda opcode, raw, dev_id_override=None: [(dev_id, b"payload")],
+    )
+
+    raw = _build_frame(OP_DEVBTN_HEADER, 1, 1, dev_id, bytes([dev_id]))
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_HEADER,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_HEADER",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands[dev_id] == {1: "Existing", 2: "New"}
+
+
+def test_device_button_family_handler_handles_header_family_variants(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonFamilyHandler()
+
+    captured: list[tuple[int, bytes]] = []
+
+    monkeypatch.setattr(proxy, "parse_device_commands", lambda payload, dev_id: captured.append((dev_id, payload)) or {})
+
+    dev_id = 0x2A
+    alt_header_opcode = OP_DEVBTN_HEADER ^ 0x0100
+    header_raw = _build_frame(alt_header_opcode, 1, 2, dev_id, b"abc")
+    tail_raw = _build_frame(OP_DEVBTN_TAIL, 2, 2, dev_id, b"def")
+
+    header_frame = FrameContext(
+        proxy=proxy,
+        opcode=alt_header_opcode,
+        direction="H→A",
+        payload=header_raw[4:-1],
+        raw=header_raw,
+        name="DEVBTN_HEADER_ALT",
+    )
+
+    tail_frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_TAIL,
+        direction="H→A",
+        payload=tail_raw[4:-1],
+        raw=tail_raw,
+        name="DEVBTN_TAIL",
+    )
+
+    handler.handle(header_frame)
+    handler.handle(tail_frame)
+
+    assert captured[0][0] == dev_id
+    assert captured[0][1] == b"abcdef"
+
+
+def test_device_button_family_handler_handles_single_family_variants(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonFamilyHandler()
+
+    parsed: list[tuple[int, dict[int, str]]] = []
+
+    monkeypatch.setattr(
+        proxy,
+        "parse_device_commands",
+        lambda payload, dev_id: parsed.append((dev_id, {2: "Exit"})) or {2: "Exit"},
+    )
+
+    raw = bytearray(
+        bytes.fromhex(
+            "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+        )
+    )
+
+    raw[2] = 0x6D
+    raw[-1] = sum(raw[:-1]) & 0xFF
+    opcode = (raw[2] << 8) | raw[3]
+    payload = bytes(raw[4:-1])
+
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=opcode,
+        direction="H→A",
+        payload=payload,
+        raw=bytes(raw),
+        name="DEVBTN_SINGLE_ALT",
+    )
+
+    handler.handle(frame)
+
+    assert parsed and parsed[0][0] == 1
+    assert parsed[0][1] == {2: "Exit"}
+
+
+def test_device_button_payload_handler_merges_existing_commands(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonPayloadHandler()
+
+    dev_id = 0x2A
+    proxy.state.commands[dev_id] = {1: "Existing"}
+
+    def fake_parse(payload: bytes, parsed_dev_id: int) -> dict[int, str]:
+        return {2: "New"}
+
+    monkeypatch.setattr(proxy, "parse_device_commands", fake_parse)
+    monkeypatch.setattr(
+        proxy._command_assembler,
+        "feed",
+        lambda opcode, raw, dev_id_override=None: [(dev_id, b"payload")],
+    )
+
+    raw = _build_frame(OP_DEVBTN_PAGE, 1, 1, dev_id, b"\x00\x00")
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_PAGE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_PAGE",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands[dev_id] == {1: "Existing", 2: "New"}
+
+
+def test_single_command_handler_routes_favorite_labels() -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    proxy._favorite_label_requests[(1, 2)] = {0x66}
+
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+    )
+
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands == {}
+    assert proxy.state.activity_favorite_labels[0x66] == {(1, 2): "Exit"}
+
+
+def test_single_command_handler_matches_pending_device_when_id_differs(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    proxy._favorite_label_requests[(1, 2)] = {0x66}
+
+    def fake_parse(payload: bytes, parsed_dev_id: int) -> dict[int, str]:
+        return {1: "Exit"}
+
+    monkeypatch.setattr(proxy, "parse_device_commands", fake_parse)
+    monkeypatch.setattr(
+        proxy._command_assembler,
+        "feed",
+        lambda opcode, raw, dev_id_override=None: [(1, b"payload")],
+    )
+
+    raw = _build_frame(OP_DEVBTN_SINGLE, 1, 1, 1, b"\x00\x00")
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands[1] == {1: "Exit", 2: "Exit"}
+    assert proxy.state.activity_favorite_labels[0x66] == {(1, 2): "Exit"}
+
+
+@pytest.mark.parametrize(
+    ("raw_hex", "expected_dev_id", "expected_cmd_id", "expected_label"),
+    [
+            (
+                "a5 5a 4d 5d 01 00 01 01 00 01 01 06 01 0d 00 00 00 00 00 2a 00 4f 00 6b 00 "
+                + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff a5",
+                6,
+                1,
+                "Ok",
+            ),
+        (
+            "a5 5a 4d 5d 01 00 01 01 00 01 01 03 03 0d 00 00 00 00 00 38 00 30 00 "
+            + "00 " * 57
+            + "ff 28",
+            3,
+            3,
+            "0",
+        ),
+        (
+            "a5 5a 4d 5d 01 00 01 01 00 01 01 03 07 0d 00 00 00 00 00 4c 00 34 00 "
+            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 44",
+            3,
+            7,
+            "4",
+        ),
+    ],
+)
+def test_device_button_single_handler_uses_device_id_from_payload(
+    caplog: pytest.LogCaptureFixture,
+    raw_hex: str,
+    expected_dev_id: int,
+    expected_cmd_id: int,
+    expected_label: str,
+) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    raw = bytes.fromhex(raw_hex)
+    payload = raw[4:-1]
+
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    with caplog.at_level(logging.INFO):
+        handler.handle(frame)
+
+    assert proxy.state.commands[expected_dev_id] == {expected_cmd_id: expected_label}
+    assert f"{expected_cmd_id} : {expected_label}" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("raw_hex", "expected_dev_id", "expected_cmd_id", "expected_label"),
+    [
+        (
+            "a5 5a 4d 5d 01 00 01 01 00 01 01 06 01 0d 00 00 00 00 00 2a 00 4f 00 6b 00 "
+            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff a5",
+            6,
+            1,
+            "Ok",
+        ),
+        (
+            "a5 5a 4d 5d 01 00 01 01 00 01 01 03 03 0d 00 00 00 00 00 38 00 30 00 "
+            + "00 " * 57
+            + "ff 28",
+            3,
+            3,
+            "0",
+        ),
+        (
+            "a5 5a 4d 5d 01 00 01 01 00 01 01 03 07 0d 00 00 00 00 00 4c 00 34 00 "
+            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            + "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 44",
+            3,
+            7,
+            "4",
+        ),
+    ],
+)
+def test_parse_device_commands_realigns_utf16_label(
+    raw_hex: str, expected_dev_id: int, expected_cmd_id: int, expected_label: str
+) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    assembler = proxy._command_assembler
+
+    raw = bytes.fromhex(raw_hex)
+
+    opcode = int.from_bytes(raw[2:4], "big")
+    completed = assembler.feed(opcode, raw)
+
+    assert completed
+    dev_id, payload = completed[0]
+
+    parsed = proxy.parse_device_commands(payload, dev_id)
+
+    assert dev_id == expected_dev_id
+    assert parsed == {expected_cmd_id: expected_label}
 
 
 def test_parse_device_commands_handles_legacy_and_hue_formats() -> None:
@@ -345,6 +721,38 @@ def test_parse_device_commands_handles_extended_req_commands_sequence() -> None:
         17: "Sousterrain off",
         18: "Sousterrain on",
     }
+
+
+def test_parse_device_commands_handles_req_commands_toggle_office() -> None:
+    frames_hex = (
+        "a5 5a d9 5d 01 00 01 01 00 02 05 08 01 1c 00 00 00 00 00 00 00 54 00 00 00 6f 00 00 00 67 00 00 00 67 00 00 00 6c 00 00 00 65 00 00 00 20 00 00 00 4f 00 00 00 66 00 00 00 66 00 00 00 69 00 00 00 63 00 00 00 65 00 00 00 20 00 00 00 4c 00 00 ff 08 02 1c 00 00 00 00 00 00 00 74 00 65 00 73 00 74 00 62 00 75 00 74 00 74 00 6f 00 6e 00 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 08 03 1c 00 00 00 00 00 00 00 74 00 65 00 73 00 74 00 62 00 74 00 6e 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff ad",
+        "a5 5a 8f 5d 01 00 02 08 04 1c 00 00 00 00 00 00 00 74 00 73 00 74 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 08 05 1c 00 00 00 00 00 00 00 74 00 73 00 74 00 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 5c",
+    )
+
+    frames = [bytes.fromhex(block) for block in frames_hex]
+    assembler = DeviceCommandAssembler()
+
+    dev_id = 0x08
+    completed: list[tuple[int, bytes]] = []
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id))
+
+    assert len(completed) == 1
+
+    proxy = X1Proxy("127.0.0.1")
+    assembled_dev_id, assembled_payload = completed[0]
+    parsed = proxy.parse_device_commands(assembled_payload, assembled_dev_id)
+
+    assert parsed == {
+        1: "Toggle Office L",
+        2: "testbutton2",
+        3: "testbtn3",
+        4: "tst4",
+        5: "tst5",
+    }
+
 
 def test_parse_device_commands_handles_dev_id_three_sequence() -> None:
     """Full command table for dev_id == 3 should be parsed correctly."""

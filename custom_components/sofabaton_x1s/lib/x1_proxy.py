@@ -8,45 +8,58 @@ import socket
 import struct
 import threading
 import time
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import DeviceCommandAssembler
+from .macros import MacroAssembler
 
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
     OPNAMES,
+    opcode_family,
+    opcode_hi,
+    opcode_lo,
     OP_ACK_READY,
     OP_BANNER,
     OP_CALL_ME,
     OP_CATALOG_ROW_ACTIVITY,
     OP_CATALOG_ROW_DEVICE,
-    OP_DEVBTN_EXTRA,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
     OP_DEVBTN_PAGE,
     OP_DEVBTN_TAIL,
     OP_FIND_REMOTE,
     OP_INFO_BANNER,
+    OP_CREATE_DEVICE_HEAD,
+    OP_DEFINE_IP_CMD,
+    OP_DEFINE_IP_CMD_EXISTING,
+    OP_PREPARE_SAVE,
+    OP_FINALIZE_DEVICE,
+    OP_DEVICE_SAVE_HEAD,
+    OP_SAVE_COMMIT,
     OP_KEYMAP_CONT,
     OP_KEYMAP_TBL_A,
     OP_KEYMAP_TBL_B,
     OP_KEYMAP_TBL_C,
     OP_KEYMAP_TBL_D,
     OP_KEYMAP_TBL_E,
-    OP_LABELS_A1,
-    OP_LABELS_A2,
-    OP_LABELS_B1,
-    OP_LABELS_B2,
+    OP_KEYMAP_EXTRA,
+    OP_MACROS_A1,
+    OP_MACROS_A2,
+    OP_MACROS_B1,
+    OP_MACROS_B2,
     OP_MARKER,
     OP_PING2,
     OP_REQ_ACTIVITIES,
     OP_REQ_ACTIVATE,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
+    OP_REQ_IPCMD_SYNC,
     OP_REQ_DEVICES,
-    OP_REQ_KEYLABELS,
+    OP_REQ_MACRO_LABELS,
     OP_REQ_VERSION,
     OP_WIFI_FW,
     SYNC0,
@@ -196,14 +209,25 @@ class X1Proxy:
 
         self.state = ActivityCache()
         self._command_assembler = DeviceCommandAssembler()
+        self._macro_assembler = MacroAssembler()
         self._burst = BurstScheduler()
         self._pending_button_requests: set[int] = set()
+        # Track pending command fetches per device, so multiple targeted
+        # lookups for the same device (different commands) can be queued.
+        self._pending_command_requests: dict[int, set[int]] = {}
+        self._commands_complete: set[int] = set()
+        self._pending_macro_requests: set[int] = set()
+        self._macros_complete: set[int] = set()
+        self._favorite_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._activity_listeners: list[callable] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
         self._activation_listeners: list[callable] = []
         self._app_devices_deadline: float | None = None
         self._app_devices_retry_sent = False
+        self._pending_virtual: dict[str, Any] | None = None
+        self._pending_virtual_event = threading.Event()
+        self._pending_virtual_lock = threading.Lock()
 
         self.transport = TransportBridge(
             real_hub_ip,
@@ -225,6 +249,8 @@ class X1Proxy:
         self.transport.on_idle(self._handle_idle)
 
         self._burst.on_burst_end("buttons", self._on_buttons_burst_end)
+        self._burst.on_burst_end("commands", self._on_commands_burst_end)
+        self._burst.on_burst_end("macros", self._on_macros_burst_end)
         self.on_burst_end("activities", self.handle_active_state)
 
         self._hub_connected: bool = False
@@ -277,6 +303,18 @@ class X1Proxy:
         frame = head + payload
         return frame + bytes([_sum8(frame)])
 
+    def _utf16le_padded(self, text: str, *, length: int) -> bytes:
+        data = text.encode("utf-16le")
+        truncated = data[:length]
+        return truncated + b"\x00" * max(0, length - len(truncated))
+
+    def _encode_len_prefixed(self, blob: bytes, *, max_len: int = 255) -> bytes:
+        limited = blob[:max_len]
+        return bytes([len(limited)]) + limited
+
+    def _encode_headers(self, headers: dict[str, str]) -> bytes:
+        return "\r\n".join(f"{k}: {v}" for k, v in headers.items()).encode("utf-8")
+
     def enqueue_cmd(
         self,
         opcode: int,
@@ -285,6 +323,7 @@ class X1Proxy:
         expects_burst: bool = False,
         burst_kind: str | None = None,
     ) -> bool:
+        frame = self._build_frame(opcode, payload) if self.diag_dump else None
         sent = self._burst.queue_or_send(
             opcode=opcode,
             payload=payload,
@@ -295,6 +334,8 @@ class X1Proxy:
         )
         if sent:
             log.info("[CMD] queued %s (0x%04X) %dB", OPNAMES.get(opcode, f"OP_{opcode:04X}"), opcode, len(payload))
+            if frame is not None:
+                log.info("[DUMP] queued %s", _hexdump(frame))
         else:
             log.info(
                 "[CMD] ignoring %s: proxy client is connected",
@@ -356,8 +397,63 @@ class X1Proxy:
         if not self.can_issue_commands():
             log.info("[CMD] request_commands_for_entity ignored: proxy client is connected"); return False
         ent_lo = ent_id & 0xFF
+        if 0xFF in self._pending_command_requests.get(ent_lo, set()):
+            log.debug(
+                "[CMD] request_commands_for_entity ignored: burst already pending for 0x%02X",
+                ent_lo,
+            )
+            return False
+
+        self._pending_command_requests.setdefault(ent_lo, set()).add(0xFF)
         self.enqueue_cmd(OP_REQ_COMMANDS, bytes([ent_lo, 0xFF]), expects_burst=True, burst_kind=f"commands:{ent_lo}")
         return True
+
+    def request_macros_for_activity(self, act_id: int) -> bool:
+        if not self.can_issue_commands():
+            log.info("[CMD] request_macros_for_activity ignored: proxy client is connected"); return False
+
+        act_lo = act_id & 0xFF
+        if act_lo in self._pending_macro_requests:
+            log.debug(
+                "[CMD] request_macros_for_activity ignored: burst already pending for 0x%02X",
+                act_lo,
+            )
+            return False
+
+        self._pending_macro_requests.add(act_lo)
+        return self.enqueue_cmd(
+            OP_REQ_MACRO_LABELS,
+            bytes([act_lo, 0xFF]),
+            expects_burst=True,
+            burst_kind=f"macros:{act_lo}",
+        )
+
+    def request_ip_commands_for_device(self, dev_id: int, *, wait: bool = False, timeout: float = 1.0) -> bool:
+        """Fetch IP command definitions for an existing device."""
+
+        if not self.can_issue_commands():
+            log.info("[CMD] request_ip_commands_for_device ignored: proxy client is connected"); return False
+
+        dev_lo = dev_id & 0xFF
+        event = threading.Event() if wait else None
+
+        if event:
+            def _done(_: str) -> None:
+                event.set()
+
+            self._burst.on_burst_end(f"commands:{dev_lo}", _done)
+
+        ok = self.enqueue_cmd(
+            OP_REQ_IPCMD_SYNC,
+            bytes([dev_lo, 0xFF, 0x14]),
+            expects_burst=True,
+            burst_kind=f"commands:{dev_lo}",
+        )
+
+        if event:
+            event.wait(timeout)
+
+        return ok
         
     def get_activities(self) -> tuple[dict[int, dict], bool]:
         if self.state.activities:
@@ -395,18 +491,207 @@ class X1Proxy:
 
     def get_commands_for_entity(self, ent_id: int, *, fetch_if_missing: bool = True) -> tuple[dict[int, str], bool]:
         ent_lo = ent_id & 0xFF
-        if ent_lo in self.state.commands:
-            return (dict(self.state.commands[ent_lo]), True)
+        commands = self.state.commands.get(ent_lo)
+        complete = ent_lo in self._commands_complete
+
+        if commands is not None and complete:
+            return (dict(commands), True)
 
         if fetch_if_missing and self.can_issue_commands():
-            self.enqueue_cmd(
-                OP_REQ_COMMANDS,
-                bytes([ent_lo, 0xFF]),
-                expects_burst=True,
-                burst_kind=f"commands:{ent_lo}",
-            )
+            pending = self._pending_command_requests.setdefault(ent_lo, set())
+            if 0xFF not in pending:
+                pending.add(0xFF)
+                self.enqueue_cmd(
+                    OP_REQ_COMMANDS,
+                    bytes([ent_lo, 0xFF]),
+                    expects_burst=True,
+                    burst_kind=f"commands:{ent_lo}",
+                )
+
+        if commands is not None:
+            return (dict(commands), complete)
 
         return ({}, False)
+
+    def get_macros_for_activity(self, act_id: int, *, fetch_if_missing: bool = True) -> tuple[list[dict[str, int | str]], bool]:
+        act_lo = act_id & 0xFF
+        macros = self.state.get_activity_macros(act_lo)
+        ready = act_lo in self._macros_complete
+
+        if macros and ready:
+            return (macros, True)
+
+        if fetch_if_missing and self.can_issue_commands():
+            if act_lo not in self._pending_macro_requests:
+                self._pending_macro_requests.add(act_lo)
+                self.enqueue_cmd(
+                    OP_REQ_MACRO_LABELS,
+                    bytes([act_lo, 0xFF]),
+                    expects_burst=True,
+                    burst_kind=f"macros:{act_lo}",
+                )
+
+        return (macros, ready)
+
+    def get_single_command_for_entity(
+        self,
+        ent_id: int,
+        command_id: int,
+        *,
+        fetch_if_missing: bool = True,
+    ) -> tuple[dict[int, str], bool]:
+        """Fetch metadata for a single command on a device.
+
+        Returns:
+            (commands, ready)
+
+            commands: mapping {command_id: label} if known; may be empty.
+            ready:    True if we have the answer (either from cache or after a completed burst),
+                      False if we have just enqueued a targeted request and are still waiting.
+        """
+
+        ent_lo = ent_id & 0xFF
+
+        device_cmds = self.state.commands.get(ent_lo)
+        if device_cmds is not None and command_id in device_cmds:
+            return ({command_id: device_cmds[command_id]}, True)
+
+        if not fetch_if_missing or not self.can_issue_commands():
+            return ({}, False)
+
+        pending = self._pending_command_requests.setdefault(ent_lo, set())
+
+        if command_id <= 0xFF:
+            if command_id in pending or 0xFF in pending:
+                return ({}, False)
+            payload = bytes([ent_lo, command_id & 0xFF])
+            burst_kind = f"commands:{ent_lo}:{command_id}"
+            pending.add(command_id)
+        else:
+            if 0xFF in pending:
+                return ({}, False)
+            payload = bytes([ent_lo, 0xFF])
+            burst_kind = f"commands:{ent_lo}"
+            pending.add(0xFF)
+
+        self.enqueue_cmd(
+            OP_REQ_COMMANDS,
+            payload,
+            expects_burst=True,
+            burst_kind=burst_kind,
+        )
+
+        return ({}, False)
+
+    def ensure_commands_for_activity(
+        self,
+        act_id: int,
+        *,
+        fetch_if_missing: bool = True,
+    ) -> tuple[dict[int, dict[int, str]], bool]:
+        """Fetch command labels for an activity's favorite slots.
+
+        The REQ_BUTTONS response already describes physical button mappings, so
+        the only follow-up requests we need are for favorite commands that
+        require labels. If no favorites exist, nothing is fetched.
+        """
+
+        act_lo = act_id & 0xFF
+        favorites = self.state.get_activity_favorite_slots(act_lo)
+        if not favorites:
+            return ({}, True)
+
+        refs: set[tuple[int, int]] = {
+            (slot["device_id"], slot["command_id"]) for slot in favorites
+        }
+
+        commands_by_device: dict[int, dict[int, str]] = {}
+        all_ready = True
+
+        seen_pairs: set[tuple[int, int]] = set()
+
+        for dev_id, command_id in refs:
+            pair = (dev_id, command_id)
+            if pair in seen_pairs:
+                continue
+
+            seen_pairs.add(pair)
+
+            existing_label = self.state.get_favorite_label(act_lo, dev_id, command_id)
+            if existing_label:
+                self.state.record_favorite_label(act_lo, dev_id, command_id, existing_label)
+                continue
+
+            device_cmds = self.state.commands.get(dev_id & 0xFF)
+            if device_cmds and command_id in device_cmds:
+                self.state.record_favorite_label(
+                    act_lo, dev_id, command_id, device_cmds[command_id]
+                )
+                continue
+
+            self._favorite_label_requests[pair].add(act_id)
+
+            single_cmds, ready = self.get_single_command_for_entity(
+                dev_id, command_id, fetch_if_missing=fetch_if_missing
+            )
+            if not ready:
+                all_ready = False
+
+            if single_cmds:
+                dev_lo = dev_id & 0xFF
+                if dev_lo not in commands_by_device:
+                    commands_by_device[dev_lo] = {}
+                commands_by_device[dev_lo].update(single_cmds)
+
+                label = single_cmds.get(command_id)
+                if label:
+                    self.state.record_favorite_label(act_lo, dev_id, command_id, label)
+
+            if ready:
+                self._favorite_label_requests.pop(pair, None)
+
+        return (commands_by_device, all_ready)
+
+    def clear_entity_cache(
+        self,
+        ent_id: int,
+        clear_buttons: bool = False,
+        clear_favorites: bool = False,
+        clear_macros: bool = False,
+    ) -> None:
+        """Remove cached data for a given entity."""
+
+        ent_lo = ent_id & 0xFF
+
+        self.state.commands.pop(ent_lo, None)
+        self._commands_complete.discard(ent_lo)
+        self._pending_command_requests.pop(ent_lo, None)
+
+        if clear_buttons:
+            self.state.buttons.pop(ent_lo, None)
+            self._pending_button_requests.discard(ent_lo)
+
+        if clear_favorites:
+            self.state.activity_command_refs.pop(ent_lo, None)
+            self.state.activity_favorite_slots.pop(ent_lo, None)
+            self.state.activity_favorite_labels.pop(ent_lo, None)
+            self._clear_favorite_label_requests_for_activity(ent_lo)
+
+        if clear_macros:
+            self.state.activity_macros.pop(ent_lo, None)
+            self._macros_complete.discard(ent_lo)
+            self._pending_macro_requests.discard(ent_lo)
+
+    def _clear_favorite_label_requests_for_activity(self, act_lo: int) -> None:
+        to_delete: list[tuple[int, int]] = []
+
+        for pair, act_ids in self._favorite_label_requests.items():
+            act_ids.discard(act_lo)
+            if not act_ids:
+                to_delete.append(pair)
+
+        for pair in to_delete:
+            self._favorite_label_requests.pop(pair, None)
 
     def get_app_activations(self) -> list[dict[str, Any]]:
         return self.state.get_app_activations()
@@ -450,6 +735,225 @@ class X1Proxy:
     def find_remote(self) -> bool:
         """Trigger the hub's "find my remote" feature."""
         return self.enqueue_cmd(OP_FIND_REMOTE)
+
+    # ------------------------------------------------------------------
+    # Virtual IP device/button creation
+    # ------------------------------------------------------------------
+    def start_virtual_device(
+        self,
+        *,
+        device_name: str | None = None,
+        button_name: str | None = None,
+        method: str | None = None,
+        url: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        with self._pending_virtual_lock:
+            self._pending_virtual_event.clear()
+            self._pending_virtual = {
+                "device_name": device_name or "",
+                "button_name": button_name,
+                "method": method,
+                "url": url,
+                "headers": headers or {},
+                "device_id": None,
+                "button_id": None,
+                "status": "pending",
+            }
+
+    def update_virtual_device(self, **kwargs) -> dict[str, Any]:
+        with self._pending_virtual_lock:
+            if self._pending_virtual is None:
+                self._pending_virtual = {"headers": {}, "status": "pending"}
+            if "headers" in kwargs and kwargs["headers"] is not None:
+                merged = dict(self._pending_virtual.get("headers", {}))
+                merged.update(kwargs["headers"])
+                kwargs["headers"] = merged
+            self._pending_virtual.update({k: v for k, v in kwargs.items() if v is not None or k == "status"})
+            snapshot = dict(self._pending_virtual)
+
+        if snapshot.get("device_id") is not None and snapshot.get("device_name"):
+            self.state.record_virtual_device(
+                snapshot["device_id"],
+                name=snapshot.get("device_name", ""),
+                button_id=snapshot.get("button_id"),
+                method=snapshot.get("method"),
+                url=snapshot.get("url"),
+                headers=snapshot.get("headers"),
+                button_name=snapshot.get("button_name"),
+            )
+
+        if kwargs.get("status") == "success" or kwargs.get("device_id") is not None:
+            self._pending_virtual_event.set()
+
+        return snapshot
+
+    def wait_for_virtual_device(self, timeout: float = 5.0) -> dict[str, Any] | None:
+        self._pending_virtual_event.wait(timeout)
+        with self._pending_virtual_lock:
+            if self._pending_virtual is None:
+                return None
+            snapshot = dict(self._pending_virtual)
+            if snapshot.get("status") == "success":
+                self._pending_virtual = None
+        return snapshot
+
+    def _build_virtual_device_frames(
+        self,
+        *,
+        device_name: str,
+        button_name: str,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+    ) -> list[tuple[int, bytes]]:
+        name_blob = self._utf16le_padded(device_name, length=64)
+        button_blob = self._utf16le_padded(button_name, length=64)
+        method_blob = method.encode("utf-8")
+        url_blob = url.encode("utf-8")
+        header_blob = self._encode_headers(headers)
+
+        create_payload = b"\x01\x00\x00\x00" + name_blob
+        define_payload = (
+            button_blob
+            + self._encode_len_prefixed(method_blob)
+            + self._encode_len_prefixed(url_blob)
+            + self._encode_len_prefixed(header_blob)
+        )
+        prepare_payload = b"\x01\x00"
+        finalize_payload = name_blob[:8] + button_blob[:8]
+
+        return [
+            (OP_CREATE_DEVICE_HEAD, create_payload),
+            (OP_DEFINE_IP_CMD, define_payload),
+            (OP_PREPARE_SAVE, prepare_payload),
+            (OP_FINALIZE_DEVICE, finalize_payload),
+            (OP_SAVE_COMMIT, b""),
+        ]
+
+    def _encode_http_request(self, method: str, url: str, headers: dict[str, str]) -> bytes:
+        header_lines = "".join(f"{k}:{v}\r\n" for k, v in headers.items())
+        request = f"{method} {url} HTTP/1.1\r\n{header_lines}\r\n"
+        return request.encode("utf-8")
+
+    def _build_existing_device_frame(
+        self,
+        *,
+        device_id: int,
+        button_id: int,
+        button_name: str,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+    ) -> tuple[int, bytes]:
+        """Construct the opcode/payload needed to add an IP command to an existing device."""
+
+        header = bytes(
+            [
+                button_id & 0xFF,
+                0x00,
+                0x01,
+                0x01,
+                0x00,
+                0x01,
+                device_id & 0xFF,
+                button_id & 0xFF,
+                0x1C,
+            ]
+        ) + b"\x00" * 7
+
+        payload = bytearray(header)
+        payload.extend(self._utf16le_padded(button_name, length=64))
+        payload.extend(self._encode_http_request(method, url, headers))
+        return OP_DEFINE_IP_CMD_EXISTING, bytes(payload)
+
+    def create_ip_button(
+        self,
+        *,
+        device_name: str,
+        button_name: str,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+    ) -> dict[str, Any] | None:
+        if not self.can_issue_commands():
+            log.info("[CREATE] create_ip_button ignored: proxy client is connected")
+            return None
+
+        frames = self._build_virtual_device_frames(
+            device_name=device_name,
+            button_name=button_name,
+            method=method,
+            url=url,
+            headers=headers,
+        )
+
+        self.start_virtual_device(
+            device_name=device_name,
+            button_name=button_name,
+            method=method,
+            url=url,
+            headers=headers,
+        )
+
+        for opcode, payload in frames:
+            self._send_cmd_frame(opcode, payload)
+            time.sleep(0.05)
+
+        result = self.wait_for_virtual_device(timeout=3.0)
+        if result and result.get("device_id") is not None:
+            log.info(
+                "[CREATE] virtual dev=0x%04X btn=%s method=%s url=%s",
+                result.get("device_id", 0),
+                result.get("button_id"),
+                result.get("method"),
+                result.get("url"),
+            )
+        return result
+
+    def add_ip_button_to_device(
+        self,
+        *,
+        device_id: int,
+        button_name: str,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+    ) -> dict[str, Any] | None:
+        """Add an IP-backed command to an existing device."""
+
+        if not self.can_issue_commands():
+            log.info("[CREATE] add_ip_button_to_device ignored: proxy client is connected")
+            return None
+
+        self.request_ip_commands_for_device(device_id, wait=True)
+        existing = self.state.ip_buttons.get(device_id & 0xFF, {})
+        next_button_id = (max(existing.keys()) + 1) if existing else 1
+
+        device_name = self.state.devices.get(device_id & 0xFF, {}).get("name", f"Device {device_id}")
+
+        opcode, payload = self._build_existing_device_frame(
+            device_id=device_id,
+            button_id=next_button_id,
+            button_name=button_name,
+            method=method,
+            url=url,
+            headers=headers,
+        )
+
+        self.start_virtual_device(
+            device_name=device_name,
+            button_name=button_name,
+            method=method,
+            url=url,
+            headers=headers,
+        )
+
+        self._send_cmd_frame(opcode, payload)
+
+        result = self.wait_for_virtual_device(timeout=3.0)
+        self.request_ip_commands_for_device(device_id, wait=True)
+        return result
 
     # ---------------------------------------------------------------------
     # mDNS advertisement
@@ -526,6 +1030,52 @@ class X1Proxy:
                 cb(record)
             except Exception:
                 log.exception("app activation listener failed")
+
+    def _on_commands_burst_end(self, key: str) -> None:
+        parts = key.split(":")
+        if len(parts) >= 2 and parts[0] == "commands":
+            try:
+                ent_lo = int(parts[1])
+            except ValueError:
+                self._pending_command_requests.clear(); return
+
+            pending = self._pending_command_requests.get(ent_lo)
+            if pending is None:
+                return
+
+            targeted_cmd: int | None = None
+            if len(parts) >= 3:
+                try:
+                    targeted_cmd = int(parts[2])
+                except ValueError:
+                    targeted_cmd = None
+
+            if targeted_cmd is not None:
+                pending.discard(targeted_cmd)
+            elif 0xFF in pending:
+                pending.discard(0xFF)
+                self._commands_complete.add(ent_lo)
+            else:
+                pending.clear()
+
+            if not pending:
+                self._pending_command_requests.pop(ent_lo, None)
+        else:
+            self._pending_command_requests.clear()
+
+    def _on_macros_burst_end(self, key: str) -> None:
+        parts = key.split(":")
+        if len(parts) >= 2 and parts[0] == "macros":
+            try:
+                act_lo = int(parts[1])
+            except ValueError:
+                self._pending_macro_requests.clear()
+                return
+
+            self._pending_macro_requests.discard(act_lo)
+            self._macros_complete.add(act_lo)
+        else:
+            self._pending_macro_requests.clear()
 
     def _on_buttons_burst_end(self, key: str) -> None:
         if ":" in key:
@@ -607,8 +1157,19 @@ class X1Proxy:
     def _log_frames(self, direction: str, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
         for op, raw, payload, scid, ecid in frames:
             name = OPNAMES.get(op, f"OP_{op:04X}")
+            hi = opcode_hi(op)
+            fam = opcode_family(op)
             note = f"#{scid}→#{ecid}" if scid != ecid else f"#{ecid}"
             log.info("[FRAME %s] %s %s (0x%04X) len=%d", note, direction, name, op, len(raw))
+
+            if op not in OPNAMES:
+                log.debug(
+                    "[FRAME %s] unknown opcode 0x%04X hi=0x%02X family(lo)=0x%02X",
+                    direction,
+                    op,
+                    hi,
+                    fam,
+                )
 
             context = FrameContext(
                 proxy=self,

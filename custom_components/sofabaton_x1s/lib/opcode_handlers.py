@@ -2,17 +2,22 @@ from __future__ import annotations
 
 """Opcode-specific frame handlers used by :class:`~.x1_proxy.X1Proxy`."""
 
+import re
 import time
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from .frame_handlers import BaseFrameHandler, FrameContext, register_handler
+from .macros import MacroAssembler, decode_macro_records
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
+    FAMILY_DEVBTNS,
+    FAMILY_MACROS,
+    FAMILY_KEYMAP,
     OP_ACK_READY,
     OP_CATALOG_ROW_ACTIVITY,
     OP_CATALOG_ROW_DEVICE,
-    OP_DEVBTN_EXTRA,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
     OP_DEVBTN_PAGE,
@@ -21,7 +26,12 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT3,
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
+    OP_MACROS_A1,
+    OP_MACROS_A2,
+    OP_MACROS_B1,
+    OP_MACROS_B2,
     OP_KEYMAP_CONT,
     OP_KEYMAP_TBL_A,
     OP_KEYMAP_TBL_B,
@@ -30,12 +40,27 @@ from .protocol_const import (
     OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_G,
+    OP_CREATE_DEVICE_HEAD,
+    OP_DEFINE_IP_CMD,
+    OP_DEFINE_IP_CMD_EXISTING,
+    OP_PREPARE_SAVE,
+    OP_FINALIZE_DEVICE,
+    OP_DEVICE_SAVE_HEAD,
+    OP_SAVE_COMMIT,
+    OP_REQ_IPCMD_SYNC,
+    OP_IPCMD_ROW_A,
+    OP_IPCMD_ROW_B,
+    OP_IPCMD_ROW_C,
+    OP_IPCMD_ROW_D,
+    ACK_SUCCESS,
     OP_REQ_ACTIVATE,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_ACTIVITIES,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
+    OP_KEYMAP_EXTRA,
+    opcode_family,
 )
 from .x1_proxy import log
 
@@ -78,6 +103,195 @@ def _extract_text_fields(payload: bytes, start: int, count: int = 2) -> list[str
 
     return fields
 
+
+def _decode_utf16le_segment(payload: bytes, *, start: int = 0, length: int | None = None) -> str:
+    """Decode a UTF-16LE string from ``payload`` with optional bounds."""
+
+    end = None if length is None else start + length
+    segment = payload[start:end]
+    if not segment:
+        return ""
+    try:
+        text = segment.decode("utf-16le", errors="ignore").replace("\x00", "")
+        text = re.sub(r"[^\x20-\x7E]", "", text)
+        return text.strip()
+    except Exception:
+        return ""
+
+
+def _decode_ascii_blocks(payload: bytes) -> list[str]:
+    """Split an ASCII-ish payload into human-readable blocks."""
+
+    decoded = payload.decode("utf-8", errors="ignore")
+    parts = [p.strip("\x00") for p in decoded.replace("\r", "\n").split("\n") if p.strip("\x00")]
+    return parts
+
+
+def _is_probable_header_frame(payload: bytes) -> bool:
+    """Heuristic to identify DEVBTN header pages when only the family matches."""
+
+    if len(payload) < 6:
+        return False
+
+    frame_no = payload[2]
+    total_frames = int.from_bytes(payload[4:6], "big")
+
+    return frame_no == 1 and total_frames > 1
+
+
+def _is_probable_single_command(payload: bytes) -> bool:
+    """Heuristic to identify single-command DEVBTN responses within the family."""
+
+    if len(payload) < 6:
+        return False
+
+    frame_no = payload[2]
+    total_frames = int.from_bytes(payload[4:6], "big")
+
+    return frame_no == 1 and total_frames <= 1
+
+
+@register_handler(opcode_families_low=(FAMILY_MACROS,), directions=("H→A",))
+class MacroHandler(BaseFrameHandler):
+    """Decode macro pages and populate the activity cache."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+
+        now = time.monotonic()
+        completed = proxy._macro_assembler.feed(frame.opcode, frame.payload, frame.raw)
+        activity_hint = proxy._macro_assembler._last_activity_id
+        burst_key = "macros" if activity_hint is None else f"macros:{activity_hint & 0xFF}"
+
+        if proxy._burst.active and proxy._burst.kind and proxy._burst.kind.startswith("macros"):
+            proxy._burst.last_ts = now + proxy._burst.response_grace
+            if proxy._burst.kind == "macros":
+                proxy._burst.kind = burst_key
+        else:
+            proxy._burst.start(burst_key, now=now)
+
+        if not completed:
+            return
+
+        grouped: dict[int, list[dict[str, int | str]]] = defaultdict(list)
+
+        for activity_id, assembled in completed:
+            for act, command_id, label in decode_macro_records(assembled, activity_id):
+                grouped[act & 0xFF].append({"command_id": command_id, "label": label})
+
+        for act_lo, macros in grouped.items():
+            proxy.state.replace_activity_macros(act_lo, macros)
+            proxy._macros_complete.add(act_lo)
+            proxy._pending_macro_requests.discard(act_lo)
+            log.info(
+                "[MACRO] act=0x%02X macros{%d}: %s",
+                act_lo,
+                len(macros),
+                ", ".join(f"{m['command_id']}: {m['label']}" for m in macros),
+            )
+
+
+def _parse_header_lines(lines: list[str]) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    for line in lines:
+        if ":" not in line:
+            continue
+        key, val = line.split(":", 1)
+        headers[key.strip()] = val.strip()
+    return headers
+
+
+def _parse_ip_command_fields(payload: bytes) -> tuple[str, str, dict[str, str]]:
+    """Extract HTTP method, URL, and headers from an IP command payload."""
+
+    method = ""
+    url = ""
+    headers: dict[str, str] = {}
+
+    if payload:
+        try:
+            cursor = 0
+            if cursor < len(payload):
+                m_len = payload[cursor]
+                cursor += 1
+                method = payload[cursor : cursor + m_len].decode("utf-8", errors="ignore")
+                cursor += m_len
+            if cursor < len(payload):
+                u_len = payload[cursor]
+                cursor += 1
+                url = payload[cursor : cursor + u_len].decode("utf-8", errors="ignore")
+                cursor += u_len
+            if cursor < len(payload):
+                h_len = payload[cursor]
+                cursor += 1
+                header_blob = payload[cursor : cursor + h_len].decode("utf-8", errors="ignore")
+                headers = _parse_header_lines(header_blob.split("\n"))
+        except Exception:
+            # fall through to heuristics
+            pass
+
+    ascii_parts = _decode_ascii_blocks(payload)
+    for part in ascii_parts:
+        clean = re.sub(r"[^\x20-\x7E]", "", part)
+        upper_clean = clean.upper()
+
+        if not method:
+            for verb in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"):
+                if verb in upper_clean:
+                    method = verb
+                    break
+            if not method and clean.isalpha():
+                method = upper_clean
+        if not url:
+            lower_clean = clean.lower()
+            if lower_clean.startswith("http"):
+                url = clean
+            elif method and "http" in lower_clean:
+                for tok in clean.split():
+                    if tok.lower().startswith("http/"):
+                        continue
+                    if tok.lower().startswith("http"):
+                        url = tok
+                        break
+        if method and not url and "http/" not in clean.lower():
+            tokens = clean.split()
+            if method in tokens and len(tokens) > tokens.index(method) + 1:
+                candidate = tokens[tokens.index(method) + 1]
+                if not candidate.lower().startswith("http/" ):
+                    url = candidate
+        if ":" in clean:
+            headers |= _parse_header_lines([clean])
+
+    if method and not method.isalpha():
+        match = re.search(r"\b(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b", method, re.IGNORECASE)
+        if match:
+            method = match.group(1).upper()
+
+    if url.upper().startswith("HTTP/"):
+        url = ""
+
+    if not url or url.startswith("-") or url.lower().startswith("content-"):
+        for part in ascii_parts:
+            if method:
+                tokens = part.split()
+                for idx, tok in enumerate(tokens):
+                    if method in tok.upper() and idx + 1 < len(tokens):
+                        candidate = tokens[idx + 1]
+                        if not candidate.lower().startswith("http/"):
+                            url = candidate if candidate.startswith("/") else url
+                            if candidate.startswith("/"):
+                                break
+                    if tok.lower().startswith("http/"):
+                        continue
+                    if tok.startswith("/") or tok.lower().startswith("http"):
+                        url = tok
+                        break
+            if url:
+                break
+
+
+    return method, url, headers
+
 def _infer_command_entity(proxy: "X1Proxy", payload: bytes) -> int:
     """Best-effort guess of the entity a command burst belongs to."""
 
@@ -99,6 +313,13 @@ def _infer_command_entity(proxy: "X1Proxy", payload: bytes) -> int:
 def _extract_dev_id(raw: bytes, payload: bytes, opcode: int) -> int:
     """Determine device ID for a command burst frame."""
 
+    if (
+        opcode == OP_DEVBTN_SINGLE
+        and len(payload) > 7
+        and payload[:6] == b"\x01\x00\x01\x01\x00\x01"
+    ):
+        return payload[7]
+
     if opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1) and len(raw) > 11:
         return raw[11]
 
@@ -106,6 +327,150 @@ def _extract_dev_id(raw: bytes, payload: bytes, opcode: int) -> int:
         return payload[3]
 
     return 0
+
+
+@register_handler(opcodes=(OP_CREATE_DEVICE_HEAD,), directions=("A→H",))
+class CreateVirtualDeviceHandler(BaseFrameHandler):
+    """Capture app-initiated virtual device creation requests."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        device_name = _decode_utf16le_segment(payload, start=0, length=64) or _decode_utf16le_segment(payload)
+        proxy.start_virtual_device(device_name=device_name)
+        log.info("[CREATE] device name='%s' (%dB payload)", device_name, len(payload))
+
+
+@register_handler(opcodes=(OP_DEFINE_IP_CMD,), directions=("A→H",))
+class DefineIpCommandHandler(BaseFrameHandler):
+    """Decode IP command metadata sent from the app."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        button_name = _decode_utf16le_segment(payload, start=0, length=64) or _decode_utf16le_segment(payload)
+        method, url, headers = _parse_ip_command_fields(payload[64:])
+        proxy.update_virtual_device(button_name=button_name, method=method, url=url, headers=headers)
+        log.info(
+            "[CREATE] button='%s' method=%s url='%s' headers=%s",
+            button_name,
+            method or "?",
+            url,
+            ", ".join(f"{k}: {v}" for k, v in headers.items()) if headers else "{}",
+        )
+
+
+@register_handler(opcodes=(OP_DEFINE_IP_CMD_EXISTING,), directions=("A→H",))
+class DefineExistingIpCommandHandler(BaseFrameHandler):
+    """Capture metadata when the app adds an IP command to an existing device."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        button_name = _decode_utf16le_segment(payload, start=16, length=64) or _decode_utf16le_segment(payload, start=16)
+        method, url, headers = _parse_ip_command_fields(payload[64:])
+        proxy.update_virtual_device(button_name=button_name, method=method, url=url, headers=headers)
+        log.info(
+            "[CREATE] existing dev button='%s' method=%s url='%s' headers=%s",
+            button_name,
+            method or "?",
+            url,
+            ", ".join(f"{k}: {v}" for k, v in headers.items()) if headers else "{}",
+        )
+
+
+@register_handler(
+    opcodes=(OP_IPCMD_ROW_A, OP_IPCMD_ROW_B, OP_IPCMD_ROW_C, OP_IPCMD_ROW_D),
+    directions=("H→A",),
+)
+class IpCommandSyncRowHandler(BaseFrameHandler):
+    """Decode IP command rows returned when syncing commands for an existing device."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        proxy._burst.start("commands", now=time.monotonic())
+        if len(payload) > 6:
+            proxy._burst.start(f"commands:{payload[6]}", now=time.monotonic())
+
+        device_id = payload[6] if len(payload) > 6 else None
+        button_id = payload[7] if len(payload) > 7 else None
+        button_name = _decode_utf16le_segment(payload, start=16, length=64) or _decode_utf16le_segment(payload, start=16)
+        method, url, headers = _parse_ip_command_fields(payload[64:])
+
+        if device_id is None:
+            return
+
+        device_meta = proxy.state.devices.get(device_id & 0xFF, {})
+        proxy.state.record_virtual_device(
+            device_id,
+            name=device_meta.get("name") or f"Device {device_id}",
+            button_id=button_id,
+            method=method,
+            url=url,
+            headers=headers,
+            button_name=button_name,
+        )
+
+        log.info(
+            "[CREATE] sync dev=0x%04X btn=0x%02X name='%s' method=%s url='%s'",
+            device_id,
+            button_id or 0,
+            button_name,
+            method or "?",
+            url,
+        )
+
+
+@register_handler(opcodes=(OP_PREPARE_SAVE,), directions=("A→H", "H→A"))
+class PrepareSaveHandler(BaseFrameHandler):
+    """Track the start of a save transaction for IP buttons."""
+
+    def handle(self, frame: FrameContext) -> None:
+        log.info("[CREATE] prepare/save transaction len=%d", len(frame.payload))
+
+
+@register_handler(opcodes=(OP_DEVICE_SAVE_HEAD,), directions=("H→A",))
+class DeviceSaveHeadHandler(BaseFrameHandler):
+    """Record hub-assigned device identifiers for virtual devices."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        device_id = int.from_bytes(payload[:2], "big") if len(payload) >= 2 else None
+        button_id = payload[2] if len(payload) > 2 else None
+        proxy.update_virtual_device(device_id=device_id, button_id=button_id)
+        log.info(
+            "[CREATE] hub assigned dev=0x%04X btn=0x%02X", device_id or 0, button_id or 0
+        )
+
+
+@register_handler(opcodes=(OP_FINALIZE_DEVICE,), directions=("H→A",))
+class FinalizeDeviceHandler(BaseFrameHandler):
+    """Note finalize frames emitted during virtual device creation."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        if len(payload) >= 3:
+            device_id = int.from_bytes(payload[:2], "big")
+            button_id = payload[2]
+            proxy.update_virtual_device(device_id=device_id, button_id=button_id)
+            log.info("[CREATE] finalize dev=0x%04X btn=0x%02X", device_id, button_id)
+        else:
+            log.info("[CREATE] finalize len=%d", len(payload))
+
+
+@register_handler(opcodes=(OP_SAVE_COMMIT, ACK_SUCCESS), directions=("H→A",))
+class SaveCommitHandler(BaseFrameHandler):
+    """Acknowledge successful save of a virtual device/button."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        if getattr(proxy, "_pending_virtual", None) is None:
+            return
+        proxy.update_virtual_device(status="success")
+        log.info("[CREATE] save commit/ack success")
 
 
 @register_handler(opcodes=(OP_REQ_ACTIVATE,), directions=("A→H",))
@@ -355,7 +720,10 @@ class X1CatalogActivityHandler(BaseFrameHandler):
             log.info("[ACT] name='%s' state=%s", activity_label, state)
 
 
-@register_handler(directions=("H→A",))
+@register_handler(
+    opcode_families_low=(FAMILY_KEYMAP,),
+    directions=("H→A",),
+)
 class KeymapHandler(BaseFrameHandler):
     """Accumulate keymap table pages for activities."""
 
@@ -382,7 +750,7 @@ class KeymapHandler(BaseFrameHandler):
             OP_KEYMAP_TBL_E,
             OP_KEYMAP_TBL_F,
             OP_KEYMAP_TBL_G,
-            OP_DEVBTN_EXTRA,
+            OP_KEYMAP_EXTRA,
         }
 
         burst_act_lo = self._burst_activity(proxy)
@@ -390,7 +758,7 @@ class KeymapHandler(BaseFrameHandler):
             OP_KEYMAP_CONT: 16,
             OP_KEYMAP_TBL_D: 16,
             OP_KEYMAP_TBL_F: 16,
-            OP_DEVBTN_EXTRA: 16,
+            OP_KEYMAP_EXTRA: 16,
         }
         activity_idx = activity_offsets.get(frame.opcode, 11)
         activity_id_decimal = burst_act_lo
@@ -447,6 +815,23 @@ class KeymapHandler(BaseFrameHandler):
         for i in range(len(payload) - 1):
             if payload[i] == act_lo and payload[i + 1] in BUTTONNAME_BY_CODE:
                 return True
+
+        # Some payloads (favorites) only contain button IDs that are not part of
+        # the known mapping table. These still follow a recognizable layout of
+        # 18-byte records with zeroed padding between the device and command
+        # identifiers, so look for that structure as a fallback.
+        RECORD_SIZE = 18
+        for i in range(len(payload) - RECORD_SIZE + 1):
+            if payload[i] != act_lo:
+                continue
+
+            looks_like_favorite_record = (
+                payload[i + 3 : i + 7] == b"\x00" * 4
+                and payload[i + 12 : i + 18] == b"\x00" * 6
+            )
+
+            if looks_like_favorite_record:
+                return True
         return False
 
 
@@ -460,7 +845,77 @@ class RequestCommandsHandler(BaseFrameHandler):
         log.info("[DEVCTL] A→H requesting commands dev=0x%02X (%d)", dev_id, dev_id)
 
 
-@register_handler(opcodes=(OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1), directions=("H→A",))
+class DeviceButtonSingleHandler(BaseFrameHandler):
+    """Handle single-command payloads returned by :opcode:`OP_REQ_COMMANDS`."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+        raw = frame.raw
+
+        effective_opcode = (
+            OP_DEVBTN_SINGLE
+            if opcode_family(frame.opcode) == FAMILY_DEVBTNS
+            else frame.opcode
+        )
+
+        if len(payload) < 4:
+            return
+
+        dev_id = _extract_dev_id(raw, payload, effective_opcode)
+
+        now = time.monotonic()
+        if proxy._burst.active and (proxy._burst.kind or "").startswith("commands:"):
+            proxy._burst.last_ts = now + proxy._burst.response_grace
+        else:
+            proxy._burst.start(f"commands:{dev_id}", now=now)
+
+        completed = proxy._command_assembler.feed(
+            effective_opcode, raw, dev_id_override=dev_id
+        )
+        for complete_dev_id, assembled_payload in completed:
+            commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
+            if commands:
+                dev_key = complete_dev_id & 0xFF
+                for cmd_id, label in commands.items():
+                    pair = (complete_dev_id, cmd_id)
+                    awaiting = proxy._favorite_label_requests.get(pair)
+                    if awaiting:
+                        for act_id in awaiting:
+                            proxy.state.record_favorite_label(act_id, complete_dev_id, cmd_id, label)
+                        proxy._favorite_label_requests.pop(pair, None)
+                        continue
+
+                    pending_for_device = [
+                        candidate
+                        for candidate in proxy._favorite_label_requests
+                        if candidate[0] == complete_dev_id
+                    ]
+
+                    if len(pending_for_device) == 1:
+                        pending_pair = pending_for_device[0]
+                        pending_cmd_id = pending_pair[1]
+                        for act_id in proxy._favorite_label_requests.get(pending_pair, set()):
+                            proxy.state.record_favorite_label(
+                                act_id, complete_dev_id, pending_cmd_id, label
+                            )
+                        proxy._favorite_label_requests.pop(pending_pair, None)
+
+                        cmds = proxy.state.commands.setdefault(dev_key, {})
+                        cmds[cmd_id] = label
+                        cmds[pending_cmd_id] = label
+                        continue
+
+                    proxy.state.commands.setdefault(dev_key, {})[cmd_id] = label
+
+                if dev_key in proxy.state.commands:
+                    log.info(
+                        " ".join(
+                            f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[dev_key].items()
+                        )
+                    )
+
+
 class DeviceButtonHeaderHandler(BaseFrameHandler):
     """Start device-command burst parsing."""
 
@@ -480,25 +935,14 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
         for complete_dev_id, assembled_payload in completed:
             commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
             if commands:
-                proxy.state.commands[complete_dev_id & 0xFF] = commands
+                dev_key = complete_dev_id & 0xFF
+                existing = proxy.state.commands.setdefault(dev_key, {})
+                existing.update(commands)
                 log.info(
-                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[complete_dev_id].items())
+                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in existing.items())
                 )
 
 
-@register_handler(
-    opcodes=(
-        OP_DEVBTN_PAGE,
-        OP_DEVBTN_MORE,
-        OP_DEVBTN_TAIL,
-        OP_DEVBTN_PAGE_ALT1,
-        OP_DEVBTN_PAGE_ALT2,
-        OP_DEVBTN_PAGE_ALT3,
-        OP_DEVBTN_PAGE_ALT4,
-        OP_DEVBTN_PAGE_ALT5,
-    ),
-    directions=("H→A",),
-)
 class DeviceButtonPayloadHandler(BaseFrameHandler):
     """Accumulate device command pages."""
 
@@ -525,7 +969,33 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
         for complete_dev_id, assembled_payload in completed:
             commands = proxy.parse_device_commands(assembled_payload, complete_dev_id)
             if commands:
-                proxy.state.commands[complete_dev_id & 0xFF] = commands
+                dev_key = complete_dev_id & 0xFF
+                existing = proxy.state.commands.setdefault(dev_key, {})
+                existing.update(commands)
                 log.info(
-                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[complete_dev_id].items())
+                    " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in existing.items())
                 )
+
+
+@register_handler(opcode_families_low=(FAMILY_DEVBTNS,), directions=("H→A",))
+class DeviceButtonFamilyHandler(BaseFrameHandler):
+    """Route all device-button family responses using heuristics."""
+
+    def __init__(self) -> None:
+        self._single = DeviceButtonSingleHandler()
+        self._header = DeviceButtonHeaderHandler()
+        self._payload = DeviceButtonPayloadHandler()
+
+    def handle(self, frame: FrameContext) -> None:
+        opcode = frame.opcode
+        payload = frame.payload
+
+        if opcode == OP_DEVBTN_SINGLE or _is_probable_single_command(payload):
+            self._single.handle(frame)
+            return
+
+        if opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1) or _is_probable_header_frame(payload):
+            self._header.handle(frame)
+            return
+
+        self._payload.handle(frame)

@@ -39,18 +39,21 @@ if str(ROOT) not in sys.path:
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     KeymapHandler,
+    MacroHandler,
     X1CatalogActivityHandler,
     X1CatalogDeviceHandler,
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
-    OP_DEVBTN_EXTRA,
+    OP_KEYMAP_EXTRA,
     OP_KEYMAP_CONT,
     OP_KEYMAP_TBL_B,
     OP_KEYMAP_TBL_D,
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_G,
+    OP_MACROS_A1,
+    OP_MACROS_B1,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
 )
@@ -80,6 +83,19 @@ def _build_payload_context(proxy: X1Proxy, opcode: int, payload: bytes, name: st
         raw=raw,
         name=name,
     )
+
+
+def _build_macro_raw(op_hi: int, frag_index: int, total_frags: int, act: int, payload: bytes) -> str:
+    header = bytes(
+        [0xA5, 0x5A, op_hi, 0x13, frag_index, 0x00, 0x01, total_frags, 0x00, 0x01, act]
+    )
+    raw = header + payload + b"\x00"
+    return raw.hex(" ")
+
+
+def _opcode_from_raw(raw_hex: str) -> int:
+    raw = bytes.fromhex(raw_hex)
+    return (raw[2] << 8) | raw[3]
 
 
 def test_keymap_table_b_parses_buttons_response() -> None:
@@ -134,6 +150,140 @@ def test_keymap_table_b_parses_buttons_response() -> None:
         ButtonName.YELLOW,
         ButtonName.BLUE,
     }
+
+
+def test_keymap_handler_accepts_favorite_only_payload() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    favorite_records = bytes.fromhex(
+        "66 01 03 00 00 00 00 00 38 03 00 00 00 00 00 00 00 00"
+        " 66 02 03 00 00 00 00 00 4c 07 00 00 00 00 00 00 00 00"
+    )
+    payload = b"\x00" * 7 + favorite_records
+
+    frame = _build_payload_context(proxy, OP_KEYMAP_TBL_B, payload, "KEYMAP_TABLE_B")
+
+    handler.handle(frame)
+
+    favorites = proxy.state.get_activity_favorite_slots(0x66)
+    assert any(
+        slot["button_id"] == 0x01
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x03
+        for slot in favorites
+    )
+    assert any(
+        slot["button_id"] == 0x02
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x07
+        for slot in favorites
+    )
+
+    refs = proxy.state.get_activity_command_refs(0x66)
+    assert (0x03, 0x03) in refs
+    assert (0x03, 0x07) in refs
+    assert 0x01 not in proxy.state.buttons.get(0x66, set())
+
+
+def test_keymap_handler_parses_favorites_from_complete_response() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    frames = (
+        (
+            "a5 5a fa 3d 01 00 01 01 00 02 0f 66 01 03 00 00 00 00 00 38 03 00 00 00 00"
+            " 00 00 00 00 66 02 03 00 00 00 00 00 4c 07 00 00 00 00 00 00 00 00 66 ae 01"
+            " 00 00 00 00 00 2e 16 00 00 00 00 00 00 00 00 66 af 01 00 00 00 00 00 30 14"
+            " 00 00 00 00 00 00 00 00 66 b0 01 00 00 00 00 01 88 17 00 00 00 00 00 00 00"
+            " 00 66 b1 01 00 00 00 00 00 31 15 00 00 00 00 00 00 00 00 66 b2 01 00 00 00"
+            " 00 00 2f 13 00 00 00 00 00 00 00 00 66 b3 01 00 00 00 00 00 74 0d 00 00 00"
+            " 00 00 00 00 00 66 b4 01 00 00 00 00 07 c7 10 00 00 00 00 00 00 00 00 66 b5"
+            " 01 00 00 00 00 00 2d 11 00 00 00 00 00 00 00 00 66 b6 03 00 00 00 00 2e 77"
+            " 79 00 00 00 00 00 00 00 00 66 b7 01 00 00 00 00 2e 78 0f 00 00 00 00 00 00"
+            " 00 00 66 b8 03 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 66 b9 03 00 00"
+            " 00 00 00 33 1f",
+            OP_KEYMAP_TBL_B,
+            "KEYMAP_TABLE_B",
+        ),
+        (
+            "a5 5a 1e 3d 01 00 02 78 00 00 00 00 00 00 00 00 66 ba 01 00 00 00 00 00 2c"
+            " 0e 00 00 00 00 00 00 00 00 30",
+            OP_KEYMAP_CONT,
+            "KEYMAP_CONT",
+        ),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    favorites = proxy.state.get_activity_favorite_slots(0x66)
+    assert any(
+        slot["button_id"] == 0x01
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x03
+        for slot in favorites
+    )
+    assert any(
+        slot["button_id"] == 0x02
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x07
+        for slot in favorites
+    )
+
+
+def test_keymap_handler_parses_additional_favorites_from_response() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    frames = (
+        (
+            "a5 5a fa 3d 01 00 01 01 00 02 0f 67 02 01 00 00 00 00 00 79 02 00 00 00 00"
+            " 00 00 00 00 67 03 03 00 00 00 00 00 38 03 00 00 00 00 00 00 00 00 67 ae 01"
+            " 00 00 00 00 00 2e 16 00 00 00 00 00 00 00 00 67 af 01 00 00 00 00 00 30 14"
+            " 00 00 00 00 00 00 00 00 67 b0 01 00 00 00 00 01 88 17 00 00 00 00 00 00 00"
+            " 00 67 b1 01 00 00 00 00 00 31 15 00 00 00 00 00 00 00 00 67 b2 01 00 00 00"
+            " 00 00 2f 13 00 00 00 00 00 00 00 00 67 b3 01 00 00 00 00 00 74 0d 00 00 00"
+            " 00 00 00 00 00 67 b4 01 00 00 00 00 07 c7 10 00 00 00 00 00 00 00 00 67 b5"
+            " 01 00 00 00 00 00 2d 11 00 00 00 00 00 00 00 00 67 b6 03 00 00 00 00 2e 77"
+            " 79 00 00 00 00 00 00 00 00 67 b7 01 00 00 00 00 2e 78 0f 00 00 00 00 00 00"
+            " 00 00 67 b8 03 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 67 b9 03 00 00"
+            " 00 00 00 33 55",
+            OP_KEYMAP_TBL_B,
+            "KEYMAP_TABLE_B",
+        ),
+        (
+            "a5 5a 1e 3d 01 00 02 78 00 00 00 00 00 00 00 00 67 ba 01 00 00 00 00 00 2c"
+            " 0e 00 00 00 00 00 00 00 00 31",
+            OP_KEYMAP_CONT,
+            "KEYMAP_CONT",
+        ),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    favorites = proxy.state.get_activity_favorite_slots(0x67)
+    assert any(
+        slot["button_id"] == 0x02
+        and slot["device_id"] == 0x01
+        and slot["command_id"] == 0x02
+        for slot in favorites
+    )
+    assert any(
+        slot["button_id"] == 0x03
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x03
+        for slot in favorites
+    )
 
 
 def test_keymap_table_d_includes_pause() -> None:
@@ -239,13 +389,88 @@ def test_devbtn_extra_contains_pause_and_red() -> None:
     frame = _build_context(
         proxy,
         "a5 5a 30 3d 01 00 02 14 00 00 00 00 00 00 00 00 65 bc 02 00 00 00 00 00 a6 0e 02 00 00 00 00 00 92 0f 65 be 02 00 00 00 00 00 00 20 00 00 00 00 00 00 00 00 42",
-        OP_DEVBTN_EXTRA,
-        "DEVBTN_EXTRA",
+        OP_KEYMAP_EXTRA,
+        "KEYMAP_EXTRA",
     )
 
     handler.handle(frame)
 
     assert proxy.state.buttons.get(0x65) == {ButtonName.PAUSE, ButtonName.RED}
+
+
+def test_macro_handler_reassembles_and_records_macros() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = MacroHandler()
+
+    act = 0x34
+    record_one = bytes([0x01]) + "Power On".encode("utf-16le") + b"\x00\x00"
+    record_two = bytes([0x02]) + "Watch TV".encode("utf-16le") + b"\x00\x00"
+    combined = record_one + record_two
+
+    payload_one = combined[: len(combined) // 2]
+    payload_two = combined[len(combined) // 2 :]
+
+    raw_one = _build_macro_raw((OP_MACROS_A1 >> 8) & 0xFF, 1, 2, act, payload_one)
+    raw_two = _build_macro_raw((OP_MACROS_B1 >> 8) & 0xFF, 2, 2, act, payload_two)
+
+    opcode_one = (OP_MACROS_A1 >> 8) << 8 | (OP_MACROS_A1 & 0xFF)
+    opcode_two = (OP_MACROS_B1 >> 8) << 8 | (OP_MACROS_B1 & 0xFF)
+
+    handler.handle(_build_context(proxy, raw_one, opcode_one, "MACROS_A1"))
+    assert proxy.state.get_activity_macros(act) == []
+
+    handler.handle(_build_context(proxy, raw_two, opcode_two, "MACROS_B1"))
+    macros = proxy.state.get_activity_macros(act)
+
+    assert any(entry["command_id"] == 0x01 and entry["label"] == "Power On" for entry in macros)
+    assert any(entry["command_id"] == 0x02 and entry["label"] == "Watch TV" for entry in macros)
+
+
+def test_macro_handler_parses_sample_activity_67() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = MacroHandler()
+
+    fragments = [
+        "a5 5a 64 13 01 00 01 03 00 01 67 01 03 03 01 00 00 00 00 17 18 00 00 00 ff ff ff ff ff 00 00 00 01 01 02 00 00 00 00 00 79 00 00 00 54 00 65 00 73 00 74 00 31 00 32 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4d 15",
+        "a5 5a 6e 13 02 00 01 03 00 01 67 04 03 03 01 00 00 00 00 00 00 01 ff 03 00 00 00 00 00 00 00 01 ff ff ff ff ff ff ff ff ff ff 01 01 02 00 00 00 00 00 c8 00 ff 00 74 00 65 00 73 00 74 00 32 00 33 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+        "a5 5a 5a 13 03 00 01 03 00 01 67 c7 02 01 c7 00 00 00 00 00 00 01 ff 03 c7 00 00 00 00 00 00 01 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 46 00 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fd",
+    ]
+
+    for raw_hex in fragments:
+        handler.handle(_build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "MACROS_SAMPLE"))
+
+    macros = proxy.state.get_activity_macros(0x67)
+    assert {entry["command_id"] for entry in macros} == {0x01, 0x04}
+    assert any(entry["command_id"] == 0x01 and entry["label"] == "Test123" for entry in macros)
+    assert any(entry["command_id"] == 0x04 and entry["label"] == "test234" for entry in macros)
+
+
+def test_macro_handler_parses_sample_activity_69() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = MacroHandler()
+
+    fragments = [
+        "a5 5a 64 13 01 00 01 05 00 01 69 03 03 05 07 00 00 00 00 00 56 00 ff ff ff ff ff ff ff ff ff ff 01 01 09 00 00 00 00 04 31 00 ff 00 68 00 6f 00 69 00 31 00 32 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 db 35",
+        "a5 5a 64 13 02 00 01 05 00 01 69 04 03 05 36 00 00 00 00 3e bb 00 ff ff ff ff ff ff ff ff ff ff 01 05 41 00 00 00 00 ae 91 00 ff 00 68 00 65 00 79 00 31 00 32 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 f9 73",
+        "a5 5a 64 13 03 00 01 05 00 01 69 05 03 01 06 00 00 00 00 00 92 00 ff ff ff ff ff ff ff ff ff ff 01 01 04 00 00 00 00 00 d3 00 ff 00 62 00 6c 00 61 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04 8b",
+        "a5 5a 82 13 04 00 01 05 00 01 69 c6 06 01 c6 00 00 00 00 00 00 01 ff 03 c6 00 00 00 00 00 00 01 ff 05 c6 00 00 00 00 00 00 00 ff 01 c5 00 00 00 00 00 00 00 ff 03 c5 00 00 00 00 00 00 0a ff 05 c5 00 00 00 00 00 00 00 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 69 b5 05 39",
+        "a5 5a 64 13 05 00 01 05 00 01 69 c7 03 01 c7 00 00 00 00 00 00 01 ff 03 c7 00 00 00 00 00 00 01 ff 05 c7 00 00 00 00 00 00 00 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 46 00 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 d9",
+    ]
+
+    for raw_hex in fragments:
+        handler.handle(_build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "MACROS_SAMPLE"))
+
+    macros = proxy.state.get_activity_macros(0x69)
+    assert {entry["command_id"] for entry in macros} == {0x03, 0x04, 0x05}
+    assert any(entry["command_id"] == 0x03 and entry["label"] == "hoi123" for entry in macros)
+    assert any(entry["command_id"] == 0x04 and entry["label"] == "hey123" for entry in macros)
+    assert any(entry["command_id"] == 0x05 and entry["label"] == "bla" for entry in macros)
 
 
 def test_x1_device_row_updates_state_and_burst() -> None:

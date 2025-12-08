@@ -16,6 +16,12 @@ class ActivityCache:
         self.devices: Dict[int, Dict[str, Any]] = {}
         self.buttons: Dict[int, set[int]] = {}
         self.commands: dict[int, dict[int, str]] = defaultdict(dict)
+        self.ip_devices: Dict[int, Dict[str, Any]] = {}
+        self.ip_buttons: Dict[int, Dict[int, Dict[str, Any]]] = defaultdict(dict)
+        self.activity_command_refs: dict[int, set[tuple[int, int]]] = defaultdict(set)
+        self.activity_favorite_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
+        self.activity_favorite_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
+        self.activity_macros: dict[int, list[dict[str, int | str]]] = defaultdict(list)
         # Only track the most recent activation to avoid unbounded growth
         self.app_activations: Deque[dict[str, Any]] = deque(maxlen=1)
 
@@ -50,13 +56,35 @@ class ActivityCache:
                     break
 
         if start_index >= 0:
+            favorites_allowed = True
             i = start_index
-            while i + 2 <= n:
-                button_code = payload[i + 1]
-                if payload[i] == act_lo and button_code in BUTTONNAME_BY_CODE:
-                    self.buttons[act_lo].add(button_code)
+            while i + RECORD_SIZE <= n:
+                act = payload[i]
+                button_id = payload[i + 1]
+                device_id = payload[i + 2]
+
+                if act != act_lo:
+                    break
+
+                if button_id in BUTTONNAME_BY_CODE:
+                    favorites_allowed = False
+                    self.buttons[act_lo].add(button_id)
+                elif favorites_allowed:
+                    command_id = payload[i + 9] if i + 10 <= n else button_id
+                    self.activity_command_refs[act_lo].add((device_id, command_id))
+                    self.activity_favorite_slots[act_lo].append(
+                        {
+                            "button_id": button_id,
+                            "device_id": device_id,
+                            "command_id": command_id,
+                        }
+                    )
+                else:
+                    break
+
                 i += RECORD_SIZE
-            return
+            if self.activity_favorite_slots.get(act_lo):
+                return
 
         i = 0
         while i + 1 < n:
@@ -72,12 +100,114 @@ class ActivityCache:
                     continue
             i += 1
 
+    def get_activity_command_refs(self, act_lo: int) -> set[tuple[int, int]]:
+        """Return the set of (device_id, command_id) pairs for the activity."""
+
+        return set(self.activity_command_refs.get(act_lo, set()))
+
+    def get_activity_favorite_slots(self, act_lo: int) -> list[dict[str, int]]:
+        """Return metadata for favorite slots in this activity."""
+
+        return list(self.activity_favorite_slots.get(act_lo, []))
+
+    def record_favorite_label(
+        self, act_lo: int, device_id: int, command_id: int, label: str
+    ) -> None:
+        """Store the resolved label for a favorite command."""
+
+        self.activity_favorite_labels[act_lo][(device_id, command_id)] = label
+
+    def get_favorite_label(
+        self, act_lo: int, device_id: int, command_id: int
+    ) -> str | None:
+        """Return the known label for a favorite command, if any."""
+
+        return self.activity_favorite_labels.get(act_lo, {}).get((device_id, command_id))
+
+    def get_activity_favorite_labels(self, act_lo: int) -> list[dict[str, int | str]]:
+        """Return favorite slots decorated with resolved labels."""
+
+        slots = self.activity_favorite_slots.get(act_lo, [])
+        labels = self.activity_favorite_labels.get(act_lo, {})
+
+        favorites: list[dict[str, int | str]] = []
+        for slot in slots:
+            pair = (slot["device_id"], slot["command_id"])
+            label = labels.get(pair)
+            if not label:
+                continue
+
+            favorites.append(
+                {
+                    "name": label,
+                    "device_id": slot["device_id"],
+                    "command_id": slot["command_id"],
+                }
+            )
+
+        return favorites
+
+    def replace_activity_macros(
+        self, act_lo: int, macros: list[dict[str, int | str]]
+    ) -> None:
+        """Replace the cached macro list for ``act_lo``."""
+
+        self.activity_macros[act_lo & 0xFF] = list(macros)
+
+    def append_activity_macro(self, act_lo: int, command_id: int, label: str) -> None:
+        """Record a single macro entry for an activity."""
+
+        target = self.activity_macros.setdefault(act_lo & 0xFF, [])
+        for entry in target:
+            if entry.get("command_id") == command_id:
+                entry["label"] = label
+                return
+
+        target.append({"command_id": command_id, "label": label})
+
+    def get_activity_macros(self, act_lo: int) -> list[dict[str, int | str]]:
+        """Return the known macro definitions for ``act_lo``."""
+
+        return list(self.activity_macros.get(act_lo & 0xFF, []))
+
     def parse_device_commands(self, payload: bytes, dev_id: int) -> Dict[int, str]:
         commands_found: Dict[int, str] = {}
         for record in iter_command_records(payload, dev_id):
             if record.command_id not in commands_found and record.label:
                 commands_found[record.command_id] = record.label
         return commands_found
+
+    def record_virtual_device(
+        self,
+        device_id: int,
+        *,
+        name: str,
+        button_id: int | None = None,
+        method: str | None = None,
+        url: str | None = None,
+        headers: dict[str, str] | None = None,
+        button_name: str | None = None,
+    ) -> None:
+        brand = "Virtual HTTP"
+        self.devices[device_id & 0xFF] = {"brand": brand, "name": name}
+        if button_id is not None:
+            self.buttons.setdefault(device_id & 0xFF, set()).add(button_id)
+        meta: Dict[str, Any] = {
+            "device_id": device_id & 0xFF,
+            "name": name,
+            "brand": brand,
+        }
+        if method is not None:
+            meta["method"] = method
+        if url is not None:
+            meta["url"] = url
+        if headers is not None:
+            meta["headers"] = headers
+        if button_name is not None:
+            meta["button_name"] = button_name
+        if button_id is not None:
+            self.ip_buttons[device_id & 0xFF][button_id] = meta
+        self.ip_devices[device_id & 0xFF] = meta
 
     def record_app_activation(
         self,

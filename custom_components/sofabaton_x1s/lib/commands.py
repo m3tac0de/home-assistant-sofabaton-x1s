@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, Iterator, List, Tuple
 
 from .protocol_const import (
-    OP_DEVBTN_EXTRA,
+    FAMILY_DEVBTNS,
+    opcode_family,
     OP_DEVBTN_HEADER,
     OP_DEVBTN_MORE,
     OP_DEVBTN_PAGE,
@@ -15,8 +17,34 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT3,
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
+    OP_KEYMAP_EXTRA,
 )
+
+
+def _is_devbtn_family(opcode: int) -> bool:
+    """Return True if the opcode belongs to the dev-button page family."""
+
+    return opcode_family(opcode) == FAMILY_DEVBTNS
+
+
+_KNOWN_DEVBTN_OPCODES: set[int] = {
+    OP_DEVBTN_HEADER,
+    OP_DEVBTN_MORE,
+    OP_DEVBTN_PAGE,
+    OP_DEVBTN_PAGE_ALT1,
+    OP_DEVBTN_PAGE_ALT2,
+    OP_DEVBTN_PAGE_ALT3,
+    OP_DEVBTN_PAGE_ALT4,
+    OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_SINGLE,
+    OP_DEVBTN_TAIL,
+    OP_KEYMAP_EXTRA,
+}
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -67,6 +95,9 @@ class DeviceCommandAssembler:
         ):
             return 4
 
+        if opcode == OP_DEVBTN_SINGLE:
+            return 7
+        
         return 6
 
     def feed(
@@ -86,8 +117,27 @@ class DeviceCommandAssembler:
             return []
 
         dev_id = dev_id_override if dev_id_override is not None else payload[3]
+        if (
+            opcode == OP_DEVBTN_SINGLE
+            and dev_id_override is None
+            and payload[:6] == b"\x01\x00\x01\x01\x00\x01"
+            and len(payload) > 7
+        ):
+            dev_id = payload[7]
         frame_no = payload[2]
         burst = self._get_buffer(dev_id)
+
+        if _is_devbtn_family(opcode) and opcode not in _KNOWN_DEVBTN_OPCODES:
+            _LOGGER.debug(
+                "Unknown dev-button family opcode 0x%04X seen in DeviceCommandAssembler.feed",
+                opcode,
+            )
+
+        is_single_cmd = False
+        if opcode == OP_DEVBTN_SINGLE:
+            burst.frames.clear()
+            burst.total_frames = 1
+            is_single_cmd = True
 
         if opcode in (
             OP_DEVBTN_HEADER,
@@ -100,7 +150,7 @@ class DeviceCommandAssembler:
             if frame_no == 1 or burst.total_frames is None:
                 burst.total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
                 burst.frames.clear()
-        elif burst.total_frames is None and opcode in (OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA, OP_DEVBTN_MORE):
+        elif burst.total_frames is None and opcode in (OP_DEVBTN_TAIL, OP_KEYMAP_EXTRA, OP_DEVBTN_MORE):
             burst.total_frames = frame_no
 
         data_start = self._data_offset(opcode)
@@ -114,7 +164,7 @@ class DeviceCommandAssembler:
             OP_DEVBTN_HEADER,
             OP_DEVBTN_PAGE,
             OP_DEVBTN_TAIL,
-            OP_DEVBTN_EXTRA,
+            OP_KEYMAP_EXTRA,
             OP_DEVBTN_MORE,
         ) and payload[:2] == b"\x01\x00":
             data_start = 7 if opcode == OP_DEVBTN_HEADER else 3
@@ -139,7 +189,11 @@ class DeviceCommandAssembler:
             max_frame_no = 0
             frames_are_contiguous = False
 
-        if burst.total_frames and burst.received >= burst.total_frames:
+        if is_single_cmd:
+            ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
+            completed.append((dev_id, ordered_payload))
+            del self._buffers[dev_id]
+        elif burst.total_frames and burst.received >= burst.total_frames:
             ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
             completed.append((dev_id, ordered_payload))
             del self._buffers[dev_id]
@@ -148,7 +202,7 @@ class DeviceCommandAssembler:
             and frames_are_contiguous
             and burst.total_frames > max_frame_no
             and burst.total_frames - max_frame_no <= 1
-            and opcode in (OP_DEVBTN_TAIL, OP_DEVBTN_EXTRA, OP_DEVBTN_MORE)
+            and opcode in (OP_DEVBTN_TAIL, OP_KEYMAP_EXTRA, OP_DEVBTN_MORE)
         ):
             ordered_payload = b"".join(burst.frames[i] for i in sorted(burst.frames))
             completed.append((dev_id, ordered_payload))
@@ -191,6 +245,22 @@ def _decode_label(label_bytes: bytes) -> str:
     trimmed = trimmed.rstrip(b"\x00")
     if not trimmed:
         return ""
+
+    if len(trimmed) >= 4 and all(trimmed[i] == 0 for i in range(1, len(trimmed), 4)):
+        try:
+            utf32_label = trimmed.decode("utf-32-le").strip("\x00")
+            if utf32_label:
+                return utf32_label
+        except UnicodeDecodeError:
+            pass
+
+    without_nulls = bytes(b for b in trimmed if b)
+    try:
+        ascii_label = without_nulls.decode("ascii").strip()
+        if ascii_label:
+            return ascii_label
+    except UnicodeDecodeError:
+        pass
 
     # Modern hubs sometimes send labels as plain ASCII instead of UTF-16.
     if b"\x00" not in trimmed:
@@ -239,6 +309,8 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
         if not candidates:
             candidates = [0]
 
+        best_record: CommandRecord | None = None
+
         for idx in candidates:
             has_target = chunk[idx] == target
             command_index = idx + 1 if has_target else idx
@@ -249,28 +321,46 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
             control_start = command_index + 1
             control_block = chunk[control_start : control_start + 7]
 
-            if len(control_block) == 7 and _matches_control_block(control_block):
+            label_start = None
+            matched_control = len(control_block) == 7 and _matches_control_block(control_block)
+            if matched_control:
                 label_start = control_start + 7
                 if control_block[:5] == b"\x00\x00\x00\x00\x00":
                     label_start -= 1
-                label = _decode_label(chunk[label_start:])
-                if not label:
-                    continue
+            else:
+                label_start = command_index + 8
 
-                yield CommandRecord(target, command_id, control_block, label)
-                break
-
-            label_start = command_index + 8
             if label_start >= len(chunk):
                 continue
+
+            # Some hubs send labels that are misaligned by one byte, leaving the
+            # text prefixed with the last byte of the control block. Detect the
+            # offset and realign before decoding.
+            if (
+                label_start % 2
+                and label_start + 1 < len(chunk)
+                and chunk[label_start + 1] == 0x00
+            ):
+                label_start += 1
 
             label = _decode_label(chunk[label_start:])
             if not label:
                 continue
 
-            control_block = chunk[control_start:label_start]
-            yield CommandRecord(target, command_id, control_block, label)
-            break
+            if len(control_block) < 7:
+                control_block = chunk[control_start:label_start]
+
+            record = CommandRecord(target, command_id, control_block, label)
+            if matched_control:
+                yield record
+                break
+
+            if best_record is None:
+                best_record = record
+        else:
+            # Exhausted candidates without yielding
+            if best_record:
+                yield best_record
 
 
 __all__ = [

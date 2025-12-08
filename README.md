@@ -36,19 +36,17 @@ So essentially: this integration is a proxy service for the Sofabaton X1/X1S hub
 - 🛠 **Action**
   - to fetch commands for a specific device/activity
   - because key maps are both slow to retrieve from the hub, and static at the same time (until you change configuration through the official app), we do not need to retrieve these key maps all the time. We can just do it once (using the fetch Action), look at the mapping, and then use remote.send_command using those values.
-- 🧪 **Diagnostic “Index” sensor**:
-  - lists activities and devices
-  - lists cached commands for each device (after you fetch them) and buttons for activities
-  - shows `loading` when we’re actively retrieving commands
 - 🔔 **Find Remote diagnostic button**:
   - triggers the hub’s “find my remote” buzzer directly from Home Assistant
   - available while the proxy can issue commands (when the official app is not connected)
 - 🟢 **Sensors**:
   - “activity” (shows the current Activity)
-  - “recorded_keypress” (shows how to replay the most recently pressed button in the Sofabaton app, while it is connected to the virtual hub)
+  - “recorded keypress” (shows how to replay the most recently pressed button in the Sofabaton app, while it is connected to the virtual hub)
   - “hub connected” (are we connected to the physical hub?)
   - “app connected” (is the official app using our virtual hub?)
   - sensors maintain state accurately, regardless of how that state is set. So whether you change activity through Home Assistant, the official app, the physical remote or something like Alexa; the sensors will reflect accurate state.
+- 🧪 **Diagnostic “Index” sensor**:
+  - used in combination with the “fetch_device_commands” Action to retrieve the commands the hub knows about
 - 🛰 **X1/X1S Proxy**:
   - although enabled by default, the proxy capability (the ability for the official app to connect while this integration is running) can be disabled in device settings (it will then no longer advertise and bind to a UDP port)
 
@@ -162,8 +160,8 @@ You should see:
     - switches proxy capability of the integration on and off (mDNS advertising and UDP port binding)
     - note that active connections are not interupted when proxy is switched off, it will just stop accepting new ones
   - `switch.<hub>_hex_logging`
-	- when this is switched on, and you enable debug logging for the integration, all communication between hub and client is now dropped in the Home Assistant log.
-	- useful for improving the integration
+	- when this is switched on, all communication between hub and client is now available in logs via "Diagnostic download".
+	- sharing your logs is useful for improving the integration
 
 - **Binary/normal sensors**:
   - `binary_sensor.<hub>_hub_status` → `connected` / `disconnected` is the physical hub connected to us
@@ -176,12 +174,18 @@ You should see:
 
 - **Buttons**:
   - `button.<hub>_find_remote` (added as a "Diagnostic" button)
-  
+
   - `button.<hub>_volume_up`
   - `button.<hub>_volume_down`
   - `button.<hub>_mute`
   - … plus the other Sofabaton button codes
   - availability depends on the **currently active activity**
+
+- **Text entity**:
+  - `text.<hub>_hub_ip_address` (added as a "Configuration" entity)
+    - Editable text box that shows the IP address of the physical hub as it's stored in configuration.
+    - Enables manual changing of the hub's IP address in the integration's configuration. The proxy will instantly restart with the new configuration after changes have been made.
+    - This entity is disabled by default! If your hub is configured through automatic discovery (you never manually had to enter the IP address of your hub), your hub's IP changes will continue to be automatically picked up by the integration and there should be no need to manually intervene.
 
 ---
 
@@ -282,20 +286,59 @@ Go to `Developer Tools → States → sensor.<hub>_index` to see the contents of
 After you call the fetch service, the Index sensor will look something like this:
 
 ```yaml
-commands:
-  "3 (Denon AVR)":
-    - code: 11
-      name: Sleep
-    - code: 55
-      name: Set Disco Mode
-  "102 (Watch a Movie)":
-    - code: 1
-      name: Power On
+activities:
+  "103":
+    name: Play Switch 2
+    active: false
+    macros:
+      - name: Dim all lights
+        command: 1
+      - name: Order a pizza
+        command: 5
+    favorites:
+      - name: Exit
+        command: 2
+        device: 1
+      - name: "0"
+        command: 3
+        device: 3
+devices:
+  "1":
+    brand: AWOL Vision
+    name: AWOLVision LTV-3500
+    commands:
+      - name: Brightness
+ 		command: 1
+      - name: Exit
+    	command: 2
+      - name: Guide
+    	command: 3
+        
 ```
 
 Use this to discover the numeric command IDs you want to send with `remote.send_command` (advanced form with `device:`).
 
-That way we stay fast in normal operation, but you can still explore everything the hub knows.
+Based on the above, to trigger the "Guide" command on the "AWOLVision LTV-3500", you would do:
+
+```yaml
+service: remote.send_command
+target:
+  entity_id: remote.<hub>_remote
+data:
+  command: 3
+  device: 1
+```
+
+And to trigger the Order a Pizza macro, you would do:
+
+```yaml
+service: remote.send_command
+target:
+  entity_id: remote.<hub>_remote
+data:
+  command: 5
+  device: 103
+```
 
 ---
 

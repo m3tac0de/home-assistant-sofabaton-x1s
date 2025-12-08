@@ -17,7 +17,15 @@ X1S_NO_THRESHOLD = 20221120
 DEFAULT_PROXY_UDP_PORT = 8102
 DEFAULT_HUB_LISTEN_BASE = 8200
 
-PLATFORMS = ["select", "switch", "binary_sensor", "button", "sensor", "remote"]
+PLATFORMS = [
+    "select",
+    "switch",
+    "binary_sensor",
+    "button",
+    "sensor",
+    "remote",
+    "text",
+]
 
 
 def signal_activity(entry_id: str) -> str:
@@ -39,9 +47,13 @@ def signal_buttons(entry_id: str) -> str:
 def signal_devices(entry_id: str) -> str:
     return f"sofabaton_x1s_devices_{entry_id}"
 
-    
+
 def signal_commands(entry_id: str) -> str:
     return f"sofabaton_x1s_commands_{entry_id}"
+
+
+def signal_macros(entry_id: str) -> str:
+    return f"sofabaton_x1s_macros_{entry_id}"
 
 
 def signal_app_activations(entry_id: str) -> str:

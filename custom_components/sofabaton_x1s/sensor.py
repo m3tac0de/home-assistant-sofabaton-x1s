@@ -19,6 +19,8 @@ from .const import (
     signal_buttons,
     signal_devices,
     signal_commands,
+    signal_hub,
+    signal_macros,
     signal_app_activations,
 )
 from .hub import SofabatonHub, get_hub_model
@@ -56,9 +58,11 @@ class SofabatonIndexSensor(SensorEntity):
     async def async_added_to_hass(self) -> None:
         for sig in (
             signal_activity(self._hub.entry_id),
-            signal_buttons(self._hub.entry_id),
             signal_devices(self._hub.entry_id),
             signal_commands(self._hub.entry_id),
+            signal_buttons(self._hub.entry_id),
+            signal_hub(self._hub.entry_id),
+            signal_macros(self._hub.entry_id),
         ):
             self.async_on_remove(
                 async_dispatcher_connect(self.hass, sig, self._handle_update)
@@ -69,14 +73,8 @@ class SofabatonIndexSensor(SensorEntity):
         self.async_write_ha_state()
 
     @property
-    def state(self) -> str:
-        if not self._hub.hub_connected:
-            return "offline"
-        # if we are currently fetching commands for at least one device/activity
-        if getattr(self._hub, "_commands_in_flight", None):
-            if len(self._hub._commands_in_flight) > 0:
-                return "loading"
-        return "ready"
+    def state(self) -> str | None:
+        return self._hub.get_index_state()
 
     def _label_for_ent(self, ent_id: int) -> str:
         """Return something like '3 (Playstation 5)' or '102 (Watch TV)'."""
@@ -96,54 +94,59 @@ class SofabatonIndexSensor(SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        # 1) buttons (current)
-        current_btn_codes, current_ready = self._hub.get_buttons_for_current()
-        button_name_map = self._hub.get_button_name_map()
-
-        if current_ready:
-            current_activity_buttons = [
-                {
-                    "code": code,
-                    "name": button_name_map.get(code, f"0x{code:02X}"),
-                }
-                for code in current_btn_codes
-            ]
-        else:
-            current_activity_buttons = []
-
-        # 2) buttons (all cached per-entity)
-        all_btns_by_ent = self._hub.get_all_cached_buttons()
-        decorated_buttons: dict[str, list[dict[str, str | int]]] = {}
-        for ent_id, codes in all_btns_by_ent.items():
-            label = self._label_for_ent(ent_id)
-            decorated_buttons[label] = [
-                {
-                    "code": code,
-                    "name": button_name_map.get(code, f"0x{code:02X}"),
-                }
-                for code in codes
-            ]
-
-        # 3) commands (per-entity, already in proxy cache)
+        # commands (per-entity, already in proxy cache)
         commands_raw = self._hub.get_all_cached_commands()
-        decorated_commands: dict[str, list[dict[str, str | int]]] = {}
+        decorated_commands: dict[int, list[dict[str, str | int]]] = {}
         for ent_id, cmd_map in commands_raw.items():
-            label = self._label_for_ent(ent_id)
-            decorated_commands[label] = [
+            decorated_commands[ent_id] = [
                 {
-                    "code": int(code),
                     "name": name,
+                    "command": int(code),
                 }
                 for code, name in cmd_map.items()
             ]
 
+        macros_by_activity = self._hub.get_all_cached_macros()
+        favorite_commands = self._hub.get_activity_favorites()
+        decorated_activities: dict[str, dict[str, object]] = {}
+        for act_id, activity in self._hub.activities.items():
+            activity_attrs: dict[str, object] = dict(activity)
+            macros = macros_by_activity.get(act_id, [])
+            activity_attrs["macros"] = [
+                {
+                    "name": macro.get("label") or macro.get("name"),
+                    "command": macro.get("command_id"),
+                }
+                for macro in macros
+                if macro.get("command_id") is not None
+            ]
+
+            favorites = favorite_commands.get(act_id, [])
+            activity_attrs["favorites"] = [
+                {
+                    "name": fav.get("name"),
+                    "command": fav.get("command_id"),
+                    "device": fav.get("device_id"),
+                }
+                for fav in favorites
+            ]
+
+            if act_id in decorated_commands:
+                activity_attrs["commands"] = decorated_commands[act_id]
+
+            decorated_activities[str(act_id)] = activity_attrs
+
+        decorated_devices: dict[str, dict[str, object]] = {}
+        for dev_id, device in getattr(self._hub, "devices", {}).items():
+            device_attrs: dict[str, object] = dict(device)
+
+            device_attrs["commands"] = decorated_commands.get(dev_id, [])
+
+            decorated_devices[str(dev_id)] = device_attrs
+
         return {
-            "activities": self._hub.activities,
-            "devices": getattr(self._hub, "devices", {}),
-            "current_activity": self._hub.current_activity,
-            "current_activity_buttons": current_activity_buttons,
-            "buttons": decorated_buttons,
-            "commands": decorated_commands,
+            "activities": decorated_activities,
+            "devices": decorated_devices,
         }
 
 class SofabatonActivitySensor(SensorEntity):
@@ -205,6 +208,7 @@ class SofabatonRecordedKeypressSensor(SensorEntity):
     _attr_should_poll = False
     _attr_has_entity_name = True
     _attr_name = "Recorded keypress"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
@@ -265,10 +269,6 @@ class SofabatonRecordedKeypressSensor(SensorEntity):
             if self._time_unsub:
                 self._time_unsub()
                 self._time_unsub = None
-
-    @property
-    def available(self) -> bool:
-        return self._hub.hub_connected
 
     @property
     def state(self) -> str:

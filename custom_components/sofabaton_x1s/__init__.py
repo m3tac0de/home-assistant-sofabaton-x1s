@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from urllib.parse import urlparse
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -51,10 +52,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hub.async_start()
 
     if DOMAIN not in hass.data:
-            hass.data[DOMAIN] = {}
-            
+        hass.data[DOMAIN] = {}
+
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
+    #if not hass.services.has_service(DOMAIN, "create_ip_button"):
+    #    hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
         
     hass.data[DOMAIN][entry.entry_id] = hub
 
@@ -88,6 +91,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
         if not hass.data[DOMAIN]:
             hass.services.async_remove(DOMAIN, "fetch_device_commands")
+            #hass.services.async_remove(DOMAIN, "create_ip_button")
             async_teardown_diagnostics(hass)
             hass.data.pop(DOMAIN)
         async_disable_hex_logging_capture(hass, entry.entry_id)
@@ -103,6 +107,52 @@ async def _async_handle_fetch_device_commands(call: ServiceCall):
 
     ent_id = call.data["ent_id"]
     await hub.async_fetch_device_commands(ent_id)
+
+
+async def _async_handle_create_ip_button(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    device_id = call.data.get("device_id")
+    device_name = call.data["device_name"].strip()
+    button_name = call.data["button_name"].strip()
+    method = call.data.get("method", "GET").upper()
+    url = call.data["url"]
+    headers = {str(k): str(v) for k, v in (call.data.get("headers") or {}).items()}
+
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("URL must include scheme and host (http/https)")
+
+    allowed_methods = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+    if method not in allowed_methods:
+        raise ValueError(f"Unsupported HTTP method '{method}'")
+
+    if not isinstance(headers, dict):
+        raise ValueError("headers must be a mapping")
+
+    if device_id is not None:
+        result = await hass.async_add_executor_job(
+            hub._proxy.add_ip_button_to_device,
+            int(device_id),
+            button_name,
+            method,
+            url,
+            headers,
+        )
+    else:
+        result = await hass.async_add_executor_job(
+            hub._proxy.create_ip_button,
+            device_name,
+            button_name,
+            method,
+            url,
+            headers,
+        )
+
+    return result or {}
 
 async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
     """Try device → hub text → entity → fallback to single hub."""

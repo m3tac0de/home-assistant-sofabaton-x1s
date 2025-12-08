@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from custom_components.sofabaton_x1s.lib.state_helpers import BurstScheduler
+from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName
+from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache, BurstScheduler
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 
@@ -50,3 +51,114 @@ def test_state_listeners_receive_notifications() -> None:
 
     assert hub_states == [False, True]
     assert client_states == [False, True]
+
+
+def test_accumulate_keymap_tracks_favorites_and_commands() -> None:
+    cache = ActivityCache()
+    act = 0x66
+    favorite_button_id = 0x01
+    normal_button_id = ButtonName.OK
+
+    rec_fav = bytes(
+        [
+            act,
+            favorite_button_id,
+            0x03,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x38,
+            0x03,
+            0x00,
+            0x00,
+        ]
+        + [0x00] * 6
+    )
+    rec_normal = bytes(
+        [
+            act,
+            normal_button_id,
+            0x04,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x4C,
+            0x07,
+            0x00,
+            0x00,
+        ]
+        + [0x00] * 6
+    )
+
+    cache.accumulate_keymap(act, rec_fav + rec_normal)
+
+    refs = cache.get_activity_command_refs(act)
+    assert (0x03, 0x03) in refs
+    assert (0x04, 0x03) not in refs
+
+    favorite_slots = cache.get_activity_favorite_slots(act)
+    assert any(
+        slot["button_id"] == favorite_button_id
+        and slot["device_id"] == 0x03
+        and slot["command_id"] == 0x03
+        for slot in favorite_slots
+    )
+
+
+def test_accumulate_keymap_stops_at_standard_buttons() -> None:
+    cache = ActivityCache()
+    act = 0x66
+
+    payload = bytes.fromhex(
+        "66 01 03 00 00 00 00 00 38 03 00 00 00 00 00 00 00 00"
+        " 66 02 03 00 00 00 00 00 4c 07 00 00 00 00 00 00 00 00"
+        " 66 ae 01 00 00 00 00 00 2e 16 00 00 00 00 00 00 00 00"
+    )
+
+    cache.accumulate_keymap(act, payload)
+
+    favorites = cache.get_activity_favorite_slots(act)
+    assert len(favorites) == 2
+    assert {slot["button_id"] for slot in favorites} == {0x01, 0x02}
+
+    assert cache.get_activity_command_refs(act) == {(0x03, 0x03), (0x03, 0x07)}
+
+    assert cache.buttons.get(act, set()) == {0xAE}
+
+
+def test_activity_favorite_labels_with_slots() -> None:
+    cache = ActivityCache()
+    act = 0x21
+
+    cache.activity_favorite_slots[act] = [
+        {"button_id": 0xFE, "device_id": 0x10, "command_id": 0x05},
+        {"button_id": 0xFD, "device_id": 0x11, "command_id": 0x06},
+    ]
+
+    cache.record_favorite_label(act, 0x10, 0x05, "Fav One")
+    cache.record_favorite_label(act, 0x11, 0x06, "Fav Two")
+
+    favorites = cache.get_activity_favorite_labels(act)
+
+    assert favorites == [
+        {"name": "Fav One", "device_id": 0x10, "command_id": 0x05},
+        {"name": "Fav Two", "device_id": 0x11, "command_id": 0x06},
+    ]
+
+
+def test_activity_macros_are_replaced_and_deduped() -> None:
+    cache = ActivityCache()
+    act = 0x12
+
+    cache.replace_activity_macros(act, [{"command_id": 1, "label": "Macro One"}])
+    cache.append_activity_macro(act, 1, "Updated Macro One")
+    cache.append_activity_macro(act, 2, "Macro Two")
+
+    macros = cache.get_activity_macros(act)
+
+    assert {entry["command_id"] for entry in macros} == {1, 2}
+    assert any(entry["command_id"] == 1 and entry["label"] == "Updated Macro One" for entry in macros)
