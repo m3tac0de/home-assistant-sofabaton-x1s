@@ -283,6 +283,19 @@ Go to `Developer Tools → States → sensor.<hub>_index` to see the contents of
 
 - a **fetch service/action**: you call it to tell the integration “go to the hub, get me all commands for this device/activity, and put them on the Index sensor”.
 
+
+> Use `sofabaton_x1s.fetch_device_commands` in `Developer Tools → Actions` in UI Mode!
+> At least once. In this mode you can use a dropdown to select your hub.
+> This gets you the ID that you need, so that the Action knows which one of your hubs to target.
+
+```yaml
+action: sofabaton_x1s.fetch_device_commands
+data:
+  device: 89c3874a93f1e9ee0f49e24a2710535e  # <- this will be different for you! Use the hub select dropdown in UI mode!
+  ent_id: 5
+
+```
+
 After you call the fetch service, the Index sensor will look something like this:
 
 ```yaml
