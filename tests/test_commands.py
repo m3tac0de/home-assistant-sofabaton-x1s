@@ -33,6 +33,8 @@ from custom_components.sofabaton_x1s.lib.opcode_handlers import (
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_DEVBTN_HEADER,
     OP_DEVBTN_PAGE,
+    OP_DEVBTN_PAGE_ALT1,
+    OP_DEVBTN_PAGE_ALT6,
     OP_DEVBTN_TAIL,
     OP_DEVBTN_SINGLE,
     SYNC0,
@@ -516,6 +518,65 @@ def test_parse_device_commands_handles_early_data_offset() -> None:
         9: "Fast_forward",
         10: "Ok/select",
     }
+
+
+def _build_alt_page_frame(
+    opcode: int,
+    frame_no: int,
+    total_frames: int,
+    dev_id: int,
+    command_id: int,
+    label: str,
+    *,
+    add_separator: bool = False,
+) -> bytes:
+    payload = bytearray([0x01, 0x00, frame_no, 0x01])
+    payload.extend(total_frames.to_bytes(2, "big"))
+    payload.extend([0x0A, dev_id])
+    payload.extend([dev_id, command_id])
+    payload.extend(b"\x0d\x00\x00\x00\x00\x00\x00")
+    payload.extend(label.encode("utf-16-be"))
+    if add_separator:
+        payload.append(0xFF)
+
+    raw_wo_checksum = bytes([SYNC0, SYNC1, opcode >> 8, opcode & 0xFF]) + bytes(payload)
+    checksum = sum(raw_wo_checksum) & 0xFF
+    return raw_wo_checksum + bytes([checksum])
+
+
+def test_alt_page_variant_uses_correct_device_and_offset() -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonFamilyHandler()
+
+    dev_id = 0x07
+
+    header_raw = _build_alt_page_frame(
+        OP_DEVBTN_PAGE_ALT1, 1, 2, dev_id, 1, "Stop", add_separator=True
+    )
+    alt_raw = _build_alt_page_frame(OP_DEVBTN_PAGE_ALT6, 2, 2, dev_id, 2, "Play")
+
+    header_frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_PAGE_ALT1,
+        direction="H→A",
+        payload=header_raw[4:-1],
+        raw=header_raw,
+        name="DEVBTN_PAGE_ALT1",
+    )
+
+    alt_frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_PAGE_ALT6,
+        direction="H→A",
+        payload=alt_raw[4:-1],
+        raw=alt_raw,
+        name="DEVBTN_PAGE_ALT6",
+    )
+
+    handler.handle(header_frame)
+    handler.handle(alt_frame)
+
+    assert proxy.state.commands[dev_id] == {1: "Stop", 2: "Play"}
 
 
 def test_parse_device_commands_handles_alt_command_pages() -> None:

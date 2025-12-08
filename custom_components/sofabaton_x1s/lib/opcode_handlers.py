@@ -26,6 +26,7 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT3,
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_PAGE_ALT6,
     OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
     OP_MACROS_A1,
@@ -320,7 +321,15 @@ def _extract_dev_id(raw: bytes, payload: bytes, opcode: int) -> int:
     ):
         return payload[7]
 
-    if opcode in (OP_DEVBTN_HEADER, OP_DEVBTN_PAGE_ALT1) and len(raw) > 11:
+    if opcode in (
+        OP_DEVBTN_HEADER,
+        OP_DEVBTN_PAGE_ALT1,
+        OP_DEVBTN_PAGE_ALT2,
+        OP_DEVBTN_PAGE_ALT3,
+        OP_DEVBTN_PAGE_ALT4,
+        OP_DEVBTN_PAGE_ALT5,
+        OP_DEVBTN_PAGE_ALT6,
+    ) and len(raw) > 11:
         return raw[11]
 
     if len(payload) >= 4:

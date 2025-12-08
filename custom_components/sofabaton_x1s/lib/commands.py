@@ -17,6 +17,7 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT3,
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_PAGE_ALT6,
     OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
     OP_KEYMAP_EXTRA,
@@ -38,6 +39,7 @@ _KNOWN_DEVBTN_OPCODES: set[int] = {
     OP_DEVBTN_PAGE_ALT3,
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
+    OP_DEVBTN_PAGE_ALT6,
     OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
     OP_KEYMAP_EXTRA,
@@ -92,6 +94,7 @@ class DeviceCommandAssembler:
             OP_DEVBTN_PAGE_ALT3,
             OP_DEVBTN_PAGE_ALT4,
             OP_DEVBTN_PAGE_ALT5,
+            OP_DEVBTN_PAGE_ALT6,
         ):
             return 4
 
