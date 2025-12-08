@@ -241,6 +241,7 @@ class DeviceCommandAssembler:
 
 
 def _decode_label(label_bytes: bytes) -> str:
+    raw = label_bytes
     trimmed = label_bytes
     if trimmed.startswith(b"\x00\x00\x00\x00"):
         trimmed = trimmed[4:]
@@ -287,7 +288,19 @@ def _decode_label(label_bytes: bytes) -> str:
     try:
         return trimmed.decode("latin-1", errors="ignore").strip("\x00")
     except UnicodeDecodeError:
-        return ""
+        pass
+
+    # Final safety net: if decoding still failed but there are printable ASCII
+    # bytes present (common with short, zero-padded labels), build a label from
+    # those bytes to avoid dropping an otherwise valid record.
+    visible = bytes(b for b in raw if 32 <= b <= 126)
+    if visible:
+        try:
+            return visible.decode("ascii", errors="ignore").strip()
+        except Exception:
+            pass
+
+    return ""
 
 
 def _matches_control_block(block: bytes) -> bool:
@@ -308,6 +321,22 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
         if len(chunk) < 9:
             continue
 
+        if chunk[0] == 0x04 and chunk[3:7] == b"\x00\x00\x00\x00":
+            control_block = chunk[3:10] if len(chunk) >= 10 else chunk[3:]
+            label_bytes = chunk[9:] if len(chunk) > 9 else b""
+            label = _decode_label(label_bytes)
+            if not label:
+                if any(32 <= b <= 126 for b in label_bytes):
+                    try:
+                        label = bytes(b for b in label_bytes if 32 <= b <= 126).decode(
+                            "ascii", errors="ignore"
+                        ).strip()
+                    except Exception:
+                        label = ""
+            if label:
+                yield CommandRecord(chunk[2], chunk[1], control_block, label)
+                continue
+
         candidates = [i for i in range(len(chunk) - 1) if chunk[i] == target]
         if not candidates:
             candidates = [0]
@@ -316,7 +345,10 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
 
         for idx in candidates:
             has_target = chunk[idx] == target
-            command_index = idx + 1 if has_target else idx
+            if has_target and idx > 0 and chunk[idx - 1] == 0x04:
+                command_index = idx - 1
+            else:
+                command_index = idx + 1 if has_target else idx
             if command_index >= len(chunk):
                 continue
 
@@ -348,7 +380,19 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
 
             label = _decode_label(chunk[label_start:])
             if not label:
-                continue
+                # Preserve records that clearly contain ASCII text even if the
+                # primary decoding heuristics could not resolve the label (e.g.
+                # short, zero-padded labels).
+                label_bytes = chunk[label_start:]
+                if any(32 <= b <= 126 for b in label_bytes):
+                    try:
+                        label = bytes(b for b in label_bytes if 32 <= b <= 126).decode(
+                            "ascii", errors="ignore"
+                        ).strip()
+                    except Exception:
+                        continue
+                else:
+                    continue
 
             if len(control_block) < 7:
                 control_block = chunk[control_start:label_start]
