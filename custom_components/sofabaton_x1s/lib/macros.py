@@ -107,6 +107,7 @@ class MacroAssembler:
 
 
 _UTF16_PATTERN = re.compile(rb"((?:[\x01-\xFF]\x00){2,})\x00\x00", re.DOTALL)
+_ASCII_PATTERN = re.compile(rb"([\x20-\x7E]{3,})\x00{2,}")
 
 
 def decode_macro_records(payload: bytes, activity_id: int) -> list[tuple[int, int, str]]:
@@ -128,15 +129,23 @@ def decode_macro_records(payload: bytes, activity_id: int) -> list[tuple[int, in
         if pos < consumed:
             continue
 
-        match = _UTF16_PATTERN.search(payload, pos + 1)
-        if not match:
-            continue
+        decoder = "utf-16le"
 
-        label_bytes = match.group(1)
-        consumed = match.end()
+        match = _UTF16_PATTERN.search(payload, pos + 1)
+        if match:
+            label_bytes = match.group(1)
+            consumed = match.end()
+        else:
+            ascii_match = _ASCII_PATTERN.search(payload, pos + 1)
+            if not ascii_match:
+                continue
+
+            label_bytes = ascii_match.group(1)
+            consumed = ascii_match.end()
+            decoder = "ascii"
 
         try:
-            label = label_bytes.decode("utf-16le", errors="ignore").replace("\x00", "").strip()
+            label = label_bytes.decode(decoder, errors="ignore").replace("\x00", "").strip()
         except Exception:
             label = ""
 
