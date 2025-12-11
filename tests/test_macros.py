@@ -200,3 +200,75 @@ def test_macrobursts_for_multiple_activities_interleaved() -> None:
     assert labels_a == ["A1", "A2"]
     assert labels_b == ["B1", "B2"]
 
+
+def test_ascii_labeled_macroburst_decodes() -> None:
+    assembler = MacroAssembler()
+
+    raw_hex = """
+    a5 5a fa 13 01 00 01 09 00 02 68 01 1b 03 1d 00 00 00 00 27 e4 00 ff 03 26 00 00 00 00 01 13
+    00 ff 03 30 00 00 00 00 00 2a 00 ff 03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff
+    03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff 03 25
+    00 00 00 00 03 29 00 ff 03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff 03 23 00 00
+    00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00
+    01 15 00 ff 03 23 00 00 00 00 01 15 00 ff 03 25 00 00 00 00 03 29 00 ff 03 23 00 00 00 00 01 15
+    00 ff 03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff 03 23 00 00 00 00 01 15 00 ff
+    03 23 00 00 00 00 01 15 00 ff 03 25 00 00 00 00 03 29 00 ff 03 30 00 00 00 00 00 2a 00 ff 03 a2
+    a5 5a 3f 13 01 00 02 23 00 00 00 00 01 15 00 ff 03 30 00 00 00 00 00 2a 00 ff 03 0d 00 00 00 00
+    00 79 00 ff 50 53 35 20 53 74 61 72 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+    00 00 00 ae 24 a5 5a 78 13 02 00 01 09 00 01 68 02 08 02 95 00 00 00 00 00 2d 00 ff ff ff ff ff
+    ff ff ff ff ff 01 02 97 00 00 00 00 00 2f 00 ff ff ff ff ff ff ff ff ff ff 01 02 98 00 00 00 00
+    00 30 00 ff 02 4d 00 00 00 00 01 88 00 ff 02 97 00 00 00 00 00 2f 00 ff 02 9b 00 00 00 00 00 2a
+    00 ff 50 53 35 20 4f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+    2e f1 a5 5a 3c 13 03 00 01 09 00 01 68 03 02 03 14 00 00 00 00 2f 24 00 ff 02 3d 00 00 00 00 32
+    04 00 ff 46 6f 72 63 65 20 53 77 69 74 63 68 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+    00 ca f1 a5 5a 32 13 04 00 01 09 00 01 68 04 01 06 01 00 00 00 00 00 01 00 ff 4b 74 63 68 6e 20
+    50 6f 77 65 72 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 97 83 a5 5a 32 13 05 00
+    01 09 00 01 68 05 01 06 0e 00 00 00 00 2e 77 00 ff 4b 74 63 68 6e 20 56 6f 6c 20 2b 00 00 00 00
+    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 b7 c5 a5 5a 32 13 06 00 01 09 00 01 68 06 01 06 0d
+    00 00 00 00 00 33 00 ff 4b 74 63 68 6e 20 56 6f 6c 20 2d 00 00 00 00 00 00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 46 e5 a5 5a 46 13 07 00 01 09 00 01 68 07 03 02 95 00 00 00 00 00 2d 00 ff 02
+    97 00 00 00 00 00 2f 00 ff 02 9b 00 00 00 00 00 2a 00 ff 50 53 35 20 48 6f 6d 65 00 00 00 00 00
+    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3e eb a5 5a 64 13 08 00 01 09 00 01 68 c6
+    06 03 c6 00 00 00 00 00 00 00 ff 02 c6 00 00 00 00 00 00 00 ff 03 c5 00 00 00 00 00 00 02 ff 02
+    c5 00 00 00 00 00 00 08 ff 06 c6 00 00 00 00 00 00 00 ff 06 c5 00 00 00 00 00 00 00 ff 50 4f 57
+    45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 7a 7b a5 5a 46
+    13 09 00 01 09 00 01 68 c7 03 03 c7 00 00 00 00 00 00 00 ff 02 c7 00 00 00 00 00 00 00 ff 06 c7
+    00 00 00 00 00 00 00 ff 50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 58 1a
+    """
+
+    payload = bytes(int(value, 16) for value in raw_hex.split())
+
+    frames: list[bytes] = []
+    idx = 0
+    while idx < len(payload):
+        next_idx = payload.find(b"\xA5\x5A", idx + 2)
+        if next_idx == -1:
+            frames.append(payload[idx:])
+            break
+        frames.append(payload[idx:next_idx])
+        idx = next_idx
+
+    completed: list[tuple[int, bytes]] = []
+    for frame in frames:
+        opcode = int.from_bytes(frame[2:4], "big")
+        frag_payload = frame[4:-1]
+        completed.extend(assembler.feed(opcode, frag_payload, frame))
+
+    assert len(completed) == 1
+
+    activity_id, blob = completed[0]
+    assert activity_id == 0x68
+
+    decoded = decode_macro_records(blob, activity_id)
+
+    assert decoded == [
+        (0x68, 0x03, "PS5 Start"),
+        (0x68, 0x02, "PS5 Off"),
+        (0x68, 0x02, "Force Switch"),
+        (0x68, 0x01, "Ktchn Power"),
+        (0x68, 0x0E, "Ktchn Vol +"),
+        (0x68, 0x0D, "Ktchn Vol -"),
+        (0x68, 0x07, "PS5 Home"),
+    ]
+
