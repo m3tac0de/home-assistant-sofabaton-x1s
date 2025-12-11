@@ -20,16 +20,39 @@ class MacroAssembler:
         self._last_activity_id: int | None = None
 
     def _get_buffer(self, activity_id: int) -> _MacroBurst:
-        if activity_id not in self._buffers:
-            self._buffers[activity_id] = _MacroBurst(activity_id=activity_id)
-        return self._buffers[activity_id]
+        buf = self._buffers.get(activity_id)
+        if buf is None:
+            buf = _MacroBurst(activity_id=activity_id)
+            self._buffers[activity_id] = buf
+        return buf
 
-    def _extract_headers(self, payload: bytes) -> tuple[int, int | None, bytes]:
-        frame_no = payload[2] if len(payload) > 2 else 1
-        total_frames = payload[3] if len(payload) > 3 and payload[3] else None
-        data_start = 4 if payload[:2] == b"\x01\x00" and len(payload) >= 4 else 0
-        body = payload[data_start:]
-        return frame_no or 1, total_frames, body
+    def _parse_header_from_payload(
+        self, payload: bytes
+    ) -> tuple[int | None, int | None, int | None, bytes]:
+        """Return (activity_id, frame_no, total_frames, body)."""
+
+        if len(payload) < 7:
+            return self._last_activity_id, 1, None, payload
+
+        p0, _, x, p3, _, y, a = payload[:7]
+        body = payload[7:]
+
+        activity_id: int | None
+        frame_no: int | None
+        total_frames: int | None
+
+        if x == 0x01 and y in (0x01, 0x02) and a != 0x00:
+            activity_id = a
+            frame_no = p0 or 1
+            total_frames = p3 or None
+            if total_frames is not None and not (1 <= total_frames <= 16):
+                total_frames = None
+        else:
+            activity_id = self._last_activity_id
+            frame_no = None
+            total_frames = None
+
+        return activity_id, frame_no, total_frames, body
 
     def _process_fragment(
         self, *, activity_id: int, frame_no: int, total_frames: int | None, body: bytes
@@ -37,8 +60,14 @@ class MacroAssembler:
         burst = self._get_buffer(activity_id)
         self._last_activity_id = activity_id
 
+        if frame_no is None:
+            frame_no = max(burst.frames) + 1 if burst.frames else 1
+
+        while frame_no in burst.frames:
+            frame_no += 1
+
         burst.frames[frame_no] = body
-        if total_frames is not None:
+        if total_frames is not None and burst.total_frames is None:
             burst.total_frames = total_frames
 
         max_frame_no = max(burst.frames)
@@ -63,14 +92,14 @@ class MacroAssembler:
         if not payload and not raw:
             return []
 
-        if raw and len(raw) >= 12:
-            frame_no = raw[4] or 1
-            total_frames = raw[7] or None
-            activity_id = raw[10]
-            body = raw[11:-1]
-        else:
-            frame_no, total_frames, body = self._extract_headers(payload)
-            activity_id = body[0] if body else 0
+        payload_bytes = payload
+        if raw and len(raw) >= 6 and raw[0] == 0xA5 and raw[1] == 0x5A:
+            payload_bytes = raw[4:-1]
+
+        activity_id, frame_no, total_frames, body = self._parse_header_from_payload(payload_bytes)
+
+        if activity_id is None:
+            return []
 
         return self._process_fragment(
             activity_id=activity_id, frame_no=frame_no, total_frames=total_frames, body=body
@@ -78,6 +107,7 @@ class MacroAssembler:
 
 
 _UTF16_PATTERN = re.compile(rb"((?:[\x01-\xFF]\x00){2,})\x00\x00", re.DOTALL)
+_ASCII_PATTERN = re.compile(rb"([\x20-\x7E]{3,})\x00{2,}")
 
 
 def decode_macro_records(payload: bytes, activity_id: int) -> list[tuple[int, int, str]]:
@@ -99,15 +129,23 @@ def decode_macro_records(payload: bytes, activity_id: int) -> list[tuple[int, in
         if pos < consumed:
             continue
 
-        match = _UTF16_PATTERN.search(payload, pos + 1)
-        if not match:
-            continue
+        decoder = "utf-16le"
 
-        label_bytes = match.group(1)
-        consumed = match.end()
+        match = _UTF16_PATTERN.search(payload, pos + 1)
+        if match:
+            label_bytes = match.group(1)
+            consumed = match.end()
+        else:
+            ascii_match = _ASCII_PATTERN.search(payload, pos + 1)
+            if not ascii_match:
+                continue
+
+            label_bytes = ascii_match.group(1)
+            consumed = ascii_match.end()
+            decoder = "ascii"
 
         try:
-            label = label_bytes.decode("utf-16le", errors="ignore").replace("\x00", "").strip()
+            label = label_bytes.decode(decoder, errors="ignore").replace("\x00", "").strip()
         except Exception:
             label = ""
 
