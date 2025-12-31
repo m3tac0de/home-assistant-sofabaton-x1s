@@ -647,7 +647,10 @@ class CatalogActivityHandler(BaseFrameHandler):
 
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         label_bytes_raw = raw[36:128]
-        activity_label = label_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
+        raw_label = label_bytes_raw.split(b"\x00\x00", 1)[0]
+        raw_label = raw_label[: len(raw_label) - (len(raw_label) % 2)]  # even length
+        activity_label = raw_label.decode("utf-16be", errors="ignore")
+        # activity_label = label_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
         active_state_byte = raw[35] if len(raw) > 35 else 0
         is_active = active_state_byte == 0x01
 
