@@ -167,8 +167,7 @@ You should see:
   - `binary_sensor.<hub>_hub_status` → `connected` / `disconnected` is the physical hub connected to us
   - `binary_sensor.<hub>_app_connected` → `connected` / `disconnected` is the official app connected to our proxy
   - `sensor.<hub>_index` (diagnostic) → `ready` / `loading` / `offline`
-    - attributes: activities, currect_activity, devices, buttons per device and activity, commands per device and activity
-    - also keeps a small history of app-sourced `OP_REQ_ACTIVATE` events with decoded labels and a ready-to-copy `remote.send_command` payload for automations
+    - attributes: activities, devices and their command codes and macros
   - `sensor.<hub>_activity`→ Shows the current activity, or `Powered Off` if none is active. Maintains accurate state regardless of how the Activity was changed (through Home Assistant, the physical remote, the official app).
   - `sensor.<hub>_recorded_keypress` → Shows the codes needed to replay the most recently pressed button in the Sofabaton app.
 
@@ -246,7 +245,7 @@ Either sensor gives you the IDs you need to target specific devices or activitie
 ## Recorded commands (Recorded Keypress sensor)
 
 Whenever you connect the Sofabaton app to the virtual hub, the integration can see what commands the app is sending to the hub.
-In the `recorder_keypress sensor` we record the most recently performed command, so you can replay that easily in your own automation etc.
+In the `recorded_keypress sensor` we record the most recently performed command, so you can replay that easily in your own automation etc.
 
 Go to `Developer Tools → States → sensor.<hub>_recorded_keypress` to see the contents of the sensor.
 It contains a ready to paste remote.send_command.
@@ -274,9 +273,7 @@ The Sofabaton hub can have a *lot* of device commands. Fetching all of them on e
 Instead we have:
 
 - a **diagnostic sensor**: `sensor.<hub>_index`
-  - shows activities, devices
-  - shows buttons we already have cached
-  - can also show **commands** per device
+  - shows activities, devices and their commands and macros
   - shows `loading` while we’re fetching
   
 Go to `Developer Tools → States → sensor.<hub>_index` to see the contents of the sensor.
