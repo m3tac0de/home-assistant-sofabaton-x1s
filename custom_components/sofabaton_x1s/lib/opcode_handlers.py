@@ -628,6 +628,41 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
         elif device_label:
             log.info("[DEV] name='%s'", device_label)
 
+def _decode_x1s_activity_label(label_bytes_raw: bytes) -> str:
+    """Decode first activity label from X1S CATALOG_ROW_ACTIVITY label region.
+
+    - Label is effectively UTF-16BE, but some hubs/frames appear shifted by 1 byte.
+    - Region may contain multiple labels separated by UTF-16 NULs; we want the first.
+    """
+
+    def decode_shift(shift: int) -> str:
+        b = label_bytes_raw[shift:]
+        # keep even length for UTF-16
+        if len(b) % 2:
+            b = b[:-1]
+
+        s = b.decode("utf-16be", errors="ignore")
+
+        # Keep only the first NUL-terminated string (prevents duplicated labels)
+        s = s.split("\x00", 1)[0]
+
+        # Remove leading NUL/control chars (handles leading U+0000 / U+0001 etc.)
+        s = s.strip("\x00").strip()
+        while s and unicodedata.category(s[0]).startswith("C"):
+            s = s[1:].lstrip()
+
+        return s
+
+    candidates = (decode_shift(0), decode_shift(1))
+
+    def score(s: str) -> tuple[int, int]:
+        # Prefer strings that look like normal human labels (lots of Basic Latin chars/spaces)
+        basic_latin = sum(1 for ch in s if 0x20 <= ord(ch) <= 0x7E)
+        printable = sum(1 for ch in s if ch.isprintable())
+        return (basic_latin * 2 + printable, len(s))
+
+    best = max(candidates, key=score, default="")
+    return best
 
 @register_handler(opcodes=(OP_CATALOG_ROW_ACTIVITY,), directions=("H→A",))
 class CatalogActivityHandler(BaseFrameHandler):
@@ -647,9 +682,7 @@ class CatalogActivityHandler(BaseFrameHandler):
 
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         label_bytes_raw = raw[36:128]
-        raw_label = label_bytes_raw.split(b"\x00\x00", 1)[0]
-        raw_label = raw_label[: len(raw_label) - (len(raw_label) % 2)]  # even length
-        activity_label = raw_label.decode("utf-16be", errors="ignore")
+        activity_label = _decode_x1s_activity_label(label_bytes_raw)
         # activity_label = label_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
         active_state_byte = raw[35] if len(raw) > 35 else 0
         is_active = active_state_byte == 0x01
