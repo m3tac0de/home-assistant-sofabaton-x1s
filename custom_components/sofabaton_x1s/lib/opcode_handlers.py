@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+import unicodedata
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
