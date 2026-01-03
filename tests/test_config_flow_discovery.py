@@ -15,14 +15,22 @@ def _service_info(service_type: str, **kwargs) -> ZeroconfServiceInfo:
     )
 
 
-@pytest.mark.parametrize("service_type", MDNS_SERVICE_TYPES)
-def test_prepare_discovered_hub_accepts_supported_service_types(service_type: str) -> None:
+@pytest.mark.parametrize(
+    ("service_type", "hver", "expected_version"),
+    [
+        (MDNS_SERVICE_TYPES[0], "1", "X1"),
+        (MDNS_SERVICE_TYPES[1], "3", "X2"),
+    ],
+)
+def test_prepare_discovered_hub_accepts_supported_service_types(
+    service_type: str, hver: str, expected_version: str
+) -> None:
     info = _service_info(
         service_type,
         properties={
             "NAME": b"Sofa Hub",
             "MAC": b"aa:bb:cc:dd:ee:ff",
-            "NO": b"20230000",
+            "HVER": hver.encode(),
         },
     )
 
@@ -35,7 +43,7 @@ def test_prepare_discovered_hub_accepts_supported_service_types(service_type: st
     assert result["port"] == 8102
     assert result["props"]["NAME"] == "Sofa Hub"
     assert result["service_type"] == service_type
-    assert result["version"] == "X1S"
+    assert result["version"] == expected_version
 
 
 def test_prepare_discovered_hub_rejects_unsupported_service_type() -> None:
