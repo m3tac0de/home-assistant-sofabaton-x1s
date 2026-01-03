@@ -11,6 +11,7 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..const import PRIMARY_MDNS_TYPE
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import DeviceCommandAssembler
 from .macros import MacroAssembler
@@ -962,7 +963,7 @@ class X1Proxy:
         from zeroconf import Zeroconf, ServiceInfo, IPVersion
 
         ip_bytes = socket.inet_aton(_route_local_ip(self.real_hub_ip))
-        service_type = "_x1hub._udp.local."
+        service_type = PRIMARY_MDNS_TYPE
         instance = self.mdns_instance
         host = (self.mdns_host or instance) + "."
 

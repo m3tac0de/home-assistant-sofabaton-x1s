@@ -13,6 +13,9 @@
   "zeroconf": [
     {
       "type": "_x1hub._udp.local."
+    },
+    {
+      "type": "_sofabaton_hub._udp.local."
     }
   ]
 }
