@@ -21,25 +21,10 @@ from .const import (
     DEFAULT_PROXY_UDP_PORT,
     DEFAULT_HUB_LISTEN_BASE,
     MDNS_SERVICE_TYPES,
-    X1S_NO_THRESHOLD,
+    classify_hub_version,
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _classify_version(props: Dict[str, str]) -> str:
-    no_field = props.get("NO")
-    if no_field is not None:
-        try:
-            no_value = int(str(no_field))
-        except ValueError:
-            pass
-        else:
-            if no_value >= X1S_NO_THRESHOLD:
-                return "X1S"
-            return "X1"
-
-    return "X1"
 
 
 def generate_static_mac(host: str, port: int) -> str:
@@ -79,7 +64,7 @@ def _prepare_discovered_hub(discovery_info: ZeroconfServiceInfo) -> Dict[str, An
 
     name = props.get("NAME") or discovery_info.name.split(".")[0]
     mac = props.get("MAC") or discovery_info.name
-    version = _classify_version(props)
+    version = classify_hub_version(props)
     no_field = props.get("NO")
 
     return {
@@ -176,7 +161,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             # build data
-            version = hub_info.get("version") or _classify_version(hub_info.get("props", {}))
+            version = hub_info.get("version") or classify_hub_version(hub_info.get("props", {}))
             data = {
                 CONF_MAC: mac,
                 CONF_NAME: hub_info["name"],
@@ -388,5 +373,4 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 )
             },
         )
-
 
