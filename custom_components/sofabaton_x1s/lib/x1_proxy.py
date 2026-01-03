@@ -11,7 +11,7 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..const import mdns_service_type_for_props
+from ..const import MDNS_SERVICE_TYPE_X1, mdns_service_type_for_props
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import DeviceCommandAssembler
 from .macros import MacroAssembler
@@ -960,7 +960,7 @@ class X1Proxy:
     # mDNS advertisement
     # ---------------------------------------------------------------------
     def _start_mdns(self) -> None:
-        from zeroconf import Zeroconf, ServiceInfo, IPVersion
+        from zeroconf import BadTypeInNameException, IPVersion, ServiceInfo, Zeroconf
 
         ip_bytes = socket.inet_aton(_route_local_ip(self.real_hub_ip))
         service_type = mdns_service_type_for_props(self.mdns_txt)
@@ -987,7 +987,14 @@ class X1Proxy:
             server=host,
         )
 
-        zc.register_service(info)
+        try:
+            zc.register_service(info)
+        except BadTypeInNameException:
+            log.exception(
+                "[mDNS] service type %s was rejected; advertisement will not be started",
+                service_type,
+            )
+            return
         self._mdns_infos.append(info)
         log.info(
             "[mDNS] registered %s on %s:%d (HVER=%s)",

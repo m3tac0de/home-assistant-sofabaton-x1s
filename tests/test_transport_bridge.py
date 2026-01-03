@@ -78,3 +78,36 @@ def test_notify_listener_stops_when_connecting(monkeypatch):
     bridge._handle_app_session(("192.168.2.20", 1234))
 
     assert stopped
+
+
+def test_claim_once_handles_address_in_use(monkeypatch):
+    bridge = TransportBridge(
+        "192.168.2.10", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
+    )
+
+    monkeypatch.setattr(transport_bridge, "_pick_port_near", lambda base: base + 1)
+
+    class FailingSocket:
+        def __init__(self, *_args, **_kwargs):
+            self.closed = False
+
+        def setsockopt(self, *_args, **_kwargs):
+            pass
+
+        def bind(self, *_args, **_kwargs):
+            raise OSError("address in use")
+
+        def listen(self, *_args, **_kwargs):
+            raise AssertionError("listen should not be called when bind fails")
+
+        def settimeout(self, *_args, **_kwargs):
+            raise AssertionError("settimeout should not be called when bind fails")
+
+        def close(self):
+            self.closed = True
+
+    sock = FailingSocket()
+    monkeypatch.setattr(transport_bridge.socket, "socket", lambda *a, **k: sock)
+
+    assert bridge._claim_once() is False
+    assert sock.closed

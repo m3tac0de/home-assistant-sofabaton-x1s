@@ -1,4 +1,6 @@
 """Tests for x1_proxy helpers."""
+import sys
+import types
 
 from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName, OP_REQ_COMMANDS
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
@@ -85,6 +87,53 @@ def test_ensure_commands_for_activity_only_favorites(monkeypatch) -> None:
         (0x01, 0xAAAA): "alpha",
         (0x03, 0xCCCC): "charlie",
     }
+
+
+def test_start_mdns_stops_on_bad_service_type(monkeypatch) -> None:
+    registered = []
+
+    class BadTypeInNameException(Exception):
+        pass
+
+    class DummyServiceInfo:
+        def __init__(self, *, type_, name, addresses, port, properties, server):
+            self.type = type_
+            self.name = name
+            self.addresses = addresses
+            self.port = port
+            self.properties = properties
+            self.server = server
+
+    class DummyZeroconf:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def register_service(self, info):
+            if info.type == "badtype":
+                raise BadTypeInNameException("invalid name")
+            registered.append(info)
+
+        def close(self):
+            pass
+
+    class DummyIPVersion:
+        V4Only = object()
+
+    zc_module = types.ModuleType("zeroconf")
+    zc_module.BadTypeInNameException = BadTypeInNameException
+    zc_module.IPVersion = DummyIPVersion
+    zc_module.ServiceInfo = DummyServiceInfo
+    zc_module.Zeroconf = DummyZeroconf
+    monkeypatch.setitem(sys.modules, "zeroconf", zc_module)
+    x1_proxy_module = sys.modules["custom_components.sofabaton_x1s.lib.x1_proxy"]
+    monkeypatch.setattr(x1_proxy_module, "_route_local_ip", lambda _ip: "127.0.0.1")
+    monkeypatch.setattr(x1_proxy_module, "mdns_service_type_for_props", lambda _props: "badtype")
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=True, diag_dump=False, diag_parse=False)
+    proxy._start_mdns()
+
+    assert registered == []
+    assert proxy._adv_started is False
 
 
 def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch) -> None:
@@ -289,4 +338,3 @@ def test_targeted_command_burst_end_only_drops_matching_pending() -> None:
 
     assert proxy._pending_command_requests[ent_lo] == {0x02}
     assert ent_lo not in proxy._commands_complete
-
