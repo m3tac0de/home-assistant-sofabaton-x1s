@@ -1,7 +1,11 @@
 # const.py
 DOMAIN = "sofabaton_x1s"
 
-MDNS_TYPE = "_x1hub._udp.local."
+MDNS_SERVICE_TYPES: tuple[str, ...] = (
+    "_x1hub._udp.local.",
+    "_sofabaton_hub._udp.local.",
+)
+PRIMARY_MDNS_TYPE = MDNS_SERVICE_TYPES[0]
 CONF_MAC = "mac"
 CONF_HOST = "host"
 CONF_PORT = "port"

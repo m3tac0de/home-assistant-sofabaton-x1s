@@ -20,6 +20,7 @@ from .const import (
     CONF_MDNS_VERSION,
     DEFAULT_PROXY_UDP_PORT,
     DEFAULT_HUB_LISTEN_BASE,
+    MDNS_SERVICE_TYPES,
     X1S_NO_THRESHOLD,
 )
 
@@ -51,6 +52,46 @@ def generate_static_mac(host: str, port: int) -> str:
     mac_int[0] = (mac_int[0] & 0xFE) | 0x02
 
     return ":".join(f"{b:02x}" for b in mac_int)
+
+
+def _decode_properties(raw_props: Optional[Dict[str, str | bytes]]) -> Dict[str, str]:
+    props: Dict[str, str] = {}
+    for k, v in (raw_props or {}).items():
+        if isinstance(k, bytes):
+            k = k.decode("utf-8")
+        if isinstance(v, bytes):
+            v = v.decode("utf-8")
+        props[k] = v
+    return props
+
+
+def _prepare_discovered_hub(discovery_info: ZeroconfServiceInfo) -> Dict[str, Any] | None:
+    """Normalize zeroconf discovery details or return None if unsupported."""
+
+    service_type = getattr(discovery_info, "type", None)
+    if service_type not in MDNS_SERVICE_TYPES:
+        return None
+
+    props = _decode_properties(discovery_info.properties)
+
+    if props.get("HA_PROXY") == "1":
+        return None
+
+    name = props.get("NAME") or discovery_info.name.split(".")[0]
+    mac = props.get("MAC") or discovery_info.name
+    version = _classify_version(props)
+    no_field = props.get("NO")
+
+    return {
+        "name": name,
+        "mac": mac,
+        "host": discovery_info.host,
+        "port": discovery_info.port,
+        "props": props,
+        "version": version,
+        "no": no_field,
+        "service_type": service_type,
+    }
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
@@ -184,25 +225,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # ------------------------------------------------------------------
     async def async_step_zeroconf(self, discovery_info: ZeroconfServiceInfo):
         """Handle auto-discovery via mDNS."""
-        props = {}
-        for k, v in (discovery_info.properties or {}).items():
-            if isinstance(k, bytes):
-                k = k.decode("utf-8")
-            if isinstance(v, bytes):
-                v = v.decode("utf-8")
-            props[k] = v
-
-        if props.get("HA_PROXY") == "1":
+        discovered_hub = _prepare_discovered_hub(discovery_info)
+        if discovered_hub is None:
             return self.async_abort(reason="not_x1_hub")
 
-        name = props.get("NAME") or discovery_info.name.split(".")[0]
-        mac = props.get("MAC") or discovery_info.name
-        host = discovery_info.host
-        version = _classify_version(props)
-        no_field = props.get("NO")
+        props = discovered_hub["props"]
+        name = discovered_hub["name"]
+        mac = discovered_hub["mac"]
+        host = discovered_hub["host"]
+        version = discovered_hub["version"]
+        no_field = discovered_hub["no"]
 
         _LOGGER.info(
-            "Zeroconf discovered Sofabaton hub %s (%s) at %s:%s model %s (NO=%s) with TXT %s",
+            "Zeroconf discovered Sofabaton hub %s (%s) at %s:%s model %s (NO=%s) with TXT %s via %s",
             name,
             mac,
             host,
@@ -210,6 +245,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             version,
             no_field,
             props,
+            discovered_hub["service_type"],
         )
 
         self.context["title_placeholders"] = {"name": f"{name} ({host})"}
@@ -221,6 +257,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "port": discovery_info.port,
             "props": props,
             "version": version,
+            "service_type": discovered_hub["service_type"],
         }
 
         # set unique id so HA can match/ignore properly
@@ -351,6 +388,5 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 )
             },
         )
-
 
 
