@@ -53,6 +53,7 @@ class SofabatonHub:
         hub_listen_base: int,
         proxy_enabled: bool,
         hex_logging_enabled: bool,
+        version: str | None = None,
     ) -> None:
         self.hass = hass
         self.entry_id = entry_id
@@ -61,6 +62,7 @@ class SofabatonHub:
         self.port = port
         self.mdns_txt = mdns_txt
         self.mdns_txt["HA_PROXY"] = "1"
+        self.version = version
 
         self._proxy_udp_port = proxy_udp_port
         self._hub_listen_base = hub_listen_base

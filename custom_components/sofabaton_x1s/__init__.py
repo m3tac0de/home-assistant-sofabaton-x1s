@@ -16,6 +16,7 @@ from .const import (
     CONF_MAC,
     CONF_PROXY_ENABLED,
     CONF_HEX_LOGGING_ENABLED,
+    CONF_MDNS_VERSION,
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
@@ -37,6 +38,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hub_listen_base = opts.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
     proxy_enabled = opts.get(CONF_PROXY_ENABLED, True)
     hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
+    version = data.get(CONF_MDNS_VERSION) or opts.get(CONF_MDNS_VERSION)
     hub = SofabatonHub(
         hass=hass,
         entry_id=entry.entry_id,
@@ -48,6 +50,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hub_listen_base=hub_listen_base,
         proxy_enabled=proxy_enabled,
         hex_logging_enabled=hex_logging_enabled,
+        version=version,
     )
     await hub.async_start()
 

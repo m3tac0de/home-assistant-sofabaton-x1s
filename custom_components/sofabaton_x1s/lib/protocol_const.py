@@ -11,6 +11,16 @@ SYNC0, SYNC1 = 0xA5, 0x5A
 class ButtonName:
     """Enumeration of known Sofabaton button codes."""
 
+    # X2-only / extended keys (below 0xAE)
+    C = 0x97
+    B = 0x98
+    A = 0x99
+    EXIT = 0x9A
+    DVR = 0x9B
+    PLAY = 0x9C
+    GUIDE = 0x9D
+
+    # Shared X1/X1S/X2 keys (existing)
     UP = 0xAE
     DOWN = 0xB2
     LEFT = 0xAF
