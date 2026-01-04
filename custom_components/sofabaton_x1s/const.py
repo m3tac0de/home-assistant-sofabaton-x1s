@@ -35,7 +35,8 @@ HUB_VERSION_BY_HVER = {
 MDNS_SERVICE_TYPE_BY_VERSION = {
     HUB_VERSION_X1: MDNS_SERVICE_TYPE_X1,
     HUB_VERSION_X1S: MDNS_SERVICE_TYPE_X1,
-    HUB_VERSION_X2: MDNS_SERVICE_TYPE_X2,
+    # X2 hubs continue to use the legacy _x1hub._udp.local. advertisement for compatibility
+    HUB_VERSION_X2: MDNS_SERVICE_TYPE_X1,
 }
 
 # X1S devices report a higher NO field in their mDNS TXT records

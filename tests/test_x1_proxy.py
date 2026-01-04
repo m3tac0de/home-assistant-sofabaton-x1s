@@ -2,6 +2,7 @@
 import sys
 import types
 
+from custom_components.sofabaton_x1s.const import MDNS_SERVICE_TYPE_X1
 from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName, OP_REQ_COMMANDS
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
@@ -134,6 +135,54 @@ def test_start_mdns_stops_on_bad_service_type(monkeypatch) -> None:
 
     assert registered == []
     assert proxy._adv_started is False
+
+
+def test_start_mdns_advertises_x1_service_for_x2_hub(monkeypatch) -> None:
+    registered = []
+
+    class DummyServiceInfo:
+        def __init__(self, *, type_, name, addresses, port, properties, server):
+            self.type = type_
+            self.name = name
+            self.addresses = addresses
+            self.port = port
+            self.properties = properties
+            self.server = server
+
+    class DummyZeroconf:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def register_service(self, info):
+            registered.append(info)
+
+        def close(self):
+            pass
+
+    class DummyIPVersion:
+        V4Only = object()
+
+    zc_module = types.ModuleType("zeroconf")
+    zc_module.BadTypeInNameException = Exception
+    zc_module.IPVersion = DummyIPVersion
+    zc_module.ServiceInfo = DummyServiceInfo
+    zc_module.Zeroconf = DummyZeroconf
+    monkeypatch.setitem(sys.modules, "zeroconf", zc_module)
+    x1_proxy_module = sys.modules["custom_components.sofabaton_x1s.lib.x1_proxy"]
+    monkeypatch.setattr(x1_proxy_module, "_route_local_ip", lambda _ip: "127.0.0.1")
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=True,
+        diag_dump=False,
+        diag_parse=False,
+        mdns_txt={"HVER": "3"},
+    )
+    proxy._start_mdns()
+
+    assert len(registered) == 1
+    assert registered[0].type == MDNS_SERVICE_TYPE_X1
+    assert proxy._adv_started is True
 
 
 def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch) -> None:
