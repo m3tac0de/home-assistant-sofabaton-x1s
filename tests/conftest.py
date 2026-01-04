@@ -18,6 +18,7 @@ def _install_homeassistant_stubs() -> None:
     vol.Required = lambda key, default=None: key  # type: ignore[assignment]
     vol.All = lambda *args, **kwargs: args  # type: ignore[assignment]
     vol.Range = lambda **kwargs: kwargs  # type: ignore[assignment]
+    vol.In = lambda *args, **kwargs: args  # type: ignore[assignment]
     sys.modules.setdefault("voluptuous", vol)
 
     ha = types.ModuleType("homeassistant")
