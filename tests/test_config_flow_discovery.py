@@ -1,7 +1,14 @@
+import asyncio
 import pytest
 
 from custom_components.sofabaton_x1s.config_flow import _prepare_discovered_hub
-from custom_components.sofabaton_x1s.const import MDNS_SERVICE_TYPES
+from custom_components.sofabaton_x1s.config_flow import ConfigFlow
+from custom_components.sofabaton_x1s.const import (
+    CONF_MDNS_VERSION,
+    HUB_VERSION_X1,
+    HUB_VERSION_X2,
+    MDNS_SERVICE_TYPES,
+)
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 
@@ -66,3 +73,35 @@ def test_prepare_discovered_hub_rejects_proxy_advertisement() -> None:
     )
 
     assert result is None
+
+
+def _run(coro):
+    return asyncio.get_event_loop().run_until_complete(coro)
+
+
+def test_manual_flow_prompts_for_hub_version() -> None:
+    flow = ConfigFlow()
+
+    result = _run(flow.async_step_manual())
+
+    assert result["type"] == "form"
+    assert CONF_MDNS_VERSION in result["data_schema"].schema
+
+
+def test_manual_flow_persists_selected_hub_version() -> None:
+    flow = ConfigFlow()
+
+    _run(flow.async_step_manual({
+        "name": "Manual Hub",
+        "host": "1.2.3.4",
+        CONF_MDNS_VERSION: HUB_VERSION_X2,
+    }))
+
+    result = _run(flow.async_step_ports({
+        "proxy_udp_port": 8000,
+        "hub_listen_base": 8200,
+    }))
+
+    assert result["type"] == "create_entry"
+    assert result["data"][CONF_MDNS_VERSION] == HUB_VERSION_X2
+    assert result["options"][CONF_MDNS_VERSION] == HUB_VERSION_X2

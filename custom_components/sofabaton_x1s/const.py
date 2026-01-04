@@ -39,9 +39,6 @@ MDNS_SERVICE_TYPE_BY_VERSION = {
     HUB_VERSION_X2: MDNS_SERVICE_TYPE_X1,
 }
 
-# X1S devices report a higher NO field in their mDNS TXT records
-X1S_NO_THRESHOLD = 20221120
-
 DEFAULT_PROXY_UDP_PORT = 8102
 DEFAULT_HUB_LISTEN_BASE = 8200
 
@@ -96,17 +93,6 @@ def classify_hub_version(props: dict[str, str]) -> str:
         version = HUB_VERSION_BY_HVER.get(str(hver).strip())
         if version:
             return version
-
-    no_field = props.get("NO")
-    if no_field is not None:
-        try:
-            no_value = int(str(no_field))
-        except ValueError:
-            pass
-        else:
-            if no_value >= X1S_NO_THRESHOLD:
-                return HUB_VERSION_X1S
-            return HUB_VERSION_X1
 
     return DEFAULT_HUB_VERSION
 

@@ -20,6 +20,10 @@ from .const import (
     CONF_MDNS_VERSION,
     DEFAULT_PROXY_UDP_PORT,
     DEFAULT_HUB_LISTEN_BASE,
+    DEFAULT_HUB_VERSION,
+    HUB_VERSION_X1,
+    HUB_VERSION_X1S,
+    HUB_VERSION_X2,
     MDNS_SERVICE_TYPES,
     classify_hub_version,
 )
@@ -65,7 +69,6 @@ def _prepare_discovered_hub(discovery_info: ZeroconfServiceInfo) -> Dict[str, An
     name = props.get("NAME") or discovery_info.name.split(".")[0]
     mac = props.get("MAC") or discovery_info.name
     version = classify_hub_version(props)
-    no_field = props.get("NO")
 
     return {
         "name": name,
@@ -74,7 +77,6 @@ def _prepare_discovered_hub(discovery_info: ZeroconfServiceInfo) -> Dict[str, An
         "port": discovery_info.port,
         "props": props,
         "version": version,
-        "no": no_field,
         "service_type": service_type,
     }
 
@@ -100,6 +102,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # build a hub-like dict
             name = user_input["name"]
             host = user_input["host"]
+            version = user_input[CONF_MDNS_VERSION]
             port = DEFAULT_PROXY_UDP_PORT
             mac = generate_static_mac(host, port)
             props = {"MAC": mac, "NAME": name}
@@ -110,12 +113,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "port": port,
                 "props": props,
                 "mac": mac,
+                "version": version,
             }
             return await self.async_step_ports()
 
         schema = vol.Schema({
             vol.Required("name"): str,
             vol.Required("host"): str,
+            vol.Required(
+                CONF_MDNS_VERSION,
+                default=DEFAULT_HUB_VERSION,
+            ): vol.In([HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2]),
         })
         return self.async_show_form(
             step_id="manual",
@@ -219,16 +227,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         mac = discovered_hub["mac"]
         host = discovered_hub["host"]
         version = discovered_hub["version"]
-        no_field = discovered_hub["no"]
 
         _LOGGER.info(
-            "Zeroconf discovered Sofabaton hub %s (%s) at %s:%s model %s (NO=%s) with TXT %s via %s",
+            "Zeroconf discovered Sofabaton hub %s (%s) at %s:%s model %s with TXT %s via %s",
             name,
             mac,
             host,
             discovery_info.port,
             version,
-            no_field,
             props,
             discovered_hub["service_type"],
         )
@@ -338,7 +344,11 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
         PORT_VALIDATOR = vol.All(int, vol.Range(min=1, max=65535))
 
         if user_input is not None:
-            new_options = {**self.entry.options, **user_input}
+            new_options = {
+                **self.entry.options,
+                **user_input,
+                CONF_MDNS_VERSION: user_input.get(CONF_MDNS_VERSION),
+            }
             self.hass.config_entries.async_update_entry(
                 self.entry,
                 data={
@@ -357,6 +367,13 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 "hub_listen_base",
                 default=self.entry.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE),
             ): PORT_VALIDATOR,
+            vol.Required(
+                CONF_MDNS_VERSION,
+                default=self.entry.options.get(
+                    CONF_MDNS_VERSION,
+                    self.entry.data.get(CONF_MDNS_VERSION, DEFAULT_HUB_VERSION),
+                ),
+            ): vol.In([HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2]),
         })
 
         return self.async_show_form(
@@ -373,4 +390,3 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 )
             },
         )
-
