@@ -10,7 +10,8 @@
         "description": "Provide a name and IP address for your Sofabaton hub. The name you choose here will become the name of your virtual hub and cannot be changed later.",
         "data": {
           "name": "Hub name",
-          "host": "Hub IP address"
+          "host": "Hub IP address",
+          "mdns_version": "Hub model (select X1 if unsure)"
         }
       },
       "ports": {
