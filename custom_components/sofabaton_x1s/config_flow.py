@@ -347,7 +347,6 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
             new_options = {
                 **self.entry.options,
                 **user_input,
-                CONF_MDNS_VERSION: user_input.get(CONF_MDNS_VERSION),
             }
             self.hass.config_entries.async_update_entry(
                 self.entry,
@@ -367,13 +366,6 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 "hub_listen_base",
                 default=self.entry.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE),
             ): PORT_VALIDATOR,
-            vol.Required(
-                CONF_MDNS_VERSION,
-                default=self.entry.options.get(
-                    CONF_MDNS_VERSION,
-                    self.entry.data.get(CONF_MDNS_VERSION, DEFAULT_HUB_VERSION),
-                ),
-            ): vol.In([HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2]),
         })
 
         return self.async_show_form(
