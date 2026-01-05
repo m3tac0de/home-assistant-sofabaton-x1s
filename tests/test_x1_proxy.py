@@ -2,8 +2,13 @@
 import sys
 import types
 
-from custom_components.sofabaton_x1s.const import MDNS_SERVICE_TYPE_X1
-from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName, OP_REQ_COMMANDS
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X2, MDNS_SERVICE_TYPE_X1
+from custom_components.sofabaton_x1s.lib.protocol_const import (
+    ButtonName,
+    OP_FIND_REMOTE,
+    OP_FIND_REMOTE_X2,
+    OP_REQ_COMMANDS,
+)
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -183,6 +188,40 @@ def test_start_mdns_advertises_x1_service_for_x2_hub(monkeypatch) -> None:
     assert len(registered) == 1
     assert registered[0].type == MDNS_SERVICE_TYPE_X1
     assert proxy._adv_started is True
+
+
+def test_find_remote_uses_classic_opcode(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(
+        proxy,
+        "enqueue_cmd",
+        lambda opcode, payload=b"", **_kwargs: sent.append((opcode, payload)) or True,
+    )
+
+    assert proxy.find_remote() is True
+    assert sent == [(OP_FIND_REMOTE, b"")]
+
+
+def test_find_remote_uses_x2_opcode(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X2,
+    )
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(
+        proxy,
+        "enqueue_cmd",
+        lambda opcode, payload=b"", **_kwargs: sent.append((opcode, payload)) or True,
+    )
+
+    assert proxy.find_remote() is True
+    assert sent == [(OP_FIND_REMOTE_X2, b"\x00\x00\x08")]
 
 
 def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch) -> None:

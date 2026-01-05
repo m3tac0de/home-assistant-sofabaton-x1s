@@ -663,7 +663,7 @@ class SofabatonHub:
 
     async def async_find_remote(self) -> None:
         _LOGGER.debug("[%s] Triggering find-remote signal", self.entry_id)
-        await self.hass.async_add_executor_job(self._proxy.find_remote)
+        await self.hass.async_add_executor_job(self._proxy.find_remote, self.version)
 
     def _async_update_options(self, key: str, value: Any) -> None:
         """Update a key in the ConfigEntry options."""
