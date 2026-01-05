@@ -11,7 +11,7 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..const import MDNS_SERVICE_TYPE_X1, mdns_service_type_for_props
+from ..const import HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import DeviceCommandAssembler
 from .macros import MacroAssembler
@@ -33,6 +33,7 @@ from .protocol_const import (
     OP_DEVBTN_PAGE,
     OP_DEVBTN_TAIL,
     OP_FIND_REMOTE,
+    OP_FIND_REMOTE_X2,
     OP_INFO_BANNER,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
@@ -192,6 +193,7 @@ class X1Proxy:
         ka_interval: int = 10,
         ka_count: int = 3,
         zeroconf=None,
+        hub_version: str | None = None,
     ) -> None:
         self.real_hub_ip = real_hub_ip
         self.real_hub_udp_port = int(real_hub_udp_port)
@@ -203,6 +205,7 @@ class X1Proxy:
         self.proxy_id = proxy_id or self.mdns_instance
         self.diag_dump = bool(diag_dump)
         self.diag_parse = bool(diag_parse)
+        self.hub_version = hub_version or classify_hub_version(self.mdns_txt)
         # deframers
         self._df_h2a = Deframer()
         self._df_a2h = Deframer()
@@ -733,8 +736,14 @@ class X1Proxy:
         self._notify_app_activation(record)
         return record
 
-    def find_remote(self) -> bool:
+    def find_remote(self, hub_version: str | None = None) -> bool:
         """Trigger the hub's "find my remote" feature."""
+        version = hub_version or self.hub_version or classify_hub_version(self.mdns_txt)
+        self.hub_version = version
+
+        if version == HUB_VERSION_X2:
+            return self.enqueue_cmd(OP_FIND_REMOTE_X2, b"\x00\x00\x08")
+
         return self.enqueue_cmd(OP_FIND_REMOTE)
 
     # ------------------------------------------------------------------
