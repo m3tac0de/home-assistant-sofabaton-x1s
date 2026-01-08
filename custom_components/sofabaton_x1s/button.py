@@ -13,6 +13,7 @@ from .const import (
     DOMAIN,
     CONF_MAC,
     CONF_NAME,
+    HUB_VERSION_X2,
     signal_activity,
     signal_buttons,
     signal_client,
@@ -24,7 +25,7 @@ from .lib.protocol_const import ButtonName  # your proxy enum
 _LOGGER = logging.getLogger(__name__)
 
 # Fixed, explicit list so HA doesn't invent weird entities
-BUTTON_DEFS = [
+BUTTON_DEFS_X1 = [
     (ButtonName.BACK, "Back", "mdi:keyboard-backspace"),
     (ButtonName.BLUE, "Blue button", "mdi:circle"),
     (ButtonName.CH_DOWN, "Channel down", "mdi:arrow-down-bold-box"),
@@ -50,7 +51,19 @@ BUTTON_DEFS = [
 ]
 
 # sort them nicely
-BUTTON_DEFS.sort(key=lambda x: x[1].lower())
+BUTTON_DEFS_X1.sort(key=lambda x: x[1].lower())
+
+BUTTON_DEFS_X2 = BUTTON_DEFS_X1 + [
+    (ButtonName.GUIDE, "Guide", "mdi:television-guide"),
+    (ButtonName.DVR, "DVR", "mdi:filmstrip"),
+    (ButtonName.EXIT, "Exit", "mdi:exit-to-app"),
+    (ButtonName.PLAY, "Play", "mdi:play"),
+    (ButtonName.A, "A button", "mdi:alpha-a-circle"),
+    (ButtonName.B, "B button", "mdi:alpha-b-circle"),
+    (ButtonName.C, "C button", "mdi:alpha-c-circle"),
+]
+
+BUTTON_DEFS_X2.sort(key=lambda x: x[1].lower())
 
 
 async def async_setup_entry(
@@ -60,8 +73,14 @@ async def async_setup_entry(
 ) -> None:
     hub: SofabatonHub = hass.data[DOMAIN][entry.entry_id]
 
+    version = getattr(hub, "version", None)
+    if version == HUB_VERSION_X2:
+        button_defs = BUTTON_DEFS_X2
+    else:
+        button_defs = BUTTON_DEFS_X1
+
     entities: list[ButtonEntity] = [SofabatonFindRemoteButton(hub, entry)]
-    for code, label, icon in BUTTON_DEFS:
+    for code, label, icon in button_defs:
         entities.append(SofabatonDynamicButton(hub, entry, code, label, icon))
 
     async_add_entities(entities)

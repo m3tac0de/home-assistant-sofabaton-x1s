@@ -1,6 +1,14 @@
 """Tests for x1_proxy helpers."""
+import sys
+import types
 
-from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName, OP_REQ_COMMANDS
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X2, MDNS_SERVICE_TYPE_X1
+from custom_components.sofabaton_x1s.lib.protocol_const import (
+    ButtonName,
+    OP_FIND_REMOTE,
+    OP_FIND_REMOTE_X2,
+    OP_REQ_COMMANDS,
+)
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -85,6 +93,135 @@ def test_ensure_commands_for_activity_only_favorites(monkeypatch) -> None:
         (0x01, 0xAAAA): "alpha",
         (0x03, 0xCCCC): "charlie",
     }
+
+
+def test_start_mdns_stops_on_bad_service_type(monkeypatch) -> None:
+    registered = []
+
+    class BadTypeInNameException(Exception):
+        pass
+
+    class DummyServiceInfo:
+        def __init__(self, *, type_, name, addresses, port, properties, server):
+            self.type = type_
+            self.name = name
+            self.addresses = addresses
+            self.port = port
+            self.properties = properties
+            self.server = server
+
+    class DummyZeroconf:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def register_service(self, info):
+            if info.type == "badtype":
+                raise BadTypeInNameException("invalid name")
+            registered.append(info)
+
+        def close(self):
+            pass
+
+    class DummyIPVersion:
+        V4Only = object()
+
+    zc_module = types.ModuleType("zeroconf")
+    zc_module.BadTypeInNameException = BadTypeInNameException
+    zc_module.IPVersion = DummyIPVersion
+    zc_module.ServiceInfo = DummyServiceInfo
+    zc_module.Zeroconf = DummyZeroconf
+    monkeypatch.setitem(sys.modules, "zeroconf", zc_module)
+    x1_proxy_module = sys.modules["custom_components.sofabaton_x1s.lib.x1_proxy"]
+    monkeypatch.setattr(x1_proxy_module, "_route_local_ip", lambda _ip: "127.0.0.1")
+    monkeypatch.setattr(x1_proxy_module, "mdns_service_type_for_props", lambda _props: "badtype")
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=True, diag_dump=False, diag_parse=False)
+    proxy._start_mdns()
+
+    assert registered == []
+    assert proxy._adv_started is False
+
+
+def test_start_mdns_advertises_x1_service_for_x2_hub(monkeypatch) -> None:
+    registered = []
+
+    class DummyServiceInfo:
+        def __init__(self, *, type_, name, addresses, port, properties, server):
+            self.type = type_
+            self.name = name
+            self.addresses = addresses
+            self.port = port
+            self.properties = properties
+            self.server = server
+
+    class DummyZeroconf:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def register_service(self, info):
+            registered.append(info)
+
+        def close(self):
+            pass
+
+    class DummyIPVersion:
+        V4Only = object()
+
+    zc_module = types.ModuleType("zeroconf")
+    zc_module.BadTypeInNameException = Exception
+    zc_module.IPVersion = DummyIPVersion
+    zc_module.ServiceInfo = DummyServiceInfo
+    zc_module.Zeroconf = DummyZeroconf
+    monkeypatch.setitem(sys.modules, "zeroconf", zc_module)
+    x1_proxy_module = sys.modules["custom_components.sofabaton_x1s.lib.x1_proxy"]
+    monkeypatch.setattr(x1_proxy_module, "_route_local_ip", lambda _ip: "127.0.0.1")
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=True,
+        diag_dump=False,
+        diag_parse=False,
+        mdns_txt={"HVER": "3"},
+    )
+    proxy._start_mdns()
+
+    assert len(registered) == 1
+    assert registered[0].type == MDNS_SERVICE_TYPE_X1
+    assert proxy._adv_started is True
+
+
+def test_find_remote_uses_classic_opcode(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(
+        proxy,
+        "enqueue_cmd",
+        lambda opcode, payload=b"", **_kwargs: sent.append((opcode, payload)) or True,
+    )
+
+    assert proxy.find_remote() is True
+    assert sent == [(OP_FIND_REMOTE, b"")]
+
+
+def test_find_remote_uses_x2_opcode(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X2,
+    )
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(
+        proxy,
+        "enqueue_cmd",
+        lambda opcode, payload=b"", **_kwargs: sent.append((opcode, payload)) or True,
+    )
+
+    assert proxy.find_remote() is True
+    assert sent == [(OP_FIND_REMOTE_X2, b"\x00\x00\x08")]
 
 
 def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch) -> None:
@@ -289,4 +426,3 @@ def test_targeted_command_burst_end_only_drops_matching_pending() -> None:
 
     assert proxy._pending_command_requests[ent_lo] == {0x02}
     assert ent_lo not in proxy._commands_complete
-

@@ -11,6 +11,7 @@ import time
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..const import HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import DeviceCommandAssembler
 from .macros import MacroAssembler
@@ -32,6 +33,7 @@ from .protocol_const import (
     OP_DEVBTN_PAGE,
     OP_DEVBTN_TAIL,
     OP_FIND_REMOTE,
+    OP_FIND_REMOTE_X2,
     OP_INFO_BANNER,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
@@ -191,6 +193,7 @@ class X1Proxy:
         ka_interval: int = 10,
         ka_count: int = 3,
         zeroconf=None,
+        hub_version: str | None = None,
     ) -> None:
         self.real_hub_ip = real_hub_ip
         self.real_hub_udp_port = int(real_hub_udp_port)
@@ -202,6 +205,7 @@ class X1Proxy:
         self.proxy_id = proxy_id or self.mdns_instance
         self.diag_dump = bool(diag_dump)
         self.diag_parse = bool(diag_parse)
+        self.hub_version = hub_version or classify_hub_version(self.mdns_txt)
         # deframers
         self._df_h2a = Deframer()
         self._df_a2h = Deframer()
@@ -258,7 +262,7 @@ class X1Proxy:
 
         self._zc = zeroconf  # type: ignore[assignment]
         self._zc_owned = False
-        self._mdns_info = None  # type: ignore[assignment]
+        self._mdns_infos: list[Any] = []
 
     # ---------------------------------------------------------------------
     # Helpers
@@ -732,8 +736,14 @@ class X1Proxy:
         self._notify_app_activation(record)
         return record
 
-    def find_remote(self) -> bool:
+    def find_remote(self, hub_version: str | None = None) -> bool:
         """Trigger the hub's "find my remote" feature."""
+        version = hub_version or self.hub_version or classify_hub_version(self.mdns_txt)
+        self.hub_version = version
+
+        if version == HUB_VERSION_X2:
+            return self.enqueue_cmd(OP_FIND_REMOTE_X2, b"\x00\x00\x08")
+
         return self.enqueue_cmd(OP_FIND_REMOTE)
 
     # ------------------------------------------------------------------
@@ -959,14 +969,23 @@ class X1Proxy:
     # mDNS advertisement
     # ---------------------------------------------------------------------
     def _start_mdns(self) -> None:
-        from zeroconf import Zeroconf, ServiceInfo, IPVersion
+        from zeroconf import BadTypeInNameException, IPVersion, ServiceInfo, Zeroconf
 
         ip_bytes = socket.inet_aton(_route_local_ip(self.real_hub_ip))
-        service_type = "_x1hub._udp.local."
+        service_type = mdns_service_type_for_props(self.mdns_txt)
         instance = self.mdns_instance
         host = (self.mdns_host or instance) + "."
 
         props = {k: v.encode("utf-8") for k, v in self.mdns_txt.items()}
+
+        # reset any previous registrations in case of restart
+        self._mdns_infos = []
+
+        zc = self._zc
+        if zc is None:
+            zc = Zeroconf(ip_version=IPVersion.V4Only)
+            self._zc_owned = True
+            self._zc = zc
 
         info = ServiceInfo(
             type_=service_type,
@@ -977,17 +996,25 @@ class X1Proxy:
             server=host,
         )
 
-        zc = self._zc
-        if zc is None:
-            zc = Zeroconf(ip_version=IPVersion.V4Only)
-            self._zc_owned = True
-            self._zc = zc
+        try:
+            zc.register_service(info)
+        except BadTypeInNameException:
+            log.exception(
+                "[mDNS] service type %s was rejected; advertisement will not be started",
+                service_type,
+            )
+            return
+        self._mdns_infos.append(info)
+        log.info(
+            "[mDNS] registered %s on %s:%d (HVER=%s)",
+            info.name,
+            socket.inet_ntoa(ip_bytes),
+            self.proxy_udp_port,
+            self.mdns_txt.get("HVER", "unknown"),
+        )
 
-        zc.register_service(info)
-
-        self._mdns_info = info
         self._adv_started = True
-        log.info("[mDNS] registered %s on %s:%d", info.name, socket.inet_ntoa(ip_bytes), self.proxy_udp_port)
+        log.info("[mDNS] registration complete; verify via Zeroconf browser if available")
 
     # ---------------------------------------------------------------------
     # Parsing helpers
@@ -1202,17 +1229,19 @@ class X1Proxy:
 
     def _stop_discovery(self) -> None:
         # unregister mDNS
-        if self._zc is not None and self._mdns_info is not None:
+        if self._zc is not None and self._mdns_infos:
             try:
-                self._zc.unregister_service(self._mdns_info)
-                log.info("[mDNS] unregistered %s", self._mdns_info.name)
-            except Exception:
-                log.exception("[mDNS] failed to unregister service")
+                for info in self._mdns_infos:
+                    try:
+                        self._zc.unregister_service(info)
+                        log.info("[mDNS] unregistered %s", info.name)
+                    except Exception:
+                        log.exception("[mDNS] failed to unregister service %s", info.name)
             finally:
                 if self._zc_owned:
                     self._zc.close()
                     self._zc = None
-                self._mdns_info = None
+                self._mdns_infos = []
 
         self._adv_started = False
     

@@ -1,17 +1,17 @@
-# Sofabaton X1/X1S – Home Assistant Custom Integration
+# Sofabaton X1/X1S/X2 – Home Assistant Custom Integration
 
-Control your Sofabaton **X1** or **X1S** hub directly from Home Assistant using 100% local APIs.
+Control your Sofabaton **X1**, **X1S** and **X2** hub directly from Home Assistant using 100% local APIs.
 
-**Compatibility note:** the X1 and X1S share the same local API surface. The integration is developed and tested primarily on the X1S, but X1 users should see identical behavior; please report any differences you encounter.
+**Compatibility note:** the X1, X1S and X2 share the same local API surface. The integration is developed and tested primarily on the X1S and X2, but X1 users should see identical behavior; please report any differences you encounter. **X2 discovery is disabled by default!**, enable in configuration.yaml.
 
 This integration:
 
-1. connects to your *real* X1/X1S hub (the physical one),
+1. connects to your *real* X1/X1S/X2 hub (the physical one),
 2. exposes a *virtual* hub so the official Sofabaton app can still connect (the Sofabaton hub allows a single client at a time only),
 3. enables any command to be sent directly from Home Assistant
 
-Because the Sofabaton X1/X1S hub only allows **one client at a time**, the integration sits in the middle and lets HA “see” the hub while still allowing the official app to connect.
-So essentially: this integration is a proxy service for the Sofabaton X1/X1S hub and Home Assistant is an internal client to that proxy.
+Because the Sofabaton X1/X1S/X2 hub only allows **one client at a time**, the integration sits in the middle and lets HA “see” the hub while still allowing the official app to connect.
+So essentially: this integration is a proxy service for the Sofabaton X1/X1S/X2 hub and Home Assistant is an internal client to that proxy.
 
 ---
 
@@ -47,7 +47,7 @@ So essentially: this integration is a proxy service for the Sofabaton X1/X1S hub
   - sensors maintain state accurately, regardless of how that state is set. So whether you change activity through Home Assistant, the official app, the physical remote or something like Alexa; the sensors will reflect accurate state.
 - 🧪 **Diagnostic “Index” sensor**:
   - used in combination with the “fetch_device_commands” Action to retrieve the commands the hub knows about
-- 🛰 **X1/X1S Proxy**:
+- 🛰 **X1/X1S/X2 Proxy**:
   - although enabled by default, the proxy capability (the ability for the official app to connect while this integration is running) can be disabled in device settings (it will then no longer advertise and bind to a UDP port)
 
 ---
@@ -69,7 +69,7 @@ For a deeper walkthrough (multiple hubs, VLANs, firewalls, containers, and mobil
 
 This integration follows the same 3-step flow as the official Sofabaton app:
 
-1. **mDNS / Bonjour** – the hub advertises `_x1hub._udp.local.`. Home Assistant (and the bundled proxy) listen for this. If your hub is on another VLAN and mDNS isn’t forwarded, discovery won’t work. In that case, use the manual IP/port option in the config flow.
+1. **mDNS / Bonjour** – the hub advertises `_x1hub._udp.local.` (X1/X1S) or `_sofabaton_hub._udp.local.` (X2). Home Assistant (and the bundled proxy) listen for this. If your hub is on another VLAN and mDNS isn’t forwarded, discovery won’t work. In that case, use the manual IP/port option in the config flow.
 2. **CALL_ME (UDP)** – after discovery, the client sends a small “call me” message to the hub’s advertised UDP port (typically `8102`). This tells the hub “here is where you can reach me”.
 3. **TCP connect-back** – the hub then opens a **TCP** connection back to the client/proxy. This means the hub must be able to reach **Home Assistant** on the proxy’s listen port. The proxy binds to a base port (configurable in the integration options) and will try up to 32 ports starting from the value provided by you.
 
@@ -91,9 +91,23 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
 ## Requirements
 
 - Home Assistant 2024.x or newer (async config flow, options flow)
-- A Sofabaton **X1** or **X1S** hub on the same network, advertising `_x1hub._udp.local.`
+- A Sofabaton **X1**, **X1S** or **X2** hub on the same network
 - Your HA instance must be able to open TCP ports (so the real hub can connect to our integration)
 - Your HA instance must be able to open UDP ports (optional; only if you want the official app to be able to connect to the hub while this integration is running)
+
+### X2 discovery (opt-in)
+
+This integration supports the X2 hub in the same way that it supports the X1 and X1S hubs; a direct TCP based connection is sustained between Sofabaton hub and integration, leveraging APIs intended for the Sofabaton app.
+[The official integration](https://github.com/yomonpet/ha-sofabaton-hub) for the X2 uses MQTT to achieve similar functionality, and the use case for running both integrations at the same time is very limited (although that is perfectly possible and has no negative impact).
+
+For that reason automatic discovery of X2 hubs is disabled by default. To enable discovery of X2 hubs, add the following to Home Assistant's `configuration.yaml` and restart Home Assistant after making the change.
+
+```yaml
+sofabaton_x1s:
+  enable_x2_discovery: true
+```
+
+With the flag enabled, X2 hubs will show the normal discovery confirmation.
 
 ---
 
@@ -124,18 +138,9 @@ If not discovered automatically: Click **Add Integration**, search for **Sofabat
 
 ## Configuration flow (what you’ll see)
 
-1. HA discovers `Sofabaton X1/X1S` via mDNS and asks you to confirm, **or** you start the flow manually.
-2. If you started the flow manually, you provide the hub’s IP, port, and a name for the entry.
+1. HA discovers `Sofabaton X1/X1S/X2` via mDNS and asks you to confirm, **or** you start the flow manually.
+2. If you started the flow manually, you provide the hub’s IP, hub version, and a name for the entry.
 3. Global proxy options are shown (proxy base port, hub-listen base). Defaults usually work.
-6. The integration creates:
-   - 1 device (“\<your hub name\>”)
-   - activity select
-   - connection sensors
-   - button entities
-   - diagnostic “index” sensor
-   - remote entity
-   - proxy switch
-   - 1 "Action"
 
 If the hub was already configured, the flow will just say “already configured” and won’t create a second one.
 

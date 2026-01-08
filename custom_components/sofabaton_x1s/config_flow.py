@@ -20,25 +20,16 @@ from .const import (
     CONF_MDNS_VERSION,
     DEFAULT_PROXY_UDP_PORT,
     DEFAULT_HUB_LISTEN_BASE,
-    X1S_NO_THRESHOLD,
+    DEFAULT_HUB_VERSION,
+    CONF_ENABLE_X2_DISCOVERY,
+    HUB_VERSION_X1,
+    HUB_VERSION_X1S,
+    HUB_VERSION_X2,
+    MDNS_SERVICE_TYPES,
+    classify_hub_version,
 )
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _classify_version(props: Dict[str, str]) -> str:
-    no_field = props.get("NO")
-    if no_field is not None:
-        try:
-            no_value = int(str(no_field))
-        except ValueError:
-            pass
-        else:
-            if no_value >= X1S_NO_THRESHOLD:
-                return "X1S"
-            return "X1"
-
-    return "X1"
 
 
 def generate_static_mac(host: str, port: int) -> str:
@@ -52,11 +43,60 @@ def generate_static_mac(host: str, port: int) -> str:
 
     return ":".join(f"{b:02x}" for b in mac_int)
 
+
+def _decode_properties(raw_props: Optional[Dict[str, str | bytes]]) -> Dict[str, str]:
+    props: Dict[str, str] = {}
+    for k, v in (raw_props or {}).items():
+        if isinstance(k, bytes):
+            k = k.decode("utf-8")
+        if isinstance(v, bytes):
+            v = v.decode("utf-8")
+        props[k] = v
+    return props
+
+
+def _prepare_discovered_hub(discovery_info: ZeroconfServiceInfo) -> Dict[str, Any] | None:
+    """Normalize zeroconf discovery details or return None if unsupported."""
+
+    service_type = getattr(discovery_info, "type", None)
+    if service_type not in MDNS_SERVICE_TYPES:
+        return None
+
+    props = _decode_properties(discovery_info.properties)
+
+    if props.get("HA_PROXY") == "1":
+        return None
+
+    name = props.get("NAME") or discovery_info.name.split(".")[0]
+    mac = props.get("MAC") or discovery_info.name
+    version = classify_hub_version(props)
+
+    return {
+        "name": name,
+        "mac": mac,
+        "host": discovery_info.host,
+        "port": discovery_info.port,
+        "props": props,
+        "version": version,
+        "service_type": service_type,
+    }
+
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
         self._chosen_hub: Optional[Dict[str, Any]] = None
+        self._discovered_from_zeroconf: Optional[Dict[str, Any]] = None
+
+    def _x2_enabled(self) -> bool:
+        hass = getattr(self, "hass", None)
+        if hass is None:
+            return False
+        return bool(
+            hass.data.get(DOMAIN, {})
+            .get("config", {})
+            .get(CONF_ENABLE_X2_DISCOVERY, False)
+        )
 
     # ------------------------------------------------------------------
     # step 1: pick hub (discovered or manual)
@@ -74,6 +114,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             # build a hub-like dict
             name = user_input["name"]
             host = user_input["host"]
+            version = user_input[CONF_MDNS_VERSION]
             port = DEFAULT_PROXY_UDP_PORT
             mac = generate_static_mac(host, port)
             props = {"MAC": mac, "NAME": name}
@@ -84,12 +125,18 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 "port": port,
                 "props": props,
                 "mac": mac,
+                "version": version,
             }
             return await self.async_step_ports()
 
+        versions = [HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2]
         schema = vol.Schema({
             vol.Required("name"): str,
             vol.Required("host"): str,
+            vol.Required(
+                CONF_MDNS_VERSION,
+                default=DEFAULT_HUB_VERSION,
+            ): vol.In(versions),
         })
         return self.async_show_form(
             step_id="manual",
@@ -135,7 +182,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             # build data
-            version = hub_info.get("version") or _classify_version(hub_info.get("props", {}))
+            version = hub_info.get("version") or classify_hub_version(hub_info.get("props", {}))
             data = {
                 CONF_MAC: mac,
                 CONF_NAME: hub_info["name"],
@@ -184,32 +231,27 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     # ------------------------------------------------------------------
     async def async_step_zeroconf(self, discovery_info: ZeroconfServiceInfo):
         """Handle auto-discovery via mDNS."""
-        props = {}
-        for k, v in (discovery_info.properties or {}).items():
-            if isinstance(k, bytes):
-                k = k.decode("utf-8")
-            if isinstance(v, bytes):
-                v = v.decode("utf-8")
-            props[k] = v
-
-        if props.get("HA_PROXY") == "1":
+        discovered_hub = _prepare_discovered_hub(discovery_info)
+        if discovered_hub is None:
             return self.async_abort(reason="not_x1_hub")
 
-        name = props.get("NAME") or discovery_info.name.split(".")[0]
-        mac = props.get("MAC") or discovery_info.name
-        host = discovery_info.host
-        version = _classify_version(props)
-        no_field = props.get("NO")
+        props = discovered_hub["props"]
+        name = discovered_hub["name"]
+        mac = discovered_hub["mac"]
+        host = discovered_hub["host"]
+        version = discovered_hub["version"]
+        if version == HUB_VERSION_X2 and not self._x2_enabled():
+            return self.async_abort(reason="x2_disabled")
 
         _LOGGER.info(
-            "Zeroconf discovered Sofabaton hub %s (%s) at %s:%s model %s (NO=%s) with TXT %s",
+            "Zeroconf discovered Sofabaton hub %s (%s) at %s:%s model %s with TXT %s via %s",
             name,
             mac,
             host,
             discovery_info.port,
             version,
-            no_field,
             props,
+            discovered_hub["service_type"],
         )
 
         self.context["title_placeholders"] = {"name": f"{name} ({host})"}
@@ -221,6 +263,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "port": discovery_info.port,
             "props": props,
             "version": version,
+            "service_type": discovered_hub["service_type"],
         }
 
         # set unique id so HA can match/ignore properly
@@ -316,7 +359,10 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
         PORT_VALIDATOR = vol.All(int, vol.Range(min=1, max=65535))
 
         if user_input is not None:
-            new_options = {**self.entry.options, **user_input}
+            new_options = {
+                **self.entry.options,
+                **user_input,
+            }
             self.hass.config_entries.async_update_entry(
                 self.entry,
                 data={
@@ -351,6 +397,3 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
                 )
             },
         )
-
-
-

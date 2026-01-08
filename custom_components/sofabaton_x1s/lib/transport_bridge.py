@@ -322,7 +322,19 @@ class TransportBridge:
         self._hub_listen_port = _pick_port_near(self.hub_listen_base)
         srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        srv.bind(("0.0.0.0", self._hub_listen_port))
+        try:
+            srv.bind(("0.0.0.0", self._hub_listen_port))
+        except OSError as exc:
+            log.warning(
+                "[TCP] failed to bind hub listener on *:%d (%s); will retry",
+                self._hub_listen_port,
+                exc,
+            )
+            try:
+                srv.close()
+            except Exception:
+                pass
+            return False
         srv.listen(1)
         srv.settimeout(1.0)
         log.info("[TCP] waiting <- HUB on *:%d (claim)", self._hub_listen_port)

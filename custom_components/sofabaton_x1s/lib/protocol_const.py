@@ -11,6 +11,16 @@ SYNC0, SYNC1 = 0xA5, 0x5A
 class ButtonName:
     """Enumeration of known Sofabaton button codes."""
 
+    # X2-only / extended keys (below 0xAE)
+    C = 0x97
+    B = 0x98
+    A = 0x99
+    EXIT = 0x9A
+    DVR = 0x9B
+    PLAY = 0x9C
+    GUIDE = 0x9D
+
+    # Shared X1/X1S/X2 keys (existing)
     UP = 0xAE
     DOWN = 0xB2
     LEFT = 0xAF
@@ -47,6 +57,7 @@ OP_REQ_BUTTONS = 0x023C  # payload: [act_lo, 0xFF]
 OP_REQ_COMMANDS = 0x025C  # payload: [dev_lo, cmd] (1-byte) or [dev_lo, 0xFF] for full list
 OP_REQ_ACTIVATE = 0x023F  # payload: [id_lo, key_code] (activity or device ID)
 OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
+OP_FIND_REMOTE_X2 = 0x0323  # payload: [0x00, 0x00, 0x08] observed on X2 hubs
 OP_CREATE_DEVICE_HEAD = 0x07D5  # payload includes UTF-16LE device name
 OP_DEFINE_IP_CMD = 0x0ED3  # payload includes HTTP method/URL/headers
 OP_DEFINE_IP_CMD_EXISTING = 0x0EAE  # payload defines IP command for an existing device
@@ -120,6 +131,7 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_COMMANDS: "REQ_COMMANDS",
     OP_REQ_ACTIVATE: "REQ_ACTIVATE",
     OP_FIND_REMOTE: "FIND_REMOTE",
+    OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
     OP_CREATE_DEVICE_HEAD: "CREATE_DEVICE_HEAD",
     OP_DEFINE_IP_CMD: "DEFINE_IP_CMD",
     OP_DEFINE_IP_CMD_EXISTING: "DEFINE_IP_CMD_EXISTING",
@@ -224,6 +236,7 @@ __all__ = [
     "OP_REQ_COMMANDS",
     "OP_REQ_ACTIVATE",
     "OP_FIND_REMOTE",
+    "OP_FIND_REMOTE_X2",
     "OP_CREATE_DEVICE_HEAD",
     "OP_DEFINE_IP_CMD",
     "OP_DEFINE_IP_CMD_EXISTING",
