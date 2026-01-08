@@ -17,7 +17,7 @@ graph LR
     end
 
     %% Hub <-> Proxy (Segment 1)
-    Hub -->|UDP 5353<br>mDNS _x1hub._udp.local.| HA
+    Hub -->|UDP 5353<br>mDNS _x1hub._sofabaton_hub._udp.local.<br>_sofabaton_hub._sofabaton_hub._udp.local.| HA
     HA -->|UDP 8102<br>CALL_ME| Hub
     Hub -->|TCP base .. base+31<br>connect back to proxy| HA
 
@@ -56,8 +56,9 @@ BLACK ARROWS : Needed for everybody
 The integration discovers the physical hub and then keeps a bidirectional session open.
 
 ### Discovery
-- Uses mDNS/Bonjour for the `_x1hub._udp.local.` advertisement to learn the hub IP/UDP port.
+- Uses mDNS/Bonjour for the `_x1hub._udp.local.` (X1 and X1S) or `_sofabaton_hub._udp.local.` (X2) advertisement to learn the hub IP/UDP port.
 - If hubs sit on a different VLAN, multicast must be forwarded or you need to add the hub manually in the config flow (IP + UDP port).
+  When rebroadcasting mDNS across VLANs, an issue may be encountered due to the X2 hub advertising a non-conformant Service Name. The name "sofabaton_hub" is explicitly dissallowed in mDNS standard RFC 6335 (Section 5.1 explicitly states: "The service name... MUST NOT contain underscores."). mDNS libraries like Zeroconf will not be able to rebroadcast as newer versions strictly implement the standard. To work around this, rebroadcast as `_x1hub._udp.local.`, integration and app will then work as intended.
 
 ### Connect flow
 1. **CALL_ME over UDP**: Home Assistant sends a short "call me" packet to the hub's advertised UDP port (usually `8102`).
@@ -94,7 +95,7 @@ Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Andro
 >   broadcast discovery will *not* reach the proxy.
 > - To keep them on different VLANs *and* have iOS discovery work, you need a **UDP
 >   broadcast relay** between the VLANs (many router firmwares like OpenWRT, pfSense, etc.
->   can do this), or you must rely on manual configuration (although that supports only a single hub
+>   can do this), or you must rely on manual configuration (although that supports only a single hub)
 > - Once discovery is done, all further communication is unicast UDP and TCP and will happily
 >   traverse your routed VLANs.
 
