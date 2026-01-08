@@ -2,7 +2,7 @@
 
 Control your Sofabaton **X1**, **X1S** and **X2** hub directly from Home Assistant using 100% local APIs.
 
-**Compatibility note:** the X1, X1S and X2 share the same local API surface. The integration is developed and tested primarily on the X1S and X2, but X1 users should see identical behavior; please report any differences you encounter.
+**Compatibility note:** the X1, X1S and X2 share the same local API surface. The integration is developed and tested primarily on the X1S and X2, but X1 users should see identical behavior; please report any differences you encounter. **X2 discovery is disabled by default!**, enable in configuration.yaml.
 
 This integration:
 
