@@ -1,4 +1,4 @@
-# Sofabaton X1/X1S – Home Assistant Custom Integration
+# Sofabaton X1/X1S/X2 – Home Assistant Custom Integration
 
 Control your Sofabaton **X1**, **X1S** and **X2** hub directly from Home Assistant using 100% local APIs.
 
