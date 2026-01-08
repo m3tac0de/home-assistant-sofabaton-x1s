@@ -21,6 +21,7 @@ from .const import (
     DEFAULT_PROXY_UDP_PORT,
     DEFAULT_HUB_LISTEN_BASE,
     DEFAULT_HUB_VERSION,
+    CONF_ENABLE_X2_DISCOVERY,
     HUB_VERSION_X1,
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
@@ -85,6 +86,17 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._chosen_hub: Optional[Dict[str, Any]] = None
+        self._discovered_from_zeroconf: Optional[Dict[str, Any]] = None
+
+    def _x2_enabled(self) -> bool:
+        hass = getattr(self, "hass", None)
+        if hass is None:
+            return False
+        return bool(
+            hass.data.get(DOMAIN, {})
+            .get("config", {})
+            .get(CONF_ENABLE_X2_DISCOVERY, False)
+        )
 
     # ------------------------------------------------------------------
     # step 1: pick hub (discovered or manual)
@@ -117,13 +129,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
             return await self.async_step_ports()
 
+        versions = [HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2]
         schema = vol.Schema({
             vol.Required("name"): str,
             vol.Required("host"): str,
             vol.Required(
                 CONF_MDNS_VERSION,
                 default=DEFAULT_HUB_VERSION,
-            ): vol.In([HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2]),
+            ): vol.In(versions),
         })
         return self.async_show_form(
             step_id="manual",
@@ -227,6 +240,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         mac = discovered_hub["mac"]
         host = discovered_hub["host"]
         version = discovered_hub["version"]
+        if version == HUB_VERSION_X2 and not self._x2_enabled():
+            return self.async_abort(reason="x2_disabled")
 
         _LOGGER.info(
             "Zeroconf discovered Sofabaton hub %s (%s) at %s:%s model %s with TXT %s via %s",

@@ -95,6 +95,17 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
 - Your HA instance must be able to open TCP ports (so the real hub can connect to our integration)
 - Your HA instance must be able to open UDP ports (optional; only if you want the official app to be able to connect to the hub while this integration is running)
 
+### X2 discovery (opt-in)
+
+The X2 hub advertises the same discovery records as the official SofaBaton integration. To avoid duplicate prompts, **X2 discovery is disabled by default** in this custom integration. Manual setup remains available. If you want discovery prompts for X2 hubs, add the YAML flag below and restart Home Assistant:
+
+```yaml
+sofabaton_x1s:
+  enable_x2_discovery: true
+```
+
+With the flag enabled, X2 hubs will show the normal discovery confirmation.
+
 ---
 
 ## Installation

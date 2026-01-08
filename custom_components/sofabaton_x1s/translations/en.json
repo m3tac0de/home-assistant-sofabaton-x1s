@@ -26,6 +26,9 @@
         "title": "Discovered Sofabaton hub",
         "description": "Home Assistant found a Sofabaton hub ({{name}} @ {{host}}). Confirm to set it up."
       }
+    },
+    "abort": {
+      "x2_disabled": "SofaBaton X2 discovery is disabled. To enable it, add `enable_x2_discovery: true` under `sofabaton_x1s:` in configuration.yaml and restart Home Assistant."
     }
   },
   "options": {

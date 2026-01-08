@@ -1,12 +1,15 @@
 import asyncio
+from types import SimpleNamespace
 import pytest
 
 from custom_components.sofabaton_x1s.config_flow import _prepare_discovered_hub
 from custom_components.sofabaton_x1s.config_flow import ConfigFlow
 from custom_components.sofabaton_x1s.const import (
+    CONF_ENABLE_X2_DISCOVERY,
     CONF_MDNS_VERSION,
     HUB_VERSION_X1,
     HUB_VERSION_X2,
+    DOMAIN,
     MDNS_SERVICE_TYPES,
 )
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
@@ -78,9 +81,15 @@ def test_prepare_discovered_hub_rejects_proxy_advertisement() -> None:
 def _run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 
+def _flow_with_x2_enabled(enabled: bool) -> ConfigFlow:
+    flow = ConfigFlow()
+    flow.hass = SimpleNamespace(data={DOMAIN: {"config": {CONF_ENABLE_X2_DISCOVERY: enabled}}})
+    flow.context = {}
+    return flow
+
 
 def test_manual_flow_prompts_for_hub_version() -> None:
-    flow = ConfigFlow()
+    flow = _flow_with_x2_enabled(False)
 
     result = _run(flow.async_step_manual())
 
@@ -88,8 +97,17 @@ def test_manual_flow_prompts_for_hub_version() -> None:
     assert CONF_MDNS_VERSION in result["data_schema"].schema
 
 
+def test_manual_flow_includes_x2_when_discovery_disabled() -> None:
+    flow = _flow_with_x2_enabled(False)
+
+    result = _run(flow.async_step_manual())
+
+    version_options = result["data_schema"].schema[CONF_MDNS_VERSION][0]
+    assert HUB_VERSION_X2 in version_options
+
+
 def test_manual_flow_persists_selected_hub_version() -> None:
-    flow = ConfigFlow()
+    flow = _flow_with_x2_enabled(False)
 
     _run(flow.async_step_manual({
         "name": "Manual Hub",
@@ -105,3 +123,43 @@ def test_manual_flow_persists_selected_hub_version() -> None:
     assert result["type"] == "create_entry"
     assert result["data"][CONF_MDNS_VERSION] == HUB_VERSION_X2
     assert result["options"][CONF_MDNS_VERSION] == HUB_VERSION_X2
+
+
+def test_zeroconf_x2_aborts_when_disabled() -> None:
+    flow = _flow_with_x2_enabled(False)
+
+    result = _run(
+        flow.async_step_zeroconf(
+            _service_info(
+                MDNS_SERVICE_TYPES[1],
+                properties={
+                    "NAME": b"Sofa Hub",
+                    "MAC": b"aa:bb:cc:dd:ee:ff",
+                    "HVER": b"3",
+                },
+            )
+        )
+    )
+
+    assert result["type"] == "abort"
+    assert result["reason"] == "x2_disabled"
+
+
+def test_zeroconf_x2_prompts_when_enabled() -> None:
+    flow = _flow_with_x2_enabled(True)
+
+    result = _run(
+        flow.async_step_zeroconf(
+            _service_info(
+                MDNS_SERVICE_TYPES[1],
+                properties={
+                    "NAME": b"Sofa Hub",
+                    "MAC": b"aa:bb:cc:dd:ee:ff",
+                    "HVER": b"3",
+                },
+            )
+        )
+    )
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "zeroconf_confirm"

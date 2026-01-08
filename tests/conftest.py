@@ -82,6 +82,10 @@ def _install_homeassistant_stubs() -> None:
     helpers = types.ModuleType("homeassistant.helpers")
     sys.modules.setdefault("homeassistant.helpers", helpers)
 
+    config_validation = types.ModuleType("homeassistant.helpers.config_validation")
+    config_validation.boolean = lambda value=None: value  # type: ignore[assignment]
+    sys.modules.setdefault("homeassistant.helpers.config_validation", config_validation)
+
     service_info = types.ModuleType("homeassistant.helpers.service_info")
     sys.modules.setdefault("homeassistant.helpers.service_info", service_info)
 

@@ -4,8 +4,11 @@ import logging
 from typing import Any
 from urllib.parse import urlparse
 
+import voluptuous as vol
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
@@ -17,6 +20,7 @@ from .const import (
     CONF_PROXY_ENABLED,
     CONF_HEX_LOGGING_ENABLED,
     CONF_MDNS_VERSION,
+    CONF_ENABLE_X2_DISCOVERY,
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
@@ -26,6 +30,26 @@ from .diagnostics import (
 from .hub import SofabatonHub
 
 _LOGGER = logging.getLogger(__name__)
+
+CONFIG_SCHEMA = vol.Schema(
+    {
+        DOMAIN: vol.Schema(
+            {vol.Optional(CONF_ENABLE_X2_DISCOVERY, default=False): cv.boolean},
+        ),
+    },
+    extra=vol.ALLOW_EXTRA,
+)
+
+
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+    domain_config = config.get(DOMAIN, {})
+    enable_x2_discovery = bool(domain_config.get(CONF_ENABLE_X2_DISCOVERY, False))
+
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN].setdefault("config", {})
+    hass.data[DOMAIN]["config"][CONF_ENABLE_X2_DISCOVERY] = enable_x2_discovery
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -54,8 +78,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     await hub.async_start()
 
-    if DOMAIN not in hass.data:
-        hass.data[DOMAIN] = {}
+    hass.data.setdefault(DOMAIN, {})
 
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
@@ -92,11 +115,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
-        if not hass.data[DOMAIN]:
+        if not _get_hubs(hass.data[DOMAIN]):
             hass.services.async_remove(DOMAIN, "fetch_device_commands")
             #hass.services.async_remove(DOMAIN, "create_ip_button")
             async_teardown_diagnostics(hass)
-            hass.data.pop(DOMAIN)
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
             await hub.async_stop()
@@ -160,6 +182,7 @@ async def _async_handle_create_ip_button(call: ServiceCall):
 async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
     """Try device → hub text → entity → fallback to single hub."""
     domain_data = hass.data.get(DOMAIN, {})
+    hubs = _get_hubs(domain_data)
 
     # 1) device_id from service
     device_id = call.data.get("device")
@@ -171,7 +194,7 @@ async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
             for ident_domain, ident in device.identifiers:
                 if ident_domain == DOMAIN:
                     # find hub by mac
-                    for hub in domain_data.values():
+                    for hub in hubs:
                         if getattr(hub, "mac", None) == ident:
                             return hub
 
@@ -179,10 +202,10 @@ async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
     hub_key = call.data.get("hub")
     if hub_key:
         # try entry_id
-        if hub_key in domain_data:
+        if hub_key in domain_data and domain_data[hub_key] in hubs:
             return domain_data[hub_key]
         # try mac
-        for hub in domain_data.values():
+        for hub in hubs:
             if getattr(hub, "mac", None) == hub_key:
                 return hub
 
@@ -197,12 +220,20 @@ async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
             if device:
                 for ident_domain, ident in device.identifiers:
                     if ident_domain == DOMAIN:
-                        for hub in domain_data.values():
+                        for hub in hubs:
                             if getattr(hub, "mac", None) == ident:
                                 return hub
 
     # 4) last resort: if there is only 1 hub, just use it
-    if len(domain_data) == 1:
-        return next(iter(domain_data.values()))
+    if len(hubs) == 1:
+        return hubs[0]
 
     return None
+
+
+def _get_hubs(domain_data: dict[str, Any]) -> list[SofabatonHub]:
+    return [
+        hub
+        for hub in domain_data.values()
+        if isinstance(hub, SofabatonHub)
+    ]
