@@ -9,7 +9,7 @@ import struct
 import threading
 import time
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..const import HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
 from .frame_handlers import FrameContext, frame_handler_registry
@@ -224,6 +224,7 @@ class X1Proxy:
         self._macros_complete: set[int] = set()
         self._favorite_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._activity_listeners: list[callable] = []
+        self._activity_list_update_listeners: list[Callable[[], None]] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
         self._activation_listeners: list[callable] = []
@@ -276,6 +277,13 @@ class X1Proxy:
     # ---------------------------------------------------------------------
     # Local command API
     # ---------------------------------------------------------------------
+    def on_activity_list_update(self, cb: Callable[[], None]) -> None:
+        self._activity_list_update_listeners.append(cb)
+
+    def _notify_activity_list_update(self) -> None:
+        for cb in self._activity_list_update_listeners:
+            cb()
+
     def handle_active_state(self, trigger: str) -> None:
         new_id, old_id = self.state.update_activity_state()
         if new_id != old_id:

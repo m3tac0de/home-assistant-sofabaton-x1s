@@ -113,6 +113,7 @@ class SofabatonHub:
         )
 
         proxy.on_activity_change(self._on_activity_change)
+        proxy.on_activity_list_update(self._on_activity_list_update)
         proxy.on_burst_end("activities", self._on_activities_burst)
         proxy.on_burst_end("buttons", self._on_buttons_burst)
         proxy.on_client_state_change(self._on_client_state_change)
@@ -208,6 +209,17 @@ class SofabatonHub:
             if ready:
                 self.activities = acts
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+        self.hass.loop.call_soon_threadsafe(_inner)
+
+    def _on_activity_list_update(self) -> None:
+        def _inner() -> None:
+            acts, ready = self._proxy.get_activities()
+            if acts:
+                self.activities = acts
+            if ready:
+                self.activities_ready = True
+            async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+
         self.hass.loop.call_soon_threadsafe(_inner)
 
     def _on_buttons_burst(self, key: str) -> None:
