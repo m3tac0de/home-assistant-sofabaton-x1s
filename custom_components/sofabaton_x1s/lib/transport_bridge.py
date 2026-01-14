@@ -546,6 +546,10 @@ class TransportBridge:
                     app_partial_frame.clear()
 
                     sync = bytes([SYNC0, SYNC1])
+                    if buffer.startswith(sync + sync):
+                        # Drop duplicate sync marker created by preserving a
+                        # partial frame boundary across reads.
+                        buffer = buffer[len(sync) :]
                     start = buffer.find(sync)
 
                     if start == -1:
