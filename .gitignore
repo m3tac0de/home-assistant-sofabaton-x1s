@@ -3,6 +3,8 @@ __pycache__/
 *.pyo
 *.bak
 *.log
+*.zip
+*.patch
 .vscode/
 .idea/
 .mypy_cache/

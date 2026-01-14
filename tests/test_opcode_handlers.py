@@ -153,6 +153,73 @@ def test_keymap_table_b_parses_buttons_response() -> None:
     }
 
 
+def test_keymap_table_b_parses_x2_buttons_response() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    first_raw = (
+        "a5 5a fa 3d 01 00 01 01 00 02 19 66 01 03 00 00 00 00 00 01 01 00 00 00 00"
+        " 00 00 00 00 66 97 02 00 00 00 00 00 00 03 02 00 00 00 00 00 00 05 66 98 02"
+        " 00 00 00 00 00 00 04 02 00 00 00 00 00 00 06 66 99 02 00 00 00 00 00 00 01"
+        " 02 00 00 00 00 00 00 02 66 9c 05 00 00 00 00 00 92 0d 00 00 00 00 00 00 00"
+        " 00 66 ae 05 00 00 00 00 01 13 12 00 00 00 00 00 00 00 00 66 af 05 00 00 00"
+        " 00 03 28 10 00 00 00 00 00 00 00 00 66 b0 05 00 00 00 00 00 2a 1a 00 00 00"
+        " 00 00 00 00 00 66 b1 05 00 00 00 00 03 29 11 00 00 00 00 00 00 00 00 66 b2"
+        " 05 00 00 00 00 01 15 0f 00 00 00 00 00 00 00 00 66 b3 05 00 00 00 00 00 74"
+        " 13 00 00 00 00 00 00 00 00 66 b4 05 00 00 00 00 00 88 17 00 00 00 00 00 00"
+        " 00 00 66 b5 05 00 00 00 00 00 2d 18 00 00 00 00 00 00 00 00 66 b6 01 00 00"
+        " 00 00 2e 77 99"
+    )
+    second_raw = (
+        "a5 5a d2 3d 01 00 02 7a 00 00 00 00 00 00 00 00 66 b7 02 00 00 00 00 00 00"
+        " 03 00 00 00 00 00 00 00 00 66 b8 01 00 00 00 00 00 6a 71 00 00 00 00 00 00"
+        " 00 00 66 b9 01 00 00 00 00 00 33 79 00 00 00 00 00 00 00 00 66 ba 02 00 00"
+        " 00 00 00 00 04 00 00 00 00 00 00 00 00 66 bb 05 00 00 00 00 01 d2 1d 00 00"
+        " 00 00 00 00 00 00 66 bc 05 00 00 00 00 00 a6 1b 00 00 00 00 00 00 00 00 66"
+        " bd 05 00 00 00 00 1b 46 15 00 00 00 00 00 00 00 00 66 be 05 00 00 00 00 00"
+        " e7 1c 00 00 00 00 00 00 00 00 66 bf 05 00 00 00 00 00 ec 16 00 00 00 00 00"
+        " 00 00 00 66 c0 05 00 00 00 00 00 f6 20 00 00 00 00 00 00 00 00 66 c1 05 00"
+        " 00 00 00 00 f1 14 00 00 00 00 00 00 00 00 ff"
+    )
+    frames = (
+        (first_raw, OP_KEYMAP_TBL_B, "KEYMAP_TABLE_B"),
+        (second_raw, _opcode_from_raw(second_raw), "KEYMAP_TABLE_X2"),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x66) == {
+        ButtonName.C,
+        ButtonName.B,
+        ButtonName.A,
+        ButtonName.PLAY,
+        ButtonName.UP,
+        ButtonName.LEFT,
+        ButtonName.OK,
+        ButtonName.RIGHT,
+        ButtonName.DOWN,
+        ButtonName.BACK,
+        ButtonName.HOME,
+        ButtonName.MENU,
+        ButtonName.VOL_UP,
+        ButtonName.CH_UP,
+        ButtonName.MUTE,
+        ButtonName.VOL_DOWN,
+        ButtonName.CH_DOWN,
+        ButtonName.REW,
+        ButtonName.PAUSE,
+        ButtonName.FWD,
+        ButtonName.RED,
+        ButtonName.GREEN,
+        ButtonName.YELLOW,
+        ButtonName.BLUE,
+    }
+
+
 def test_keymap_handler_accepts_favorite_only_payload() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False

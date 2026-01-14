@@ -1109,10 +1109,13 @@ class X1Proxy:
             try:
                 ent_lo = int(key.split(":", 1)[1])
                 self._pending_button_requests.discard(ent_lo)
+                self.state.clear_keymap_remainders(ent_lo)
             except ValueError:
                 self._pending_button_requests.clear()
+                self.state.clear_keymap_remainders()
         else:
             self._pending_button_requests.clear()
+            self.state.clear_keymap_remainders()
 
     def _handle_idle(self, now: float) -> None:
         self._burst.tick(now, can_issue=self.can_issue_commands, sender=self._send_cmd_frame)

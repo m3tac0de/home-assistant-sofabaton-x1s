@@ -22,6 +22,7 @@ class ActivityCache:
         self.activity_favorite_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
         self.activity_favorite_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
         self.activity_macros: dict[int, list[dict[str, int | str]]] = defaultdict(list)
+        self.keymap_remainders: dict[int, bytes] = {}
         # Only track the most recent activation to avoid unbounded growth
         self.app_activations: Deque[dict[str, Any]] = deque(maxlen=1)
 
@@ -48,6 +49,22 @@ class ActivityCache:
 
         RECORD_SIZE = 18
 
+        remainder = self.keymap_remainders.pop(act_lo, b"")
+        if remainder:
+            needed = RECORD_SIZE - len(remainder)
+            if len(payload) < needed:
+                self.keymap_remainders[act_lo] = remainder + payload
+                return
+            record = remainder + payload[:needed]
+            favorites_allowed = not bool(self.buttons[act_lo])
+            favorites_allowed, parsed = self._parse_keymap_record(
+                act_lo, record, favorites_allowed=favorites_allowed
+            )
+            payload = payload[needed:]
+            if not parsed:
+                return
+            i, n = 0, len(payload)
+
         start_index = -1
         if n >= RECORD_SIZE:
             for j in range(min(n - RECORD_SIZE + 1, 20)):
@@ -56,33 +73,19 @@ class ActivityCache:
                     break
 
         if start_index >= 0:
-            favorites_allowed = True
+            favorites_allowed = not bool(self.buttons[act_lo])
             i = start_index
             while i + RECORD_SIZE <= n:
-                act = payload[i]
-                button_id = payload[i + 1]
-                device_id = payload[i + 2]
-
-                if act != act_lo:
-                    break
-
-                if button_id in BUTTONNAME_BY_CODE:
-                    favorites_allowed = False
-                    self.buttons[act_lo].add(button_id)
-                elif favorites_allowed:
-                    command_id = payload[i + 9] if i + 10 <= n else button_id
-                    self.activity_command_refs[act_lo].add((device_id, command_id))
-                    self.activity_favorite_slots[act_lo].append(
-                        {
-                            "button_id": button_id,
-                            "device_id": device_id,
-                            "command_id": command_id,
-                        }
-                    )
-                else:
+                favorites_allowed, parsed = self._parse_keymap_record(
+                    act_lo, payload[i : i + RECORD_SIZE], favorites_allowed=favorites_allowed
+                )
+                if not parsed:
                     break
 
                 i += RECORD_SIZE
+            if i < n and i + RECORD_SIZE > n and payload[i] == act_lo:
+                self.keymap_remainders[act_lo] = payload[i:]
+                return
             if self.activity_favorite_slots.get(act_lo):
                 return
 
@@ -99,6 +102,38 @@ class ActivityCache:
                     i += stride
                     continue
             i += 1
+
+    def _parse_keymap_record(
+        self, act_lo: int, record: bytes, *, favorites_allowed: bool
+    ) -> tuple[bool, bool]:
+        act = record[0] if record else None
+        if act != act_lo:
+            return favorites_allowed, False
+
+        button_id = record[1]
+        device_id = record[2]
+
+        if button_id in BUTTONNAME_BY_CODE:
+            self.buttons[act_lo].add(button_id)
+            return False, True
+        if favorites_allowed:
+            command_id = record[9] if len(record) > 9 else button_id
+            self.activity_command_refs[act_lo].add((device_id, command_id))
+            self.activity_favorite_slots[act_lo].append(
+                {
+                    "button_id": button_id,
+                    "device_id": device_id,
+                    "command_id": command_id,
+                }
+            )
+            return True, True
+        return favorites_allowed, False
+
+    def clear_keymap_remainders(self, act_lo: int | None = None) -> None:
+        if act_lo is None:
+            self.keymap_remainders.clear()
+        else:
+            self.keymap_remainders.pop(act_lo, None)
 
     def get_activity_command_refs(self, act_lo: int) -> set[tuple[int, int]]:
         """Return the set of (device_id, command_id) pairs for the activity."""
@@ -328,4 +363,3 @@ class BurstScheduler:
             prefix = key.split(":", 1)[0]
             for cb in self.listeners.get(prefix, []):
                 cb(key)
-
