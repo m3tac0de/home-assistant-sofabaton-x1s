@@ -84,7 +84,12 @@ class ActivityCache:
 
                 i += RECORD_SIZE
             if i < n and i + RECORD_SIZE > n and payload[i] == act_lo:
-                self.keymap_remainders[act_lo] = payload[i:]
+                remainder = payload[i:]
+                if len(remainder) >= 2 and remainder[1] in BUTTONNAME_BY_CODE:
+                    padded = remainder + b"\x00" * (RECORD_SIZE - len(remainder))
+                    self._parse_keymap_record(act_lo, padded, favorites_allowed=favorites_allowed)
+                    return
+                self.keymap_remainders[act_lo] = remainder
                 return
             if self.activity_favorite_slots.get(act_lo):
                 return

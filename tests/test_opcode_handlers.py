@@ -220,6 +220,100 @@ def test_keymap_table_b_parses_x2_buttons_response() -> None:
     }
 
 
+def test_req_buttons_parses_partial_final_record_example_one() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    first_raw = (
+        "a5 5a fa 3d 01 00 01 01 00 02 0e 68 97 02 00 00 00 00 00 00 03 02 00 00 00 00"
+        " 00 00 05 68 98 02 00 00 00 00 00 00 04 02 00 00 00 00 00 00 06 68 99 02 00"
+        " 00 00 00 00 00 01 02 00 00 00 00 00 00 02 68 ae 04 00 00 00 00 01 13 11 00"
+        " 00 00 00 00 00 00 00 68 af 04 00 00 00 00 03 28 0f 00 00 00 00 00 00 00 00"
+        " 68 b0 04 00 00 00 00 00 2a 16 00 00 00 00 00 00 00 00 68 b1 04 00 00 00 00"
+        " 03 29 10 00 00 00 00 00 00 00 00 68 b2 04 00 00 00 00 01 15 0e 00 00 00 00"
+        " 00 00 00 00 68 b3 04 00 00 00 00 00 74 12 00 00 00 00 00 00 00 00 68 b4 04"
+        " 00 00 00 00 07 c7 13 00 00 00 00 00 00 00 00 68 b5 04 00 00 00 00 00 2d 14"
+        " 00 00 00 00 00 00 00 00 68 b6 01 00 00 00 00 2e 77 7a 00 00 00 00 00 00 00"
+        " 00 68 b8 01 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 68 b9 01 00 00 00"
+        " 00 00 33 8c"
+    )
+    second_raw = "a5 5a 0c 3d 01 00 02 79 00 00 00 00 00 00 00 00 c4"
+    frames = (
+        (first_raw, OP_KEYMAP_TBL_B, "KEYMAP_TABLE_B"),
+        (second_raw, _opcode_from_raw(second_raw), "KEYMAP_MARKER"),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x68) == {
+        ButtonName.C,
+        ButtonName.B,
+        ButtonName.A,
+        ButtonName.UP,
+        ButtonName.LEFT,
+        ButtonName.OK,
+        ButtonName.RIGHT,
+        ButtonName.DOWN,
+        ButtonName.BACK,
+        ButtonName.HOME,
+        ButtonName.MENU,
+        ButtonName.VOL_UP,
+        ButtonName.MUTE,
+        ButtonName.VOL_DOWN,
+    }
+
+
+def test_req_buttons_parses_partial_final_record_example_two() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    first_raw = (
+        "a5 5a fa 3d 01 00 01 01 00 02 0e 67 97 02 00 00 00 00 00 00 03 02 00 00 00 00"
+        " 00 00 05 67 98 02 00 00 00 00 00 00 04 02 00 00 00 00 00 00 06 67 99 02 00"
+        " 00 00 00 00 00 01 02 00 00 00 00 00 00 02 67 ae 04 00 00 00 00 01 13 11 00"
+        " 00 00 00 00 00 00 00 67 af 04 00 00 00 00 03 28 0f 00 00 00 00 00 00 00 00"
+        " 67 b0 04 00 00 00 00 00 2a 16 00 00 00 00 00 00 00 00 67 b1 04 00 00 00 00"
+        " 03 29 10 00 00 00 00 00 00 00 00 67 b2 04 00 00 00 00 01 15 0e 00 00 00 00"
+        " 00 00 00 00 67 b3 04 00 00 00 00 00 74 12 00 00 00 00 00 00 00 00 67 b4 04"
+        " 00 00 00 00 07 c7 13 00 00 00 00 00 00 00 00 67 b5 04 00 00 00 00 00 2d 14"
+        " 00 00 00 00 00 00 00 00 67 b6 01 00 00 00 00 2e 77 7a 00 00 00 00 00 00 00"
+        " 00 67 b8 01 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 67 b9 01 00 00 00"
+        " 00 00 33 7e"
+    )
+    second_raw = "a5 5a 0c 3d 01 00 02 79 00 00 00 00 00 00 00 00 c4"
+    frames = (
+        (first_raw, OP_KEYMAP_TBL_B, "KEYMAP_TABLE_B"),
+        (second_raw, _opcode_from_raw(second_raw), "KEYMAP_MARKER"),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x67) == {
+        ButtonName.C,
+        ButtonName.B,
+        ButtonName.A,
+        ButtonName.UP,
+        ButtonName.LEFT,
+        ButtonName.OK,
+        ButtonName.RIGHT,
+        ButtonName.DOWN,
+        ButtonName.BACK,
+        ButtonName.HOME,
+        ButtonName.MENU,
+        ButtonName.VOL_UP,
+        ButtonName.MUTE,
+        ButtonName.VOL_DOWN,
+    }
+
+
 def test_keymap_handler_accepts_favorite_only_payload() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
