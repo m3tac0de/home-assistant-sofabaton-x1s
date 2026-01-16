@@ -80,6 +80,7 @@ class SofabatonRemote(RemoteEntity):
             "hub_version": self._hub.version,
             "enabled_buttons": enabled_buttons,
             "activity_select_entity_id": activity_select_entity_id,
+            "load_state": self._hub.get_index_state(),
         }
 
     @property
