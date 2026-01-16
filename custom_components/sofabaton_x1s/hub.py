@@ -563,7 +563,15 @@ class SofabatonHub:
             # if it was actually ready now, we can clear pending right away
             self._pending_button_fetch.discard(act_id)
             async_dispatcher_send(self.hass, signal_buttons(self.entry_id))
-        # else: we'll clear the whole set in _on_buttons_burst
+        else:
+            await self._async_wait_for_buttons_ready(act_id)
+
+        await self.hass.async_add_executor_job(
+            partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
+        )
+        await self.hass.async_add_executor_job(
+            partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
+        )
 
     # ------------------------------------------------------------------
     # helpers for entities
@@ -628,6 +636,28 @@ class SofabatonHub:
                 favorites[act_id] = labels
 
         return favorites
+
+    def get_activity_favorites_for(self, act_id: int) -> list[dict[str, int | str]]:
+        """Return favorite commands with labels for a specific activity."""
+
+        return self._proxy.state.get_activity_favorite_labels(act_id & 0xFF)
+
+    def get_activity_macros_for(self, act_id: int) -> list[dict[str, int | str]]:
+        """Return macro definitions for a specific activity."""
+
+        macros, ready = self._proxy.get_macros_for_activity(act_id, fetch_if_missing=False)
+        if not ready or not macros:
+            return []
+
+        return [
+            {
+                "name": macro.get("label", ""),
+                "device_id": act_id,
+                "command_id": macro["command_id"],
+            }
+            for macro in macros
+            if macro.get("label")
+        ]
 
     def get_app_activations(self) -> list[dict[str, Any]]:
         """Return recent app-originated activation requests."""

@@ -17,6 +17,8 @@ from .const import (
     signal_hub,
     signal_client,
     signal_buttons,
+    signal_commands,
+    signal_macros,
 )
 from .hub import get_hub_model
 
@@ -71,15 +73,26 @@ class SofabatonRemote(RemoteEntity):
             "select", DOMAIN, f"{self._entry.data[CONF_MAC]}_activity"
         )
         enabled_buttons = []
+        favorites: list[dict[str, int | str]] = []
+        macros: list[dict[str, int | str]] = []
+        activity_id = self._hub.current_activity
         if self._hub.current_activity is not None:
             btns, ready = self._hub.get_buttons_for_current()
             if ready:
-                enabled_buttons = list(btns)
+                enabled_buttons = [
+                    {"command": btn, "activity_id": self._hub.current_activity}
+                    for btn in btns
+                ]
+            favorites = self._hub.get_activity_favorites_for(self._hub.current_activity)
+            macros = self._hub.get_activity_macros_for(self._hub.current_activity)
         return {
             "proxy_client_connected": self._hub.client_connected,
             "hub_version": self._hub.version,
             "enabled_buttons": enabled_buttons,
             "activity_select_entity_id": activity_select_entity_id,
+            "current_activity_id": activity_id,
+            "favorites": favorites,
+            "macros": macros,
             "load_state": self._hub.get_index_state(),
         }
 
@@ -118,6 +131,20 @@ class SofabatonRemote(RemoteEntity):
             async_dispatcher_connect(
                 self.hass,
                 signal_buttons(self._hub.entry_id),
+                self._schedule_update,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_commands(self._hub.entry_id),
+                self._schedule_update,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_macros(self._hub.entry_id),
                 self._schedule_update,
             )
         )

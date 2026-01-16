@@ -18,23 +18,6 @@ const ID = {
   RED: 190, GREEN: 191, YELLOW: 192, BLUE: 193,
 };
 
-// Command names (what the backend expects for remote.send_command)
-const CMD = {
-  UP: "UP", DOWN: "DOWN", LEFT: "LEFT", RIGHT: "RIGHT", OK: "OK",
-  BACK: "BACK", HOME: "HOME", MENU: "MENU",
-  VOL_UP: "VOL_UP", VOL_DOWN: "VOL_DOWN", MUTE: "MUTE",
-  CH_UP: "CH_UP", CH_DOWN: "CH_DOWN",
-
-  GUIDE: "GUIDE",
-  DVR: "DVR",
-  PLAY: "PLAY",
-  EXIT: "EXIT",
-  A: "A", B: "B", C: "C",
-
-  REW: "REW", PAUSE: "PAUSE", FWD: "FWD",
-  RED: "RED", GREEN: "GREEN", YELLOW: "YELLOW", BLUE: "BLUE",
-};
-
 const POWERED_OFF_LABELS = new Set(["powered off", "powered_off", "off"]);
 
 class SofabatonRemoteCard extends HTMLElement {
@@ -79,13 +62,50 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _enabledButtons() {
     const list = this._remoteState()?.attributes?.enabled_buttons;
-    return Array.isArray(list) ? list.map((n) => Number(n)) : [];
+    if (!Array.isArray(list)) return [];
+
+    const parsed = list
+      .map((entry) => {
+        if (entry && typeof entry === "object") {
+          const command = Number(
+            entry.command
+              ?? entry.command_id
+              ?? entry.button_id
+              ?? entry.id
+              ?? entry.button
+          );
+          const activityId = entry.activity_id ?? entry.device ?? null;
+          return {
+            command,
+            activity_id: activityId != null ? Number(activityId) : null,
+          };
+        }
+        return { command: Number(entry), activity_id: null };
+      })
+      .filter((entry) => Number.isFinite(entry.command));
+
+    this._enabledButtonsInvalid = list.length > 0 && parsed.length === 0;
+    return parsed;
   }
 
   _isEnabled(id) {
     const enabled = this._enabledButtons();
+    if (this._enabledButtonsInvalid) return true;
     if (!enabled.length) return true; // fail-open
-    return enabled.includes(Number(id));
+    return enabled.some((entry) => entry.command === Number(id));
+  }
+
+  _commandTarget(id) {
+    const enabled = this._enabledButtons();
+    const match = enabled.find((entry) => entry.command === Number(id));
+    return match || null;
+  }
+
+  _currentActivityId() {
+    const remote = this._remoteState();
+    const activityId = remote?.attributes?.current_activity_id;
+    if (activityId != null) return Number(activityId);
+    return null;
   }
 
   _activitySelectEntityId() {
@@ -156,6 +176,19 @@ class SofabatonRemoteCard extends HTMLElement {
   // ---------- Services ----------
   async _callService(domain, service, data) {
     await this._hass.callService(domain, service, data);
+  }
+
+  async _sendCommand(commandId) {
+    if (!this._hass || !this._config?.entity) return;
+    const target = this._commandTarget(commandId);
+    const device = target?.activity_id ?? this._currentActivityId();
+    if (device == null) return;
+
+    await this._callService("remote", "send_command", {
+      entity_id: this._config.entity,
+      command: commandId,
+      device,
+    });
   }
 
   async _setActivity(option) {
@@ -309,6 +342,7 @@ class SofabatonRemoteCard extends HTMLElement {
     wrap.addEventListener("click", () => {
       if (!wrap.classList.contains("disabled")) {
         this._triggerCommandPulse();
+        this._sendCommand(cmd);
       }
     });
 
@@ -322,10 +356,7 @@ class SofabatonRemoteCard extends HTMLElement {
       name: label || "",
       icon: icon || undefined,
       tap_action: {
-        action: "call-service",
-        service: "remote.send_command",
-        target: { entity_id: this._config.entity },
-        data: { command: [cmd] },
+        action: "none",
       },
     });
 
@@ -334,6 +365,7 @@ class SofabatonRemoteCard extends HTMLElement {
     this._keys.push({
       key,
       id,
+      cmd,
       wrap,
       btn,
       isX2Only: this._x2OnlyIds.has(id),
@@ -349,6 +381,7 @@ class SofabatonRemoteCard extends HTMLElement {
     wrap.addEventListener("click", () => {
       if (!wrap.classList.contains("disabled")) {
         this._triggerCommandPulse();
+        this._sendCommand(cmd);
       }
     });
 
@@ -360,10 +393,7 @@ class SofabatonRemoteCard extends HTMLElement {
       show_name: false,
       show_icon: false,
       tap_action: {
-        action: "call-service",
-        service: "remote.send_command",
-        target: { entity_id: this._config.entity },
-        data: { command: [cmd] },
+        action: "none",
       },
     });
 
@@ -376,6 +406,7 @@ class SofabatonRemoteCard extends HTMLElement {
     this._keys.push({
       key,
       id,
+      cmd,
       wrap,
       btn,
       isX2Only: false,
@@ -596,19 +627,19 @@ class SofabatonRemoteCard extends HTMLElement {
     // D-pad
     this._dpadEl = document.createElement("div");
     this._dpadEl.className = "dpad";
-    this._dpadEl.appendChild(this._mkHuiButton({ key: "up", label: "", icon: "mdi:chevron-up", id: ID.UP, cmd: CMD.UP, extraClass: "area-up" }));
-    this._dpadEl.appendChild(this._mkHuiButton({ key: "left", label: "", icon: "mdi:chevron-left", id: ID.LEFT, cmd: CMD.LEFT, extraClass: "area-left" }));
-    this._dpadEl.appendChild(this._mkHuiButton({ key: "ok", label: "OK", icon: "", id: ID.OK, cmd: CMD.OK, extraClass: "area-ok okKey", size: "big" }));
-    this._dpadEl.appendChild(this._mkHuiButton({ key: "right", label: "", icon: "mdi:chevron-right", id: ID.RIGHT, cmd: CMD.RIGHT, extraClass: "area-right" }));
-    this._dpadEl.appendChild(this._mkHuiButton({ key: "down", label: "", icon: "mdi:chevron-down", id: ID.DOWN, cmd: CMD.DOWN, extraClass: "area-down" }));
+    this._dpadEl.appendChild(this._mkHuiButton({ key: "up", label: "", icon: "mdi:chevron-up", id: ID.UP, cmd: ID.UP, extraClass: "area-up" }));
+    this._dpadEl.appendChild(this._mkHuiButton({ key: "left", label: "", icon: "mdi:chevron-left", id: ID.LEFT, cmd: ID.LEFT, extraClass: "area-left" }));
+    this._dpadEl.appendChild(this._mkHuiButton({ key: "ok", label: "OK", icon: "", id: ID.OK, cmd: ID.OK, extraClass: "area-ok okKey", size: "big" }));
+    this._dpadEl.appendChild(this._mkHuiButton({ key: "right", label: "", icon: "mdi:chevron-right", id: ID.RIGHT, cmd: ID.RIGHT, extraClass: "area-right" }));
+    this._dpadEl.appendChild(this._mkHuiButton({ key: "down", label: "", icon: "mdi:chevron-down", id: ID.DOWN, cmd: ID.DOWN, extraClass: "area-down" }));
     remote.appendChild(this._dpadEl);
 
     // Back / Home / Menu
     this._navRowEl = document.createElement("div");
     this._navRowEl.className = "row3";
-    this._navRowEl.appendChild(this._mkHuiButton({ key: "back", label: "", icon: "mdi:arrow-u-left-top", id: ID.BACK, cmd: CMD.BACK }));
-    this._navRowEl.appendChild(this._mkHuiButton({ key: "home", label: "", icon: "mdi:home", id: ID.HOME, cmd: CMD.HOME }));
-    this._navRowEl.appendChild(this._mkHuiButton({ key: "menu", label: "", icon: "mdi:menu", id: ID.MENU, cmd: CMD.MENU }));
+    this._navRowEl.appendChild(this._mkHuiButton({ key: "back", label: "", icon: "mdi:arrow-u-left-top", id: ID.BACK, cmd: ID.BACK }));
+    this._navRowEl.appendChild(this._mkHuiButton({ key: "home", label: "", icon: "mdi:home", id: ID.HOME, cmd: ID.HOME }));
+    this._navRowEl.appendChild(this._mkHuiButton({ key: "menu", label: "", icon: "mdi:menu", id: ID.MENU, cmd: ID.MENU }));
     remote.appendChild(this._navRowEl);
 
     // Mid section: VOL | Guide+Mute | CH
@@ -617,21 +648,21 @@ class SofabatonRemoteCard extends HTMLElement {
 
     const volCol = document.createElement("div");
     volCol.className = "col";
-    volCol.appendChild(this._mkHuiButton({ key: "volup", label: "", icon: "mdi:volume-plus", id: ID.VOL_UP, cmd: CMD.VOL_UP }));
-    volCol.appendChild(this._mkHuiButton({ key: "voldn", label: "", icon: "mdi:volume-minus", id: ID.VOL_DOWN, cmd: CMD.VOL_DOWN }));
+    volCol.appendChild(this._mkHuiButton({ key: "volup", label: "", icon: "mdi:volume-plus", id: ID.VOL_UP, cmd: ID.VOL_UP }));
+    volCol.appendChild(this._mkHuiButton({ key: "voldn", label: "", icon: "mdi:volume-minus", id: ID.VOL_DOWN, cmd: ID.VOL_DOWN }));
     this._midEl.appendChild(volCol);
 
     const centerCol = document.createElement("div");
     centerCol.className = "col midCenter";
     this._midCenterCol = centerCol;
-    centerCol.appendChild(this._mkHuiButton({ key: "guide", label: "Guide", icon: "", id: ID.GUIDE, cmd: CMD.GUIDE }));
-    centerCol.appendChild(this._mkHuiButton({ key: "mute", label: "", icon: "mdi:volume-mute", id: ID.MUTE, cmd: CMD.MUTE }));
+    centerCol.appendChild(this._mkHuiButton({ key: "guide", label: "Guide", icon: "", id: ID.GUIDE, cmd: ID.GUIDE }));
+    centerCol.appendChild(this._mkHuiButton({ key: "mute", label: "", icon: "mdi:volume-mute", id: ID.MUTE, cmd: ID.MUTE }));
     this._midEl.appendChild(centerCol);
 
     const chCol = document.createElement("div");
     chCol.className = "col";
-    chCol.appendChild(this._mkHuiButton({ key: "chup", label: "", icon: "mdi:chevron-up", id: ID.CH_UP, cmd: CMD.CH_UP }));
-    chCol.appendChild(this._mkHuiButton({ key: "chdn", label: "", icon: "mdi:chevron-down", id: ID.CH_DOWN, cmd: CMD.CH_DOWN }));
+    chCol.appendChild(this._mkHuiButton({ key: "chup", label: "", icon: "mdi:chevron-up", id: ID.CH_UP, cmd: ID.CH_UP }));
+    chCol.appendChild(this._mkHuiButton({ key: "chdn", label: "", icon: "mdi:chevron-down", id: ID.CH_DOWN, cmd: ID.CH_DOWN }));
     this._midEl.appendChild(chCol);
 
     remote.appendChild(this._midEl);
@@ -640,13 +671,13 @@ class SofabatonRemoteCard extends HTMLElement {
     this._mediaEl = document.createElement("div");
     this._mediaEl.className = "media x1";
 
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "rew", label: "", icon: "mdi:rewind", id: ID.REW, cmd: CMD.REW, extraClass: "area-rew" }));
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "play", label: "", icon: "mdi:play", id: ID.PLAY, cmd: CMD.PLAY, extraClass: "area-play" }));
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "fwd", label: "", icon: "mdi:fast-forward", id: ID.FWD, cmd: CMD.FWD, extraClass: "area-fwd" }));
+    this._mediaEl.appendChild(this._mkHuiButton({ key: "rew", label: "", icon: "mdi:rewind", id: ID.REW, cmd: ID.REW, extraClass: "area-rew" }));
+    this._mediaEl.appendChild(this._mkHuiButton({ key: "play", label: "", icon: "mdi:play", id: ID.PLAY, cmd: ID.PLAY, extraClass: "area-play" }));
+    this._mediaEl.appendChild(this._mkHuiButton({ key: "fwd", label: "", icon: "mdi:fast-forward", id: ID.FWD, cmd: ID.FWD, extraClass: "area-fwd" }));
 
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "dvr", label: "DVR", icon: "", id: ID.DVR, cmd: CMD.DVR, extraClass: "area-dvr" }));
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "pause", label: "", icon: "mdi:pause", id: ID.PAUSE, cmd: CMD.PAUSE, extraClass: "area-pause" }));
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "exit", label: "Exit", icon: "", id: ID.EXIT, cmd: CMD.EXIT, extraClass: "area-exit" }));
+    this._mediaEl.appendChild(this._mkHuiButton({ key: "dvr", label: "DVR", icon: "", id: ID.DVR, cmd: ID.DVR, extraClass: "area-dvr" }));
+    this._mediaEl.appendChild(this._mkHuiButton({ key: "pause", label: "", icon: "mdi:pause", id: ID.PAUSE, cmd: ID.PAUSE, extraClass: "area-pause" }));
+    this._mediaEl.appendChild(this._mkHuiButton({ key: "exit", label: "Exit", icon: "", id: ID.EXIT, cmd: ID.EXIT, extraClass: "area-exit" }));
 
     remote.appendChild(this._mediaEl);
 
@@ -655,10 +686,10 @@ class SofabatonRemoteCard extends HTMLElement {
     this._colorsEl.className = "colors";
     const colorsGrid = document.createElement("div");
     colorsGrid.className = "colorsGrid";
-    colorsGrid.appendChild(this._mkColorKey({ key: "red", id: ID.RED, cmd: CMD.RED, color: "#d32f2f" }));
-    colorsGrid.appendChild(this._mkColorKey({ key: "green", id: ID.GREEN, cmd: CMD.GREEN, color: "#388e3c" }));
-    colorsGrid.appendChild(this._mkColorKey({ key: "yellow", id: ID.YELLOW, cmd: CMD.YELLOW, color: "#fbc02d" }));
-    colorsGrid.appendChild(this._mkColorKey({ key: "blue", id: ID.BLUE, cmd: CMD.BLUE, color: "#1976d2" }));
+    colorsGrid.appendChild(this._mkColorKey({ key: "red", id: ID.RED, cmd: ID.RED, color: "#d32f2f" }));
+    colorsGrid.appendChild(this._mkColorKey({ key: "green", id: ID.GREEN, cmd: ID.GREEN, color: "#388e3c" }));
+    colorsGrid.appendChild(this._mkColorKey({ key: "yellow", id: ID.YELLOW, cmd: ID.YELLOW, color: "#fbc02d" }));
+    colorsGrid.appendChild(this._mkColorKey({ key: "blue", id: ID.BLUE, cmd: ID.BLUE, color: "#1976d2" }));
     this._colorsEl.appendChild(colorsGrid);
     remote.appendChild(this._colorsEl);
 
@@ -667,9 +698,9 @@ class SofabatonRemoteCard extends HTMLElement {
     this._abcEl.className = "abc";
     const abcGrid = document.createElement("div");
     abcGrid.className = "abcGrid";
-    abcGrid.appendChild(this._mkHuiButton({ key: "a", label: "A", icon: "", id: ID.A, cmd: CMD.A, size: "small" }));
-    abcGrid.appendChild(this._mkHuiButton({ key: "b", label: "B", icon: "", id: ID.B, cmd: CMD.B, size: "small" }));
-    abcGrid.appendChild(this._mkHuiButton({ key: "c", label: "C", icon: "", id: ID.C, cmd: CMD.C, size: "small" }));
+    abcGrid.appendChild(this._mkHuiButton({ key: "a", label: "A", icon: "", id: ID.A, cmd: ID.A, size: "small" }));
+    abcGrid.appendChild(this._mkHuiButton({ key: "b", label: "B", icon: "", id: ID.B, cmd: ID.B, size: "small" }));
+    abcGrid.appendChild(this._mkHuiButton({ key: "c", label: "C", icon: "", id: ID.C, cmd: ID.C, size: "small" }));
     this._abcEl.appendChild(abcGrid);
     remote.appendChild(this._abcEl);
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -78,7 +79,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             )
             
             # 4. Inject JS URLs
-            js_files = ["remote-card.js?v=0.4.6"]
+            version_suffix = _get_integration_version()
+            js_version = f"?v={version_suffix}" if version_suffix else ""
+            js_files = [f"remote-card.js{js_version}"]
             for js_file in js_files:
                 url = f"/{DOMAIN}/www/{js_file}"
                 _LOGGER.info("[%s] Adding extra JS URL: %s", DOMAIN, url)
@@ -89,6 +92,18 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             _LOGGER.error("[%s] FRONTEND DIR MISSING: Expected at %s", DOMAIN, abs_path)
 
     return True
+
+
+def _get_integration_version() -> str:
+    manifest_path = Path(__file__).parent / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError) as err:
+        _LOGGER.warning("[%s] Failed to read manifest version: %s", DOMAIN, err)
+        return ""
+
+    version = manifest.get("version")
+    return str(version) if version else ""
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
