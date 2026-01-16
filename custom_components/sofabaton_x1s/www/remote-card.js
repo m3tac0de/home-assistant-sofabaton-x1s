@@ -97,9 +97,65 @@ class SofabatonRemoteCard extends HTMLElement {
     return selId ? this._hass?.states?.[selId] : null;
   }
 
+  _loadState() {
+    return String(this._remoteState()?.attributes?.load_state || "").toLowerCase();
+  }
+
+  _currentActivityLabel(sel) {
+    const remoteActivity = this._remoteState()?.attributes?.current_activity;
+    return String(remoteActivity ?? sel?.state ?? "");
+  }
+
   _isPoweredOffLabel(state) {
     const s = String(state || "").trim().toLowerCase();
     return POWERED_OFF_LABELS.has(s);
+  }
+
+  _isLoadingActive() {
+    const isLoading = this._loadState() === "loading";
+    const isActivityLoading = Boolean(this._activityLoadActive);
+    const isPulse = this._commandPulseUntil && Date.now() < this._commandPulseUntil;
+    return isLoading || isActivityLoading || isPulse;
+  }
+
+  _updateLoadIndicator() {
+    if (!this._loadIndicator) return;
+    const active = this._isLoadingActive();
+    if (this._loadIndicatorActive === active) return;
+    this._loadIndicatorActive = active;
+    this._loadIndicator.classList.toggle("is-loading", active);
+  }
+
+  _triggerCommandPulse() {
+    this._commandPulseUntil = Date.now() + 1000;
+    this._updateLoadIndicator();
+    clearTimeout(this._commandPulseTimeout);
+    this._commandPulseTimeout = setTimeout(() => {
+      this._updateLoadIndicator();
+    }, 1000);
+  }
+
+  _startActivityLoading(target) {
+    this._activityLoadTarget = String(target ?? "");
+    this._activityLoadActive = true;
+    this._activityLoadStartedAt = Date.now();
+    this._updateLoadIndicator();
+    clearTimeout(this._activityLoadTimeout);
+    this._activityLoadTimeout = setTimeout(() => {
+      if (this._activityLoadActive) {
+        this._activityLoadActive = false;
+        this._updateLoadIndicator();
+      }
+    }, 60000);
+  }
+
+  _stopActivityLoading() {
+    if (!this._activityLoadActive) return;
+    this._activityLoadActive = false;
+    this._activityLoadTarget = null;
+    this._activityLoadStartedAt = null;
+    clearTimeout(this._activityLoadTimeout);
+    this._updateLoadIndicator();
   }
 
   // ---------- Services ----------
@@ -113,6 +169,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
     this._pendingActivity = String(option);
     this._pendingActivityAt = Date.now();
+    this._startActivityLoading(option);
 
     await this._callService("select", "select_option", {
       entity_id: selId,
@@ -248,6 +305,11 @@ class SofabatonRemoteCard extends HTMLElement {
   _mkHuiButton({ key, label, icon, id, cmd, extraClass = "", size = "normal" }) {
     const wrap = document.createElement("div");
     wrap.className = `key key--${size} ${extraClass}`.trim();
+    wrap.addEventListener("click", () => {
+      if (!wrap.classList.contains("disabled")) {
+        this._triggerCommandPulse();
+      }
+    });
 
     const btn = document.createElement("hui-button-card");
     btn.hass = this._hass;
@@ -283,6 +345,11 @@ class SofabatonRemoteCard extends HTMLElement {
     const wrap = document.createElement("div");
     wrap.className = "key key--color";
     wrap.style.setProperty("--sb-color", color);
+    wrap.addEventListener("click", () => {
+      if (!wrap.classList.contains("disabled")) {
+        this._triggerCommandPulse();
+      }
+    });
 
     const btn = document.createElement("hui-button-card");
     btn.hass = this._hass;
@@ -335,7 +402,32 @@ class SofabatonRemoteCard extends HTMLElement {
       .wrap { padding: 12px; display: grid; gap: 12px; }
       ha-select { width: 100%; }
 
-      .activityRow { display: grid; grid-template-columns: 1fr; gap: 10px; align-items: center; }
+      .activityRow { display: grid; grid-template-columns: 1fr; gap: 0; align-items: center; }
+
+      .loadIndicator {
+        height: 4px;
+        width: 100%;
+        border-radius: 2px;
+        opacity: 0;
+        background: linear-gradient(
+          90deg,
+          var(--primary-color, #03a9f4),
+          var(--accent-color, var(--primary-color, #03a9f4)),
+          var(--primary-color, #03a9f4)
+        );
+        background-size: 200% 100%;
+        transition: opacity 0.2s ease-in-out;
+        pointer-events: none;
+      }
+      .loadIndicator.is-loading {
+        opacity: 0.35;
+        animation: sb-loading 1.1s linear infinite;
+      }
+
+      @keyframes sb-loading {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 200% 50%; }
+      }
 
       .remote { display: grid; gap: 12px; }
 
@@ -483,6 +575,9 @@ class SofabatonRemoteCard extends HTMLElement {
     this._activitySelect.addEventListener("change", handleActivitySelect);
 
     this._activityRow.appendChild(this._activitySelect);
+    this._loadIndicator = document.createElement("div");
+    this._loadIndicator.className = "loadIndicator";
+    this._activityRow.appendChild(this._loadIndicator);
     wrap.appendChild(this._activityRow);
 
     // Remote body
@@ -618,6 +713,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._activitySelect.disabled = true;
       this._activitySelect.innerHTML = "";
       isPoweredOff = false;
+      this._stopActivityLoading();
 
       this._warn.style.display = "block";
       this._warn.textContent = "Activity select not found (activity_select_entity_id missing?).";
@@ -654,6 +750,16 @@ class SofabatonRemoteCard extends HTMLElement {
 
       this._activitySelect.disabled = false;
       this._warn.style.display = "none";
+
+      const currentActivity = this._currentActivityLabel(sel);
+      if (
+        this._activityLoadActive
+        && this._activityLoadTarget
+        && currentActivity
+        && currentActivity === this._activityLoadTarget
+      ) {
+        this._stopActivityLoading();
+      }
     }
 
     // Visibility toggles (user config)
@@ -685,6 +791,8 @@ class SofabatonRemoteCard extends HTMLElement {
       this._warn.style.display = "block";
       this._warn.textContent = "Remote is unavailable (often because the Sofabaton app is connected).";
     }
+
+    this._updateLoadIndicator();
   }
 
   getCardSize() {
