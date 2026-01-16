@@ -404,30 +404,38 @@ class SofabatonRemoteCard extends HTMLElement {
 
       .activityRow { display: grid; grid-template-columns: 1fr; gap: 0; align-items: center; }
 
-      .loadIndicator {
-        height: 4px;
-        width: 100%;
-        border-radius: 2px;
-        opacity: 0;
-        background: linear-gradient(
-          90deg,
-          var(--primary-color, #03a9f4),
-          var(--accent-color, var(--primary-color, #03a9f4)),
-          var(--primary-color, #03a9f4)
-        );
-        background-size: 200% 100%;
-        transition: opacity 0.2s ease-in-out;
-        pointer-events: none;
-      }
-      .loadIndicator.is-loading {
-        opacity: 0.35;
-        animation: sb-loading 1.1s linear infinite;
-      }
+ 	  .loadIndicator {
+	    height: 4px;
+	    width: 100%;
+	    border-radius: 2px;
+	    opacity: 0;
+	    /* Use a transparent base with a bright highlight "shimmering" over it */
+	    background: var(--primary-color, #03a9f4);
+	    background-image: linear-gradient(
+  		  90deg, 
+		  transparent, 
+		  rgba(255, 255, 255, 0.4), 
+		  transparent
+	    );
+	    background-size: 200% 100%;
+	    background-repeat: no-repeat;
+	    transition: opacity 0.3s ease-in-out;
+	    pointer-events: none;
+	  }
 
-      @keyframes sb-loading {
-        0% { background-position: 0% 50%; }
-        100% { background-position: 200% 50%; }
-      }
+	  .loadIndicator.is-loading {
+	    opacity: 1; /* Increased from 0.45 for better visibility */
+	    animation: sb-shimmer 1.5s infinite linear;
+	  }
+
+	  @keyframes sb-shimmer {
+	    0% {
+		  background-position: -200% 0;
+	    }
+	    100% {
+		  background-position: 200% 0;
+	    }
+	  }
 
       .remote { display: grid; gap: 12px; }
 
