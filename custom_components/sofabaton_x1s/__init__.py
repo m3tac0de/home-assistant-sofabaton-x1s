@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import voluptuous as vol
 
+from homeassistant.components import frontend
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
@@ -49,6 +52,42 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.data[DOMAIN].setdefault("config", {})
     hass.data[DOMAIN]["config"][CONF_ENABLE_X2_DISCOVERY] = enable_x2_discovery
 
+    # Ensure DOMAIN data is initialized
+    hass.data.setdefault(DOMAIN, {})
+
+    if not hass.data[DOMAIN].get("frontend_registered"):
+
+        frontend_dir = Path(__file__).parent / "www"
+        abs_path = str(frontend_dir.resolve())
+        
+        _LOGGER.info("[%s] Resolved static path: %s", DOMAIN, abs_path)
+        
+        if frontend_dir.exists() and frontend_dir.is_dir():
+            contents = list(frontend_dir.iterdir())
+            _LOGGER.info("[%s] Directory exists. Found %s files: %s", 
+                         DOMAIN, len(contents), [f.name for f in contents])
+            
+            await hass.http.async_register_static_paths(
+                [
+                    StaticPathConfig(
+                        f"/{DOMAIN}/www",
+                        abs_path,
+                        False,
+                    )
+                ]
+            )
+            
+            # 4. Inject JS URLs
+            js_files = ["remote-card.js?v=0.4.6"]
+            for js_file in js_files:
+                url = f"/{DOMAIN}/www/{js_file}"
+                _LOGGER.info("[%s] Adding extra JS URL: %s", DOMAIN, url)
+                frontend.add_extra_js_url(hass, url)
+            
+            hass.data[DOMAIN]["frontend_registered"] = True
+        else:
+            _LOGGER.error("[%s] FRONTEND DIR MISSING: Expected at %s", DOMAIN, abs_path)
+
     return True
 
 
@@ -77,8 +116,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         version=version,
     )
     await hub.async_start()
-
-    hass.data.setdefault(DOMAIN, {})
 
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)

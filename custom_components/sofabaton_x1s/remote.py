@@ -7,6 +7,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     DOMAIN,
@@ -65,8 +66,20 @@ class SofabatonRemote(RemoteEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        entity_registry = er.async_get(self.hass)
+        activity_select_entity_id = entity_registry.async_get_entity_id(
+            "select", DOMAIN, f"{self._entry.data[CONF_MAC]}_activity"
+        )
+        enabled_buttons = []
+        if self._hub.current_activity is not None:
+            btns, ready = self._hub.get_buttons_for_current()
+            if ready:
+                enabled_buttons = list(btns)
         return {
             "proxy_client_connected": self._hub.client_connected,
+            "hub_version": self._hub.version,
+            "enabled_buttons": enabled_buttons,
+            "activity_select_entity_id": activity_select_entity_id,
         }
 
     @property
