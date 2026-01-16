@@ -97,10 +97,6 @@ class SofabatonRemoteCard extends HTMLElement {
     return selId ? this._hass?.states?.[selId] : null;
   }
 
-  _loadState() {
-    return String(this._remoteState()?.attributes?.load_state || "").toLowerCase();
-  }
-
   _currentActivityLabel(sel) {
     const remoteActivity = this._remoteState()?.attributes?.current_activity;
     return String(remoteActivity ?? sel?.state ?? "");
@@ -112,10 +108,9 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _isLoadingActive() {
-    const isLoading = this._loadState() === "loading";
     const isActivityLoading = Boolean(this._activityLoadActive);
     const isPulse = this._commandPulseUntil && Date.now() < this._commandPulseUntil;
-    return isLoading || isActivityLoading || isPulse;
+    return isActivityLoading || isPulse;
   }
 
   _updateLoadIndicator() {
@@ -165,7 +160,8 @@ class SofabatonRemoteCard extends HTMLElement {
 
   async _setActivity(option) {
     const selId = this._activitySelectEntityId();
-    if (!selId || option == null) return;
+	const sel = this._activitySelectState();
+    if (!selId || option == null|| sel?.state === option) return;
 
     this._pendingActivity = String(option);
     this._pendingActivityAt = Date.now();
@@ -265,6 +261,11 @@ class SofabatonRemoteCard extends HTMLElement {
         "background",
         "background-color"
       );
+    } else {
+      // EXPLICIT REVERT: If no override or theme background exists, 
+      // ensure the forced properties are cleared.
+      this._root.style.removeProperty("background");
+      this._root.style.removeProperty("background-color");
     }
   }
 
@@ -847,25 +848,37 @@ class SofabatonHelloCardEditor extends HTMLElement {
       const form = document.createElement("ha-form");
       form.hass = this._hass;
 
-      form.schema = [
-        { name: "entity", selector: { entity: { domain: "remote", integration: "sofabaton_x1s" } }, required: true },
-        { name: "theme", selector: { theme: {} } },
-
-        // Background override (for translucent themes)
-        { name: "background_override", selector: { color_rgb: {} } },
-
-        // Visibility toggles
-        { name: "show_activity", selector: { boolean: {} } },
-        { name: "show_dpad", selector: { boolean: {} } },
-        { name: "show_nav", selector: { boolean: {} } },
-        { name: "show_mid", selector: { boolean: {} } },
-        { name: "show_media", selector: { boolean: {} } },
-        { name: "show_colors", selector: { boolean: {} } },
-        { name: "show_abc", selector: { boolean: {} } },
-      ];
+      form.computeLabel = (schema) => {
+        const labels = {
+          entity: "Select the Remote Entity",
+          theme: "Override the card theming",
+          use_background_override: "Customize background color",
+          background_override: "Select Background Color",
+          show_activity: "Activity Selector",
+          show_dpad: "Direction Pad",
+          show_nav: "Back/Home/Menu Keys",
+          show_mid: "Volume/Channel Rockers",
+          show_media: "Media Playback Controls",
+          show_colors: "Red/Green/Yellow/Blue",
+          show_abc: "A/B/C Buttons (X2)"
+        };
+        return labels[schema.name] || schema.name;
+      };
 
       form.addEventListener("value-changed", (ev) => {
-        this._config = { ...this._config, ...ev.detail.value };
+        ev.stopPropagation();
+        const newValue = { ...ev.detail.value };
+        
+        // 1. If toggle is off, wipe the color data
+        if (newValue.use_background_override === false) {
+          delete newValue.background_override;
+        }
+
+        // 2. STABILITY CHECK: Only fire if something actually changed
+        // This prevents the "Deathloop" when the form re-renders
+        if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
+
+        this._config = newValue;
         this._fireChanged();
       });
 
@@ -873,15 +886,53 @@ class SofabatonHelloCardEditor extends HTMLElement {
       wrapper.style.padding = "12px 0";
       wrapper.appendChild(form);
       this.appendChild(wrapper);
-
       this._form = form;
     }
 
+    // Determine if we should show the color picker
+    // We check BOTH the temporary UI toggle and if a color already exists
+    const showColorPicker = this._config.use_background_override || !!this._config.background_override;
+
+    this._form.schema = [
+      { name: "entity", selector: { entity: { domain: "remote", integration: "sofabaton_x1s" } }, required: true },
+      {
+        type: "grid",
+        name: "",
+        schema: [
+          { name: "theme", selector: { theme: {} } },
+          { name: "use_background_override", selector: { boolean: {} } },
+        ]
+      },
+      ...(showColorPicker ? [{ name: "background_override", selector: { color_rgb: {} } }] : []),
+      {
+        type: "expandable",
+        title: "Button Visibility",
+        icon: "mdi:eye-settings",
+        schema: [
+          {
+            type: "grid",
+            name: "",
+            schema: [
+              { name: "show_activity", selector: { boolean: {} } },
+              { name: "show_dpad", selector: { boolean: {} } },
+              { name: "show_nav", selector: { boolean: {} } },
+              { name: "show_mid", selector: { boolean: {} } },
+              { name: "show_media", selector: { boolean: {} } },
+              { name: "show_colors", selector: { boolean: {} } },
+              { name: "show_abc", selector: { boolean: {} } },
+            ]
+          }
+        ]
+      }
+    ];
+
     this._form.data = {
+      ...this._config,
       entity: this._config.entity || "",
       theme: this._config.theme || "",
-      background_override: this._config.background_override ?? null,
-
+      // Maintain the toggle state correctly
+      use_background_override: this._config.use_background_override ?? !!this._config.background_override,
+      background_override: this._config.background_override ?? [255, 255, 255],
       show_activity: this._config.show_activity ?? true,
       show_dpad: this._config.show_dpad ?? true,
       show_nav: this._config.show_nav ?? true,
@@ -893,8 +944,16 @@ class SofabatonHelloCardEditor extends HTMLElement {
   }
 
   _fireChanged() {
+    // 3. CLEANUP: Strip out the helper toggle before saving to HASS YAML
+    const finalConfig = { ...this._config };
+    delete finalConfig.use_background_override;
+
     this.dispatchEvent(
-      new CustomEvent("config-changed", { detail: { config: this._config }, bubbles: true, composed: true })
+      new CustomEvent("config-changed", { 
+        detail: { config: finalConfig }, 
+        bubbles: true, 
+        composed: true 
+      })
     );
   }
 }
