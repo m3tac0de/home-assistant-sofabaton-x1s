@@ -111,6 +111,9 @@ class SofabatonRemoteCard extends HTMLElement {
     const selId = this._activitySelectEntityId();
     if (!selId || option == null) return;
 
+    this._pendingActivity = String(option);
+    this._pendingActivityAt = Date.now();
+
     await this._callService("select", "select_option", {
       entity_id: selId,
       option,
@@ -464,17 +467,20 @@ class SofabatonRemoteCard extends HTMLElement {
     this._activitySelect = document.createElement("ha-select");
     this._activitySelect.label = "Activity";
 
-    // HA 2026.1: ha-select emits "selected" (mwc-select/ha-md-select). Use that only.
-    this._activitySelect.addEventListener("selected", (ev) => {
+    const handleActivitySelect = (ev) => {
       if (this._suppressActivityChange) return;
-      const value = ev?.target?.value ?? this._activitySelect.value;
+      const value = ev?.detail?.value ?? ev?.target?.value ?? this._activitySelect.value;
       if (value != null) {
         Promise.resolve(this._setActivity(value)).catch((err) => {
           // eslint-disable-next-line no-console
           console.error("[sofabaton-hello-card] Failed to set activity:", err);
         });
       }
-    });
+    };
+
+    // ha-select has emitted both "selected" and "change" across versions.
+    this._activitySelect.addEventListener("selected", handleActivitySelect);
+    this._activitySelect.addEventListener("change", handleActivitySelect);
 
     this._activityRow.appendChild(this._activitySelect);
     wrap.appendChild(this._activityRow);
@@ -601,6 +607,11 @@ class SofabatonRemoteCard extends HTMLElement {
 
     // Activity select sync + Powered Off detection
     let isPoweredOff = false;
+    const pendingActivity = this._pendingActivity;
+    const pendingAge = this._pendingActivityAt
+      ? Date.now() - this._pendingActivityAt
+      : null;
+    const pendingExpired = pendingAge != null && pendingAge > 15000;
 
     const selId = this._activitySelectEntityId();
     if (!selId || !sel) {
@@ -615,6 +626,10 @@ class SofabatonRemoteCard extends HTMLElement {
       const current = sel.state || "";
 
       isPoweredOff = this._isPoweredOffLabel(current);
+      if (pendingActivity && (pendingExpired || current === pendingActivity)) {
+        this._pendingActivity = null;
+        this._pendingActivityAt = null;
+      }
 
       const sig = JSON.stringify(options);
       if (this._activityOptionsSig !== sig) {
@@ -630,7 +645,11 @@ class SofabatonRemoteCard extends HTMLElement {
 
       // Prevent loops while syncing UI
       this._suppressActivityChange = true;
-      this._activitySelect.value = current;
+      if (pendingActivity && !pendingExpired && pendingActivity !== current) {
+        this._activitySelect.value = pendingActivity;
+      } else {
+        this._activitySelect.value = current;
+      }
       this._suppressActivityChange = false;
 
       this._activitySelect.disabled = false;
