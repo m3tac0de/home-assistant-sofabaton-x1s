@@ -7,8 +7,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
-from homeassistant.helpers import entity_registry as er
-
 from .const import (
     DOMAIN,
     CONF_MAC,
@@ -68,31 +66,48 @@ class SofabatonRemote(RemoteEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        entity_registry = er.async_get(self.hass)
-        activity_select_entity_id = entity_registry.async_get_entity_id(
-            "select", DOMAIN, f"{self._entry.data[CONF_MAC]}_activity"
-        )
-        enabled_buttons = []
-        favorites: list[dict[str, int | str]] = []
-        macros: list[dict[str, int | str]] = []
         activity_id = self._hub.current_activity
-        if self._hub.current_activity is not None:
-            btns, ready = self._hub.get_buttons_for_current()
-            if ready:
-                enabled_buttons = [
-                    {"command": btn, "activity_id": self._hub.current_activity}
-                    for btn in btns
-                ]
-            favorites = self._hub.get_activity_favorites_for(self._hub.current_activity)
-            macros = self._hub.get_activity_macros_for(self._hub.current_activity)
+        activities: list[dict[str, Any]] = []
+        for act_id, activity in self._hub.activities.items():
+            activities.append(
+                {
+                    "id": act_id,
+                    "name": activity.get("name"),
+                    "state": "on" if activity_id == act_id else "off",
+                }
+            )
+
+        assigned_keys: dict[str, list[int]] = {}
+        for ent_id, buttons in self._hub.get_all_cached_buttons().items():
+            assigned_keys[str(ent_id)] = buttons
+
+        macro_keys: dict[str, list[dict[str, int | str]]] = {}
+        for act_id, macros in self._hub.get_all_cached_macros().items():
+            macro_keys[str(act_id)] = [
+                {"id": macro.get("command_id"), "name": macro.get("label")}
+                for macro in macros
+                if macro.get("command_id") is not None
+            ]
+
+        favorite_keys: dict[str, list[dict[str, int | str]]] = {}
+        for act_id, favorites in self._hub.get_activity_favorites().items():
+            favorite_keys[str(act_id)] = [
+                {
+                    "id": fav.get("command_id"),
+                    "name": fav.get("name"),
+                    "device_id": fav.get("device_id"),
+                }
+                for fav in favorites
+                if fav.get("command_id") is not None
+            ]
         return {
             "proxy_client_connected": self._hub.client_connected,
             "hub_version": self._hub.version,
-            "enabled_buttons": enabled_buttons,
-            "activity_select_entity_id": activity_select_entity_id,
+            "activities": activities,
+            "assigned_keys": assigned_keys,
+            "macro_keys": macro_keys,
+            "favorite_keys": favorite_keys,
             "current_activity_id": activity_id,
-            "favorites": favorites,
-            "macros": macros,
             "load_state": self._hub.get_index_state(),
         }
 

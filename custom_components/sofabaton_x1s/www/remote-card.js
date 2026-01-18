@@ -69,31 +69,28 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _enabledButtons() {
-    const list = this._remoteState()?.attributes?.enabled_buttons;
-    if (!Array.isArray(list)) return [];
+    const remote = this._remoteState();
+    const assignedKeys = remote?.attributes?.assigned_keys;
+    const currentActivity = this._currentActivityId();
 
-    const parsed = list
-      .map((entry) => {
-        if (entry && typeof entry === "object") {
-          const command = Number(
-            entry.command
-              ?? entry.command_id
-              ?? entry.button_id
-              ?? entry.id
-              ?? entry.button
-          );
-          const activityId = entry.activity_id ?? entry.device ?? null;
-          return {
-            command,
-            activity_id: activityId != null ? Number(activityId) : null,
-          };
-        }
-        return { command: Number(entry), activity_id: null };
-      })
-      .filter((entry) => Number.isFinite(entry.command));
+    if (assignedKeys && typeof assignedKeys === "object") {
+      const raw =
+        assignedKeys[String(currentActivity)]
+        ?? assignedKeys[currentActivity]
+        ?? [];
+      const parsed = Array.isArray(raw)
+        ? raw
+            .map((entry) => ({
+              command: Number(entry),
+              activity_id: currentActivity,
+            }))
+            .filter((entry) => Number.isFinite(entry.command))
+        : [];
+      this._enabledButtonsInvalid = Array.isArray(raw) && parsed.length === 0;
+      return parsed;
+    }
 
-    this._enabledButtonsInvalid = list.length > 0 && parsed.length === 0;
-    return parsed;
+    return [];
   }
 
   _isEnabled(id) {
@@ -116,18 +113,24 @@ class SofabatonRemoteCard extends HTMLElement {
     return null;
   }
 
-  _activitySelectEntityId() {
-    return this._remoteState()?.attributes?.activity_select_entity_id || null;
+  _activities() {
+    const list = this._remoteState()?.attributes?.activities;
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((activity) => ({
+        id: Number(activity?.id),
+        name: String(activity?.name ?? ""),
+        state: String(activity?.state ?? ""),
+      }))
+      .filter((activity) => Number.isFinite(activity.id) && activity.name);
   }
 
-  _activitySelectState() {
-    const selId = this._activitySelectEntityId();
-    return selId ? this._hass?.states?.[selId] : null;
-  }
-
-  _currentActivityLabel(sel) {
+  _currentActivityLabel() {
     const remoteActivity = this._remoteState()?.attributes?.current_activity;
-    return String(remoteActivity ?? sel?.state ?? "");
+    if (remoteActivity) return String(remoteActivity);
+    const activityId = this._currentActivityId();
+    const match = this._activities().find((activity) => activity.id === activityId);
+    return match?.name || "";
   }
 
   _isPoweredOffLabel(state) {
@@ -205,17 +208,25 @@ class SofabatonRemoteCard extends HTMLElement {
 }
 
   async _setActivity(option) {
-    const selId = this._activitySelectEntityId();
-	const sel = this._activitySelectState();
-    if (!selId || option == null || option == "" || sel?.state === option) return;
+    if (option == null || option === "") return;
+    const selected = String(option);
+    const current = this._currentActivityLabel();
+    if (selected === current) return;
 
-    this._pendingActivity = String(option);
+    this._pendingActivity = selected;
     this._pendingActivityAt = Date.now();
-    this._startActivityLoading(option);
+    this._startActivityLoading(selected);
 
-    await this._callService("select", "select_option", {
-      entity_id: selId,
-      option,
+    if (this._isPoweredOffLabel(selected)) {
+      await this._callService("remote", "turn_off", {
+        entity_id: this._config.entity,
+      });
+      return;
+    }
+
+    await this._callService("remote", "turn_on", {
+      entity_id: this._config.entity,
+      activity: selected,
     });
   }
 
@@ -535,8 +546,11 @@ class SofabatonRemoteCard extends HTMLElement {
     _mkDrawerButton(item, type) {
 
     const label = item.name || "Unknown";
-    const command_id = Number(item?.command_id);
-    const device_id = Number(item?.device_id);
+    const command_id = Number(item?.command_id ?? item?.id);
+    const fallbackDeviceId = this._currentActivityId();
+    const device_id = Number(
+      item?.device_id ?? item?.device ?? fallbackDeviceId
+    );
     const btn = document.createElement("hui-button-card");
     btn.hass = this._hass;    btn.classList.add('drawer-btn');
 
@@ -1111,9 +1125,17 @@ return btn;
 
     const remote = this._remoteState();
     const isUnavailable = remote?.state === "unavailable";
-    const sel = this._activitySelectState();
-    const macros = Array.isArray(remote?.attributes?.macros) ? remote.attributes.macros : [];
-    const favorites = Array.isArray(remote?.attributes?.favorites) ? remote.attributes.favorites : [];
+    const loadState = remote?.attributes?.load_state;
+    const activityId = this._currentActivityId();
+    const activities = this._activities();
+    const macroKeys = remote?.attributes?.macro_keys;
+    const favoriteKeys = remote?.attributes?.favorite_keys;
+    const macros = macroKeys && typeof macroKeys === "object"
+      ? (macroKeys[String(activityId)] ?? macroKeys[activityId] ?? [])
+      : [];
+    const favorites = favoriteKeys && typeof favoriteKeys === "object"
+      ? (favoriteKeys[String(activityId)] ?? favoriteKeys[activityId] ?? [])
+      : [];
 
     const isX2 = this._isX2();
 
@@ -1136,20 +1158,16 @@ return btn;
       : null;
     const pendingExpired = pendingAge != null && pendingAge > 15000;
 
-    const selId = this._activitySelectEntityId();
-    if (!selId || !sel || isUnavailable) {
+    if (isUnavailable) {
       this._activitySelect.disabled = true;
       this._activitySelect.innerHTML = "";
       isPoweredOff = false;
       this._stopActivityLoading();
-
-      this._warn.style.display = "block";
-      this._warn.textContent = "Activity select not found (activity_select_entity_id missing?).";
     } else {
-      const options = Array.isArray(sel.attributes?.options) ? sel.attributes.options : [];
-      const current = sel.state || "";
+      const options = ["Powered Off", ...activities.map((activity) => activity.name)];
+      const current = this._currentActivityLabel() || "Powered Off";
 
-      isPoweredOff = this._isPoweredOffLabel(current);
+      isPoweredOff = activityId == null || this._isPoweredOffLabel(current);
       if (pendingActivity && (pendingExpired || current === pendingActivity)) {
         this._pendingActivity = null;
         this._pendingActivityAt = null;
@@ -1176,18 +1194,22 @@ return btn;
       }
       this._suppressActivityChange = false;
 
-      this._activitySelect.disabled = false;
-      this._warn.style.display = "none";
+      this._activitySelect.disabled = options.length <= 1;
 
-      const currentActivity = this._currentActivityLabel(sel);
-      if (
-        this._activityLoadActive
-        && this._activityLoadTarget
-        && currentActivity
-        && currentActivity === this._activityLoadTarget
-      ) {
-        this._stopActivityLoading();
+      const currentActivity = this._currentActivityLabel();
+      if (this._activityLoadActive && this._activityLoadTarget) {
+        const targetIsOff = this._isPoweredOffLabel(this._activityLoadTarget);
+        if ((targetIsOff && isPoweredOff) || currentActivity === this._activityLoadTarget) {
+          this._stopActivityLoading();
+        }
       }
+    }
+
+    if (!isUnavailable && activities.length === 0 && loadState !== "loading") {
+      this._warn.style.display = "block";
+      this._warn.textContent = "No activities found in remote attributes.";
+    } else {
+      this._warn.style.display = "none";
     }
 
     // Visibility toggles (user config)
