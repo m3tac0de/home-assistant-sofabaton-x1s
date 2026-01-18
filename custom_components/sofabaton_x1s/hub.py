@@ -762,12 +762,14 @@ class SofabatonHub:
 
     async def async_send_key(self, key: str | int, device: int | None = None) -> None:
         """Send either a Sofabaton ButtonName or a raw command ID.
-
         - If 'device' is given, we send directly to that entity (device or activity).
         - If 'device' is not given, we send in the context of the *current activity*.
         - We do NOT remap/rename button names: you must use the names from ButtonName.
           So "VOL_UP", "VOL_DOWN", "MUTE", etc.
         """
+        
+        _LOGGER.debug("[DEBUG] Trying to send command %s to device %s", key, device)
+
         # advanced path: user specified the target entity
         if device is not None:
             code = self._normalize_command_id(key)

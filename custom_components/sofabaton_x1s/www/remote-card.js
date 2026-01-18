@@ -1,5 +1,5 @@
-const TYPE = "sofabaton-hello-card";
-const EDITOR = "sofabaton-hello-card-editor";
+const TYPE = "sofabaton-virtual-remote";
+const EDITOR = "sofabaton-virtual-remote-editor";
 
 // Numeric IDs (for enabled_buttons)
 const ID = {
@@ -22,9 +22,11 @@ const POWERED_OFF_LABELS = new Set(["powered off", "powered_off", "off"]);
 
 class SofabatonRemoteCard extends HTMLElement {
   setConfig(config) {
-    if (!config?.entity) throw new Error("Select a Sofabaton remote entity");
+    if (!config || !config.entity) {
+      throw new Error("Select a Sofabaton remote entity");
+    }
 
-    // Defaults for visibility toggles (show everything by default)
+    // Defaults first, then user config overwrites
     this._config = {
       show_activity: true,
       show_dpad: true,
@@ -34,19 +36,25 @@ class SofabatonRemoteCard extends HTMLElement {
       show_colors: true,
       show_abc: true,
       theme: "",
-      background_override: null, // color_rgb selector returns [r,g,b]
+      background_override: null,
+      show_macro_favorites: true,
+      max_width: 360,
       ...config,
     };
 
-    this._render();
-    this._update();
+    this._activeDrawer = null;
+
+    this._initPromise = this._initPromise || this._ensureHaElements();
+    this._initPromise.then(() => {
+      this._render();
+      this._update();
+    });
   }
 
   set hass(hass) {
     this._hass = hass;
-    this._update();
+    (this._initPromise || Promise.resolve()).then(() => this._update());
   }
-
   // ---------- State helpers ----------
   _remoteState() {
     return this._hass?.states?.[this._config?.entity];
@@ -178,23 +186,28 @@ class SofabatonRemoteCard extends HTMLElement {
     await this._hass.callService(domain, service, data);
   }
 
-  async _sendCommand(commandId) {
-    if (!this._hass || !this._config?.entity) return;
-    const target = this._commandTarget(commandId);
-    const device = target?.activity_id ?? this._currentActivityId();
-    if (device == null) return;
+  async _sendCommand(commandId, deviceId = null) {
+  if (!this._hass || !this._config?.entity) return;
 
-    await this._callService("remote", "send_command", {
-      entity_id: this._config.entity,
-      command: commandId,
-      device,
-    });
-  }
+  // If deviceId isn't provided, fall back to enabled_buttons override (activity_id) or current_activity_id
+  const resolvedDevice =
+    deviceId != null
+      ? Number(deviceId)
+      : (this._commandTarget(commandId)?.activity_id ?? this._currentActivityId());
+
+  if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice))) return;
+
+  await this._callService("remote", "send_command", {
+    entity_id: this._config.entity,
+    command: Number(commandId),
+    device: Number(resolvedDevice),
+  });
+}
 
   async _setActivity(option) {
     const selId = this._activitySelectEntityId();
 	const sel = this._activitySelectState();
-    if (!selId || option == null|| sel?.state === option) return;
+    if (!selId || option == null || option == "" || sel?.state === option) return;
 
     this._pendingActivity = String(option);
     this._pendingActivityAt = Date.now();
@@ -335,6 +348,73 @@ class SofabatonRemoteCard extends HTMLElement {
     if (!el) return;
     el.style.display = on ? "" : "none";
   }
+  
+  _installOutsideCloseHandler() {
+    if (this._outsideCloseInstalled) return;
+    this._outsideCloseInstalled = true;
+
+    this._onOutsidePointerDown = (e) => {
+      // Nothing open -> nothing to do
+      if (!this._activeDrawer) return;
+
+      // Use composedPath so it works through shadow DOM + HA components
+      const path = (typeof e.composedPath === "function") ? e.composedPath() : [];
+      
+
+      const clickedInOverlay =
+        path.includes(this._macrosOverlayEl) || path.includes(this._favoritesOverlayEl);
+
+      // Also exempt the toggle row/buttons so clicking Macros/Favorites still toggles normally
+      const clickedInToggleRow =
+        path.includes(this._macroFavoritesRow) ||
+        path.includes(this._macrosButtonWrap) ||
+        path.includes(this._favoritesButtonWrap);
+
+      if (clickedInOverlay || clickedInToggleRow ) return;
+
+      // Clicked "somewhere else" -> close
+      this._activeDrawer = null;
+      this._applyDrawerVisuals();
+    };
+
+    // Capture phase so we catch taps even if inner components stop propagation
+    document.addEventListener("pointerdown", this._onOutsidePointerDown, true);
+  }
+
+  _removeOutsideCloseHandler() {
+    if (!this._outsideCloseInstalled) return;
+    this._outsideCloseInstalled = false;
+    document.removeEventListener("pointerdown", this._onOutsidePointerDown, true);
+    this._onOutsidePointerDown = null;
+  }
+
+  disconnectedCallback() {
+    this._removeOutsideCloseHandler();
+  }
+
+  _toggleDrawer(type) {
+    this._activeDrawer = (this._activeDrawer === type) ? null : type;
+      this._applyDrawerVisuals();
+  }
+
+	_applyDrawerVisuals() {
+    if (!this._macrosOverlayEl || !this._favoritesOverlayEl) return;
+
+    const isMacro = this._activeDrawer === 'macros';
+    const isFav = this._activeDrawer === 'favorites';
+
+    this._macrosOverlayEl.classList.toggle('open', isMacro);
+    this._favoritesOverlayEl.classList.toggle('open', isFav);
+
+    this._macrosButtonWrap.classList.toggle('active-tab', isMacro); 
+    this._favoritesButtonWrap.classList.toggle('active-tab', isFav);
+
+    const anyOpen = isMacro || isFav;
+    this._macroFavoritesRow.style.borderBottomLeftRadius = anyOpen ? "0" : "var(--sb-group-radius)";
+    this._macroFavoritesRow.style.borderBottomRightRadius = anyOpen ? "0" : "var(--sb-group-radius)";
+    this._macroFavoritesRow.style.transition = "border-radius 0.2s ease";
+  }
+
 
   _mkHuiButton({ key, label, icon, id, cmd, extraClass = "", size = "normal" }) {
     const wrap = document.createElement("div");
@@ -342,7 +422,7 @@ class SofabatonRemoteCard extends HTMLElement {
     wrap.addEventListener("click", () => {
       if (!wrap.classList.contains("disabled")) {
         this._triggerCommandPulse();
-        this._sendCommand(cmd);
+        this._sendCommand(cmd, (this._commandTarget(id)?.activity_id ?? this._currentActivityId()));
       }
     });
 
@@ -358,6 +438,8 @@ class SofabatonRemoteCard extends HTMLElement {
       tap_action: {
         action: "none",
       },
+      hold_action: { action: "none" },
+      double_tap_action: { action: "none" },
     });
 
     wrap.appendChild(btn);
@@ -381,7 +463,7 @@ class SofabatonRemoteCard extends HTMLElement {
     wrap.addEventListener("click", () => {
       if (!wrap.classList.contains("disabled")) {
         this._triggerCommandPulse();
-        this._sendCommand(cmd);
+        this._sendCommand(cmd, (this._commandTarget(id)?.activity_id ?? this._currentActivityId()));
       }
     });
 
@@ -395,6 +477,8 @@ class SofabatonRemoteCard extends HTMLElement {
       tap_action: {
         action: "none",
       },
+      hold_action: { action: "none" },
+      double_tap_action: { action: "none" },
     });
 
     wrap.appendChild(btn);
@@ -415,6 +499,84 @@ class SofabatonRemoteCard extends HTMLElement {
     return wrap;
   }
 
+    _mkActionButton({ label, icon, extraClass = "", onClick = null }) {
+    const wrap = document.createElement("div");
+    wrap.className = `macroFavoritesButton ${extraClass}`.trim();
+    
+      if (onClick) {
+        wrap.addEventListener("click", (e) => {
+            if (!wrap.classList.contains("disabled")) {
+                onClick(e);
+            }
+        });
+    }
+
+    const btn = document.createElement("hui-button-card");
+    btn.hass = this._hass;
+
+    btn.setConfig({
+      type: "button",
+      show_name: true,
+      show_icon: Boolean(icon),
+      name: label || "",
+      icon: icon || undefined,
+      tap_action: {
+        action: "none",
+      },
+      hold_action: { action: "none" },
+      double_tap_action: { action: "none" },
+    });
+
+    wrap.appendChild(btn);
+
+    return { wrap, btn };
+  }
+
+    _mkDrawerButton(item, type) {
+
+    const label = item.name || "Unknown";
+    const command_id = Number(item?.command_id);
+    const device_id = Number(item?.device_id);
+    const btn = document.createElement("hui-button-card");
+    btn.hass = this._hass;    btn.classList.add('drawer-btn');
+
+    btn.setConfig({
+      type: "button",
+      show_name: true,
+      show_icon: !!item.icon,
+      name: label,
+      icon: item.icon,
+      
+      card_mod: {
+        style: `ha-card { height: 50px !important; font-size: 13px !important; }`
+      },
+      tap_action: {
+        action: "none",
+      },
+      hold_action: { action: "none" },
+      double_tap_action: { action: "none" },
+    });
+    
+    // Manually handle click if tap_action config isn't enough (e.g. for custom pulse animation)
+    btn.addEventListener("click", () => {
+  if (!Number.isFinite(command_id) || !Number.isFinite(device_id)) return;
+  this._triggerCommandPulse();
+  this._sendCommand(command_id, device_id);
+
+});
+
+return btn;
+  }
+
+  async _ensureHaElements() {
+    // These must exist before we call setConfig() on them
+    await Promise.all([
+      customElements.whenDefined("hui-button-card"),
+      customElements.whenDefined("ha-select"),
+      customElements.whenDefined("mwc-list-item").catch(() => {}), // optional
+    ]);
+  }
+
   // ---------- Render ----------
   _render() {
     if (this._root) return;
@@ -429,12 +591,27 @@ class SofabatonRemoteCard extends HTMLElement {
     style.textContent = `
       :host {
         --sb-group-radius: var(--ha-card-border-radius, 18px);
+        --remote-max-width: 360px;
+
+        display: block;
       }
 
-      .wrap { padding: 12px; display: grid; gap: 12px; }
+      ha-card {
+        width: 100%;
+        max-width: var(--remote-max-width);
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
       ha-select { width: 100%; }
 
-      .activityRow { display: grid; grid-template-columns: 1fr; gap: 0; align-items: center; }
+      .activityRow { 
+        display: grid; 
+        grid-template-columns: 1fr; 
+        position: relative;
+        z-index: 3;
+      }
 
  	  .loadIndicator {
 	    height: 4px;
@@ -469,7 +646,12 @@ class SofabatonRemoteCard extends HTMLElement {
 	    }
 	  }
 
-      .remote { display: grid; gap: 12px; }
+			.remote { 
+        position: relative;
+        z-index: 0; /* Base layer */
+        display: grid; 
+        gap: 12px; 
+      }
 
       /* Group containers - border radius matches theme */
       .dpad, .mid, .media, .colors, .abc {
@@ -477,11 +659,116 @@ class SofabatonRemoteCard extends HTMLElement {
         border-radius: var(--sb-group-radius);
       }
 
+			.macroFavoritesGrid {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important; 
+        width: 100% !important;
+      }
+			.macroFavoritesButton {
+        cursor: pointer;
+        padding: 4px 0;
+        display: block !important;
+        transition: background 0.2s ease;
+        --ha-card-box-shadow: none;
+      }
+      
+      .macroFavoritesButton.active-tab hui-button-card {
+         --primary-text-color: var(--primary-color);
+      }
+
+      .macroFavoritesButton + .macroFavoritesButton {
+        border-left: 1px solid var(--divider-color);
+      }
+      .macroFavoritesButton hui-button-card {
+        height: 22px;
+        display: block;
+      }
+			.macroFavoritesButton:first-child {
+        border-right: 1px solid var(--divider-color);
+      }
+			.mf-container {
+        position: relative; 
+        z-index: 2;
+      }
+
+      /* Ensure taps go to the wrapper that has the click handler */
+      .macroFavoritesButton > hui-button-card {
+        pointer-events: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+			.macroFavorites {
+        border: 1px solid var(--divider-color);
+        border-radius: var(--sb-group-radius);
+        overflow: hidden; 
+        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+        position: relative;
+        z-index: 4;
+      }
+
+			.mf-overlay {
+        position: absolute;
+        top: 100%; 
+        left: 0;
+        right: 0;
+        z-index: 1; /* Lowered: Sits behind the buttons, above the remote body */
+        
+        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+        border: 1px solid var(--divider-color);
+        border-top: none; 
+        border-bottom-left-radius: var(--sb-group-radius);
+        border-bottom-right-radius: var(--sb-group-radius);
+        box-shadow: 0px 8px 16px rgba(0,0,0,0.25);
+        
+        transform-origin: top;
+        transform: scaleY(0);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+        
+        max-height: 350px;
+        overflow-y: auto;
+        padding: 12px;
+        margin-top: -1px; /* Overlaps the bottom border of the button row for a seamless look */
+      }
+
+			.mf-overlay.open {
+        transform: scaleY(1);
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .mf-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+			.mf-container:has(.mf-overlay.open) .macroFavorites {
+					border-bottom-left-radius: 0;
+					border-bottom-right-radius: 0;
+					transition: border-radius 0.2s ease;
+			}
+
+      /* Active state for buttons */
+      .macroFavoritesButton.active-tab {
+        background: rgba(var(--rgb-primary-color), 0.1);
+        color: var(--primary-color);
+      }
+
+      .macroFavoritesButton hui-button-card {
+        --ha-card-box-shadow: none;
+        --ha-card-border-width: 0;
+        --ha-card-border-color: transparent;
+        --ha-card-background: transparent;
+        --ha-card-border-radius: 0;
+      }
+
       /* D-pad cluster */
       .dpad {
         padding: 12px;
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         grid-template-areas:
           ". up ."
           "left ok right"
@@ -499,7 +786,7 @@ class SofabatonRemoteCard extends HTMLElement {
       /* Back / Home / Menu row */
       .row3 {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 10px;
       }
 
@@ -507,7 +794,7 @@ class SofabatonRemoteCard extends HTMLElement {
       .mid {
         padding: 12px;
         display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 10px;
         align-items: stretch;
       }
@@ -532,11 +819,11 @@ class SofabatonRemoteCard extends HTMLElement {
         align-items: stretch;
       }
       .media.x1 {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         grid-template-areas: "rew pause fwd";
       }
       .media.x2 {
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         grid-template-areas:
           "rew play fwd"
           "dvr pause exit";
@@ -554,24 +841,55 @@ class SofabatonRemoteCard extends HTMLElement {
         display: grid;
         gap: 10px;
       }
-      .colorsGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-      .abcGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+      .colorsGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+      .abcGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 
       /* Key wrapper for disabled styling */
       .key { width: 100%; position: relative; }
-      .key.disabled {
+      .key.disabled,
+      .macroFavoritesButton.disabled {
         opacity: 0.35;
         pointer-events: none;
         filter: grayscale(0.2);
       }
 
       /* sizing */
-      .key--small hui-button-card { height: 44px; display:block; }
-      .key--normal hui-button-card { height: 52px; display:block; }
-      .key--big hui-button-card { height: 60px; display:block; }
-      .okKey hui-button-card { height: 60px; }
 
-      /* Color keys: overlay a pill/strip on top of the hui-button-card */
+/* Allow grid children to shrink (prevents overflow on mobile / narrow cards) */
+.key { min-width: 0; position: relative; width: 100%; }
+.key hui-button-card { min-width: 0; }
+
+/* --- Square remote keys (scalable) --- */
+.key:not(.key--color) {
+  aspect-ratio: 1 / 1;
+}
+
+/* Fill wrapper */
+.key:not(.key--color) hui-button-card {
+  display: block;
+  width: 100%;
+  height: 100% !important;
+}
+
+/* Re-introduce relative sizing (scales with card width) */
+.key--small  { transform: scale(0.82); transform-origin: center; }
+.key--normal { transform: scale(0.92); transform-origin: center; }
+.key--big    { transform: scale(1.00); transform-origin: center; }
+.okKey       { transform: scale(1.06); transform-origin: center; }
+
+/* Keep color keys as strips (not square) */
+.key--color {
+  aspect-ratio: auto;
+  transform: none;
+}
+.key--color hui-button-card {
+  height: 18px !important;
+  width: 100%;
+  display: block;
+}
+
+/* Color keys: overlay a pill/strip on top of the hui-button-card */
+
       .key--color hui-button-card { height: 18px; display:block; }
       .key--color .colorBar {
         position: absolute;
@@ -582,6 +900,11 @@ class SofabatonRemoteCard extends HTMLElement {
       }
 
       .warn {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        right: 12px;
+        z-index: 10;
         font-size: 12px;
         opacity: .9;
         border-left: 3px solid var(--warning-color, orange);
@@ -618,7 +941,59 @@ class SofabatonRemoteCard extends HTMLElement {
     this._loadIndicator = document.createElement("div");
     this._loadIndicator.className = "loadIndicator";
     this._activityRow.appendChild(this._loadIndicator);
+
     wrap.appendChild(this._activityRow);
+
+    // Macro/Favorite quick actions
+        const mfContainer = document.createElement("div");
+    mfContainer.className = "mf-container";
+
+    
+
+    this._mfContainer = mfContainer;this._macroFavoritesRow = document.createElement("div");
+    this._macroFavoritesRow.className = "macroFavorites";
+
+    const macroFavoritesGrid = document.createElement("div");
+    macroFavoritesGrid.className = "macroFavoritesGrid";
+
+    const macrosButton = this._mkActionButton({
+      label: "Macros >",
+      onClick: () => this._toggleDrawer('macros')
+    });
+    this._macrosButtonWrap = macrosButton.wrap;
+    this._macrosButton = macrosButton.btn;
+    macroFavoritesGrid.appendChild(this._macrosButtonWrap);
+
+    const favoritesButton = this._mkActionButton({
+      label: "Favorites >",
+      onClick: () => this._toggleDrawer('favorites')
+    });
+    this._favoritesButtonWrap = favoritesButton.wrap;
+    this._favoritesButton = favoritesButton.btn;
+    macroFavoritesGrid.appendChild(this._favoritesButtonWrap);
+
+    this._macroFavoritesRow.appendChild(macroFavoritesGrid);
+    mfContainer.appendChild(this._macroFavoritesRow);
+
+		// Macros Overlay
+    this._macrosOverlayEl = document.createElement("div");
+    this._macrosOverlayEl.className = "mf-overlay mf-overlay--macros";
+    this._macrosOverlayGrid = document.createElement("div");
+    this._macrosOverlayGrid.className = "mf-grid";
+    this._macrosOverlayEl.appendChild(this._macrosOverlayGrid);
+    mfContainer.appendChild(this._macrosOverlayEl);
+
+    // Favorites Overlay
+    this._favoritesOverlayEl = document.createElement("div");
+    this._favoritesOverlayEl.className = "mf-overlay mf-overlay--favorites";
+    this._favoritesOverlayGrid = document.createElement("div");
+    this._favoritesOverlayGrid.className = "mf-grid";
+    this._favoritesOverlayEl.appendChild(this._favoritesOverlayGrid);
+    mfContainer.appendChild(this._favoritesOverlayEl);
+    
+    wrap.appendChild(mfContainer);
+
+    this._installOutsideCloseHandler();
 
     // Remote body
     const remote = document.createElement("div");
@@ -724,8 +1099,21 @@ class SofabatonRemoteCard extends HTMLElement {
     this._applyLocalTheme(this._config?.theme);
     this._updateGroupRadius();
 
+    // Apply per-card max width (centered via CSS)
+    const mw = this._config?.max_width;
+    if (mw == null || mw === "" || mw === 0) {
+      this.style.removeProperty("--remote-max-width");
+    } else if (typeof mw === "number" && Number.isFinite(mw) && mw > 0) {
+      this.style.setProperty("--remote-max-width", `${mw}px`);
+    } else if (typeof mw === "string" && mw.trim()) {
+      this.style.setProperty("--remote-max-width", mw.trim());
+    }
+
     const remote = this._remoteState();
+    const isUnavailable = remote?.state === "unavailable";
     const sel = this._activitySelectState();
+    const macros = Array.isArray(remote?.attributes?.macros) ? remote.attributes.macros : [];
+    const favorites = Array.isArray(remote?.attributes?.favorites) ? remote.attributes.favorites : [];
 
     const isX2 = this._isX2();
 
@@ -749,7 +1137,7 @@ class SofabatonRemoteCard extends HTMLElement {
     const pendingExpired = pendingAge != null && pendingAge > 15000;
 
     const selId = this._activitySelectEntityId();
-    if (!selId || !sel) {
+    if (!selId || !sel || isUnavailable) {
       this._activitySelect.disabled = true;
       this._activitySelect.innerHTML = "";
       isPoweredOff = false;
@@ -804,6 +1192,13 @@ class SofabatonRemoteCard extends HTMLElement {
 
     // Visibility toggles (user config)
     this._setVisible(this._activityRow, this._config.show_activity);
+this._setVisible(this._mfContainer, this._config.show_macro_favorites);
+
+// If macro/favorites are hidden, close any open drawer
+if (!this._config.show_macro_favorites && this._activeDrawer) {
+  this._activeDrawer = null;
+}
+
     this._setVisible(this._dpadEl, this._config.show_dpad);
     this._setVisible(this._navRowEl, this._config.show_nav);
     this._setVisible(this._midEl, this._config.show_mid);
@@ -812,6 +1207,46 @@ class SofabatonRemoteCard extends HTMLElement {
 
     // ABC: must be enabled in config AND X2
     this._setVisible(this._abcEl, this._config.show_abc && isX2);
+
+    if (this._macrosButton) {
+      this._macrosButton.hass = this._hass;
+      
+      const macrosEnabled = macros.length > 0; 
+      this._macrosButtonWrap.classList.toggle("disabled", isUnavailable || !macrosEnabled);
+    }
+
+    if (this._favoritesButton) {
+      this._favoritesButton.hass = this._hass;
+      
+      const favoritesEnabled = favorites.length > 0;
+      this._favoritesButtonWrap.classList.toggle("disabled", isUnavailable || !favoritesEnabled);
+    }
+
+		// POPULATE MACROS (Only if data changed)
+    const macroSig = JSON.stringify(macros);
+    if (this._macroDataSig !== macroSig && this._macrosOverlayGrid) {
+        this._macroDataSig = macroSig;
+        this._macrosOverlayGrid.innerHTML = "";
+        macros.forEach(macro => {
+            const btn = this._mkDrawerButton(macro, 'macros');
+            btn.hass = this._hass;
+            this._macrosOverlayGrid.appendChild(btn);
+        });
+    }
+
+    // POPULATE FAVORITES (Only if data changed)
+    const favSig = JSON.stringify(favorites);
+    if (this._favDataSig !== favSig && this._favoritesOverlayGrid) {
+        this._favDataSig = favSig;
+        this._favoritesOverlayGrid.innerHTML = "";
+        favorites.forEach(fav => {
+            const btn = this._mkDrawerButton(fav, 'favorites');
+            btn.hass = this._hass;
+            this._favoritesOverlayGrid.appendChild(btn);
+        });
+    }
+
+    this._applyDrawerVisuals();
 
     // Update all keys: hass + enabled/disabled + X2-only visibility
     for (const k of this._keys) {
@@ -823,13 +1258,13 @@ class SofabatonRemoteCard extends HTMLElement {
       }
 
       // Disable all buttons if Powered Off
-      const enabled = !isPoweredOff && this._isEnabled(k.id);
+      const enabled = !isUnavailable && !isPoweredOff && this._isEnabled(k.id);
       k.wrap.classList.toggle("disabled", !enabled);
     }
 
     if (remote?.state === "unavailable") {
       this._warn.style.display = "block";
-      this._warn.textContent = "Remote is unavailable (often because the Sofabaton app is connected).";
+      this._warn.textContent = "Remote is unavailable (possibly because the Sofabaton app is connected).";
     }
 
     this._updateLoadIndicator();
@@ -844,9 +1279,8 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   static getStubConfig(hass) {
-    const remotes = Object.keys(hass.states).filter((eid) => eid.startsWith("remote."));
     return {
-      entity: remotes[0] || "",
+      entity: "",
       theme: "",
       background_override: null,
       show_activity: true,
@@ -856,6 +1290,8 @@ class SofabatonRemoteCard extends HTMLElement {
       show_media: true,
       show_colors: true,
       show_abc: true,
+      show_macro_favorites: true,
+      max_width: 360,
     };
   }
 }
@@ -881,8 +1317,8 @@ class SofabatonHelloCardEditor extends HTMLElement {
 
       form.computeLabel = (schema) => {
         const labels = {
-          entity: "Select the Remote Entity",
-          theme: "Override the card theming",
+          entity: "Select a Sofabaton Remote Entity",
+          theme: "Apply a theme to the card",
           use_background_override: "Customize background color",
           background_override: "Select Background Color",
           show_activity: "Activity Selector",
@@ -891,8 +1327,10 @@ class SofabatonHelloCardEditor extends HTMLElement {
           show_mid: "Volume/Channel Rockers",
           show_media: "Media Playback Controls",
           show_colors: "Red/Green/Yellow/Blue",
-          show_abc: "A/B/C Buttons (X2)"
-        };
+          show_abc: "A/B/C Buttons (X2 only)"
+        ,
+          show_macro_favorites: "Macros/Favorites Buttons",
+          max_width: "Maximum Card Width (px)"};
         return labels[schema.name] || schema.name;
       };
 
@@ -906,7 +1344,6 @@ class SofabatonHelloCardEditor extends HTMLElement {
         }
 
         // 2. STABILITY CHECK: Only fire if something actually changed
-        // This prevents the "Deathloop" when the form re-renders
         if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
 
         this._config = newValue;
@@ -921,20 +1358,25 @@ class SofabatonHelloCardEditor extends HTMLElement {
     }
 
     // Determine if we should show the color picker
-    // We check BOTH the temporary UI toggle and if a color already exists
     const showColorPicker = this._config.use_background_override || !!this._config.background_override;
 
     this._form.schema = [
       { name: "entity", selector: { entity: { domain: "remote", integration: "sofabaton_x1s" } }, required: true },
       {
-        type: "grid",
-        name: "",
+        type: "expandable",
+        title: "Styling Options",
+        icon: "mdi:palette",
         schema: [
+          // We removed the 'grid' type here so items stack vertically
           { name: "theme", selector: { theme: {} } },
+          { 
+            name: "max_width", 
+            selector: { number: { min: 0, max: 1200, step: 10, unit_of_measurement: "px" } } 
+          },
           { name: "use_background_override", selector: { boolean: {} } },
+          ...(showColorPicker ? [{ name: "background_override", selector: { color_rgb: {} } }] : []),
         ]
       },
-      ...(showColorPicker ? [{ name: "background_override", selector: { color_rgb: {} } }] : []),
       {
         type: "expandable",
         title: "Button Visibility",
@@ -951,6 +1393,7 @@ class SofabatonHelloCardEditor extends HTMLElement {
               { name: "show_media", selector: { boolean: {} } },
               { name: "show_colors", selector: { boolean: {} } },
               { name: "show_abc", selector: { boolean: {} } },
+              { name: "show_macro_favorites", selector: { boolean: {} } },
             ]
           }
         ]
@@ -971,6 +1414,8 @@ class SofabatonHelloCardEditor extends HTMLElement {
       show_media: this._config.show_media ?? true,
       show_colors: this._config.show_colors ?? true,
       show_abc: this._config.show_abc ?? true,
+      show_macro_favorites: this._config.show_macro_favorites ?? true,
+      max_width: this._config.max_width ?? 360,
     };
   }
 
@@ -996,7 +1441,7 @@ window.customCards = window.customCards || [];
 if (!window.customCards.some((c) => c.type === TYPE)) {
   window.customCards.push({
     type: TYPE,
-    name: "Sofabaton Remote Card",
-    description: "Remote layout + native Lovelace button styling (hui-button-card) + per-card theme + configurable visibility.",
+    name: "Sofabaton Virtual Remote",
+    description: "A configurable remote for the unofficial Sofabaton X1, X1S and X2 integration.",
   });
 }

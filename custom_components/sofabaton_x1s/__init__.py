@@ -81,7 +81,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             # 4. Inject JS URLs
             version_suffix = _get_integration_version()
             js_version = f"?v={version_suffix}" if version_suffix else ""
-            js_files = [f"remote-card.js{js_version}"]
+            js_files = [f"card-loader.js{js_version}"]
             for js_file in js_files:
                 url = f"/{DOMAIN}/www/{js_file}"
                 _LOGGER.info("[%s] Adding extra JS URL: %s", DOMAIN, url)

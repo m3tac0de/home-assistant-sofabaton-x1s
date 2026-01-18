@@ -611,6 +611,64 @@ def test_macro_handler_parses_sample_activity_67() -> None:
     assert any(entry["command_id"] == 0x04 and entry["label"] == "test234" for entry in macros)
 
 
+def test_macro_handler_parses_sample_activity_67_long_label() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = MacroHandler()
+
+    fragments = [
+        "a5 5a 64 13 01 00 01 05 00 01 67 01 03 03 01 00 00 00 00 17 18 00 00 00 ff ff ff ff ff 00 00 00 01 01 02 00 00 00 00 00 79 00 00 00 54 00 65 00 73 00 74 00 31 00 32 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4d 17",
+        "a5 5a 78 13 02 00 01 05 00 01 67 04 05 03 05 00 00 00 00 00 42 00 ff ff ff ff ff ff ff ff ff ff 01 01 09 00 00 00 00 04 31 00 ff ff ff ff ff ff ff ff ff ff 01 01 17 00 00 00 00 01 88 00 ff 00 74 00 65 00 73 00 74 00 32 00 33 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 de 51",
+        "a5 5a 50 13 03 00 01 05 00 01 67 06 01 03 30 00 00 00 00 00 d3 00 ff 00 6d 00 61 00 63 00 72 00 6f 00 20 00 77 00 69 00 74 00 68 00 20 00 61 00 6e 00 20 00 61 00 63 00 74 00 75 00 61 00 6c 00 20 00 6c 00 6f 00 6e 00 67 00 20 00 6e 00 61 00 6d 00 65 77 5e",
+        "a5 5a 6e 13 04 00 01 05 00 01 67 c6 04 01 c6 00 00 00 00 00 00 01 ff 03 c6 00 00 00 00 00 00 01 ff 01 c5 00 00 00 00 00 00 00 ff 03 c5 00 00 00 00 00 00 04 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 67 cc",
+        "a5 5a 5a 13 05 00 01 05 00 01 67 c7 02 01 c7 00 00 00 00 00 00 01 ff 03 c7 00 00 00 00 00 00 01 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 46 00 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01",
+    ]
+
+    for raw_hex in fragments:
+        handler.handle(_build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "MACROS_SAMPLE"))
+
+    macros = proxy.state.get_activity_macros(0x67)
+    assert {entry["command_id"] for entry in macros} == {0x01, 0x04, 0x06}
+    assert any(entry["command_id"] == 0x01 and entry["label"] == "Test123" for entry in macros)
+    assert any(entry["command_id"] == 0x04 and entry["label"] == "test234" for entry in macros)
+    assert any(
+        entry["command_id"] == 0x06 and entry["label"] == "macro with an actual long name"
+        for entry in macros
+    )
+
+
+def test_macro_handler_parses_sample_activity_67_additional_long_label() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = MacroHandler()
+
+    fragments = [
+        "a5 5a 64 13 01 00 01 06 00 01 67 01 03 03 01 00 00 00 00 17 18 00 00 00 ff ff ff ff ff 00 00 00 01 01 02 00 00 00 00 00 79 00 00 00 54 00 65 00 73 00 74 00 31 00 32 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4d 18",
+        "a5 5a 78 13 02 00 01 06 00 01 67 04 05 03 05 00 00 00 00 00 42 00 ff ff ff ff ff ff ff ff ff ff 01 01 09 00 00 00 00 04 31 00 ff ff ff ff ff ff ff ff ff ff 01 01 17 00 00 00 00 01 88 00 ff 00 74 00 65 00 73 00 74 00 32 00 33 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 de 52",
+        "a5 5a 50 13 03 00 01 06 00 01 67 06 01 03 30 00 00 00 00 00 d3 00 ff 00 6d 00 61 00 63 00 72 00 6f 00 20 00 77 00 69 00 74 00 68 00 20 00 61 00 6e 00 20 00 61 00 63 00 74 00 75 00 61 00 6c 00 20 00 6c 00 6f 00 6e 00 67 00 20 00 6e 00 61 00 6d 00 65 77 5f",
+        "a5 5a b4 13 04 00 01 06 00 01 67 07 0b 01 01 00 00 00 00 00 39 00 ff ff ff ff ff ff ff ff ff ff 01 01 03 00 00 00 00 01 4b 00 ff ff ff ff ff ff ff ff ff ff 01 01 06 00 00 00 00 00 92 00 ff ff ff ff ff ff ff ff ff ff 01 01 17 00 00 00 00 01 88 00 ff ff ff ff ff ff ff ff ff ff 01 01 18 00 00 00 00 00 33 00 ff ff ff ff ff ff ff ff ff ff 01 01 18 00 00 00 00 00 33 00 ff 00 61 00 6e 00 6f 00 74 00 68 00 65 00 72 00 20 00 6c 00 6f 00 6e 00 67 00 20 00 6e 00 61 00 6d 00 65 00 20 00 6e 00 6f 00 77 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 99 09",
+        "a5 5a 6e 13 05 00 01 06 00 01 67 c6 04 01 c6 00 00 00 00 00 00 01 ff 03 c6 00 00 00 00 00 00 01 ff 01 c5 00 00 00 00 00 00 00 ff 03 c5 00 00 00 00 00 00 04 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 67 ce",
+        "a5 5a 5a 13 06 00 01 06 00 01 67 c7 02 01 c7 00 00 00 00 00 00 01 ff 03 c7 00 00 00 00 00 00 01 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 46 00 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 03",
+    ]
+
+    for raw_hex in fragments:
+        handler.handle(_build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "MACROS_SAMPLE"))
+
+    macros = proxy.state.get_activity_macros(0x67)
+    assert {entry["command_id"] for entry in macros} == {0x01, 0x04, 0x06, 0x07}
+    assert any(entry["command_id"] == 0x01 and entry["label"] == "Test123" for entry in macros)
+    assert any(entry["command_id"] == 0x04 and entry["label"] == "test234" for entry in macros)
+    assert any(
+        entry["command_id"] == 0x06 and entry["label"] == "macro with an actual long name"
+        for entry in macros
+    )
+    assert any(
+        entry["command_id"] == 0x07 and entry["label"] == "another long name now" for entry in macros
+    )
+
+
 def test_macro_handler_parses_sample_activity_69() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
