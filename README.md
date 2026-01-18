@@ -2,7 +2,9 @@
 
 Control your Sofabaton **X1**, **X1S** and **X2** hub directly from Home Assistant using 100% local APIs.
 
-**Compatibility note:** the X1, X1S and X2 share the same local API surface. The integration is developed and tested primarily on the X1S and X2, but X1 users should see identical behavior; please report any differences you encounter. **X2 discovery is disabled by default!**, enable in configuration.yaml.
+**Compatibility note:** the X1, X1S and X2 share the same local API surface. The integration is developed and tested primarily on the X1S and X2, but X1 users should see identical behavior; please report any differences you encounter. 
+
+**X2 discovery is disabled by default!**, enable in configuration.yaml. There is an [`official integration`](https://github.com/yomonpet/ha-sofabaton-hub) for the X2.
 
 This integration:
 
@@ -13,12 +15,21 @@ This integration:
 Because the Sofabaton X1/X1S/X2 hub only allows **one client at a time**, the integration sits in the middle and lets HA “see” the hub while still allowing the official app to connect.
 So essentially: this integration is a proxy service for the Sofabaton X1/X1S/X2 hub and Home Assistant is an internal client to that proxy.
 
+**Also, it has a card for your dashboard!**
+
+<img width="400" height="404" alt="image" src="https://github.com/user-attachments/assets/ab0db5df-1969-49ff-a1a0-88d52654709e" />
+<img width="400" alt="image" src="https://github.com/user-attachments/assets/2a8627cb-3c42-4a2d-bd22-2ad4108916e1" />
+
+
 ---
 
 ## Features
 
 - 🛰 **Automatic discovery** of Sofabaton hubs
-- 🧩 **Multiple hubs** supported 
+- 🧩 **Multiple hubs** supported
+- 🟢 **Virtual remote** for your dashboard
+  - plays nice with your themes
+  - configure entirely via the UI
 - 🎛 **Activity select** entity:
   - shows all available activities
   - first option is “Powered off”
@@ -90,7 +101,7 @@ Also keep in mind that as soon as a client is connected to the physical hub, the
 
 ## Requirements
 
-- Home Assistant 2024.x or newer (async config flow, options flow)
+- Home Assistant 2025.x or newer
 - A Sofabaton **X1**, **X1S** or **X2** hub on the same network
 - Your HA instance must be able to open TCP ports (so the real hub can connect to our integration)
 - Your HA instance must be able to open UDP ports (optional; only if you want the official app to be able to connect to the hub while this integration is running)
@@ -193,6 +204,23 @@ You should see:
 
 ---
 
+## Lovelace card
+
+A custom card is added to Home Assistant as part of this integration.
+
+To use it in your dashboard, click **Add card** in your dashboard. Search for **Sofabaton Virtual Remote** and add it.
+
+To instead add the card manually, do:
+```yaml
+type: custom:sofabaton-virtual-remote
+entity: remote.<hub>_remote
+```
+But switch into the Visual Editor, because all configuration is explained there.
+
+<img width="400" height="313" alt="image" src="https://github.com/user-attachments/assets/18e29810-53ae-44a5-ac24-f37b819c6c79" />
+<img width="400" height="339" alt="image" src="https://github.com/user-attachments/assets/cb066294-5294-4fbf-a8b7-149b8ea586e5" />
+
+
 ## Remote
 
 This integration exposes a **Home Assistant `remote` entity** for every Sofabaton hub you add.
@@ -207,7 +235,7 @@ That remote:
 So you can do this in an automation or in Developer Tools:
 
 ```yaml
-service: remote.send_command
+action: remote.send_command
 target:
   entity_id: remote.<hub>_remote
 data:
@@ -221,7 +249,7 @@ UP, DOWN, LEFT, RIGHT, OK, HOME, BACK, MENU, VOL_UP, VOL_DOWN, MUTE, CH_UP, CH_D
 You can also directly send any command to any device or activity, you just need to know the IDs for them.
 
 ```yaml
-service: remote.send_command
+action: remote.send_command
 target:
   entity_id: remote.<hub>_remote
 data:
@@ -298,7 +326,7 @@ data:
 
 ```
 
-After you call the fetch service, the Index sensor will look something like this:
+After you call the fetch action, the Index sensor will look something like this:
 
 ```yaml
 activities:
@@ -336,7 +364,7 @@ Use this to discover the numeric command IDs you want to send with `remote.send_
 Based on the above, to trigger the "Guide" command on the "AWOLVision LTV-3500", you would do:
 
 ```yaml
-service: remote.send_command
+action: remote.send_command
 target:
   entity_id: remote.<hub>_remote
 data:
@@ -347,7 +375,7 @@ data:
 And to trigger the Order a Pizza macro, you would do:
 
 ```yaml
-service: remote.send_command
+action: remote.send_command
 target:
   entity_id: remote.<hub>_remote
 data:
