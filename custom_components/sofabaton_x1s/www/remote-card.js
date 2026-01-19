@@ -38,6 +38,9 @@ class SofabatonRemoteCard extends HTMLElement {
       theme: "",
       background_override: null,
       show_macro_favorites: true,
+      show_macros_button: null,
+      show_favorites_button: null,
+      custom_favorites: [],
       max_width: 360,
       ...config,
     };
@@ -53,11 +56,312 @@ class SofabatonRemoteCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    (this._initPromise || Promise.resolve()).then(() => this._update());
+    (this._initPromise || Promise.resolve()).then(async () => {
+      await this._ensureIntegration();
+      this._update();
+    });
   }
   // ---------- State helpers ----------
   _remoteState() {
     return this._hass?.states?.[this._config?.entity];
+  }
+
+  _hasOwn(obj, key) {
+    return Boolean(obj && Object.prototype.hasOwnProperty.call(obj, key));
+  }
+
+  // ---------- Integration detection (x1s vs hub) ----------
+  async _ensureIntegration() {
+    if (!this._hass?.callWS || !this._config?.entity) return;
+
+    const entityId = String(this._config.entity);
+
+    // Entity changed -> clear Hub bootstrap/request state so we can re-initialize cleanly.
+    if (this._integrationEntityId && this._integrationEntityId !== entityId) {
+      this._hubRequestCache = null;
+      this._hubRequestSeen = null;
+      this._hubQueue = null;
+      this._hubQueueBusy = false;
+      this._hubActivitiesCache = null;
+      this._hubAssignedKeysCache = null;
+      this._hubMacrosCache = null;
+      this._hubFavoritesCache = null;
+    }
+
+    if (this._integrationEntityId === entityId && this._integrationDomain) return;
+    if (this._integrationDetectingFor === entityId) return;
+
+    this._integrationDetectingFor = entityId;
+    try {
+      const entry = await this._hass.callWS({
+        type: "config/entity_registry/get",
+        entity_id: entityId,
+      });
+      // Entity registry exposes the integration as `platform` for the entity
+      this._integrationDomain = String(entry?.platform || "");
+      this._integrationEntityId = entityId;
+    } catch (e) {
+      this._integrationDomain = null;
+      this._integrationEntityId = entityId;
+    } finally {
+      this._integrationDetectingFor = null;
+    }
+  }
+
+  _isHubIntegration() {
+    return String(this._integrationDomain || "") === "sofabaton_hub";
+  }
+
+  _showMacrosButton() {
+    // Backwards-compatible: if the new per-button option isn't set, fall back to the old combined toggle
+    if (typeof this._config?.show_macros_button === 'boolean') return this._config.show_macros_button;
+    return Boolean(this._config?.show_macro_favorites);
+  }
+
+  _showFavoritesButton() {
+    if (typeof this._config?.show_favorites_button === 'boolean') return this._config.show_favorites_button;
+    return Boolean(this._config?.show_macro_favorites);
+  }
+
+  _customFavorites() {
+    const arr = this._config?.custom_favorites;
+    if (!Array.isArray(arr)) return [];
+    const out = [];
+    for (let i = 0; i < arr.length; i++) {
+      const norm = this._normalizeCustomFavorite(arr[i], i);
+      if (norm) out.push(norm);
+    }
+    return out;
+  }
+
+  _normalizeCustomFavorite(item, idx = 0) {
+    if (!item || typeof item !== 'object') return null;
+    const name = String(item.name ?? item.label ?? '').trim();
+    if (!name) return null;
+
+    const icon = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
+
+    // Either: explicit IDs OR an arbitrary Lovelace Action
+    const action = (item.action && typeof item.action === 'object') ? item.action : ((item.tap_action && typeof item.tap_action === 'object') ? item.tap_action : null);
+
+    const rawCmd = item.command_id ?? item.key_id ?? item.command ?? item.key ?? item.id ?? null;
+    const rawDev = item.device_id ?? item.activity_id ?? item.device ?? item.activity ?? null;
+
+    const cmd = rawCmd != null ? Number(rawCmd) : null;
+    const dev = rawDev != null ? Number(rawDev) : null;
+
+    const hasIds = Number.isFinite(cmd) && (rawDev == null || Number.isFinite(dev));
+    const hasAction = !!(action && (action.action || action.service || action.perform_action || action.navigation_path || action.url_path));
+
+    if (!hasIds && !hasAction) return null;
+
+    return {
+      __custom: true,
+      name,
+      icon,
+      action: hasAction ? action : null,
+      command_id: Number.isFinite(cmd) ? cmd : null,
+      device_id: Number.isFinite(dev) ? dev : null,
+      _idx: idx,
+      _raw: item,
+    };
+  }
+
+  _customFavoritesSignature(items) {
+    const list = Array.isArray(items) ? items : [];
+    const parts = list.map((it) => {
+      const n = String(it?.name ?? '');
+      const ic = String(it?.icon ?? '');
+      const cmd = String(it?.command_id ?? '');
+      const dev = String(it?.device_id ?? '');
+      let act = '';
+      try { act = it?.action ? JSON.stringify(it.action) : ''; } catch (e) { act = '[unserializable]'; }
+      return `${n}|${ic}|${cmd}|${dev}|${act}`;
+    });
+    return `${parts.length}:${parts.join(';;')}`;
+  }
+
+
+  // ---------- Hub request queue (prevents parallel requests) ----------
+  _hubInitState() {
+    this._hubRequestSeen = this._hubRequestSeen || {};
+    this._hubQueue = this._hubQueue || [];
+  }
+
+  _sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  _hasOwn(obj, key) {
+    return obj != null && Object.prototype.hasOwnProperty.call(obj, key);
+  }
+
+  _hubMarkRequested(key) {
+    this._hubInitState();
+    if (!key) return;
+    this._hubRequestSeen[key] = true;
+  }
+
+  _hubWasRequested(key) {
+    this._hubInitState();
+    return Boolean(key && this._hubRequestSeen[key]);
+  }
+
+  _hubEnqueueCommand(list, { priority = false, gapMs = 150 } = {}) {
+    if (!this._isHubIntegration()) return;
+    if (!this._hass || !this._config?.entity) return;
+
+    this._hubInitState();
+
+    const item = { list, gapMs: Number(gapMs) };
+    if (priority) {
+      this._hubQueue.unshift(item);
+    } else {
+      this._hubQueue.push(item);
+    }
+
+    // Fire and forget drain (single-flight)
+    this._hubDrainQueue().catch(() => {});
+  }
+
+  _hubEnqueueRequest(list, requestKey) {
+    if (!this._isHubIntegration()) return;
+    if (!this._hass || !this._config?.entity) return;
+
+    this._hubInitState();
+
+    // Card-level de-dupe: we intentionally do NOT rely on the attributes changing
+    // because some requests can validly result in an empty array.
+    if (requestKey && this._hubWasRequested(requestKey)) return;
+    if (requestKey) this._hubMarkRequested(requestKey);
+
+    // Requests are more fragile than normal key presses; keep a larger gap.
+    this._hubEnqueueCommand(list, { priority: false, gapMs: 3000 });
+  }
+
+  async _hubDrainQueue() {
+    if (!this._isHubIntegration()) return;
+    if (!this._hass || !this._config?.entity) return;
+
+    this._hubInitState();
+    if (this._hubQueueBusy) return;
+    this._hubQueueBusy = true;
+    try {
+      while (this._hubQueue.length) {
+        const next = this._hubQueue.shift();
+        if (!next?.list) continue;
+        await this._callService("remote", "send_command", {
+          entity_id: this._config.entity,
+          command: next.list,
+        });
+
+        // A small delay between calls improves reliability.
+        const gap = Number.isFinite(Number(next?.gapMs)) ? Number(next.gapMs) : 750;
+        await this._sleep(gap);
+      }
+    } finally {
+      this._hubQueueBusy = false;
+    }
+  }
+
+  _hubThrottle(key, minIntervalMs = 3000) {
+    this._hubRequestCache = this._hubRequestCache || {};
+    const now = Date.now();
+    const last = this._hubRequestCache[key] || 0;
+    if (now - last < minIntervalMs) return false;
+    this._hubRequestCache[key] = now;
+    return true;
+  }
+
+  async _hubSendCommandList(list, throttleKey = null, minIntervalMs = 3000) {
+    if (!this._isHubIntegration()) return;
+    if (!this._hass || !this._config?.entity) return;
+
+    // If we're already running queued hub traffic (e.g. bootstrapping request_* calls),
+    // serialize user commands too (but prioritize them) to reduce dropped calls.
+    this._hubInitState();
+
+    if (throttleKey) {
+      if (!this._hubThrottle(throttleKey, minIntervalMs)) return;
+    }
+
+    if (this._hubQueueBusy || (Array.isArray(this._hubQueue) && this._hubQueue.length)) {
+      this._hubEnqueueCommand(list, { priority: true, gapMs: 150 });
+      return;
+    }
+
+    await this._callService("remote", "send_command", {
+      entity_id: this._config.entity,
+      command: list,
+    });
+  }
+
+  async _hubRequestBasicData() {
+    const entityId = String(this._config?.entity || "");
+    this._hubEnqueueRequest(["type:request_basic_data"], "req:basic:" + entityId);
+  }
+
+  async _hubRequestAssignedKeys(activityId) {
+    if (activityId == null) return;
+    this._hubEnqueueRequest(
+      ["type:request_assigned_keys", "activity_id:" +  Number(activityId) ],
+      "req:assigned:" + String(activityId)
+    );
+  }
+
+  async _hubRequestFavoriteKeys(activityId) {
+    if (activityId == null) return;
+    this._hubEnqueueRequest(
+      [ "type:request_favorite_keys", "activity_id:" +  Number(activityId) ],
+      "req:fav:" + String(activityId)
+    );
+  }
+
+  async _hubRequestMacroKeys(activityId) {
+    if (activityId == null) return;
+    this._hubEnqueueRequest(
+      [ "type:request_macro_keys", "activity_id:" +  Number(activityId) ],
+      "req:macro:" + String(activityId)
+    );
+  }
+
+  async _hubStartActivity(activityId) {
+    if (activityId == null) return;
+    await this._hubSendCommandList([ "type:start_activity", "activity_id:"+  Number(activityId) ]);
+  }
+
+  async _hubStopActivity(activityId) {
+    if (activityId == null) return;
+    await this._hubSendCommandList([ "type:stop_activity", "activity_id:"+  Number(activityId) ]);
+  }
+
+  async _sendDrawerItem(itemType, commandId, deviceId, rawItem) {
+    // X1S/X1 path
+    if (!this._isHubIntegration()) {
+      return this._sendCommand(commandId, deviceId);
+    }
+
+    // Hub path
+    if (!this._hass || !this._config?.entity) return;
+
+    const activityId = Number(deviceId ?? this._currentActivityId());
+    const keyId = Number(commandId);
+    if (!Number.isFinite(keyId)) return;
+
+    if (itemType === 'macros') {
+      if (!Number.isFinite(activityId)) return;
+      return this._hubSendCommandList([ "type:send_macro_key", "activity_id:" +  activityId, "key_id:" + keyId ]);
+    }
+
+    if (itemType === 'favorites') {
+      const device = Number(rawItem?.device_id ?? rawItem?.device);
+      if (!Number.isFinite(device)) return;
+      return this._hubSendCommandList([ "type:send_favorite_key", "device_id:" + device, "key_id:" + keyId ]);
+    }
+
+    // Default: assigned key (normal buttons)
+    if (!Number.isFinite(activityId)) return;
+    return this._hubSendCommandList([ "type:send_assigned_key", "activity_id:" + activityId, "key_id:" + keyId ]);
   }
 
   _hubVersion() {
@@ -65,32 +369,14 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _isX2() {
+    // sofabaton_hub == X2 hub always
+    if (this._isHubIntegration()) return true;
+
     return this._hubVersion().includes("X2");
   }
 
   _enabledButtons() {
-    const remote = this._remoteState();
-    const assignedKeys = remote?.attributes?.assigned_keys;
-    const currentActivity = this._currentActivityId();
-
-    if (assignedKeys && typeof assignedKeys === "object") {
-      const raw =
-        assignedKeys[String(currentActivity)]
-        ?? assignedKeys[currentActivity]
-        ?? [];
-      const parsed = Array.isArray(raw)
-        ? raw
-            .map((entry) => ({
-              command: Number(entry),
-              activity_id: currentActivity,
-            }))
-            .filter((entry) => Number.isFinite(entry.command))
-        : [];
-      this._enabledButtonsInvalid = Array.isArray(raw) && parsed.length === 0;
-      return parsed;
-    }
-
-    return [];
+    return this._enabledButtonsCache || [];
   }
 
   _isEnabled(id) {
@@ -115,14 +401,27 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _activities() {
     const list = this._remoteState()?.attributes?.activities;
-    if (!Array.isArray(list)) return [];
-    return list
+
+    // Hub integration can clear attributes entirely when all activities are off.
+    // Keep the last known activities list in-card so the selector remains useful
+    // without constantly re-requesting basic data.
+    const source = Array.isArray(list) && list.length
+      ? list
+      : (this._isHubIntegration() && Array.isArray(this._hubActivitiesCache) ? this._hubActivitiesCache : []);
+
+    const mapped = source
       .map((activity) => ({
         id: Number(activity?.id),
         name: String(activity?.name ?? ""),
         state: String(activity?.state ?? ""),
       }))
       .filter((activity) => Number.isFinite(activity.id) && activity.name);
+
+    if (this._isHubIntegration() && Array.isArray(list) && list.length) {
+      this._hubActivitiesCache = list;
+    }
+
+    return mapped;
   }
 
   _currentActivityLabel() {
@@ -136,6 +435,25 @@ class SofabatonRemoteCard extends HTMLElement {
   _isPoweredOffLabel(state) {
     const s = String(state || "").trim().toLowerCase();
     return POWERED_OFF_LABELS.has(s);
+  }
+
+  _isActivityOn(activityId, activities = null) {
+    if (activityId == null) return false;
+    const id = Number(activityId);
+    if (!Number.isFinite(id)) return false;
+
+    // Prefer explicit activity state if we have it.
+    const list = Array.isArray(activities) ? activities : this._activities();
+    const match = Array.isArray(list) ? list.find((a) => Number(a?.id) === id) : null;
+    if (match && match.state != null && String(match.state).trim() !== "") {
+      const s = String(match.state).trim().toLowerCase();
+      // Any non-off label is treated as ON.
+      return !this._isPoweredOffLabel(s) && s !== "off";
+    }
+
+    // Fallback: if HA reports a current_activity_id, treat it as ON unless the label is powered off.
+    const label = this._currentActivityLabel();
+    return Boolean(label) && !this._isPoweredOffLabel(label);
   }
 
   _isLoadingActive() {
@@ -189,24 +507,97 @@ class SofabatonRemoteCard extends HTMLElement {
     await this._hass.callService(domain, service, data);
   }
 
+  _fireEvent(type, detail = {}) {
+    this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
+  }
+
+  async _runLovelaceAction(actionConfig, context = null) {
+    if (!actionConfig || typeof actionConfig !== 'object') return;
+
+    const action = String(actionConfig.action || '').toLowerCase();
+
+    // If the config looks like a service action but omitted `action:`, treat it as one.
+    const implicitService = (!action || action === 'default') && (actionConfig.service || actionConfig.perform_action);
+
+    if (action === 'none') return;
+
+    if (action === 'call-service' || action === 'perform-action' || implicitService) {
+      const svc = String(actionConfig.service || actionConfig.perform_action || '').trim();
+      if (!svc.includes('.')) return;
+      const [domain, service] = svc.split('.', 2);
+
+      const serviceData = { ...(actionConfig.service_data || actionConfig.data || {}) };
+      const target = actionConfig.target;
+      // Home Assistant allows passing `target` inside the data payload.
+      const payload = target && typeof target === 'object' ? { ...serviceData, target } : serviceData;
+
+      await this._callService(domain, service, payload);
+      return;
+    }
+
+    if (action === 'toggle') {
+      const entityId = actionConfig.entity_id || actionConfig.entity || context?.entity_id || context?.entityId;
+      if (!entityId) return;
+      await this._callService('homeassistant', 'toggle', { entity_id: entityId });
+      return;
+    }
+
+    if (action === 'more-info') {
+      const entityId = actionConfig.entity_id || actionConfig.entity || context?.entity_id || context?.entityId;
+      if (!entityId) return;
+      this._fireEvent('hass-more-info', { entityId });
+      return;
+    }
+
+    if (action === 'navigate') {
+      const path = actionConfig.navigation_path;
+      if (!path) return;
+      history.pushState(null, '', path);
+      window.dispatchEvent(new Event('location-changed', { bubbles: true, composed: true }));
+      return;
+    }
+
+    if (action === 'url') {
+      const url = actionConfig.url_path;
+      if (!url) return;
+      window.open(url, '_blank');
+      return;
+    }
+
+    if (action === 'fire-dom-event') {
+      // Pass through - this is commonly used for browser_mod / custom integrations.
+      this._fireEvent('ll-custom', actionConfig);
+      return;
+    }
+
+    // Unknown/unsupported action -> no-op
+  }
+
   async _sendCommand(commandId, deviceId = null) {
-  if (!this._hass || !this._config?.entity) return;
+    if (!this._hass || !this._config?.entity) return;
 
-  // If deviceId isn't provided, fall back to enabled_buttons override (activity_id) or current_activity_id
-  const resolvedDevice =
-    deviceId != null
-      ? Number(deviceId)
-      : (this._commandTarget(commandId)?.activity_id ?? this._currentActivityId());
+    // If deviceId isn't provided, fall back to enabled_buttons override (activity_id) or current_activity_id
+    const resolvedDevice =
+      deviceId != null
+        ? Number(deviceId)
+        : (this._commandTarget(commandId)?.activity_id ?? this._currentActivityId());
 
-  if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice))) return;
+    // Hub uses a different command payload
+    if (this._isHubIntegration()) {
+      if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice))) return;
+      await this._hubSendCommandList(["type:send_assigned_key", "activity_id:" + Number(resolvedDevice), "key_id:"+ Number(commandId) ]);
+      return;
+    }
 
-  await this._callService("remote", "send_command", {
-    entity_id: this._config.entity,
-    command: Number(commandId),
-    device: Number(resolvedDevice),
-  });
-}
+    // X1S/X1 style
+    if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice))) return;
 
+    await this._callService("remote", "send_command", {
+      entity_id: this._config.entity,
+      command: Number(commandId),
+      device: Number(resolvedDevice),
+    });
+  }
   async _setActivity(option) {
     if (option == null || option === "") return;
     const selected = String(option);
@@ -217,6 +608,25 @@ class SofabatonRemoteCard extends HTMLElement {
     this._pendingActivityAt = Date.now();
     this._startActivityLoading(selected);
 
+    // Hub path: start/stop activities via send_command
+    if (this._isHubIntegration()) {
+      if (this._isPoweredOffLabel(selected)) {
+        const currentId = this._currentActivityId();
+        if (currentId != null) {
+          await this._hubStopActivity(currentId);
+        }
+        return;
+      }
+
+      const match = this._activities().find((a) => a.name === selected);
+      const activityId = match?.id;
+      if (activityId == null) return;
+
+      await this._hubStartActivity(activityId);
+      return;
+    }
+
+    // X1S/X1 path
     if (this._isPoweredOffLabel(selected)) {
       await this._callService("remote", "turn_off", {
         entity_id: this._config.entity,
@@ -354,10 +764,40 @@ class SofabatonRemoteCard extends HTMLElement {
     }
   }
 
+  _optionsSignature(options) {
+    // Signature uses ordered activity names + count since labels drive select options.
+    const names = Array.isArray(options) ? options.map((opt) => String(opt ?? "")) : [];
+    return `${names.length}:${names.join(",")}`;
+  }
+
+  _drawerItemsSignature(items) {
+    // Signature uses ordered command_id/id, device_id/device, and name for stable macro/favorite identity.
+    const entries = Array.isArray(items)
+      ? items.map((item) => {
+        const commandId = String(item?.command_id ?? item?.id ?? "");
+        const deviceId = String(item?.device_id ?? item?.device ?? "");
+        const name = String(item?.name ?? "");
+        return `${commandId}:${deviceId}:${name}`;
+      })
+      : [];
+    return `${entries.length}:${entries.join(",")}`;
+  }
+
+  _enabledButtonsSignature(raw) {
+    // Signature uses the raw assigned_keys entry for the active activity (order + values).
+    if (!Array.isArray(raw)) return String(raw ?? "");
+    return `${raw.length}:${raw.map((entry) => String(entry ?? "")).join(",")}`;
+  }
+
   // ---------- UI helpers ----------
   _setVisible(el, on) {
     if (!el) return;
-    el.style.display = on ? "" : "none";
+    if (on) {
+      el.style.removeProperty("display");
+    } else {
+      // Use !important because some elements (e.g. macroFavoritesButton) force display with !important
+      el.style.setProperty("display", "none", "important");
+    }
   }
   
   _installOutsideCloseHandler() {
@@ -426,18 +866,85 @@ class SofabatonRemoteCard extends HTMLElement {
     this._macroFavoritesRow.style.transition = "border-radius 0.2s ease";
   }
 
+  _attachPrimaryAction(els, fn) {
+    const targets = Array.isArray(els) ? els.filter(Boolean) : [els].filter(Boolean);
+
+    // One shared gate per attached action group (across wrapper + hui-button-card),
+    // so we don't double-fire when both elements see the same user gesture.
+    const gate = {
+      ts: 0,
+      pointerId: null,
+      type: null,
+    };
+
+    const wrapped = (ev) => {
+      const now = Date.now();
+
+      // Robust de-dupe across: pointerup + touchend + click/ha-click, and across multiple elements.
+      const pid = (ev && typeof ev.pointerId === 'number') ? ev.pointerId : null;
+      const etype = ev?.type || null;
+
+      const delta = now - gate.ts;
+
+      // If we already handled a very recent event, drop subsequent ones.
+      // (Mobile browsers / HA can dispatch multiple event types for one gesture.)
+      if (delta < 450) {
+        // If the pointerId matches, it's definitely the same interaction.
+        if (pid !== null && gate.pointerId === pid) return;
+        return;
+      }
+
+      // Additional guard: "ghost click" arriving after touch/pointer on some mobile setups.
+      // If we just handled pointer/touch, ignore any subsequent click-ish event for a bit longer.
+      if (
+        delta < 1200 &&
+        (gate.type === 'pointerup' || gate.type === 'touchend') &&
+        (etype === 'click' || etype === 'ha-click' || etype === 'tap')
+      ) {
+        return;
+      }
+
+      gate.ts = now;
+      gate.pointerId = pid;
+      gate.type = etype;
+
+      // Prevent Home Assistant / inner elements from swallowing the action.
+      if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
+      if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
+      if (ev && typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+
+      try { fn(ev); } catch (e) { /* no-op */ }
+    };
+
+    const hasPointer = typeof window !== 'undefined' && 'PointerEvent' in window;
+    for (const el of targets) {
+      // Capture phase so we still trigger even if inner elements stop bubbling.
+      // Use the smallest viable event set; extra listeners are a major source of duplicate sends.
+      if (hasPointer) {
+        el.addEventListener('pointerup', wrapped, { capture: true, passive: false });
+      } else {
+        el.addEventListener('touchend', wrapped, { capture: true, passive: false });
+        el.addEventListener('click', wrapped, { capture: true });
+      }
+      // Home Assistant sometimes dispatches custom click events (keep as fallback)
+      el.addEventListener('ha-click', wrapped, { capture: true });
+    }
+  }
 
   _mkHuiButton({ key, label, icon, id, cmd, extraClass = "", size = "normal" }) {
     const wrap = document.createElement("div");
     wrap.className = `key key--${size} ${extraClass}`.trim();
-    wrap.addEventListener("click", () => {
+
+    const btn = document.createElement("hui-button-card");
+    btn.hass = this._hass;
+
+    this._attachPrimaryAction([wrap, btn], () => {
       if (!wrap.classList.contains("disabled")) {
         this._triggerCommandPulse();
         this._sendCommand(cmd, (this._commandTarget(id)?.activity_id ?? this._currentActivityId()));
       }
     });
 
-    const btn = document.createElement("hui-button-card");
     btn.hass = this._hass;
 
     btn.setConfig({
@@ -471,14 +978,17 @@ class SofabatonRemoteCard extends HTMLElement {
     const wrap = document.createElement("div");
     wrap.className = "key key--color";
     wrap.style.setProperty("--sb-color", color);
-    wrap.addEventListener("click", () => {
+
+    const btn = document.createElement("hui-button-card");
+    btn.hass = this._hass;
+
+    this._attachPrimaryAction([wrap, btn], () => {
       if (!wrap.classList.contains("disabled")) {
         this._triggerCommandPulse();
         this._sendCommand(cmd, (this._commandTarget(id)?.activity_id ?? this._currentActivityId()));
       }
     });
 
-    const btn = document.createElement("hui-button-card");
     btn.hass = this._hass;
 
     btn.setConfig({
@@ -514,12 +1024,10 @@ class SofabatonRemoteCard extends HTMLElement {
     const wrap = document.createElement("div");
     wrap.className = `macroFavoritesButton ${extraClass}`.trim();
     
-      if (onClick) {
-        wrap.addEventListener("click", (e) => {
-            if (!wrap.classList.contains("disabled")) {
-                onClick(e);
-            }
-        });
+    if (onClick) {
+      this._attachPrimaryAction(wrap, (e) => {
+        if (!wrap.classList.contains("disabled")) onClick(e);
+      });
     }
 
     const btn = document.createElement("hui-button-card");
@@ -570,16 +1078,105 @@ class SofabatonRemoteCard extends HTMLElement {
       hold_action: { action: "none" },
       double_tap_action: { action: "none" },
     });
-    
-    // Manually handle click if tap_action config isn't enough (e.g. for custom pulse animation)
-    btn.addEventListener("click", () => {
-  if (!Number.isFinite(command_id) || !Number.isFinite(device_id)) return;
-  this._triggerCommandPulse();
-  this._sendCommand(command_id, device_id);
-
-});
+    // Manually handle tap/click (mobile browsers can suppress click on hui-button-card)
+    this._attachPrimaryAction(btn, () => {
+      if (!Number.isFinite(command_id) || !Number.isFinite(device_id)) return;
+      this._triggerCommandPulse();
+      this._sendDrawerItem(type, command_id, device_id, item);
+    });
 
 return btn;
+  }
+
+  _mkCustomFavoriteButton(fav) {
+    const label = String(fav?.name ?? 'Favorite');
+    const icon = fav?.icon ? String(fav.icon) : null;
+
+    const btn = document.createElement('hui-button-card');
+    btn.hass = this._hass;
+    btn.classList.add('drawer-btn', 'drawer-btn--custom');
+    // Span across both columns
+    btn.style.gridColumn = '1 / -1';
+
+    btn.setConfig({
+      type: 'button',
+      show_name: true,
+      show_icon: !!icon,
+      name: label,
+      icon: icon || undefined,
+      card_mod: {
+        style: `
+          ha-card {
+            height: 50px !important;
+            font-size: 13px !important;
+            display: flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            padding: 0 12px !important;
+            box-sizing: border-box;
+            gap: 10px;
+          }
+          ha-card ha-state-icon,
+          ha-card ha-icon {
+            --mdc-icon-size: 18px;
+            width: 15% !important;
+          }
+          ha-card .name {
+            margin: 0 !important;
+            text-align: left !important;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+        `,
+      },
+      tap_action: { action: 'none' },
+      hold_action: { action: 'none' },
+      double_tap_action: { action: 'none' },
+    });
+
+    this._attachPrimaryAction(btn, () => {
+      // If the user configured an arbitrary Lovelace Action, run it
+      if (fav?.action) {
+        this._runLovelaceAction(fav.action, fav);
+        return;
+      }
+
+      const cmd = Number(fav?.command_id);
+      const dev = (fav?.device_id != null) ? Number(fav.device_id) : this._currentActivityId();
+      if (!Number.isFinite(cmd) || dev == null || !Number.isFinite(Number(dev))) return;
+
+      this._triggerCommandPulse();
+      this._sendCustomFavoriteCommand(cmd, dev);
+    });
+
+    return btn;
+  }
+
+  async _sendCustomFavoriteCommand(commandId, deviceId) {
+    if (!this._hass || !this._config?.entity) return;
+
+    const cmd = Number(commandId);
+    const dev = Number(deviceId);
+    if (!Number.isFinite(cmd) || !Number.isFinite(dev)) return;
+
+    if (this._isHubIntegration()) {
+      // Send as a 'favorite' command in the hub integration (it accepts arbitrary IDs).
+      await this._hubSendCommandList([
+        'type:send_favorite_key',
+        'device_id:' + dev,
+        'key_id:' + cmd,
+      ]);
+      return;
+    }
+
+    // X1S/X1 style: send_command with device + numeric command
+    await this._callService('remote', 'send_command', {
+      entity_id: this._config.entity,
+      command: cmd,
+      device: dev,
+    });
   }
 
   async _ensureHaElements() {
@@ -677,6 +1274,15 @@ return btn;
         display: grid !important;
         grid-template-columns: 1fr 1fr !important; 
         width: 100% !important;
+      }
+			.macroFavoritesGrid.single {
+        grid-template-columns: 1fr !important;
+      }
+			.macroFavoritesGrid.single .macroFavoritesButton + .macroFavoritesButton {
+        border-left: none;
+      }
+			.macroFavoritesGrid.single .macroFavoritesButton:first-child {
+        border-right: none;
       }
 			.macroFavoritesButton {
         cursor: pointer;
@@ -970,6 +1576,8 @@ return btn;
     const macroFavoritesGrid = document.createElement("div");
     macroFavoritesGrid.className = "macroFavoritesGrid";
 
+    this._macroFavoritesGrid = macroFavoritesGrid;
+
     const macrosButton = this._mkActionButton({
       label: "Macros >",
       onClick: () => this._toggleDrawer('macros')
@@ -1128,14 +1736,93 @@ return btn;
     const loadState = remote?.attributes?.load_state;
     const activityId = this._currentActivityId();
     const activities = this._activities();
+    const assignedKeys = remote?.attributes?.assigned_keys;
     const macroKeys = remote?.attributes?.macro_keys;
     const favoriteKeys = remote?.attributes?.favorite_keys;
-    const macros = macroKeys && typeof macroKeys === "object"
-      ? (macroKeys[String(activityId)] ?? macroKeys[activityId] ?? [])
-      : [];
-    const favorites = favoriteKeys && typeof favoriteKeys === "object"
-      ? (favoriteKeys[String(activityId)] ?? favoriteKeys[activityId] ?? [])
-      : [];
+    // For hub integration, the backend may drop per-activity keys/macros/favorites
+    // from the attributes when switching activities. Cache per-activity data client-side
+    // for the lifetime of the card so switching back restores UI without re-fetching.
+    this._hubAssignedKeysCache = this._hubAssignedKeysCache || {};
+    this._hubMacrosCache = this._hubMacrosCache || {};
+    this._hubFavoritesCache = this._hubFavoritesCache || {};
+
+    const actKey = activityId != null ? String(activityId) : null;
+
+    const _assignedMap = (assignedKeys && typeof assignedKeys === "object") ? assignedKeys : null;
+    const _macroMap = (macroKeys && typeof macroKeys === "object") ? macroKeys : null;
+    const _favMap = (favoriteKeys && typeof favoriteKeys === "object") ? favoriteKeys : null;
+
+    // Update caches from attributes if the property exists (even if it's an empty array)
+    if (this._isHubIntegration() && actKey != null) {
+      if (_assignedMap && (this._hasOwn(_assignedMap, actKey) || this._hasOwn(_assignedMap, activityId))) {
+        const v = _assignedMap[actKey] ?? _assignedMap[activityId];
+        this._hubAssignedKeysCache[actKey] = Array.isArray(v) ? v : [];
+      }
+      if (_macroMap && (this._hasOwn(_macroMap, actKey) || this._hasOwn(_macroMap, activityId))) {
+        const v = _macroMap[actKey] ?? _macroMap[activityId];
+        this._hubMacrosCache[actKey] = Array.isArray(v) ? v : [];
+      }
+      if (_favMap && (this._hasOwn(_favMap, actKey) || this._hasOwn(_favMap, activityId))) {
+        const v = _favMap[actKey] ?? _favMap[activityId];
+        this._hubFavoritesCache[actKey] = Array.isArray(v) ? v : [];
+      }
+    }
+
+    const macros = _macroMap && actKey != null && (this._hasOwn(_macroMap, actKey) || this._hasOwn(_macroMap, activityId))
+      ? (_macroMap[actKey] ?? _macroMap[activityId] ?? [])
+      : (this._isHubIntegration() && actKey != null ? (this._hubMacrosCache[actKey] ?? []) : []);
+
+    const favorites = _favMap && actKey != null && (this._hasOwn(_favMap, actKey) || this._hasOwn(_favMap, activityId))
+      ? (_favMap[actKey] ?? _favMap[activityId] ?? [])
+      : (this._isHubIntegration() && actKey != null ? (this._hubFavoritesCache[actKey] ?? []) : []);
+
+    const customFavorites = this._customFavorites();
+
+    const rawAssignedKeys = _assignedMap && actKey != null && (this._hasOwn(_assignedMap, actKey) || this._hasOwn(_assignedMap, activityId))
+      ? (_assignedMap[actKey] ?? _assignedMap[activityId] ?? null)
+      : (this._isHubIntegration() && actKey != null ? (this._hubAssignedKeysCache[actKey] ?? null) : null);
+
+
+    // Hub integration: fetch activities / keys on-demand
+    if (this._isHubIntegration() && !isUnavailable) {
+      // When hub is idle/off it may expose no attributes; request activities once
+      if (activities.length === 0 && loadState !== "loading") {
+        this._hubRequestBasicData();
+      }
+
+      // Only request per-activity data once we know the activity is actually ON.
+      // The hub is sensitive: querying keys while an activity is starting (or not active)
+      // can cause dropped/ignored responses.
+      if (activityId != null && this._isActivityOn(activityId, activities)) {
+        const aKey = String(activityId);
+        const hasAssignedAttr = (assignedKeys && typeof assignedKeys === "object") && (this._hasOwn(assignedKeys, aKey) || this._hasOwn(assignedKeys, activityId));
+        const hasMacroAttr = (macroKeys && typeof macroKeys === "object") && (this._hasOwn(macroKeys, aKey) || this._hasOwn(macroKeys, activityId));
+        const hasFavAttr = (favoriteKeys && typeof favoriteKeys === "object") && (this._hasOwn(favoriteKeys, aKey) || this._hasOwn(favoriteKeys, activityId));
+
+        const hasAssignedCache = this._hasOwn(this._hubAssignedKeysCache, aKey);
+        const hasMacroCache = this._hasOwn(this._hubMacrosCache, aKey);
+        const hasFavCache = this._hasOwn(this._hubFavoritesCache, aKey);
+
+        if (!hasAssignedAttr && !hasAssignedCache) this._hubRequestAssignedKeys(activityId);
+        if (!hasMacroAttr && !hasMacroCache) this._hubRequestMacroKeys(activityId);
+        if (!hasFavAttr && !hasFavCache) this._hubRequestFavoriteKeys(activityId);
+      }
+    }
+
+    const enabledButtonsSig = this._enabledButtonsSignature(rawAssignedKeys);
+    if (this._enabledButtonsCacheKey !== enabledButtonsSig) {
+      this._enabledButtonsCacheKey = enabledButtonsSig;
+      const parsed = Array.isArray(rawAssignedKeys)
+        ? rawAssignedKeys
+            .map((entry) => ({
+              command: Number(entry),
+              activity_id: activityId,
+            }))
+            .filter((entry) => Number.isFinite(entry.command))
+        : [];
+      this._enabledButtonsInvalid = Array.isArray(rawAssignedKeys) && parsed.length === 0;
+      this._enabledButtonsCache = parsed;
+    }
 
     const isX2 = this._isX2();
 
@@ -1173,7 +1860,7 @@ return btn;
         this._pendingActivityAt = null;
       }
 
-      const sig = JSON.stringify(options);
+      const sig = this._optionsSignature(options);
       if (this._activityOptionsSig !== sig) {
         this._activityOptionsSig = sig;
         this._activitySelect.innerHTML = "";
@@ -1214,12 +1901,26 @@ return btn;
 
     // Visibility toggles (user config)
     this._setVisible(this._activityRow, this._config.show_activity);
-this._setVisible(this._mfContainer, this._config.show_macro_favorites);
 
-// If macro/favorites are hidden, close any open drawer
-if (!this._config.show_macro_favorites && this._activeDrawer) {
-  this._activeDrawer = null;
-}
+    const showMacrosBtn = this._showMacrosButton();
+    const showFavoritesBtn = this._showFavoritesButton();
+    const showMF = showMacrosBtn || showFavoritesBtn;
+
+    this._setVisible(this._mfContainer, showMF);
+    this._setVisible(this._macrosButtonWrap, showMacrosBtn);
+    this._setVisible(this._favoritesButtonWrap, showFavoritesBtn);
+
+    if (this._macroFavoritesGrid) {
+      const visibleCount = (showMacrosBtn ? 1 : 0) + (showFavoritesBtn ? 1 : 0);
+      this._macroFavoritesGrid.classList.toggle('single', visibleCount === 1);
+    }
+
+    // If macro/favorites are hidden, or the active drawer tab is hidden, close any open drawer
+    if (!showMF && this._activeDrawer) {
+      this._activeDrawer = null;
+    }
+    if (this._activeDrawer === 'macros' && !showMacrosBtn) this._activeDrawer = null;
+    if (this._activeDrawer === 'favorites' && !showFavoritesBtn) this._activeDrawer = null;
 
     this._setVisible(this._dpadEl, this._config.show_dpad);
     this._setVisible(this._navRowEl, this._config.show_nav);
@@ -1240,12 +1941,12 @@ if (!this._config.show_macro_favorites && this._activeDrawer) {
     if (this._favoritesButton) {
       this._favoritesButton.hass = this._hass;
       
-      const favoritesEnabled = favorites.length > 0;
+      const favoritesEnabled = (favorites.length + customFavorites.length) > 0;
       this._favoritesButtonWrap.classList.toggle("disabled", isUnavailable || !favoritesEnabled);
     }
 
 		// POPULATE MACROS (Only if data changed)
-    const macroSig = JSON.stringify(macros);
+    const macroSig = this._drawerItemsSignature(macros);
     if (this._macroDataSig !== macroSig && this._macrosOverlayGrid) {
         this._macroDataSig = macroSig;
         this._macrosOverlayGrid.innerHTML = "";
@@ -1257,11 +1958,22 @@ if (!this._config.show_macro_favorites && this._activeDrawer) {
     }
 
     // POPULATE FAVORITES (Only if data changed)
-    const favSig = JSON.stringify(favorites);
-    if (this._favDataSig !== favSig && this._favoritesOverlayGrid) {
-        this._favDataSig = favSig;
+    const favSig = this._drawerItemsSignature(favorites);
+    const customFavSig = this._customFavoritesSignature(customFavorites);
+    const combinedFavSig = `${customFavSig}||${favSig}`;
+    if (this._favDataSig !== combinedFavSig && this._favoritesOverlayGrid) {
+        this._favDataSig = combinedFavSig;
         this._favoritesOverlayGrid.innerHTML = "";
-        favorites.forEach(fav => {
+
+        // 1) Custom favorites from card config (always on top, span 2 columns)
+        customFavorites.forEach((fav) => {
+            const btn = this._mkCustomFavoriteButton(fav);
+            btn.hass = this._hass;
+            this._favoritesOverlayGrid.appendChild(btn);
+        });
+
+        // 2) Favorites fetched from the remote entity (occupy 1 column)
+        favorites.forEach((fav) => {
             const btn = this._mkDrawerButton(fav, 'favorites');
             btn.hass = this._hass;
             this._favoritesOverlayGrid.appendChild(btn);
@@ -1313,6 +2025,9 @@ if (!this._config.show_macro_favorites && this._activeDrawer) {
       show_colors: true,
       show_abc: true,
       show_macro_favorites: true,
+      show_macros_button: null,
+      show_favorites_button: null,
+      custom_favorites: [],
       max_width: 360,
     };
   }
@@ -1351,7 +2066,10 @@ class SofabatonHelloCardEditor extends HTMLElement {
           show_colors: "Red/Green/Yellow/Blue",
           show_abc: "A/B/C Buttons (X2 only)"
         ,
-          show_macro_favorites: "Macros/Favorites Buttons",
+          show_macros_button: "Macros Button",
+          show_favorites_button: "Favorites Button",
+          custom_favorites: "Custom Favorites (advanced)",
+          show_macro_favorites: "Macros/Favorites Buttons (deprecated)",
           max_width: "Maximum Card Width (px)"};
         return labels[schema.name] || schema.name;
       };
@@ -1383,7 +2101,7 @@ class SofabatonHelloCardEditor extends HTMLElement {
     const showColorPicker = this._config.use_background_override || !!this._config.background_override;
 
     this._form.schema = [
-      { name: "entity", selector: { entity: { domain: "remote", integration: "sofabaton_x1s" } }, required: true },
+      { name: "entity", selector: { entity: { filter: [ { domain: "remote", integration: "sofabaton_x1s" }, { domain: "remote", integration: "sofabaton_hub" } ] } }, required: true },
       {
         type: "expandable",
         title: "Styling Options",
@@ -1415,8 +2133,21 @@ class SofabatonHelloCardEditor extends HTMLElement {
               { name: "show_media", selector: { boolean: {} } },
               { name: "show_colors", selector: { boolean: {} } },
               { name: "show_abc", selector: { boolean: {} } },
-              { name: "show_macro_favorites", selector: { boolean: {} } },
+              { name: "show_macros_button", selector: { boolean: {} } },
+              { name: "show_favorites_button", selector: { boolean: {} } },
             ]
+          }
+        ]
+      }
+
+      ,{
+        type: "expandable",
+        title: "Custom Favorites",
+        icon: "mdi:star-plus",
+        schema: [
+          {
+            name: "custom_favorites",
+            selector: { object: {} }
           }
         ]
       }
@@ -1436,6 +2167,9 @@ class SofabatonHelloCardEditor extends HTMLElement {
       show_media: this._config.show_media ?? true,
       show_colors: this._config.show_colors ?? true,
       show_abc: this._config.show_abc ?? true,
+      show_macros_button: this._config.show_macros_button ?? (this._config.show_macro_favorites ?? true),
+      show_favorites_button: this._config.show_favorites_button ?? (this._config.show_macro_favorites ?? true),
+      custom_favorites: this._config.custom_favorites ?? [],
       show_macro_favorites: this._config.show_macro_favorites ?? true,
       max_width: this._config.max_width ?? 360,
     };
@@ -1464,6 +2198,6 @@ if (!window.customCards.some((c) => c.type === TYPE)) {
   window.customCards.push({
     type: TYPE,
     name: "Sofabaton Virtual Remote",
-    description: "A configurable remote for the unofficial Sofabaton X1, X1S and X2 integration.",
+    description: "A configurable remote for the Sofabaton X1, X1S and X2 integration.",
   });
 }
