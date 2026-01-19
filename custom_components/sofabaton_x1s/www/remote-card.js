@@ -1,3 +1,6 @@
+const CARD_NAME = "Sofabaton Virtual Remote";
+const CARD_VERSION = "0.0.3";
+const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const TYPE = "sofabaton-virtual-remote";
 const EDITOR = "sofabaton-virtual-remote-editor";
 
@@ -19,6 +22,38 @@ const ID = {
 };
 
 const POWERED_OFF_LABELS = new Set(["powered off", "powered_off", "off"]);
+
+function logPillsOnce() {
+  if (window[LOG_ONCE_KEY]) return;
+  window[LOG_ONCE_KEY] = true;
+
+  // Base pill styling (console supports these reliably)
+  const base =
+    "padding:2px 10px;" +
+    "border-radius:999px;" +
+    "font-weight:700;" +
+    "font-size:12px;" +
+    "line-height:18px;";
+
+  const red    = base + "background:#ef4444;color:#fff;";
+  const green  = base + "background:#22c55e;color:#062b12;";
+  const yellow = base + "background:#facc15;color:#111827;";
+  const blue   = base + "background:#3b82f6;color:#fff;";
+
+  // A tiny spacer between pills (just normal text)
+  const gap = "color:transparent;"; // keeps spacing without visible characters
+
+  console.log(
+    `%cSofabaton%c %c Virtual %c %c  Remote  %c %c   ${CARD_VERSION}   `,
+    red, gap,
+    green, gap,
+    yellow, gap,
+    blue
+  );
+}
+
+// Call at module load (top-level)
+logPillsOnce();
 
 class SofabatonRemoteCard extends HTMLElement {
   setConfig(config) {
@@ -64,10 +99,6 @@ class SofabatonRemoteCard extends HTMLElement {
   // ---------- State helpers ----------
   _remoteState() {
     return this._hass?.states?.[this._config?.entity];
-  }
-
-  _hasOwn(obj, key) {
-    return Boolean(obj && Object.prototype.hasOwnProperty.call(obj, key));
   }
 
   // ---------- Integration detection (x1s vs hub) ----------
@@ -841,6 +872,8 @@ class SofabatonRemoteCard extends HTMLElement {
 
   disconnectedCallback() {
     this._removeOutsideCloseHandler();
+    clearTimeout(this._commandPulseTimeout);
+    clearTimeout(this._activityLoadTimeout);
   }
 
   _toggleDrawer(type) {
@@ -1051,92 +1084,73 @@ class SofabatonRemoteCard extends HTMLElement {
     return { wrap, btn };
   }
 
-    _mkDrawerButton(item, type) {
-
+  _mkDrawerButton(item, type) {
     const label = item.name || "Unknown";
     const command_id = Number(item?.command_id ?? item?.id);
     const fallbackDeviceId = this._currentActivityId();
-    const device_id = Number(
-      item?.device_id ?? item?.device ?? fallbackDeviceId
-    );
-    const btn = document.createElement("hui-button-card");
-    btn.hass = this._hass;    btn.classList.add('drawer-btn');
+    const device_id = Number(item?.device_id ?? item?.device ?? fallbackDeviceId);
 
-    btn.setConfig({
-      type: "button",
-      show_name: true,
-      show_icon: !!item.icon,
-      name: label,
-      icon: item.icon,
-      
-      card_mod: {
-        style: `ha-card { height: 50px !important; font-size: 13px !important; }`
-      },
-      tap_action: {
-        action: "none",
-      },
-      hold_action: { action: "none" },
-      double_tap_action: { action: "none" },
-    });
-    // Manually handle tap/click (mobile browsers can suppress click on hui-button-card)
-    this._attachPrimaryAction(btn, () => {
+    const card = document.createElement('ha-card');
+    card.classList.add('drawer-btn');
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+
+    const inner = document.createElement('div');
+    inner.className = 'drawer-btn__inner drawer-btn__inner--stack';
+
+    if (item?.icon) {
+      const ic = document.createElement('ha-icon');
+      ic.className = 'drawer-btn__icon';
+      ic.setAttribute('icon', String(item.icon));
+      inner.appendChild(ic);
+    }
+
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = label;
+    inner.appendChild(name);
+
+    card.appendChild(inner);
+
+    // Manually handle tap/click
+    this._attachPrimaryAction(card, () => {
       if (!Number.isFinite(command_id) || !Number.isFinite(device_id)) return;
       this._triggerCommandPulse();
       this._sendDrawerItem(type, command_id, device_id, item);
     });
 
-return btn;
+    return card;
   }
 
   _mkCustomFavoriteButton(fav) {
     const label = String(fav?.name ?? 'Favorite');
     const icon = fav?.icon ? String(fav.icon) : null;
 
-    const btn = document.createElement('hui-button-card');
-    btn.hass = this._hass;
-    btn.classList.add('drawer-btn', 'drawer-btn--custom');
+    const card = document.createElement('ha-card');
+    card.classList.add('drawer-btn', 'drawer-btn--custom');
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
     // Span across both columns
-    btn.style.gridColumn = '1 / -1';
+    card.style.gridColumn = '1 / -1';
 
-    btn.setConfig({
-      type: 'button',
-      show_name: true,
-      show_icon: !!icon,
-      name: label,
-      icon: icon || undefined,
-      card_mod: {
-        style: `
-          ha-card {
-            height: 50px !important;
-            font-size: 13px !important;
-            display: flex !important;
-            flex-direction: row !important;
-            align-items: center !important;
-            justify-content: flex-start !important;
-            padding: 0 12px !important;
-            box-sizing: border-box;
-            gap: 10px;
-          }
-          ha-card ha-state-icon,
-          ha-card ha-icon {
-            --mdc-icon-size: 18px;
-            width: 15% !important;
-          }
-          ha-card .name {
-            margin: 0 !important;
-            text-align: left !important;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-        `,
-      },
-      tap_action: { action: 'none' },
-      hold_action: { action: 'none' },
-      double_tap_action: { action: 'none' },
-    });
+    const inner = document.createElement('div');
+    inner.className = 'drawer-btn__inner drawer-btn__inner--row';
 
-    this._attachPrimaryAction(btn, () => {
+    if (icon) {
+      const ic = document.createElement('ha-icon');
+      ic.className = 'drawer-btn__icon';
+      ic.setAttribute('icon', icon);
+      inner.appendChild(ic);
+    }
+
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = label;
+    inner.appendChild(name);
+
+    card.appendChild(inner);
+
+    this._attachPrimaryAction(card, () => {
       // If the user configured an arbitrary Lovelace Action, run it
       if (fav?.action) {
         this._runLovelaceAction(fav.action, fav);
@@ -1151,7 +1165,7 @@ return btn;
       this._sendCustomFavoriteCommand(cmd, dev);
     });
 
-    return btn;
+    return card;
   }
 
   async _sendCustomFavoriteCommand(commandId, deviceId) {
@@ -1203,6 +1217,7 @@ return btn;
       :host {
         --sb-group-radius: var(--ha-card-border-radius, 18px);
         --remote-max-width: 360px;
+        --sb-overlay-rgb: var(--rgb-primary-text-color, 0, 0, 0);
 
         display: block;
       }
@@ -1288,6 +1303,8 @@ return btn;
         cursor: pointer;
         padding: 4px 0;
         display: block !important;
+        position: relative;
+        overflow: hidden;
         transition: background 0.2s ease;
         --ha-card-box-shadow: none;
       }
@@ -1314,6 +1331,8 @@ return btn;
       /* Ensure taps go to the wrapper that has the click handler */
       .macroFavoritesButton > hui-button-card {
         pointer-events: none;
+        position: relative;
+        z-index: 1;
         -webkit-tap-highlight-color: transparent;
       }
 
@@ -1362,6 +1381,89 @@ return btn;
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 8px;
+      }
+
+      /* Drawer buttons (Macros/Favorites) */
+      .drawer-btn {
+        height: 50px !important;
+        font-size: 13px !important;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* Hover/press overlay (restores hui-button-card style feedback without card_mod) */
+      .macroFavoritesButton::before,
+      .drawer-btn::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: rgba(var(--sb-overlay-rgb), 0.06);
+        opacity: 0;
+        transition: opacity 0.15s ease, background 0.15s ease;
+        pointer-events: none;
+      }
+
+      .macroFavoritesButton:hover::before,
+      .drawer-btn:hover::before {
+        opacity: 1;
+      }
+
+      .macroFavoritesButton:active::before,
+      .drawer-btn:active::before {
+        opacity: 1;
+        background: rgba(var(--sb-overlay-rgb), 0.14);
+      }
+
+      .macroFavoritesButton:focus-visible,
+      .drawer-btn:focus-visible {
+        outline: 2px solid rgba(var(--rgb-primary-color), 0.55);
+        outline-offset: 2px;
+      }
+
+      .drawer-btn__inner {
+        height: 100%;
+        width: 100%;
+        box-sizing: border-box;
+        position: relative;
+        z-index: 1;
+      }
+
+      /* Matches default hui-button-card "button" look: centered icon + name */
+      .drawer-btn__inner--stack {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        gap: 2px;
+        padding: 4px;
+      }
+
+      /* Custom favorites: row layout with ellipsis */
+      .drawer-btn__inner--row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 0 12px;
+        gap: 10px;
+      }
+
+      .drawer-btn--custom .drawer-btn__icon {
+        --mdc-icon-size: 18px;
+        width: 15% !important;
+        flex: 0 0 15%;
+      }
+
+      .drawer-btn--custom .name {
+        margin: 0 !important;
+        text-align: left !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
 			.mf-container:has(.mf-overlay.open) .macroFavorites {
@@ -1465,7 +1567,6 @@ return btn;
       .abcGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 
       /* Key wrapper for disabled styling */
-      .key { width: 100%; position: relative; }
       .key.disabled,
       .macroFavoritesButton.disabled {
         opacity: 0.35;
@@ -1510,7 +1611,6 @@ return btn;
 
 /* Color keys: overlay a pill/strip on top of the hui-button-card */
 
-      .key--color hui-button-card { height: 18px; display:block; }
       .key--color .colorBar {
         position: absolute;
         inset: 0;
@@ -1548,7 +1648,7 @@ return btn;
       if (value != null) {
         Promise.resolve(this._setActivity(value)).catch((err) => {
           // eslint-disable-next-line no-console
-          console.error("[sofabaton-hello-card] Failed to set activity:", err);
+          console.error("[sofabaton-virtual-remote] Failed to set activity:", err);
         });
       }
     };
@@ -2034,7 +2134,7 @@ return btn;
 }
 
 // Editor
-class SofabatonHelloCardEditor extends HTMLElement {
+class SofabatonRemoteCardEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (this._form) this._form.hass = hass;
@@ -2190,7 +2290,7 @@ class SofabatonHelloCardEditor extends HTMLElement {
   }
 }
 
-if (!customElements.get(EDITOR)) customElements.define(EDITOR, SofabatonHelloCardEditor);
+if (!customElements.get(EDITOR)) customElements.define(EDITOR, SofabatonRemoteCardEditor);
 if (!customElements.get(TYPE)) customElements.define(TYPE, SofabatonRemoteCard);
 
 window.customCards = window.customCards || [];
