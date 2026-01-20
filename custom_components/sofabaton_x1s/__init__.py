@@ -79,7 +79,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             )
             
             # 4. Inject JS URLs
-            version_suffix = _get_integration_version()
+            version_suffix = await _async_get_integration_version(hass)
             js_version = f"?v={version_suffix}" if version_suffix else ""
             js_files = [f"card-loader.js{js_version}"]
             for js_file in js_files:
@@ -94,10 +94,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     return True
 
 
-def _get_integration_version() -> str:
+async def _async_get_integration_version(hass: HomeAssistant) -> str:
     manifest_path = Path(__file__).parent / "manifest.json"
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest_contents = await hass.async_add_executor_job(
+            manifest_path.read_text, "utf-8"
+        )
+        manifest = json.loads(manifest_contents)
     except (FileNotFoundError, json.JSONDecodeError) as err:
         _LOGGER.warning("[%s] Failed to read manifest version: %s", DOMAIN, err)
         return ""
