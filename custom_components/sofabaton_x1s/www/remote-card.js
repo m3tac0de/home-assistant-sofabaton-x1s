@@ -534,8 +534,8 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   // ---------- Services ----------
-  async _callService(domain, service, data) {
-    await this._hass.callService(domain, service, data);
+  async _callService(domain, service, data, target = undefined) {
+    await this._hass.callService(domain, service, data, target);
   }
 
   _fireEvent(type, detail = {}) {
@@ -558,11 +558,9 @@ class SofabatonRemoteCard extends HTMLElement {
       const [domain, service] = svc.split('.', 2);
 
       const serviceData = { ...(actionConfig.service_data || actionConfig.data || {}) };
-      const target = actionConfig.target;
-      // Home Assistant allows passing `target` inside the data payload.
-      const payload = target && typeof target === 'object' ? { ...serviceData, target } : serviceData;
+      const target = (actionConfig.target && typeof actionConfig.target === 'object') ? actionConfig.target : undefined;
 
-      await this._callService(domain, service, payload);
+      await this._callService(domain, service, serviceData, target);
       return;
     }
 
@@ -638,6 +636,7 @@ class SofabatonRemoteCard extends HTMLElement {
     this._pendingActivity = selected;
     this._pendingActivityAt = Date.now();
     this._startActivityLoading(selected);
+    this._update();
 
     // Hub path: start/stop activities via send_command
     if (this._isHubIntegration()) {
@@ -2031,18 +2030,20 @@ class SofabatonRemoteCard extends HTMLElement {
     // ABC: must be enabled in config AND X2
     this._setVisible(this._abcEl, this._config.show_abc && isX2);
 
+    const disableAllButtons = isUnavailable || isPoweredOff || this._activityLoadActive;
+
     if (this._macrosButton) {
       this._macrosButton.hass = this._hass;
       
       const macrosEnabled = macros.length > 0; 
-      this._macrosButtonWrap.classList.toggle("disabled", isUnavailable || !macrosEnabled);
+      this._macrosButtonWrap.classList.toggle("disabled", disableAllButtons || !macrosEnabled);
     }
 
     if (this._favoritesButton) {
       this._favoritesButton.hass = this._hass;
       
       const favoritesEnabled = (favorites.length + customFavorites.length) > 0;
-      this._favoritesButtonWrap.classList.toggle("disabled", isUnavailable || !favoritesEnabled);
+      this._favoritesButtonWrap.classList.toggle("disabled", disableAllButtons || !favoritesEnabled);
     }
 
 		// POPULATE MACROS (Only if data changed)
@@ -2092,7 +2093,7 @@ class SofabatonRemoteCard extends HTMLElement {
       }
 
       // Disable all buttons if Powered Off
-      const enabled = !isUnavailable && !isPoweredOff && this._isEnabled(k.id);
+      const enabled = !disableAllButtons && this._isEnabled(k.id);
       k.wrap.classList.toggle("disabled", !enabled);
     }
 
