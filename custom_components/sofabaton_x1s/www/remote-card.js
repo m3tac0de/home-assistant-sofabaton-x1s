@@ -869,6 +869,10 @@ class SofabatonRemoteCard extends HTMLElement {
     this._onOutsidePointerDown = null;
   }
 
+  connectedCallback() {
+    this._installOutsideCloseHandler();
+  }
+
   disconnectedCallback() {
     this._removeOutsideCloseHandler();
     clearTimeout(this._commandPulseTimeout);
@@ -1392,7 +1396,7 @@ class SofabatonRemoteCard extends HTMLElement {
         -webkit-tap-highlight-color: transparent;
       }
 
-      /* Hover/press overlay (restores hui-button-card style feedback without card_mod) */
+      /* Hover/press overlay  */
       .macroFavoritesButton::before,
       .drawer-btn::before {
         content: "";
