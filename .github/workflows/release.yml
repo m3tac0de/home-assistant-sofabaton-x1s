@@ -1,0 +1,23 @@
+name: Release Asset
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Zip integration directory
+        # This zips the custom_components folder specifically
+        run: zip -r sofabaton_x1s.zip custom_components/
+
+      - name: Upload zip to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sofabaton_x1s.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
