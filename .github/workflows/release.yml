@@ -13,9 +13,8 @@ jobs:
 
       - name: Zip integration directory
         # This zips the custom_components folder specifically
-        run: |
-          cd custom_components/sofabaton_x1s
-          zip -r ../../sofabaton_x1s.zip .
+        working-directory: customer_components/sofabaton_x1s
+        run: zip -r ../../sofabaton_x1s.zip .
 
       - name: Upload zip to release
         uses: softprops/action-gh-release@v2
