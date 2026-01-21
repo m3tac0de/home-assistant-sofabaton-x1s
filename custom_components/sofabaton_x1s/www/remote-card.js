@@ -3,6 +3,17 @@ const CARD_VERSION = "0.0.4";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const TYPE = "sofabaton-virtual-remote";
 const EDITOR = "sofabaton-virtual-remote-editor";
+const DEFAULT_GROUP_ORDER = [
+  "activity",
+  "macro_favorites",
+  "dpad",
+  "nav",
+  "mid",
+  "media",
+  "colors",
+  "abc",
+];
+const DEFAULT_GROUP_ORDER_SET = new Set(DEFAULT_GROUP_ORDER);
 
 // Numeric IDs (for enabled_buttons)
 const ID = {
@@ -77,10 +88,12 @@ class SofabatonRemoteCard extends HTMLElement {
       show_favorites_button: null,
       custom_favorites: [],
       max_width: 360,
+      group_order: DEFAULT_GROUP_ORDER.slice(),
       ...config,
     };
 
     this._activeDrawer = null;
+    this._activityMenuOpen = false;
 
     this._initPromise = this._initPromise || this._ensureHaElements();
     this._initPromise.then(() => {
@@ -210,6 +223,39 @@ class SofabatonRemoteCard extends HTMLElement {
       return `${n}|${ic}|${cmd}|${dev}|${act}`;
     });
     return `${parts.length}:${parts.join(';;')}`;
+  }
+
+  _groupOrderList() {
+    const configured = Array.isArray(this._config?.group_order)
+      ? this._config.group_order
+      : DEFAULT_GROUP_ORDER;
+    const order = [];
+    const seen = new Set();
+    for (const entry of configured) {
+      const key = String(entry ?? "").trim();
+      if (!DEFAULT_GROUP_ORDER_SET.has(key) || seen.has(key)) continue;
+      order.push(key);
+      seen.add(key);
+    }
+    for (const key of DEFAULT_GROUP_ORDER) {
+      if (!seen.has(key)) order.push(key);
+    }
+    return order;
+  }
+
+  _applyGroupOrder() {
+    if (!this._wrap || !this._groupEls) return;
+    const order = this._groupOrderList();
+    const sig = order.join("|");
+    if (sig === this._groupOrderSig) return;
+    this._groupOrderSig = sig;
+    for (const key of order) {
+      const el = this._groupEls[key];
+      if (el) this._wrap.appendChild(el);
+    }
+    if (this._warn) {
+      this._wrap.appendChild(this._warn);
+    }
   }
 
 
@@ -835,27 +881,40 @@ class SofabatonRemoteCard extends HTMLElement {
     this._outsideCloseInstalled = true;
 
     this._onOutsidePointerDown = (e) => {
-      // Nothing open -> nothing to do
-      if (!this._activeDrawer) return;
-
       // Use composedPath so it works through shadow DOM + HA components
       const path = (typeof e.composedPath === "function") ? e.composedPath() : [];
-      
 
-      const clickedInOverlay =
-        path.includes(this._macrosOverlayEl) || path.includes(this._favoritesOverlayEl);
+      // ---- Drawer close (macros/favorites) ----
+      if (this._activeDrawer) {
+        const clickedInOverlay =
+          path.includes(this._macrosOverlayEl) || path.includes(this._favoritesOverlayEl);
 
-      // Also exempt the toggle row/buttons so clicking Macros/Favorites still toggles normally
-      const clickedInToggleRow =
-        path.includes(this._macroFavoritesRow) ||
-        path.includes(this._macrosButtonWrap) ||
-        path.includes(this._favoritesButtonWrap);
+        // Also exempt the toggle row/buttons so clicking Macros/Favorites still toggles normally
+        const clickedInToggleRow =
+          path.includes(this._macroFavoritesRow) ||
+          path.includes(this._macrosButtonWrap) ||
+          path.includes(this._favoritesButtonWrap);
 
-      if (clickedInOverlay || clickedInToggleRow ) return;
+        if (!(clickedInOverlay || clickedInToggleRow)) {
+          this._activeDrawer = null;
+    this._activityMenuOpen = false;
+          this._applyDrawerVisuals();
+          this._syncLayering();
+        }
+      }
 
-      // Clicked "somewhere else" -> close
-      this._activeDrawer = null;
-      this._applyDrawerVisuals();
+      // ---- Activity menu layering ----
+      // Fallback: if we think the select menu is open and the user taps elsewhere, drop the flag.
+      // (Helps on frontend versions where `closed` isn't observed.)
+      if (this._activityMenuOpen) {
+        const clickedInActivity =
+          path.includes(this._activityRow) || path.includes(this._activitySelect);
+
+        if (!clickedInActivity) {
+          this._activityMenuOpen = false;
+          this._syncLayering();
+        }
+      }
     };
 
     // Capture phase so we catch taps even if inner components stop propagation
@@ -881,7 +940,8 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _toggleDrawer(type) {
     this._activeDrawer = (this._activeDrawer === type) ? null : type;
-      this._applyDrawerVisuals();
+    this._applyDrawerVisuals();
+    this._syncLayering();
   }
 
 	_applyDrawerVisuals() {
@@ -901,6 +961,32 @@ class SofabatonRemoteCard extends HTMLElement {
     this._macroFavoritesRow.style.borderBottomRightRadius = anyOpen ? "0" : "var(--sb-group-radius)";
     this._macroFavoritesRow.style.transition = "border-radius 0.2s ease";
   }
+
+  _syncLayering() {
+    if (!this._activityRow || !this._mfContainer) return;
+
+    const drawerOpen = Boolean(this._activeDrawer);
+    const menuOpen = Boolean(this._activityMenuOpen);
+
+    // Priority: if the activity dropdown is open, keep it on top.
+    if (menuOpen) {
+      this._activityRow.style.zIndex = "10";
+      this._mfContainer.style.zIndex = drawerOpen ? "9" : "2";
+      return;
+    }
+
+    // If a drawer is open, raise the macro/favorites container above the activity row.
+    if (drawerOpen) {
+      this._activityRow.style.zIndex = "2";
+      this._mfContainer.style.zIndex = "10";
+      return;
+    }
+
+    // Default layering (works for the default layout)
+    this._activityRow.style.zIndex = "3";
+    this._mfContainer.style.zIndex = "2";
+  }
+
 
   _attachPrimaryAction(els, fn) {
     const targets = Array.isArray(els) ? els.filter(Boolean) : [els].filter(Boolean);
@@ -1637,6 +1723,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
     const wrap = document.createElement("div");
     wrap.className = "wrap";
+    this._wrap = wrap;
 
     // Activity selector (full width)
     this._activityRow = document.createElement("div");
@@ -1660,12 +1747,21 @@ class SofabatonRemoteCard extends HTMLElement {
     this._activitySelect.addEventListener("selected", handleActivitySelect);
     this._activitySelect.addEventListener("change", handleActivitySelect);
 
+
+    // Track whether the activity dropdown menu is open so we can adjust z-index layering.
+    // mwc-select emits `opened`/`closed` events from its surface. 
+    const onMenuOpened = () => { this._activityMenuOpen = true; this._syncLayering(); };
+    const onMenuClosed = () => { this._activityMenuOpen = false; this._syncLayering(); };
+    this._activitySelect.addEventListener("opened", onMenuOpened, true);
+    this._activitySelect.addEventListener("closed", onMenuClosed, true);
+    // Fallbacks: selection changes or blur should also drop the "open" flag.
+    this._activitySelect.addEventListener("change", onMenuClosed, true);
+    this._activitySelect.addEventListener("blur", onMenuClosed, true);
+
     this._activityRow.appendChild(this._activitySelect);
     this._loadIndicator = document.createElement("div");
     this._loadIndicator.className = "loadIndicator";
     this._activityRow.appendChild(this._loadIndicator);
-
-    wrap.appendChild(this._activityRow);
 
     // Macro/Favorite quick actions
         const mfContainer = document.createElement("div");
@@ -1715,14 +1811,8 @@ class SofabatonRemoteCard extends HTMLElement {
     this._favoritesOverlayGrid.className = "mf-grid";
     this._favoritesOverlayEl.appendChild(this._favoritesOverlayGrid);
     mfContainer.appendChild(this._favoritesOverlayEl);
-    
-    wrap.appendChild(mfContainer);
 
     this._installOutsideCloseHandler();
-
-    // Remote body
-    const remote = document.createElement("div");
-    remote.className = "remote";
 
     // D-pad
     this._dpadEl = document.createElement("div");
@@ -1732,7 +1822,6 @@ class SofabatonRemoteCard extends HTMLElement {
     this._dpadEl.appendChild(this._mkHuiButton({ key: "ok", label: "OK", icon: "", id: ID.OK, cmd: ID.OK, extraClass: "area-ok okKey", size: "big" }));
     this._dpadEl.appendChild(this._mkHuiButton({ key: "right", label: "", icon: "mdi:chevron-right", id: ID.RIGHT, cmd: ID.RIGHT, extraClass: "area-right" }));
     this._dpadEl.appendChild(this._mkHuiButton({ key: "down", label: "", icon: "mdi:chevron-down", id: ID.DOWN, cmd: ID.DOWN, extraClass: "area-down" }));
-    remote.appendChild(this._dpadEl);
 
     // Back / Home / Menu
     this._navRowEl = document.createElement("div");
@@ -1740,7 +1829,6 @@ class SofabatonRemoteCard extends HTMLElement {
     this._navRowEl.appendChild(this._mkHuiButton({ key: "back", label: "", icon: "mdi:arrow-u-left-top", id: ID.BACK, cmd: ID.BACK }));
     this._navRowEl.appendChild(this._mkHuiButton({ key: "home", label: "", icon: "mdi:home", id: ID.HOME, cmd: ID.HOME }));
     this._navRowEl.appendChild(this._mkHuiButton({ key: "menu", label: "", icon: "mdi:menu", id: ID.MENU, cmd: ID.MENU }));
-    remote.appendChild(this._navRowEl);
 
     // Mid section: VOL | Guide+Mute | CH
     this._midEl = document.createElement("div");
@@ -1765,7 +1853,6 @@ class SofabatonRemoteCard extends HTMLElement {
     chCol.appendChild(this._mkHuiButton({ key: "chdn", label: "", icon: "mdi:chevron-down", id: ID.CH_DOWN, cmd: ID.CH_DOWN }));
     this._midEl.appendChild(chCol);
 
-    remote.appendChild(this._midEl);
 
     // Media cluster with X2 layout:
     this._mediaEl = document.createElement("div");
@@ -1779,7 +1866,6 @@ class SofabatonRemoteCard extends HTMLElement {
     this._mediaEl.appendChild(this._mkHuiButton({ key: "pause", label: "", icon: "mdi:pause", id: ID.PAUSE, cmd: ID.PAUSE, extraClass: "area-pause" }));
     this._mediaEl.appendChild(this._mkHuiButton({ key: "exit", label: "Exit", icon: "", id: ID.EXIT, cmd: ID.EXIT, extraClass: "area-exit" }));
 
-    remote.appendChild(this._mediaEl);
 
     // Colors row (colored bars, no text)
     this._colorsEl = document.createElement("div");
@@ -1791,7 +1877,6 @@ class SofabatonRemoteCard extends HTMLElement {
     colorsGrid.appendChild(this._mkColorKey({ key: "yellow", id: ID.YELLOW, cmd: ID.YELLOW, color: "#fbc02d" }));
     colorsGrid.appendChild(this._mkColorKey({ key: "blue", id: ID.BLUE, cmd: ID.BLUE, color: "#1976d2" }));
     this._colorsEl.appendChild(colorsGrid);
-    remote.appendChild(this._colorsEl);
 
     // A/B/C (X2)
     this._abcEl = document.createElement("div");
@@ -1802,15 +1887,23 @@ class SofabatonRemoteCard extends HTMLElement {
     abcGrid.appendChild(this._mkHuiButton({ key: "b", label: "B", icon: "", id: ID.B, cmd: ID.B, size: "small" }));
     abcGrid.appendChild(this._mkHuiButton({ key: "c", label: "C", icon: "", id: ID.C, cmd: ID.C, size: "small" }));
     this._abcEl.appendChild(abcGrid);
-    remote.appendChild(this._abcEl);
-
-    wrap.appendChild(remote);
 
     // Warning
     this._warn = document.createElement("div");
     this._warn.className = "warn";
     this._warn.style.display = "none";
-    wrap.appendChild(this._warn);
+    this._groupEls = {
+      activity: this._activityRow,
+      macro_favorites: mfContainer,
+      dpad: this._dpadEl,
+      nav: this._navRowEl,
+      mid: this._midEl,
+      media: this._mediaEl,
+      colors: this._colorsEl,
+      abc: this._abcEl,
+    };
+    this._applyGroupOrder();
+    this._syncLayering();
 
     card.appendChild(style);
     card.appendChild(wrap);
@@ -1823,6 +1916,7 @@ class SofabatonRemoteCard extends HTMLElement {
     // Apply per-card theme (and background) first
     this._applyLocalTheme(this._config?.theme);
     this._updateGroupRadius();
+    this._applyGroupOrder();
 
     // Apply per-card max width (centered via CSS)
     const mw = this._config?.max_width;
@@ -2021,6 +2115,7 @@ class SofabatonRemoteCard extends HTMLElement {
     // If macro/favorites are hidden, or the active drawer tab is hidden, close any open drawer
     if (!showMF && this._activeDrawer) {
       this._activeDrawer = null;
+    this._activityMenuOpen = false;
     }
     if (this._activeDrawer === 'macros' && !showMacrosBtn) this._activeDrawer = null;
     if (this._activeDrawer === 'favorites' && !showFavoritesBtn) this._activeDrawer = null;
@@ -2134,6 +2229,7 @@ class SofabatonRemoteCard extends HTMLElement {
       show_favorites_button: null,
       custom_favorites: [],
       max_width: 360,
+      group_order: DEFAULT_GROUP_ORDER.slice(),
     };
   }
 }
@@ -2175,13 +2271,16 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           show_favorites_button: "Favorites Button",
           custom_favorites: "Custom Favorites (advanced)",
           show_macro_favorites: "Macros/Favorites Buttons (deprecated)",
-          max_width: "Maximum Card Width (px)"};
+          max_width: "Maximum Card Width (px)",
+          group_order: "Group Order"};
         return labels[schema.name] || schema.name;
       };
 
       form.addEventListener("value-changed", (ev) => {
         ev.stopPropagation();
-        const newValue = { ...ev.detail.value };
+        // Merge form changes into the existing config so custom UI fields (like group order)
+        // aren't lost when ha-form emits a partial value set.
+        const newValue = { ...this._config, ...ev.detail.value };
         
         // 1. If toggle is off, wipe the color data
         if (newValue.use_background_override === false) {
@@ -2200,6 +2299,45 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       wrapper.appendChild(form);
       this.appendChild(wrapper);
       this._form = form;
+
+      // Group order (visual) editor container + styles (created once)
+      if (!this._layoutWrap) {
+        const layoutWrap = document.createElement("div");
+        layoutWrap.className = "sb-layout-wrap";
+        layoutWrap.style.padding = "0 0 12px 0";
+        this.appendChild(layoutWrap);
+        this._layoutWrap = layoutWrap;
+      }
+
+      if (!this._editorStyle) {
+        const st = document.createElement("style");
+        st.textContent = `
+          .sb-exp { border: 1px solid var(--divider-color); border-radius: 12px; overflow: hidden; }
+          .sb-exp-hdr { width: 100%; display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px; background: var(--ha-card-background, transparent); border: 0; cursor: pointer; }
+          .sb-exp-hdr-left { display:flex; align-items:center; gap: 10px; min-width: 0; }
+          .sb-exp-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .sb-exp-body { padding: 0 12px 12px 12px; }
+          .sb-exp-collapsed .sb-exp-body { display: none; }
+                    
+          .sb-layout-title { font-weight: 600; margin: 10px 0 6px; }
+          .sb-layout-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px; }
+          .sb-layout-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+          .sb-layout-row + .sb-layout-row { border-top: 1px solid var(--divider-color); }
+          .sb-layout-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .sb-layout-actions { display: inline-flex; align-items:center; gap: 10px; }
+          .sb-icon-btn { width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--divider-color); background: var(--ha-card-background, transparent); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+          .sb-icon-btn[disabled] { opacity: 0.4; cursor: default; }
+          .sb-layout-footer { margin-top: 10px; display:flex; justify-content:flex-end; }
+          .sb-reset-btn { border: 1px solid var(--divider-color); border-radius: 10px; padding: 6px 10px; background: transparent; cursor:pointer; }
+          .sb-switch { display:flex; align-items:center; }
+          .sb-mf-wrap { display:flex; flex-direction:row; align-items:center; gap:14px; }
+          .sb-mf-item { display:flex; align-items:center; gap:8px; }
+          .sb-mf-text { font-size: 13px; opacity: 0.9; }
+          .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; }
+        `;
+        this.appendChild(st);
+        this._editorStyle = st;
+      }
     }
 
     // Determine if we should show the color picker
@@ -2222,29 +2360,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           ...(showColorPicker ? [{ name: "background_override", selector: { color_rgb: {} } }] : []),
         ]
       },
-      {
-        type: "expandable",
-        title: "Button Visibility",
-        icon: "mdi:eye-settings",
-        schema: [
-          {
-            type: "grid",
-            name: "",
-            schema: [
-              { name: "show_activity", selector: { boolean: {} } },
-              { name: "show_dpad", selector: { boolean: {} } },
-              { name: "show_nav", selector: { boolean: {} } },
-              { name: "show_mid", selector: { boolean: {} } },
-              { name: "show_media", selector: { boolean: {} } },
-              { name: "show_colors", selector: { boolean: {} } },
-              { name: "show_abc", selector: { boolean: {} } },
-              { name: "show_macros_button", selector: { boolean: {} } },
-              { name: "show_favorites_button", selector: { boolean: {} } },
-            ]
-          }
-        ]
-      }
-
       ,{
         type: "expandable",
         title: "Custom Favorites",
@@ -2265,20 +2380,345 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       // Maintain the toggle state correctly
       use_background_override: this._config.use_background_override ?? !!this._config.background_override,
       background_override: this._config.background_override ?? [255, 255, 255],
-      show_activity: this._config.show_activity ?? true,
-      show_dpad: this._config.show_dpad ?? true,
-      show_nav: this._config.show_nav ?? true,
-      show_mid: this._config.show_mid ?? true,
-      show_media: this._config.show_media ?? true,
-      show_colors: this._config.show_colors ?? true,
-      show_abc: this._config.show_abc ?? true,
-      show_macros_button: this._config.show_macros_button ?? (this._config.show_macro_favorites ?? true),
-      show_favorites_button: this._config.show_favorites_button ?? (this._config.show_macro_favorites ?? true),
       custom_favorites: this._config.custom_favorites ?? [],
-      show_macro_favorites: this._config.show_macro_favorites ?? true,
       max_width: this._config.max_width ?? 360,
+      group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
     };
+
+    this._renderGroupOrderEditor();
   }
+
+  _groupOrderListForEditor() {
+    const configured = Array.isArray(this._config?.group_order)
+      ? this._config.group_order
+      : DEFAULT_GROUP_ORDER;
+    const order = [];
+    const seen = new Set();
+    for (const entry of configured) {
+      const key = String(entry ?? "").trim();
+      if (!DEFAULT_GROUP_ORDER_SET.has(key) || seen.has(key)) continue;
+      order.push(key);
+      seen.add(key);
+    }
+    for (const key of DEFAULT_GROUP_ORDER) {
+      if (!seen.has(key)) order.push(key);
+    }
+    return order;
+  }
+
+  _groupLabel(key) {
+    const labels = {
+      activity: "Activity Selector",
+      macro_favorites: "Macros/Favorites",
+      dpad: "Direction Pad",
+      nav: "Back/Home/Menu",
+      mid: "Volume/Channel",
+      media: "Media Controls",
+      colors: "Color Buttons",
+      abc: "A/B/C (X2 only)",
+    };
+    return labels[key] || key;
+  }
+
+  _isGroupEnabled(key) {
+    const map = {
+      activity: "show_activity",
+      dpad: "show_dpad",
+      nav: "show_nav",
+      mid: "show_mid",
+      media: "show_media",
+      colors: "show_colors",
+      abc: "show_abc",
+    };
+    const prop = map[key];
+    if (!prop) return true;
+    return this._config?.[prop] ?? true;
+  }
+
+  _macroEnabled(cfg = this._config) {
+    if (typeof cfg?.show_macros_button === "boolean") return cfg.show_macros_button;
+    if (typeof cfg?.show_macro_favorites === "boolean") return cfg.show_macro_favorites;
+    return true;
+  }
+
+  _favoritesEnabled(cfg = this._config) {
+    if (typeof cfg?.show_favorites_button === "boolean") return cfg.show_favorites_button;
+    if (typeof cfg?.show_macro_favorites === "boolean") return cfg.show_macro_favorites;
+    return true;
+  }
+
+  _syncFormData(patch) {
+    if (!this._form) return;
+    this._form.data = { ...(this._form.data || {}), ...(patch || {}) };
+  }
+
+  _setMacroEnabled(enabled) {
+    const next = { ...this._config };
+    next.show_macros_button = !!enabled;
+
+    const favs = this._favoritesEnabled(next);
+    // Legacy combined toggle can only represent "both on" reliably
+    next.show_macro_favorites = !!enabled && !!favs;
+
+    this._config = next;
+    this._syncFormData(next);
+    this._fireChanged();
+    this._renderGroupOrderEditor();
+  }
+
+  _setFavoritesEnabled(enabled) {
+    const next = { ...this._config };
+    next.show_favorites_button = !!enabled;
+
+    const macros = this._macroEnabled(next);
+    next.show_macro_favorites = !!enabled && !!macros;
+
+    this._config = next;
+    this._syncFormData(next);
+    this._fireChanged();
+    this._renderGroupOrderEditor();
+  }
+
+  _setGroupEnabled(key, enabled) {
+    const next = { ...this._config };
+    const map = {
+      activity: "show_activity",
+      dpad: "show_dpad",
+      nav: "show_nav",
+      mid: "show_mid",
+      media: "show_media",
+      colors: "show_colors",
+      abc: "show_abc",
+    };
+    const prop = map[key];
+    if (prop) next[prop] = !!enabled;
+
+    this._config = next;
+    this._syncFormData(next);
+    this._fireChanged();
+  }
+
+  _renderGroupOrderEditor() {
+    if (!this._layoutWrap) return;
+
+    if (typeof this._layoutExpanded !== "boolean") this._layoutExpanded = true;
+
+    const order = this._groupOrderListForEditor();
+
+    this._layoutWrap.innerHTML = "";
+
+    const exp = document.createElement("div");
+    exp.className = `sb-exp ${this._layoutExpanded ? "" : "sb-exp-collapsed"}`.trim();
+
+    const hdr = document.createElement("button");
+    hdr.type = "button";
+    hdr.className = "sb-exp-hdr";
+    hdr.setAttribute("aria-expanded", String(!!this._layoutExpanded));
+    hdr.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._layoutExpanded = !this._layoutExpanded;
+      this._renderGroupOrderEditor();
+    });
+
+    const hdrLeft = document.createElement("div");
+    hdrLeft.className = "sb-exp-hdr-left";
+    const hdrIcon = document.createElement("ha-icon");
+    hdrIcon.setAttribute("icon", "mdi:sort");
+    const hdrTitle = document.createElement("div");
+    hdrTitle.className = "sb-exp-title";
+    hdrTitle.textContent = "Layout Options";
+    hdrLeft.appendChild(hdrIcon);
+    hdrLeft.appendChild(hdrTitle);
+
+    const chev = document.createElement("ha-icon");
+    chev.className = "sb-exp-chevron";
+    chev.setAttribute("icon", this._layoutExpanded ? "mdi:chevron-up" : "mdi:chevron-down");
+
+    hdr.appendChild(hdrLeft);
+    hdr.appendChild(chev);
+
+    const body = document.createElement("div");
+    body.className = "sb-exp-body";
+
+    const card = document.createElement("div");
+    card.className = "sb-layout-card";
+
+    order.forEach((key, i) => {
+      const row = document.createElement("div");
+      row.className = "sb-layout-row";
+
+      const label = document.createElement("div");
+      label.className = "sb-layout-label";
+      label.textContent = this._groupLabel(key);
+
+      const actions = document.createElement("div");
+      actions.className = "sb-layout-actions";
+
+      const mkIconBtn = (icon, aria, disabled, onClick) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "sb-icon-btn";
+        btn.disabled = !!disabled;
+        btn.setAttribute("aria-label", aria);
+        const ic = document.createElement("ha-icon");
+        ic.setAttribute("icon", icon);
+        btn.appendChild(ic);
+        btn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (btn.disabled) return;
+          onClick();
+        });
+        return btn;
+      };
+
+      const upBtn = mkIconBtn(
+        "mdi:chevron-up",
+        `Move ${this._groupLabel(key)} up`,
+        i === 0,
+        () => this._moveGroup(i, -1)
+      );
+      const downBtn = mkIconBtn(
+        "mdi:chevron-down",
+        `Move ${this._groupLabel(key)} down`,
+        i === order.length - 1,
+        () => this._moveGroup(i, +1)
+      );
+
+      const moveWrap = document.createElement("div");
+      moveWrap.className = "sb-move-wrap";
+      moveWrap.appendChild(upBtn);
+      moveWrap.appendChild(downBtn);
+
+      if (key === "macro_favorites") {
+        const mfWrap = document.createElement("div");
+        mfWrap.className = "sb-mf-wrap";
+
+        const makeItem = (text, checked, onSet) => {
+          const item = document.createElement("div");
+          item.className = "sb-mf-item";
+          const t = document.createElement("div");
+          t.className = "sb-mf-text";
+          t.textContent = text;
+          const sw = document.createElement("ha-switch");
+          sw.checked = !!checked;
+          sw.addEventListener("change", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            onSet(!!sw.checked);
+          });
+          item.appendChild(t);
+          item.appendChild(sw);
+          return item;
+        };
+
+        // Keep independent toggles, but one shared move control.
+        mfWrap.appendChild(makeItem("Macros", this._macroEnabled(), (val) => this._setMacroEnabled(val)));
+        mfWrap.appendChild(makeItem("Favorites", this._favoritesEnabled(), (val) => this._setFavoritesEnabled(val)));
+
+        actions.appendChild(mfWrap);
+        actions.appendChild(moveWrap);
+      } else {
+        const switchWrap = document.createElement("div");
+        switchWrap.className = "sb-switch";
+        const sw = document.createElement("ha-switch");
+        sw.checked = !!this._isGroupEnabled(key);
+        sw.addEventListener("change", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this._setGroupEnabled(key, !!sw.checked);
+        });
+        switchWrap.appendChild(sw);
+
+        actions.appendChild(switchWrap);
+        actions.appendChild(moveWrap);
+      }
+
+      row.appendChild(label);
+      row.appendChild(actions);
+      card.appendChild(row);
+    });
+
+    const footer = document.createElement("div");
+    footer.className = "sb-layout-footer";
+
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "sb-reset-btn";
+    reset.textContent = "Reset to default";
+    reset.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._resetGroupOrder();
+    });
+
+    footer.appendChild(reset);
+    card.appendChild(footer);
+
+    body.appendChild(card);
+
+    exp.appendChild(hdr);
+    exp.appendChild(body);
+
+    this._layoutWrap.appendChild(exp);
+  }
+
+  _moveGroup(index, delta) {
+    const order = this._groupOrderListForEditor();
+    const j = index + delta;
+    if (j < 0 || j >= order.length) return;
+
+    const next = order.slice();
+    const tmp = next[index];
+    next[index] = next[j];
+    next[j] = tmp;
+
+    this._config = { ...this._config, group_order: next };
+
+    // Keep form data in sync (even though group_order is no longer in the schema)
+    if (this._form) {
+      this._form.data = { ...(this._form.data || {}), group_order: next };
+    }
+
+    this._fireChanged();
+    this._renderGroupOrderEditor();
+  }
+
+
+  _resetGroupOrder() {
+    const next = DEFAULT_GROUP_ORDER.slice();
+
+    // Reset order AND turn all groups back on
+    const enabledDefaults = {
+      show_activity: true,
+      show_dpad: true,
+      show_nav: true,
+      show_mid: true,
+      show_media: true,
+      show_colors: true,
+      show_abc: true,
+      // Macro/Favorites: support both new and legacy flags
+      show_macros_button: true,
+      show_favorites_button: true,
+      show_macro_favorites: true,
+    };
+
+    this._config = { ...this._config, ...enabledDefaults, group_order: next };
+
+    if (this._form) {
+      this._form.data = {
+        ...(this._form.data || {}),
+        ...enabledDefaults,
+        group_order: next,
+      };
+    }
+
+    this._fireChanged();
+    this._renderGroupOrderEditor();
+  }
+
+
 
   _fireChanged() {
     // 3. CLEANUP: Strip out the helper toggle before saving to HASS YAML
