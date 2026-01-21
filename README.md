@@ -20,7 +20,6 @@ So essentially: this integration is a proxy service for the Sofabaton X1/X1S/X2 
 <img width="400" height="404" alt="image" src="https://github.com/user-attachments/assets/ab0db5df-1969-49ff-a1a0-88d52654709e" />
 <img width="400" alt="image" src="https://github.com/user-attachments/assets/2a8627cb-3c42-4a2d-bd22-2ad4108916e1" />
 
-
 ---
 
 ## Features
@@ -127,11 +126,11 @@ With the flag enabled, X2 hubs will show the normal discovery confirmation.
 ### Option 1 – HACS (recommended)
 
 1. Open **HACS → Integrations**.
-2. Search for **Sofabaton X1S** and download it (the listing name uses X1S but works for both X1 and X1S hubs).
+2. Search for **Sofabaton X1S** and download it (the listing name uses X1S but works for X1, X1S and X2 hubs).
 3. **Restart Home Assistant.**
 4. Go to **Settings → Devices & Services.**
 5. You should see **Sofabaton X1/X1S** discovered automatically. Click **Add/Configure**.
-6. Confirm the discovered hub or choose manual entry to provide its IP and port.
+6. Confirm the discovered hub or choose manual entry to provide its IP and hub version.
 
 If not discovered automatically: Click **Add Integration**, search for **Sofabaton X1S** (works for both hub models), and enter the IP/Port manually.
 
@@ -215,10 +214,13 @@ To instead add the card manually, do:
 type: custom:sofabaton-virtual-remote
 entity: remote.<hub>_remote
 ```
-But switch into the Visual Editor, because all configuration is explained there.
 
-<img width="400" height="313" alt="image" src="https://github.com/user-attachments/assets/18e29810-53ae-44a5-ac24-f37b819c6c79" />
-<img width="400" height="339" alt="image" src="https://github.com/user-attachments/assets/cb066294-5294-4fbf-a8b7-149b8ea586e5" />
+> ### Important information about this card
+> This card is made to be compatible with both this integration as well as the official X2 integration. For that reason, the card is spun off as a separate HACS frontend plugin.
+> You can find its home [here](https://github.com/m3tac0de/sofabaton-virtual-remote). This is also the best place to go for documentation and support.
+> The card, for now, is automatically deployed by this integration, you do not have to install it separately. This is likely to change after the card is added as a default repository in HACS, for which it is currently in queue. This integration will then facilitate a smooth transition to the separately installed plugin.
+> 
+> Even now, if you were the install the card separately, this integration will automatically stop deploying the card itself.
 
 
 ## Remote
