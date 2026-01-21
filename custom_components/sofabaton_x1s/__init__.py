@@ -57,6 +57,19 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     if not hass.data[DOMAIN].get("frontend_registered"):
+        community_card_dir = Path(
+            hass.config.path("www", "community", "sofabaton-virtual-remote")
+        )
+        community_card_exists = await hass.async_add_executor_job(
+            lambda: community_card_dir.exists() and community_card_dir.is_dir()
+        )
+        if community_card_exists:
+            _LOGGER.info(
+                "[%s] Skipping frontend injection; community card found at %s",
+                DOMAIN,
+                community_card_dir,
+            )
+            return True
 
         frontend_dir = Path(__file__).parent / "www"
         abs_path = str(frontend_dir.resolve())
