@@ -1,5 +1,5 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.0.4";
+const CARD_VERSION = "0.0.5";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const TYPE = "sofabaton-virtual-remote";
 const EDITOR = "sofabaton-virtual-remote-editor";
