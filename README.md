@@ -19,7 +19,7 @@ Control your Sofabaton **X1**, **X1S** and **X2** hub from Home Assistant using 
 
 ---
 
-## Quick start
+## 🚀 Quick start
 
 1. **Install via HACS** (recommended) or manually (see Installation).
 2. **Restart Home Assistant**.
@@ -41,9 +41,10 @@ sofabaton_x1s:
 
 ---
 
-## What this integration does
+## ⚙️ What this integration does
 
-Sofabaton hubs allow **only one client connection at a time**. This integration works by acting as a **local proxy**:
+This integration establises a direct and sustained connection with a Sofabaton hub, leveraging APIs intended for the Sofabaton app.
+Sofabaton hubs allow **only one client connection at a time**. To enable this integration and using the app at the same time, this integration works by acting as a **local proxy**:
 
 1. connects to your *real* hub (physical device)
 2. exposes a *virtual* hub so the **official Sofabaton app** can still connect
@@ -67,7 +68,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ---
 
-## Features
+## ✨ Features
 
 - 🛰 **Automatic discovery** of Sofabaton hubs (X2 discovery opt-in)
 - 🧩 **Multiple hubs** supported
@@ -82,7 +83,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ---
 
-## Requirements
+## ✅ Requirements
 
 - Home Assistant **2025.x** or newer
 - A Sofabaton **X1**, **X1S** or **X2** hub
@@ -93,7 +94,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ---
 
-## Installation
+## 🔧 Installation
 
 ### Option 1 – HACS (recommended)
 
@@ -113,7 +114,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ---
 
-## Entities you’ll get
+## ⚙️ Entities you’ll get
 
 - **Remote**: `remote.<hub>_remote`  
   Used for automations (`remote.send_command`). Unavailable while the official app is connected to the proxy.
@@ -144,7 +145,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ---
 
-## Dashboard card (Sofabaton Virtual Remote)
+## 🕹️ Dashboard card (Sofabaton Virtual Remote)
 
 This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 
@@ -159,7 +160,7 @@ This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 
 ---
 
-## Automations
+## 🤖 Automations
 
 ### Send a command in the context of the current activity
 
@@ -190,7 +191,7 @@ IDs share the same range: **devices start at 1**, **activities at 101**.
 
 ---
 
-## Finding IDs (recommended workflow)
+## 🧰 Finding IDs (recommended workflow)
 
 ### 1) Recorded Keypress sensor (fastest)
 
@@ -234,7 +235,7 @@ For a full guide, see [`docs/fetch_command.md`](docs/fetch_command.md)
 
 ---
 
-## Troubleshooting
+## 🆘 Troubleshooting
 
 - 🌐 **Discovery / VLAN / firewall / iOS app can’t find proxy:** see [`docs/networking.md`](docs/networking.md)
 - 🪵 **Need actionable logs for an issue report:** see [`docs/logging.md`](docs/logging.md)
