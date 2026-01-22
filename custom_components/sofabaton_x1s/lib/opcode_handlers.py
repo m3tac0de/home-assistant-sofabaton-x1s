@@ -692,6 +692,7 @@ class CatalogActivityHandler(BaseFrameHandler):
             proxy.state.activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
             if is_active:
                 proxy.state.set_hint(act_id)
+            proxy._notify_activity_list_update()
         elif activity_label:
             log.info("[ACT] name='%s'", activity_label)
 
@@ -741,6 +742,7 @@ class X1CatalogActivityHandler(BaseFrameHandler):
             proxy.state.activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
             if is_active:
                 proxy.state.set_hint(act_id)
+            proxy._notify_activity_list_update()
         elif activity_label:
             log.info("[ACT] name='%s'", activity_label)
 

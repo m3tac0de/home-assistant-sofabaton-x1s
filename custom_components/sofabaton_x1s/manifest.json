@@ -3,13 +3,14 @@
   "name": "Sofabaton X1S",
   "codeowners": ["@m3tac0de"],
   "config_flow": true,
+  "dependencies": ["frontend", "http"],
   "documentation": "https://github.com/m3tac0de/home-assistant-sofabaton-x1s",
   "integration_type": "hub",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues",
   "loggers": ["custom_components.sofabaton_x1s", "x1proxy"],
   "requirements": [],
-  "version": "0.4.6",
+  "version": "0.4.7",
   "zeroconf": [
     {
       "type": "_x1hub._udp.local."

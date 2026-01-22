@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import logging
 import random
 import select
@@ -83,7 +84,7 @@ def _disable_nagle(sock: socket.socket) -> None:
         pass
 
 
-def _flush_buffer(sock: socket.socket, buf: bytearray, label: str) -> None:
+def _flush_buffer(sock: socket.socket, buf: bytearray, label: str) -> bool:
     """Try to write the entire buffer to the given socket."""
 
     total = 0
@@ -94,11 +95,18 @@ def _flush_buffer(sock: socket.socket, buf: bytearray, label: str) -> None:
             sent = sock.send(buf)
         except (BlockingIOError, InterruptedError):
             break
-        except OSError:
+        except OSError as exc:
+            if log.isEnabledFor(logging.DEBUG):
+                log.debug("[TCP][%s] send failed", label, exc_info=exc)
             buf.clear()
-            break
+            return True
 
         if not sent:
+            if log.isEnabledFor(logging.DEBUG):
+                log.debug("[TCP][%s] socket closed during send", label)
+            buf.clear()
+            return True
+
             break
 
         total += sent
@@ -107,9 +115,11 @@ def _flush_buffer(sock: socket.socket, buf: bytearray, label: str) -> None:
 
     if total and log.isEnabledFor(logging.DEBUG):
         if chunks == 1:
-            log.debug("[TCP→HUB][%s] sent %dB", label, total)
+            log.debug("[TCP][%s] sent %dB", label, total)
         else:
-            log.debug("[TCP→HUB][%s] sent %dB in %d chunks", label, total, chunks)
+            log.debug("[TCP][%s] sent %dB in %d chunks", label, total, chunks)
+
+    return False
 
 
 class TransportBridge:
@@ -434,6 +444,7 @@ class TransportBridge:
 
     def _bridge_forever(self) -> None:
         app_to_hub = bytearray()
+        hub_to_app = bytearray()
         app_partial_frame = bytearray()
 
         while not self._stop.is_set():
@@ -451,6 +462,8 @@ class TransportBridge:
             wlist: List[socket.socket] = []
             if hub is not None and (app_to_hub or self._local_to_hub):
                 wlist.append(hub)
+            if app is not None and hub_to_app:
+                wlist.append(app)
 
             if not rlist and not wlist:
                 time.sleep(0.05)
@@ -465,9 +478,17 @@ class TransportBridge:
             if hub is not None and hub in r:
                 try:
                     data = hub.recv(65536)
-                except (BlockingIOError, OSError):
-                    data = b""
-                if not data:
+                except BlockingIOError:
+                    data = None
+                except OSError as exc:
+                    if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                        data = None
+                    else:
+                        log.debug("[TCP] hub recv failed", exc_info=exc)
+                        data = b""
+                if data is None:
+                    pass
+                elif not data:
                     with self._hub_lock:
                         try:
                             hub.shutdown(socket.SHUT_RDWR)
@@ -486,17 +507,22 @@ class TransportBridge:
                     for cb in self._hub_frame_cbs:
                         cb(data, cid)
                     if app is not None:
-                        try:
-                            app.sendall(data)
-                        except Exception:
-                            pass
+                        hub_to_app.extend(data)
 
             if app is not None and app in r:
                 try:
                     data = app.recv(65536)
-                except (BlockingIOError, OSError):
-                    data = b""
-                if not data:
+                except BlockingIOError:
+                    data = None
+                except OSError as exc:
+                    if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
+                        data = None
+                    else:
+                        log.debug("[TCP] app recv failed", exc_info=exc)
+                        data = b""
+                if data is None:
+                    pass
+                elif not data:
                     with self._app_lock:
                         try:
                             app.shutdown(socket.SHUT_RDWR)
@@ -509,6 +535,7 @@ class TransportBridge:
                         self._app_sock = None
                     app_to_hub.clear()
                     app_partial_frame.clear()
+                    hub_to_app.clear()
                     self._notify_client_state(False)
                 else:
                     self._chunk_id += 1
@@ -519,6 +546,10 @@ class TransportBridge:
                     app_partial_frame.clear()
 
                     sync = bytes([SYNC0, SYNC1])
+                    if buffer.startswith(sync + sync):
+                        # Drop duplicate sync marker created by preserving a
+                        # partial frame boundary across reads.
+                        buffer = buffer[len(sync) :]
                     start = buffer.find(sync)
 
                     if start == -1:
@@ -567,7 +598,19 @@ class TransportBridge:
                         for idx, frame in enumerate(frames_to_send):
                             app_to_hub.extend(frame)
                             if hub is not None:
-                                _flush_buffer(hub, app_to_hub, "client")
+                                if _flush_buffer(hub, app_to_hub, "client"):
+                                    with self._hub_lock:
+                                        try:
+                                            hub.shutdown(socket.SHUT_RDWR)
+                                        except Exception:
+                                            pass
+                                        try:
+                                            hub.close()
+                                        except Exception:
+                                            pass
+                                        self._hub_sock = None
+                                    self._notify_hub_state(False)
+                                    break
                                 if (
                                     self._inter_command_gap > 0
                                     and idx + 1 < len(frames_to_send)
@@ -576,9 +619,51 @@ class TransportBridge:
 
             if hub is not None and hub in w:
                 if self._local_to_hub:
-                    _flush_buffer(hub, self._local_to_hub, "local")
+                    if _flush_buffer(hub, self._local_to_hub, "local"):
+                        with self._hub_lock:
+                            try:
+                                hub.shutdown(socket.SHUT_RDWR)
+                            except Exception:
+                                pass
+                            try:
+                                hub.close()
+                            except Exception:
+                                pass
+                            self._hub_sock = None
+                        self._notify_hub_state(False)
+                        app_to_hub.clear()
+                        continue
                 if app_to_hub:
-                    _flush_buffer(hub, app_to_hub, "client")
+                    if _flush_buffer(hub, app_to_hub, "client"):
+                        with self._hub_lock:
+                            try:
+                                hub.shutdown(socket.SHUT_RDWR)
+                            except Exception:
+                                pass
+                            try:
+                                hub.close()
+                            except Exception:
+                                pass
+                            self._hub_sock = None
+                        self._notify_hub_state(False)
+                        app_to_hub.clear()
+
+            if app is not None and app in w:
+                if hub_to_app:
+                    if _flush_buffer(app, hub_to_app, "hub"):
+                        with self._app_lock:
+                            try:
+                                app.shutdown(socket.SHUT_RDWR)
+                            except Exception:
+                                pass
+                            try:
+                                app.close()
+                            except Exception:
+                                pass
+                            self._app_sock = None
+                        hub_to_app.clear()
+                        app_partial_frame.clear()
+                        self._notify_client_state(False)
 
             for cb in self._idle_cbs:
                 cb(time.monotonic())

@@ -153,6 +153,167 @@ def test_keymap_table_b_parses_buttons_response() -> None:
     }
 
 
+def test_keymap_table_b_parses_x2_buttons_response() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    first_raw = (
+        "a5 5a fa 3d 01 00 01 01 00 02 19 66 01 03 00 00 00 00 00 01 01 00 00 00 00"
+        " 00 00 00 00 66 97 02 00 00 00 00 00 00 03 02 00 00 00 00 00 00 05 66 98 02"
+        " 00 00 00 00 00 00 04 02 00 00 00 00 00 00 06 66 99 02 00 00 00 00 00 00 01"
+        " 02 00 00 00 00 00 00 02 66 9c 05 00 00 00 00 00 92 0d 00 00 00 00 00 00 00"
+        " 00 66 ae 05 00 00 00 00 01 13 12 00 00 00 00 00 00 00 00 66 af 05 00 00 00"
+        " 00 03 28 10 00 00 00 00 00 00 00 00 66 b0 05 00 00 00 00 00 2a 1a 00 00 00"
+        " 00 00 00 00 00 66 b1 05 00 00 00 00 03 29 11 00 00 00 00 00 00 00 00 66 b2"
+        " 05 00 00 00 00 01 15 0f 00 00 00 00 00 00 00 00 66 b3 05 00 00 00 00 00 74"
+        " 13 00 00 00 00 00 00 00 00 66 b4 05 00 00 00 00 00 88 17 00 00 00 00 00 00"
+        " 00 00 66 b5 05 00 00 00 00 00 2d 18 00 00 00 00 00 00 00 00 66 b6 01 00 00"
+        " 00 00 2e 77 99"
+    )
+    second_raw = (
+        "a5 5a d2 3d 01 00 02 7a 00 00 00 00 00 00 00 00 66 b7 02 00 00 00 00 00 00"
+        " 03 00 00 00 00 00 00 00 00 66 b8 01 00 00 00 00 00 6a 71 00 00 00 00 00 00"
+        " 00 00 66 b9 01 00 00 00 00 00 33 79 00 00 00 00 00 00 00 00 66 ba 02 00 00"
+        " 00 00 00 00 04 00 00 00 00 00 00 00 00 66 bb 05 00 00 00 00 01 d2 1d 00 00"
+        " 00 00 00 00 00 00 66 bc 05 00 00 00 00 00 a6 1b 00 00 00 00 00 00 00 00 66"
+        " bd 05 00 00 00 00 1b 46 15 00 00 00 00 00 00 00 00 66 be 05 00 00 00 00 00"
+        " e7 1c 00 00 00 00 00 00 00 00 66 bf 05 00 00 00 00 00 ec 16 00 00 00 00 00"
+        " 00 00 00 66 c0 05 00 00 00 00 00 f6 20 00 00 00 00 00 00 00 00 66 c1 05 00"
+        " 00 00 00 00 f1 14 00 00 00 00 00 00 00 00 ff"
+    )
+    frames = (
+        (first_raw, OP_KEYMAP_TBL_B, "KEYMAP_TABLE_B"),
+        (second_raw, _opcode_from_raw(second_raw), "KEYMAP_TABLE_X2"),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x66) == {
+        ButtonName.C,
+        ButtonName.B,
+        ButtonName.A,
+        ButtonName.PLAY,
+        ButtonName.UP,
+        ButtonName.LEFT,
+        ButtonName.OK,
+        ButtonName.RIGHT,
+        ButtonName.DOWN,
+        ButtonName.BACK,
+        ButtonName.HOME,
+        ButtonName.MENU,
+        ButtonName.VOL_UP,
+        ButtonName.CH_UP,
+        ButtonName.MUTE,
+        ButtonName.VOL_DOWN,
+        ButtonName.CH_DOWN,
+        ButtonName.REW,
+        ButtonName.PAUSE,
+        ButtonName.FWD,
+        ButtonName.RED,
+        ButtonName.GREEN,
+        ButtonName.YELLOW,
+        ButtonName.BLUE,
+    }
+
+
+def test_req_buttons_parses_partial_final_record_example_one() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    first_raw = (
+        "a5 5a fa 3d 01 00 01 01 00 02 0e 68 97 02 00 00 00 00 00 00 03 02 00 00 00 00"
+        " 00 00 05 68 98 02 00 00 00 00 00 00 04 02 00 00 00 00 00 00 06 68 99 02 00"
+        " 00 00 00 00 00 01 02 00 00 00 00 00 00 02 68 ae 04 00 00 00 00 01 13 11 00"
+        " 00 00 00 00 00 00 00 68 af 04 00 00 00 00 03 28 0f 00 00 00 00 00 00 00 00"
+        " 68 b0 04 00 00 00 00 00 2a 16 00 00 00 00 00 00 00 00 68 b1 04 00 00 00 00"
+        " 03 29 10 00 00 00 00 00 00 00 00 68 b2 04 00 00 00 00 01 15 0e 00 00 00 00"
+        " 00 00 00 00 68 b3 04 00 00 00 00 00 74 12 00 00 00 00 00 00 00 00 68 b4 04"
+        " 00 00 00 00 07 c7 13 00 00 00 00 00 00 00 00 68 b5 04 00 00 00 00 00 2d 14"
+        " 00 00 00 00 00 00 00 00 68 b6 01 00 00 00 00 2e 77 7a 00 00 00 00 00 00 00"
+        " 00 68 b8 01 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 68 b9 01 00 00 00"
+        " 00 00 33 8c"
+    )
+    second_raw = "a5 5a 0c 3d 01 00 02 79 00 00 00 00 00 00 00 00 c4"
+    frames = (
+        (first_raw, OP_KEYMAP_TBL_B, "KEYMAP_TABLE_B"),
+        (second_raw, _opcode_from_raw(second_raw), "KEYMAP_MARKER"),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x68) == {
+        ButtonName.C,
+        ButtonName.B,
+        ButtonName.A,
+        ButtonName.UP,
+        ButtonName.LEFT,
+        ButtonName.OK,
+        ButtonName.RIGHT,
+        ButtonName.DOWN,
+        ButtonName.BACK,
+        ButtonName.HOME,
+        ButtonName.MENU,
+        ButtonName.VOL_UP,
+        ButtonName.MUTE,
+        ButtonName.VOL_DOWN,
+    }
+
+
+def test_req_buttons_parses_partial_final_record_example_two() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+
+    first_raw = (
+        "a5 5a fa 3d 01 00 01 01 00 02 0e 67 97 02 00 00 00 00 00 00 03 02 00 00 00 00"
+        " 00 00 05 67 98 02 00 00 00 00 00 00 04 02 00 00 00 00 00 00 06 67 99 02 00"
+        " 00 00 00 00 00 01 02 00 00 00 00 00 00 02 67 ae 04 00 00 00 00 01 13 11 00"
+        " 00 00 00 00 00 00 00 67 af 04 00 00 00 00 03 28 0f 00 00 00 00 00 00 00 00"
+        " 67 b0 04 00 00 00 00 00 2a 16 00 00 00 00 00 00 00 00 67 b1 04 00 00 00 00"
+        " 03 29 10 00 00 00 00 00 00 00 00 67 b2 04 00 00 00 00 01 15 0e 00 00 00 00"
+        " 00 00 00 00 67 b3 04 00 00 00 00 00 74 12 00 00 00 00 00 00 00 00 67 b4 04"
+        " 00 00 00 00 07 c7 13 00 00 00 00 00 00 00 00 67 b5 04 00 00 00 00 00 2d 14"
+        " 00 00 00 00 00 00 00 00 67 b6 01 00 00 00 00 2e 77 7a 00 00 00 00 00 00 00"
+        " 00 67 b8 01 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 67 b9 01 00 00 00"
+        " 00 00 33 7e"
+    )
+    second_raw = "a5 5a 0c 3d 01 00 02 79 00 00 00 00 00 00 00 00 c4"
+    frames = (
+        (first_raw, OP_KEYMAP_TBL_B, "KEYMAP_TABLE_B"),
+        (second_raw, _opcode_from_raw(second_raw), "KEYMAP_MARKER"),
+    )
+
+    for raw_hex, opcode, name in frames:
+        frame = _build_context(proxy, raw_hex, opcode, name)
+        handler.handle(frame)
+
+    assert proxy.state.buttons.get(0x67) == {
+        ButtonName.C,
+        ButtonName.B,
+        ButtonName.A,
+        ButtonName.UP,
+        ButtonName.LEFT,
+        ButtonName.OK,
+        ButtonName.RIGHT,
+        ButtonName.DOWN,
+        ButtonName.BACK,
+        ButtonName.HOME,
+        ButtonName.MENU,
+        ButtonName.VOL_UP,
+        ButtonName.MUTE,
+        ButtonName.VOL_DOWN,
+    }
+
+
 def test_keymap_handler_accepts_favorite_only_payload() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
@@ -448,6 +609,64 @@ def test_macro_handler_parses_sample_activity_67() -> None:
     assert {entry["command_id"] for entry in macros} == {0x01, 0x04}
     assert any(entry["command_id"] == 0x01 and entry["label"] == "Test123" for entry in macros)
     assert any(entry["command_id"] == 0x04 and entry["label"] == "test234" for entry in macros)
+
+
+def test_macro_handler_parses_sample_activity_67_long_label() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = MacroHandler()
+
+    fragments = [
+        "a5 5a 64 13 01 00 01 05 00 01 67 01 03 03 01 00 00 00 00 17 18 00 00 00 ff ff ff ff ff 00 00 00 01 01 02 00 00 00 00 00 79 00 00 00 54 00 65 00 73 00 74 00 31 00 32 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4d 17",
+        "a5 5a 78 13 02 00 01 05 00 01 67 04 05 03 05 00 00 00 00 00 42 00 ff ff ff ff ff ff ff ff ff ff 01 01 09 00 00 00 00 04 31 00 ff ff ff ff ff ff ff ff ff ff 01 01 17 00 00 00 00 01 88 00 ff 00 74 00 65 00 73 00 74 00 32 00 33 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 de 51",
+        "a5 5a 50 13 03 00 01 05 00 01 67 06 01 03 30 00 00 00 00 00 d3 00 ff 00 6d 00 61 00 63 00 72 00 6f 00 20 00 77 00 69 00 74 00 68 00 20 00 61 00 6e 00 20 00 61 00 63 00 74 00 75 00 61 00 6c 00 20 00 6c 00 6f 00 6e 00 67 00 20 00 6e 00 61 00 6d 00 65 77 5e",
+        "a5 5a 6e 13 04 00 01 05 00 01 67 c6 04 01 c6 00 00 00 00 00 00 01 ff 03 c6 00 00 00 00 00 00 01 ff 01 c5 00 00 00 00 00 00 00 ff 03 c5 00 00 00 00 00 00 04 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 67 cc",
+        "a5 5a 5a 13 05 00 01 05 00 01 67 c7 02 01 c7 00 00 00 00 00 00 01 ff 03 c7 00 00 00 00 00 00 01 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 46 00 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01",
+    ]
+
+    for raw_hex in fragments:
+        handler.handle(_build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "MACROS_SAMPLE"))
+
+    macros = proxy.state.get_activity_macros(0x67)
+    assert {entry["command_id"] for entry in macros} == {0x01, 0x04, 0x06}
+    assert any(entry["command_id"] == 0x01 and entry["label"] == "Test123" for entry in macros)
+    assert any(entry["command_id"] == 0x04 and entry["label"] == "test234" for entry in macros)
+    assert any(
+        entry["command_id"] == 0x06 and entry["label"] == "macro with an actual long name"
+        for entry in macros
+    )
+
+
+def test_macro_handler_parses_sample_activity_67_additional_long_label() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = MacroHandler()
+
+    fragments = [
+        "a5 5a 64 13 01 00 01 06 00 01 67 01 03 03 01 00 00 00 00 17 18 00 00 00 ff ff ff ff ff 00 00 00 01 01 02 00 00 00 00 00 79 00 00 00 54 00 65 00 73 00 74 00 31 00 32 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4d 18",
+        "a5 5a 78 13 02 00 01 06 00 01 67 04 05 03 05 00 00 00 00 00 42 00 ff ff ff ff ff ff ff ff ff ff 01 01 09 00 00 00 00 04 31 00 ff ff ff ff ff ff ff ff ff ff 01 01 17 00 00 00 00 01 88 00 ff 00 74 00 65 00 73 00 74 00 32 00 33 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 de 52",
+        "a5 5a 50 13 03 00 01 06 00 01 67 06 01 03 30 00 00 00 00 00 d3 00 ff 00 6d 00 61 00 63 00 72 00 6f 00 20 00 77 00 69 00 74 00 68 00 20 00 61 00 6e 00 20 00 61 00 63 00 74 00 75 00 61 00 6c 00 20 00 6c 00 6f 00 6e 00 67 00 20 00 6e 00 61 00 6d 00 65 77 5f",
+        "a5 5a b4 13 04 00 01 06 00 01 67 07 0b 01 01 00 00 00 00 00 39 00 ff ff ff ff ff ff ff ff ff ff 01 01 03 00 00 00 00 01 4b 00 ff ff ff ff ff ff ff ff ff ff 01 01 06 00 00 00 00 00 92 00 ff ff ff ff ff ff ff ff ff ff 01 01 17 00 00 00 00 01 88 00 ff ff ff ff ff ff ff ff ff ff 01 01 18 00 00 00 00 00 33 00 ff ff ff ff ff ff ff ff ff ff 01 01 18 00 00 00 00 00 33 00 ff 00 61 00 6e 00 6f 00 74 00 68 00 65 00 72 00 20 00 6c 00 6f 00 6e 00 67 00 20 00 6e 00 61 00 6d 00 65 00 20 00 6e 00 6f 00 77 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 99 09",
+        "a5 5a 6e 13 05 00 01 06 00 01 67 c6 04 01 c6 00 00 00 00 00 00 01 ff 03 c6 00 00 00 00 00 00 01 ff 01 c5 00 00 00 00 00 00 00 ff 03 c5 00 00 00 00 00 00 04 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 67 ce",
+        "a5 5a 5a 13 06 00 01 06 00 01 67 c7 02 01 c7 00 00 00 00 00 00 01 ff 03 c7 00 00 00 00 00 00 01 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 46 00 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 03",
+    ]
+
+    for raw_hex in fragments:
+        handler.handle(_build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "MACROS_SAMPLE"))
+
+    macros = proxy.state.get_activity_macros(0x67)
+    assert {entry["command_id"] for entry in macros} == {0x01, 0x04, 0x06, 0x07}
+    assert any(entry["command_id"] == 0x01 and entry["label"] == "Test123" for entry in macros)
+    assert any(entry["command_id"] == 0x04 and entry["label"] == "test234" for entry in macros)
+    assert any(
+        entry["command_id"] == 0x06 and entry["label"] == "macro with an actual long name"
+        for entry in macros
+    )
+    assert any(
+        entry["command_id"] == 0x07 and entry["label"] == "another long name now" for entry in macros
+    )
 
 
 def test_macro_handler_parses_sample_activity_69() -> None:

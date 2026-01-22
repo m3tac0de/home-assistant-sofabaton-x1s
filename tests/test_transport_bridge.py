@@ -111,3 +111,38 @@ def test_claim_once_handles_address_in_use(monkeypatch):
 
     assert bridge._claim_once() is False
     assert sock.closed
+
+
+def test_flush_buffer_retries_after_blocking():
+    buf = bytearray(b"hello")
+
+    class FakeSocket:
+        def __init__(self):
+            self.calls = 0
+
+        def send(self, data):
+            self.calls += 1
+            if self.calls == 1:
+                raise BlockingIOError()
+            return min(len(data), 2)
+
+    sock = FakeSocket()
+
+    assert transport_bridge._flush_buffer(sock, buf, "test") is False
+    assert buf == bytearray(b"hello")
+
+    assert transport_bridge._flush_buffer(sock, buf, "test") is False
+    assert buf == bytearray()
+
+
+def test_flush_buffer_clears_on_error():
+    buf = bytearray(b"data")
+
+    class FailingSocket:
+        def send(self, _data):
+            raise OSError("boom")
+
+    sock = FailingSocket()
+
+    assert transport_bridge._flush_buffer(sock, buf, "test") is True
+    assert buf == bytearray()

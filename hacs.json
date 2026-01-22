@@ -1,5 +1,7 @@
 {
   "name": "Sofabaton X1S",
   "content_in_root": false,
-  "render_readme": true
+  "filename": "sofabaton_x1s.zip",
+  "render_readme": true,
+  "zip_release": true
 }

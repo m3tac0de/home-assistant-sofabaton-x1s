@@ -113,6 +113,7 @@ class SofabatonHub:
         )
 
         proxy.on_activity_change(self._on_activity_change)
+        proxy.on_activity_list_update(self._on_activity_list_update)
         proxy.on_burst_end("activities", self._on_activities_burst)
         proxy.on_burst_end("buttons", self._on_buttons_burst)
         proxy.on_client_state_change(self._on_client_state_change)
@@ -208,6 +209,17 @@ class SofabatonHub:
             if ready:
                 self.activities = acts
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+        self.hass.loop.call_soon_threadsafe(_inner)
+
+    def _on_activity_list_update(self) -> None:
+        def _inner() -> None:
+            acts, ready = self._proxy.get_activities()
+            if acts:
+                self.activities = acts
+            if ready:
+                self.activities_ready = True
+            async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+
         self.hass.loop.call_soon_threadsafe(_inner)
 
     def _on_buttons_burst(self, key: str) -> None:
@@ -551,7 +563,15 @@ class SofabatonHub:
             # if it was actually ready now, we can clear pending right away
             self._pending_button_fetch.discard(act_id)
             async_dispatcher_send(self.hass, signal_buttons(self.entry_id))
-        # else: we'll clear the whole set in _on_buttons_burst
+        else:
+            await self._async_wait_for_buttons_ready(act_id)
+
+        await self.hass.async_add_executor_job(
+            partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
+        )
+        await self.hass.async_add_executor_job(
+            partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
+        )
 
     # ------------------------------------------------------------------
     # helpers for entities
@@ -616,6 +636,28 @@ class SofabatonHub:
                 favorites[act_id] = labels
 
         return favorites
+
+    def get_activity_favorites_for(self, act_id: int) -> list[dict[str, int | str]]:
+        """Return favorite commands with labels for a specific activity."""
+
+        return self._proxy.state.get_activity_favorite_labels(act_id & 0xFF)
+
+    def get_activity_macros_for(self, act_id: int) -> list[dict[str, int | str]]:
+        """Return macro definitions for a specific activity."""
+
+        macros, ready = self._proxy.get_macros_for_activity(act_id, fetch_if_missing=False)
+        if not ready or not macros:
+            return []
+
+        return [
+            {
+                "name": macro.get("label", ""),
+                "device_id": act_id,
+                "command_id": macro["command_id"],
+            }
+            for macro in macros
+            if macro.get("label")
+        ]
 
     def get_app_activations(self) -> list[dict[str, Any]]:
         """Return recent app-originated activation requests."""
@@ -720,12 +762,14 @@ class SofabatonHub:
 
     async def async_send_key(self, key: str | int, device: int | None = None) -> None:
         """Send either a Sofabaton ButtonName or a raw command ID.
-
         - If 'device' is given, we send directly to that entity (device or activity).
         - If 'device' is not given, we send in the context of the *current activity*.
         - We do NOT remap/rename button names: you must use the names from ButtonName.
           So "VOL_UP", "VOL_DOWN", "MUTE", etc.
         """
+        
+        _LOGGER.debug("[DEBUG] Trying to send command %s to device %s", key, device)
+
         # advanced path: user specified the target entity
         if device is not None:
             code = self._normalize_command_id(key)

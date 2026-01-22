@@ -7,7 +7,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
-
 from .const import (
     DOMAIN,
     CONF_MAC,
@@ -16,6 +15,8 @@ from .const import (
     signal_hub,
     signal_client,
     signal_buttons,
+    signal_commands,
+    signal_macros,
 )
 from .hub import get_hub_model
 
@@ -65,8 +66,49 @@ class SofabatonRemote(RemoteEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        activity_id = self._hub.current_activity
+        activities: list[dict[str, Any]] = []
+        for act_id, activity in self._hub.activities.items():
+            activities.append(
+                {
+                    "id": act_id,
+                    "name": activity.get("name"),
+                    "state": "on" if activity_id == act_id else "off",
+                }
+            )
+
+        assigned_keys: dict[str, list[int]] = {}
+        for ent_id, buttons in self._hub.get_all_cached_buttons().items():
+            assigned_keys[str(ent_id)] = buttons
+
+        macro_keys: dict[str, list[dict[str, int | str]]] = {}
+        for act_id, macros in self._hub.get_all_cached_macros().items():
+            macro_keys[str(act_id)] = [
+                {"id": macro.get("command_id"), "name": macro.get("label")}
+                for macro in macros
+                if macro.get("command_id") is not None
+            ]
+
+        favorite_keys: dict[str, list[dict[str, int | str]]] = {}
+        for act_id, favorites in self._hub.get_activity_favorites().items():
+            favorite_keys[str(act_id)] = [
+                {
+                    "id": fav.get("command_id"),
+                    "name": fav.get("name"),
+                    "device_id": fav.get("device_id"),
+                }
+                for fav in favorites
+                if fav.get("command_id") is not None
+            ]
         return {
             "proxy_client_connected": self._hub.client_connected,
+            "hub_version": self._hub.version,
+            "activities": activities,
+            "assigned_keys": assigned_keys,
+            "macro_keys": macro_keys,
+            "favorite_keys": favorite_keys,
+            "current_activity_id": activity_id,
+            "load_state": self._hub.get_index_state(),
         }
 
     @property
@@ -104,6 +146,20 @@ class SofabatonRemote(RemoteEntity):
             async_dispatcher_connect(
                 self.hass,
                 signal_buttons(self._hub.entry_id),
+                self._schedule_update,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_commands(self._hub.entry_id),
+                self._schedule_update,
+            )
+        )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_macros(self._hub.entry_id),
                 self._schedule_update,
             )
         )

@@ -75,9 +75,9 @@ class SofabatonActivitySelect(SelectEntity):
     @callback
     def _rebuild_options(self) -> None:
         opts = [POWERED_OFF]
-        # order by id to keep it stable
-        for act_id in sorted(self._hub.activities.keys()):
-            name = self._hub.activities[act_id].get("name") or f"Activity {act_id}"
+        # keep the order from the hub response
+        for act_id, activity in self._hub.activities.items():
+            name = activity.get("name") or f"Activity {act_id}"
             opts.append(name)
         self._attr_options = opts
         self.async_write_ha_state()

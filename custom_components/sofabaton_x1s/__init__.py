@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import voluptuous as vol
 
+from homeassistant.components import frontend
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
@@ -49,7 +53,73 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.data[DOMAIN].setdefault("config", {})
     hass.data[DOMAIN]["config"][CONF_ENABLE_X2_DISCOVERY] = enable_x2_discovery
 
+    # Ensure DOMAIN data is initialized
+    hass.data.setdefault(DOMAIN, {})
+
+    if not hass.data[DOMAIN].get("frontend_registered"):
+        community_card_dir = Path(
+            hass.config.path("www", "community", "sofabaton-virtual-remote")
+        )
+        community_card_exists = await hass.async_add_executor_job(
+            lambda: community_card_dir.exists() and community_card_dir.is_dir()
+        )
+        if community_card_exists:
+            _LOGGER.info(
+                "[%s] Skipping frontend injection; community card found at %s",
+                DOMAIN,
+                community_card_dir,
+            )
+            return True
+
+        frontend_dir = Path(__file__).parent / "www"
+        abs_path = str(frontend_dir.resolve())
+        
+        _LOGGER.info("[%s] Resolved static path: %s", DOMAIN, abs_path)
+        
+        if frontend_dir.exists() and frontend_dir.is_dir():
+            contents = list(frontend_dir.iterdir())
+            _LOGGER.info("[%s] Directory exists. Found %s files: %s", 
+                         DOMAIN, len(contents), [f.name for f in contents])
+            
+            await hass.http.async_register_static_paths(
+                [
+                    StaticPathConfig(
+                        f"/{DOMAIN}/www",
+                        abs_path,
+                        False,
+                    )
+                ]
+            )
+            
+            # 4. Inject JS URLs
+            version_suffix = await _async_get_integration_version(hass)
+            js_version = f"?v={version_suffix}" if version_suffix else ""
+            js_files = [f"card-loader.js{js_version}"]
+            for js_file in js_files:
+                url = f"/{DOMAIN}/www/{js_file}"
+                _LOGGER.info("[%s] Adding extra JS URL: %s", DOMAIN, url)
+                frontend.add_extra_js_url(hass, url)
+            
+            hass.data[DOMAIN]["frontend_registered"] = True
+        else:
+            _LOGGER.error("[%s] FRONTEND DIR MISSING: Expected at %s", DOMAIN, abs_path)
+
     return True
+
+
+async def _async_get_integration_version(hass: HomeAssistant) -> str:
+    manifest_path = Path(__file__).parent / "manifest.json"
+    try:
+        manifest_contents = await hass.async_add_executor_job(
+            manifest_path.read_text, "utf-8"
+        )
+        manifest = json.loads(manifest_contents)
+    except (FileNotFoundError, json.JSONDecodeError) as err:
+        _LOGGER.warning("[%s] Failed to read manifest version: %s", DOMAIN, err)
+        return ""
+
+    version = manifest.get("version")
+    return str(version) if version else ""
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -77,8 +147,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         version=version,
     )
     await hub.async_start()
-
-    hass.data.setdefault(DOMAIN, {})
 
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)

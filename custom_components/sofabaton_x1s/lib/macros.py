@@ -107,7 +107,9 @@ class MacroAssembler:
 
 
 _UTF16_PATTERN = re.compile(rb"((?:[\x01-\xFF]\x00){2,})\x00\x00", re.DOTALL)
+_UTF16_FALLBACK_PATTERN = re.compile(rb"((?:[\x20-\x7E]\x00){2,})", re.DOTALL)
 _ASCII_PATTERN = re.compile(rb"([\x20-\x7E]{3,})\x00{2,}")
+_ASCII_FALLBACK_PATTERN = re.compile(rb"([\x20-\x7E]{3,})")
 
 
 def decode_macro_records(payload: bytes, activity_id: int) -> list[tuple[int, int, str]]:
@@ -116,45 +118,134 @@ def decode_macro_records(payload: bytes, activity_id: int) -> list[tuple[int, in
     records: list[tuple[int, int, str]] = []
     consumed = 0
 
-    starts = []
+    starts: list[int] = []
+    secondary_starts: list[int] = []
     for i in range(len(payload) - 1):
         if not payload[i] or payload[i] > 0x0F:
             continue
         second = payload[i + 1]
         utf16_immediate = second >= 0x20 and i + 2 < len(payload) and payload[i + 2] == 0x00
         if second in (0x00, 0x03) or utf16_immediate:
+            if (
+                second == 0x03
+                and i > 0
+                and payload[i - 1] <= 0x0F
+                and i + 2 < len(payload)
+                and payload[i + 2] <= 0x0F
+            ):
+                continue
             starts.append(i)
+        elif 0x01 <= second <= 0x05 and i + 2 < len(payload) and payload[i + 2] == 0x03:
+            if payload[i] == 0x03 and i + 3 < len(payload) and payload[i + 3] > 0x0F:
+                continue
+            if i == 0 or payload[i - 1] == 0x00 or payload[i - 1] > 0x0F:
+                secondary_starts.append(i)
+        elif i + 3 < len(payload) and second <= 0x0F and payload[i + 2] == 0x01 and payload[i + 3] == 0x01:
+            if i == 0 or payload[i - 1] == 0x00 or payload[i - 1] > 0x0F:
+                secondary_starts.append(i)
 
-    for pos in starts:
-        if pos < consumed:
-            continue
+    def _decode_from_starts(
+        starts: list[int], label_index: dict[str, int], *, allow_early_fallback: bool
+    ) -> None:
+        nonlocal consumed
 
-        decoder = "utf-16le"
-
-        match = _UTF16_PATTERN.search(payload, pos + 1)
-        if match:
-            label_bytes = match.group(1)
-            consumed = match.end()
-        else:
-            ascii_match = _ASCII_PATTERN.search(payload, pos + 1)
-            if not ascii_match:
+        for pos in starts:
+            if pos < consumed:
                 continue
 
-            label_bytes = ascii_match.group(1)
-            consumed = ascii_match.end()
-            decoder = "ascii"
+            decoder = "utf-16le"
 
-        try:
-            label = label_bytes.decode(decoder, errors="ignore").replace("\x00", "").strip()
-        except Exception:
-            label = ""
+            candidates: list[tuple[int, int, bytes, str, bool]] = []
+            match = _UTF16_PATTERN.search(payload, pos + 1)
+            if match:
+                candidates.append((match.start(1), match.end(), match.group(1), "utf-16le", False))
 
-        if label:
-            label = re.sub(r"[^\x20-\x7E]", "", label)
-            label = label.lstrip("0123456789")
+            ascii_match = _ASCII_PATTERN.search(payload, pos + 1)
+            if ascii_match:
+                candidates.append((ascii_match.start(1), ascii_match.end(), ascii_match.group(1), "ascii", False))
 
-        if label and not label.upper().startswith("POWER_"):
-            records.append((activity_id, payload[pos], label))
+            earliest_terminated = None
+            if match:
+                earliest_terminated = match.start(1)
+            if ascii_match:
+                earliest_terminated = (
+                    ascii_match.start(1)
+                    if earliest_terminated is None
+                    else min(earliest_terminated, ascii_match.start(1))
+                )
+
+            utf16_fallback = _UTF16_FALLBACK_PATTERN.search(payload, pos + 1)
+            if utf16_fallback and (
+                len(payload) - utf16_fallback.end() <= 4
+                or (
+                    allow_early_fallback
+                    and earliest_terminated is not None
+                    and utf16_fallback.start(1) < earliest_terminated
+                )
+            ):
+                candidates.append(
+                    (
+                        utf16_fallback.start(1),
+                        utf16_fallback.end(),
+                        utf16_fallback.group(1),
+                        "utf-16le",
+                        True,
+                    )
+                )
+
+            ascii_fallback = _ASCII_FALLBACK_PATTERN.search(payload, pos + 1)
+            if ascii_fallback and len(payload) - ascii_fallback.end() <= 4:
+                candidates.append(
+                    (ascii_fallback.start(1), ascii_fallback.end(), ascii_fallback.group(1), "ascii", True)
+                )
+
+            if not candidates:
+                continue
+
+            candidates.sort(key=lambda item: (item[0], -item[1]))
+            label_start, end, label_bytes, decoder, allow_trailing = candidates[0]
+
+            if (
+                allow_trailing
+                and decoder == "utf-16le"
+                and end < len(payload)
+                and 0x20 <= payload[end] <= 0x7E
+                and (end + 1 >= len(payload) or payload[end + 1] != 0x00)
+            ):
+                label_bytes += bytes([payload[end], 0x00])
+                end += 1
+
+            consumed = end
+
+            try:
+                label = label_bytes.decode(decoder, errors="ignore").replace("\x00", "").strip()
+            except Exception:
+                label = ""
+
+            if label:
+                label = re.sub(r"[^\x20-\x7E]", "", label)
+                label = label.lstrip("0123456789")
+
+            if label and not label.upper().startswith("POWER_"):
+                score = 0
+                if pos + 3 < len(payload) and payload[pos + 2] == 0x01 and payload[pos + 3] == 0x01:
+                    score += 2
+                if pos + 2 < len(payload) and payload[pos + 1] == 0x00 and payload[pos + 2] == 0x00:
+                    score -= 2
+
+                if label in label_index:
+                    idx, best_score, best_pos = label_index[label]
+                    if score > best_score or (score == best_score and pos > best_pos):
+                        records[idx] = (activity_id, payload[pos], label)
+                        label_index[label] = (idx, score, pos)
+                else:
+                    label_index[label] = (len(records), score, pos)
+                    records.append((activity_id, payload[pos], label))
+
+    label_index: dict[str, tuple[int, int, int]] = {}
+    _decode_from_starts(starts, label_index, allow_early_fallback=False)
+    consumed = 0
+    _decode_from_starts(secondary_starts, label_index, allow_early_fallback=True)
 
     return records
 
