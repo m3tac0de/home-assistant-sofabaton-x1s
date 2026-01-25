@@ -1,5 +1,5 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.0.6";
+const CARD_VERSION = "0.0.7";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const TYPE = "sofabaton-virtual-remote";
 const EDITOR = "sofabaton-virtual-remote-editor";
@@ -107,6 +107,8 @@ class SofabatonRemoteCard extends HTMLElement {
       show_favorites_button: null,
       custom_favorites: [],
       max_width: 360,
+      // Shrink the entire card using CSS `zoom` (0 = no shrink, higher = smaller)
+      shrink: 0,
       group_order: DEFAULT_GROUP_ORDER.slice(),
       ...config,
     };
@@ -1120,19 +1122,37 @@ class SofabatonRemoteCard extends HTMLElement {
     if (!this._macroFavoritesRow || !this._mfContainer) return;
 
     // If no drawer is open, keep the last direction during the close animation.
-    // We'll reset back to default after the transition completes.
-    if (!this._activeDrawer) {
+    if (!this._activeDrawer) return;
+
+    const rowRect = this._macroFavoritesRow.getBoundingClientRect();
+    const desired = this._getDrawerDesiredHeight();
+
+    // Prefer staying within the CARD (ha-card) rather than within the viewport.
+    // this._root is the card element created in _render().
+    const cardRect =
+      this._root && typeof this._root.getBoundingClientRect === "function"
+        ? this._root.getBoundingClientRect()
+        : null;
+
+    // Fallback to the old viewport behavior if for some reason we can't measure the card.
+    if (!cardRect) {
+      const spaceBelow = window.innerHeight - rowRect.bottom;
+      const spaceAbove = rowRect.top;
+      const shouldOpenUp = spaceBelow < desired && spaceAbove > spaceBelow;
+      this._drawerDirection = shouldOpenUp ? "up" : "down";
+      this._mfContainer.classList.toggle("drawer-up", shouldOpenUp);
       return;
     }
 
-    const rect = this._macroFavoritesRow.getBoundingClientRect();
-    const desired = this._getDrawerDesiredHeight();
+    const spaceBelowInCard = cardRect.bottom - rowRect.bottom;
+    const spaceAboveInCard = rowRect.top - cardRect.top;
 
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
+    const overlapDown = Math.max(0, Math.min(desired, spaceBelowInCard));
+    const overlapUp = Math.max(0, Math.min(desired, spaceAboveInCard));
 
-    // Prefer opening upward only when we likely won't fit below and there is more room above.
-    const shouldOpenUp = spaceBelow < desired && spaceAbove > spaceBelow;
+    // Choose the direction that keeps MORE of the drawer inside the card.
+    // Tie-breaker: prefer down (feels more natural, and matches current default).
+    const shouldOpenUp = overlapUp > overlapDown;
 
     this._drawerDirection = shouldOpenUp ? "up" : "down";
     this._mfContainer.classList.toggle("drawer-up", shouldOpenUp);
@@ -1578,6 +1598,7 @@ class SofabatonRemoteCard extends HTMLElement {
       :host {
         --sb-group-radius: var(--ha-card-border-radius, 18px);
         --remote-max-width: 360px;
+        --remote-zoom: 1;
         --sb-overlay-rgb: var(--rgb-primary-text-color, 0, 0, 0);
 
         display: block;
@@ -1586,6 +1607,7 @@ class SofabatonRemoteCard extends HTMLElement {
       ha-card {
         width: 100%;
         max-width: var(--remote-max-width);
+        zoom: var(--remote-zoom);
         margin-left: auto;
         margin-right: auto;
       }
@@ -2447,6 +2469,23 @@ class SofabatonRemoteCard extends HTMLElement {
       this.style.setProperty("--remote-max-width", mw.trim());
     }
 
+    // Apply per-card shrink (CSS zoom). Only shrink; never allow values > 1.
+    // Config is a percentage where 0 = normal size, higher = smaller.
+    const shrink = this._config?.shrink;
+    const shrinkNum =
+      typeof shrink === "number"
+        ? shrink
+        : typeof shrink === "string"
+          ? Number(shrink)
+          : 0;
+    if (!Number.isFinite(shrinkNum) || shrinkNum <= 0) {
+      this.style.removeProperty("--remote-zoom");
+    } else {
+      // Map 0..100 -> zoom 1..0 (clamped). Keep a small floor to avoid 0.
+      const z = Math.max(0.1, Math.min(1, 1 - shrinkNum / 100));
+      this.style.setProperty("--remote-zoom", String(z));
+    }
+
     const remote = this._remoteState();
     const isUnavailable = remote?.state === "unavailable";
     const loadState = remote?.attributes?.load_state;
@@ -2816,6 +2855,7 @@ class SofabatonRemoteCard extends HTMLElement {
       show_favorites_button: null,
       custom_favorites: [],
       max_width: 360,
+      shrink: 0,
       group_order: DEFAULT_GROUP_ORDER.slice(),
     };
   }
@@ -2858,6 +2898,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           custom_favorites: "Custom Favorites (advanced)",
           show_macro_favorites: "Macros/Favorites Buttons (deprecated)",
           max_width: "Maximum Card Width (px)",
+          shrink: "Shrink (higher = smaller)",
           group_order: "Group Order",
         };
         return labels[schema.name] || schema.name;
@@ -2956,10 +2997,21 @@ class SofabatonRemoteCardEditor extends HTMLElement {
             name: "max_width",
             selector: {
               number: {
-                min: 0,
+                min: 230,
                 max: 1200,
-                step: 10,
+                step: 5,
                 unit_of_measurement: "px",
+              },
+            },
+          },
+          {
+            name: "shrink",
+            selector: {
+              number: {
+                min: 0,
+                max: 80,
+                step: 1,
+                unit_of_measurement: "%",
               },
             },
           },
@@ -2994,6 +3046,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       background_override: this._config.background_override ?? [255, 255, 255],
       custom_favorites: this._config.custom_favorites ?? [],
       max_width: this._config.max_width ?? 360,
+      shrink: this._config.shrink ?? 0,
       group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
     };
 
