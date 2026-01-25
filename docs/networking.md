@@ -17,7 +17,7 @@ graph LR
     end
 
     %% Hub <-> Proxy (Segment 1)
-    Hub -->|UDP 5353<br>mDNS _x1hub._sofabaton_hub._udp.local.<br>_sofabaton_hub._sofabaton_hub._udp.local.| HA
+    Hub -->|UDP 5353<br>mDNS _x1hub._udp.local.<br>_sofabaton_hub._udp.local.| HA
     HA -->|UDP 8102<br>CALL_ME| Hub
     Hub -->|TCP base .. base+31<br>connect back to proxy| HA
 
