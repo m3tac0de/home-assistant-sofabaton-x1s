@@ -732,8 +732,12 @@ class SofabatonRemoteCard extends HTMLElement {
     this._automationAssistMqttDeviceName = null;
     this._automationAssistMqttCommandName = null;
     this._automationAssistMqttExisting = false;
+    this._automationAssistMqttDiscoveryCreated = false;
+    this._automationAssistMqttDiscoveryDeviceId = null;
+    this._automationAssistStatusMessage = null;
 
     this._updateAutomationAssistUI();
+    this._notifyAutomationAssistCapture();
   }
 
   _automationAssistRemoteYaml() {
@@ -804,6 +808,41 @@ class SofabatonRemoteCard extends HTMLElement {
     ].join("\n");
   }
 
+  _automationAssistNotificationBody() {
+    const capture = this._automationAssistCapture;
+    if (!capture) return "";
+
+    const buttonYaml = this._automationAssistButtonYaml();
+    const remoteYaml = this._automationAssistRemoteYaml();
+
+    return [
+      `Button: ${capture.label}`,
+      "",
+      "Button YAML:",
+      "```yaml",
+      buttonYaml,
+      "```",
+      "",
+      "remote.send_command YAML:",
+      "```yaml",
+      remoteYaml,
+      "```",
+    ].join("\n");
+  }
+
+  _notifyAutomationAssistCapture() {
+    if (!this._automationAssistEnabled()) return;
+    if (!this._hass) return;
+    const body = this._automationAssistNotificationBody();
+    if (!body) return;
+
+    this._hass.callService("persistent_notification", "create", {
+      title: "Automation Assist",
+      notification_id: "sofabaton_automation_assist",
+      message: body,
+    });
+  }
+
   _automationAssistMqttSupported() {
     return this._isX2();
   }
@@ -813,8 +852,15 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistMqttSupported() &&
       Boolean(this._hubMac) &&
       Boolean(this._automationAssistMqttMatch) &&
-      !this._automationAssistMqttExisting
+      !this._automationAssistMqttDiscoveryCreated &&
+      this._automationAssistMqttReady()
     );
+  }
+
+  _automationAssistMqttReady() {
+    if (!this._isHubIntegration()) return true;
+    const queue = Array.isArray(this._hubQueue) ? this._hubQueue.length : 0;
+    return !this._hubQueueBusy && queue === 0;
   }
 
   _ensureHubMac() {
@@ -886,6 +932,18 @@ class SofabatonRemoteCard extends HTMLElement {
     if (!this._automationAssistMqttSupported()) {
       this._unsubscribeAutomationAssistMqtt();
       return;
+    }
+
+    if (!this._automationAssistMqttReady()) {
+      this._setAutomationAssistStatus("Waiting for hub requests to finish...");
+      return;
+    }
+
+    if (
+      this._automationAssistStatusMessage ===
+      "Waiting for hub requests to finish..."
+    ) {
+      this._automationAssistStatusMessage = null;
     }
 
     this._ensureHubMac();
@@ -974,6 +1032,15 @@ class SofabatonRemoteCard extends HTMLElement {
     const payload = this._parseMqttPayload(msg?.payload);
     if (!payload) return;
 
+    const deviceId = Number(payload.device_id);
+    if (
+      Number.isFinite(deviceId) &&
+      this._automationAssistMqttDiscoveryDeviceId !== deviceId
+    ) {
+      this._automationAssistMqttDiscoveryDeviceId = deviceId;
+      this._automationAssistMqttDiscoveryCreated = false;
+    }
+
     this._automationAssistMqttMatch = true;
     this._automationAssistMqttPayload = payload;
     this._automationAssistMqttDeviceName = null;
@@ -994,30 +1061,76 @@ class SofabatonRemoteCard extends HTMLElement {
     if (!mac || !payload) return;
 
     const deviceId = Number(payload.device_id);
-    const keyId = Number(payload.key_id);
-    const [deviceName, commandName] = await Promise.all([
+    if (!Number.isFinite(deviceId)) return;
+
+    const [deviceName, commands] = await Promise.all([
       this._requestMqttDeviceName(mac, deviceId),
-      this._requestMqttDeviceCommandName(mac, deviceId, keyId),
+      this._requestMqttDeviceCommands(mac, deviceId),
     ]);
 
-    this._automationAssistMqttDeviceName = deviceName;
-    this._automationAssistMqttCommandName = commandName;
+    if (!commands || commands.size === 0) {
+      this._setAutomationAssistStatus("No MQTT commands discovered yet");
+      return;
+    }
 
-    const label =
-      commandName || this._automationAssistCapture?.label || "button";
+    const deviceLabel = deviceName || `Device ${deviceId}`;
+    const topic = `${mac}/up`;
+    const macLower = String(mac).toLowerCase();
+    const macUpper = String(mac).toUpperCase();
+    let createdCount = 0;
 
-    if (deviceName) {
-      this._automationAssistMqttDeviceName = deviceName;
+    for (const [keyId, commandName] of commands.entries()) {
+      const payloadObj = { device_id: deviceId, key_id: Number(keyId) };
+      if (!Number.isFinite(payloadObj.key_id)) continue;
+
+      if (this._automationAssistMqttTriggerExists(payloadObj, topic)) continue;
+
+      const displayCommand = commandName || `Command ${payloadObj.key_id}`;
+      const uniqueId = `sofabaton_${macLower}_d${deviceId}_k${payloadObj.key_id}_${this._automationAssistSlug(`${deviceLabel} ${displayCommand}`)}`;
+      this._automationAssistDiscoveryIds =
+        this._automationAssistDiscoveryIds || new Set();
+      if (this._automationAssistDiscoveryIds.has(uniqueId)) continue;
+      const subtype = `X2-${deviceLabel} ${displayCommand}`;
+      const config = {
+        automation_type: "trigger",
+        type: "button_short_press",
+        subtype,
+        payload: JSON.stringify(payloadObj),
+        topic: `${macUpper}/up`,
+        device: {
+          identifiers: [`sofabaton_x2_remote_${deviceId}`],
+          name: `X2 → ${deviceLabel}`,
+          model: "X2",
+          manufacturer: "Sofabaton",
+        },
+      };
+
+      await this._enqueueMqttPublish(async () => {
+        await this._callService("mqtt", "publish", {
+          topic: `homeassistant/device_automation/${uniqueId}/config`,
+          payload: JSON.stringify(config),
+          retain: true,
+        });
+        this._automationAssistDiscoveryIds.add(uniqueId);
+        await this._sleep(250);
+      });
+      createdCount += 1;
+    }
+
+    this._automationAssistMqttDiscoveryCreated = true;
+    this._automationAssistMqttDiscoveryDeviceId = deviceId;
+
+    if (createdCount > 0) {
       this._setAutomationAssistStatus(
-        `MQTT trigger ready for ${deviceName} (${label})`,
+        `Created ${createdCount} MQTT discovery triggers for ${deviceLabel}`,
       );
     } else {
       this._setAutomationAssistStatus(
-        commandName
-          ? `MQTT trigger ready for ${commandName} (device name unavailable)`
-          : "MQTT trigger ready (device name unavailable)",
+        `All MQTT discovery triggers already exist for ${deviceLabel}`,
       );
     }
+
+    this._updateAutomationAssistUI();
   }
 
   _primeAutomationAssistMqttMetadata(payload) {
@@ -1056,47 +1169,50 @@ class SofabatonRemoteCard extends HTMLElement {
     const requestTopic = `device/${mac}/list_request`;
     const payload = JSON.stringify({ data: "device_list" });
 
-    return new Promise((resolve) => {
-      let timeoutId = null;
-      let unsub = null;
+    return this._enqueueMqttRequest(
+      () =>
+        new Promise((resolve) => {
+          let timeoutId = null;
+          let unsub = null;
 
-      const finish = (name) => {
-        if (timeoutId) clearTimeout(timeoutId);
-        if (unsub) {
-          try {
-            unsub();
-          } catch (e) {
-            /* no-op */
-          }
-        }
-        if (name) {
-          this._mqttDeviceNames.set(cacheKey, name);
-        }
-        resolve(name || null);
-      };
+          const finish = (name) => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (unsub) {
+              try {
+                unsub();
+              } catch (e) {
+                /* no-op */
+              }
+            }
+            if (name) {
+              this._mqttDeviceNames.set(cacheKey, name);
+            }
+            resolve(name || null);
+          };
 
-      this._hass.connection
-        .subscribeMessage(
-          (msg) => {
-            const data = this._parseMqttPayload(msg?.payload);
-            const devices = Array.isArray(data?.data) ? data.data : [];
-            const match = devices.find(
-              (device) => Number(device?.device_id) === deviceId,
-            );
-            finish(match?.device_name ? String(match.device_name) : null);
-          },
-          { type: "mqtt/subscribe", topic },
-        )
-        .then((unsubscribe) => {
-          unsub = unsubscribe;
-          this._hass.callService("mqtt", "publish", {
-            topic: requestTopic,
-            payload,
-          });
-          timeoutId = setTimeout(() => finish(null), 4000);
-        })
-        .catch(() => finish(null));
-    });
+          this._hass.connection
+            .subscribeMessage(
+              (msg) => {
+                const data = this._parseMqttPayload(msg?.payload);
+                const devices = Array.isArray(data?.data) ? data.data : [];
+                const match = devices.find(
+                  (device) => Number(device?.device_id) === deviceId,
+                );
+                finish(match?.device_name ? String(match.device_name) : null);
+              },
+              { type: "mqtt/subscribe", topic },
+            )
+            .then((unsubscribe) => {
+              unsub = unsubscribe;
+              this._callService("mqtt", "publish", {
+                topic: requestTopic,
+                payload,
+              });
+              timeoutId = setTimeout(() => finish(null), 4000);
+            })
+            .catch(() => finish(null));
+        }),
+    );
   }
 
   async _requestMqttDeviceCommandName(mac, deviceId, keyId) {
@@ -1120,102 +1236,87 @@ class SofabatonRemoteCard extends HTMLElement {
     const requestTopic = `device/${mac}/keys_request`;
     const payload = JSON.stringify({ data: { device_id: deviceId } });
 
-    return new Promise((resolve) => {
-      let timeoutId = null;
-      let unsub = null;
+    return this._enqueueMqttRequest(
+      () =>
+        new Promise((resolve) => {
+          let timeoutId = null;
+          let unsub = null;
 
-      const finish = (commands) => {
-        if (timeoutId) clearTimeout(timeoutId);
-        if (unsub) {
-          try {
-            unsub();
-          } catch (e) {
-            /* no-op */
-          }
-        }
-        if (commands) {
-          this._mqttDeviceCommands.set(cacheKey, commands);
-        }
-        resolve(commands || null);
-      };
+          const finish = (commands) => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (unsub) {
+              try {
+                unsub();
+              } catch (e) {
+                /* no-op */
+              }
+            }
+            if (commands) {
+              this._mqttDeviceCommands.set(cacheKey, commands);
+            }
+            resolve(commands || null);
+          };
 
-      this._hass.connection
-        .subscribeMessage(
-          (msg) => {
-            const data = this._parseMqttPayload(msg?.payload);
-            if (Number(data?.device_id) !== deviceId) return;
-            const keys = Array.isArray(data?.data) ? data.data : [];
-            const commands = new Map();
-            keys.forEach((entry) => {
-              const key = Number(entry?.key_id);
-              if (!Number.isFinite(key)) return;
-              const name = entry?.key_name ? String(entry.key_name) : null;
-              if (name) commands.set(key, name);
-            });
-            finish(commands);
-          },
-          { type: "mqtt/subscribe", topic },
-        )
-        .then((unsubscribe) => {
-          unsub = unsubscribe;
-          this._hass.callService("mqtt", "publish", {
-            topic: requestTopic,
-            payload,
-          });
-          timeoutId = setTimeout(() => finish(null), 4000);
-        })
-        .catch(() => finish(null));
-    });
+          this._hass.connection
+            .subscribeMessage(
+              (msg) => {
+                const data = this._parseMqttPayload(msg?.payload);
+                if (Number(data?.device_id) !== deviceId) return;
+                const keys = Array.isArray(data?.data) ? data.data : [];
+                const commands = new Map();
+                keys.forEach((entry) => {
+                  const key = Number(entry?.key_id);
+                  if (!Number.isFinite(key)) return;
+                  const name = entry?.key_name ? String(entry.key_name) : null;
+                  if (name) commands.set(key, name);
+                });
+                finish(commands);
+              },
+              { type: "mqtt/subscribe", topic },
+            )
+            .then((unsubscribe) => {
+              unsub = unsubscribe;
+              this._callService("mqtt", "publish", {
+                topic: requestTopic,
+                payload,
+              });
+              timeoutId = setTimeout(() => finish(null), 4000);
+            })
+            .catch(() => finish(null));
+        }),
+    );
   }
 
-  async _copyAutomationAssistYaml(kind) {
-    const yaml =
-      kind === "button"
-        ? this._automationAssistButtonYaml()
-        : this._automationAssistRemoteYaml();
-    if (!yaml) return;
-
-    const success = await this._copyToClipboard(yaml);
-    if (success) {
-      this._setAutomationAssistStatus(
-        kind === "button"
-          ? "Copied button YAML"
-          : "Copied remote.send_command YAML",
-      );
-    } else {
-      this._setAutomationAssistStatus("Clipboard copy failed");
-    }
+  _enqueueMqttRequest(task) {
+    this._mqttRequestQueue = this._mqttRequestQueue || Promise.resolve();
+    const run = async () => task();
+    this._mqttRequestQueue = this._mqttRequestQueue.then(run, run);
+    return this._mqttRequestQueue;
   }
 
-  async _copyToClipboard(text) {
-    if (!text) return false;
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-    } catch (e) {
-      /* fall through */
-    }
-    try {
-      const area = document.createElement("textarea");
-      area.value = text;
-      area.setAttribute("readonly", "true");
-      area.style.position = "absolute";
-      area.style.left = "-9999px";
-      document.body.appendChild(area);
-      area.select();
-      const ok = document.execCommand("copy");
-      document.body.removeChild(area);
-      return ok;
-    } catch (e) {
-      return false;
-    }
+  _enqueueMqttPublish(task) {
+    this._mqttPublishQueue = this._mqttPublishQueue || Promise.resolve();
+    const run = async () => task();
+    this._mqttPublishQueue = this._mqttPublishQueue.then(run, run);
+    return this._mqttPublishQueue;
+  }
+
+  _automationAssistSlug(value) {
+    return (
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .replace(/_+/g, "_") || "command"
+    );
   }
 
   _setAutomationAssistStatus(text) {
+    this._automationAssistStatusMessage = String(text ?? "");
     if (!this._automationAssistStatus) return;
-    this._automationAssistStatus.textContent = String(text ?? "");
+    this._automationAssistStatus.textContent =
+      this._automationAssistStatusMessage;
   }
 
   _updateAutomationAssistUI() {
@@ -1225,31 +1326,13 @@ class SofabatonRemoteCard extends HTMLElement {
     const hasCapture = !!capture;
     const mqttSupported = this._automationAssistMqttSupported();
 
-    if (hasCapture) {
-      this._automationAssistLabel.textContent = capture.label;
-      if (this._automationAssistMqttExisting) {
-        this._setAutomationAssistStatus("MQTT trigger already exists");
-      } else if (this._automationAssistMqttMatch) {
-        this._setAutomationAssistStatus("MQTT trigger available");
-      } else {
-        this._setAutomationAssistStatus("Click captured");
-      }
+    if (this._automationAssistStatusMessage) {
+      this._automationAssistStatus.textContent =
+        this._automationAssistStatusMessage;
+    } else if (hasCapture) {
+      this._automationAssistStatus.textContent = `Captured: ${capture.label}`;
     } else {
-      this._automationAssistLabel.textContent = "No button captured yet";
-      this._setAutomationAssistStatus("Press a remote button to capture it");
-    }
-
-    if (this._automationAssistCopyRemote) {
-      this._automationAssistCopyRemote.classList.toggle(
-        "disabled",
-        !hasCapture,
-      );
-    }
-    if (this._automationAssistCopyButton) {
-      this._automationAssistCopyButton.classList.toggle(
-        "disabled",
-        !hasCapture,
-      );
+      this._automationAssistStatus.textContent = "Waiting for keypress";
     }
 
     if (this._automationAssistMqtt) {
@@ -1257,7 +1340,7 @@ class SofabatonRemoteCard extends HTMLElement {
         mqttSupported &&
         hasCapture &&
         this._automationAssistMqttMatch &&
-        !this._automationAssistMqttExisting;
+        !this._automationAssistMqttDiscoveryCreated;
       this._setVisible(this._automationAssistMqtt, showMqtt);
       this._automationAssistMqtt.classList.toggle(
         "disabled",
@@ -2287,42 +2370,21 @@ class SofabatonRemoteCard extends HTMLElement {
 
       .automationAssist {
         display: grid;
-        gap: 10px;
+        gap: 6px;
         padding: 12px;
         border-radius: var(--sb-group-radius);
         border: 1px solid rgba(var(--rgb-primary-color), 0.25);
         background: rgba(var(--rgb-primary-color), 0.08);
       }
 
-      .automationAssist__header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-      }
-
-      .automationAssist__title {
-        font-weight: 600;
-      }
-
-      .automationAssist__status {
-        font-size: 12px;
-        opacity: 0.75;
-        text-align: right;
-      }
-
       .automationAssist__label {
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 600;
-      }
-
-      .automationAssist__actions {
-        display: grid;
-        gap: 8px;
       }
 
       .automationAssistButton {
         cursor: pointer;
+        margin-top: 4px;
       }
 
       .automationAssistButton.disabled {
@@ -2330,9 +2392,9 @@ class SofabatonRemoteCard extends HTMLElement {
         pointer-events: none;
       }
 
-      .automationAssist__note {
+      .automationAssist__status {
         font-size: 12px;
-        opacity: 0.7;
+        opacity: 0.75;
       }
 
  	  .loadIndicator {
@@ -2749,26 +2811,14 @@ class SofabatonRemoteCard extends HTMLElement {
     this._automationAssistRow = document.createElement("div");
     this._automationAssistRow.className = "automationAssist";
 
-    const assistHeader = document.createElement("div");
-    assistHeader.className = "automationAssist__header";
-
-    const assistTitle = document.createElement("div");
-    assistTitle.className = "automationAssist__title";
-    assistTitle.textContent = "Automation Assist";
+    const assistLabel = document.createElement("div");
+    assistLabel.className = "automationAssist__label";
+    assistLabel.textContent = "Automation Assist";
+    this._automationAssistLabel = assistLabel;
 
     const assistStatus = document.createElement("div");
     assistStatus.className = "automationAssist__status";
     this._automationAssistStatus = assistStatus;
-
-    assistHeader.appendChild(assistTitle);
-    assistHeader.appendChild(assistStatus);
-
-    const assistLabel = document.createElement("div");
-    assistLabel.className = "automationAssist__label";
-    this._automationAssistLabel = assistLabel;
-
-    const assistActions = document.createElement("div");
-    assistActions.className = "automationAssist__actions";
 
     const mkAssistButton = (label, onClick) => {
       const wrapBtn = document.createElement("div");
@@ -2790,33 +2840,14 @@ class SofabatonRemoteCard extends HTMLElement {
       return wrapBtn;
     };
 
-    this._automationAssistCopyRemote = mkAssistButton(
-      "Copy remote.send_command YAML",
-      () => this._copyAutomationAssistYaml("service"),
-    );
-    assistActions.appendChild(this._automationAssistCopyRemote);
-
-    this._automationAssistCopyButton = mkAssistButton(
-      "Copy HA button YAML",
-      () => this._copyAutomationAssistYaml("button"),
-    );
-    assistActions.appendChild(this._automationAssistCopyButton);
-
     this._automationAssistMqtt = mkAssistButton(
-      "Create MQTT discovery trigger",
+      "Create MQTT discovery triggers",
       () => this._handleAutomationAssistMqttClick(),
     );
-    assistActions.appendChild(this._automationAssistMqtt);
 
-    const assistNote = document.createElement("div");
-    assistNote.className = "automationAssist__note";
-    assistNote.textContent =
-      "MQTT discovery triggers will appear when available.";
-
-    this._automationAssistRow.appendChild(assistHeader);
     this._automationAssistRow.appendChild(assistLabel);
-    this._automationAssistRow.appendChild(assistActions);
-    this._automationAssistRow.appendChild(assistNote);
+    this._automationAssistRow.appendChild(assistStatus);
+    this._automationAssistRow.appendChild(this._automationAssistMqtt);
 
     this._wrap.appendChild(this._automationAssistRow);
 
