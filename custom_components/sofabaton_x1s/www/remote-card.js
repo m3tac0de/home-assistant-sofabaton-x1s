@@ -730,6 +730,7 @@ class SofabatonRemoteCard extends HTMLElement {
     this._automationAssistMqttMatch = false;
     this._automationAssistMqttPayload = null;
     this._automationAssistMqttDeviceName = null;
+    this._automationAssistMqttCommandName = null;
     this._automationAssistMqttExisting = false;
 
     this._updateAutomationAssistUI();
@@ -975,12 +976,15 @@ class SofabatonRemoteCard extends HTMLElement {
 
     this._automationAssistMqttMatch = true;
     this._automationAssistMqttPayload = payload;
+    this._automationAssistMqttDeviceName = null;
+    this._automationAssistMqttCommandName = null;
     this._automationAssistMqttExisting =
       this._automationAssistMqttTriggerExists(
         payload,
         this._automationAssistMqttTopic,
       );
     this._updateAutomationAssistUI();
+    this._primeAutomationAssistMqttMetadata(payload);
   }
 
   async _handleAutomationAssistMqttClick() {
@@ -990,18 +994,52 @@ class SofabatonRemoteCard extends HTMLElement {
     if (!mac || !payload) return;
 
     const deviceId = Number(payload.device_id);
-    const deviceName = await this._requestMqttDeviceName(mac, deviceId);
+    const keyId = Number(payload.key_id);
+    const [deviceName, commandName] = await Promise.all([
+      this._requestMqttDeviceName(mac, deviceId),
+      this._requestMqttDeviceCommandName(mac, deviceId, keyId),
+    ]);
+
+    this._automationAssistMqttDeviceName = deviceName;
+    this._automationAssistMqttCommandName = commandName;
+
+    const label =
+      commandName || this._automationAssistCapture?.label || "button";
 
     if (deviceName) {
       this._automationAssistMqttDeviceName = deviceName;
       this._setAutomationAssistStatus(
-        `MQTT trigger ready for ${deviceName} (${this._automationAssistCapture?.label || "button"})`,
+        `MQTT trigger ready for ${deviceName} (${label})`,
       );
     } else {
       this._setAutomationAssistStatus(
-        "MQTT trigger ready (device name unavailable)",
+        commandName
+          ? `MQTT trigger ready for ${commandName} (device name unavailable)`
+          : "MQTT trigger ready (device name unavailable)",
       );
     }
+  }
+
+  _primeAutomationAssistMqttMetadata(payload) {
+    const mac = this._hubMac;
+    if (!mac || !payload) return;
+
+    const deviceId = Number(payload.device_id);
+    const keyId = Number(payload.key_id);
+    if (!Number.isFinite(deviceId) || !Number.isFinite(keyId)) return;
+
+    const lookupId = (this._automationAssistMqttLookupId || 0) + 1;
+    this._automationAssistMqttLookupId = lookupId;
+
+    Promise.all([
+      this._requestMqttDeviceName(mac, deviceId),
+      this._requestMqttDeviceCommandName(mac, deviceId, keyId),
+    ]).then(([deviceName, commandName]) => {
+      if (this._automationAssistMqttLookupId !== lookupId) return;
+      if (deviceName) this._automationAssistMqttDeviceName = deviceName;
+      if (commandName) this._automationAssistMqttCommandName = commandName;
+      this._updateAutomationAssistUI();
+    });
   }
 
   async _requestMqttDeviceName(mac, deviceId) {
@@ -1046,6 +1084,75 @@ class SofabatonRemoteCard extends HTMLElement {
               (device) => Number(device?.device_id) === deviceId,
             );
             finish(match?.device_name ? String(match.device_name) : null);
+          },
+          { type: "mqtt/subscribe", topic },
+        )
+        .then((unsubscribe) => {
+          unsub = unsubscribe;
+          this._hass.callService("mqtt", "publish", {
+            topic: requestTopic,
+            payload,
+          });
+          timeoutId = setTimeout(() => finish(null), 4000);
+        })
+        .catch(() => finish(null));
+    });
+  }
+
+  async _requestMqttDeviceCommandName(mac, deviceId, keyId) {
+    if (!Number.isFinite(keyId)) return null;
+    const commands = await this._requestMqttDeviceCommands(mac, deviceId);
+    if (!commands) return null;
+    return commands.get(Number(keyId)) || null;
+  }
+
+  async _requestMqttDeviceCommands(mac, deviceId) {
+    if (!this._hass?.connection?.subscribeMessage) return null;
+    if (!Number.isFinite(deviceId)) return null;
+
+    this._mqttDeviceCommands = this._mqttDeviceCommands || new Map();
+    const cacheKey = `${mac}:${deviceId}`;
+    if (this._mqttDeviceCommands.has(cacheKey)) {
+      return this._mqttDeviceCommands.get(cacheKey);
+    }
+
+    const topic = `device/${mac}/keys_list`;
+    const requestTopic = `device/${mac}/keys_request`;
+    const payload = JSON.stringify({ data: { device_id: deviceId } });
+
+    return new Promise((resolve) => {
+      let timeoutId = null;
+      let unsub = null;
+
+      const finish = (commands) => {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (unsub) {
+          try {
+            unsub();
+          } catch (e) {
+            /* no-op */
+          }
+        }
+        if (commands) {
+          this._mqttDeviceCommands.set(cacheKey, commands);
+        }
+        resolve(commands || null);
+      };
+
+      this._hass.connection
+        .subscribeMessage(
+          (msg) => {
+            const data = this._parseMqttPayload(msg?.payload);
+            if (Number(data?.device_id) !== deviceId) return;
+            const keys = Array.isArray(data?.data) ? data.data : [];
+            const commands = new Map();
+            keys.forEach((entry) => {
+              const key = Number(entry?.key_id);
+              if (!Number.isFinite(key)) return;
+              const name = entry?.key_name ? String(entry.key_name) : null;
+              if (name) commands.set(key, name);
+            });
+            finish(commands);
           },
           { type: "mqtt/subscribe", topic },
         )
