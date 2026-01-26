@@ -450,6 +450,8 @@ class SofabatonRemoteCard extends HTMLElement {
       }
     } finally {
       this._hubQueueBusy = false;
+      this._updateAutomationAssistUI();
+      this._syncAutomationAssistMqtt();
     }
   }
 
@@ -705,6 +707,7 @@ class SofabatonRemoteCard extends HTMLElement {
     icon = null,
   }) {
     if (!this._automationAssistEnabled()) return;
+    if (!this._automationAssistActive) return;
 
     const command = Number(commandId);
     if (!Number.isFinite(command)) return;
@@ -838,7 +841,6 @@ class SofabatonRemoteCard extends HTMLElement {
 
     this._hass.callService("persistent_notification", "create", {
       title: "Automation Assist",
-      notification_id: "sofabaton_automation_assist",
       message: body,
     });
   }
@@ -850,6 +852,7 @@ class SofabatonRemoteCard extends HTMLElement {
   _automationAssistMqttAvailable() {
     return (
       this._automationAssistMqttSupported() &&
+      this._automationAssistActive &&
       Boolean(this._hubMac) &&
       Boolean(this._automationAssistMqttMatch) &&
       !this._automationAssistMqttDiscoveryCreated &&
@@ -925,6 +928,11 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _syncAutomationAssistMqtt() {
     if (!this._automationAssistEnabled()) {
+      this._unsubscribeAutomationAssistMqtt();
+      return;
+    }
+
+    if (!this._automationAssistActive) {
       this._unsubscribeAutomationAssistMqtt();
       return;
     }
@@ -1090,7 +1098,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistDiscoveryIds =
         this._automationAssistDiscoveryIds || new Set();
       if (this._automationAssistDiscoveryIds.has(uniqueId)) continue;
-      const subtype = `X2-${deviceLabel} ${displayCommand}`;
+      const subtype = `X2 ${deviceLabel} ${displayCommand}`;
       const config = {
         automation_type: "trigger",
         type: "button_short_press",
@@ -1319,14 +1327,40 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistStatusMessage;
   }
 
+  _setAutomationAssistActive(active) {
+    const next = !!active;
+    if (this._automationAssistActive === next) return;
+    this._automationAssistActive = next;
+    if (!next) {
+      this._automationAssistCapture = null;
+      this._automationAssistMqttMatch = false;
+      this._automationAssistMqttPayload = null;
+      this._automationAssistMqttDeviceName = null;
+      this._automationAssistMqttCommandName = null;
+      this._automationAssistMqttExisting = false;
+      this._automationAssistMqttDiscoveryCreated = false;
+      this._automationAssistMqttDiscoveryDeviceId = null;
+      this._automationAssistStatusMessage = null;
+      this._unsubscribeAutomationAssistMqtt();
+    } else {
+      this._automationAssistStatusMessage = null;
+      this._syncAutomationAssistMqtt();
+    }
+    this._updateAutomationAssistUI();
+  }
+
   _updateAutomationAssistUI() {
     if (!this._automationAssistLabel || !this._automationAssistStatus) return;
 
     const capture = this._automationAssistCapture;
+    const isActive = this._automationAssistActive;
     const hasCapture = !!capture;
     const mqttSupported = this._automationAssistMqttSupported();
 
-    if (this._automationAssistStatusMessage) {
+    if (!isActive) {
+      this._automationAssistStatus.textContent =
+        "Click to start capturing commands";
+    } else if (this._automationAssistStatusMessage) {
       this._automationAssistStatus.textContent =
         this._automationAssistStatusMessage;
     } else if (hasCapture) {
@@ -1335,9 +1369,14 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistStatus.textContent = "Waiting for keypress";
     }
 
+    if (this._automationAssistStart) {
+      this._setVisible(this._automationAssistStart, !isActive);
+    }
+
     if (this._automationAssistMqtt) {
       const showMqtt =
         mqttSupported &&
+        isActive &&
         hasCapture &&
         this._automationAssistMqttMatch &&
         !this._automationAssistMqttDiscoveryCreated;
@@ -2840,6 +2879,11 @@ class SofabatonRemoteCard extends HTMLElement {
       return wrapBtn;
     };
 
+    this._automationAssistStart = mkAssistButton(
+      "Start capturing commands",
+      () => this._setAutomationAssistActive(true),
+    );
+
     this._automationAssistMqtt = mkAssistButton(
       "Create MQTT discovery triggers",
       () => this._handleAutomationAssistMqttClick(),
@@ -2847,6 +2891,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
     this._automationAssistRow.appendChild(assistLabel);
     this._automationAssistRow.appendChild(assistStatus);
+    this._automationAssistRow.appendChild(this._automationAssistStart);
     this._automationAssistRow.appendChild(this._automationAssistMqtt);
 
     this._wrap.appendChild(this._automationAssistRow);
@@ -3529,6 +3574,9 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistRow,
       this._config.show_automation_assist,
     );
+    if (!this._automationAssistEnabled() && this._automationAssistActive) {
+      this._setAutomationAssistActive(false);
+    }
     this._syncAutomationAssistMqtt();
     this._setVisible(this._activityRow, this._config.show_activity);
 
