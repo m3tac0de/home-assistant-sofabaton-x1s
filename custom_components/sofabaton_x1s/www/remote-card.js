@@ -654,6 +654,14 @@ class SofabatonRemoteCard extends HTMLElement {
     return match?.name || "";
   }
 
+  _activityNameForId(activityId) {
+    if (activityId == null) return "";
+    const id = Number(activityId);
+    if (!Number.isFinite(id)) return "";
+    const match = this._activities().find((activity) => activity.id === id);
+    return match?.name || "";
+  }
+
   _isPoweredOffLabel(state) {
     const s = String(state || "")
       .trim()
@@ -723,12 +731,18 @@ class SofabatonRemoteCard extends HTMLElement {
       return;
     }
 
+    const activityName =
+      this._activityNameForId(resolvedDevice) ||
+      this._currentActivityLabel() ||
+      "Unknown";
+
     this._automationAssistCapture = {
       label: String(label ?? "Button"),
       commandId: command,
       deviceId: Number(resolvedDevice),
       commandType,
       icon: icon ? String(icon) : null,
+      activityName,
     };
     this._automationAssistMqttMatch = false;
     this._automationAssistMqttPayload = null;
@@ -761,7 +775,7 @@ class SofabatonRemoteCard extends HTMLElement {
         capture.commandType === "favorite" ? "device_id" : "activity_id";
 
       return [
-        "service: remote.send_command",
+        "action: remote.send_command",
         "target:",
         `  entity_id: ${entityId}`,
         "data:",
@@ -773,7 +787,7 @@ class SofabatonRemoteCard extends HTMLElement {
     }
 
     return [
-      "service: remote.send_command",
+      "action: remote.send_command",
       "target:",
       `  entity_id: ${entityId}`,
       "data:",
@@ -804,8 +818,8 @@ class SofabatonRemoteCard extends HTMLElement {
       `name: ${label}`,
       `icon: ${icon}`,
       "tap_action:",
-      "  action: call-service",
-      serviceYaml,
+      "  action: perform-action",
+      "  perform_" + serviceYaml.substring(2),
       "hold_action:",
       "  action: none",
     ].join("\n");
@@ -815,18 +829,29 @@ class SofabatonRemoteCard extends HTMLElement {
     const capture = this._automationAssistCapture;
     if (!capture) return "";
 
+    const activityName =
+      capture.activityName ||
+      this._activityNameForId(capture.deviceId) ||
+      this._currentActivityLabel() ||
+      "Unknown";
     const buttonYaml = this._automationAssistButtonYaml();
     const remoteYaml = this._automationAssistRemoteYaml();
 
     return [
-      `Button: ${capture.label}`,
+      "---",
       "",
-      "Button YAML:",
+      `**Activity: ${activityName} | Button: ${capture.label}**`,
+      "",
+      "---",
+      "📋 **Lovelace Button Code**",
+      "",
+      "*Copy this to your Dashboard YAML:*",
       "```yaml",
       buttonYaml,
       "```",
+      "⚙️ **Service Call (Automation)**",
       "",
-      "remote.send_command YAML:",
+      "*Use this in your Scripts or Automations:*",
       "```yaml",
       remoteYaml,
       "```",
@@ -840,7 +865,7 @@ class SofabatonRemoteCard extends HTMLElement {
     if (!body) return;
 
     this._hass.callService("persistent_notification", "create", {
-      title: "Automation Assist",
+      title: "🛠️ Automation Assist",
       message: body,
     });
   }
@@ -943,15 +968,7 @@ class SofabatonRemoteCard extends HTMLElement {
     }
 
     if (!this._automationAssistMqttReady()) {
-      this._setAutomationAssistStatus("Waiting for hub requests to finish...");
       return;
-    }
-
-    if (
-      this._automationAssistStatusMessage ===
-      "Waiting for hub requests to finish..."
-    ) {
-      this._automationAssistStatusMessage = null;
     }
 
     this._ensureHubMac();
@@ -2298,6 +2315,10 @@ class SofabatonRemoteCard extends HTMLElement {
     card.appendChild(inner);
 
     this._attachPrimaryAction(card, () => {
+      if (this._automationAssistActive) {
+        this._setAutomationAssistStatus("Not captured.");
+      }
+
       // If the user configured an arbitrary Lovelace Action, run it
       if (fav?.action) {
         this._runLovelaceAction(fav.action, fav);
@@ -2313,13 +2334,6 @@ class SofabatonRemoteCard extends HTMLElement {
         return;
 
       this._triggerCommandPulse();
-      this._recordAutomationAssistClick({
-        label,
-        commandId: cmd,
-        deviceId: dev,
-        commandType: "favorite",
-        icon: fav?.icon ?? null,
-      });
       this._sendCustomFavoriteCommand(cmd, dev);
     });
 
