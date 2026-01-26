@@ -1094,7 +1094,7 @@ class SofabatonRemoteCard extends HTMLElement {
       if (this._automationAssistMqttTriggerExists(payloadObj, topic)) continue;
 
       const displayCommand = commandName || `Command ${payloadObj.key_id}`;
-      const uniqueId = `sofabaton_${macLower}_d${deviceId}_k${payloadObj.key_id}_${this._automationAssistSlug(`${deviceLabel} ${displayCommand}`)}`;
+      const uniqueId = `sofabaton_${macLower}_d${deviceId}_k${payloadObj.key_id}`;
       this._automationAssistDiscoveryIds =
         this._automationAssistDiscoveryIds || new Set();
       if (this._automationAssistDiscoveryIds.has(uniqueId)) continue;
