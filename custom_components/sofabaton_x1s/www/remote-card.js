@@ -1,6 +1,7 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
 const CARD_VERSION = "0.0.7";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
+const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 const TYPE = "sofabaton-virtual-remote";
 const EDITOR = "sofabaton-virtual-remote-editor";
 const DEFAULT_GROUP_ORDER = [
@@ -1019,37 +1020,38 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _automationAssistMqttTriggerExists(payload, topic) {
-    if (!this._hass?.states || !payload || !topic) return false;
-    const expectedDevice = Number(payload.device_id);
-    const expectedKey = Number(payload.key_id);
-    if (!Number.isFinite(expectedDevice) || !Number.isFinite(expectedKey))
-      return false;
+    return false;
+  }
 
-    const expectedPayload = JSON.stringify({
-      device_id: expectedDevice,
-      key_id: expectedKey,
-    });
+  _automationAssistSessionState() {
+    if (!window[AUTOMATION_ASSIST_SESSION_KEY]) {
+      window[AUTOMATION_ASSIST_SESSION_KEY] = {
+        hideMqttModal: false,
+        discoveryDeviceIds: new Set(),
+      };
+    }
+    return window[AUTOMATION_ASSIST_SESSION_KEY];
+  }
 
-    return Object.values(this._hass.states).some((state) => {
-      if (!state?.entity_id?.startsWith("automation.")) return false;
-      const triggers = state.attributes?.trigger;
-      const list = Array.isArray(triggers)
-        ? triggers
-        : triggers
-          ? [triggers]
-          : [];
-      return list.some((trig) => {
-        if (!trig || trig.platform !== "mqtt") return false;
-        if (trig.topic !== topic) return false;
-        if (trig.payload && trig.payload === expectedPayload) return true;
-        const payloadJson = trig.payload_json;
-        if (!payloadJson || typeof payloadJson !== "object") return false;
-        return (
-          Number(payloadJson.device_id) === expectedDevice &&
-          Number(payloadJson.key_id) === expectedKey
-        );
-      });
-    });
+  _shouldSuppressMqttModal(deviceId) {
+    const session = this._automationAssistSessionState();
+    if (session.hideMqttModal) return true;
+    return session.discoveryDeviceIds.has(deviceId);
+  }
+
+  _openAutomationAssistMqttModal(deviceId) {
+    if (!this._automationAssistMqttModal) return;
+    if (!Number.isFinite(deviceId)) return;
+    if (this._shouldSuppressMqttModal(deviceId)) return;
+    this._automationAssistMqttModalDeviceId = deviceId;
+    this._automationAssistMqttModalOpen = true;
+    this._updateAutomationAssistModalUI();
+  }
+
+  _closeAutomationAssistMqttModal() {
+    if (!this._automationAssistMqttModalOpen) return;
+    this._automationAssistMqttModalOpen = false;
+    this._updateAutomationAssistModalUI();
   }
 
   _handleAutomationAssistMqtt(msg) {
@@ -1077,6 +1079,7 @@ class SofabatonRemoteCard extends HTMLElement {
       );
     this._updateAutomationAssistUI();
     this._primeAutomationAssistMqttMetadata(payload);
+    this._openAutomationAssistMqttModal(deviceId);
   }
 
   async _handleAutomationAssistMqttClick() {
@@ -1144,6 +1147,9 @@ class SofabatonRemoteCard extends HTMLElement {
 
     this._automationAssistMqttDiscoveryCreated = true;
     this._automationAssistMqttDiscoveryDeviceId = deviceId;
+
+    const session = this._automationAssistSessionState();
+    session.discoveryDeviceIds.add(deviceId);
 
     if (createdCount > 0) {
       this._setAutomationAssistStatus(
@@ -1359,6 +1365,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistMqttDiscoveryDeviceId = null;
       this._automationAssistStatusMessage = null;
       this._unsubscribeAutomationAssistMqtt();
+      this._closeAutomationAssistMqttModal();
     } else {
       this._automationAssistStatusMessage = null;
       this._syncAutomationAssistMqtt();
@@ -1375,8 +1382,7 @@ class SofabatonRemoteCard extends HTMLElement {
     const mqttSupported = this._automationAssistMqttSupported();
 
     if (!isActive) {
-      this._automationAssistStatus.textContent =
-        "Click to start capturing commands";
+      this._automationAssistStatus.textContent = "";
     } else if (this._automationAssistStatusMessage) {
       this._automationAssistStatus.textContent =
         this._automationAssistStatusMessage;
@@ -1390,15 +1396,57 @@ class SofabatonRemoteCard extends HTMLElement {
       this._setVisible(this._automationAssistStart, !isActive);
     }
 
-    if (this._automationAssistMqtt) {
-      const showMqtt =
+    this._updateAutomationAssistModalUI();
+  }
+
+  _updateAutomationAssistModalUI() {
+    if (!this._automationAssistMqttModal) return;
+
+    const isActive = this._automationAssistActive;
+    const mqttSupported = this._automationAssistMqttSupported();
+    const modalOpen = Boolean(this._automationAssistMqttModalOpen);
+
+    this._automationAssistMqttModal.classList.toggle("open", modalOpen);
+
+    if (!modalOpen) return;
+
+    if (this._automationAssistMqttModalOptOutInput) {
+      this._automationAssistMqttModalOptOutInput.checked = false;
+    }
+
+    const payload = this._automationAssistMqttPayload;
+    const deviceId = Number(payload?.device_id);
+    const commandId = Number(payload?.key_id);
+    const deviceName =
+      this._automationAssistMqttDeviceName ||
+      (Number.isFinite(deviceId) ? `Device ${deviceId}` : "Unknown device");
+    const commandName =
+      this._automationAssistMqttCommandName ||
+      (Number.isFinite(commandId) ? `Command ${commandId}` : null);
+
+    if (this._automationAssistMqttModalText) {
+      const lines = [`Detected MQTT device: ${deviceName}.`];
+      if (commandName) {
+        lines.push(`Last command: ${commandName}.`);
+      }
+      if (this._automationAssistMqttExisting) {
+        lines.push("Existing MQTT automation triggers were found.");
+      }
+      this._automationAssistMqttModalText.textContent = lines.join(" ");
+    }
+
+    if (this._automationAssistMqttModalStart) {
+      this._setVisible(this._automationAssistMqttModalStart, !isActive);
+    }
+
+    if (this._automationAssistMqttModalCreate) {
+      const showCreate =
         mqttSupported &&
         isActive &&
-        hasCapture &&
         this._automationAssistMqttMatch &&
         !this._automationAssistMqttDiscoveryCreated;
-      this._setVisible(this._automationAssistMqtt, showMqtt);
-      this._automationAssistMqtt.classList.toggle(
+      this._setVisible(this._automationAssistMqttModalCreate, showCreate);
+      this._automationAssistMqttModalCreate.classList.toggle(
         "disabled",
         !this._automationAssistMqttAvailable(),
       );
@@ -2855,6 +2903,71 @@ class SofabatonRemoteCard extends HTMLElement {
         border-left: 3px solid var(--warning-color, orange);
         padding-left: 10px;
       }
+
+      .sb-modal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 999;
+      }
+
+      .sb-modal.open {
+        display: flex;
+      }
+
+      .sb-modal__dialog {
+        width: min(420px, 90vw);
+        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+        color: var(--primary-text-color);
+        border-radius: 16px;
+        border: 1px solid var(--divider-color);
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+      }
+
+      .sb-modal__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .sb-modal__title {
+        font-weight: 600;
+        font-size: 15px;
+      }
+
+      .sb-modal__close {
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+      }
+
+      .sb-modal__text {
+        font-size: 13px;
+        opacity: 0.85;
+      }
+
+      .sb-modal__optout {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        opacity: 0.85;
+      }
+
+      .sb-modal__actions {
+        display: grid;
+        gap: 8px;
+      }
     `;
 
     const wrap = document.createElement("div");
@@ -2898,17 +3011,93 @@ class SofabatonRemoteCard extends HTMLElement {
       () => this._setAutomationAssistActive(true),
     );
 
-    this._automationAssistMqtt = mkAssistButton(
-      "Create MQTT discovery triggers",
-      () => this._handleAutomationAssistMqttClick(),
-    );
-
     this._automationAssistRow.appendChild(assistLabel);
     this._automationAssistRow.appendChild(assistStatus);
     this._automationAssistRow.appendChild(this._automationAssistStart);
-    this._automationAssistRow.appendChild(this._automationAssistMqtt);
 
     this._wrap.appendChild(this._automationAssistRow);
+
+    this._automationAssistMqttModal = document.createElement("div");
+    this._automationAssistMqttModal.className = "sb-modal";
+    this._automationAssistMqttModal.setAttribute("role", "dialog");
+    this._automationAssistMqttModal.setAttribute("aria-modal", "true");
+
+    this._automationAssistMqttModal.addEventListener("click", (ev) => {
+      if (ev.target === this._automationAssistMqttModal) {
+        this._closeAutomationAssistMqttModal();
+      }
+    });
+
+    const modalDialog = document.createElement("div");
+    modalDialog.className = "sb-modal__dialog";
+
+    const modalHeader = document.createElement("div");
+    modalHeader.className = "sb-modal__header";
+
+    const modalTitle = document.createElement("div");
+    modalTitle.className = "sb-modal__title";
+    modalTitle.textContent = "Home Assistant device detected.";
+
+    const modalClose = document.createElement("button");
+    modalClose.type = "button";
+    modalClose.className = "sb-modal__close";
+    modalClose.setAttribute("aria-label", "Close");
+    modalClose.textContent = "✕";
+    modalClose.addEventListener("click", () =>
+      this._closeAutomationAssistMqttModal(),
+    );
+
+    modalHeader.appendChild(modalTitle);
+    modalHeader.appendChild(modalClose);
+
+    const modalBody = document.createElement("div");
+    modalBody.className = "sb-modal__body";
+
+    const modalText = document.createElement("div");
+    modalText.className = "sb-modal__text";
+    this._automationAssistMqttModalText = modalText;
+
+    const modalOptOut = document.createElement("label");
+    modalOptOut.className = "sb-modal__optout";
+    const modalOptOutInput = document.createElement("input");
+    modalOptOutInput.type = "checkbox";
+    this._automationAssistMqttModalOptOutInput = modalOptOutInput;
+    modalOptOutInput.addEventListener("change", () => {
+      if (modalOptOutInput.checked) {
+        const session = this._automationAssistSessionState();
+        session.hideMqttModal = true;
+        this._closeAutomationAssistMqttModal();
+      }
+    });
+    const modalOptOutText = document.createElement("span");
+    modalOptOutText.textContent =
+      "Not show this again for this device (in this session).";
+    modalOptOut.appendChild(modalOptOutInput);
+    modalOptOut.appendChild(modalOptOutText);
+
+    modalBody.appendChild(modalText);
+    modalBody.appendChild(modalOptOut);
+
+    const modalActions = document.createElement("div");
+    modalActions.className = "sb-modal__actions";
+
+    this._automationAssistMqttModalCreate = mkAssistButton(
+      "Create automation triggers",
+      () => this._handleAutomationAssistMqttClick(),
+    );
+    this._automationAssistMqttModalStart = mkAssistButton(
+      "Start capturing commands",
+      () => this._setAutomationAssistActive(true),
+    );
+
+    modalActions.appendChild(this._automationAssistMqttModalCreate);
+    modalActions.appendChild(this._automationAssistMqttModalStart);
+
+    modalDialog.appendChild(modalHeader);
+    modalDialog.appendChild(modalBody);
+    modalDialog.appendChild(modalActions);
+    this._automationAssistMqttModal.appendChild(modalDialog);
+    card.appendChild(this._automationAssistMqttModal);
 
     // Activity selector (full width)
     this._activityRow = document.createElement("div");
