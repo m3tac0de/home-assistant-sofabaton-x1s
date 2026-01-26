@@ -129,7 +129,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
     Enables deep protocol logging for diagnostics (see logging docs).
 
 - **Sensors**
-  - `binary_sensor.<hub>_hub_status` (connected/disconnected)
+  - `binary_sensor.<hub>_hub_connected` (connected/disconnected)
   - `binary_sensor.<hub>_app_connected` (official app connected to proxy)
   - `sensor.<hub>_activity` (current activity; stays accurate regardless of where it changed, **always available**)
   - `sensor.<hub>_recorded_keypress` (ready-to-copy replay payloads from app button presses)
