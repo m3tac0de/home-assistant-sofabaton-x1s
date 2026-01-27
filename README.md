@@ -11,7 +11,7 @@ Control your Sofabaton **X1**, **X1S** and **X2** hub from Home Assistant using 
 
 ## Start here
 
-- 🚀 **Quick start**: install + add integration + (optional) enable X2 discovery
+- 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard card**: Sofabaton Virtual Remote
 - 🤖 **Automations**: `remote.send_command`, “recorded keypress”, “index” + fetch action
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
@@ -98,7 +98,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ### Option 1 – HACS (recommended)
 
-1. Open **HACS → Integrations**
+1. Open **HACS**
 2. Search **Sofabaton X1S** and install (works for X1/X1S/X2)
 3. **Restart Home Assistant**
 4. Go to **Settings → Devices & Services**
@@ -245,4 +245,4 @@ For a full guide, see [`docs/fetch_command.md`](docs/fetch_command.md)
 
 ## License
 
-MIT © 2025 m3tac0de
+MIT © 2026 m3tac0de
