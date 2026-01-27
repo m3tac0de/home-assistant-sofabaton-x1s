@@ -751,6 +751,7 @@ class SofabatonRemoteCard extends HTMLElement {
     this._automationAssistMqttCommandName = null;
     this._automationAssistMqttExisting = false;
     this._automationAssistMqttDiscoveryCreated = false;
+    this._automationAssistMqttDiscoveryWorking = false;
     this._automationAssistMqttDiscoveryDeviceId = null;
     this._automationAssistStatusMessage = null;
 
@@ -881,6 +882,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistActive &&
       Boolean(this._hubMac) &&
       !this._automationAssistMqttDiscoveryCreated &&
+      !this._automationAssistMqttDiscoveryWorking &&
       this._automationAssistMqttReady()
     );
   }
@@ -1064,6 +1066,7 @@ class SofabatonRemoteCard extends HTMLElement {
     ) {
       this._automationAssistMqttDiscoveryDeviceId = deviceId;
       this._automationAssistMqttDiscoveryCreated = false;
+      this._automationAssistMqttDiscoveryWorking = false;
     }
 
     this._automationAssistMqttMatch = true;
@@ -1089,77 +1092,85 @@ class SofabatonRemoteCard extends HTMLElement {
     const deviceId = Number(payload.device_id);
     if (!Number.isFinite(deviceId)) return;
 
-    const [deviceName, commands] = await Promise.all([
-      this._requestMqttDeviceName(mac, deviceId),
-      this._requestMqttDeviceCommands(mac, deviceId),
-    ]);
-
-    if (!commands || commands.size === 0) {
-      this._setAutomationAssistStatus("No MQTT commands discovered yet");
-      return;
-    }
-
-    const deviceLabel = deviceName || `Device ${deviceId}`;
-    const topic = `${mac}/up`;
-    const macLower = String(mac).toLowerCase();
-    const macUpper = String(mac).toUpperCase();
-    let createdCount = 0;
-
-    for (const [keyId, commandName] of commands.entries()) {
-      const payloadObj = { device_id: deviceId, key_id: Number(keyId) };
-      if (!Number.isFinite(payloadObj.key_id)) continue;
-
-      if (this._automationAssistMqttTriggerExists(payloadObj, topic)) continue;
-
-      const displayCommand = commandName || `Command ${payloadObj.key_id}`;
-      const uniqueId = `sofabaton_${macLower}_d${deviceId}_k${payloadObj.key_id}`;
-      this._automationAssistDiscoveryIds =
-        this._automationAssistDiscoveryIds || new Set();
-      if (this._automationAssistDiscoveryIds.has(uniqueId)) continue;
-      const subtype = `X2 ${deviceLabel} ${displayCommand}`;
-      const config = {
-        automation_type: "trigger",
-        type: "button_short_press",
-        subtype,
-        payload: JSON.stringify(payloadObj),
-        topic: `${macUpper}/up`,
-        device: {
-          identifiers: [`sofabaton_x2_remote_${deviceId}`],
-          name: `X2 → ${deviceLabel}`,
-          model: "X2",
-          manufacturer: "Sofabaton",
-        },
-      };
-
-      await this._enqueueMqttPublish(async () => {
-        await this._callService("mqtt", "publish", {
-          topic: `homeassistant/device_automation/${uniqueId}/config`,
-          payload: JSON.stringify(config),
-          retain: true,
-        });
-        this._automationAssistDiscoveryIds.add(uniqueId);
-        await this._sleep(250);
-      });
-      createdCount += 1;
-    }
-
-    this._automationAssistMqttDiscoveryCreated = true;
-    this._automationAssistMqttDiscoveryDeviceId = deviceId;
-
-    const session = this._automationAssistSessionState();
-    session.discoveryDeviceIds.add(deviceId);
-
-    if (createdCount > 0) {
-      this._setAutomationAssistStatus(
-        `Created ${createdCount} MQTT discovery triggers for ${deviceLabel}`,
-      );
-    } else {
-      this._setAutomationAssistStatus(
-        `All MQTT discovery triggers already exist for ${deviceLabel}`,
-      );
-    }
-
+    this._automationAssistMqttDiscoveryWorking = true;
     this._updateAutomationAssistUI();
+
+    try {
+      const [deviceName, commands] = await Promise.all([
+        this._requestMqttDeviceName(mac, deviceId),
+        this._requestMqttDeviceCommands(mac, deviceId),
+      ]);
+
+      if (!commands || commands.size === 0) {
+        this._setAutomationAssistStatus("No MQTT commands discovered yet");
+        return;
+      }
+
+      const deviceLabel = deviceName || `Device ${deviceId}`;
+      const topic = `${mac}/up`;
+      const macLower = String(mac).toLowerCase();
+      const macUpper = String(mac).toUpperCase();
+      let createdCount = 0;
+
+      for (const [keyId, commandName] of commands.entries()) {
+        const payloadObj = { device_id: deviceId, key_id: Number(keyId) };
+        if (!Number.isFinite(payloadObj.key_id)) continue;
+
+        if (this._automationAssistMqttTriggerExists(payloadObj, topic)) {
+          continue;
+        }
+
+        const displayCommand = commandName || `Command ${payloadObj.key_id}`;
+        const uniqueId = `sofabaton_${macLower}_d${deviceId}_k${payloadObj.key_id}`;
+        this._automationAssistDiscoveryIds =
+          this._automationAssistDiscoveryIds || new Set();
+        if (this._automationAssistDiscoveryIds.has(uniqueId)) continue;
+        const subtype = `X2 ${deviceLabel} ${displayCommand}`;
+        const config = {
+          automation_type: "trigger",
+          type: "button_short_press",
+          subtype,
+          payload: JSON.stringify(payloadObj),
+          topic: `${macUpper}/up`,
+          device: {
+            identifiers: [`sofabaton_x2_remote_${deviceId}`],
+            name: `X2 → ${deviceLabel}`,
+            model: "X2",
+            manufacturer: "Sofabaton",
+          },
+        };
+
+        await this._enqueueMqttPublish(async () => {
+          await this._callService("mqtt", "publish", {
+            topic: `homeassistant/device_automation/${uniqueId}/config`,
+            payload: JSON.stringify(config),
+            retain: true,
+          });
+          this._automationAssistDiscoveryIds.add(uniqueId);
+          await this._sleep(250);
+        });
+        createdCount += 1;
+      }
+
+      this._automationAssistMqttDiscoveryCreated = true;
+      this._automationAssistMqttDiscoveryDeviceId = deviceId;
+
+      const session = this._automationAssistSessionState();
+      session.discoveryDeviceIds.add(deviceId);
+
+      if (createdCount > 0) {
+        this._setAutomationAssistStatus(
+          `Created ${createdCount} MQTT discovery triggers for ${deviceLabel}`,
+        );
+      } else {
+        this._setAutomationAssistStatus(
+          `All MQTT discovery triggers already exist for ${deviceLabel}`,
+        );
+      }
+    } finally {
+      this._automationAssistMqttDiscoveryWorking = false;
+      this._updateAutomationAssistUI();
+    }
   }
 
   _primeAutomationAssistMqttMetadata(payload) {
@@ -1360,6 +1371,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistMqttCommandName = null;
       this._automationAssistMqttExisting = false;
       this._automationAssistMqttDiscoveryCreated = false;
+      this._automationAssistMqttDiscoveryWorking = false;
       this._automationAssistMqttDiscoveryDeviceId = null;
       this._automationAssistStatusMessage = null;
       this._unsubscribeAutomationAssistMqtt();
@@ -1439,13 +1451,24 @@ class SofabatonRemoteCard extends HTMLElement {
 
     if (this._automationAssistMqttModalCreate) {
       const showCreate =
-        mqttSupported &&
-        isActive &&
-        !this._automationAssistMqttDiscoveryCreated;
+        mqttSupported && isActive;
       this._setVisible(this._automationAssistMqttModalCreate, showCreate);
+      const discoveryWorking = this._automationAssistMqttDiscoveryWorking;
+      const discoveryReady = this._automationAssistMqttDiscoveryCreated;
+      if (discoveryWorking) {
+        this._automationAssistMqttModalCreate.textContent = "Working...";
+      } else {
+        this._automationAssistMqttModalCreate.textContent = discoveryReady
+          ? "Triggers ready for use"
+          : "Create MQTT Discovery triggers";
+      }
+      this._automationAssistMqttModalCreate.disabled =
+        discoveryWorking ||
+        discoveryReady ||
+        !this._automationAssistMqttAvailable();
       this._automationAssistMqttModalCreate.classList.toggle(
         "disabled",
-        !this._automationAssistMqttAvailable(),
+        this._automationAssistMqttModalCreate.disabled,
       );
     }
   }
@@ -2528,6 +2551,11 @@ class SofabatonRemoteCard extends HTMLElement {
       }
 
       .automationAssist__startBtn[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      .automationAssist__mqttBtn[disabled] {
         opacity: 0.5;
         cursor: default;
       }
