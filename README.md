@@ -129,8 +129,8 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
     Enables deep protocol logging for diagnostics (see logging docs).
 
 - **Sensors**
-  - `binary_sensor.<hub>_hub_connected` (connected/disconnected)
-  - `binary_sensor.<hub>_app_connected` (official app connected to proxy)
+  - `binary_sensor.<hub>_hub_connected` (is the hub connected/disconnected to the integration)
+  - `binary_sensor.<hub>_app_connected` (is the official app connected to the proxy)
   - `sensor.<hub>_activity` (current activity; stays accurate regardless of where it changed, **always available**)
   - `sensor.<hub>_recorded_keypress` (ready-to-copy replay payloads from app button presses)
   - `sensor.<hub>_index` (diagnostic: activities/devices/commands/macros/favorites)
@@ -245,4 +245,4 @@ For a full guide, see [`docs/fetch_command.md`](docs/fetch_command.md)
 
 ## License
 
-MIT © 2025 m3tac0de
+MIT © 2026 m3tac0de
