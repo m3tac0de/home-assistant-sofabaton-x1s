@@ -245,4 +245,4 @@ For a full guide, see [`docs/fetch_command.md`](docs/fetch_command.md)
 
 ## License
 
-MIT © 2025 m3tac0de
+MIT © 2026 m3tac0de
