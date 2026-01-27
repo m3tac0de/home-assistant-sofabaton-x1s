@@ -66,6 +66,17 @@ class SofabatonRemote(RemoteEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        hub_mac_raw = self._hub.mac or self._entry.data.get(CONF_MAC)
+        hub_mac = None
+        if hub_mac_raw:
+            hub_mac = (
+                str(hub_mac_raw)
+                .replace(":", "")
+                .replace("-", "")
+                .strip()
+                .upper()
+            )
+
         activity_id = self._hub.current_activity
         activities: list[dict[str, Any]] = []
         for act_id, activity in self._hub.activities.items():
@@ -103,6 +114,7 @@ class SofabatonRemote(RemoteEntity):
         return {
             "proxy_client_connected": self._hub.client_connected,
             "hub_version": self._hub.version,
+            "hub_mac": hub_mac,
             "activities": activities,
             "assigned_keys": assigned_keys,
             "macro_keys": macro_keys,

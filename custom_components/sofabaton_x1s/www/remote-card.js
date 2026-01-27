@@ -1,6 +1,7 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.0.5";
+const CARD_VERSION = "0.0.7";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
+const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 const TYPE = "sofabaton-virtual-remote";
 const EDITOR = "sofabaton-virtual-remote-editor";
 const DEFAULT_GROUP_ORDER = [
@@ -17,22 +18,67 @@ const DEFAULT_GROUP_ORDER_SET = new Set(DEFAULT_GROUP_ORDER);
 
 // Numeric IDs (for enabled_buttons)
 const ID = {
-  UP: 174, DOWN: 178, LEFT: 175, RIGHT: 177, OK: 176,
-  BACK: 179, HOME: 180, MENU: 181,
-  VOL_UP: 182, VOL_DOWN: 185, MUTE: 184,
-  CH_UP: 183, CH_DOWN: 186,
+  UP: 174,
+  DOWN: 178,
+  LEFT: 175,
+  RIGHT: 177,
+  OK: 176,
+  BACK: 179,
+  HOME: 180,
+  MENU: 181,
+  VOL_UP: 182,
+  VOL_DOWN: 185,
+  MUTE: 184,
+  CH_UP: 183,
+  CH_DOWN: 186,
 
-  GUIDE: 157,      // X2
-  DVR: 155,        // X2
-  PLAY: 156,       // X2
-  EXIT: 154,       // X2
-  A: 153, B: 152, C: 151, // X2
+  GUIDE: 157, // X2
+  DVR: 155, // X2
+  PLAY: 156, // X2
+  EXIT: 154, // X2
+  A: 153,
+  B: 152,
+  C: 151, // X2
 
-  REW: 187, PAUSE: 188, FWD: 189,
-  RED: 190, GREEN: 191, YELLOW: 192, BLUE: 193,
+  REW: 187,
+  PAUSE: 188,
+  FWD: 189,
+  RED: 190,
+  GREEN: 191,
+  YELLOW: 192,
+  BLUE: 193,
 };
 
 const POWERED_OFF_LABELS = new Set(["powered off", "powered_off", "off"]);
+const DEFAULT_KEY_LABELS = {
+  up: "Up",
+  down: "Down",
+  left: "Left",
+  right: "Right",
+  ok: "OK",
+  back: "Back",
+  home: "Home",
+  menu: "Menu",
+  volup: "Vol +",
+  voldn: "Vol -",
+  mute: "Mute",
+  chup: "Ch +",
+  chdn: "Ch -",
+  guide: "Guide",
+  dvr: "DVR",
+  play: "Play",
+  exit: "Exit",
+  rew: "Rewind",
+  pause: "Pause",
+  fwd: "Fast Forward",
+  red: "Red",
+  green: "Green",
+  yellow: "Yellow",
+  blue: "Blue",
+  a: "A",
+  b: "B",
+  c: "C",
+};
 
 function logPillsOnce() {
   if (window[LOG_ONCE_KEY]) return;
@@ -46,20 +92,23 @@ function logPillsOnce() {
     "font-size:12px;" +
     "line-height:18px;";
 
-  const red    = base + "background:#ef4444;color:#fff;";
-  const green  = base + "background:#22c55e;color:#062b12;";
+  const red = base + "background:#ef4444;color:#fff;";
+  const green = base + "background:#22c55e;color:#062b12;";
   const yellow = base + "background:#facc15;color:#111827;";
-  const blue   = base + "background:#3b82f6;color:#fff;";
+  const blue = base + "background:#3b82f6;color:#fff;";
 
   // A tiny spacer between pills (just normal text)
   const gap = "color:transparent;"; // keeps spacing without visible characters
 
   console.log(
     `%cSofabaton%c %c Virtual %c %c  Remote  %c %c   ${CARD_VERSION}   `,
-    red, gap,
-    green, gap,
-    yellow, gap,
-    blue
+    red,
+    gap,
+    green,
+    gap,
+    yellow,
+    gap,
+    blue,
   );
 }
 
@@ -83,17 +132,22 @@ class SofabatonRemoteCard extends HTMLElement {
       show_abc: true,
       theme: "",
       background_override: null,
+      show_automation_assist: false,
       show_macro_favorites: true,
       show_macros_button: null,
       show_favorites_button: null,
       custom_favorites: [],
       max_width: 360,
+      // Shrink the entire card using CSS `zoom` (0 = no shrink, higher = smaller)
+      shrink: 0,
       group_order: DEFAULT_GROUP_ORDER.slice(),
       ...config,
     };
 
     this._activeDrawer = null;
     this._activityMenuOpen = false;
+    this._drawerDirection = "down";
+    this._drawerResetTimer = null;
 
     this._initPromise = this._initPromise || this._ensureHaElements();
     this._initPromise.then(() => {
@@ -132,7 +186,8 @@ class SofabatonRemoteCard extends HTMLElement {
       this._hubFavoritesCache = null;
     }
 
-    if (this._integrationEntityId === entityId && this._integrationDomain) return;
+    if (this._integrationEntityId === entityId && this._integrationDomain)
+      return;
     if (this._integrationDetectingFor === entityId) return;
 
     this._integrationDetectingFor = entityId;
@@ -158,13 +213,39 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _showMacrosButton() {
     // Backwards-compatible: if the new per-button option isn't set, fall back to the old combined toggle
-    if (typeof this._config?.show_macros_button === 'boolean') return this._config.show_macros_button;
+    if (typeof this._config?.show_macros_button === "boolean")
+      return this._config.show_macros_button;
     return Boolean(this._config?.show_macro_favorites);
   }
 
   _showFavoritesButton() {
-    if (typeof this._config?.show_favorites_button === 'boolean') return this._config.show_favorites_button;
+    if (typeof this._config?.show_favorites_button === "boolean")
+      return this._config.show_favorites_button;
     return Boolean(this._config?.show_macro_favorites);
+  }
+
+  _automationAssistEnabled() {
+    return Boolean(this._config?.show_automation_assist);
+  }
+
+  _normalizeHubMac(value) {
+    if (!value) return null;
+    const normalized = String(value)
+      .replace(/[^a-fA-F0-9]/g, "")
+      .toUpperCase();
+    if (!normalized || normalized.length < 6) return null;
+    return normalized;
+  }
+
+  _automationAssistLabelForKey(key, label) {
+    const trimmed = String(label ?? "").trim();
+    if (trimmed) return trimmed;
+    const fallback = DEFAULT_KEY_LABELS[String(key ?? "").toLowerCase()];
+    if (fallback) return fallback;
+    if (!key) return "Button";
+    return String(key)
+      .replace(/[_-]+/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   _customFavorites() {
@@ -179,23 +260,50 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _normalizeCustomFavorite(item, idx = 0) {
-    if (!item || typeof item !== 'object') return null;
-    const name = String(item.name ?? item.label ?? '').trim();
+    if (!item || typeof item !== "object") return null;
+    const name = String(item.name ?? item.label ?? "").trim();
     if (!name) return null;
 
-    const icon = item.icon != null && String(item.icon).trim() ? String(item.icon).trim() : null;
+    const icon =
+      item.icon != null && String(item.icon).trim()
+        ? String(item.icon).trim()
+        : null;
 
     // Either: explicit IDs OR an arbitrary Lovelace Action
-    const action = (item.action && typeof item.action === 'object') ? item.action : ((item.tap_action && typeof item.tap_action === 'object') ? item.tap_action : null);
+    const action =
+      item.action && typeof item.action === "object"
+        ? item.action
+        : item.tap_action && typeof item.tap_action === "object"
+          ? item.tap_action
+          : null;
 
-    const rawCmd = item.command_id ?? item.key_id ?? item.command ?? item.key ?? item.id ?? null;
-    const rawDev = item.device_id ?? item.activity_id ?? item.device ?? item.activity ?? null;
+    const rawCmd =
+      item.command_id ??
+      item.key_id ??
+      item.command ??
+      item.key ??
+      item.id ??
+      null;
+    const rawDev =
+      item.device_id ??
+      item.activity_id ??
+      item.device ??
+      item.activity ??
+      null;
 
     const cmd = rawCmd != null ? Number(rawCmd) : null;
     const dev = rawDev != null ? Number(rawDev) : null;
 
-    const hasIds = Number.isFinite(cmd) && (rawDev == null || Number.isFinite(dev));
-    const hasAction = !!(action && (action.action || action.service || action.perform_action || action.navigation_path || action.url_path));
+    const hasIds =
+      Number.isFinite(cmd) && (rawDev == null || Number.isFinite(dev));
+    const hasAction = !!(
+      action &&
+      (action.action ||
+        action.service ||
+        action.perform_action ||
+        action.navigation_path ||
+        action.url_path)
+    );
 
     if (!hasIds && !hasAction) return null;
 
@@ -214,15 +322,19 @@ class SofabatonRemoteCard extends HTMLElement {
   _customFavoritesSignature(items) {
     const list = Array.isArray(items) ? items : [];
     const parts = list.map((it) => {
-      const n = String(it?.name ?? '');
-      const ic = String(it?.icon ?? '');
-      const cmd = String(it?.command_id ?? '');
-      const dev = String(it?.device_id ?? '');
-      let act = '';
-      try { act = it?.action ? JSON.stringify(it.action) : ''; } catch (e) { act = '[unserializable]'; }
+      const n = String(it?.name ?? "");
+      const ic = String(it?.icon ?? "");
+      const cmd = String(it?.command_id ?? "");
+      const dev = String(it?.device_id ?? "");
+      let act = "";
+      try {
+        act = it?.action ? JSON.stringify(it.action) : "";
+      } catch (e) {
+        act = "[unserializable]";
+      }
       return `${n}|${ic}|${cmd}|${dev}|${act}`;
     });
-    return `${parts.length}:${parts.join(';;')}`;
+    return `${parts.length}:${parts.join(";;")}`;
   }
 
   _groupOrderList() {
@@ -257,7 +369,6 @@ class SofabatonRemoteCard extends HTMLElement {
       this._wrap.appendChild(this._warn);
     }
   }
-
 
   // ---------- Hub request queue (prevents parallel requests) ----------
   _hubInitState() {
@@ -333,11 +444,15 @@ class SofabatonRemoteCard extends HTMLElement {
         });
 
         // A small delay between calls improves reliability.
-        const gap = Number.isFinite(Number(next?.gapMs)) ? Number(next.gapMs) : 750;
+        const gap = Number.isFinite(Number(next?.gapMs))
+          ? Number(next.gapMs)
+          : 750;
         await this._sleep(gap);
       }
     } finally {
       this._hubQueueBusy = false;
+      this._updateAutomationAssistUI();
+      this._syncAutomationAssistMqtt();
     }
   }
 
@@ -362,7 +477,10 @@ class SofabatonRemoteCard extends HTMLElement {
       if (!this._hubThrottle(throttleKey, minIntervalMs)) return;
     }
 
-    if (this._hubQueueBusy || (Array.isArray(this._hubQueue) && this._hubQueue.length)) {
+    if (
+      this._hubQueueBusy ||
+      (Array.isArray(this._hubQueue) && this._hubQueue.length)
+    ) {
       this._hubEnqueueCommand(list, { priority: true, gapMs: 150 });
       return;
     }
@@ -375,41 +493,50 @@ class SofabatonRemoteCard extends HTMLElement {
 
   async _hubRequestBasicData() {
     const entityId = String(this._config?.entity || "");
-    this._hubEnqueueRequest(["type:request_basic_data"], "req:basic:" + entityId);
+    this._hubEnqueueRequest(
+      ["type:request_basic_data"],
+      "req:basic:" + entityId,
+    );
   }
 
   async _hubRequestAssignedKeys(activityId) {
     if (activityId == null) return;
     this._hubEnqueueRequest(
-      ["type:request_assigned_keys", "activity_id:" +  Number(activityId) ],
-      "req:assigned:" + String(activityId)
+      ["type:request_assigned_keys", "activity_id:" + Number(activityId)],
+      "req:assigned:" + String(activityId),
     );
   }
 
   async _hubRequestFavoriteKeys(activityId) {
     if (activityId == null) return;
     this._hubEnqueueRequest(
-      [ "type:request_favorite_keys", "activity_id:" +  Number(activityId) ],
-      "req:fav:" + String(activityId)
+      ["type:request_favorite_keys", "activity_id:" + Number(activityId)],
+      "req:fav:" + String(activityId),
     );
   }
 
   async _hubRequestMacroKeys(activityId) {
     if (activityId == null) return;
     this._hubEnqueueRequest(
-      [ "type:request_macro_keys", "activity_id:" +  Number(activityId) ],
-      "req:macro:" + String(activityId)
+      ["type:request_macro_keys", "activity_id:" + Number(activityId)],
+      "req:macro:" + String(activityId),
     );
   }
 
   async _hubStartActivity(activityId) {
     if (activityId == null) return;
-    await this._hubSendCommandList([ "type:start_activity", "activity_id:"+  Number(activityId) ]);
+    await this._hubSendCommandList([
+      "type:start_activity",
+      "activity_id:" + Number(activityId),
+    ]);
   }
 
   async _hubStopActivity(activityId) {
     if (activityId == null) return;
-    await this._hubSendCommandList([ "type:stop_activity", "activity_id:"+  Number(activityId) ]);
+    await this._hubSendCommandList([
+      "type:stop_activity",
+      "activity_id:" + Number(activityId),
+    ]);
   }
 
   async _sendDrawerItem(itemType, commandId, deviceId, rawItem) {
@@ -425,24 +552,38 @@ class SofabatonRemoteCard extends HTMLElement {
     const keyId = Number(commandId);
     if (!Number.isFinite(keyId)) return;
 
-    if (itemType === 'macros') {
+    if (itemType === "macros") {
       if (!Number.isFinite(activityId)) return;
-      return this._hubSendCommandList([ "type:send_macro_key", "activity_id:" +  activityId, "key_id:" + keyId ]);
+      return this._hubSendCommandList([
+        "type:send_macro_key",
+        "activity_id:" + activityId,
+        "key_id:" + keyId,
+      ]);
     }
 
-    if (itemType === 'favorites') {
+    if (itemType === "favorites") {
       const device = Number(rawItem?.device_id ?? rawItem?.device);
       if (!Number.isFinite(device)) return;
-      return this._hubSendCommandList([ "type:send_favorite_key", "device_id:" + device, "key_id:" + keyId ]);
+      return this._hubSendCommandList([
+        "type:send_favorite_key",
+        "device_id:" + device,
+        "key_id:" + keyId,
+      ]);
     }
 
     // Default: assigned key (normal buttons)
     if (!Number.isFinite(activityId)) return;
-    return this._hubSendCommandList([ "type:send_assigned_key", "activity_id:" + activityId, "key_id:" + keyId ]);
+    return this._hubSendCommandList([
+      "type:send_assigned_key",
+      "activity_id:" + activityId,
+      "key_id:" + keyId,
+    ]);
   }
 
   _hubVersion() {
-    return String(this._remoteState()?.attributes?.hub_version || "").toUpperCase();
+    return String(
+      this._remoteState()?.attributes?.hub_version || "",
+    ).toUpperCase();
   }
 
   _isX2() {
@@ -482,9 +623,12 @@ class SofabatonRemoteCard extends HTMLElement {
     // Hub integration can clear attributes entirely when all activities are off.
     // Keep the last known activities list in-card so the selector remains useful
     // without constantly re-requesting basic data.
-    const source = Array.isArray(list) && list.length
-      ? list
-      : (this._isHubIntegration() && Array.isArray(this._hubActivitiesCache) ? this._hubActivitiesCache : []);
+    const source =
+      Array.isArray(list) && list.length
+        ? list
+        : this._isHubIntegration() && Array.isArray(this._hubActivitiesCache)
+          ? this._hubActivitiesCache
+          : [];
 
     const mapped = source
       .map((activity) => ({
@@ -505,12 +649,24 @@ class SofabatonRemoteCard extends HTMLElement {
     const remoteActivity = this._remoteState()?.attributes?.current_activity;
     if (remoteActivity) return String(remoteActivity);
     const activityId = this._currentActivityId();
-    const match = this._activities().find((activity) => activity.id === activityId);
+    const match = this._activities().find(
+      (activity) => activity.id === activityId,
+    );
+    return match?.name || "";
+  }
+
+  _activityNameForId(activityId) {
+    if (activityId == null) return "";
+    const id = Number(activityId);
+    if (!Number.isFinite(id)) return "";
+    const match = this._activities().find((activity) => activity.id === id);
     return match?.name || "";
   }
 
   _isPoweredOffLabel(state) {
-    const s = String(state || "").trim().toLowerCase();
+    const s = String(state || "")
+      .trim()
+      .toLowerCase();
     return POWERED_OFF_LABELS.has(s);
   }
 
@@ -521,7 +677,9 @@ class SofabatonRemoteCard extends HTMLElement {
 
     // Prefer explicit activity state if we have it.
     const list = Array.isArray(activities) ? activities : this._activities();
-    const match = Array.isArray(list) ? list.find((a) => Number(a?.id) === id) : null;
+    const match = Array.isArray(list)
+      ? list.find((a) => Number(a?.id) === id)
+      : null;
     if (match && match.state != null && String(match.state).trim() !== "") {
       const s = String(match.state).trim().toLowerCase();
       // Any non-off label is treated as ON.
@@ -535,8 +693,784 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _isLoadingActive() {
     const isActivityLoading = Boolean(this._activityLoadActive);
-    const isPulse = this._commandPulseUntil && Date.now() < this._commandPulseUntil;
+    const isPulse =
+      this._commandPulseUntil && Date.now() < this._commandPulseUntil;
     return isActivityLoading || isPulse;
+  }
+
+  _resolveCommandDeviceId(commandId, deviceId = null) {
+    const resolved =
+      deviceId != null
+        ? Number(deviceId)
+        : (this._commandTarget(commandId)?.activity_id ??
+          this._currentActivityId());
+    if (resolved == null || !Number.isFinite(Number(resolved))) return null;
+    return Number(resolved);
+  }
+
+  _recordAutomationAssistClick({
+    label,
+    commandId,
+    deviceId = null,
+    commandType = "assigned",
+    icon = null,
+  }) {
+    if (!this._automationAssistEnabled()) return;
+    if (!this._automationAssistActive) return;
+
+    const command = Number(commandId);
+    if (!Number.isFinite(command)) return;
+
+    const resolvedDevice =
+      commandType === "favorite" || commandType === "macro"
+        ? deviceId != null
+          ? Number(deviceId)
+          : this._currentActivityId()
+        : this._resolveCommandDeviceId(command, deviceId);
+
+    if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice))) {
+      return;
+    }
+
+    const activityName =
+      this._activityNameForId(resolvedDevice) ||
+      this._currentActivityLabel() ||
+      "Unknown";
+
+    this._automationAssistCapture = {
+      label: String(label ?? "Button"),
+      commandId: command,
+      deviceId: Number(resolvedDevice),
+      commandType,
+      icon: icon ? String(icon) : null,
+      activityName,
+    };
+    this._automationAssistMqttMatch = false;
+    this._automationAssistMqttPayload = null;
+    this._automationAssistMqttDeviceName = null;
+    this._automationAssistMqttCommandName = null;
+    this._automationAssistMqttExisting = false;
+    this._automationAssistMqttDiscoveryCreated = false;
+    this._automationAssistMqttDiscoveryWorking = false;
+    this._automationAssistMqttDiscoveryDeviceId = null;
+    this._automationAssistStatusMessage = null;
+
+    this._updateAutomationAssistUI();
+    this._notifyAutomationAssistCapture();
+  }
+
+  _automationAssistRemoteYaml() {
+    const capture = this._automationAssistCapture;
+    if (!capture || !this._config?.entity) return "";
+
+    const entityId = this._config.entity;
+
+    if (this._isHubIntegration()) {
+      const payloadType =
+        capture.commandType === "macro"
+          ? "send_macro_key"
+          : capture.commandType === "favorite"
+            ? "send_favorite_key"
+            : "send_assigned_key";
+
+      const deviceKey =
+        capture.commandType === "favorite" ? "device_id" : "activity_id";
+
+      return [
+        "action: remote.send_command",
+        "target:",
+        `  entity_id: ${entityId}`,
+        "data:",
+        "  command:",
+        `    - type:${payloadType}`,
+        `    - ${deviceKey}:${capture.deviceId}`,
+        `    - key_id:${capture.commandId}`,
+      ].join("\n");
+    }
+
+    return [
+      "action: remote.send_command",
+      "target:",
+      `  entity_id: ${entityId}`,
+      "data:",
+      `  command: ${capture.commandId}`,
+      `  device: ${capture.deviceId}`,
+    ].join("\n");
+  }
+
+  _automationAssistButtonYaml() {
+    const capture = this._automationAssistCapture;
+    if (!capture || !this._config?.entity) return "";
+
+    const label = capture.label || "Automation Assist";
+    const icon =
+      capture.commandType === "favorite"
+        ? "mdi:star"
+        : capture.commandType === "macro"
+          ? "mdi:cogs"
+          : capture.icon || "mdi:remote";
+
+    const serviceYaml = this._automationAssistRemoteYaml()
+      .split("\n")
+      .map((line) => `  ${line}`)
+      .join("\n");
+
+    return [
+      "type: button",
+      `name: ${label}`,
+      `icon: ${icon}`,
+      "tap_action:",
+      "  action: perform-action",
+      "  perform_" + serviceYaml.substring(2),
+      "hold_action:",
+      "  action: none",
+    ].join("\n");
+  }
+
+  _automationAssistNotificationBody() {
+    const capture = this._automationAssistCapture;
+    if (!capture) return "";
+
+    const activityName =
+      capture.activityName ||
+      this._activityNameForId(capture.deviceId) ||
+      this._currentActivityLabel() ||
+      "Unknown";
+    const buttonYaml = this._automationAssistButtonYaml();
+    const remoteYaml = this._automationAssistRemoteYaml();
+
+    return [
+      "---",
+      "",
+      `**Activity: ${activityName} | Button: ${capture.label}**`,
+      "",
+      "---",
+      "📋 **Lovelace Button Code**",
+      "",
+      "*Copy this to your Dashboard YAML:*",
+      "```yaml",
+      buttonYaml,
+      "```",
+      "⚙️ **Service Call (Automation)**",
+      "",
+      "*Use this in your Scripts or Automations:*",
+      "```yaml",
+      remoteYaml,
+      "```",
+    ].join("\n");
+  }
+
+  _notifyAutomationAssistCapture() {
+    if (!this._automationAssistEnabled()) return;
+    if (!this._hass) return;
+    const body = this._automationAssistNotificationBody();
+    if (!body) return;
+
+    this._hass.callService("persistent_notification", "create", {
+      title: "🛠️ Automation Assist",
+      message: body,
+    });
+  }
+
+  _automationAssistMqttSupported() {
+    return this._isX2();
+  }
+
+  _automationAssistMqttAvailable() {
+    return (
+      this._automationAssistMqttSupported() &&
+      this._automationAssistActive &&
+      Boolean(this._hubMac) &&
+      !this._automationAssistMqttDiscoveryCreated &&
+      !this._automationAssistMqttDiscoveryWorking &&
+      this._automationAssistMqttReady()
+    );
+  }
+
+  _automationAssistMqttReady() {
+    if (!this._isHubIntegration()) return true;
+    const queue = Array.isArray(this._hubQueue) ? this._hubQueue.length : 0;
+    return !this._hubQueueBusy && queue === 0;
+  }
+
+  _ensureHubMac() {
+    if (!this._hass || !this._config?.entity) return;
+    if (this._hubMac || this._hubMacDetecting) return;
+
+    const attrMac = this._normalizeHubMac(
+      this._remoteState()?.attributes?.hub_mac,
+    );
+    if (attrMac) {
+      this._hubMac = attrMac;
+      return;
+    }
+
+    if (this._integrationDomain !== "sofabaton_hub") return;
+    if (!this._hass?.connection?.subscribeMessage) return;
+
+    this._hubMacDetecting = true;
+
+    const topic = "activity/+/list";
+    let timeoutId = null;
+    let unsub = null;
+
+    const finish = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (unsub) {
+        try {
+          unsub();
+        } catch (e) {
+          /* no-op */
+        }
+      }
+      this._hubMacDetecting = false;
+      this._updateAutomationAssistUI();
+      this._syncAutomationAssistMqtt();
+    };
+
+    this._hass.connection
+      .subscribeMessage(
+        (msg) => {
+          const topicMatch = String(msg?.topic || "").match(
+            /^activity\/([^/]+)\/list$/,
+          );
+          const normalized = topicMatch?.[1]
+            ? this._normalizeHubMac(topicMatch[1])
+            : null;
+          if (!normalized) return;
+          this._hubMac = normalized;
+          finish();
+        },
+        { type: "mqtt/subscribe", topic },
+      )
+      .then((unsubscribe) => {
+        unsub = unsubscribe;
+        this._hubRequestBasicData();
+        timeoutId = setTimeout(() => finish(), 4000);
+      })
+      .catch(() => {
+        finish();
+      });
+  }
+
+  _syncAutomationAssistMqtt() {
+    if (!this._automationAssistEnabled()) {
+      this._unsubscribeAutomationAssistMqtt();
+      return;
+    }
+
+    if (!this._automationAssistActive) {
+      this._unsubscribeAutomationAssistMqtt();
+      return;
+    }
+
+    if (!this._automationAssistMqttSupported()) {
+      this._unsubscribeAutomationAssistMqtt();
+      return;
+    }
+
+    if (!this._automationAssistMqttReady()) {
+      return;
+    }
+
+    this._ensureHubMac();
+    const mac = this._hubMac;
+    if (!mac) return;
+
+    const topic = `${mac}/up`;
+    if (this._automationAssistMqttTopic === topic && this._mqttUnsub) return;
+
+    this._unsubscribeAutomationAssistMqtt();
+
+    if (!this._hass?.connection?.subscribeMessage) return;
+
+    this._automationAssistMqttTopic = topic;
+    this._hass.connection
+      .subscribeMessage((msg) => this._handleAutomationAssistMqtt(msg), {
+        type: "mqtt/subscribe",
+        topic,
+      })
+      .then((unsub) => {
+        this._mqttUnsub = unsub;
+      })
+      .catch(() => {
+        this._mqttUnsub = null;
+      });
+  }
+
+  _unsubscribeAutomationAssistMqtt() {
+    if (this._mqttUnsub) {
+      try {
+        this._mqttUnsub();
+      } catch (e) {
+        /* no-op */
+      }
+    }
+    this._mqttUnsub = null;
+    this._automationAssistMqttTopic = null;
+  }
+
+  _parseMqttPayload(payload) {
+    if (payload == null) return null;
+    if (typeof payload === "object") return payload;
+    try {
+      return JSON.parse(String(payload));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  _automationAssistMqttTriggerExists(payload, topic) {
+    return false;
+  }
+
+  _automationAssistSessionState() {
+    if (!window[AUTOMATION_ASSIST_SESSION_KEY]) {
+      window[AUTOMATION_ASSIST_SESSION_KEY] = {
+        hideMqttModal: false,
+        discoveryDeviceIds: new Set(),
+      };
+    }
+    return window[AUTOMATION_ASSIST_SESSION_KEY];
+  }
+
+  _shouldSuppressMqttModal(deviceId) {
+    const session = this._automationAssistSessionState();
+    if (session.hideMqttModal) return true;
+    return session.discoveryDeviceIds.has(deviceId);
+  }
+
+  _openAutomationAssistMqttModal(deviceId) {
+    if (!this._automationAssistMqttModal) return;
+    if (!Number.isFinite(deviceId)) return;
+    if (this._shouldSuppressMqttModal(deviceId)) return;
+    this._automationAssistMqttModalDeviceId = deviceId;
+    this._automationAssistMqttModalOpen = true;
+    this._updateAutomationAssistModalUI();
+  }
+
+  _closeAutomationAssistMqttModal() {
+    if (!this._automationAssistMqttModalOpen) return;
+    this._automationAssistMqttModalOpen = false;
+    this._updateAutomationAssistModalUI();
+  }
+
+  _handleAutomationAssistMqtt(msg) {
+    const payload = this._parseMqttPayload(msg?.payload);
+    if (!payload) return;
+
+    const deviceId = Number(payload.device_id);
+    if (
+      Number.isFinite(deviceId) &&
+      this._automationAssistMqttDiscoveryDeviceId !== deviceId
+    ) {
+      this._automationAssistMqttDiscoveryDeviceId = deviceId;
+      this._automationAssistMqttDiscoveryCreated = false;
+      this._automationAssistMqttDiscoveryWorking = false;
+    }
+
+    this._automationAssistMqttMatch = true;
+    this._automationAssistMqttPayload = payload;
+    this._automationAssistMqttDeviceName = null;
+    this._automationAssistMqttCommandName = null;
+    this._automationAssistMqttExisting =
+      this._automationAssistMqttTriggerExists(
+        payload,
+        this._automationAssistMqttTopic,
+      );
+    this._updateAutomationAssistUI();
+    this._primeAutomationAssistMqttMetadata(payload);
+    this._openAutomationAssistMqttModal(deviceId);
+  }
+
+  async _handleAutomationAssistMqttClick() {
+    if (!this._automationAssistMqttAvailable()) return;
+    const mac = this._hubMac;
+    const payload = this._automationAssistMqttPayload;
+    if (!mac || !payload) return;
+
+    const deviceId = Number(payload.device_id);
+    if (!Number.isFinite(deviceId)) return;
+
+    this._automationAssistMqttDiscoveryWorking = true;
+    this._updateAutomationAssistUI();
+
+    try {
+      const [deviceName, commands] = await Promise.all([
+        this._requestMqttDeviceName(mac, deviceId),
+        this._requestMqttDeviceCommands(mac, deviceId),
+      ]);
+
+      if (!commands || commands.size === 0) {
+        this._setAutomationAssistStatus("No MQTT commands discovered yet");
+        return;
+      }
+
+      const deviceLabel = deviceName || `Device ${deviceId}`;
+      const topic = `${mac}/up`;
+      const macLower = String(mac).toLowerCase();
+      const macUpper = String(mac).toUpperCase();
+      let createdCount = 0;
+
+      for (const [keyId, commandName] of commands.entries()) {
+        const payloadObj = { device_id: deviceId, key_id: Number(keyId) };
+        if (!Number.isFinite(payloadObj.key_id)) continue;
+
+        if (this._automationAssistMqttTriggerExists(payloadObj, topic)) {
+          continue;
+        }
+
+        const displayCommand = commandName || `Command ${payloadObj.key_id}`;
+        const uniqueId = `sofabaton_${macLower}_d${deviceId}_k${payloadObj.key_id}`;
+        this._automationAssistDiscoveryIds =
+          this._automationAssistDiscoveryIds || new Set();
+        if (this._automationAssistDiscoveryIds.has(uniqueId)) continue;
+        const subtype = `X2 ${deviceLabel} ${displayCommand}`;
+        const config = {
+          automation_type: "trigger",
+          type: "button_short_press",
+          subtype,
+          payload: JSON.stringify(payloadObj),
+          topic: `${macUpper}/up`,
+          device: {
+            identifiers: [`sofabaton_x2_remote_${deviceId}`],
+            name: `X2 → ${deviceLabel}`,
+            model: "X2",
+            manufacturer: "Sofabaton",
+          },
+        };
+
+        await this._enqueueMqttPublish(async () => {
+          await this._callService("mqtt", "publish", {
+            topic: `homeassistant/device_automation/${uniqueId}/config`,
+            payload: JSON.stringify(config),
+            retain: true,
+          });
+          this._automationAssistDiscoveryIds.add(uniqueId);
+          await this._sleep(250);
+        });
+        createdCount += 1;
+      }
+
+      this._automationAssistMqttDiscoveryCreated = true;
+      this._automationAssistMqttDiscoveryDeviceId = deviceId;
+
+      const session = this._automationAssistSessionState();
+      session.discoveryDeviceIds.add(deviceId);
+
+      if (createdCount > 0) {
+        this._setAutomationAssistStatus(
+          `Created ${createdCount} MQTT discovery triggers for ${deviceLabel}`,
+        );
+      } else {
+        this._setAutomationAssistStatus(
+          `All MQTT discovery triggers already exist for ${deviceLabel}`,
+        );
+      }
+    } finally {
+      this._automationAssistMqttDiscoveryWorking = false;
+      this._updateAutomationAssistUI();
+    }
+  }
+
+  _primeAutomationAssistMqttMetadata(payload) {
+    const mac = this._hubMac;
+    if (!mac || !payload) return;
+
+    const deviceId = Number(payload.device_id);
+    const keyId = Number(payload.key_id);
+    if (!Number.isFinite(deviceId) || !Number.isFinite(keyId)) return;
+
+    const lookupId = (this._automationAssistMqttLookupId || 0) + 1;
+    this._automationAssistMqttLookupId = lookupId;
+
+    Promise.all([
+      this._requestMqttDeviceName(mac, deviceId),
+      this._requestMqttDeviceCommandName(mac, deviceId, keyId),
+    ]).then(([deviceName, commandName]) => {
+      if (this._automationAssistMqttLookupId !== lookupId) return;
+      if (deviceName) this._automationAssistMqttDeviceName = deviceName;
+      if (commandName) this._automationAssistMqttCommandName = commandName;
+      this._updateAutomationAssistUI();
+    });
+  }
+
+  async _requestMqttDeviceName(mac, deviceId) {
+    if (!this._hass?.connection?.subscribeMessage) return null;
+    if (!Number.isFinite(deviceId)) return null;
+
+    this._mqttDeviceNames = this._mqttDeviceNames || new Map();
+    const cacheKey = `${mac}:${deviceId}`;
+    if (this._mqttDeviceNames.has(cacheKey)) {
+      return this._mqttDeviceNames.get(cacheKey);
+    }
+
+    const topic = `device/${mac}/list`;
+    const requestTopic = `device/${mac}/list_request`;
+    const payload = JSON.stringify({ data: "device_list" });
+
+    return this._enqueueMqttRequest(
+      () =>
+        new Promise((resolve) => {
+          let timeoutId = null;
+          let unsub = null;
+
+          const finish = (name) => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (unsub) {
+              try {
+                unsub();
+              } catch (e) {
+                /* no-op */
+              }
+            }
+            if (name) {
+              this._mqttDeviceNames.set(cacheKey, name);
+            }
+            resolve(name || null);
+          };
+
+          this._hass.connection
+            .subscribeMessage(
+              (msg) => {
+                const data = this._parseMqttPayload(msg?.payload);
+                const devices = Array.isArray(data?.data) ? data.data : [];
+                const match = devices.find(
+                  (device) => Number(device?.device_id) === deviceId,
+                );
+                finish(match?.device_name ? String(match.device_name) : null);
+              },
+              { type: "mqtt/subscribe", topic },
+            )
+            .then((unsubscribe) => {
+              unsub = unsubscribe;
+              this._callService("mqtt", "publish", {
+                topic: requestTopic,
+                payload,
+              });
+              timeoutId = setTimeout(() => finish(null), 4000);
+            })
+            .catch(() => finish(null));
+        }),
+    );
+  }
+
+  async _requestMqttDeviceCommandName(mac, deviceId, keyId) {
+    if (!Number.isFinite(keyId)) return null;
+    const commands = await this._requestMqttDeviceCommands(mac, deviceId);
+    if (!commands) return null;
+    return commands.get(Number(keyId)) || null;
+  }
+
+  async _requestMqttDeviceCommands(mac, deviceId) {
+    if (!this._hass?.connection?.subscribeMessage) return null;
+    if (!Number.isFinite(deviceId)) return null;
+
+    this._mqttDeviceCommands = this._mqttDeviceCommands || new Map();
+    const cacheKey = `${mac}:${deviceId}`;
+    if (this._mqttDeviceCommands.has(cacheKey)) {
+      return this._mqttDeviceCommands.get(cacheKey);
+    }
+
+    const topic = `device/${mac}/keys_list`;
+    const requestTopic = `device/${mac}/keys_request`;
+    const payload = JSON.stringify({ data: { device_id: deviceId } });
+
+    return this._enqueueMqttRequest(
+      () =>
+        new Promise((resolve) => {
+          let timeoutId = null;
+          let unsub = null;
+
+          const finish = (commands) => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (unsub) {
+              try {
+                unsub();
+              } catch (e) {
+                /* no-op */
+              }
+            }
+            if (commands) {
+              this._mqttDeviceCommands.set(cacheKey, commands);
+            }
+            resolve(commands || null);
+          };
+
+          this._hass.connection
+            .subscribeMessage(
+              (msg) => {
+                const data = this._parseMqttPayload(msg?.payload);
+                if (Number(data?.device_id) !== deviceId) return;
+                const keys = Array.isArray(data?.data) ? data.data : [];
+                const commands = new Map();
+                keys.forEach((entry) => {
+                  const key = Number(entry?.key_id);
+                  if (!Number.isFinite(key)) return;
+                  const name = entry?.key_name ? String(entry.key_name) : null;
+                  if (name) commands.set(key, name);
+                });
+                finish(commands);
+              },
+              { type: "mqtt/subscribe", topic },
+            )
+            .then((unsubscribe) => {
+              unsub = unsubscribe;
+              this._callService("mqtt", "publish", {
+                topic: requestTopic,
+                payload,
+              });
+              timeoutId = setTimeout(() => finish(null), 4000);
+            })
+            .catch(() => finish(null));
+        }),
+    );
+  }
+
+  _enqueueMqttRequest(task) {
+    this._mqttRequestQueue = this._mqttRequestQueue || Promise.resolve();
+    const run = async () => task();
+    this._mqttRequestQueue = this._mqttRequestQueue.then(run, run);
+    return this._mqttRequestQueue;
+  }
+
+  _enqueueMqttPublish(task) {
+    this._mqttPublishQueue = this._mqttPublishQueue || Promise.resolve();
+    const run = async () => task();
+    this._mqttPublishQueue = this._mqttPublishQueue.then(run, run);
+    return this._mqttPublishQueue;
+  }
+
+  _automationAssistSlug(value) {
+    return (
+      String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .replace(/_+/g, "_") || "command"
+    );
+  }
+
+  _setAutomationAssistStatus(text) {
+    this._automationAssistStatusMessage = String(text ?? "");
+    if (!this._automationAssistStatus) return;
+    this._automationAssistStatus.textContent =
+      this._automationAssistStatusMessage;
+  }
+
+  _setAutomationAssistActive(active) {
+    const next = !!active;
+    if (this._automationAssistActive === next) return;
+    this._automationAssistActive = next;
+    if (!next) {
+      this._automationAssistCapture = null;
+      this._automationAssistMqttMatch = false;
+      this._automationAssistMqttPayload = null;
+      this._automationAssistMqttDeviceName = null;
+      this._automationAssistMqttCommandName = null;
+      this._automationAssistMqttExisting = false;
+      this._automationAssistMqttDiscoveryCreated = false;
+      this._automationAssistMqttDiscoveryWorking = false;
+      this._automationAssistMqttDiscoveryDeviceId = null;
+      this._automationAssistStatusMessage = null;
+      this._unsubscribeAutomationAssistMqtt();
+      this._closeAutomationAssistMqttModal();
+    } else {
+      this._automationAssistStatusMessage = null;
+      this._syncAutomationAssistMqtt();
+    }
+    this._updateAutomationAssistUI();
+  }
+
+  _updateAutomationAssistUI() {
+    if (!this._automationAssistLabel || !this._automationAssistStatus) return;
+
+    const capture = this._automationAssistCapture;
+    const isActive = this._automationAssistActive;
+    const hasCapture = !!capture;
+    const mqttSupported = this._automationAssistMqttSupported();
+
+    if (!isActive) {
+      this._automationAssistStatus.textContent = "Tap Start to begin";
+    } else if (this._automationAssistStatusMessage) {
+      this._automationAssistStatus.textContent =
+        this._automationAssistStatusMessage;
+    } else if (hasCapture) {
+      this._automationAssistStatus.textContent = `Captured: ${capture.label}`;
+    } else {
+      this._automationAssistStatus.textContent = "Waiting for keypress";
+    }
+
+    if (this._automationAssistStart) {
+      this._setVisible(this._automationAssistStart, !isActive);
+    }
+
+    this._updateAutomationAssistModalUI();
+  }
+
+  _updateAutomationAssistModalUI() {
+    if (!this._automationAssistMqttModal) return;
+
+    const isActive = this._automationAssistActive;
+    const mqttSupported = this._automationAssistMqttSupported();
+    const modalOpen = Boolean(this._automationAssistMqttModalOpen);
+
+    this._automationAssistMqttModal.classList.toggle("open", modalOpen);
+
+    if (!modalOpen) return;
+
+    if (this._automationAssistMqttModalOptOutInput) {
+      this._automationAssistMqttModalOptOutInput.checked = false;
+    }
+
+    const payload = this._automationAssistMqttPayload;
+    const deviceId = Number(payload?.device_id);
+    const commandId = Number(payload?.key_id);
+    const deviceName =
+      this._automationAssistMqttDeviceName ||
+      (Number.isFinite(deviceId) ? `Device ${deviceId}` : "Unknown device");
+    const commandName =
+      this._automationAssistMqttCommandName ||
+      (Number.isFinite(commandId) ? `Command ${commandId}` : null);
+
+    if (this._automationAssistMqttModalText) {
+      const lines = [`Detected MQTT device: ${deviceName}.`];
+      if (commandName) {
+        lines.push(`Last command: ${commandName}.`);
+      }
+      if (this._automationAssistMqttExisting) {
+        lines.push("Existing MQTT automation triggers were found.");
+      }
+      this._automationAssistMqttModalText.textContent = lines.join(" ");
+    }
+
+    if (this._automationAssistMqttModalStart) {
+      this._setVisible(this._automationAssistMqttModalStart, !isActive);
+    }
+
+    if (this._automationAssistMqttModalCreate) {
+      const showCreate =
+        mqttSupported && isActive;
+      this._setVisible(this._automationAssistMqttModalCreate, showCreate);
+      const discoveryWorking = this._automationAssistMqttDiscoveryWorking;
+      const discoveryReady = this._automationAssistMqttDiscoveryCreated;
+      if (discoveryWorking) {
+        this._automationAssistMqttModalCreate.textContent = "Working...";
+      } else {
+        this._automationAssistMqttModalCreate.textContent = discoveryReady
+          ? "Triggers ready for use"
+          : "Create MQTT Discovery triggers";
+      }
+      this._automationAssistMqttModalCreate.disabled =
+        discoveryWorking ||
+        discoveryReady ||
+        !this._automationAssistMqttAvailable();
+      this._automationAssistMqttModalCreate.classList.toggle(
+        "disabled",
+        this._automationAssistMqttModalCreate.disabled,
+      );
+    }
   }
 
   _updateLoadIndicator() {
@@ -585,63 +1519,90 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _fireEvent(type, detail = {}) {
-    this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
+    this.dispatchEvent(
+      new CustomEvent(type, { detail, bubbles: true, composed: true }),
+    );
   }
 
   async _runLovelaceAction(actionConfig, context = null) {
-    if (!actionConfig || typeof actionConfig !== 'object') return;
+    if (!actionConfig || typeof actionConfig !== "object") return;
 
-    const action = String(actionConfig.action || '').toLowerCase();
+    const action = String(actionConfig.action || "").toLowerCase();
 
     // If the config looks like a service action but omitted `action:`, treat it as one.
-    const implicitService = (!action || action === 'default') && (actionConfig.service || actionConfig.perform_action);
+    const implicitService =
+      (!action || action === "default") &&
+      (actionConfig.service || actionConfig.perform_action);
 
-    if (action === 'none') return;
+    if (action === "none") return;
 
-    if (action === 'call-service' || action === 'perform-action' || implicitService) {
-      const svc = String(actionConfig.service || actionConfig.perform_action || '').trim();
-      if (!svc.includes('.')) return;
-      const [domain, service] = svc.split('.', 2);
+    if (
+      action === "call-service" ||
+      action === "perform-action" ||
+      implicitService
+    ) {
+      const svc = String(
+        actionConfig.service || actionConfig.perform_action || "",
+      ).trim();
+      if (!svc.includes(".")) return;
+      const [domain, service] = svc.split(".", 2);
 
-      const serviceData = { ...(actionConfig.service_data || actionConfig.data || {}) };
-      const target = (actionConfig.target && typeof actionConfig.target === 'object') ? actionConfig.target : undefined;
+      const serviceData = {
+        ...(actionConfig.service_data || actionConfig.data || {}),
+      };
+      const target =
+        actionConfig.target && typeof actionConfig.target === "object"
+          ? actionConfig.target
+          : undefined;
 
       await this._callService(domain, service, serviceData, target);
       return;
     }
 
-    if (action === 'toggle') {
-      const entityId = actionConfig.entity_id || actionConfig.entity || context?.entity_id || context?.entityId;
+    if (action === "toggle") {
+      const entityId =
+        actionConfig.entity_id ||
+        actionConfig.entity ||
+        context?.entity_id ||
+        context?.entityId;
       if (!entityId) return;
-      await this._callService('homeassistant', 'toggle', { entity_id: entityId });
+      await this._callService("homeassistant", "toggle", {
+        entity_id: entityId,
+      });
       return;
     }
 
-    if (action === 'more-info') {
-      const entityId = actionConfig.entity_id || actionConfig.entity || context?.entity_id || context?.entityId;
+    if (action === "more-info") {
+      const entityId =
+        actionConfig.entity_id ||
+        actionConfig.entity ||
+        context?.entity_id ||
+        context?.entityId;
       if (!entityId) return;
-      this._fireEvent('hass-more-info', { entityId });
+      this._fireEvent("hass-more-info", { entityId });
       return;
     }
 
-    if (action === 'navigate') {
+    if (action === "navigate") {
       const path = actionConfig.navigation_path;
       if (!path) return;
-      history.pushState(null, '', path);
-      window.dispatchEvent(new Event('location-changed', { bubbles: true, composed: true }));
+      history.pushState(null, "", path);
+      window.dispatchEvent(
+        new Event("location-changed", { bubbles: true, composed: true }),
+      );
       return;
     }
 
-    if (action === 'url') {
+    if (action === "url") {
       const url = actionConfig.url_path;
       if (!url) return;
-      window.open(url, '_blank');
+      window.open(url, "_blank");
       return;
     }
 
-    if (action === 'fire-dom-event') {
+    if (action === "fire-dom-event") {
       // Pass through - this is commonly used for browser_mod / custom integrations.
-      this._fireEvent('ll-custom', actionConfig);
+      this._fireEvent("ll-custom", actionConfig);
       return;
     }
 
@@ -652,20 +1613,23 @@ class SofabatonRemoteCard extends HTMLElement {
     if (!this._hass || !this._config?.entity) return;
 
     // If deviceId isn't provided, fall back to enabled_buttons override (activity_id) or current_activity_id
-    const resolvedDevice =
-      deviceId != null
-        ? Number(deviceId)
-        : (this._commandTarget(commandId)?.activity_id ?? this._currentActivityId());
+    const resolvedDevice = this._resolveCommandDeviceId(commandId, deviceId);
 
     // Hub uses a different command payload
     if (this._isHubIntegration()) {
-      if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice))) return;
-      await this._hubSendCommandList(["type:send_assigned_key", "activity_id:" + Number(resolvedDevice), "key_id:"+ Number(commandId) ]);
+      if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice)))
+        return;
+      await this._hubSendCommandList([
+        "type:send_assigned_key",
+        "activity_id:" + Number(resolvedDevice),
+        "key_id:" + Number(commandId),
+      ]);
       return;
     }
 
     // X1S/X1 style
-    if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice))) return;
+    if (resolvedDevice == null || !Number.isFinite(Number(resolvedDevice)))
+      return;
 
     await this._callService("remote", "send_command", {
       entity_id: this._config.entity,
@@ -727,7 +1691,13 @@ class SofabatonRemoteCard extends HTMLElement {
       return `rgb(${r}, ${g}, ${b})`;
     }
     // (Sometimes) can be { r, g, b }
-    if (rgb && typeof rgb === "object" && rgb.r != null && rgb.g != null && rgb.b != null) {
+    if (
+      rgb &&
+      typeof rgb === "object" &&
+      rgb.r != null &&
+      rgb.g != null &&
+      rgb.b != null
+    ) {
       const r = Number(rgb.r);
       const g = Number(rgb.g);
       const b = Number(rgb.b);
@@ -770,7 +1740,8 @@ class SofabatonRemoteCard extends HTMLElement {
         }
 
         for (const [k, v] of Object.entries(vars)) {
-          if (v == null || (typeof v !== "string" && typeof v !== "number")) continue;
+          if (v == null || (typeof v !== "string" && typeof v !== "number"))
+            continue;
           const cssVar = k.startsWith("--") ? k : `--${k}`;
           this._root.style.setProperty(cssVar, String(v));
           this._appliedThemeVars.push(cssVar);
@@ -791,7 +1762,10 @@ class SofabatonRemoteCard extends HTMLElement {
     if (finalBg) {
       this._root.style.setProperty("--ha-card-background", String(finalBg));
       this._root.style.setProperty("--card-background-color", String(finalBg));
-      this._root.style.setProperty("--ha-card-background-color", String(finalBg));
+      this._root.style.setProperty(
+        "--ha-card-background-color",
+        String(finalBg),
+      );
 
       // Force actual background so it doesn't "revert"
       this._root.style.setProperty("background", String(finalBg));
@@ -802,10 +1776,10 @@ class SofabatonRemoteCard extends HTMLElement {
         "--card-background-color",
         "--ha-card-background-color",
         "background",
-        "background-color"
+        "background-color",
       );
     } else {
-      // EXPLICIT REVERT: If no override or theme background exists, 
+      // EXPLICIT REVERT: If no override or theme background exists,
       // ensure the forced properties are cleared.
       this._root.style.removeProperty("background");
       this._root.style.removeProperty("background-color");
@@ -827,7 +1801,10 @@ class SofabatonRemoteCard extends HTMLElement {
     let radius = "";
     for (const name of candidates) {
       const v = (cs.getPropertyValue(name) || "").trim();
-      if (v) { radius = v; break; }
+      if (v) {
+        radius = v;
+        break;
+      }
     }
     if (!radius) radius = "18px";
 
@@ -842,7 +1819,9 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _optionsSignature(options) {
     // Signature uses ordered activity names + count since labels drive select options.
-    const names = Array.isArray(options) ? options.map((opt) => String(opt ?? "")) : [];
+    const names = Array.isArray(options)
+      ? options.map((opt) => String(opt ?? ""))
+      : [];
     return `${names.length}:${names.join(",")}`;
   }
 
@@ -850,11 +1829,11 @@ class SofabatonRemoteCard extends HTMLElement {
     // Signature uses ordered command_id/id, device_id/device, and name for stable macro/favorite identity.
     const entries = Array.isArray(items)
       ? items.map((item) => {
-        const commandId = String(item?.command_id ?? item?.id ?? "");
-        const deviceId = String(item?.device_id ?? item?.device ?? "");
-        const name = String(item?.name ?? "");
-        return `${commandId}:${deviceId}:${name}`;
-      })
+          const commandId = String(item?.command_id ?? item?.id ?? "");
+          const deviceId = String(item?.device_id ?? item?.device ?? "");
+          const name = String(item?.name ?? "");
+          return `${commandId}:${deviceId}:${name}`;
+        })
       : [];
     return `${entries.length}:${entries.join(",")}`;
   }
@@ -875,19 +1854,20 @@ class SofabatonRemoteCard extends HTMLElement {
       el.style.setProperty("display", "none", "important");
     }
   }
-  
+
   _installOutsideCloseHandler() {
     if (this._outsideCloseInstalled) return;
     this._outsideCloseInstalled = true;
 
     this._onOutsidePointerDown = (e) => {
       // Use composedPath so it works through shadow DOM + HA components
-      const path = (typeof e.composedPath === "function") ? e.composedPath() : [];
+      const path = typeof e.composedPath === "function" ? e.composedPath() : [];
 
       // ---- Drawer close (macros/favorites) ----
       if (this._activeDrawer) {
         const clickedInOverlay =
-          path.includes(this._macrosOverlayEl) || path.includes(this._favoritesOverlayEl);
+          path.includes(this._macrosOverlayEl) ||
+          path.includes(this._favoritesOverlayEl);
 
         // Also exempt the toggle row/buttons so clicking Macros/Favorites still toggles normally
         const clickedInToggleRow =
@@ -897,7 +1877,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
         if (!(clickedInOverlay || clickedInToggleRow)) {
           this._activeDrawer = null;
-    this._activityMenuOpen = false;
+          this._scheduleDrawerDirectionReset();
           this._applyDrawerVisuals();
           this._syncLayering();
         }
@@ -908,7 +1888,8 @@ class SofabatonRemoteCard extends HTMLElement {
       // (Helps on frontend versions where `closed` isn't observed.)
       if (this._activityMenuOpen) {
         const clickedInActivity =
-          path.includes(this._activityRow) || path.includes(this._activitySelect);
+          path.includes(this._activityRow) ||
+          path.includes(this._activitySelect);
 
         if (!clickedInActivity) {
           this._activityMenuOpen = false;
@@ -924,41 +1905,147 @@ class SofabatonRemoteCard extends HTMLElement {
   _removeOutsideCloseHandler() {
     if (!this._outsideCloseInstalled) return;
     this._outsideCloseInstalled = false;
-    document.removeEventListener("pointerdown", this._onOutsidePointerDown, true);
+    document.removeEventListener(
+      "pointerdown",
+      this._onOutsidePointerDown,
+      true,
+    );
     this._onOutsidePointerDown = null;
   }
 
   connectedCallback() {
     this._installOutsideCloseHandler();
+
+    if (!this._onResize) {
+      this._onResize = () => {
+        if (!this._activeDrawer) return;
+        this._updateDrawerDirection();
+        this._applyDrawerVisuals();
+        this._syncLayering();
+      };
+    }
+    window.addEventListener("resize", this._onResize, { passive: true });
   }
 
   disconnectedCallback() {
     this._removeOutsideCloseHandler();
+    if (this._onResize) {
+      window.removeEventListener("resize", this._onResize);
+      this._onResize = null;
+    }
     clearTimeout(this._commandPulseTimeout);
     clearTimeout(this._activityLoadTimeout);
+    clearTimeout(this._drawerResetTimer);
+  }
+
+  _getDrawerDesiredHeight() {
+    // Estimate how much vertical room the current drawer wants.
+    const el =
+      this._activeDrawer === "favorites"
+        ? this._favoritesOverlayEl
+        : this._macrosOverlayEl;
+    if (!el) return 0;
+
+    // Keep in sync with CSS `.mf-overlay { max-height: ... }`
+    const maxH = 350;
+    const desired = Math.min(el.scrollHeight || 0, maxH);
+
+    // Small fudge so we don't "choose wrong" due to borders/margins.
+    return desired + 8;
+  }
+
+  _updateDrawerDirection() {
+    if (!this._macroFavoritesRow || !this._mfContainer) return;
+
+    // If no drawer is open, keep the last direction during the close animation.
+    if (!this._activeDrawer) return;
+
+    const rowRect = this._macroFavoritesRow.getBoundingClientRect();
+    const desired = this._getDrawerDesiredHeight();
+
+    // Prefer staying within the CARD (ha-card) rather than within the viewport.
+    // this._root is the card element created in _render().
+    const cardRect =
+      this._root && typeof this._root.getBoundingClientRect === "function"
+        ? this._root.getBoundingClientRect()
+        : null;
+
+    // Fallback to the old viewport behavior if for some reason we can't measure the card.
+    if (!cardRect) {
+      const spaceBelow = window.innerHeight - rowRect.bottom;
+      const spaceAbove = rowRect.top;
+      const shouldOpenUp = spaceBelow < desired && spaceAbove > spaceBelow;
+      this._drawerDirection = shouldOpenUp ? "up" : "down";
+      this._mfContainer.classList.toggle("drawer-up", shouldOpenUp);
+      return;
+    }
+
+    const spaceBelowInCard = cardRect.bottom - rowRect.bottom;
+    const spaceAboveInCard = rowRect.top - cardRect.top;
+
+    const overlapDown = Math.max(0, Math.min(desired, spaceBelowInCard));
+    const overlapUp = Math.max(0, Math.min(desired, spaceAboveInCard));
+
+    // Choose the direction that keeps MORE of the drawer inside the card.
+    // Tie-breaker: prefer down (feels more natural, and matches current default).
+    const shouldOpenUp = overlapUp > overlapDown;
+
+    this._drawerDirection = shouldOpenUp ? "up" : "down";
+    this._mfContainer.classList.toggle("drawer-up", shouldOpenUp);
+  }
+
+  _scheduleDrawerDirectionReset() {
+    if (!this._mfContainer) return;
+
+    // Keep the current direction class during the close transition so the drawer
+    // collapses in the same direction it opened.
+    clearTimeout(this._drawerResetTimer);
+    this._drawerResetTimer = setTimeout(() => {
+      if (this._activeDrawer) return;
+      this._drawerDirection = "down";
+      this._mfContainer.classList.remove("drawer-up");
+    }, 260); // CSS transition is 0.25s
   }
 
   _toggleDrawer(type) {
-    this._activeDrawer = (this._activeDrawer === type) ? null : type;
+    this._activeDrawer = this._activeDrawer === type ? null : type;
+
+    if (this._activeDrawer) {
+      this._updateDrawerDirection();
+    } else {
+      this._scheduleDrawerDirectionReset();
+    }
+
     this._applyDrawerVisuals();
     this._syncLayering();
   }
 
-	_applyDrawerVisuals() {
+  _applyDrawerVisuals() {
     if (!this._macrosOverlayEl || !this._favoritesOverlayEl) return;
 
-    const isMacro = this._activeDrawer === 'macros';
-    const isFav = this._activeDrawer === 'favorites';
+    const isMacro = this._activeDrawer === "macros";
+    const isFav = this._activeDrawer === "favorites";
 
-    this._macrosOverlayEl.classList.toggle('open', isMacro);
-    this._favoritesOverlayEl.classList.toggle('open', isFav);
+    this._macrosOverlayEl.classList.toggle("open", isMacro);
+    this._favoritesOverlayEl.classList.toggle("open", isFav);
 
-    this._macrosButtonWrap.classList.toggle('active-tab', isMacro); 
-    this._favoritesButtonWrap.classList.toggle('active-tab', isFav);
+    this._macrosButtonWrap.classList.toggle("active-tab", isMacro);
+    this._favoritesButtonWrap.classList.toggle("active-tab", isFav);
 
     const anyOpen = isMacro || isFav;
-    this._macroFavoritesRow.style.borderBottomLeftRadius = anyOpen ? "0" : "var(--sb-group-radius)";
-    this._macroFavoritesRow.style.borderBottomRightRadius = anyOpen ? "0" : "var(--sb-group-radius)";
+    const r = "var(--sb-group-radius)";
+    const up = this._drawerDirection === "up";
+
+    // Direction-aware radius animation so the drawer "connects" to the button row.
+    // - open down: square bottom corners
+    // - open up:   square top corners
+    this._macroFavoritesRow.style.borderTopLeftRadius = anyOpen && up ? "0" : r;
+    this._macroFavoritesRow.style.borderTopRightRadius =
+      anyOpen && up ? "0" : r;
+    this._macroFavoritesRow.style.borderBottomLeftRadius =
+      anyOpen && !up ? "0" : r;
+    this._macroFavoritesRow.style.borderBottomRightRadius =
+      anyOpen && !up ? "0" : r;
     this._macroFavoritesRow.style.transition = "border-radius 0.2s ease";
   }
 
@@ -987,9 +2074,10 @@ class SofabatonRemoteCard extends HTMLElement {
     this._mfContainer.style.zIndex = "2";
   }
 
-
   _attachPrimaryAction(els, fn) {
-    const targets = Array.isArray(els) ? els.filter(Boolean) : [els].filter(Boolean);
+    const targets = Array.isArray(els)
+      ? els.filter(Boolean)
+      : [els].filter(Boolean);
 
     // One shared gate per attached action group (across wrapper + hui-button-card),
     // so we don't double-fire when both elements see the same user gesture.
@@ -1003,7 +2091,7 @@ class SofabatonRemoteCard extends HTMLElement {
       const now = Date.now();
 
       // Robust de-dupe across: pointerup + touchend + click/ha-click, and across multiple elements.
-      const pid = (ev && typeof ev.pointerId === 'number') ? ev.pointerId : null;
+      const pid = ev && typeof ev.pointerId === "number" ? ev.pointerId : null;
       const etype = ev?.type || null;
 
       const delta = now - gate.ts;
@@ -1020,8 +2108,8 @@ class SofabatonRemoteCard extends HTMLElement {
       // If we just handled pointer/touch, ignore any subsequent click-ish event for a bit longer.
       if (
         delta < 1200 &&
-        (gate.type === 'pointerup' || gate.type === 'touchend') &&
-        (etype === 'click' || etype === 'ha-click' || etype === 'tap')
+        (gate.type === "pointerup" || gate.type === "touchend") &&
+        (etype === "click" || etype === "ha-click" || etype === "tap")
       ) {
         return;
       }
@@ -1031,29 +2119,49 @@ class SofabatonRemoteCard extends HTMLElement {
       gate.type = etype;
 
       // Prevent Home Assistant / inner elements from swallowing the action.
-      if (ev && typeof ev.preventDefault === 'function') ev.preventDefault();
-      if (ev && typeof ev.stopPropagation === 'function') ev.stopPropagation();
-      if (ev && typeof ev.stopImmediatePropagation === 'function') ev.stopImmediatePropagation();
+      if (ev && typeof ev.preventDefault === "function") ev.preventDefault();
+      if (ev && typeof ev.stopPropagation === "function") ev.stopPropagation();
+      if (ev && typeof ev.stopImmediatePropagation === "function")
+        ev.stopImmediatePropagation();
 
-      try { fn(ev); } catch (e) { /* no-op */ }
+      try {
+        fn(ev);
+      } catch (e) {
+        /* no-op */
+      }
     };
 
-    const hasPointer = typeof window !== 'undefined' && 'PointerEvent' in window;
+    const hasPointer =
+      typeof window !== "undefined" && "PointerEvent" in window;
     for (const el of targets) {
       // Capture phase so we still trigger even if inner elements stop bubbling.
       // Use the smallest viable event set; extra listeners are a major source of duplicate sends.
       if (hasPointer) {
-        el.addEventListener('pointerup', wrapped, { capture: true, passive: false });
+        el.addEventListener("pointerup", wrapped, {
+          capture: true,
+          passive: false,
+        });
       } else {
-        el.addEventListener('touchend', wrapped, { capture: true, passive: false });
-        el.addEventListener('click', wrapped, { capture: true });
+        el.addEventListener("touchend", wrapped, {
+          capture: true,
+          passive: false,
+        });
+        el.addEventListener("click", wrapped, { capture: true });
       }
       // Home Assistant sometimes dispatches custom click events (keep as fallback)
-      el.addEventListener('ha-click', wrapped, { capture: true });
+      el.addEventListener("ha-click", wrapped, { capture: true });
     }
   }
 
-  _mkHuiButton({ key, label, icon, id, cmd, extraClass = "", size = "normal" }) {
+  _mkHuiButton({
+    key,
+    label,
+    icon,
+    id,
+    cmd,
+    extraClass = "",
+    size = "normal",
+  }) {
     const wrap = document.createElement("div");
     wrap.className = `key key--${size} ${extraClass}`.trim();
 
@@ -1062,8 +2170,18 @@ class SofabatonRemoteCard extends HTMLElement {
 
     this._attachPrimaryAction([wrap, btn], () => {
       if (!wrap.classList.contains("disabled")) {
+        this._recordAutomationAssistClick({
+          label: this._automationAssistLabelForKey(key, label),
+          commandId: cmd,
+          deviceId: this._commandTarget(id)?.activity_id ?? null,
+          commandType: "assigned",
+          icon,
+        });
         this._triggerCommandPulse();
-        this._sendCommand(cmd, (this._commandTarget(id)?.activity_id ?? this._currentActivityId()));
+        this._sendCommand(
+          cmd,
+          this._commandTarget(id)?.activity_id ?? this._currentActivityId(),
+        );
       }
     });
 
@@ -1106,8 +2224,18 @@ class SofabatonRemoteCard extends HTMLElement {
 
     this._attachPrimaryAction([wrap, btn], () => {
       if (!wrap.classList.contains("disabled")) {
+        this._recordAutomationAssistClick({
+          label: this._automationAssistLabelForKey(key, key),
+          commandId: cmd,
+          deviceId: this._commandTarget(id)?.activity_id ?? null,
+          commandType: "assigned",
+          icon: null,
+        });
         this._triggerCommandPulse();
-        this._sendCommand(cmd, (this._commandTarget(id)?.activity_id ?? this._currentActivityId()));
+        this._sendCommand(
+          cmd,
+          this._commandTarget(id)?.activity_id ?? this._currentActivityId(),
+        );
       }
     });
 
@@ -1142,10 +2270,10 @@ class SofabatonRemoteCard extends HTMLElement {
     return wrap;
   }
 
-    _mkActionButton({ label, icon, extraClass = "", onClick = null }) {
+  _mkActionButton({ label, icon, extraClass = "", onClick = null }) {
     const wrap = document.createElement("div");
     wrap.className = `macroFavoritesButton ${extraClass}`.trim();
-    
+
     if (onClick) {
       this._attachPrimaryAction(wrap, (e) => {
         if (!wrap.classList.contains("disabled")) onClick(e);
@@ -1177,25 +2305,27 @@ class SofabatonRemoteCard extends HTMLElement {
     const label = item.name || "Unknown";
     const command_id = Number(item?.command_id ?? item?.id);
     const fallbackDeviceId = this._currentActivityId();
-    const device_id = Number(item?.device_id ?? item?.device ?? fallbackDeviceId);
+    const device_id = Number(
+      item?.device_id ?? item?.device ?? fallbackDeviceId,
+    );
 
-    const card = document.createElement('ha-card');
-    card.classList.add('drawer-btn');
-    card.setAttribute('role', 'button');
+    const card = document.createElement("ha-card");
+    card.classList.add("drawer-btn");
+    card.setAttribute("role", "button");
     card.tabIndex = 0;
 
-    const inner = document.createElement('div');
-    inner.className = 'drawer-btn__inner drawer-btn__inner--stack';
+    const inner = document.createElement("div");
+    inner.className = "drawer-btn__inner drawer-btn__inner--stack";
 
     if (item?.icon) {
-      const ic = document.createElement('ha-icon');
-      ic.className = 'drawer-btn__icon';
-      ic.setAttribute('icon', String(item.icon));
+      const ic = document.createElement("ha-icon");
+      ic.className = "drawer-btn__icon";
+      ic.setAttribute("icon", String(item.icon));
       inner.appendChild(ic);
     }
 
-    const name = document.createElement('div');
-    name.className = 'name';
+    const name = document.createElement("div");
+    name.className = "name";
     name.textContent = label;
     inner.appendChild(name);
 
@@ -1204,6 +2334,19 @@ class SofabatonRemoteCard extends HTMLElement {
     // Manually handle tap/click
     this._attachPrimaryAction(card, () => {
       if (!Number.isFinite(command_id) || !Number.isFinite(device_id)) return;
+      const commandType =
+        type === "macros"
+          ? "macro"
+          : type === "favorites"
+            ? "favorite"
+            : "assigned";
+      this._recordAutomationAssistClick({
+        label,
+        commandId: command_id,
+        deviceId: device_id,
+        commandType,
+        icon: item?.icon ?? null,
+      });
       this._triggerCommandPulse();
       this._sendDrawerItem(type, command_id, device_id, item);
     });
@@ -1212,34 +2355,38 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _mkCustomFavoriteButton(fav) {
-    const label = String(fav?.name ?? 'Favorite');
+    const label = String(fav?.name ?? "Favorite");
     const icon = fav?.icon ? String(fav.icon) : null;
 
-    const card = document.createElement('ha-card');
-    card.classList.add('drawer-btn', 'drawer-btn--custom');
-    card.setAttribute('role', 'button');
+    const card = document.createElement("ha-card");
+    card.classList.add("drawer-btn", "drawer-btn--custom");
+    card.setAttribute("role", "button");
     card.tabIndex = 0;
     // Span across both columns
-    card.style.gridColumn = '1 / -1';
+    card.style.gridColumn = "1 / -1";
 
-    const inner = document.createElement('div');
-    inner.className = 'drawer-btn__inner drawer-btn__inner--row';
+    const inner = document.createElement("div");
+    inner.className = "drawer-btn__inner drawer-btn__inner--row";
 
     if (icon) {
-      const ic = document.createElement('ha-icon');
-      ic.className = 'drawer-btn__icon';
-      ic.setAttribute('icon', icon);
+      const ic = document.createElement("ha-icon");
+      ic.className = "drawer-btn__icon";
+      ic.setAttribute("icon", icon);
       inner.appendChild(ic);
     }
 
-    const name = document.createElement('div');
-    name.className = 'name';
+    const name = document.createElement("div");
+    name.className = "name";
     name.textContent = label;
     inner.appendChild(name);
 
     card.appendChild(inner);
 
     this._attachPrimaryAction(card, () => {
+      if (this._automationAssistActive) {
+        this._setAutomationAssistStatus("Not captured.");
+      }
+
       // If the user configured an arbitrary Lovelace Action, run it
       if (fav?.action) {
         this._runLovelaceAction(fav.action, fav);
@@ -1247,8 +2394,12 @@ class SofabatonRemoteCard extends HTMLElement {
       }
 
       const cmd = Number(fav?.command_id);
-      const dev = (fav?.device_id != null) ? Number(fav.device_id) : this._currentActivityId();
-      if (!Number.isFinite(cmd) || dev == null || !Number.isFinite(Number(dev))) return;
+      const dev =
+        fav?.device_id != null
+          ? Number(fav.device_id)
+          : this._currentActivityId();
+      if (!Number.isFinite(cmd) || dev == null || !Number.isFinite(Number(dev)))
+        return;
 
       this._triggerCommandPulse();
       this._sendCustomFavoriteCommand(cmd, dev);
@@ -1267,15 +2418,15 @@ class SofabatonRemoteCard extends HTMLElement {
     if (this._isHubIntegration()) {
       // Send as a 'favorite' command in the hub integration (it accepts arbitrary IDs).
       await this._hubSendCommandList([
-        'type:send_favorite_key',
-        'device_id:' + dev,
-        'key_id:' + cmd,
+        "type:send_favorite_key",
+        "device_id:" + dev,
+        "key_id:" + cmd,
       ]);
       return;
     }
 
     // X1S/X1 style: send_command with device + numeric command
-    await this._callService('remote', 'send_command', {
+    await this._callService("remote", "send_command", {
       entity_id: this._config.entity,
       command: cmd,
       device: dev,
@@ -1296,7 +2447,15 @@ class SofabatonRemoteCard extends HTMLElement {
     if (this._root) return;
 
     this._keys = [];
-    this._x2OnlyIds = new Set([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
+    this._x2OnlyIds = new Set([
+      ID.C,
+      ID.B,
+      ID.A,
+      ID.EXIT,
+      ID.DVR,
+      ID.PLAY,
+      ID.GUIDE,
+    ]);
 
     const card = document.createElement("ha-card");
     this._root = card;
@@ -1306,6 +2465,7 @@ class SofabatonRemoteCard extends HTMLElement {
       :host {
         --sb-group-radius: var(--ha-card-border-radius, 18px);
         --remote-max-width: 360px;
+        --remote-zoom: 1;
         --sb-overlay-rgb: var(--rgb-primary-text-color, 0, 0, 0);
 
         display: block;
@@ -1314,6 +2474,7 @@ class SofabatonRemoteCard extends HTMLElement {
       ha-card {
         width: 100%;
         max-width: var(--remote-max-width);
+        zoom: var(--remote-zoom);
         margin-left: auto;
         margin-right: auto;
       }
@@ -1327,6 +2488,78 @@ class SofabatonRemoteCard extends HTMLElement {
         position: relative;
         z-index: 3;
       }
+
+      .automationAssist {
+        display: grid;
+        gap: 4px;
+        padding: 12px;
+        border-radius: var(--sb-group-radius);
+        border: 1px solid rgba(var(--rgb-primary-color), 0.25);
+        background: rgba(var(--rgb-primary-color), 0.08);
+      }
+
+      .automationAssist__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .automationAssist__label {
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .automationAssist__status {
+        font-size: 12px;
+        opacity: 0.75;
+        min-height: 14px; /* reserves 1 line so height doesn't jump */
+      }
+
+      /* small pill button */
+      .automationAssist__startBtn {
+        border: 1px solid rgba(var(--rgb-primary-color), 0.35);
+        background: rgba(var(--rgb-primary-color), 0.10);
+        color: var(--primary-text-color);
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        line-height: 1;
+      }
+
+      .automationAssist__mqttBtn {
+        border: 1px solid rgba(var(--rgb-primary-color), 0.35);
+        background: rgba(var(--rgb-primary-color), 0.10);
+        color: var(--primary-text-color);
+        border-radius: 999px;
+        margin:10px;
+        padding: 10px 10px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        line-height: 1;
+      }
+
+      .automationAssist__startBtn:hover {
+        background: rgba(var(--rgb-primary-color), 0.16);
+      }
+
+      .automationAssist__startBtn:active {
+        transform: scale(0.98);
+      }
+
+      .automationAssist__startBtn[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      .automationAssist__mqttBtn[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+
 
  	  .loadIndicator {
 	    height: 4px;
@@ -1460,6 +2693,25 @@ class SofabatonRemoteCard extends HTMLElement {
         margin-top: -1px; /* Overlaps the bottom border of the button row for a seamless look */
       }
 
+
+      .mf-container.drawer-up .mf-overlay {
+        top: auto;
+        bottom: 100%;
+
+        border-top: 1px solid var(--divider-color);
+        border-bottom: none;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+        border-top-left-radius: var(--sb-group-radius);
+        border-top-right-radius: var(--sb-group-radius);
+
+        transform-origin: bottom;
+
+        margin-top: 0;
+        margin-bottom: -1px; /* Overlaps the top border of the button row for a seamless look */
+        box-shadow: 0px -8px 16px rgba(0,0,0,0.25);
+      }
+
 			.mf-overlay.open {
         transform: scaleY(1);
         opacity: 1;
@@ -1555,11 +2807,6 @@ class SofabatonRemoteCard extends HTMLElement {
         text-overflow: ellipsis;
       }
 
-			.mf-container:has(.mf-overlay.open) .macroFavorites {
-					border-bottom-left-radius: 0;
-					border-bottom-right-radius: 0;
-					transition: border-radius 0.2s ease;
-			}
 
       /* Active state for buttons */
       .macroFavoritesButton.active-tab {
@@ -1719,11 +2966,210 @@ class SofabatonRemoteCard extends HTMLElement {
         border-left: 3px solid var(--warning-color, orange);
         padding-left: 10px;
       }
+
+      .sb-modal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 999;
+      }
+
+      .sb-modal.open {
+        display: flex;
+      }
+
+      .sb-modal__dialog {
+        width: min(420px, 90vw);
+        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+        color: var(--primary-text-color);
+        border-radius: 16px;
+        border: 1px solid var(--divider-color);
+        padding: 16px;
+        display: grid;
+        gap: 12px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+      }
+
+      .sb-modal__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .sb-modal__title {
+        font-weight: 600;
+        font-size: 15px;
+      }
+
+      .sb-modal__close {
+        border: none;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+      }
+
+      .sb-modal__text {
+        font-size: 13px;
+        opacity: 0.85;
+      }
+
+      .sb-modal__optout {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        opacity: 0.85;
+      }
+
+      .sb-modal__actions {
+        display: grid;
+        gap: 8px;
+      }
+
+      .sb-modal__link {
+        font-size: 12px;
+        color: var(--primary-color, #03a9f4);
+        text-decoration: underline;
+      }
     `;
 
     const wrap = document.createElement("div");
     wrap.className = "wrap";
     this._wrap = wrap;
+
+    this._automationAssistRow = document.createElement("div");
+    this._automationAssistRow.className = "automationAssist";
+
+    const assistLabel = document.createElement("div");
+    assistLabel.className = "automationAssist__label";
+    assistLabel.textContent = "Automation Assist";
+    this._automationAssistLabel = assistLabel;
+
+    const assistStatus = document.createElement("div");
+    assistStatus.className = "automationAssist__status";
+    this._automationAssistStatus = assistStatus;
+
+    const mkAssistButton = (label, onClick) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "automationAssist__startBtn";
+      btn.textContent = label || "Start";
+      this._attachPrimaryAction(btn, onClick);
+      return btn;
+    };
+
+    this._automationAssistStart = mkAssistButton("Start", () =>
+      this._setAutomationAssistActive(true),
+    );
+
+    const assistHeader = document.createElement("div");
+    assistHeader.className = "automationAssist__header";
+    assistHeader.appendChild(assistLabel);
+    assistHeader.appendChild(this._automationAssistStart);
+
+    this._automationAssistRow.appendChild(assistHeader);
+    this._automationAssistRow.appendChild(assistStatus);
+
+    this._wrap.appendChild(this._automationAssistRow);
+
+    this._automationAssistMqttModal = document.createElement("div");
+    this._automationAssistMqttModal.className = "sb-modal";
+    this._automationAssistMqttModal.setAttribute("role", "dialog");
+    this._automationAssistMqttModal.setAttribute("aria-modal", "true");
+
+    this._automationAssistMqttModal.addEventListener("click", (ev) => {
+      if (ev.target === this._automationAssistMqttModal) {
+        this._closeAutomationAssistMqttModal();
+      }
+    });
+
+    const modalDialog = document.createElement("div");
+    modalDialog.className = "sb-modal__dialog";
+
+    const modalHeader = document.createElement("div");
+    modalHeader.className = "sb-modal__header";
+
+    const modalTitle = document.createElement("div");
+    modalTitle.className = "sb-modal__title";
+    modalTitle.textContent = "Home Assistant device detected.";
+
+    const modalClose = document.createElement("button");
+    modalClose.type = "button";
+    modalClose.className = "sb-modal__close";
+    modalClose.setAttribute("aria-label", "Close");
+    modalClose.textContent = "✕";
+    modalClose.addEventListener("click", () =>
+      this._closeAutomationAssistMqttModal(),
+    );
+
+    modalHeader.appendChild(modalTitle);
+    modalHeader.appendChild(modalClose);
+
+    const modalBody = document.createElement("div");
+    modalBody.className = "sb-modal__body";
+
+    const modalText = document.createElement("div");
+    modalText.className = "sb-modal__text";
+    this._automationAssistMqttModalText = modalText;
+
+    modalBody.appendChild(modalText);
+
+    const modalActions = document.createElement("div");
+    modalActions.className = "sb-modal__actions";
+
+    const modalDocsLink = document.createElement("a");
+    modalDocsLink.className = "sb-modal__link";
+    modalDocsLink.href = `https://github.com/m3tac0de/sofabaton-virtual-remote/blob/${CARD_VERSION}/docs/automation_triggers.md`;
+    modalDocsLink.target = "_blank";
+    modalDocsLink.rel = "noopener noreferrer";
+    modalDocsLink.textContent = "See documentation for this feature.";
+
+    this._automationAssistMqttModalCreate = mkAssistButton(
+      "Create MQTT Discovery triggers",
+      () => this._handleAutomationAssistMqttClick(),
+    );
+    this._automationAssistMqttModalCreate.classList.add(
+      "automationAssist__mqttBtn",
+    );
+    this._automationAssistMqttModalStart = mkAssistButton(
+      "Start capturing commands",
+      () => this._setAutomationAssistActive(true),
+    );
+
+    const modalOptOut = document.createElement("label");
+    modalOptOut.className = "sb-modal__optout";
+    const modalOptOutInput = document.createElement("input");
+    modalOptOutInput.type = "checkbox";
+    this._automationAssistMqttModalOptOutInput = modalOptOutInput;
+    modalOptOutInput.addEventListener("change", () => {
+      if (modalOptOutInput.checked) {
+        const session = this._automationAssistSessionState();
+        session.hideMqttModal = true;
+        this._closeAutomationAssistMqttModal();
+      }
+    });
+    const modalOptOutText = document.createElement("span");
+    modalOptOutText.textContent =
+      "Not show this again for this device (in this session).";
+    modalOptOut.appendChild(modalOptOutInput);
+    modalOptOut.appendChild(modalOptOutText);
+
+    modalActions.appendChild(modalDocsLink);
+    modalActions.appendChild(this._automationAssistMqttModalCreate);
+    modalActions.appendChild(modalOptOut);
+    modalActions.appendChild(this._automationAssistMqttModalStart);
+
+    modalDialog.appendChild(modalHeader);
+    modalDialog.appendChild(modalBody);
+    modalDialog.appendChild(modalActions);
+    this._automationAssistMqttModal.appendChild(modalDialog);
+    card.appendChild(this._automationAssistMqttModal);
 
     // Activity selector (full width)
     this._activityRow = document.createElement("div");
@@ -1734,11 +3180,15 @@ class SofabatonRemoteCard extends HTMLElement {
 
     const handleActivitySelect = (ev) => {
       if (this._suppressActivityChange) return;
-      const value = ev?.detail?.value ?? ev?.target?.value ?? this._activitySelect.value;
+      const value =
+        ev?.detail?.value ?? ev?.target?.value ?? this._activitySelect.value;
       if (value != null) {
         Promise.resolve(this._setActivity(value)).catch((err) => {
           // eslint-disable-next-line no-console
-          console.error("[sofabaton-virtual-remote] Failed to set activity:", err);
+          console.error(
+            "[sofabaton-virtual-remote] Failed to set activity:",
+            err,
+          );
         });
       }
     };
@@ -1747,11 +3197,16 @@ class SofabatonRemoteCard extends HTMLElement {
     this._activitySelect.addEventListener("selected", handleActivitySelect);
     this._activitySelect.addEventListener("change", handleActivitySelect);
 
-
     // Track whether the activity dropdown menu is open so we can adjust z-index layering.
-    // mwc-select emits `opened`/`closed` events from its surface. 
-    const onMenuOpened = () => { this._activityMenuOpen = true; this._syncLayering(); };
-    const onMenuClosed = () => { this._activityMenuOpen = false; this._syncLayering(); };
+    // mwc-select emits `opened`/`closed` events from its surface.
+    const onMenuOpened = () => {
+      this._activityMenuOpen = true;
+      this._syncLayering();
+    };
+    const onMenuClosed = () => {
+      this._activityMenuOpen = false;
+      this._syncLayering();
+    };
     this._activitySelect.addEventListener("opened", onMenuOpened, true);
     this._activitySelect.addEventListener("closed", onMenuClosed, true);
     // Fallbacks: selection changes or blur should also drop the "open" flag.
@@ -1764,12 +3219,11 @@ class SofabatonRemoteCard extends HTMLElement {
     this._activityRow.appendChild(this._loadIndicator);
 
     // Macro/Favorite quick actions
-        const mfContainer = document.createElement("div");
+    const mfContainer = document.createElement("div");
     mfContainer.className = "mf-container";
 
-    
-
-    this._mfContainer = mfContainer;this._macroFavoritesRow = document.createElement("div");
+    this._mfContainer = mfContainer;
+    this._macroFavoritesRow = document.createElement("div");
     this._macroFavoritesRow.className = "macroFavorites";
 
     const macroFavoritesGrid = document.createElement("div");
@@ -1779,7 +3233,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
     const macrosButton = this._mkActionButton({
       label: "Macros >",
-      onClick: () => this._toggleDrawer('macros')
+      onClick: () => this._toggleDrawer("macros"),
     });
     this._macrosButtonWrap = macrosButton.wrap;
     this._macrosButton = macrosButton.btn;
@@ -1787,7 +3241,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
     const favoritesButton = this._mkActionButton({
       label: "Favorites >",
-      onClick: () => this._toggleDrawer('favorites')
+      onClick: () => this._toggleDrawer("favorites"),
     });
     this._favoritesButtonWrap = favoritesButton.wrap;
     this._favoritesButton = favoritesButton.btn;
@@ -1796,7 +3250,7 @@ class SofabatonRemoteCard extends HTMLElement {
     this._macroFavoritesRow.appendChild(macroFavoritesGrid);
     mfContainer.appendChild(this._macroFavoritesRow);
 
-		// Macros Overlay
+    // Macros Overlay
     this._macrosOverlayEl = document.createElement("div");
     this._macrosOverlayEl.className = "mf-overlay mf-overlay--macros";
     this._macrosOverlayGrid = document.createElement("div");
@@ -1817,18 +3271,88 @@ class SofabatonRemoteCard extends HTMLElement {
     // D-pad
     this._dpadEl = document.createElement("div");
     this._dpadEl.className = "dpad";
-    this._dpadEl.appendChild(this._mkHuiButton({ key: "up", label: "", icon: "mdi:chevron-up", id: ID.UP, cmd: ID.UP, extraClass: "area-up" }));
-    this._dpadEl.appendChild(this._mkHuiButton({ key: "left", label: "", icon: "mdi:chevron-left", id: ID.LEFT, cmd: ID.LEFT, extraClass: "area-left" }));
-    this._dpadEl.appendChild(this._mkHuiButton({ key: "ok", label: "OK", icon: "", id: ID.OK, cmd: ID.OK, extraClass: "area-ok okKey", size: "big" }));
-    this._dpadEl.appendChild(this._mkHuiButton({ key: "right", label: "", icon: "mdi:chevron-right", id: ID.RIGHT, cmd: ID.RIGHT, extraClass: "area-right" }));
-    this._dpadEl.appendChild(this._mkHuiButton({ key: "down", label: "", icon: "mdi:chevron-down", id: ID.DOWN, cmd: ID.DOWN, extraClass: "area-down" }));
+    this._dpadEl.appendChild(
+      this._mkHuiButton({
+        key: "up",
+        label: "",
+        icon: "mdi:chevron-up",
+        id: ID.UP,
+        cmd: ID.UP,
+        extraClass: "area-up",
+      }),
+    );
+    this._dpadEl.appendChild(
+      this._mkHuiButton({
+        key: "left",
+        label: "",
+        icon: "mdi:chevron-left",
+        id: ID.LEFT,
+        cmd: ID.LEFT,
+        extraClass: "area-left",
+      }),
+    );
+    this._dpadEl.appendChild(
+      this._mkHuiButton({
+        key: "ok",
+        label: "OK",
+        icon: "",
+        id: ID.OK,
+        cmd: ID.OK,
+        extraClass: "area-ok okKey",
+        size: "big",
+      }),
+    );
+    this._dpadEl.appendChild(
+      this._mkHuiButton({
+        key: "right",
+        label: "",
+        icon: "mdi:chevron-right",
+        id: ID.RIGHT,
+        cmd: ID.RIGHT,
+        extraClass: "area-right",
+      }),
+    );
+    this._dpadEl.appendChild(
+      this._mkHuiButton({
+        key: "down",
+        label: "",
+        icon: "mdi:chevron-down",
+        id: ID.DOWN,
+        cmd: ID.DOWN,
+        extraClass: "area-down",
+      }),
+    );
 
     // Back / Home / Menu
     this._navRowEl = document.createElement("div");
     this._navRowEl.className = "row3";
-    this._navRowEl.appendChild(this._mkHuiButton({ key: "back", label: "", icon: "mdi:arrow-u-left-top", id: ID.BACK, cmd: ID.BACK }));
-    this._navRowEl.appendChild(this._mkHuiButton({ key: "home", label: "", icon: "mdi:home", id: ID.HOME, cmd: ID.HOME }));
-    this._navRowEl.appendChild(this._mkHuiButton({ key: "menu", label: "", icon: "mdi:menu", id: ID.MENU, cmd: ID.MENU }));
+    this._navRowEl.appendChild(
+      this._mkHuiButton({
+        key: "back",
+        label: "",
+        icon: "mdi:arrow-u-left-top",
+        id: ID.BACK,
+        cmd: ID.BACK,
+      }),
+    );
+    this._navRowEl.appendChild(
+      this._mkHuiButton({
+        key: "home",
+        label: "",
+        icon: "mdi:home",
+        id: ID.HOME,
+        cmd: ID.HOME,
+      }),
+    );
+    this._navRowEl.appendChild(
+      this._mkHuiButton({
+        key: "menu",
+        label: "",
+        icon: "mdi:menu",
+        id: ID.MENU,
+        cmd: ID.MENU,
+      }),
+    );
 
     // Mid section: VOL | Guide+Mute | CH
     this._midEl = document.createElement("div");
@@ -1836,46 +3360,174 @@ class SofabatonRemoteCard extends HTMLElement {
 
     const volCol = document.createElement("div");
     volCol.className = "col";
-    volCol.appendChild(this._mkHuiButton({ key: "volup", label: "", icon: "mdi:volume-plus", id: ID.VOL_UP, cmd: ID.VOL_UP }));
-    volCol.appendChild(this._mkHuiButton({ key: "voldn", label: "", icon: "mdi:volume-minus", id: ID.VOL_DOWN, cmd: ID.VOL_DOWN }));
+    volCol.appendChild(
+      this._mkHuiButton({
+        key: "volup",
+        label: "",
+        icon: "mdi:volume-plus",
+        id: ID.VOL_UP,
+        cmd: ID.VOL_UP,
+      }),
+    );
+    volCol.appendChild(
+      this._mkHuiButton({
+        key: "voldn",
+        label: "",
+        icon: "mdi:volume-minus",
+        id: ID.VOL_DOWN,
+        cmd: ID.VOL_DOWN,
+      }),
+    );
     this._midEl.appendChild(volCol);
 
     const centerCol = document.createElement("div");
     centerCol.className = "col midCenter";
     this._midCenterCol = centerCol;
-    centerCol.appendChild(this._mkHuiButton({ key: "guide", label: "Guide", icon: "", id: ID.GUIDE, cmd: ID.GUIDE }));
-    centerCol.appendChild(this._mkHuiButton({ key: "mute", label: "", icon: "mdi:volume-mute", id: ID.MUTE, cmd: ID.MUTE }));
+    centerCol.appendChild(
+      this._mkHuiButton({
+        key: "guide",
+        label: "Guide",
+        icon: "",
+        id: ID.GUIDE,
+        cmd: ID.GUIDE,
+      }),
+    );
+    centerCol.appendChild(
+      this._mkHuiButton({
+        key: "mute",
+        label: "",
+        icon: "mdi:volume-mute",
+        id: ID.MUTE,
+        cmd: ID.MUTE,
+      }),
+    );
     this._midEl.appendChild(centerCol);
 
     const chCol = document.createElement("div");
     chCol.className = "col";
-    chCol.appendChild(this._mkHuiButton({ key: "chup", label: "", icon: "mdi:chevron-up", id: ID.CH_UP, cmd: ID.CH_UP }));
-    chCol.appendChild(this._mkHuiButton({ key: "chdn", label: "", icon: "mdi:chevron-down", id: ID.CH_DOWN, cmd: ID.CH_DOWN }));
+    chCol.appendChild(
+      this._mkHuiButton({
+        key: "chup",
+        label: "",
+        icon: "mdi:chevron-up",
+        id: ID.CH_UP,
+        cmd: ID.CH_UP,
+      }),
+    );
+    chCol.appendChild(
+      this._mkHuiButton({
+        key: "chdn",
+        label: "",
+        icon: "mdi:chevron-down",
+        id: ID.CH_DOWN,
+        cmd: ID.CH_DOWN,
+      }),
+    );
     this._midEl.appendChild(chCol);
-
 
     // Media cluster with X2 layout:
     this._mediaEl = document.createElement("div");
     this._mediaEl.className = "media x1";
 
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "rew", label: "", icon: "mdi:rewind", id: ID.REW, cmd: ID.REW, extraClass: "area-rew" }));
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "play", label: "", icon: "mdi:play", id: ID.PLAY, cmd: ID.PLAY, extraClass: "area-play" }));
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "fwd", label: "", icon: "mdi:fast-forward", id: ID.FWD, cmd: ID.FWD, extraClass: "area-fwd" }));
+    this._mediaEl.appendChild(
+      this._mkHuiButton({
+        key: "rew",
+        label: "",
+        icon: "mdi:rewind",
+        id: ID.REW,
+        cmd: ID.REW,
+        extraClass: "area-rew",
+      }),
+    );
+    this._mediaEl.appendChild(
+      this._mkHuiButton({
+        key: "play",
+        label: "",
+        icon: "mdi:play",
+        id: ID.PLAY,
+        cmd: ID.PLAY,
+        extraClass: "area-play",
+      }),
+    );
+    this._mediaEl.appendChild(
+      this._mkHuiButton({
+        key: "fwd",
+        label: "",
+        icon: "mdi:fast-forward",
+        id: ID.FWD,
+        cmd: ID.FWD,
+        extraClass: "area-fwd",
+      }),
+    );
 
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "dvr", label: "DVR", icon: "", id: ID.DVR, cmd: ID.DVR, extraClass: "area-dvr" }));
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "pause", label: "", icon: "mdi:pause", id: ID.PAUSE, cmd: ID.PAUSE, extraClass: "area-pause" }));
-    this._mediaEl.appendChild(this._mkHuiButton({ key: "exit", label: "Exit", icon: "", id: ID.EXIT, cmd: ID.EXIT, extraClass: "area-exit" }));
-
+    this._mediaEl.appendChild(
+      this._mkHuiButton({
+        key: "dvr",
+        label: "DVR",
+        icon: "",
+        id: ID.DVR,
+        cmd: ID.DVR,
+        extraClass: "area-dvr",
+      }),
+    );
+    this._mediaEl.appendChild(
+      this._mkHuiButton({
+        key: "pause",
+        label: "",
+        icon: "mdi:pause",
+        id: ID.PAUSE,
+        cmd: ID.PAUSE,
+        extraClass: "area-pause",
+      }),
+    );
+    this._mediaEl.appendChild(
+      this._mkHuiButton({
+        key: "exit",
+        label: "Exit",
+        icon: "",
+        id: ID.EXIT,
+        cmd: ID.EXIT,
+        extraClass: "area-exit",
+      }),
+    );
 
     // Colors row (colored bars, no text)
     this._colorsEl = document.createElement("div");
     this._colorsEl.className = "colors";
     const colorsGrid = document.createElement("div");
     colorsGrid.className = "colorsGrid";
-    colorsGrid.appendChild(this._mkColorKey({ key: "red", id: ID.RED, cmd: ID.RED, color: "#d32f2f" }));
-    colorsGrid.appendChild(this._mkColorKey({ key: "green", id: ID.GREEN, cmd: ID.GREEN, color: "#388e3c" }));
-    colorsGrid.appendChild(this._mkColorKey({ key: "yellow", id: ID.YELLOW, cmd: ID.YELLOW, color: "#fbc02d" }));
-    colorsGrid.appendChild(this._mkColorKey({ key: "blue", id: ID.BLUE, cmd: ID.BLUE, color: "#1976d2" }));
+    colorsGrid.appendChild(
+      this._mkColorKey({
+        key: "red",
+        id: ID.RED,
+        cmd: ID.RED,
+        color: "#d32f2f",
+      }),
+    );
+    colorsGrid.appendChild(
+      this._mkColorKey({
+        key: "green",
+        id: ID.GREEN,
+        cmd: ID.GREEN,
+        color: "#388e3c",
+      }),
+    );
+    colorsGrid.appendChild(
+      this._mkColorKey({
+        key: "yellow",
+        id: ID.YELLOW,
+        cmd: ID.YELLOW,
+        color: "#fbc02d",
+      }),
+    );
+    colorsGrid.appendChild(
+      this._mkColorKey({
+        key: "blue",
+        id: ID.BLUE,
+        cmd: ID.BLUE,
+        color: "#1976d2",
+      }),
+    );
     this._colorsEl.appendChild(colorsGrid);
 
     // A/B/C (X2)
@@ -1883,9 +3535,36 @@ class SofabatonRemoteCard extends HTMLElement {
     this._abcEl.className = "abc";
     const abcGrid = document.createElement("div");
     abcGrid.className = "abcGrid";
-    abcGrid.appendChild(this._mkHuiButton({ key: "a", label: "A", icon: "", id: ID.A, cmd: ID.A, size: "small" }));
-    abcGrid.appendChild(this._mkHuiButton({ key: "b", label: "B", icon: "", id: ID.B, cmd: ID.B, size: "small" }));
-    abcGrid.appendChild(this._mkHuiButton({ key: "c", label: "C", icon: "", id: ID.C, cmd: ID.C, size: "small" }));
+    abcGrid.appendChild(
+      this._mkHuiButton({
+        key: "a",
+        label: "A",
+        icon: "",
+        id: ID.A,
+        cmd: ID.A,
+        size: "small",
+      }),
+    );
+    abcGrid.appendChild(
+      this._mkHuiButton({
+        key: "b",
+        label: "B",
+        icon: "",
+        id: ID.B,
+        cmd: ID.B,
+        size: "small",
+      }),
+    );
+    abcGrid.appendChild(
+      this._mkHuiButton({
+        key: "c",
+        label: "C",
+        icon: "",
+        id: ID.C,
+        cmd: ID.C,
+        size: "small",
+      }),
+    );
     this._abcEl.appendChild(abcGrid);
 
     // Warning
@@ -1904,6 +3583,8 @@ class SofabatonRemoteCard extends HTMLElement {
     };
     this._applyGroupOrder();
     this._syncLayering();
+    this._updateAutomationAssistUI();
+    this._syncAutomationAssistMqtt();
 
     card.appendChild(style);
     card.appendChild(wrap);
@@ -1928,6 +3609,23 @@ class SofabatonRemoteCard extends HTMLElement {
       this.style.setProperty("--remote-max-width", mw.trim());
     }
 
+    // Apply per-card shrink (CSS zoom). Only shrink; never allow values > 1.
+    // Config is a percentage where 0 = normal size, higher = smaller.
+    const shrink = this._config?.shrink;
+    const shrinkNum =
+      typeof shrink === "number"
+        ? shrink
+        : typeof shrink === "string"
+          ? Number(shrink)
+          : 0;
+    if (!Number.isFinite(shrinkNum) || shrinkNum <= 0) {
+      this.style.removeProperty("--remote-zoom");
+    } else {
+      // Map 0..100 -> zoom 1..0 (clamped). Keep a small floor to avoid 0.
+      const z = Math.max(0.1, Math.min(1, 1 - shrinkNum / 100));
+      this.style.setProperty("--remote-zoom", String(z));
+    }
+
     const remote = this._remoteState();
     const isUnavailable = remote?.state === "unavailable";
     const loadState = remote?.attributes?.load_state;
@@ -1945,40 +3643,68 @@ class SofabatonRemoteCard extends HTMLElement {
 
     const actKey = activityId != null ? String(activityId) : null;
 
-    const _assignedMap = (assignedKeys && typeof assignedKeys === "object") ? assignedKeys : null;
-    const _macroMap = (macroKeys && typeof macroKeys === "object") ? macroKeys : null;
-    const _favMap = (favoriteKeys && typeof favoriteKeys === "object") ? favoriteKeys : null;
+    const _assignedMap =
+      assignedKeys && typeof assignedKeys === "object" ? assignedKeys : null;
+    const _macroMap =
+      macroKeys && typeof macroKeys === "object" ? macroKeys : null;
+    const _favMap =
+      favoriteKeys && typeof favoriteKeys === "object" ? favoriteKeys : null;
 
     // Update caches from attributes if the property exists (even if it's an empty array)
     if (this._isHubIntegration() && actKey != null) {
-      if (_assignedMap && (this._hasOwn(_assignedMap, actKey) || this._hasOwn(_assignedMap, activityId))) {
+      if (
+        _assignedMap &&
+        (this._hasOwn(_assignedMap, actKey) ||
+          this._hasOwn(_assignedMap, activityId))
+      ) {
         const v = _assignedMap[actKey] ?? _assignedMap[activityId];
         this._hubAssignedKeysCache[actKey] = Array.isArray(v) ? v : [];
       }
-      if (_macroMap && (this._hasOwn(_macroMap, actKey) || this._hasOwn(_macroMap, activityId))) {
+      if (
+        _macroMap &&
+        (this._hasOwn(_macroMap, actKey) || this._hasOwn(_macroMap, activityId))
+      ) {
         const v = _macroMap[actKey] ?? _macroMap[activityId];
         this._hubMacrosCache[actKey] = Array.isArray(v) ? v : [];
       }
-      if (_favMap && (this._hasOwn(_favMap, actKey) || this._hasOwn(_favMap, activityId))) {
+      if (
+        _favMap &&
+        (this._hasOwn(_favMap, actKey) || this._hasOwn(_favMap, activityId))
+      ) {
         const v = _favMap[actKey] ?? _favMap[activityId];
         this._hubFavoritesCache[actKey] = Array.isArray(v) ? v : [];
       }
     }
 
-    const macros = _macroMap && actKey != null && (this._hasOwn(_macroMap, actKey) || this._hasOwn(_macroMap, activityId))
-      ? (_macroMap[actKey] ?? _macroMap[activityId] ?? [])
-      : (this._isHubIntegration() && actKey != null ? (this._hubMacrosCache[actKey] ?? []) : []);
+    const macros =
+      _macroMap &&
+      actKey != null &&
+      (this._hasOwn(_macroMap, actKey) || this._hasOwn(_macroMap, activityId))
+        ? (_macroMap[actKey] ?? _macroMap[activityId] ?? [])
+        : this._isHubIntegration() && actKey != null
+          ? (this._hubMacrosCache[actKey] ?? [])
+          : [];
 
-    const favorites = _favMap && actKey != null && (this._hasOwn(_favMap, actKey) || this._hasOwn(_favMap, activityId))
-      ? (_favMap[actKey] ?? _favMap[activityId] ?? [])
-      : (this._isHubIntegration() && actKey != null ? (this._hubFavoritesCache[actKey] ?? []) : []);
+    const favorites =
+      _favMap &&
+      actKey != null &&
+      (this._hasOwn(_favMap, actKey) || this._hasOwn(_favMap, activityId))
+        ? (_favMap[actKey] ?? _favMap[activityId] ?? [])
+        : this._isHubIntegration() && actKey != null
+          ? (this._hubFavoritesCache[actKey] ?? [])
+          : [];
 
     const customFavorites = this._customFavorites();
 
-    const rawAssignedKeys = _assignedMap && actKey != null && (this._hasOwn(_assignedMap, actKey) || this._hasOwn(_assignedMap, activityId))
-      ? (_assignedMap[actKey] ?? _assignedMap[activityId] ?? null)
-      : (this._isHubIntegration() && actKey != null ? (this._hubAssignedKeysCache[actKey] ?? null) : null);
-
+    const rawAssignedKeys =
+      _assignedMap &&
+      actKey != null &&
+      (this._hasOwn(_assignedMap, actKey) ||
+        this._hasOwn(_assignedMap, activityId))
+        ? (_assignedMap[actKey] ?? _assignedMap[activityId] ?? null)
+        : this._isHubIntegration() && actKey != null
+          ? (this._hubAssignedKeysCache[actKey] ?? null)
+          : null;
 
     // Hub integration: fetch activities / keys on-demand
     if (this._isHubIntegration() && !isUnavailable) {
@@ -1992,17 +3718,32 @@ class SofabatonRemoteCard extends HTMLElement {
       // can cause dropped/ignored responses.
       if (activityId != null && this._isActivityOn(activityId, activities)) {
         const aKey = String(activityId);
-        const hasAssignedAttr = (assignedKeys && typeof assignedKeys === "object") && (this._hasOwn(assignedKeys, aKey) || this._hasOwn(assignedKeys, activityId));
-        const hasMacroAttr = (macroKeys && typeof macroKeys === "object") && (this._hasOwn(macroKeys, aKey) || this._hasOwn(macroKeys, activityId));
-        const hasFavAttr = (favoriteKeys && typeof favoriteKeys === "object") && (this._hasOwn(favoriteKeys, aKey) || this._hasOwn(favoriteKeys, activityId));
+        const hasAssignedAttr =
+          assignedKeys &&
+          typeof assignedKeys === "object" &&
+          (this._hasOwn(assignedKeys, aKey) ||
+            this._hasOwn(assignedKeys, activityId));
+        const hasMacroAttr =
+          macroKeys &&
+          typeof macroKeys === "object" &&
+          (this._hasOwn(macroKeys, aKey) ||
+            this._hasOwn(macroKeys, activityId));
+        const hasFavAttr =
+          favoriteKeys &&
+          typeof favoriteKeys === "object" &&
+          (this._hasOwn(favoriteKeys, aKey) ||
+            this._hasOwn(favoriteKeys, activityId));
 
         const hasAssignedCache = this._hasOwn(this._hubAssignedKeysCache, aKey);
         const hasMacroCache = this._hasOwn(this._hubMacrosCache, aKey);
         const hasFavCache = this._hasOwn(this._hubFavoritesCache, aKey);
 
-        if (!hasAssignedAttr && !hasAssignedCache) this._hubRequestAssignedKeys(activityId);
-        if (!hasMacroAttr && !hasMacroCache) this._hubRequestMacroKeys(activityId);
-        if (!hasFavAttr && !hasFavCache) this._hubRequestFavoriteKeys(activityId);
+        if (!hasAssignedAttr && !hasAssignedCache)
+          this._hubRequestAssignedKeys(activityId);
+        if (!hasMacroAttr && !hasMacroCache)
+          this._hubRequestMacroKeys(activityId);
+        if (!hasFavAttr && !hasFavCache)
+          this._hubRequestFavoriteKeys(activityId);
       }
     }
 
@@ -2017,7 +3758,8 @@ class SofabatonRemoteCard extends HTMLElement {
             }))
             .filter((entry) => Number.isFinite(entry.command))
         : [];
-      this._enabledButtonsInvalid = Array.isArray(rawAssignedKeys) && parsed.length === 0;
+      this._enabledButtonsInvalid =
+        Array.isArray(rawAssignedKeys) && parsed.length === 0;
       this._enabledButtonsCache = parsed;
     }
 
@@ -2048,7 +3790,10 @@ class SofabatonRemoteCard extends HTMLElement {
       isPoweredOff = false;
       this._stopActivityLoading();
     } else {
-      const options = ["Powered Off", ...activities.map((activity) => activity.name)];
+      const options = [
+        "Powered Off",
+        ...activities.map((activity) => activity.name),
+      ];
       const current = this._currentActivityLabel() || "Powered Off";
 
       isPoweredOff = activityId == null || this._isPoweredOffLabel(current);
@@ -2083,7 +3828,10 @@ class SofabatonRemoteCard extends HTMLElement {
       const currentActivity = this._currentActivityLabel();
       if (this._activityLoadActive && this._activityLoadTarget) {
         const targetIsOff = this._isPoweredOffLabel(this._activityLoadTarget);
-        if ((targetIsOff && isPoweredOff) || currentActivity === this._activityLoadTarget) {
+        if (
+          (targetIsOff && isPoweredOff) ||
+          currentActivity === this._activityLoadTarget
+        ) {
           this._stopActivityLoading();
         }
       }
@@ -2097,6 +3845,14 @@ class SofabatonRemoteCard extends HTMLElement {
     }
 
     // Visibility toggles (user config)
+    this._setVisible(
+      this._automationAssistRow,
+      this._config.show_automation_assist,
+    );
+    if (!this._automationAssistEnabled() && this._automationAssistActive) {
+      this._setAutomationAssistActive(false);
+    }
+    this._syncAutomationAssistMqtt();
     this._setVisible(this._activityRow, this._config.show_activity);
 
     const showMacrosBtn = this._showMacrosButton();
@@ -2109,16 +3865,25 @@ class SofabatonRemoteCard extends HTMLElement {
 
     if (this._macroFavoritesGrid) {
       const visibleCount = (showMacrosBtn ? 1 : 0) + (showFavoritesBtn ? 1 : 0);
-      this._macroFavoritesGrid.classList.toggle('single', visibleCount === 1);
+      this._macroFavoritesGrid.classList.toggle("single", visibleCount === 1);
     }
 
     // If macro/favorites are hidden, or the active drawer tab is hidden, close any open drawer
+    const prevDrawer = this._activeDrawer;
+
     if (!showMF && this._activeDrawer) {
       this._activeDrawer = null;
-    this._activityMenuOpen = false;
     }
-    if (this._activeDrawer === 'macros' && !showMacrosBtn) this._activeDrawer = null;
-    if (this._activeDrawer === 'favorites' && !showFavoritesBtn) this._activeDrawer = null;
+    if (this._activeDrawer === "macros" && !showMacrosBtn)
+      this._activeDrawer = null;
+    if (this._activeDrawer === "favorites" && !showFavoritesBtn)
+      this._activeDrawer = null;
+
+    if (prevDrawer && !this._activeDrawer) {
+      this._scheduleDrawerDirectionReset();
+      this._applyDrawerVisuals();
+      this._syncLayering();
+    }
 
     this._setVisible(this._dpadEl, this._config.show_dpad);
     this._setVisible(this._navRowEl, this._config.show_nav);
@@ -2129,32 +3894,39 @@ class SofabatonRemoteCard extends HTMLElement {
     // ABC: must be enabled in config AND X2
     this._setVisible(this._abcEl, this._config.show_abc && isX2);
 
-    const disableAllButtons = isUnavailable || isPoweredOff || this._activityLoadActive;
+    const disableAllButtons =
+      isUnavailable || isPoweredOff || this._activityLoadActive;
 
     if (this._macrosButton) {
       this._macrosButton.hass = this._hass;
-      
-      const macrosEnabled = macros.length > 0; 
-      this._macrosButtonWrap.classList.toggle("disabled", disableAllButtons || !macrosEnabled);
+
+      const macrosEnabled = macros.length > 0;
+      this._macrosButtonWrap.classList.toggle(
+        "disabled",
+        disableAllButtons || !macrosEnabled,
+      );
     }
 
     if (this._favoritesButton) {
       this._favoritesButton.hass = this._hass;
-      
-      const favoritesEnabled = (favorites.length + customFavorites.length) > 0;
-      this._favoritesButtonWrap.classList.toggle("disabled", disableAllButtons || !favoritesEnabled);
+
+      const favoritesEnabled = favorites.length + customFavorites.length > 0;
+      this._favoritesButtonWrap.classList.toggle(
+        "disabled",
+        disableAllButtons || !favoritesEnabled,
+      );
     }
 
-		// POPULATE MACROS (Only if data changed)
+    // POPULATE MACROS (Only if data changed)
     const macroSig = this._drawerItemsSignature(macros);
     if (this._macroDataSig !== macroSig && this._macrosOverlayGrid) {
-        this._macroDataSig = macroSig;
-        this._macrosOverlayGrid.innerHTML = "";
-        macros.forEach(macro => {
-            const btn = this._mkDrawerButton(macro, 'macros');
-            btn.hass = this._hass;
-            this._macrosOverlayGrid.appendChild(btn);
-        });
+      this._macroDataSig = macroSig;
+      this._macrosOverlayGrid.innerHTML = "";
+      macros.forEach((macro) => {
+        const btn = this._mkDrawerButton(macro, "macros");
+        btn.hass = this._hass;
+        this._macrosOverlayGrid.appendChild(btn);
+      });
     }
 
     // POPULATE FAVORITES (Only if data changed)
@@ -2162,24 +3934,25 @@ class SofabatonRemoteCard extends HTMLElement {
     const customFavSig = this._customFavoritesSignature(customFavorites);
     const combinedFavSig = `${customFavSig}||${favSig}`;
     if (this._favDataSig !== combinedFavSig && this._favoritesOverlayGrid) {
-        this._favDataSig = combinedFavSig;
-        this._favoritesOverlayGrid.innerHTML = "";
+      this._favDataSig = combinedFavSig;
+      this._favoritesOverlayGrid.innerHTML = "";
 
-        // 1) Custom favorites from card config (always on top, span 2 columns)
-        customFavorites.forEach((fav) => {
-            const btn = this._mkCustomFavoriteButton(fav);
-            btn.hass = this._hass;
-            this._favoritesOverlayGrid.appendChild(btn);
-        });
+      // 1) Custom favorites from card config (always on top, span 2 columns)
+      customFavorites.forEach((fav) => {
+        const btn = this._mkCustomFavoriteButton(fav);
+        btn.hass = this._hass;
+        this._favoritesOverlayGrid.appendChild(btn);
+      });
 
-        // 2) Favorites fetched from the remote entity (occupy 1 column)
-        favorites.forEach((fav) => {
-            const btn = this._mkDrawerButton(fav, 'favorites');
-            btn.hass = this._hass;
-            this._favoritesOverlayGrid.appendChild(btn);
-        });
+      // 2) Favorites fetched from the remote entity (occupy 1 column)
+      favorites.forEach((fav) => {
+        const btn = this._mkDrawerButton(fav, "favorites");
+        btn.hass = this._hass;
+        this._favoritesOverlayGrid.appendChild(btn);
+      });
     }
 
+    this._updateDrawerDirection();
     this._applyDrawerVisuals();
 
     // Update all keys: hass + enabled/disabled + X2-only visibility
@@ -2198,7 +3971,8 @@ class SofabatonRemoteCard extends HTMLElement {
 
     if (remote?.state === "unavailable") {
       this._warn.style.display = "block";
-      this._warn.textContent = "Remote is unavailable (possibly because the Sofabaton app is connected).";
+      this._warn.textContent =
+        "Remote is unavailable (possibly because the Sofabaton app is connected).";
     }
 
     this._updateLoadIndicator();
@@ -2224,11 +3998,13 @@ class SofabatonRemoteCard extends HTMLElement {
       show_media: true,
       show_colors: true,
       show_abc: true,
+      show_automation_assist: false,
       show_macro_favorites: true,
       show_macros_button: null,
       show_favorites_button: null,
       custom_favorites: [],
       max_width: 360,
+      shrink: 0,
       group_order: DEFAULT_GROUP_ORDER.slice(),
     };
   }
@@ -2265,14 +4041,16 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           show_mid: "Volume/Channel Rockers",
           show_media: "Media Playback Controls",
           show_colors: "Red/Green/Yellow/Blue",
-          show_abc: "A/B/C Buttons (X2 only)"
-        ,
+          show_abc: "A/B/C Buttons (X2 only)",
+          show_automation_assist: "Automation Assist",
           show_macros_button: "Macros Button",
           show_favorites_button: "Favorites Button",
           custom_favorites: "Custom Favorites (advanced)",
           show_macro_favorites: "Macros/Favorites Buttons (deprecated)",
           max_width: "Maximum Card Width (px)",
-          group_order: "Group Order"};
+          shrink: "Shrink (higher = smaller)",
+          group_order: "Group Order",
+        };
         return labels[schema.name] || schema.name;
       };
 
@@ -2281,7 +4059,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         // Merge form changes into the existing config so custom UI fields (like group order)
         // aren't lost when ha-form emits a partial value set.
         const newValue = { ...this._config, ...ev.detail.value };
-        
+
         // 1. If toggle is off, wipe the color data
         if (newValue.use_background_override === false) {
           delete newValue.background_override;
@@ -2341,10 +4119,23 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     }
 
     // Determine if we should show the color picker
-    const showColorPicker = this._config.use_background_override || !!this._config.background_override;
+    const showColorPicker =
+      this._config.use_background_override ||
+      !!this._config.background_override;
 
     this._form.schema = [
-      { name: "entity", selector: { entity: { filter: [ { domain: "remote", integration: "sofabaton_x1s" }, { domain: "remote", integration: "sofabaton_hub" } ] } }, required: true },
+      {
+        name: "entity",
+        selector: {
+          entity: {
+            filter: [
+              { domain: "remote", integration: "sofabaton_x1s" },
+              { domain: "remote", integration: "sofabaton_hub" },
+            ],
+          },
+        },
+        required: true,
+      },
       {
         type: "expandable",
         title: "Styling Options",
@@ -2352,25 +4143,46 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         schema: [
           // We removed the 'grid' type here so items stack vertically
           { name: "theme", selector: { theme: {} } },
-          { 
-            name: "max_width", 
-            selector: { number: { min: 0, max: 1200, step: 10, unit_of_measurement: "px" } } 
+          {
+            name: "max_width",
+            selector: {
+              number: {
+                min: 230,
+                max: 1200,
+                step: 5,
+                unit_of_measurement: "px",
+              },
+            },
+          },
+          {
+            name: "shrink",
+            selector: {
+              number: {
+                min: 0,
+                max: 80,
+                step: 1,
+                unit_of_measurement: "%",
+              },
+            },
           },
           { name: "use_background_override", selector: { boolean: {} } },
-          ...(showColorPicker ? [{ name: "background_override", selector: { color_rgb: {} } }] : []),
-        ]
+          ...(showColorPicker
+            ? [{ name: "background_override", selector: { color_rgb: {} } }]
+            : []),
+        ],
       },
-      ,{
+      ,
+      {
         type: "expandable",
         title: "Custom Favorites",
         icon: "mdi:star-plus",
         schema: [
           {
             name: "custom_favorites",
-            selector: { object: {} }
-          }
-        ]
-      }
+            selector: { object: {} },
+          },
+        ],
+      },
     ];
 
     this._form.data = {
@@ -2378,11 +4190,15 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       entity: this._config.entity || "",
       theme: this._config.theme || "",
       // Maintain the toggle state correctly
-      use_background_override: this._config.use_background_override ?? !!this._config.background_override,
+      use_background_override:
+        this._config.use_background_override ??
+        !!this._config.background_override,
       background_override: this._config.background_override ?? [255, 255, 255],
       custom_favorites: this._config.custom_favorites ?? [],
       max_width: this._config.max_width ?? 360,
+      shrink: this._config.shrink ?? 0,
       group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
+      show_automation_assist: this._config.show_automation_assist ?? false,
     };
 
     this._renderGroupOrderEditor();
@@ -2436,14 +4252,18 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _macroEnabled(cfg = this._config) {
-    if (typeof cfg?.show_macros_button === "boolean") return cfg.show_macros_button;
-    if (typeof cfg?.show_macro_favorites === "boolean") return cfg.show_macro_favorites;
+    if (typeof cfg?.show_macros_button === "boolean")
+      return cfg.show_macros_button;
+    if (typeof cfg?.show_macro_favorites === "boolean")
+      return cfg.show_macro_favorites;
     return true;
   }
 
   _favoritesEnabled(cfg = this._config) {
-    if (typeof cfg?.show_favorites_button === "boolean") return cfg.show_favorites_button;
-    if (typeof cfg?.show_macro_favorites === "boolean") return cfg.show_macro_favorites;
+    if (typeof cfg?.show_favorites_button === "boolean")
+      return cfg.show_favorites_button;
+    if (typeof cfg?.show_macro_favorites === "boolean")
+      return cfg.show_macro_favorites;
     return true;
   }
 
@@ -2498,6 +4318,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._fireChanged();
   }
 
+  _setAutomationAssistEnabled(enabled) {
+    const next = { ...this._config, show_automation_assist: !!enabled };
+    this._config = next;
+    this._syncFormData(next);
+    this._fireChanged();
+  }
+
   _renderGroupOrderEditor() {
     if (!this._layoutWrap) return;
 
@@ -2508,7 +4335,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._layoutWrap.innerHTML = "";
 
     const exp = document.createElement("div");
-    exp.className = `sb-exp ${this._layoutExpanded ? "" : "sb-exp-collapsed"}`.trim();
+    exp.className =
+      `sb-exp ${this._layoutExpanded ? "" : "sb-exp-collapsed"}`.trim();
 
     const hdr = document.createElement("button");
     hdr.type = "button";
@@ -2533,7 +4361,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const chev = document.createElement("ha-icon");
     chev.className = "sb-exp-chevron";
-    chev.setAttribute("icon", this._layoutExpanded ? "mdi:chevron-up" : "mdi:chevron-down");
+    chev.setAttribute(
+      "icon",
+      this._layoutExpanded ? "mdi:chevron-up" : "mdi:chevron-down",
+    );
 
     hdr.appendChild(hdrLeft);
     hdr.appendChild(chev);
@@ -2543,6 +4374,28 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const card = document.createElement("div");
     card.className = "sb-layout-card";
+
+    const assistRow = document.createElement("div");
+    assistRow.className = "sb-layout-row";
+    const assistLabel = document.createElement("div");
+    assistLabel.className = "sb-layout-label";
+    assistLabel.textContent = "Automation Assist (fixed top row)";
+    const assistActions = document.createElement("div");
+    assistActions.className = "sb-layout-actions";
+    const assistSwitchWrap = document.createElement("div");
+    assistSwitchWrap.className = "sb-switch";
+    const assistSwitch = document.createElement("ha-switch");
+    assistSwitch.checked = !!this._config?.show_automation_assist;
+    assistSwitch.addEventListener("change", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._setAutomationAssistEnabled(!!assistSwitch.checked);
+    });
+    assistSwitchWrap.appendChild(assistSwitch);
+    assistActions.appendChild(assistSwitchWrap);
+    assistRow.appendChild(assistLabel);
+    assistRow.appendChild(assistActions);
+    card.appendChild(assistRow);
 
     order.forEach((key, i) => {
       const row = document.createElement("div");
@@ -2577,13 +4430,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         "mdi:chevron-up",
         `Move ${this._groupLabel(key)} up`,
         i === 0,
-        () => this._moveGroup(i, -1)
+        () => this._moveGroup(i, -1),
       );
       const downBtn = mkIconBtn(
         "mdi:chevron-down",
         `Move ${this._groupLabel(key)} down`,
         i === order.length - 1,
-        () => this._moveGroup(i, +1)
+        () => this._moveGroup(i, +1),
       );
 
       const moveWrap = document.createElement("div");
@@ -2614,8 +4467,16 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         };
 
         // Keep independent toggles, but one shared move control.
-        mfWrap.appendChild(makeItem("Macros", this._macroEnabled(), (val) => this._setMacroEnabled(val)));
-        mfWrap.appendChild(makeItem("Favorites", this._favoritesEnabled(), (val) => this._setFavoritesEnabled(val)));
+        mfWrap.appendChild(
+          makeItem("Macros", this._macroEnabled(), (val) =>
+            this._setMacroEnabled(val),
+          ),
+        );
+        mfWrap.appendChild(
+          makeItem("Favorites", this._favoritesEnabled(), (val) =>
+            this._setFavoritesEnabled(val),
+          ),
+        );
 
         actions.appendChild(mfWrap);
         actions.appendChild(moveWrap);
@@ -2685,7 +4546,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._renderGroupOrderEditor();
   }
 
-
   _resetGroupOrder() {
     const next = DEFAULT_GROUP_ORDER.slice();
 
@@ -2698,6 +4558,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       show_media: true,
       show_colors: true,
       show_abc: true,
+      show_automation_assist: false,
       // Macro/Favorites: support both new and legacy flags
       show_macros_button: true,
       show_favorites_button: true,
@@ -2718,24 +4579,23 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._renderGroupOrderEditor();
   }
 
-
-
   _fireChanged() {
     // 3. CLEANUP: Strip out the helper toggle before saving to HASS YAML
     const finalConfig = { ...this._config };
     delete finalConfig.use_background_override;
 
     this.dispatchEvent(
-      new CustomEvent("config-changed", { 
-        detail: { config: finalConfig }, 
-        bubbles: true, 
-        composed: true 
-      })
+      new CustomEvent("config-changed", {
+        detail: { config: finalConfig },
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 }
 
-if (!customElements.get(EDITOR)) customElements.define(EDITOR, SofabatonRemoteCardEditor);
+if (!customElements.get(EDITOR))
+  customElements.define(EDITOR, SofabatonRemoteCardEditor);
 if (!customElements.get(TYPE)) customElements.define(TYPE, SofabatonRemoteCard);
 
 window.customCards = window.customCards || [];
@@ -2743,6 +4603,7 @@ if (!window.customCards.some((c) => c.type === TYPE)) {
   window.customCards.push({
     type: TYPE,
     name: "Sofabaton Virtual Remote",
-    description: "A configurable remote for the Sofabaton X1, X1S and X2 integration.",
+    description:
+      "A configurable remote for the Sofabaton X1, X1S and X2 integration.",
   });
 }
