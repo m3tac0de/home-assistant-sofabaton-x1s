@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional
 
+from ..const import HUB_VERSION_X1, classify_hub_version
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
 log = logging.getLogger("x1proxy.notify")
@@ -45,6 +46,7 @@ class NotifyRegistration:
     proxy_id: str
     real_hub_ip: str
     mdns_txt: Dict[str, str]
+    hub_version: str
     call_me_port: int
     call_me_cb: Callable[[str, int, str, int], None]
     mac_bytes: bytes
@@ -76,11 +78,15 @@ class NotifyDemuxer:
         call_me_cb: Callable[[str, int, str, int], None],
     ) -> None:
         mac_bytes = self._extract_mac_bytes(mdns_txt)
-        device_id, call_me_hint = self._build_device_identifiers(mac_bytes)
+        hub_version = classify_hub_version(mdns_txt)
+        device_id, call_me_hint = self._build_device_identifiers(
+            mac_bytes, hub_version
+        )
         reg = NotifyRegistration(
             proxy_id,
             real_hub_ip,
             dict(mdns_txt),
+            hub_version,
             int(call_me_port),
             call_me_cb,
             mac_bytes,
@@ -190,20 +196,25 @@ class NotifyDemuxer:
             or reg.mdns_txt.get("Name")
             or "X1 Hub"
         ).encode("utf-8")
-
-        name_bytes = name[:14].ljust(14, b"\x00")
-
-        version_block = bytes.fromhex("640220221120050100")
-
-        unique_device_id_payload = reg.device_id
-
-        frame = (
-            bytes([SYNC0, SYNC1, 0x1D])
-            + unique_device_id_payload
-            + version_block
-            + name_bytes
-            + b"\xBE"
-        )
+        if reg.hub_version == HUB_VERSION_X1:
+            name_bytes = name[:12]
+            version_block = bytes.fromhex("640120210609110000")
+            frame = (
+                bytes([SYNC0, SYNC1, 0x1A])
+                + reg.device_id
+                + version_block
+                + name_bytes
+            )
+        else:
+            name_bytes = name[:14].ljust(14, b"\x00")
+            version_block = bytes.fromhex("640220221120050100")
+            frame = (
+                bytes([SYNC0, SYNC1, 0x1D])
+                + reg.device_id
+                + version_block
+                + name_bytes
+                + b"\xBE"
+            )
 
         log.info(
             "[DEMUX][REPLY] proxy=%s mac=%s name=%s",
@@ -321,11 +332,13 @@ class NotifyDemuxer:
 
         return mac_bytes
 
-    def _build_device_identifiers(self, mac_bytes: bytes) -> tuple[bytes, bytes]:
+    def _build_device_identifiers(
+        self, mac_bytes: bytes, hub_version: str
+    ) -> tuple[bytes, bytes]:
         """Return the device id used in NOTIFY_ME replies and the CALL_ME hint."""
 
         required_prefix_byte = b"\xc2"
-        static_id_suffix_byte = b"\x45"
+        static_id_suffix_byte = b"\x4b" if hub_version == HUB_VERSION_X1 else b"\x45"
         unique_tail_mac = mac_bytes[0:5]
 
         device_id = required_prefix_byte + unique_tail_mac + static_id_suffix_byte
