@@ -130,8 +130,8 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
     Enables/disables the listener for Wifi Commands. Disabled by default, enabled automically when deploying Wifi Commands to the hub.
 
 - **Sensors**
-  - `binary_sensor.<hub>_hub_connected` (connected/disconnected)
-  - `binary_sensor.<hub>_app_connected` (official app connected to proxy)
+  - `binary_sensor.<hub>_hub_connected` (is the hub connected/disconnected to the integration)
+  - `binary_sensor.<hub>_app_connected` (is the official app connected to the proxy)
   - `sensor.<hub>_activity` (current activity; stays accurate regardless of where it changed, **always available**)
   - `sensor.<hub>_recorded_keypress` (ready-to-copy replay payloads from app button presses)
   - `sensor.<hub>_index` (diagnostic: activities/devices/commands/macros/favorites)
