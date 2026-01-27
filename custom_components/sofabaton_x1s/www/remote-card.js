@@ -880,7 +880,6 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistMqttSupported() &&
       this._automationAssistActive &&
       Boolean(this._hubMac) &&
-      Boolean(this._automationAssistMqttMatch) &&
       !this._automationAssistMqttDiscoveryCreated &&
       this._automationAssistMqttReady()
     );
@@ -1055,7 +1054,6 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _handleAutomationAssistMqtt(msg) {
-    if (!this._automationAssistCapture) return;
     const payload = this._parseMqttPayload(msg?.payload);
     if (!payload) return;
 
@@ -1382,7 +1380,7 @@ class SofabatonRemoteCard extends HTMLElement {
     const mqttSupported = this._automationAssistMqttSupported();
 
     if (!isActive) {
-      this._automationAssistStatus.textContent = "";
+      this._automationAssistStatus.textContent = "Tap Start to begin";
     } else if (this._automationAssistStatusMessage) {
       this._automationAssistStatus.textContent =
         this._automationAssistStatusMessage;
@@ -1443,7 +1441,6 @@ class SofabatonRemoteCard extends HTMLElement {
       const showCreate =
         mqttSupported &&
         isActive &&
-        this._automationAssistMqttMatch &&
         !this._automationAssistMqttDiscoveryCreated;
       this._setVisible(this._automationAssistMqttModalCreate, showCreate);
       this._automationAssistMqttModalCreate.classList.toggle(
@@ -2471,11 +2468,18 @@ class SofabatonRemoteCard extends HTMLElement {
 
       .automationAssist {
         display: grid;
-        gap: 6px;
+        gap: 4px;
         padding: 12px;
         border-radius: var(--sb-group-radius);
         border: 1px solid rgba(var(--rgb-primary-color), 0.25);
         background: rgba(var(--rgb-primary-color), 0.08);
+      }
+
+      .automationAssist__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
       }
 
       .automationAssist__label {
@@ -2483,20 +2487,51 @@ class SofabatonRemoteCard extends HTMLElement {
         font-weight: 600;
       }
 
-      .automationAssistButton {
-        cursor: pointer;
-        margin-top: 4px;
-      }
-
-      .automationAssistButton.disabled {
-        opacity: 0.5;
-        pointer-events: none;
-      }
-
       .automationAssist__status {
         font-size: 12px;
         opacity: 0.75;
+        min-height: 14px; /* reserves 1 line so height doesn't jump */
       }
+
+      /* small pill button */
+      .automationAssist__startBtn {
+        border: 1px solid rgba(var(--rgb-primary-color), 0.35);
+        background: rgba(var(--rgb-primary-color), 0.10);
+        color: var(--primary-text-color);
+        border-radius: 999px;
+        padding: 2px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        line-height: 1;
+      }
+
+      .automationAssist__mqttBtn {
+        border: 1px solid rgba(var(--rgb-primary-color), 0.35);
+        background: rgba(var(--rgb-primary-color), 0.10);
+        color: var(--primary-text-color);
+        border-radius: 999px;
+        margin:10px;
+        padding: 10px 10px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        line-height: 1;
+      }
+
+      .automationAssist__startBtn:hover {
+        background: rgba(var(--rgb-primary-color), 0.16);
+      }
+
+      .automationAssist__startBtn:active {
+        transform: scale(0.98);
+      }
+
+      .automationAssist__startBtn[disabled] {
+        opacity: 0.5;
+        cursor: default;
+      }
+
 
  	  .loadIndicator {
 	    height: 4px;
@@ -2968,6 +3003,12 @@ class SofabatonRemoteCard extends HTMLElement {
         display: grid;
         gap: 8px;
       }
+
+      .sb-modal__link {
+        font-size: 12px;
+        color: var(--primary-color, #03a9f4);
+        text-decoration: underline;
+      }
     `;
 
     const wrap = document.createElement("div");
@@ -2987,33 +3028,25 @@ class SofabatonRemoteCard extends HTMLElement {
     this._automationAssistStatus = assistStatus;
 
     const mkAssistButton = (label, onClick) => {
-      const wrapBtn = document.createElement("div");
-      wrapBtn.className = "automationAssistButton";
-      this._attachPrimaryAction(wrapBtn, onClick);
-
-      const btn = document.createElement("hui-button-card");
-      btn.hass = this._hass;
-      btn.setConfig({
-        type: "button",
-        show_name: true,
-        show_icon: false,
-        name: label || "",
-        tap_action: { action: "none" },
-        hold_action: { action: "none" },
-        double_tap_action: { action: "none" },
-      });
-      wrapBtn.appendChild(btn);
-      return wrapBtn;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "automationAssist__startBtn";
+      btn.textContent = label || "Start";
+      this._attachPrimaryAction(btn, onClick);
+      return btn;
     };
 
-    this._automationAssistStart = mkAssistButton(
-      "Start capturing commands",
-      () => this._setAutomationAssistActive(true),
+    this._automationAssistStart = mkAssistButton("Start", () =>
+      this._setAutomationAssistActive(true),
     );
 
-    this._automationAssistRow.appendChild(assistLabel);
+    const assistHeader = document.createElement("div");
+    assistHeader.className = "automationAssist__header";
+    assistHeader.appendChild(assistLabel);
+    assistHeader.appendChild(this._automationAssistStart);
+
+    this._automationAssistRow.appendChild(assistHeader);
     this._automationAssistRow.appendChild(assistStatus);
-    this._automationAssistRow.appendChild(this._automationAssistStart);
 
     this._wrap.appendChild(this._automationAssistRow);
 
@@ -3057,6 +3090,30 @@ class SofabatonRemoteCard extends HTMLElement {
     modalText.className = "sb-modal__text";
     this._automationAssistMqttModalText = modalText;
 
+    modalBody.appendChild(modalText);
+
+    const modalActions = document.createElement("div");
+    modalActions.className = "sb-modal__actions";
+
+    const modalDocsLink = document.createElement("a");
+    modalDocsLink.className = "sb-modal__link";
+    modalDocsLink.href = `https://github.com/m3tac0de/sofabaton-virtual-remote/blob/${CARD_VERSION}/docs/automation_triggers.md`;
+    modalDocsLink.target = "_blank";
+    modalDocsLink.rel = "noopener noreferrer";
+    modalDocsLink.textContent = "See documentation for this feature.";
+
+    this._automationAssistMqttModalCreate = mkAssistButton(
+      "Create MQTT Discovery triggers",
+      () => this._handleAutomationAssistMqttClick(),
+    );
+    this._automationAssistMqttModalCreate.classList.add(
+      "automationAssist__mqttBtn",
+    );
+    this._automationAssistMqttModalStart = mkAssistButton(
+      "Start capturing commands",
+      () => this._setAutomationAssistActive(true),
+    );
+
     const modalOptOut = document.createElement("label");
     modalOptOut.className = "sb-modal__optout";
     const modalOptOutInput = document.createElement("input");
@@ -3075,22 +3132,9 @@ class SofabatonRemoteCard extends HTMLElement {
     modalOptOut.appendChild(modalOptOutInput);
     modalOptOut.appendChild(modalOptOutText);
 
-    modalBody.appendChild(modalText);
-    modalBody.appendChild(modalOptOut);
-
-    const modalActions = document.createElement("div");
-    modalActions.className = "sb-modal__actions";
-
-    this._automationAssistMqttModalCreate = mkAssistButton(
-      "Create automation triggers",
-      () => this._handleAutomationAssistMqttClick(),
-    );
-    this._automationAssistMqttModalStart = mkAssistButton(
-      "Start capturing commands",
-      () => this._setAutomationAssistActive(true),
-    );
-
+    modalActions.appendChild(modalDocsLink);
     modalActions.appendChild(this._automationAssistMqttModalCreate);
+    modalActions.appendChild(modalOptOut);
     modalActions.appendChild(this._automationAssistMqttModalStart);
 
     modalDialog.appendChild(modalHeader);
