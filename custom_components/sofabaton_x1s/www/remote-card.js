@@ -1450,8 +1450,7 @@ class SofabatonRemoteCard extends HTMLElement {
     }
 
     if (this._automationAssistMqttModalCreate) {
-      const showCreate =
-        mqttSupported && isActive;
+      const showCreate = mqttSupported && isActive;
       this._setVisible(this._automationAssistMqttModalCreate, showCreate);
       const discoveryWorking = this._automationAssistMqttDiscoveryWorking;
       const discoveryReady = this._automationAssistMqttDiscoveryCreated;
@@ -3787,6 +3786,7 @@ class SofabatonRemoteCard extends HTMLElement {
     if (isUnavailable) {
       this._activitySelect.disabled = true;
       this._activitySelect.innerHTML = "";
+      this._activityOptionsSig = null;
       isPoweredOff = false;
       this._stopActivityLoading();
     } else {
