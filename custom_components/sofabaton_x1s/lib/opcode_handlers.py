@@ -8,6 +8,7 @@ import unicodedata
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
+from ..const import HUB_VERSION_X1
 from .frame_handlers import BaseFrameHandler, FrameContext, register_handler
 from .macros import MacroAssembler, decode_macro_records
 from .protocol_const import (
@@ -56,9 +57,11 @@ from .protocol_const import (
     OP_IPCMD_ROW_D,
     ACK_SUCCESS,
     OP_REQ_ACTIVATE,
+    OP_REQ_ACTIVITY_MAP,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_ACTIVITIES,
+    OP_ACTIVITY_MAP_PAGE,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
     OP_KEYMAP_EXTRA,
@@ -549,12 +552,15 @@ class AckReadyHandler(BaseFrameHandler):
             if proxy.state.current_activity_hint is not None:
                 ent_lo = proxy.state.current_activity_hint & 0xFF
                 proxy.request_buttons_for_entity(ent_lo)
-                proxy.enqueue_cmd(
-                    OP_REQ_COMMANDS,
-                    bytes([ent_lo, 0xFF]),
-                    expects_burst=True,
-                    burst_kind=f"commands:{ent_lo}",
-                )
+                if proxy.hub_version == HUB_VERSION_X1:
+                    proxy.request_activity_mapping(ent_lo)
+                else:
+                    proxy.enqueue_cmd(
+                        OP_REQ_COMMANDS,
+                        bytes([ent_lo, 0xFF]),
+                        expects_burst=True,
+                        burst_kind=f"commands:{ent_lo}",
+                    )
         else:
             log.info("[HINT] proxy client connected; skipping auto-requests")
             new_id, old_id = proxy.state.update_activity_state()
@@ -766,6 +772,106 @@ class X1CatalogActivityHandler(BaseFrameHandler):
             )
         else:
             log.info("[ACT] name='%s' state=%s", activity_label, state)
+
+
+@register_handler(opcodes=(OP_REQ_ACTIVITY_MAP,), directions=("A→H",))
+class RequestActivityMapHandler(BaseFrameHandler):
+    """Log activity mapping requests from the app."""
+
+    def handle(self, frame: FrameContext) -> None:
+        payload = frame.payload
+        act_id = payload[0] if payload else 0
+        log.info("[ACTMAP] A→H requesting mapping act=0x%02X (%d)", act_id, act_id)
+        log.info("[ACTMAP] A→H request %s", frame.raw.hex(" "))
+
+
+@register_handler(opcodes=(OP_ACTIVITY_MAP_PAGE,), directions=("H→A",))
+class ActivityMapHandler(BaseFrameHandler):
+    """Accumulate activity mapping pages for X1 favorites."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        payload = frame.payload
+
+        if len(payload) < 8:
+            return
+        log.info("[ACTMAP] H→A response %s", frame.raw.hex(" "))
+
+        act_lo = self._burst_activity(proxy)
+        if act_lo is None:
+            act_lo = self._pending_activity(proxy)
+        if act_lo is None:
+            return
+
+        dev_id = int.from_bytes(payload[6:8], "big")
+        dev_lo = dev_id & 0xFF
+        if dev_lo == 0:
+            return
+
+        now = time.monotonic()
+        burst_key = f"activity_map:{act_lo}"
+        if proxy._burst.active and proxy._burst.kind == burst_key:
+            proxy._burst.last_ts = now + proxy._burst.response_grace
+        else:
+            proxy._burst.start(burst_key, now=now)
+
+        entries = self._parse_entries(payload, dev_lo)
+        if not entries:
+            return
+
+        for slot_id, command_id in entries:
+            proxy.state.record_activity_mapping(
+                act_lo, dev_lo, command_id, button_id=slot_id
+            )
+
+        log.info(
+            "[ACTMAP] act=0x%02X dev=0x%02X mapped{%d}",
+            act_lo,
+            dev_lo,
+            len(entries),
+        )
+
+    def _burst_activity(self, proxy: "X1Proxy") -> int | None:
+        burst_kind = getattr(proxy._burst, "kind", None)
+        if proxy._burst.active and burst_kind and burst_kind.startswith("activity_map:"):
+            try:
+                return int(burst_kind.split(":", 1)[1])
+            except ValueError:
+                return None
+        return None
+
+    def _pending_activity(self, proxy: "X1Proxy") -> int | None:
+        if proxy._pending_activity_map_requests:
+            return next(iter(proxy._pending_activity_map_requests))
+        return None
+
+    def _parse_entries(self, payload: bytes, dev_lo: int) -> list[tuple[int, int]]:
+        if len(payload) <= 92:
+            return []
+
+        extra = payload[92:]
+        entries: list[tuple[int, int]] = []
+        seen: set[tuple[int, int]] = set()
+
+        for i in range(len(extra) - 3):
+            if extra[i] != dev_lo:
+                continue
+            slot_id = extra[i + 1]
+            command_id = extra[i + 2]
+            terminator = extra[i + 3]
+            if command_id in (0x00, 0xFC):
+                continue
+            if slot_id > 0x20:
+                continue
+            if terminator not in (0x00, 0xFC):
+                continue
+            entry = (slot_id, command_id)
+            if entry in seen:
+                continue
+            seen.add(entry)
+            entries.append(entry)
+
+        return entries
 
 
 @register_handler(

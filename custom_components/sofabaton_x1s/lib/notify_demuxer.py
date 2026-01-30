@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional
 
-from ..const import HUB_VERSION_X1, classify_hub_version
+from ..const import HUB_VERSION_X1, HUB_VERSION_X2, classify_hub_version
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
 log = logging.getLogger("x1proxy.notify")
@@ -196,7 +196,7 @@ class NotifyDemuxer:
             or reg.mdns_txt.get("Name")
             or "X1 Hub"
         ).encode("utf-8")
-        if reg.hub_version == HUB_VERSION_X1:
+        if reg.hub_version in (HUB_VERSION_X1, HUB_VERSION_X2):
             name_bytes = name[:12]
             version_block = bytes.fromhex("640120210609110000")
             frame = (
@@ -338,7 +338,9 @@ class NotifyDemuxer:
         """Return the device id used in NOTIFY_ME replies and the CALL_ME hint."""
 
         required_prefix_byte = b"\xc2"
-        static_id_suffix_byte = b"\x4b" if hub_version == HUB_VERSION_X1 else b"\x45"
+        static_id_suffix_byte = (
+            b"\x4b" if hub_version in (HUB_VERSION_X1, HUB_VERSION_X2) else b"\x45"
+        )
         unique_tail_mac = mac_bytes[0:5]
 
         device_id = required_prefix_byte + unique_tail_mac + static_id_suffix_byte

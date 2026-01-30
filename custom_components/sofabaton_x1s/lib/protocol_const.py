@@ -56,6 +56,7 @@ OP_REQ_ACTIVITIES = 0x003A  # yields CATALOG_ROW_ACTIVITY rows (0xD53B)
 OP_REQ_BUTTONS = 0x023C  # payload: [act_lo, 0xFF]
 OP_REQ_COMMANDS = 0x025C  # payload: [dev_lo, cmd] (1-byte) or [dev_lo, 0xFF] for full list
 OP_REQ_ACTIVATE = 0x023F  # payload: [id_lo, key_code] (activity or device ID)
+OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites mapping (X1)
 OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
 OP_FIND_REMOTE_X2 = 0x0323  # payload: [0x00, 0x00, 0x08] observed on X2 hubs
 OP_CREATE_DEVICE_HEAD = 0x07D5  # payload includes UTF-16LE device name
@@ -109,6 +110,9 @@ OP_KEYMAP_CONT = 0x543D  # Observed continuation page after MARKER
 # UDP CALL_ME (same frame used both directions over UDP)
 OP_CALL_ME = 0x0CC3
 
+# X1 activity mapping pages (favorites)
+OP_ACTIVITY_MAP_PAGE = 0x7B6D
+
 # noise we're not using (kept for reference)
 OP_REQ_VERSION = 0x0058  # yields WIFI_FW (0x0359) then INFO_BANNER (0x112F)
 OP_PING2 = 0x0140
@@ -130,6 +134,7 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_BUTTONS: "REQ_BUTTONS",
     OP_REQ_COMMANDS: "REQ_COMMANDS",
     OP_REQ_ACTIVATE: "REQ_ACTIVATE",
+    OP_REQ_ACTIVITY_MAP: "REQ_ACTIVITY_MAP",
     OP_FIND_REMOTE: "FIND_REMOTE",
     OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
     OP_CREATE_DEVICE_HEAD: "CREATE_DEVICE_HEAD",
@@ -157,6 +162,7 @@ OPNAMES: Dict[int, str] = {
     OP_KEYMAP_TBL_E: "KEYMAP_TABLE_E",
     OP_KEYMAP_TBL_G: "KEYMAP_TABLE_G",
     OP_KEYMAP_CONT: "KEYMAP_CONT",
+    OP_ACTIVITY_MAP_PAGE: "ACTIVITY_MAP_PAGE",
     OP_DEVBTN_HEADER: "DEVCTL_HEADER",
     OP_DEVBTN_PAGE: "DEVCTL_PAGE",
     OP_DEVBTN_SINGLE: "DEVCTL_SINGLE_CMD",
@@ -235,6 +241,7 @@ __all__ = [
     "OP_REQ_BUTTONS",
     "OP_REQ_COMMANDS",
     "OP_REQ_ACTIVATE",
+    "OP_REQ_ACTIVITY_MAP",
     "OP_FIND_REMOTE",
     "OP_FIND_REMOTE_X2",
     "OP_CREATE_DEVICE_HEAD",
@@ -277,6 +284,7 @@ __all__ = [
     "OP_KEYMAP_TBL_G",
     "OP_KEYMAP_CONT",
     "OP_CALL_ME",
+    "OP_ACTIVITY_MAP_PAGE",
     "OP_REQ_VERSION",
     "OP_PING2",
     "OP_REQ_MACRO_LABELS",

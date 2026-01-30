@@ -11,7 +11,7 @@ import time
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..const import HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
+from ..const import HUB_VERSION_X1, HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import DeviceCommandAssembler
 from .macros import MacroAssembler
@@ -57,6 +57,7 @@ from .protocol_const import (
     OP_PING2,
     OP_REQ_ACTIVITIES,
     OP_REQ_ACTIVATE,
+    OP_REQ_ACTIVITY_MAP,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_IPCMD_SYNC,
@@ -222,6 +223,8 @@ class X1Proxy:
         self._commands_complete: set[int] = set()
         self._pending_macro_requests: set[int] = set()
         self._macros_complete: set[int] = set()
+        self._pending_activity_map_requests: set[int] = set()
+        self._activity_map_complete: set[int] = set()
         self._favorite_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._activity_listeners: list[callable] = []
         self._activity_list_update_listeners: list[Callable[[], None]] = []
@@ -256,6 +259,7 @@ class X1Proxy:
         self._burst.on_burst_end("buttons", self._on_buttons_burst_end)
         self._burst.on_burst_end("commands", self._on_commands_burst_end)
         self._burst.on_burst_end("macros", self._on_macros_burst_end)
+        self._burst.on_burst_end("activity_map", self._on_activity_map_burst_end)
         self.on_burst_end("activities", self.handle_active_state)
 
         self._hub_connected: bool = False
@@ -419,6 +423,27 @@ class X1Proxy:
         self._pending_command_requests.setdefault(ent_lo, set()).add(0xFF)
         self.enqueue_cmd(OP_REQ_COMMANDS, bytes([ent_lo, 0xFF]), expects_burst=True, burst_kind=f"commands:{ent_lo}")
         return True
+
+    def request_activity_mapping(self, act_id: int) -> bool:
+        if not self.can_issue_commands():
+            log.info("[CMD] request_activity_mapping ignored: proxy client is connected"); return False
+
+        act_lo = act_id & 0xFF
+        if act_lo in self._pending_activity_map_requests:
+            log.debug(
+                "[CMD] request_activity_mapping ignored: burst already pending for 0x%02X",
+                act_lo,
+            )
+            return False
+
+        self._pending_activity_map_requests.add(act_lo)
+        log.info("[ACTMAP] local request act=0x%02X (%d)", act_lo, act_lo)
+        return self.enqueue_cmd(
+            OP_REQ_ACTIVITY_MAP,
+            bytes([act_lo]),
+            expects_burst=True,
+            burst_kind=f"activity_map:{act_lo}",
+        )
 
     def request_macros_for_activity(self, act_id: int) -> bool:
         if not self.can_issue_commands():
@@ -610,7 +635,15 @@ class X1Proxy:
 
         act_lo = act_id & 0xFF
         favorites = self.state.get_activity_favorite_slots(act_lo)
-        if not favorites:
+
+        if self.hub_version == HUB_VERSION_X1:
+            mapping_ready = act_lo in self._activity_map_complete
+            if not favorites and fetch_if_missing and not mapping_ready:
+                self.request_activity_mapping(act_lo)
+                return ({}, False)
+            if not favorites:
+                return ({}, mapping_ready)
+        elif not favorites:
             return ({}, True)
 
         refs: set[tuple[int, int]] = {
@@ -688,6 +721,8 @@ class X1Proxy:
             self.state.activity_favorite_slots.pop(ent_lo, None)
             self.state.activity_favorite_labels.pop(ent_lo, None)
             self._clear_favorite_label_requests_for_activity(ent_lo)
+            self._pending_activity_map_requests.discard(ent_lo)
+            self._activity_map_complete.discard(ent_lo)
 
         if clear_macros:
             self.state.activity_macros.pop(ent_lo, None)
@@ -1111,6 +1146,20 @@ class X1Proxy:
             self._macros_complete.add(act_lo)
         else:
             self._pending_macro_requests.clear()
+
+    def _on_activity_map_burst_end(self, key: str) -> None:
+        parts = key.split(":")
+        if len(parts) >= 2 and parts[0] == "activity_map":
+            try:
+                act_lo = int(parts[1])
+            except ValueError:
+                self._pending_activity_map_requests.clear()
+                return
+
+            self._pending_activity_map_requests.discard(act_lo)
+            self._activity_map_complete.add(act_lo)
+        else:
+            self._pending_activity_map_requests.clear()
 
     def _on_buttons_burst_end(self, key: str) -> None:
         if ":" in key:
