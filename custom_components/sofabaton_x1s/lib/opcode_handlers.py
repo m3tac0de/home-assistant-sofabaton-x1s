@@ -887,14 +887,6 @@ class KeymapHandler(BaseFrameHandler):
         payload = frame.payload
         now = time.monotonic()
 
-        # Only treat responses as keymap data while a buttons burst is active.
-        # Other bursts re-use some of the same frame shapes as keymaps and we
-        # must avoid misclassifying those frames while other data is being
-        # assembled.
-        burst_kind = getattr(proxy._burst, "kind", "")
-        if proxy._burst.active and not burst_kind.startswith("buttons:"):
-            return
-
         keymap_opcodes = {
             OP_KEYMAP_CONT,
             OP_KEYMAP_TBL_A,
@@ -926,6 +918,13 @@ class KeymapHandler(BaseFrameHandler):
             return
 
         looks_like_keymap = self._looks_like_keymap_payload(payload, activity_id_decimal)
+        burst_kind = getattr(proxy._burst, "kind", "")
+        if proxy._burst.active and not burst_kind.startswith("buttons:"):
+            # Other bursts re-use some of the same frame shapes as keymaps; only
+            # treat this as a keymap if the payload matches expected layouts.
+            if not looks_like_keymap:
+                return
+
         if not looks_like_keymap:
             # Only treat the payload as a keymap if a buttons burst is active or
             # the payload matches known record layouts or opcodes.
