@@ -553,7 +553,8 @@ class AckReadyHandler(BaseFrameHandler):
                 ent_lo = proxy.state.current_activity_hint & 0xFF
                 proxy.request_buttons_for_entity(ent_lo)
                 if proxy.hub_version == HUB_VERSION_X1:
-                    proxy.request_activity_mapping(ent_lo)
+                    if not proxy.state.get_activity_favorite_slots(ent_lo):
+                        proxy.request_activity_mapping(ent_lo)
                 else:
                     proxy.enqueue_cmd(
                         OP_REQ_COMMANDS,
