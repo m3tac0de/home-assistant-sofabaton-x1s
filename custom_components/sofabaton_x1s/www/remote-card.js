@@ -148,6 +148,9 @@ class SofabatonRemoteCard extends HTMLElement {
     this._activityMenuOpen = false;
     this._drawerDirection = "down";
     this._drawerResetTimer = null;
+    this._lastActivityLabel = null;
+    this._lastActivityId = null;
+    this._lastPoweredOff = null;
 
     this._initPromise = this._initPromise || this._ensureHaElements();
     this._initPromise.then(() => {
@@ -708,6 +711,40 @@ class SofabatonRemoteCard extends HTMLElement {
     return Number(resolved);
   }
 
+  _recordAutomationAssistActivityChange({
+    activityId,
+    activityName,
+    poweredOff = false,
+  }) {
+    if (!this._automationAssistEnabled()) return;
+    if (!this._automationAssistActive) return;
+
+    const id = Number(activityId);
+    const resolvedId = Number.isFinite(id) ? id : null;
+    const label = poweredOff
+      ? "Powered Off"
+      : String(activityName || "Activity");
+
+    this._automationAssistCapture = {
+      label,
+      activityId: resolvedId,
+      activityName: poweredOff ? "Powered Off" : String(activityName || label),
+      kind: poweredOff ? "power" : "activity",
+    };
+    this._automationAssistMqttMatch = false;
+    this._automationAssistMqttPayload = null;
+    this._automationAssistMqttDeviceName = null;
+    this._automationAssistMqttCommandName = null;
+    this._automationAssistMqttExisting = false;
+    this._automationAssistMqttDiscoveryCreated = false;
+    this._automationAssistMqttDiscoveryWorking = false;
+    this._automationAssistMqttDiscoveryDeviceId = null;
+    this._automationAssistStatusMessage = null;
+
+    this._updateAutomationAssistUI();
+    this._notifyAutomationAssistCapture();
+  }
+
   _recordAutomationAssistClick({
     label,
     commandId,
@@ -744,6 +781,7 @@ class SofabatonRemoteCard extends HTMLElement {
       commandType,
       icon: icon ? String(icon) : null,
       activityName,
+      kind: "button",
     };
     this._automationAssistMqttMatch = false;
     this._automationAssistMqttPayload = null;
@@ -764,6 +802,51 @@ class SofabatonRemoteCard extends HTMLElement {
     if (!capture || !this._config?.entity) return "";
 
     const entityId = this._config.entity;
+    const kind = capture.kind || "button";
+
+    if (kind === "activity") {
+      if (this._isHubIntegration()) {
+        if (!Number.isFinite(Number(capture.activityId))) return "";
+        return [
+          "action: remote.send_command",
+          "target:",
+          `  entity_id: ${entityId}`,
+          "data:",
+          "  command:",
+          "    - type:start_activity",
+          `    - activity_id:${capture.activityId}`,
+        ].join("\n");
+      }
+
+      return [
+        "action: remote.turn_on",
+        "target:",
+        `  entity_id: ${entityId}`,
+        "data:",
+        `  activity: ${capture.activityName}`,
+      ].join("\n");
+    }
+
+    if (kind === "power") {
+      if (this._isHubIntegration()) {
+        if (!Number.isFinite(Number(capture.activityId))) return "";
+        return [
+          "action: remote.send_command",
+          "target:",
+          `  entity_id: ${entityId}`,
+          "data:",
+          "  command:",
+          "    - type:stop_activity",
+          `    - activity_id:${capture.activityId}`,
+        ].join("\n");
+      }
+
+      return [
+        "action: remote.turn_off",
+        "target:",
+        `  entity_id: ${entityId}`,
+      ].join("\n");
+    }
 
     if (this._isHubIntegration()) {
       const payloadType =
@@ -802,13 +885,18 @@ class SofabatonRemoteCard extends HTMLElement {
     const capture = this._automationAssistCapture;
     if (!capture || !this._config?.entity) return "";
 
+    const kind = capture.kind || "button";
     const label = capture.label || "Automation Assist";
     const icon =
-      capture.commandType === "favorite"
-        ? "mdi:star"
-        : capture.commandType === "macro"
-          ? "mdi:cogs"
-          : capture.icon || "mdi:remote";
+      kind === "activity"
+        ? "mdi:television-classic"
+        : kind === "power"
+          ? "mdi:power"
+          : capture.commandType === "favorite"
+            ? "mdi:star"
+            : capture.commandType === "macro"
+              ? "mdi:cogs"
+              : capture.icon || "mdi:remote";
 
     const serviceYaml = this._automationAssistRemoteYaml()
       .split("\n")
@@ -831,18 +919,25 @@ class SofabatonRemoteCard extends HTMLElement {
     const capture = this._automationAssistCapture;
     if (!capture) return "";
 
+    const kind = capture.kind || "button";
     const activityName =
       capture.activityName ||
       this._activityNameForId(capture.deviceId) ||
       this._currentActivityLabel() ||
       "Unknown";
+    const eventLabel =
+      kind === "button"
+        ? `Button: ${capture.label}`
+        : kind === "activity"
+          ? `Activity Change: ${capture.label}`
+          : `Event: ${capture.label}`;
     const buttonYaml = this._automationAssistButtonYaml();
     const remoteYaml = this._automationAssistRemoteYaml();
 
     return [
       "---",
       "",
-      `**Activity: ${activityName} | Button: ${capture.label}**`,
+      `**Activity: ${activityName} | ${eventLabel}**`,
       "",
       "---",
       "📋 **Lovelace Button Code**",
@@ -3777,6 +3872,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
     // Activity select sync + Powered Off detection
     let isPoweredOff = false;
+    let current = "";
     const pendingActivity = this._pendingActivity;
     const pendingAge = this._pendingActivityAt
       ? Date.now() - this._pendingActivityAt
@@ -3794,7 +3890,7 @@ class SofabatonRemoteCard extends HTMLElement {
         "Powered Off",
         ...activities.map((activity) => activity.name),
       ];
-      const current = this._currentActivityLabel() || "Powered Off";
+      current = this._currentActivityLabel() || "Powered Off";
 
       isPoweredOff = activityId == null || this._isPoweredOffLabel(current);
       if (pendingActivity && (pendingExpired || current === pendingActivity)) {
@@ -3835,6 +3931,27 @@ class SofabatonRemoteCard extends HTMLElement {
           this._stopActivityLoading();
         }
       }
+
+      if (
+        this._automationAssistEnabled() &&
+        this._automationAssistActive &&
+        this._lastActivityLabel != null &&
+        current !== this._lastActivityLabel
+      ) {
+        if (this._isPoweredOffLabel(current)) {
+          this._recordAutomationAssistActivityChange({
+            activityId: this._lastActivityId,
+            activityName: "Powered Off",
+            poweredOff: true,
+          });
+        } else {
+          this._recordAutomationAssistActivityChange({
+            activityId,
+            activityName: current,
+            poweredOff: false,
+          });
+        }
+      }
     }
 
     if (!isUnavailable && activities.length === 0 && loadState !== "loading") {
@@ -3842,6 +3959,16 @@ class SofabatonRemoteCard extends HTMLElement {
       this._warn.textContent = "No activities found in remote attributes.";
     } else {
       this._warn.style.display = "none";
+    }
+
+    if (isUnavailable) {
+      this._lastActivityLabel = null;
+      this._lastActivityId = null;
+      this._lastPoweredOff = null;
+    } else {
+      this._lastActivityLabel = current;
+      this._lastActivityId = activityId;
+      this._lastPoweredOff = isPoweredOff;
     }
 
     // Visibility toggles (user config)
