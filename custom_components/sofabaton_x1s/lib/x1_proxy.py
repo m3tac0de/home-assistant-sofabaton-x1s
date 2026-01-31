@@ -636,14 +636,8 @@ class X1Proxy:
         act_lo = act_id & 0xFF
         favorites = self.state.get_activity_favorite_slots(act_lo)
 
-        if self.hub_version == HUB_VERSION_X1:
-            mapping_ready = act_lo in self._activity_map_complete
-            if not favorites and fetch_if_missing and not mapping_ready:
-                self.request_activity_mapping(act_lo)
-                return ({}, False)
-            if not favorites:
-                return ({}, mapping_ready)
-        elif not favorites:
+        if not favorites:
+            # If there are no favorite slots, there is nothing to resolve.
             return ({}, True)
 
         refs: set[tuple[int, int]] = {

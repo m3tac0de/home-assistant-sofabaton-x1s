@@ -254,7 +254,9 @@ def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch
     assert commands_by_device == {}
 
 
-def test_ensure_commands_for_activity_requests_mapping_on_x1(monkeypatch) -> None:
+def test_ensure_commands_for_activity_no_mapping_without_favorites_on_x1(
+    monkeypatch,
+) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
         proxy_enabled=False,
@@ -267,20 +269,11 @@ def test_ensure_commands_for_activity_requests_mapping_on_x1(monkeypatch) -> Non
     act = 0x10
     proxy.state = cache
 
-    called = False
-
-    def fake_request_mapping(act_id: int) -> bool:
-        nonlocal called
-        called = True
-        assert act_id == act
-        return True
-
-    monkeypatch.setattr(proxy, "request_activity_mapping", fake_request_mapping)
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda _act: False)
 
     commands_by_device, ready = proxy.ensure_commands_for_activity(act)
 
-    assert called is True
-    assert ready is False
+    assert ready is True
     assert commands_by_device == {}
 
 
