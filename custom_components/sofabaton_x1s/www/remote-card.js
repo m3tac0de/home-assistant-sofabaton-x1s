@@ -1,5 +1,5 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.0.7";
+const CARD_VERSION = "0.0.8";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 const TYPE = "sofabaton-virtual-remote";
@@ -1124,6 +1124,7 @@ class SofabatonRemoteCard extends HTMLElement {
       window[AUTOMATION_ASSIST_SESSION_KEY] = {
         hideMqttModal: false,
         discoveryDeviceIds: new Set(),
+        activityTriggersCreated: false,
       };
     }
     return window[AUTOMATION_ASSIST_SESSION_KEY];
@@ -1141,6 +1142,12 @@ class SofabatonRemoteCard extends HTMLElement {
     if (this._shouldSuppressMqttModal(deviceId)) return;
     this._automationAssistMqttModalDeviceId = deviceId;
     this._automationAssistMqttModalOpen = true;
+    if (this._automationAssistMqttModalOptOutInput) {
+      this._automationAssistMqttModalOptOutInput.checked = false;
+    }
+    if (this._automationAssistMqttModalActivityInput) {
+      this._automationAssistMqttModalActivityInput.checked = false;
+    }
     this._updateAutomationAssistModalUI();
   }
 
@@ -1205,7 +1212,13 @@ class SofabatonRemoteCard extends HTMLElement {
       const topic = `${mac}/up`;
       const macLower = String(mac).toLowerCase();
       const macUpper = String(mac).toUpperCase();
+      const session = this._automationAssistSessionState();
+      const allowActivityTriggers = !session.activityTriggersCreated;
+      const includeActivityTriggers =
+        allowActivityTriggers &&
+        Boolean(this._automationAssistMqttModalActivityInput?.checked);
       let createdCount = 0;
+      let createdActivityCount = 0;
 
       for (const [keyId, commandName] of commands.entries()) {
         const payloadObj = { device_id: deviceId, key_id: Number(keyId) };
@@ -1247,16 +1260,77 @@ class SofabatonRemoteCard extends HTMLElement {
         createdCount += 1;
       }
 
+      if (includeActivityTriggers) {
+        const activityTopic = `activity/${macLower}/activity_control_up`;
+        const activityDevice = {
+          identifiers: ["sofabaton_x2_remote_activities"],
+          name: "X2 → Activities",
+          model: "X2",
+          manufacturer: "Sofabaton",
+        };
+        const activities = this._activities();
+        const activityEntries = activities.map((activity) => ({
+          id: activity.id,
+          name: activity.name,
+          state: "on",
+        }));
+        activityEntries.push({
+          id: 255,
+          name: "Powered Off",
+          state: "off",
+        });
+
+        for (const activity of activityEntries) {
+          const activityId = Number(activity.id);
+          if (!Number.isFinite(activityId)) continue;
+          const payloadObj = { activity_id: activityId, state: activity.state };
+          const uniqueId = `sofabaton_${macLower}_activity_${activityId}`;
+          this._automationAssistDiscoveryIds =
+            this._automationAssistDiscoveryIds || new Set();
+          if (this._automationAssistDiscoveryIds.has(uniqueId)) continue;
+
+          const subtype = `X2 Activity ${activity.name}`;
+          const config = {
+            automation_type: "trigger",
+            type: "button_short_press",
+            subtype,
+            payload: JSON.stringify(payloadObj),
+            topic: activityTopic,
+            device: activityDevice,
+          };
+
+          await this._enqueueMqttPublish(async () => {
+            await this._callService("mqtt", "publish", {
+              topic: `homeassistant/device_automation/${uniqueId}/config`,
+              payload: JSON.stringify(config),
+              retain: true,
+            });
+            this._automationAssistDiscoveryIds.add(uniqueId);
+            await this._sleep(250);
+          });
+          createdActivityCount += 1;
+        }
+
+        session.activityTriggersCreated = true;
+      }
+
       this._automationAssistMqttDiscoveryCreated = true;
       this._automationAssistMqttDiscoveryDeviceId = deviceId;
 
-      const session = this._automationAssistSessionState();
       session.discoveryDeviceIds.add(deviceId);
 
-      if (createdCount > 0) {
-        this._setAutomationAssistStatus(
-          `Created ${createdCount} MQTT discovery triggers for ${deviceLabel}`,
-        );
+      if (createdCount > 0 || createdActivityCount > 0) {
+        const activityNote =
+          includeActivityTriggers &&
+          createdActivityCount > 0 &&
+          createdCount > 0
+            ? ` plus ${createdActivityCount} activity triggers`
+            : "";
+        const base =
+          createdCount > 0
+            ? `Created ${createdCount} MQTT discovery triggers for ${deviceLabel}`
+            : `Created ${createdActivityCount} activity triggers for X2 → Activities`;
+        this._setAutomationAssistStatus(`${base}${activityNote}`);
       } else {
         this._setAutomationAssistStatus(
           `All MQTT discovery triggers already exist for ${deviceLabel}`,
@@ -1515,8 +1589,12 @@ class SofabatonRemoteCard extends HTMLElement {
 
     if (!modalOpen) return;
 
-    if (this._automationAssistMqttModalOptOutInput) {
-      this._automationAssistMqttModalOptOutInput.checked = false;
+    if (this._automationAssistMqttModalActivityRow) {
+      const session = this._automationAssistSessionState();
+      this._setVisible(
+        this._automationAssistMqttModalActivityRow,
+        !session.activityTriggersCreated,
+      );
     }
 
     const payload = this._automationAssistMqttPayload;
@@ -3217,6 +3295,18 @@ class SofabatonRemoteCard extends HTMLElement {
     const modalActions = document.createElement("div");
     modalActions.className = "sb-modal__actions";
 
+    const modalActivityToggle = document.createElement("label");
+    modalActivityToggle.className = "sb-modal__optout";
+    this._automationAssistMqttModalActivityRow = modalActivityToggle;
+    const modalActivityInput = document.createElement("input");
+    modalActivityInput.type = "checkbox";
+    this._automationAssistMqttModalActivityInput = modalActivityInput;
+    const modalActivityText = document.createElement("span");
+    modalActivityText.textContent =
+      "Also create triggers for Activity changes.";
+    modalActivityToggle.appendChild(modalActivityInput);
+    modalActivityToggle.appendChild(modalActivityText);
+
     const modalDocsLink = document.createElement("a");
     modalDocsLink.className = "sb-modal__link";
     modalDocsLink.href = `https://github.com/m3tac0de/sofabaton-virtual-remote/blob/${CARD_VERSION}/docs/automation_triggers.md`;
@@ -3254,6 +3344,7 @@ class SofabatonRemoteCard extends HTMLElement {
     modalOptOut.appendChild(modalOptOutInput);
     modalOptOut.appendChild(modalOptOutText);
 
+    modalActions.appendChild(modalActivityToggle);
     modalActions.appendChild(modalDocsLink);
     modalActions.appendChild(this._automationAssistMqttModalCreate);
     modalActions.appendChild(modalOptOut);
