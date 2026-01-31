@@ -150,6 +150,29 @@ class ActivityCache:
 
         return list(self.activity_favorite_slots.get(act_lo, []))
 
+    def record_activity_mapping(
+        self,
+        act_lo: int,
+        device_id: int,
+        command_id: int,
+        *,
+        button_id: int | None = None,
+    ) -> None:
+        """Record an activity favorite mapping entry."""
+
+        pair = (device_id & 0xFF, command_id & 0xFF)
+        if pair in self.activity_command_refs.get(act_lo, set()):
+            return
+
+        self.activity_command_refs[act_lo].add(pair)
+        self.activity_favorite_slots[act_lo].append(
+            {
+                "button_id": button_id if button_id is not None else 0,
+                "device_id": device_id & 0xFF,
+                "command_id": command_id & 0xFF,
+            }
+        )
+
     def record_favorite_label(
         self, act_lo: int, device_id: int, command_id: int, label: str
     ) -> None:

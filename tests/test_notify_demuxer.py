@@ -44,3 +44,41 @@ def test_call_me_ignored_when_no_match(monkeypatch):
     demux._handle_call_me(pkt, "10.0.0.5", 5678)
 
     assert not called
+
+
+def test_notify_reply_x1_matches_hub_format():
+    demux = NotifyDemuxer()
+    demux._ensure_running_locked = lambda: None  # type: ignore[assignment]
+    demux.register_proxy(
+        "proxy1",
+        "192.168.1.10",
+        {"MAC": "CB:38:35:39:68:AA", "NAME": "X1 HUB test-", "HVER": "1"},
+        8102,
+        lambda *_: None,
+    )
+
+    reg = demux._registrations["proxy1"]
+    reply = demux._build_notify_reply(reg)
+
+    assert reply == bytes.fromhex(
+        "a55a1ac2cb383539684b64012021060911000058312048554220746573742d"
+    )
+
+
+def test_notify_reply_x1s_matches_proxy_format():
+    demux = NotifyDemuxer()
+    demux._ensure_running_locked = lambda: None  # type: ignore[assignment]
+    demux.register_proxy(
+        "proxy1",
+        "192.168.1.10",
+        {"MAC": "CB:38:35:39:68:AA", "NAME": "X1 HUB test", "HVER": "2"},
+        8102,
+        lambda *_: None,
+    )
+
+    reg = demux._registrations["proxy1"]
+    reply = demux._build_notify_reply(reg)
+
+    assert reply == bytes.fromhex(
+        "a55a1dc2cb38353968456402202211200501005831204855422074657374000000be"
+    )

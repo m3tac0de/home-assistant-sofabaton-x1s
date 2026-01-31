@@ -2,7 +2,12 @@
 import sys
 import types
 
-from custom_components.sofabaton_x1s.const import HUB_VERSION_X2, MDNS_SERVICE_TYPE_X1
+from custom_components.sofabaton_x1s.const import (
+    HUB_VERSION_X1,
+    HUB_VERSION_X1S,
+    HUB_VERSION_X2,
+    MDNS_SERVICE_TYPE_X1,
+)
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
     OP_FIND_REMOTE,
@@ -225,7 +230,13 @@ def test_find_remote_uses_x2_opcode(monkeypatch) -> None:
 
 
 def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch) -> None:
-    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
 
     cache = ActivityCache()
     act = 0x10
@@ -236,6 +247,29 @@ def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch
         raise AssertionError("should not fetch commands when no favorites")
 
     monkeypatch.setattr(proxy, "get_single_command_for_entity", fake_get_single)
+
+    commands_by_device, ready = proxy.ensure_commands_for_activity(act)
+
+    assert ready is True
+    assert commands_by_device == {}
+
+
+def test_ensure_commands_for_activity_no_mapping_without_favorites_on_x1(
+    monkeypatch,
+) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    cache = ActivityCache()
+    act = 0x10
+    proxy.state = cache
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda _act: False)
 
     commands_by_device, ready = proxy.ensure_commands_for_activity(act)
 

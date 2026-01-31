@@ -2,8 +2,6 @@
 
 Control your Sofabaton **X1**, **X1S** and **X2** hub from Home Assistant using **100% local APIs**.
 
-> **Compatibility note:** X1, X1S and X2 share the same local API surface. This integration is developed and tested primarily on **X1S** and **X2**, but X1 users should see identical behavior (please report any differences).
-
 > **X2 discovery is disabled by default!** Enable it in `configuration.yaml` (see below).  
 > There is also an **official X2 integration** (MQTT-based): https://github.com/yomonpet/ha-sofabaton-hub
 
@@ -140,7 +138,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
   - `button.<hub>_volume_up`, `button.<hub>_mute`, … (dynamic availability by activity)
 
 - **Text**
-  - `text.<hub>_hub_ip_address` (disabled by default)  
+  - `text.<hub>_ip_address` (disabled by default)  
     Editable hub IP stored in config. Useful when you must pin or override the hub IP.
 
 ---
@@ -193,7 +191,13 @@ IDs share the same range: **devices start at 1**, **activities at 101**.
 
 ## 🧰 Finding IDs (recommended workflow)
 
-### 1) Recorded Keypress sensor (fastest)
+### 1) Using Sofabaton Virtual Remote (recommended)
+
+The easiest way to retrieve the needed IDs is to add the **Virtual Remote card** to your dashboard, and enable its feature **Automation Assist**.
+This will give you IDs and ready-to-use YAML as Notifications in your Home Assistant side bar.
+
+
+### 2) Recorded Keypress sensor
 
 Use the official Sofabaton app connected to the **virtual hub**, press a button in the app's virtual remote, then read:
 
@@ -213,7 +217,7 @@ target:
   entity_id: {{ command_data.target.entity_id }}
 ```
 
-### 2) Index sensor + fetch action (best for exploring full command lists)
+### 3) Index sensor + fetch action (best for exploring full command lists)
 
 The hub can have a lot of commands; fetching everything on every startup is slow/noisy, so it’s on-demand.
 
