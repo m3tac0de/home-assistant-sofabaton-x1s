@@ -4355,6 +4355,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         required: true,
       },
       {
+        name: "show_automation_assist",
+        selector: { boolean: {} },
+      },
+      {
         type: "expandable",
         title: "Styling Options",
         icon: "mdi:palette",
@@ -4546,7 +4550,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   _renderGroupOrderEditor() {
     if (!this._layoutWrap) return;
 
-    if (typeof this._layoutExpanded !== "boolean") this._layoutExpanded = true;
+    if (typeof this._layoutExpanded !== "boolean") this._layoutExpanded = false;
 
     const order = this._groupOrderListForEditor();
 
@@ -4592,28 +4596,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const card = document.createElement("div");
     card.className = "sb-layout-card";
-
-    const assistRow = document.createElement("div");
-    assistRow.className = "sb-layout-row";
-    const assistLabel = document.createElement("div");
-    assistLabel.className = "sb-layout-label";
-    assistLabel.textContent = "Automation Assist (fixed top row)";
-    const assistActions = document.createElement("div");
-    assistActions.className = "sb-layout-actions";
-    const assistSwitchWrap = document.createElement("div");
-    assistSwitchWrap.className = "sb-switch";
-    const assistSwitch = document.createElement("ha-switch");
-    assistSwitch.checked = !!this._config?.show_automation_assist;
-    assistSwitch.addEventListener("change", (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-      this._setAutomationAssistEnabled(!!assistSwitch.checked);
-    });
-    assistSwitchWrap.appendChild(assistSwitch);
-    assistActions.appendChild(assistSwitchWrap);
-    assistRow.appendChild(assistLabel);
-    assistRow.appendChild(assistActions);
-    card.appendChild(assistRow);
 
     order.forEach((key, i) => {
       const row = document.createElement("div");
