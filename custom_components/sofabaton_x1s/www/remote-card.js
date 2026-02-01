@@ -15,6 +15,19 @@ const DEFAULT_GROUP_ORDER = [
   "abc",
 ];
 const DEFAULT_GROUP_ORDER_SET = new Set(DEFAULT_GROUP_ORDER);
+const LAYOUT_OVERRIDE_KEYS = [
+  "group_order",
+  "show_activity",
+  "show_dpad",
+  "show_nav",
+  "show_mid",
+  "show_media",
+  "show_colors",
+  "show_abc",
+  "show_macros_button",
+  "show_favorites_button",
+  "show_macro_favorites",
+];
 
 // Numeric IDs (for enabled_buttons)
 const ID = {
@@ -141,6 +154,7 @@ class SofabatonRemoteCard extends HTMLElement {
       // Shrink the entire card using CSS `zoom` (0 = no shrink, higher = smaller)
       shrink: 0,
       group_order: DEFAULT_GROUP_ORDER.slice(),
+      activity_layouts: {},
       ...config,
     };
 
@@ -215,16 +229,18 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _showMacrosButton() {
+    const cfg = this._layoutConfig || this._config;
     // Backwards-compatible: if the new per-button option isn't set, fall back to the old combined toggle
-    if (typeof this._config?.show_macros_button === "boolean")
-      return this._config.show_macros_button;
-    return Boolean(this._config?.show_macro_favorites);
+    if (typeof cfg?.show_macros_button === "boolean")
+      return cfg.show_macros_button;
+    return Boolean(cfg?.show_macro_favorites);
   }
 
   _showFavoritesButton() {
-    if (typeof this._config?.show_favorites_button === "boolean")
-      return this._config.show_favorites_button;
-    return Boolean(this._config?.show_macro_favorites);
+    const cfg = this._layoutConfig || this._config;
+    if (typeof cfg?.show_favorites_button === "boolean")
+      return cfg.show_favorites_button;
+    return Boolean(cfg?.show_macro_favorites);
   }
 
   _automationAssistEnabled() {
@@ -341,8 +357,9 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _groupOrderList() {
-    const configured = Array.isArray(this._config?.group_order)
-      ? this._config.group_order
+    const cfg = this._layoutConfig || this._config;
+    const configured = Array.isArray(cfg?.group_order)
+      ? cfg.group_order
       : DEFAULT_GROUP_ORDER;
     const order = [];
     const seen = new Set();
@@ -356,6 +373,28 @@ class SofabatonRemoteCard extends HTMLElement {
       if (!seen.has(key)) order.push(key);
     }
     return order;
+  }
+
+  _layoutConfigForActivity(activityId) {
+    const base = this._config || {};
+    const layouts = base.activity_layouts;
+    if (activityId == null || !layouts || typeof layouts !== "object") {
+      return base;
+    }
+    const key = String(activityId);
+    const override =
+      layouts[key] ??
+      (Object.prototype.hasOwnProperty.call(layouts, activityId)
+        ? layouts[activityId]
+        : null);
+    if (!override || typeof override !== "object") return base;
+    const merged = { ...base };
+    for (const layoutKey of LAYOUT_OVERRIDE_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(override, layoutKey)) {
+        merged[layoutKey] = override[layoutKey];
+      }
+    }
+    return merged;
   }
 
   _applyGroupOrder() {
@@ -3782,7 +3821,6 @@ class SofabatonRemoteCard extends HTMLElement {
     // Apply per-card theme (and background) first
     this._applyLocalTheme(this._config?.theme);
     this._updateGroupRadius();
-    this._applyGroupOrder();
 
     // Apply per-card max width (centered via CSS)
     const mw = this._config?.max_width;
@@ -3815,6 +3853,8 @@ class SofabatonRemoteCard extends HTMLElement {
     const isUnavailable = remote?.state === "unavailable";
     const loadState = remote?.attributes?.load_state;
     const activityId = this._currentActivityId();
+    this._layoutConfig = this._layoutConfigForActivity(activityId);
+    this._applyGroupOrder();
     const activities = this._activities();
     const assignedKeys = remote?.attributes?.assigned_keys;
     const macroKeys = remote?.attributes?.macro_keys;
@@ -4071,7 +4111,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._setAutomationAssistActive(false);
     }
     this._syncAutomationAssistMqtt();
-    this._setVisible(this._activityRow, this._config.show_activity);
+    this._setVisible(this._activityRow, this._layoutConfig.show_activity);
 
     const showMacrosBtn = this._showMacrosButton();
     const showFavoritesBtn = this._showFavoritesButton();
@@ -4103,14 +4143,14 @@ class SofabatonRemoteCard extends HTMLElement {
       this._syncLayering();
     }
 
-    this._setVisible(this._dpadEl, this._config.show_dpad);
-    this._setVisible(this._navRowEl, this._config.show_nav);
-    this._setVisible(this._midEl, this._config.show_mid);
-    this._setVisible(this._mediaEl, this._config.show_media);
-    this._setVisible(this._colorsEl, this._config.show_colors);
+    this._setVisible(this._dpadEl, this._layoutConfig.show_dpad);
+    this._setVisible(this._navRowEl, this._layoutConfig.show_nav);
+    this._setVisible(this._midEl, this._layoutConfig.show_mid);
+    this._setVisible(this._mediaEl, this._layoutConfig.show_media);
+    this._setVisible(this._colorsEl, this._layoutConfig.show_colors);
 
     // ABC: must be enabled in config AND X2
-    this._setVisible(this._abcEl, this._config.show_abc && isX2);
+    this._setVisible(this._abcEl, this._layoutConfig.show_abc && isX2);
 
     const disableAllButtons =
       isUnavailable || isPoweredOff || this._activityLoadActive;
@@ -4224,6 +4264,7 @@ class SofabatonRemoteCard extends HTMLElement {
       max_width: 360,
       shrink: 0,
       group_order: DEFAULT_GROUP_ORDER.slice(),
+      activity_layouts: {},
     };
   }
 }
@@ -4233,10 +4274,15 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (this._form) this._form.hass = hass;
+    if (this._config) this._renderGroupOrderEditor();
   }
 
   setConfig(config) {
     this._config = { ...(config || {}) };
+    if (this._layoutEntityId !== this._config.entity) {
+      this._layoutActivityId = null;
+      this._layoutEntityId = this._config.entity;
+    }
     this._render();
   }
 
@@ -4427,8 +4473,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _groupOrderListForEditor() {
-    const configured = Array.isArray(this._config?.group_order)
-      ? this._config.group_order
+    const cfg = this._layoutConfigForEditor();
+    const configured = Array.isArray(cfg?.group_order)
+      ? cfg.group_order
       : DEFAULT_GROUP_ORDER;
     const order = [];
     const seen = new Set();
@@ -4442,6 +4489,71 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       if (!seen.has(key)) order.push(key);
     }
     return order;
+  }
+
+  _layoutActivityOptions() {
+    const entityId = this._config?.entity;
+    const list = entityId
+      ? this._hass?.states?.[entityId]?.attributes?.activities
+      : null;
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((activity) => ({
+        id: Number(activity?.id),
+        name: String(activity?.name ?? ""),
+      }))
+      .filter((activity) => Number.isFinite(activity.id) && activity.name);
+  }
+
+  _layoutConfigForEditor() {
+    const base = this._config || {};
+    const activityId = this._layoutActivityId;
+    if (!activityId) return base;
+    const layouts = base.activity_layouts;
+    if (!layouts || typeof layouts !== "object") return base;
+    const key = String(activityId);
+    const override =
+      layouts[key] ??
+      (Object.prototype.hasOwnProperty.call(layouts, activityId)
+        ? layouts[activityId]
+        : null);
+    if (!override || typeof override !== "object") return base;
+    const merged = { ...base };
+    for (const layoutKey of LAYOUT_OVERRIDE_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(override, layoutKey)) {
+        merged[layoutKey] = override[layoutKey];
+      }
+    }
+    return merged;
+  }
+
+  _updateLayoutConfig(patch) {
+    const activityId = this._layoutActivityId;
+    if (!activityId) {
+      this._config = { ...this._config, ...patch };
+      this._syncFormData(patch);
+      this._fireChanged();
+      this._renderGroupOrderEditor();
+      return;
+    }
+    const layouts = { ...(this._config.activity_layouts || {}) };
+    const key = String(activityId);
+    const prev =
+      layouts[key] && typeof layouts[key] === "object" ? layouts[key] : {};
+    layouts[key] = { ...prev, ...patch };
+    this._config = { ...this._config, activity_layouts: layouts };
+    this._fireChanged();
+    this._renderGroupOrderEditor();
+  }
+
+  _clearLayoutOverride() {
+    const activityId = this._layoutActivityId;
+    if (!activityId) return;
+    const layouts = { ...(this._config.activity_layouts || {}) };
+    delete layouts[String(activityId)];
+    this._config = { ...this._config, activity_layouts: layouts };
+    this._fireChanged();
+    this._renderGroupOrderEditor();
   }
 
   _groupLabel(key) {
@@ -4459,6 +4571,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _isGroupEnabled(key) {
+    const cfg = this._layoutConfigForEditor();
     const map = {
       activity: "show_activity",
       dpad: "show_dpad",
@@ -4470,10 +4583,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     };
     const prop = map[key];
     if (!prop) return true;
-    return this._config?.[prop] ?? true;
+    return cfg?.[prop] ?? true;
   }
 
-  _macroEnabled(cfg = this._config) {
+  _macroEnabled(cfg = this._layoutConfigForEditor()) {
     if (typeof cfg?.show_macros_button === "boolean")
       return cfg.show_macros_button;
     if (typeof cfg?.show_macro_favorites === "boolean")
@@ -4481,7 +4594,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     return true;
   }
 
-  _favoritesEnabled(cfg = this._config) {
+  _favoritesEnabled(cfg = this._layoutConfigForEditor()) {
     if (typeof cfg?.show_favorites_button === "boolean")
       return cfg.show_favorites_button;
     if (typeof cfg?.show_macro_favorites === "boolean")
@@ -4495,34 +4608,33 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _setMacroEnabled(enabled) {
-    const next = { ...this._config };
+    const next = { ...this._layoutConfigForEditor() };
     next.show_macros_button = !!enabled;
 
     const favs = this._favoritesEnabled(next);
     // Legacy combined toggle can only represent "both on" reliably
     next.show_macro_favorites = !!enabled && !!favs;
 
-    this._config = next;
-    this._syncFormData(next);
-    this._fireChanged();
-    this._renderGroupOrderEditor();
+    this._updateLayoutConfig({
+      show_macros_button: next.show_macros_button,
+      show_macro_favorites: next.show_macro_favorites,
+    });
   }
 
   _setFavoritesEnabled(enabled) {
-    const next = { ...this._config };
+    const next = { ...this._layoutConfigForEditor() };
     next.show_favorites_button = !!enabled;
 
     const macros = this._macroEnabled(next);
     next.show_macro_favorites = !!enabled && !!macros;
 
-    this._config = next;
-    this._syncFormData(next);
-    this._fireChanged();
-    this._renderGroupOrderEditor();
+    this._updateLayoutConfig({
+      show_favorites_button: next.show_favorites_button,
+      show_macro_favorites: next.show_macro_favorites,
+    });
   }
 
   _setGroupEnabled(key, enabled) {
-    const next = { ...this._config };
     const map = {
       activity: "show_activity",
       dpad: "show_dpad",
@@ -4533,11 +4645,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       abc: "show_abc",
     };
     const prop = map[key];
-    if (prop) next[prop] = !!enabled;
-
-    this._config = next;
-    this._syncFormData(next);
-    this._fireChanged();
+    if (!prop) return;
+    this._updateLayoutConfig({ [prop]: !!enabled });
   }
 
   _setAutomationAssistEnabled(enabled) {
@@ -4553,6 +4662,16 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     if (typeof this._layoutExpanded !== "boolean") this._layoutExpanded = false;
 
     const order = this._groupOrderListForEditor();
+    const activityOptions = this._layoutActivityOptions();
+    const selectedActivityId = this._layoutActivityId;
+    if (
+      selectedActivityId &&
+      !activityOptions.some(
+        (activity) => String(activity.id) === String(selectedActivityId),
+      )
+    ) {
+      this._layoutActivityId = null;
+    }
 
     this._layoutWrap.innerHTML = "";
 
@@ -4596,6 +4715,53 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const card = document.createElement("div");
     card.className = "sb-layout-card";
+
+    const layoutRow = document.createElement("div");
+    layoutRow.className = "sb-layout-row";
+
+    const layoutLabel = document.createElement("div");
+    layoutLabel.className = "sb-layout-label";
+    layoutLabel.textContent = "Layout for";
+
+    const layoutActions = document.createElement("div");
+    layoutActions.className = "sb-layout-actions";
+
+    const layoutSelect = document.createElement("ha-select");
+    layoutSelect.label = "Layout";
+    layoutSelect.style.minWidth = "180px";
+    layoutSelect.disabled = activityOptions.length === 0;
+    layoutSelect.hass = this._hass;
+    const defaultItem = document.createElement("ha-list-item");
+    defaultItem.value = "__default__";
+    defaultItem.textContent = "Default layout";
+    layoutSelect.appendChild(defaultItem);
+    for (const activity of activityOptions) {
+      const item = document.createElement("ha-list-item");
+      item.value = String(activity.id);
+      item.textContent = activity.name;
+      layoutSelect.appendChild(item);
+    }
+    layoutSelect.value = this._layoutActivityId
+      ? String(this._layoutActivityId)
+      : "__default__";
+    const handleLayoutSelect = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const value = ev?.detail?.value ?? ev?.target?.value ?? layoutSelect.value;
+      if (!value || value === "__default__") {
+        this._layoutActivityId = null;
+      } else {
+        this._layoutActivityId = String(value);
+      }
+      this._renderGroupOrderEditor();
+    };
+    layoutSelect.addEventListener("selected", handleLayoutSelect);
+    layoutSelect.addEventListener("change", handleLayoutSelect);
+
+    layoutActions.appendChild(layoutSelect);
+    layoutRow.appendChild(layoutLabel);
+    layoutRow.appendChild(layoutActions);
+    card.appendChild(layoutRow);
 
     order.forEach((key, i) => {
       const row = document.createElement("div");
@@ -4735,18 +4901,15 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     next[index] = next[j];
     next[j] = tmp;
 
-    this._config = { ...this._config, group_order: next };
-
-    // Keep form data in sync (even though group_order is no longer in the schema)
-    if (this._form) {
-      this._form.data = { ...(this._form.data || {}), group_order: next };
-    }
-
-    this._fireChanged();
-    this._renderGroupOrderEditor();
+    this._updateLayoutConfig({ group_order: next });
   }
 
   _resetGroupOrder() {
+    if (this._layoutActivityId) {
+      this._clearLayoutOverride();
+      return;
+    }
+
     const next = DEFAULT_GROUP_ORDER.slice();
 
     // Reset order AND turn all groups back on
