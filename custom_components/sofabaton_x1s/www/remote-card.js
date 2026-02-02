@@ -424,18 +424,91 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _applyGroupOrder() {
-    if (!this._wrap || !this._groupEls) return;
+    if (!this._layoutContainer || !this._groupEls) return;
     const order = this._groupOrderList();
     const sig = order.join("|");
     if (sig === this._groupOrderSig) return;
     this._groupOrderSig = sig;
     for (const key of order) {
       const el = this._groupEls[key];
-      if (el) this._wrap.appendChild(el);
+      if (el) this._layoutContainer.appendChild(el);
     }
     if (this._warn) {
-      this._wrap.appendChild(this._warn);
+      this._layoutContainer.appendChild(this._warn);
     }
+  }
+
+  _layoutSignature(activityId, layoutConfig) {
+    const order = this._groupOrderList(activityId);
+    const parts = [`activity:${activityId ?? "off"}`, `order:${order.join(",")}`];
+    for (const key of LAYOUT_KEYS) {
+      if (key === "group_order") continue;
+      parts.push(`${key}:${String(layoutConfig?.[key])}`);
+    }
+    return parts.join("|");
+  }
+
+  _prefersReducedMotion() {
+    return (
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  }
+
+  _clearLayoutOverlay() {
+    if (this._layoutOverlayEl) {
+      this._layoutOverlayEl.remove();
+      this._layoutOverlayEl = null;
+    }
+  }
+
+  _maybeAnimateLayoutChange(nextSignature) {
+    if (!this._layoutContainer || !this._wrap) return;
+    if (this._layoutSignatureCache == null) {
+      this._layoutSignatureCache = nextSignature;
+      return;
+    }
+    if (this._layoutSignatureCache === nextSignature) return;
+    this._layoutSignatureCache = nextSignature;
+    if (this._prefersReducedMotion()) {
+      this._clearLayoutOverlay();
+      return;
+    }
+
+    const wrapRect = this._wrap.getBoundingClientRect();
+    const layoutRect = this._layoutContainer.getBoundingClientRect();
+    if (!wrapRect.width || !layoutRect.width) return;
+
+    this._clearLayoutOverlay();
+    const overlay = document.createElement("div");
+    overlay.className = "layout-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.style.top = `${layoutRect.top - wrapRect.top}px`;
+    overlay.style.left = `${layoutRect.left - wrapRect.left}px`;
+    overlay.style.width = `${layoutRect.width}px`;
+    overlay.style.height = `${layoutRect.height}px`;
+    overlay.appendChild(this._layoutContainer.cloneNode(true));
+    this._wrap.appendChild(overlay);
+    this._layoutOverlayEl = overlay;
+
+    const cleanup = () => {
+      if (this._layoutOverlayEl === overlay) {
+        overlay.remove();
+        this._layoutOverlayEl = null;
+      }
+    };
+    overlay.addEventListener(
+      "transitionend",
+      (ev) => {
+        if (ev.target === overlay) cleanup();
+      },
+      { once: true },
+    );
+    requestAnimationFrame(() => {
+      overlay.classList.add("layout-overlay--fade");
+    });
+    setTimeout(cleanup, 320);
   }
 
   // ---------- Hub request queue (prevents parallel requests) ----------
@@ -2717,6 +2790,18 @@ class SofabatonRemoteCard extends HTMLElement {
       }
 
       .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
+      .layout-container { display: grid; gap: 12px; }
+      .layout-overlay {
+        position: absolute;
+        opacity: 1;
+        transition: opacity 240ms ease;
+        pointer-events: none;
+        z-index: 2;
+      }
+      .layout-overlay--fade { opacity: 0; }
+      @media (prefers-reduced-motion: reduce) {
+        .layout-overlay { transition: none; }
+      }
       ha-select { width: 100%; }
 
       .activityRow { 
@@ -3280,6 +3365,9 @@ class SofabatonRemoteCard extends HTMLElement {
     wrap.className = "wrap";
     this._wrap = wrap;
 
+    this._layoutContainer = document.createElement("div");
+    this._layoutContainer.className = "layout-container";
+
     this._automationAssistRow = document.createElement("div");
     this._automationAssistRow.className = "automationAssist";
 
@@ -3314,6 +3402,7 @@ class SofabatonRemoteCard extends HTMLElement {
     this._automationAssistRow.appendChild(assistStatus);
 
     this._wrap.appendChild(this._automationAssistRow);
+    this._wrap.appendChild(this._layoutContainer);
 
     this._automationAssistMqttModal = document.createElement("div");
     this._automationAssistMqttModal.className = "sb-modal";
@@ -3847,6 +3936,13 @@ class SofabatonRemoteCard extends HTMLElement {
     // Apply per-card theme (and background) first
     this._applyLocalTheme(this._config?.theme);
     this._updateGroupRadius();
+
+    const remote = this._remoteState();
+    const activityId = this._currentActivityId();
+    const layoutConfig = layoutConfigForActivity(this._config, activityId);
+    this._maybeAnimateLayoutChange(
+      this._layoutSignature(activityId, layoutConfig),
+    );
     this._applyGroupOrder();
 
     // Apply per-card max width (centered via CSS)
@@ -3876,10 +3972,8 @@ class SofabatonRemoteCard extends HTMLElement {
       this.style.setProperty("--remote-zoom", String(z));
     }
 
-    const remote = this._remoteState();
     const isUnavailable = remote?.state === "unavailable";
     const loadState = remote?.attributes?.load_state;
-    const activityId = this._currentActivityId();
     const activities = this._activities();
     const assignedKeys = remote?.attributes?.assigned_keys;
     const macroKeys = remote?.attributes?.macro_keys;
@@ -4136,7 +4230,6 @@ class SofabatonRemoteCard extends HTMLElement {
       this._setAutomationAssistActive(false);
     }
     this._syncAutomationAssistMqtt();
-    const layoutConfig = layoutConfigForActivity(this._config, activityId);
     this._setVisible(this._activityRow, layoutConfig.show_activity);
 
     const showMacrosBtn = this._showMacrosButton();
@@ -4374,7 +4467,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       if (!this._editorStyle) {
         const st = document.createElement("style");
         st.textContent = `
-          .sb-exp { border: 1px solid var(--divider-color); border-radius: 12px; overflow: hidden; }
+          .sb-exp { border: 1px solid var(--divider-color); border-radius: 12px; overflow: visible; }
           .sb-exp-hdr { width: 100%; display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px; background: var(--ha-card-background, transparent); border: 0; cursor: pointer; }
           .sb-exp-hdr-left { display:flex; align-items:center; gap: 10px; min-width: 0; }
           .sb-exp-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -4750,8 +4843,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       layoutSelect.appendChild(item);
     });
 
-    layoutSelect.addEventListener("selected", (ev) => {
+    const handleLayoutSelect = (ev) => {
+      ev.preventDefault();
       ev.stopPropagation();
+      ev.stopImmediatePropagation?.();
       const selected =
         ev?.detail?.value ?? ev?.target?.value ?? layoutSelect.value;
       const nextSelection = selectionValues.has(selected)
@@ -4760,17 +4855,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       if (nextSelection === this._layoutSelectionKey()) return;
       this._layoutSelection = nextSelection;
       this._renderGroupOrderEditor();
-    });
-    layoutSelect.addEventListener("change", (ev) => {
+    };
+    layoutSelect.addEventListener("selected", handleLayoutSelect);
+    layoutSelect.addEventListener("change", handleLayoutSelect);
+    layoutSelect.addEventListener("action", (ev) => {
+      ev.preventDefault();
       ev.stopPropagation();
-      const selected =
-        ev?.detail?.value ?? ev?.target?.value ?? layoutSelect.value;
-      const nextSelection = selectionValues.has(selected)
-        ? selected
-        : "default";
-      if (nextSelection === this._layoutSelectionKey()) return;
-      this._layoutSelection = nextSelection;
-      this._renderGroupOrderEditor();
     });
 
     selectActions.appendChild(layoutSelect);
