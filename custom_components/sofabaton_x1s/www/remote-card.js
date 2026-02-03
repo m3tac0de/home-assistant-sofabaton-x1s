@@ -172,6 +172,8 @@ class SofabatonRemoteCard extends HTMLElement {
       throw new Error("Select a Sofabaton remote entity");
     }
 
+    this._previewActivity = config?.preview_activity ?? "";
+
     // Defaults first, then user config overwrites
     this._config = {
       show_activity: true,
@@ -191,7 +193,6 @@ class SofabatonRemoteCard extends HTMLElement {
       max_width: 360,
       // Shrink the entire card using CSS `zoom` (0 = no shrink, higher = smaller)
       shrink: 0,
-      preview_activity: "",
       group_order: DEFAULT_GROUP_ORDER.slice(),
       ...config,
     };
@@ -813,7 +814,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _previewSelection(activities = null) {
     if (!this._editMode) return null;
-    const selection = this._config?.preview_activity;
+    const selection = this._previewActivity;
     if (selection == null || selection === "") {
       return {
         activityId: null,
@@ -2278,6 +2279,25 @@ class SofabatonRemoteCard extends HTMLElement {
       };
     }
     window.addEventListener("resize", this._onResize, { passive: true });
+
+    if (!this._onPreviewActivity) {
+      this._onPreviewActivity = (event) => {
+        const detail = event?.detail || {};
+        if (
+          detail.entity &&
+          this._config?.entity &&
+          detail.entity !== this._config.entity
+        ) {
+          return;
+        }
+        this._previewActivity = detail.previewActivity ?? "";
+        if (this._editMode) this._update();
+      };
+    }
+    window.addEventListener(
+      "sofabaton-preview-activity",
+      this._onPreviewActivity,
+    );
   }
 
   disconnectedCallback() {
@@ -2285,6 +2305,12 @@ class SofabatonRemoteCard extends HTMLElement {
     if (this._onResize) {
       window.removeEventListener("resize", this._onResize);
       this._onResize = null;
+    }
+    if (this._onPreviewActivity) {
+      window.removeEventListener(
+        "sofabaton-preview-activity",
+        this._onPreviewActivity,
+      );
     }
     clearTimeout(this._commandPulseTimeout);
     clearTimeout(this._activityLoadTimeout);
@@ -4445,7 +4471,6 @@ class SofabatonRemoteCard extends HTMLElement {
       custom_favorites: [],
       max_width: 360,
       shrink: 0,
-      preview_activity: "",
       group_order: DEFAULT_GROUP_ORDER.slice(),
     };
   }
@@ -4459,7 +4484,11 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
+    this._previewActivity = config?.preview_activity ?? "";
     this._config = { ...(config || {}) };
+    if ("preview_activity" in this._config) {
+      delete this._config.preview_activity;
+    }
     this._render();
   }
 
@@ -4490,7 +4519,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           show_macro_favorites: "Macros/Favorites Buttons (deprecated)",
           max_width: "Maximum Card Width (px)",
           shrink: "Shrink (higher = smaller)",
-          preview_activity: "Preview activity (editor only)",
           group_order: "Group Order",
         };
         return labels[schema.name] || schema.name;
@@ -4658,10 +4686,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
   _setPreviewActivityForSelection(selection) {
     const nextPreview = selection === "default" ? "" : String(selection);
-    if (this._config?.preview_activity === nextPreview) return;
-    this._config = { ...(this._config || {}), preview_activity: nextPreview };
-    this._syncFormData({ preview_activity: nextPreview });
-    this._fireChanged();
+    if (this._previewActivity === nextPreview) return;
+    this._previewActivity = nextPreview;
+    window.dispatchEvent(
+      new CustomEvent("sofabaton-preview-activity", {
+        detail: { entity: this._config?.entity, previewActivity: nextPreview },
+      }),
+    );
   }
 
   _editorActivities() {
@@ -5159,6 +5190,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     // 3. CLEANUP: Strip out the helper toggle before saving to HASS YAML
     const finalConfig = { ...this._config };
     delete finalConfig.use_background_override;
+    delete finalConfig.preview_activity;
 
     this.dispatchEvent(
       new CustomEvent("config-changed", {
