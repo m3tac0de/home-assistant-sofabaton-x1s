@@ -5159,7 +5159,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     // 3. CLEANUP: Strip out the helper toggle before saving to HASS YAML
     const finalConfig = { ...this._config };
     delete finalConfig.use_background_override;
-    delete finalConfig.preview_activity;
 
     this.dispatchEvent(
       new CustomEvent("config-changed", {
