@@ -52,17 +52,15 @@ function layoutDefaultConfig(config) {
 function layoutConfigForActivity(config, activityId) {
   const base = layoutDefaultConfig(config);
   const activities = config?.layouts?.activities;
-  if (
-    activityId == null ||
-    !activities ||
-    typeof activities !== "object"
-  ) {
+  if (activityId == null || !activities || typeof activities !== "object") {
     return base;
   }
   const key = String(activityId);
   const override =
     activities[key] ??
-    (Number.isFinite(Number(activityId)) ? activities[Number(activityId)] : null);
+    (Number.isFinite(Number(activityId))
+      ? activities[Number(activityId)]
+      : null);
   if (override && typeof override === "object") {
     return { ...base, ...override };
   }
@@ -193,6 +191,7 @@ class SofabatonRemoteCard extends HTMLElement {
       max_width: 360,
       // Shrink the entire card using CSS `zoom` (0 = no shrink, higher = smaller)
       shrink: 0,
+      preview_activity: "",
       group_order: DEFAULT_GROUP_ORDER.slice(),
       ...config,
     };
@@ -218,6 +217,11 @@ class SofabatonRemoteCard extends HTMLElement {
       await this._ensureIntegration();
       this._update();
     });
+  }
+
+  set editMode(value) {
+    this._editMode = !!value;
+    this._update();
   }
   // ---------- State helpers ----------
   _remoteState() {
@@ -270,7 +274,7 @@ class SofabatonRemoteCard extends HTMLElement {
   _showMacrosButton() {
     const layout = layoutConfigForActivity(
       this._config,
-      this._currentActivityId(),
+      this._effectiveActivityId(),
     );
     // Backwards-compatible: if the new per-button option isn't set, fall back to the old combined toggle
     if (typeof layout?.show_macros_button === "boolean")
@@ -281,7 +285,7 @@ class SofabatonRemoteCard extends HTMLElement {
   _showFavoritesButton() {
     const layout = layoutConfigForActivity(
       this._config,
-      this._currentActivityId(),
+      this._effectiveActivityId(),
     );
     if (typeof layout?.show_favorites_button === "boolean")
       return layout.show_favorites_button;
@@ -404,7 +408,7 @@ class SofabatonRemoteCard extends HTMLElement {
   _groupOrderList(activityId = null) {
     const layout = layoutConfigForActivity(
       this._config,
-      activityId ?? this._currentActivityId(),
+      activityId ?? this._effectiveActivityId(),
     );
     const configured = Array.isArray(layout?.group_order)
       ? layout.group_order
@@ -440,7 +444,10 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _layoutSignature(activityId, layoutConfig) {
     const order = this._groupOrderList(activityId);
-    const parts = [`activity:${activityId ?? "off"}`, `order:${order.join(",")}`];
+    const parts = [
+      `activity:${activityId ?? "off"}`,
+      `order:${order.join(",")}`,
+    ];
     for (const key of LAYOUT_KEYS) {
       if (key === "group_order") continue;
       parts.push(`${key}:${String(layoutConfig?.[key])}`);
@@ -802,6 +809,36 @@ class SofabatonRemoteCard extends HTMLElement {
     if (!Number.isFinite(id)) return "";
     const match = this._activities().find((activity) => activity.id === id);
     return match?.name || "";
+  }
+
+  _previewSelection(activities = null) {
+    if (!this._editMode) return null;
+    const selection = this._config?.preview_activity;
+    if (selection == null || selection === "") return null;
+    if (selection === "powered_off") {
+      return {
+        activityId: null,
+        label: "Powered Off",
+        poweredOff: true,
+      };
+    }
+    const id = Number(selection);
+    if (!Number.isFinite(id)) return null;
+    const label =
+      this._activityNameForId(id) ||
+      (Array.isArray(activities)
+        ? activities.find((activity) => activity.id === id)?.name || ""
+        : "");
+    return {
+      activityId: id,
+      label,
+      poweredOff: false,
+    };
+  }
+
+  _effectiveActivityId() {
+    if (this._previewState) return this._previewState.activityId;
+    return this._currentActivityId();
   }
 
   _isPoweredOffLabel(state) {
@@ -3938,7 +3975,10 @@ class SofabatonRemoteCard extends HTMLElement {
     this._updateGroupRadius();
 
     const remote = this._remoteState();
-    const activityId = this._currentActivityId();
+    const activities = this._activities();
+    const preview = this._previewSelection(activities);
+    this._previewState = preview;
+    const activityId = preview ? preview.activityId : this._currentActivityId();
     const layoutConfig = layoutConfigForActivity(this._config, activityId);
     this._maybeAnimateLayoutChange(
       this._layoutSignature(activityId, layoutConfig),
@@ -3974,7 +4014,6 @@ class SofabatonRemoteCard extends HTMLElement {
 
     const isUnavailable = remote?.state === "unavailable";
     const loadState = remote?.attributes?.load_state;
-    const activities = this._activities();
     const assignedKeys = remote?.attributes?.assigned_keys;
     const macroKeys = remote?.attributes?.macro_keys;
     const favoriteKeys = remote?.attributes?.favorite_keys;
@@ -4140,9 +4179,19 @@ class SofabatonRemoteCard extends HTMLElement {
         "Powered Off",
         ...activities.map((activity) => activity.name),
       ];
-      current = this._currentActivityLabel() || "Powered Off";
+      const previewLabel = preview
+        ? preview.poweredOff
+          ? "Powered Off"
+          : preview.label || `Activity ${preview.activityId}`
+        : null;
+      if (previewLabel && !options.includes(previewLabel)) {
+        options.push(previewLabel);
+      }
+      current = previewLabel || this._currentActivityLabel() || "Powered Off";
 
-      isPoweredOff = activityId == null || this._isPoweredOffLabel(current);
+      isPoweredOff = preview
+        ? preview.poweredOff
+        : activityId == null || this._isPoweredOffLabel(current);
       if (pendingActivity && (pendingExpired || current === pendingActivity)) {
         this._pendingActivity = null;
         this._pendingActivityAt = null;
@@ -4169,7 +4218,7 @@ class SofabatonRemoteCard extends HTMLElement {
       }
       this._suppressActivityChange = false;
 
-      this._activitySelect.disabled = options.length <= 1;
+      this._activitySelect.disabled = preview ? true : options.length <= 1;
 
       const currentActivity = this._currentActivityLabel();
       if (this._activityLoadActive && this._activityLoadTarget) {
@@ -4382,6 +4431,7 @@ class SofabatonRemoteCard extends HTMLElement {
       custom_favorites: [],
       max_width: 360,
       shrink: 0,
+      preview_activity: "",
       group_order: DEFAULT_GROUP_ORDER.slice(),
     };
   }
@@ -4426,6 +4476,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           show_macro_favorites: "Macros/Favorites Buttons (deprecated)",
           max_width: "Maximum Card Width (px)",
           shrink: "Shrink (higher = smaller)",
+          preview_activity: "Preview activity (editor only)",
           group_order: "Group Order",
         };
         return labels[schema.name] || schema.name;
@@ -4589,6 +4640,14 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
   _layoutSelectionKey() {
     return this._layoutSelection ?? "default";
+  }
+
+  _setPreviewActivityForSelection(selection) {
+    const nextPreview = selection === "default" ? "" : String(selection);
+    if (this._config?.preview_activity === nextPreview) return;
+    this._config = { ...(this._config || {}), preview_activity: nextPreview };
+    this._syncFormData({ preview_activity: nextPreview });
+    this._fireChanged();
   }
 
   _editorActivities() {
@@ -4832,6 +4891,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     selectActions.className = "sb-layout-actions sb-layout-actions-full";
 
     const layoutSelect = document.createElement("ha-select");
+    layoutSelect.fixedMenuPosition = true;
     layoutSelect.label = "Layout";
     layoutSelect.hass = this._hass;
     layoutSelect.value = this._layoutSelectionKey();
@@ -4854,12 +4914,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         : "default";
       if (nextSelection === this._layoutSelectionKey()) return;
       this._layoutSelection = nextSelection;
+      this._setPreviewActivityForSelection(nextSelection);
       this._renderGroupOrderEditor();
     };
     layoutSelect.addEventListener("selected", handleLayoutSelect);
     layoutSelect.addEventListener("change", handleLayoutSelect);
-    layoutSelect.addEventListener("action", (ev) => {
-      ev.preventDefault();
+    layoutSelect.addEventListener("closed", (ev) => {
       ev.stopPropagation();
     });
 
