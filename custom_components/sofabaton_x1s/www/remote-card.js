@@ -814,7 +814,13 @@ class SofabatonRemoteCard extends HTMLElement {
   _previewSelection(activities = null) {
     if (!this._editMode) return null;
     const selection = this._config?.preview_activity;
-    if (selection == null || selection === "") return null;
+    if (selection == null || selection === "") {
+      return {
+        activityId: null,
+        label: "Default Layout",
+        poweredOff: false,
+      };
+    }
     if (selection === "powered_off") {
       return {
         activityId: null,
@@ -3555,6 +3561,7 @@ class SofabatonRemoteCard extends HTMLElement {
     this._activitySelect.label = "Activity";
 
     const handleActivitySelect = (ev) => {
+      if (this._editMode) return;
       if (this._suppressActivityChange) return;
       const value =
         ev?.detail?.value ?? ev?.target?.value ?? this._activitySelect.value;
@@ -4176,6 +4183,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._stopActivityLoading();
     } else {
       const options = [
+        ...(this._editMode ? ["Default Layout"] : []),
         "Powered Off",
         ...activities.map((activity) => activity.name),
       ];
@@ -4218,7 +4226,8 @@ class SofabatonRemoteCard extends HTMLElement {
       }
       this._suppressActivityChange = false;
 
-      this._activitySelect.disabled = preview ? true : options.length <= 1;
+      this._activitySelect.disabled =
+        this._editMode || (preview ? true : options.length <= 1);
 
       const currentActivity = this._currentActivityLabel();
       if (this._activityLoadActive && this._activityLoadTarget) {
@@ -4321,12 +4330,14 @@ class SofabatonRemoteCard extends HTMLElement {
     this._setVisible(this._abcEl, layoutConfig.show_abc && isX2);
 
     const disableAllButtons =
-      isUnavailable || isPoweredOff || this._activityLoadActive;
+      isUnavailable ||
+      this._activityLoadActive ||
+      (!this._editMode && isPoweredOff);
 
     if (this._macrosButton) {
       this._macrosButton.hass = this._hass;
 
-      const macrosEnabled = macros.length > 0;
+      const macrosEnabled = this._editMode ? true : macros.length > 0;
       this._macrosButtonWrap.classList.toggle(
         "disabled",
         disableAllButtons || !macrosEnabled,
@@ -4336,7 +4347,9 @@ class SofabatonRemoteCard extends HTMLElement {
     if (this._favoritesButton) {
       this._favoritesButton.hass = this._hass;
 
-      const favoritesEnabled = favorites.length + customFavorites.length > 0;
+      const favoritesEnabled = this._editMode
+        ? true
+        : favorites.length + customFavorites.length > 0;
       this._favoritesButtonWrap.classList.toggle(
         "disabled",
         disableAllButtons || !favoritesEnabled,
@@ -4391,7 +4404,8 @@ class SofabatonRemoteCard extends HTMLElement {
       }
 
       // Disable all buttons if Powered Off
-      const enabled = !disableAllButtons && this._isEnabled(k.id);
+      const enabled =
+        !disableAllButtons && (this._editMode || this._isEnabled(k.id));
       k.wrap.classList.toggle("disabled", !enabled);
     }
 
@@ -5145,6 +5159,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     // 3. CLEANUP: Strip out the helper toggle before saving to HASS YAML
     const finalConfig = { ...this._config };
     delete finalConfig.use_background_override;
+    delete finalConfig.preview_activity;
 
     this.dispatchEvent(
       new CustomEvent("config-changed", {
