@@ -4259,13 +4259,14 @@ class SofabatonRemoteCard extends HTMLElement {
       (layoutConfig.show_media ?? true) && (showPlay || showDvr);
 
     if (this._midEl) {
-      const midMode = showVolume && showChannel
-        ? "dual"
-        : showVolume
-          ? "volume"
-          : showChannel
-            ? "channel"
-            : "off";
+      const midMode =
+        showVolume && showChannel
+          ? "dual"
+          : showVolume
+            ? "volume"
+            : showChannel
+              ? "channel"
+              : "off";
       this._midEl.classList.toggle("mid--dual", midMode === "dual");
       this._midEl.classList.toggle("mid--volume", midMode === "volume");
       this._midEl.classList.toggle("mid--channel", midMode === "channel");
@@ -4274,13 +4275,14 @@ class SofabatonRemoteCard extends HTMLElement {
     }
 
     if (this._mediaEl) {
-      const mediaMode = showPlay && showDvr
-        ? "both"
-        : showPlay
-          ? "play"
-          : showDvr
-            ? "dvr"
-            : "off";
+      const mediaMode =
+        showPlay && showDvr
+          ? "both"
+          : showPlay
+            ? "play"
+            : showDvr
+              ? "dvr"
+              : "off";
       this._mediaEl.classList.toggle("media--play", mediaMode === "play");
       this._mediaEl.classList.toggle("media--dvr", mediaMode === "dvr");
       this._mediaEl.classList.toggle("media--both", mediaMode === "both");
@@ -4692,8 +4694,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-layout-title { font-weight: 600; margin: 10px 0 6px; }
           .sb-layout-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px; }
           .sb-layout-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+          .sb-layout-row-order { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
           .sb-layout-row + .sb-layout-row { border-top: 1px solid var(--divider-color); }
-          .sb-layout-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .sb-layout-actions { display: inline-flex; align-items:center; gap: 10px; }
           .sb-layout-actions-full { flex: 1; }
           .sb-layout-actions-full ha-select { width: 100%; }
@@ -4703,10 +4705,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-layout-footer { margin-top: 10px; display:flex; justify-content:flex-end; }
           .sb-reset-btn { border: 1px solid var(--divider-color); border-radius: 10px; padding: 6px 10px; background: transparent; cursor:pointer; }
           .sb-switch { display:flex; align-items:center; }
-          .sb-mf-wrap { display:flex; flex-direction:row; align-items:center; gap:14px; }
-          .sb-mf-item { display:flex; align-items:center; gap:8px; }
-          .sb-mf-text { font-size: 13px; opacity: 0.9; }
-          .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; }
+          .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
+          .sb-layout-switch-item-empty { visibility: hidden; }
+          .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; justify-self: end; }
         `;
         this.appendChild(st);
         this._editorStyle = st;
@@ -4734,8 +4736,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       {
         name: "show_automation_assist",
         selector: { boolean: {} },
-        description:
-          "Placeholder text for the Automation Assist feature.",
+        description: "Placeholder text for the Automation Assist feature.",
       },
       {
         type: "expandable",
@@ -5191,14 +5192,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     order.forEach((key, i) => {
       const row = document.createElement("div");
-      row.className = "sb-layout-row";
-
-      const label = document.createElement("div");
-      label.className = "sb-layout-label";
-      label.textContent = this._groupLabel(key);
-
-      const actions = document.createElement("div");
-      actions.className = "sb-layout-actions";
+      row.className = "sb-layout-row sb-layout-row-order";
 
       const mkIconBtn = (icon, aria, disabled, onClick) => {
         const btn = document.createElement("button");
@@ -5238,10 +5232,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
       const makeItem = (text, checked, onSet) => {
         const item = document.createElement("div");
-        item.className = "sb-mf-item";
-        const t = document.createElement("div");
-        t.className = "sb-mf-text";
-        t.textContent = text;
+        item.className = "sb-layout-switch-item";
         const sw = document.createElement("ha-switch");
         sw.checked = !!checked;
         sw.addEventListener("change", (ev) => {
@@ -5249,77 +5240,66 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           ev.stopPropagation();
           onSet(!!sw.checked);
         });
-        item.appendChild(t);
         item.appendChild(sw);
+        const t = document.createElement("div");
+        t.className = "sb-layout-switch-label";
+        t.textContent = text;
+        item.appendChild(t);
         return item;
       };
 
       if (key === "macro_favorites") {
-        const mfWrap = document.createElement("div");
-        mfWrap.className = "sb-mf-wrap";
-
         // Keep independent toggles, but one shared move control.
-        mfWrap.appendChild(
+        row.appendChild(
           makeItem("Macros", this._macroEnabled(), (val) =>
             this._setMacroEnabled(val),
           ),
         );
-        mfWrap.appendChild(
+        row.appendChild(
           makeItem("Favorites", this._favoritesEnabled(), (val) =>
             this._setFavoritesEnabled(val),
           ),
         );
 
-        actions.appendChild(mfWrap);
-        actions.appendChild(moveWrap);
+        row.appendChild(moveWrap);
       } else if (key === "mid") {
-        const midWrap = document.createElement("div");
-        midWrap.className = "sb-mf-wrap";
-        midWrap.appendChild(
+        row.appendChild(
           makeItem("Volume", this._volumeEnabled(), (val) =>
             this._setVolumeEnabled(val),
           ),
         );
-        midWrap.appendChild(
+        row.appendChild(
           makeItem("Channel", this._channelEnabled(), (val) =>
             this._setChannelEnabled(val),
           ),
         );
-        actions.appendChild(midWrap);
-        actions.appendChild(moveWrap);
+        row.appendChild(moveWrap);
       } else if (key === "media") {
-        const mediaWrap = document.createElement("div");
-        mediaWrap.className = "sb-mf-wrap";
-        mediaWrap.appendChild(
-          makeItem("Play", this._playEnabled(), (val) =>
+        row.appendChild(
+          makeItem("Media Controls", this._playEnabled(), (val) =>
             this._setPlayEnabled(val),
           ),
         );
-        mediaWrap.appendChild(
+        row.appendChild(
           makeItem("DVR", this._dvrEnabled(), (val) =>
             this._setDvrEnabled(val),
           ),
         );
-        actions.appendChild(mediaWrap);
-        actions.appendChild(moveWrap);
+        row.appendChild(moveWrap);
       } else {
-        const switchWrap = document.createElement("div");
-        switchWrap.className = "sb-switch";
-        const sw = document.createElement("ha-switch");
-        sw.checked = !!this._isGroupEnabled(key);
-        sw.addEventListener("change", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          this._setGroupEnabled(key, !!sw.checked);
-        });
-        switchWrap.appendChild(sw);
-
-        actions.appendChild(switchWrap);
-        actions.appendChild(moveWrap);
+        row.appendChild(
+          makeItem(this._groupLabel(key), this._isGroupEnabled(key), (val) =>
+            this._setGroupEnabled(key, val),
+          ),
+        );
+        const emptySlot = document.createElement("div");
+        emptySlot.className =
+          "sb-layout-switch-item sb-layout-switch-item-empty";
+        emptySlot.setAttribute("aria-hidden", "true");
+        row.appendChild(emptySlot);
+        row.appendChild(moveWrap);
       }
 
-      row.appendChild(label);
-      row.appendChild(actions);
       card.appendChild(row);
     });
 
