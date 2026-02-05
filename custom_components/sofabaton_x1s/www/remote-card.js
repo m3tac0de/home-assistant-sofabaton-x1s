@@ -1,5 +1,5 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.0.8";
+const CARD_VERSION = "0.0.9";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 const PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
