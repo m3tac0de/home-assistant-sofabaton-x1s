@@ -55,16 +55,14 @@ function layoutDefaultConfig(config) {
 
 function layoutConfigForActivity(config, activityId) {
   const base = layoutDefaultConfig(config);
-  const activities = config?.layouts?.activities;
-  if (activityId == null || !activities || typeof activities !== "object") {
+  const layouts = config?.layouts;
+  if (!layouts || typeof layouts !== "object" || activityId == null) {
     return base;
   }
   const key = String(activityId);
   const override =
-    activities[key] ??
-    (Number.isFinite(Number(activityId))
-      ? activities[Number(activityId)]
-      : null);
+    layouts[key] ??
+    (Number.isFinite(Number(activityId)) ? layouts[Number(activityId)] : null);
   if (override && typeof override === "object") {
     return { ...base, ...override };
   }
@@ -4812,14 +4810,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _layoutHasCustomOverride(selection) {
-    const activities = this._config?.layouts?.activities;
-    if (!activities || typeof activities !== "object") return false;
+    const layouts = this._config?.layouts;
+    if (!layouts || typeof layouts !== "object") return false;
     const key = String(selection ?? "");
     const override =
-      activities[key] ??
-      (Number.isFinite(Number(selection))
-        ? activities[Number(selection)]
-        : null);
+      layouts[key] ??
+      (Number.isFinite(Number(selection)) ? layouts[Number(selection)] : null);
     return Boolean(override && typeof override === "object");
   }
 
@@ -4889,13 +4885,11 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     }
 
     const layouts = { ...(next.layouts || {}) };
-    const activities = { ...(layouts.activities || {}) };
     const existing =
-      activities[selection] && typeof activities[selection] === "object"
-        ? activities[selection]
+      layouts[selection] && typeof layouts[selection] === "object"
+        ? layouts[selection]
         : {};
-    activities[selection] = { ...existing, ...patch };
-    layouts.activities = activities;
+    layouts[selection] = { ...existing, ...patch };
     next.layouts = layouts;
 
     this._config = next;
@@ -5000,6 +4994,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const favs = this._favoritesEnabled(layout);
     const patch = {
       show_macros_button: !!enabled,
+      show_favorites_button: !!favs,
       show_macro_favorites: !!enabled && !!favs,
     };
     this._updateLayoutConfig(patch);
@@ -5009,6 +5004,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const layout = this._layoutConfigForSelection();
     const macros = this._macroEnabled(layout);
     const patch = {
+      show_macros_button: !!macros,
       show_favorites_button: !!enabled,
       show_macro_favorites: !!enabled && !!macros,
     };
@@ -5334,15 +5330,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     if (selection !== "default") {
       const next = { ...this._config };
       const layouts = { ...(next.layouts || {}) };
-      const activities = { ...(layouts.activities || {}) };
-      delete activities[selection];
+      delete layouts[selection];
       if (Number.isFinite(Number(selection))) {
-        delete activities[Number(selection)];
-      }
-      if (Object.keys(activities).length) {
-        layouts.activities = activities;
-      } else {
-        delete layouts.activities;
+        delete layouts[Number(selection)];
       }
       if (Object.keys(layouts).length) {
         next.layouts = layouts;
