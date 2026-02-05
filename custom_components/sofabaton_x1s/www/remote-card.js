@@ -2587,6 +2587,34 @@ class SofabatonRemoteCard extends HTMLElement {
     }
   }
 
+  _applyButtonTextSizing(btn, sizeVar) {
+    const apply = (attempt = 0) => {
+      const root = btn?.shadowRoot;
+      if (!root) return;
+
+      const value = `var(${sizeVar})`;
+      const card = root.querySelector("ha-card");
+      const name = root.querySelector(".name");
+      const label = root.querySelector(".label");
+      const state = root.querySelector(".state");
+
+      if (card) card.style.setProperty("font-size", value);
+      if (name) name.style.fontSize = value;
+      if (label) label.style.fontSize = value;
+      if (state) state.style.fontSize = value;
+
+      if (!name && !label && !state && attempt < 2) {
+        requestAnimationFrame(() => apply(attempt + 1));
+      }
+    };
+
+    if (btn?.updateComplete && typeof btn.updateComplete.then === "function") {
+      btn.updateComplete.then(() => apply());
+    } else {
+      requestAnimationFrame(() => apply());
+    }
+  }
+
   _mkHuiButton({
     key,
     label,
@@ -2635,6 +2663,7 @@ class SofabatonRemoteCard extends HTMLElement {
     });
 
     wrap.appendChild(btn);
+    this._applyButtonTextSizing(btn, "--sb-key-font-size");
 
     this._keys.push({
       key,
@@ -2731,6 +2760,7 @@ class SofabatonRemoteCard extends HTMLElement {
     });
 
     wrap.appendChild(btn);
+    this._applyButtonTextSizing(btn, "--sb-tab-font-size");
 
     return { wrap, btn };
   }
@@ -2912,6 +2942,11 @@ class SofabatonRemoteCard extends HTMLElement {
         zoom: var(--remote-zoom);
         margin-left: auto;
         margin-right: auto;
+        --sb-key-font-size: clamp(11px, 7cqw, 50px);
+        --sb-tab-font-size: clamp(14px, 6cqw, 50px);
+        --sb-tab-height: clamp(20px, 3cqw, 50px);
+        --sb-color-key-min-height: clamp(12px, 3.2cqw, 20px);
+        container-type: inline-size;
       }
 
       .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
@@ -3086,8 +3121,11 @@ class SofabatonRemoteCard extends HTMLElement {
         border-left: 1px solid var(--divider-color);
       }
       .macroFavoritesButton hui-button-card {
-        height: 22px;
+        height: var(--sb-tab-height);
         display: block;
+        --mdc-typography-button-font-size: var(--sb-tab-font-size);
+        --paper-font-body1_-_font-size: var(--sb-tab-font-size);
+        font-size: var(--sb-tab-font-size);
       }
 			.macroFavoritesButton:first-child {
         border-right: 1px solid var(--divider-color);
@@ -3391,7 +3429,12 @@ class SofabatonRemoteCard extends HTMLElement {
 
 /* Allow grid children to shrink (prevents overflow on mobile / narrow cards) */
 .key { min-width: 0; position: relative; width: 100%; }
-.key hui-button-card { min-width: 0; }
+.key hui-button-card {
+  min-width: 0;
+  --mdc-typography-button-font-size: var(--sb-key-font-size);
+  --paper-font-body1_-_font-size: var(--sb-key-font-size);
+  font-size: var(--sb-key-font-size);
+}
 
 /* --- Square remote keys (scalable) --- */
 .key:not(.key--color) {
@@ -3413,11 +3456,12 @@ class SofabatonRemoteCard extends HTMLElement {
 
 /* Keep color keys as strips (not square) */
 .key--color {
-  aspect-ratio: auto;
+  aspect-ratio: 3 / 1;
+  min-height: var(--sb-color-key-min-height);
   transform: none;
 }
 .key--color hui-button-card {
-  height: 18px !important;
+  height: 100% !important;
   width: 100%;
   display: block;
 }
@@ -4612,6 +4656,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     if ("preview_activity" in this._config) {
       delete this._config.preview_activity;
     }
+    this._syncLayoutSelectionWithPreview();
     this._render();
   }
 
@@ -4807,6 +4852,15 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
   _layoutSelectionKey() {
     return this._layoutSelection ?? "default";
+  }
+
+  _syncLayoutSelectionWithPreview() {
+    const preview = this._previewActivity;
+    if (preview == null || preview === "" || preview === "powered_off") {
+      this._layoutSelection = "default";
+      return;
+    }
+    this._layoutSelection = String(preview);
   }
 
   _layoutHasCustomOverride(selection) {
