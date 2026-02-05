@@ -28,7 +28,6 @@ const LAYOUT_KEYS = [
   "show_dvr",
   "show_colors",
   "show_abc",
-  "show_macro_favorites",
   "show_macros_button",
   "show_favorites_button",
 ];
@@ -215,7 +214,6 @@ class SofabatonRemoteCard extends HTMLElement {
       theme: "",
       background_override: null,
       show_automation_assist: false,
-      show_macro_favorites: true,
       show_macros_button: null,
       show_favorites_button: null,
       custom_favorites: [],
@@ -306,10 +304,10 @@ class SofabatonRemoteCard extends HTMLElement {
       this._config,
       this._effectiveActivityId(),
     );
-    // Backwards-compatible: if the new per-button option isn't set, fall back to the old combined toggle
+
     if (typeof layout?.show_macros_button === "boolean")
       return layout.show_macros_button;
-    return Boolean(layout?.show_macro_favorites);
+    return true;
   }
 
   _showFavoritesButton() {
@@ -319,7 +317,7 @@ class SofabatonRemoteCard extends HTMLElement {
     );
     if (typeof layout?.show_favorites_button === "boolean")
       return layout.show_favorites_button;
-    return Boolean(layout?.show_macro_favorites);
+    return true;
   }
 
   _volumeEnabled(layout) {
@@ -4626,7 +4624,6 @@ class SofabatonRemoteCard extends HTMLElement {
       show_colors: true,
       show_abc: true,
       show_automation_assist: false,
-      show_macro_favorites: true,
       show_macros_button: null,
       show_favorites_button: null,
       custom_favorites: [],
@@ -4684,7 +4681,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           show_macros_button: "Macros Button",
           show_favorites_button: "Favorites Button",
           custom_favorites: "Custom Favorites (advanced)",
-          show_macro_favorites: "Macros/Favorites Buttons (deprecated)",
           max_width: "Maximum Card Width (px)",
           shrink: "Shrink (higher = smaller)",
           group_order: "Group Order",
@@ -4697,6 +4693,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         // Merge form changes into the existing config so custom UI fields (like group order)
         // aren't lost when ha-form emits a partial value set.
         const newValue = { ...this._config, ...ev.detail.value };
+        const entityChanged = newValue.entity !== this._config.entity;
 
         // 1. If toggle is off, wipe the color data
         if (newValue.use_background_override === false) {
@@ -4706,8 +4703,25 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         // 2. STABILITY CHECK: Only fire if something actually changed
         if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
 
+        if (entityChanged) {
+          const prevConfig = this._config;
+          this._config = { ...prevConfig, entity: newValue.entity };
+          this._layoutSelection = "default";
+          this._setPreviewActivityForSelection("default");
+          this._config = prevConfig;
+          if (prevConfig?.entity) {
+            writePreviewActivity(prevConfig.entity, "");
+            window.dispatchEvent(
+              new CustomEvent("sofabaton-preview-activity", {
+                detail: { entity: prevConfig.entity, previewActivity: "" },
+              }),
+            );
+          }
+        }
+
         this._config = newValue;
         this._fireChanged();
+        if (entityChanged) this._renderGroupOrderEditor();
       });
 
       const wrapper = document.createElement("div");
@@ -5003,16 +5017,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   _macroEnabled(cfg = this._layoutConfigForSelection()) {
     if (typeof cfg?.show_macros_button === "boolean")
       return cfg.show_macros_button;
-    if (typeof cfg?.show_macro_favorites === "boolean")
-      return cfg.show_macro_favorites;
     return true;
   }
 
   _favoritesEnabled(cfg = this._layoutConfigForSelection()) {
     if (typeof cfg?.show_favorites_button === "boolean")
       return cfg.show_favorites_button;
-    if (typeof cfg?.show_macro_favorites === "boolean")
-      return cfg.show_macro_favorites;
     return true;
   }
 
@@ -5049,7 +5059,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const patch = {
       show_macros_button: !!enabled,
       show_favorites_button: !!favs,
-      show_macro_favorites: !!enabled && !!favs,
     };
     this._updateLayoutConfig(patch);
   }
@@ -5060,7 +5069,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const patch = {
       show_macros_button: !!macros,
       show_favorites_button: !!enabled,
-      show_macro_favorites: !!enabled && !!macros,
     };
     this._updateLayoutConfig(patch);
   }
@@ -5412,10 +5420,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       show_abc: true,
       show_dvr: true,
       show_automation_assist: false,
-      // Macro/Favorites: support both new and legacy flags
       show_macros_button: true,
       show_favorites_button: true,
-      show_macro_favorites: true,
       group_order: nextOrder,
     };
 
