@@ -25,7 +25,6 @@ const LAYOUT_KEYS = [
   "show_volume",
   "show_channel",
   "show_media",
-  "show_play",
   "show_dvr",
   "show_colors",
   "show_abc",
@@ -212,7 +211,6 @@ class SofabatonRemoteCard extends HTMLElement {
       show_volume: true,
       show_channel: true,
       show_media: true,
-      show_play: true,
       show_dvr: true,
       show_colors: true,
       show_abc: true,
@@ -338,15 +336,13 @@ class SofabatonRemoteCard extends HTMLElement {
     return true;
   }
 
-  _playEnabled(layout) {
-    if (typeof layout?.show_play === "boolean") return layout.show_play;
+  _mediaEnabled(layout) {
     if (typeof layout?.show_media === "boolean") return layout.show_media;
     return true;
   }
 
   _dvrEnabled(layout) {
     if (typeof layout?.show_dvr === "boolean") return layout.show_dvr;
-    if (typeof layout?.show_media === "boolean") return layout.show_media;
     return true;
   }
 
@@ -3355,6 +3351,9 @@ class SofabatonRemoteCard extends HTMLElement {
       .media--play {
         grid-template-areas: "rew play fwd";
       }
+      .media--play.media--x1 {
+        grid-template-areas: "rew pause fwd";
+      }
       .media--dvr {
         grid-template-areas: "dvr pause exit";
       }
@@ -4251,12 +4250,11 @@ class SofabatonRemoteCard extends HTMLElement {
     const isX2 = this._isX2();
     const showVolume = this._volumeEnabled(layoutConfig);
     const showChannel = this._channelEnabled(layoutConfig);
-    const showPlay = this._playEnabled(layoutConfig);
+    const showMedia = this._mediaEnabled(layoutConfig);
     const showDvr = this._dvrEnabled(layoutConfig);
     const midEnabled =
       (layoutConfig.show_mid ?? true) && (showVolume || showChannel);
-    const mediaEnabled =
-      (layoutConfig.show_media ?? true) && (showPlay || showDvr);
+    const mediaEnabled = isX2 ? showMedia || showDvr : showMedia;
 
     if (this._midEl) {
       const midMode =
@@ -4275,14 +4273,17 @@ class SofabatonRemoteCard extends HTMLElement {
     }
 
     if (this._mediaEl) {
-      const mediaMode =
-        showPlay && showDvr
+      const mediaMode = isX2
+        ? showMedia && showDvr
           ? "both"
-          : showPlay
+          : showMedia
             ? "play"
             : showDvr
               ? "dvr"
-              : "off";
+              : "off"
+        : showMedia || showDvr
+          ? "play"
+          : "off";
       this._mediaEl.classList.toggle("media--play", mediaMode === "play");
       this._mediaEl.classList.toggle("media--dvr", mediaMode === "dvr");
       this._mediaEl.classList.toggle("media--both", mediaMode === "both");
@@ -4290,6 +4291,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._mediaEl.classList.toggle("media--x1", !isX2);
     }
 
+    const showPause = showDvr || (!isX2 && showMedia);
     this._buttonVisibility = {
       volup: showVolume,
       voldn: showVolume,
@@ -4297,12 +4299,12 @@ class SofabatonRemoteCard extends HTMLElement {
       guide: isX2 && showChannel,
       chup: showChannel,
       chdn: showChannel,
-      rew: showPlay,
-      play: showPlay,
-      fwd: showPlay,
-      dvr: showDvr,
-      pause: showDvr,
-      exit: showDvr,
+      rew: showMedia,
+      play: showMedia && isX2,
+      fwd: showMedia,
+      dvr: isX2 && showDvr,
+      pause: showPause,
+      exit: isX2 && showDvr,
     };
 
     // Activity select sync + Powered Off detection
@@ -4578,7 +4580,6 @@ class SofabatonRemoteCard extends HTMLElement {
       show_volume: true,
       show_channel: true,
       show_media: true,
-      show_play: true,
       show_dvr: true,
       show_colors: true,
       show_abc: true,
@@ -4979,15 +4980,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     return true;
   }
 
-  _playEnabled(cfg = this._layoutConfigForSelection()) {
-    if (typeof cfg?.show_play === "boolean") return cfg.show_play;
+  _mediaEnabled(cfg = this._layoutConfigForSelection()) {
     if (typeof cfg?.show_media === "boolean") return cfg.show_media;
     return true;
   }
 
   _dvrEnabled(cfg = this._layoutConfigForSelection()) {
     if (typeof cfg?.show_dvr === "boolean") return cfg.show_dvr;
-    if (typeof cfg?.show_media === "boolean") return cfg.show_media;
     return true;
   }
 
@@ -5036,22 +5035,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._updateLayoutConfig(patch);
   }
 
-  _setPlayEnabled(enabled) {
-    const layout = this._layoutConfigForSelection();
-    const dvr = this._dvrEnabled(layout);
-    const patch = {
-      show_play: !!enabled,
-      show_media: !!enabled || !!dvr,
-    };
-    this._updateLayoutConfig(patch);
-  }
-
   _setDvrEnabled(enabled) {
-    const layout = this._layoutConfigForSelection();
-    const play = this._playEnabled(layout);
     const patch = {
       show_dvr: !!enabled,
-      show_media: !!enabled || !!play,
     };
     this._updateLayoutConfig(patch);
   }
@@ -5276,12 +5262,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         row.appendChild(moveWrap);
       } else if (key === "media") {
         row.appendChild(
-          makeItem("Media Controls", this._playEnabled(), (val) =>
-            this._setPlayEnabled(val),
+          makeItem("Media Controls", this._mediaEnabled(), (val) =>
+            this._setGroupEnabled("media", val),
           ),
         );
         row.appendChild(
-          makeItem("DVR", this._dvrEnabled(), (val) =>
+          makeItem("DVR (X2 only)", this._dvrEnabled(), (val) =>
             this._setDvrEnabled(val),
           ),
         );
@@ -5311,7 +5297,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     reset.className = "sb-reset-btn";
     reset.textContent =
       this._layoutSelectionKey() === "default"
-        ? "Reset to default"
+        ? "Reset to card default"
         : "Reset to default layout";
     reset.addEventListener("click", (ev) => {
       ev.preventDefault();
@@ -5380,6 +5366,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       show_media: true,
       show_colors: true,
       show_abc: true,
+      show_dvr: true,
       show_automation_assist: false,
       // Macro/Favorites: support both new and legacy flags
       show_macros_button: true,
