@@ -38,6 +38,20 @@ create_roku_device:
       selector:
         entity:
           integration: sofabaton_x1s
+    device_name:
+      name: Device name
+      description: Friendly name to write into the Roku virtual device record.
+      required: false
+      default: Home Assistant
+      selector:
+        text:
+    ip_address:
+      name: IP address
+      description: IPv4 address to write into the Roku virtual device record.
+      required: false
+      default: 192.168.2.77
+      selector:
+        text:
 
 create_ip_button:
   name: Create virtual IP button

@@ -431,10 +431,18 @@ class SofabatonHub:
         else:
             await self._async_fetch_device_commands(ent_id)
 
-    async def async_create_roku_device(self) -> dict[str, Any] | None:
+    async def async_create_roku_device(
+        self,
+        device_name: str = "Home Assistant",
+        ip_address: str = "192.168.2.77",
+    ) -> dict[str, Any] | None:
         """Replay the Roku virtual-device creation sequence on the selected hub."""
 
-        return await self.hass.async_add_executor_job(self._proxy.create_roku_device)
+        return await self.hass.async_add_executor_job(
+            self._proxy.create_roku_device,
+            device_name,
+            ip_address,
+        )
 
     async def _async_fetch_activity_commands(self, act_id: int) -> None:
         self._reset_entity_cache(

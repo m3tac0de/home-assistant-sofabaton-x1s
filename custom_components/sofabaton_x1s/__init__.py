@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+import ipaddress
 
 import voluptuous as vol
 
@@ -211,7 +212,14 @@ async def _async_handle_create_roku_device(call: ServiceCall):
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
-    return await hub.async_create_roku_device()
+    device_name = str(call.data.get("device_name", "Home Assistant")).strip() or "Home Assistant"
+    ip_address = str(call.data.get("ip_address", "192.168.2.77")).strip()
+    try:
+        ipaddress.IPv4Address(ip_address)
+    except ValueError as exc:
+        raise ValueError("ip_address must be a valid IPv4 address") from exc
+
+    return await hub.async_create_roku_device(device_name=device_name, ip_address=ip_address)
 
 
 async def _async_handle_create_ip_button(call: ServiceCall):

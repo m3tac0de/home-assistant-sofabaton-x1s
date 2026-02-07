@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import ipaddress
 import re
 import socket
 import struct
@@ -82,6 +83,10 @@ def _hexdump(data: bytes) -> str: return data.hex(" ")
 
 def _hex_to_bytes(raw_hex: str) -> bytes:
     return bytes.fromhex(raw_hex)
+
+
+def _ascii_padded(value: str, *, length: int) -> bytes:
+    return value.encode("ascii", errors="ignore")[:length].ljust(length, b"\x00")
 
 def _normalize_mdns_instance(name: str) -> str:
     """Return an mDNS-friendly instance name without whitespace."""
@@ -1001,7 +1006,33 @@ class X1Proxy:
                 return None
             self._roku_ack_event.wait(min(remaining, 0.2))
 
-    def create_roku_device(self) -> dict[str, Any] | None:
+    def _build_roku_device_payload(
+        self,
+        *,
+        device_name: str,
+        ip_address: str,
+        state_byte: int,
+    ) -> bytes:
+        payload = bytearray(
+            _hex_to_bytes(
+                "01 00 01 01 00 01 00 ff 01 00 0a 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                "4d 00 "
+                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                "fc 55 00 00 00 00 fc 00 00 fc 02 00 02 00 fc 00 fc 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+            )
+        )
+        payload[32:62] = _ascii_padded(device_name, length=30)
+        payload[62:92] = _ascii_padded("m3tac0de", length=30)
+        payload[94:98] = ipaddress.IPv4Address(ip_address).packed
+        payload[109] = state_byte & 0xFF
+        return bytes(payload)
+
+    def create_roku_device(
+        self,
+        device_name: str = "Home Assistant",
+        ip_address: str = "192.168.2.77",
+    ) -> dict[str, Any] | None:
         if not self.can_issue_commands():
             log.info("[ROKU] create_roku_device ignored: proxy client is connected")
             return None
@@ -1012,12 +1043,7 @@ class X1Proxy:
         if not self._send_roku_step(
             step_name="create-device",
             family=0x07,
-            payload=_hex_to_bytes(
-                "01 00 01 01 00 01 00 ff 01 00 0a 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-                "4d 00 48 6f 6d 65 20 41 73 73 69 73 74 61 6e 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-                "48 6f 6d 65 20 41 73 73 69 73 74 61 6e 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-                "fc 55 c0 a8 02 4d fc 00 00 fc 02 00 02 00 fc 00 fc 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
-            ),
+            payload=self._build_roku_device_payload(device_name=device_name, ip_address=ip_address, state_byte=0x00),
             ack_opcode=0x0107,
         ):
             return None
@@ -1152,11 +1178,10 @@ class X1Proxy:
         ):
             return None
 
-        payload_7b08 = _hex_to_bytes(
-            "01 00 01 01 00 01 00 03 01 00 0a 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-            "4d 00 48 6f 6d 65 20 41 73 73 69 73 74 61 6e 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-            "48 6f 6d 65 20 41 73 73 69 73 74 61 6e 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-            "fc 55 c0 a8 02 4d fc 00 00 fc 02 00 02 00 fc 00 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 00"
+        payload_7b08 = self._build_roku_device_payload(
+            device_name=device_name,
+            ip_address=ip_address,
+            state_byte=0x01,
         )
         payload_7b08 = payload_7b08[:7] + bytes([device_id]) + payload_7b08[8:]
         if not self._send_roku_step(
