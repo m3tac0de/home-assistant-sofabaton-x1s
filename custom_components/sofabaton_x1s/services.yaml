@@ -55,8 +55,8 @@ create_roku_device:
 
     commands:
       name: Custom commands
-      description: Optional list of up to 10 command names to map into the Roku emulated app slots.
-      required: false
+      description: Required list of 1 to 10 custom command names to map into the Roku emulated app slots. Names may contain only letters, numbers, and spaces.
+      required: true
       selector:
         object:
 

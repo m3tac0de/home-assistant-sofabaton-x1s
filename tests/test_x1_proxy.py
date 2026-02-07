@@ -262,7 +262,7 @@ def test_create_roku_device_replays_sequence(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    result = proxy.create_roku_device()
+    result = proxy.create_roku_device(commands=["Launch One"])
 
     assert result == {"device_id": 0x07, "status": "success"}
     assert sent
@@ -296,7 +296,7 @@ def test_create_roku_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    result = proxy.create_roku_device(device_name="Living Room Roku", ip_address="10.0.0.7")
+    result = proxy.create_roku_device(device_name="Living Room Roku", ip_address="10.0.0.7", commands=["My Cmd"])
 
     assert result == {"device_id": 0x07, "status": "success"}
     create_payload = sent[0][1]
@@ -338,7 +338,7 @@ def test_create_roku_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    result = proxy.create_roku_device(device_name="Living Room Roku", ip_address="10.0.0.7")
+    result = proxy.create_roku_device(device_name="Living Room Roku", ip_address="10.0.0.7", commands=["My Cmd"])
 
     assert result == {"device_id": 0x09, "status": "success"}
     create_payload = sent[0][1]
@@ -352,7 +352,7 @@ def test_create_roku_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
 
     assert len(define_payload) >= 75
     assert define_payload[15] == 0x00
-    assert define_payload[16:75].startswith("PowerOff".encode("utf-16le")[:-1])
+    assert define_payload[16:75].startswith("My Cmd".encode("utf-16le")[:-1])
 
     assert finalize_payload[7] == 0x09
     assert encoded_name in finalize_payload
@@ -391,7 +391,7 @@ def test_create_roku_device_uses_custom_app_commands(monkeypatch) -> None:
     assert result == {"device_id": 0x07, "status": "success"}
     define_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x0E]
 
-    assert len(define_payloads) == 25
+    assert len(define_payloads) == 2
 
     custom_payloads = {payload[0]: payload for payload in define_payloads if payload[0] in {0x18, 0x19, 0x1A}}
     assert set(custom_payloads) == {0x18, 0x19}
@@ -411,7 +411,7 @@ def test_stable_hub_action_id_falls_back_to_proxy_id() -> None:
     assert proxy._stable_hub_action_id() == "proxy-123"
 
 
-def test_create_roku_device_without_custom_commands_skips_app_slots(monkeypatch) -> None:
+def test_create_roku_device_without_custom_commands_defines_no_slots(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
@@ -434,8 +434,7 @@ def test_create_roku_device_without_custom_commands_skips_app_slots(monkeypatch)
 
     assert result == {"device_id": 0x07, "status": "success"}
     define_slots = [payload[0] for opcode, payload in sent if (opcode & 0xFF) == 0x0E]
-    assert len(define_slots) == 23
-    assert all(slot < 0x18 for slot in define_slots)
+    assert define_slots == []
 
 def test_wait_for_roku_ack_matches_opcode_and_button() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)

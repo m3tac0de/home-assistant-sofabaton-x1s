@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any
 from urllib.parse import urlparse
 import ipaddress
@@ -35,6 +36,7 @@ from .diagnostics import (
 from .hub import SofabatonHub
 
 _LOGGER = logging.getLogger(__name__)
+_ALPHANUM_SPACE_RE = re.compile(r"^[A-Za-z0-9 ]+$")
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -213,23 +215,29 @@ async def _async_handle_create_roku_device(call: ServiceCall):
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
     device_name = str(call.data.get("device_name", "Home Assistant")).strip() or "Home Assistant"
+    if not _ALPHANUM_SPACE_RE.fullmatch(device_name):
+        raise ValueError("device_name must contain only letters, numbers, and spaces")
     ip_address = str(call.data.get("ip_address", "192.168.2.77")).strip()
     try:
         ipaddress.IPv4Address(ip_address)
     except ValueError as exc:
         raise ValueError("ip_address must be a valid IPv4 address") from exc
 
-    raw_commands = call.data.get("commands") or []
+    raw_commands = call.data.get("commands")
     if not isinstance(raw_commands, list):
         raise ValueError("commands must be a list of strings")
+    if not raw_commands:
+        raise ValueError("commands requires between 1 and 10 entries")
     if len(raw_commands) > 10:
-        raise ValueError("commands supports a maximum of 10 entries")
+        raise ValueError("commands requires between 1 and 10 entries")
 
     commands: list[str] = []
     for command in raw_commands:
         command_name = str(command).strip()
         if not command_name:
             raise ValueError("commands entries must not be empty")
+        if not _ALPHANUM_SPACE_RE.fullmatch(command_name):
+            raise ValueError("commands entries must contain only letters, numbers, and spaces")
         commands.append(command_name)
 
     return await hub.async_create_roku_device(

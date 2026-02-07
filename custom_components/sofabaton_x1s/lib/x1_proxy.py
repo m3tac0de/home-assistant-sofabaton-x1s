@@ -1125,31 +1125,7 @@ class X1Proxy:
             return None
         log.info("[ROKU] hub assigned device id=0x%02X", device_id)
 
-        command_defs: list[tuple[int, int, str, str]] = [
-            (0x01, 0x1718, "PowerOff", "keypress/PowerOff"),
-            (0x02, 0x1713, "PowerOn", "keypress/PowerOn"),
-            (0x03, 0x075A, "InputTuner", "keypress/InputTuner"),
-            (0x04, 0x3202, "InputHDMI1", "keypress/InputHDMI1"),
-            (0x05, 0x3203, "InputHDMI2", "keypress/InputHDMI2"),
-            (0x06, 0x3204, "InputHDMI3", "keypress/InputHDMI3"),
-            (0x07, 0x3205, "InputHDMI4", "keypress/InputHDMI4"),
-            (0x08, 0x3262, "InputAV1", "keypress/InputAV1"),
-            (0x09, 0x0074, "Back", "keypress/Back"),
-            (0x0A, 0x07C7, "Home", "keypress/Home"),
-            (0x0B, 0x0030, "Left", "keypress/Left"),
-            (0x0C, 0x002E, "Up", "keypress/Up"),
-            (0x0D, 0x0031, "Right", "keypress/Right"),
-            (0x0E, 0x002F, "Down", "keypress/Down"),
-            (0x0F, 0x002A, "Ok", "keypress/Select"),
-            (0x10, 0x0256, "InstantReplay", "keypress/InstantReplay"),
-            (0x11, 0x00D3, "Info", "keypress/Info"),
-            (0x12, 0x006A, "VolumeMute", "keypress/VolumeMute"),
-            (0x13, 0x0033, "VolumeDown", "keypress/VolumeDown"),
-            (0x14, 0x2E77, "VolumeUp", "keypress/VolumeUp"),
-            (0x15, 0x008D, "Rev", "keypress/Rev"),
-            (0x16, 0x0092, "Play", "keypress/Play"),
-            (0x17, 0x0097, "Fwd", "keypress/Fwd"),
-        ]
+        command_defs: list[tuple[int, int, str, str]] = []
 
         if commands:
             hub_action_id = self._stable_hub_action_id()
