@@ -12,7 +12,7 @@ import time
 from collections import defaultdict, deque
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..const import HUB_VERSION_X1, HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
+from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import DeviceCommandAssembler
 from .macros import MacroAssembler
@@ -87,6 +87,18 @@ def _hex_to_bytes(raw_hex: str) -> bytes:
 
 def _ascii_padded(value: str, *, length: int) -> bytes:
     return value.encode("ascii", errors="ignore")[:length].ljust(length, b"\x00")
+
+
+_ROKU_X1S_CREATE_BASE = _hex_to_bytes(
+    "01 00 01 01 00 01 00 ff 01 00 0a 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+    "4d 00 00 48 00 6f 00 6d 00 65 00 20 00 41 00 73 00 73 00 69 00 73 00 74 00 61 00 6e 00 74 "
+    "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+    "00 00 00 48 00 6f 00 6d 00 65 00 20 00 41 00 73 00 73 00 69 00 73 00 74 00 61 00 6e 00 74 "
+    "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+    "00 00 fc 55 c0 a8 02 4d fc 00 00 fc 02 00 02 00 fc 00 fc 00 00 00 00 00 01 ff 00 00 00 00 "
+    "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+    "00 00 00 00 00 00"
+)
 
 def _normalize_mdns_instance(name: str) -> str:
     """Return an mDNS-friendly instance name without whitespace."""
@@ -1012,7 +1024,34 @@ class X1Proxy:
         device_name: str,
         ip_address: str,
         state_byte: int,
+        device_id: int = 0xFF,
     ) -> bytes:
+        if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
+            payload = bytearray(_ROKU_X1S_CREATE_BASE)
+            payload[7] = device_id & 0xFF
+
+            default_name = self._utf16le_padded("Home Assistant", length=60)
+            desired_name = self._utf16le_padded(device_name, length=60)
+            brand_name = self._utf16le_padded("m3tac0de", length=60)
+            first_name_idx = payload.find(default_name)
+            if first_name_idx >= 0:
+                payload[first_name_idx:first_name_idx + 60] = desired_name
+                second_name_idx = payload.find(default_name, first_name_idx + 60)
+                if second_name_idx >= 0:
+                    payload[second_name_idx:second_name_idx + 60] = brand_name
+
+            default_ip = bytes([192, 168, 2, 77])
+            custom_ip = ipaddress.IPv4Address(ip_address).packed
+            ip_idx = payload.find(default_ip)
+            if ip_idx >= 0:
+                payload[ip_idx:ip_idx + 4] = custom_ip
+
+            state_marker = b"\xfc\x00\xfc\x00\x00\x00\x00\x00\x01\xff"
+            state_idx = payload.find(state_marker)
+            if state_idx >= 0:
+                payload[state_idx + 3] = state_byte & 0xFF
+            return bytes(payload)
+
         payload = bytearray(
             _hex_to_bytes(
                 "01 00 01 01 00 01 00 ff 01 00 0a 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
@@ -1022,6 +1061,7 @@ class X1Proxy:
                 "fc 55 00 00 00 00 fc 00 00 fc 02 00 02 00 fc 00 fc 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
             )
         )
+        payload[7] = device_id & 0xFF
         payload[32:62] = _ascii_padded(device_name, length=30)
         payload[62:92] = _ascii_padded("m3tac0de", length=30)
         payload[94:98] = ipaddress.IPv4Address(ip_address).packed
@@ -1091,7 +1131,12 @@ class X1Proxy:
         ]
 
         for slot, code, name, action in command_defs:
-            name_blob = name.encode("ascii", errors="ignore")[:30].ljust(30, b"\x00")
+            if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
+                name_utf16 = name.encode("utf-16le")[:59]
+                name_blob = b"\x00" + name_utf16
+                name_blob = name_blob.ljust(60, b"\x00")
+            else:
+                name_blob = name.encode("ascii", errors="ignore")[:30].ljust(30, b"\x00")
             action_blob = action.encode("ascii", errors="ignore")[:255]
             payload_base = (
                 bytes([slot, 0x00, 0x01, 0x21, 0x00, 0x01, device_id, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x00])
@@ -1182,8 +1227,8 @@ class X1Proxy:
             device_name=device_name,
             ip_address=ip_address,
             state_byte=0x01,
+            device_id=device_id,
         )
-        payload_7b08 = payload_7b08[:7] + bytes([device_id]) + payload_7b08[8:]
         if not self._send_roku_step(
             step_name="finalize-device-7b08",
             family=0x08,

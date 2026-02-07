@@ -311,6 +311,53 @@ def test_create_roku_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
     assert finalize_payload[94:98] == bytes([10, 0, 0, 7])
 
 
+
+
+def test_create_roku_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x09)
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        first_opcode = candidates[0][0]
+        return first_opcode, b"\x00"
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_roku_device(device_name="Living Room Roku", ip_address="10.0.0.7")
+
+    assert result == {"device_id": 0x09, "status": "success"}
+    create_payload = sent[0][1]
+    define_payload = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x0E)
+    finalize_payload = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x08)
+
+    encoded_name = "Living Room Roku".encode("utf-16le")
+    assert encoded_name in create_payload
+    assert create_payload[7] == 0xFF
+    assert bytes([10, 0, 0, 7]) in create_payload
+
+    assert len(define_payload) >= 75
+    assert define_payload[15] == 0x00
+    assert define_payload[16:75].startswith("PowerOff".encode("utf-16le")[:-1])
+
+    assert finalize_payload[7] == 0x09
+    assert encoded_name in finalize_payload
+    assert bytes([10, 0, 0, 7]) in finalize_payload
+
 def test_wait_for_roku_ack_matches_opcode_and_button() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
     proxy.notify_roku_ack(0x0103, b"\x00")
