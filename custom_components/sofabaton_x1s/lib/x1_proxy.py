@@ -1044,26 +1044,42 @@ class X1Proxy:
             payload = bytearray(_ROKU_X1S_CREATE_BASE)
             payload[7] = device_id & 0xFF
 
-            default_name = self._utf16le_padded("Home Assistant", length=60)
-            desired_name = self._utf16le_padded(device_name, length=60)
-            brand_name = self._utf16le_padded("m3tac0de", length=60)
-            first_name_idx = payload.find(default_name)
-            if first_name_idx >= 0:
-                payload[first_name_idx:first_name_idx + 60] = desired_name
-                second_name_idx = payload.find(default_name, first_name_idx + 60)
-                if second_name_idx >= 0:
-                    payload[second_name_idx:second_name_idx + 60] = brand_name
+            def _write_utf16_slot(start: int, span: int, value: str) -> None:
+                writable = span
+                while writable > 0 and payload[start + writable - 1] != 0x00:
+                    writable -= 1
+                if writable <= 0:
+                    return
+                encoded = self._utf16le_padded(value, length=writable)
+                payload[start:start + writable] = encoded
+
+            home_name_utf16 = "Home Assistant".encode("utf-16le")
+            name_positions: list[int] = []
+            search_from = 0
+            while True:
+                idx = payload.find(home_name_utf16, search_from)
+                if idx < 0:
+                    break
+                name_positions.append(idx)
+                search_from = idx + len(home_name_utf16)
 
             default_ip = bytes([192, 168, 2, 77])
-            custom_ip = ipaddress.IPv4Address(ip_address).packed
             ip_idx = payload.find(default_ip)
+            if len(name_positions) >= 2:
+                first_name_idx, second_name_idx = name_positions[:2]
+                _write_utf16_slot(first_name_idx, second_name_idx - first_name_idx, device_name)
+                tail_bound = ip_idx if ip_idx > second_name_idx else len(payload)
+                _write_utf16_slot(second_name_idx, tail_bound - second_name_idx, "m3tac0de")
+
+            custom_ip = ipaddress.IPv4Address(ip_address).packed
             if ip_idx >= 0:
                 payload[ip_idx:ip_idx + 4] = custom_ip
 
-            state_marker = b"\xfc\x00\xfc\x00\x00\x00\x00\x00\x01\xff"
+            state_marker = b"\xfc\x02\x00\x02\x00\xfc\x00\xfc\x00"
             state_idx = payload.find(state_marker)
             if state_idx >= 0:
-                payload[state_idx + 3] = state_byte & 0xFF
+                payload[state_idx + 2] = state_byte & 0xFF
+                payload[state_idx + 8] = state_byte & 0xFF
             return bytes(payload)
 
         payload = bytearray(
@@ -1202,7 +1218,7 @@ class X1Proxy:
         if not self._send_roku_step(
             step_name="post-map-commit",
             family=0x41,
-            payload=bytes([device_id, 0x01]),
+            payload=bytes([device_id, 0x04]),
             ack_opcode=0x0103,
         ):
             return None
@@ -1231,6 +1247,14 @@ class X1Proxy:
             step_name="sync-stage-7746",
             family=0x46,
             payload=bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 112),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        if not self._send_roku_step(
+            step_name="confirm-power-config",
+            family=0x41,
+            payload=bytes([device_id, 0x04]),
             ack_opcode=0x0103,
         ):
             return None
