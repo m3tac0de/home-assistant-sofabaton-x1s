@@ -358,6 +358,72 @@ def test_create_roku_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     assert encoded_name in finalize_payload
     assert bytes([10, 0, 0, 7]) in finalize_payload
 
+
+
+def test_create_roku_device_uses_custom_app_commands(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, proxy_id="proxy-123")
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x07)
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        first_opcode = candidates[0][0]
+        return first_opcode, b"\x00"
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_roku_device(commands=["Lights On", "Lights Off"])
+
+    assert result == {"device_id": 0x07, "status": "success"}
+    define_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x0E]
+
+    assert len(define_payloads) == 25
+
+    custom_payloads = {payload[0]: payload for payload in define_payloads if payload[0] in {0x18, 0x19, 0x1A}}
+    assert set(custom_payloads) == {0x18, 0x19}
+
+    action_1 = custom_payloads[0x18][46 : 46 + custom_payloads[0x18][45]].decode("ascii")
+    action_2 = custom_payloads[0x19][46 : 46 + custom_payloads[0x19][45]].decode("ascii")
+
+    assert custom_payloads[0x18][15:45].rstrip(b"\x00") == b"Lights On"
+    assert custom_payloads[0x19][15:45].rstrip(b"\x00") == b"Lights Off"
+    assert action_1 == "launch/proxy-123-Lights_On"
+    assert action_2 == "launch/proxy-123-Lights_Off"
+
+
+def test_create_roku_device_without_custom_commands_skips_app_slots(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x07)
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        first_opcode = candidates[0][0]
+        return first_opcode, b"\x00"
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_roku_device()
+
+    assert result == {"device_id": 0x07, "status": "success"}
+    define_slots = [payload[0] for opcode, payload in sent if (opcode & 0xFF) == 0x0E]
+    assert len(define_slots) == 23
+    assert all(slot < 0x18 for slot in define_slots)
+
 def test_wait_for_roku_ack_matches_opcode_and_button() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
     proxy.notify_roku_ack(0x0103, b"\x00")

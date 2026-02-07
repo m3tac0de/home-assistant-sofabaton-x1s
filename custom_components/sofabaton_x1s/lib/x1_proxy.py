@@ -89,6 +89,20 @@ def _ascii_padded(value: str, *, length: int) -> bytes:
     return value.encode("ascii", errors="ignore")[:length].ljust(length, b"\x00")
 
 
+_ROKU_APP_SLOTS: list[tuple[int, int]] = [
+    (0x18, 0x4E21),
+    (0x19, 0x4E22),
+    (0x1A, 0x4E23),
+    (0x1B, 0x4E24),
+    (0x1C, 0x4E25),
+    (0x1D, 0x4E26),
+    (0x1E, 0x4E27),
+    (0x1F, 0x4E28),
+    (0x20, 0x4E29),
+    (0x21, 0x4E2A),
+]
+
+
 _ROKU_X1S_CREATE_BASE = _hex_to_bytes(
     "01 00 01 01 00 01 00 ff 01 00 0a 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
     "4d 00 00 48 00 6f 00 6d 00 65 00 20 00 41 00 73 00 73 00 69 00 73 00 74 00 61 00 6e 00 74 "
@@ -1072,6 +1086,7 @@ class X1Proxy:
         self,
         device_name: str = "Home Assistant",
         ip_address: str = "192.168.2.77",
+        commands: list[str] | None = None,
     ) -> dict[str, Any] | None:
         if not self.can_issue_commands():
             log.info("[ROKU] create_roku_device ignored: proxy client is connected")
@@ -1118,17 +1133,14 @@ class X1Proxy:
             (0x15, 0x008D, "Rev", "keypress/Rev"),
             (0x16, 0x0092, "Play", "keypress/Play"),
             (0x17, 0x0097, "Fwd", "keypress/Fwd"),
-            (0x18, 0x4E21, "Emulated App 1", "launch/1"),
-            (0x19, 0x4E22, "Emulated App 2", "launch/2"),
-            (0x1A, 0x4E23, "Emulated App 3", "launch/3"),
-            (0x1B, 0x4E24, "Emulated App 4", "launch/4"),
-            (0x1C, 0x4E25, "Emulated App 5", "launch/5"),
-            (0x1D, 0x4E26, "Emulated App 6", "launch/6"),
-            (0x1E, 0x4E27, "Emulated App 7", "launch/7"),
-            (0x1F, 0x4E28, "Emulated App 8", "launch/8"),
-            (0x20, 0x4E29, "Emulated App 9", "launch/9"),
-            (0x21, 0x4E2A, "Emulated App 10", "launch/10"),
         ]
+
+        if commands:
+            for idx, command_name in enumerate(commands[: len(_ROKU_APP_SLOTS)]):
+                slot, code = _ROKU_APP_SLOTS[idx]
+                normalized = command_name.replace(" ", "_")
+                action = f"launch/{self.proxy_id}-{normalized}"
+                command_defs.append((slot, code, command_name, action))
 
         for slot, code, name, action in command_defs:
             if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):

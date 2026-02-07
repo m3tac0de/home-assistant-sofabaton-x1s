@@ -53,6 +53,13 @@ create_roku_device:
       selector:
         text:
 
+    commands:
+      name: Custom commands
+      description: Optional list of up to 10 command names to map into the Roku emulated app slots.
+      required: false
+      selector:
+        object:
+
 create_ip_button:
   name: Create virtual IP button
   description: Create a virtual HTTP device/button on the hub based on an IP command definition.

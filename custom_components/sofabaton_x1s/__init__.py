@@ -219,7 +219,24 @@ async def _async_handle_create_roku_device(call: ServiceCall):
     except ValueError as exc:
         raise ValueError("ip_address must be a valid IPv4 address") from exc
 
-    return await hub.async_create_roku_device(device_name=device_name, ip_address=ip_address)
+    raw_commands = call.data.get("commands") or []
+    if not isinstance(raw_commands, list):
+        raise ValueError("commands must be a list of strings")
+    if len(raw_commands) > 10:
+        raise ValueError("commands supports a maximum of 10 entries")
+
+    commands: list[str] = []
+    for command in raw_commands:
+        command_name = str(command).strip()
+        if not command_name:
+            raise ValueError("commands entries must not be empty")
+        commands.append(command_name)
+
+    return await hub.async_create_roku_device(
+        device_name=device_name,
+        ip_address=ip_address,
+        commands=commands,
+    )
 
 
 async def _async_handle_create_ip_button(call: ServiceCall):

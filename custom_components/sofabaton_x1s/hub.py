@@ -435,6 +435,7 @@ class SofabatonHub:
         self,
         device_name: str = "Home Assistant",
         ip_address: str = "192.168.2.77",
+        commands: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """Replay the Roku virtual-device creation sequence on the selected hub."""
 
@@ -442,6 +443,7 @@ class SofabatonHub:
             self._proxy.create_roku_device,
             device_name,
             ip_address,
+            commands,
         )
 
     async def _async_fetch_activity_commands(self, act_id: int) -> None:
