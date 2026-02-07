@@ -1152,10 +1152,11 @@ class X1Proxy:
         ]
 
         if commands:
+            hub_action_id = self._stable_hub_action_id()
             for idx, command_name in enumerate(commands[: len(_ROKU_APP_SLOTS)]):
                 slot, code = _ROKU_APP_SLOTS[idx]
                 normalized = command_name.replace(" ", "_")
-                action = f"launch/{self.proxy_id}-{normalized}"
+                action = f"launch/{hub_action_id}/{device_id}/{normalized}"
                 command_defs.append((slot, code, command_name, action))
 
         for slot, code, name, action in command_defs:
@@ -1283,6 +1284,17 @@ class X1Proxy:
 
         log.info("[ROKU] replayed Roku create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
+
+    def _stable_hub_action_id(self) -> str:
+        """Return a stable hub identifier for Roku command actions."""
+
+        raw_mac = str(self.mdns_txt.get("MAC") or self.mdns_txt.get("mac") or "").strip()
+        if raw_mac:
+            normalized_mac = re.sub(r"[^0-9A-Fa-f]", "", raw_mac).lower()
+            if normalized_mac:
+                return normalized_mac
+
+        return str(self.proxy_id).strip()
 
     def _build_virtual_device_frames(
         self,

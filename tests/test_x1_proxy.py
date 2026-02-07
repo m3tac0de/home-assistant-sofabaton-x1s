@@ -361,7 +361,14 @@ def test_create_roku_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
 
 
 def test_create_roku_device_uses_custom_app_commands(monkeypatch) -> None:
-    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, proxy_id="proxy-123")
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        proxy_id="proxy-123",
+        mdns_txt={"MAC": "AA:BB:CC:DD:EE:FF"},
+    )
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
     monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x07)
@@ -394,8 +401,14 @@ def test_create_roku_device_uses_custom_app_commands(monkeypatch) -> None:
 
     assert custom_payloads[0x18][15:45].rstrip(b"\x00") == b"Lights On"
     assert custom_payloads[0x19][15:45].rstrip(b"\x00") == b"Lights Off"
-    assert action_1 == "launch/proxy-123-Lights_On"
-    assert action_2 == "launch/proxy-123-Lights_Off"
+    assert action_1 == "launch/aabbccddeeff/7/Lights_On"
+    assert action_2 == "launch/aabbccddeeff/7/Lights_Off"
+
+
+def test_stable_hub_action_id_falls_back_to_proxy_id() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, proxy_id="proxy-123")
+
+    assert proxy._stable_hub_action_id() == "proxy-123"
 
 
 def test_create_roku_device_without_custom_commands_skips_app_slots(monkeypatch) -> None:
