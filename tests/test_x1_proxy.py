@@ -229,6 +229,97 @@ def test_find_remote_uses_x2_opcode(monkeypatch) -> None:
     assert sent == [(OP_FIND_REMOTE_X2, b"\x00\x00\x08")]
 
 
+def test_send_family_frame_sets_length_in_opcode(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    payload = bytes.fromhex("01 02 03")
+    proxy._send_family_frame(0x0E, payload)
+
+    assert sent == [((len(payload) << 8) | 0x0E, payload)]
+
+
+def test_create_roku_device_replays_sequence(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x07)
+    ack_waits: list[list[tuple[int, int | None]]] = []
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        ack_waits.append(candidates)
+        first_opcode = candidates[0][0]
+        return first_opcode, b"\x00"
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_roku_device()
+
+    assert result == {"device_id": 0x07, "status": "success"}
+    assert sent
+    # first frame is the create-device head family
+    assert (sent[0][0] & 0xFF) == 0x07
+    families = {opcode & 0xFF for opcode, _ in sent}
+    assert {0x07, 0x0E, 0x3E, 0x41, 0x12, 0x46, 0x08, 0x64}.issubset(families)
+    assert ack_waits[0][0] == (0x0107, None)
+    assert ack_waits[-1][0] == (0x0103, None)
+    assert any((0x013E, 0xAB) in wait for wait in ack_waits)
+    assert any((0x0112, 0xC6) in wait for wait in ack_waits)
+    assert any((0x0112, 0xC7) in wait for wait in ack_waits)
+
+
+def test_wait_for_roku_ack_matches_opcode_and_button() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    proxy.notify_roku_ack(0x0103, b"\x00")
+    proxy.notify_roku_ack(0x013E, b"\xAB")
+
+    assert proxy.wait_for_roku_ack(0x013E, first_byte=0xAB, timeout=0.1) is True
+    assert proxy.wait_for_roku_ack(0x0103, timeout=0.1) is True
+
+
+def test_wait_for_roku_ack_timeout() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    assert proxy.wait_for_roku_ack(0x0112, first_byte=0xC6, timeout=0.01) is False
+
+
+def test_send_roku_step_uses_fallback_ack() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    sent: list[tuple[int, bytes]] = []
+    proxy._send_cmd_frame = lambda opcode, payload: sent.append((opcode, payload))  # type: ignore[method-assign]
+
+    def _wait_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        assert candidates == [(0x013E, 0xAB), (0x0103, None)]
+        return 0x0103, b"\x0c"
+
+    proxy.wait_for_roku_ack_any = _wait_any  # type: ignore[method-assign]
+
+    ok = proxy._send_roku_step(
+        step_name="map-button[0xAB]",
+        family=0x3E,
+        payload=b"\x00" * 25,
+        ack_opcode=0x013E,
+        ack_first_byte=0xAB,
+        ack_fallback_opcodes=(0x0103,),
+    )
+
+    assert ok is True
+    assert sent
+
+
 def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",

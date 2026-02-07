@@ -17,6 +17,28 @@ fetch_device_commands:
           max: 255
           mode: box
 
+create_roku_device:
+  name: Create Roku device
+  description: Replay the captured Roku device-creation sequence on the selected hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: false
+      selector:
+        device:
+          integration: sofabaton_x1s
+    hub:
+      name: Hub entry id or MAC (optional)
+      required: false
+      selector:
+        text:
+    entity_id:
+      name: Related entity
+      required: false
+      selector:
+        entity:
+          integration: sofabaton_x1s
+
 create_ip_button:
   name: Create virtual IP button
   description: Create a virtual HTTP device/button on the hub based on an IP command definition.

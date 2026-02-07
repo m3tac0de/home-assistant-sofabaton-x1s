@@ -431,6 +431,11 @@ class SofabatonHub:
         else:
             await self._async_fetch_device_commands(ent_id)
 
+    async def async_create_roku_device(self) -> dict[str, Any] | None:
+        """Replay the Roku virtual-device creation sequence on the selected hub."""
+
+        return await self.hass.async_add_executor_job(self._proxy.create_roku_device)
+
     async def _async_fetch_activity_commands(self, act_id: int) -> None:
         self._reset_entity_cache(
             act_id, clear_buttons=True, clear_favorites=True, clear_macros=True

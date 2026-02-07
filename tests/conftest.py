@@ -16,9 +16,11 @@ def _install_homeassistant_stubs() -> None:
 
     vol.Schema = _Schema
     vol.Required = lambda key, default=None: key  # type: ignore[assignment]
+    vol.Optional = lambda key, default=None: key  # type: ignore[assignment]
     vol.All = lambda *args, **kwargs: args  # type: ignore[assignment]
     vol.Range = lambda **kwargs: kwargs  # type: ignore[assignment]
     vol.In = lambda *args, **kwargs: args  # type: ignore[assignment]
+    vol.ALLOW_EXTRA = object()
     sys.modules.setdefault("voluptuous", vol)
 
     ha = types.ModuleType("homeassistant")
@@ -134,6 +136,22 @@ def _install_homeassistant_stubs() -> None:
 
     components = types.ModuleType("homeassistant.components")
     sys.modules.setdefault("homeassistant.components", components)
+
+    frontend = types.ModuleType("homeassistant.components.frontend")
+    frontend.add_extra_js_url = lambda *args, **kwargs: None
+    sys.modules.setdefault("homeassistant.components.frontend", frontend)
+    components.frontend = frontend
+
+    http = types.ModuleType("homeassistant.components.http")
+
+    class StaticPathConfig:  # pragma: no cover - only used as stub
+        def __init__(self, url_path: str, path: str, cache_headers: bool) -> None:
+            self.url_path = url_path
+            self.path = path
+            self.cache_headers = cache_headers
+
+    http.StaticPathConfig = StaticPathConfig
+    sys.modules.setdefault("homeassistant.components.http", http)
 
     zeroconf = types.ModuleType("homeassistant.components.zeroconf")
     zeroconf.async_get_instance = lambda *args, **kwargs: None

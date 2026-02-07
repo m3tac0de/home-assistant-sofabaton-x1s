@@ -8,7 +8,7 @@ import socket
 import struct
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..const import HUB_VERSION_X1, HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
@@ -78,6 +78,10 @@ log = logging.getLogger("x1proxy")
 
 def _sum8(b: bytes) -> int: return sum(b) & 0xFF
 def _hexdump(data: bytes) -> str: return data.hex(" ")
+
+
+def _hex_to_bytes(raw_hex: str) -> bytes:
+    return bytes.fromhex(raw_hex)
 
 def _normalize_mdns_instance(name: str) -> str:
     """Return an mDNS-friendly instance name without whitespace."""
@@ -236,6 +240,12 @@ class X1Proxy:
         self._pending_virtual: dict[str, Any] | None = None
         self._pending_virtual_event = threading.Event()
         self._pending_virtual_lock = threading.Lock()
+        self._pending_roku_device_id: int | None = None
+        self._pending_roku_event = threading.Event()
+        self._pending_roku_lock = threading.Lock()
+        self._roku_ack_lock = threading.Lock()
+        self._roku_ack_events: deque[tuple[int, bytes]] = deque()
+        self._roku_ack_event = threading.Event()
 
         self.transport = TransportBridge(
             real_hub_ip,
@@ -318,6 +328,58 @@ class X1Proxy:
         head = bytes([SYNC0, SYNC1, (opcode >> 8) & 0xFF, opcode & 0xFF])
         frame = head + payload
         return frame + bytes([_sum8(frame)])
+
+    def _send_family_frame(self, family: int, payload: bytes) -> None:
+        opcode = ((len(payload) & 0xFF) << 8) | (family & 0xFF)
+        log.info(
+            "[ROKU] send family=0x%02X opcode=0x%04X payload=%dB",
+            family,
+            opcode,
+            len(payload),
+        )
+        self._send_cmd_frame(opcode, payload)
+
+    def _send_roku_step(
+        self,
+        *,
+        step_name: str,
+        family: int,
+        payload: bytes,
+        ack_opcode: int,
+        ack_first_byte: int | None = None,
+        ack_fallback_opcodes: tuple[int, ...] = (),
+        timeout: float = 5.0,
+    ) -> bool:
+        log.info(
+            "[ROKU][STEP] %s tx family=0x%02X expect_ack=0x%04X first_byte=%s",
+            step_name,
+            family,
+            ack_opcode,
+            f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
+        )
+        self._send_family_frame(family, payload)
+
+        candidates: list[tuple[int, int | None]] = [(ack_opcode, ack_first_byte)]
+        candidates.extend((fallback_opcode, None) for fallback_opcode in ack_fallback_opcodes)
+        matched = self.wait_for_roku_ack_any(candidates, timeout=timeout)
+        if matched is None:
+            log.warning(
+                "[ROKU][STEP] %s failed waiting ack=0x%04X first_byte=%s",
+                step_name,
+                ack_opcode,
+                f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
+            )
+            return False
+        matched_opcode, _matched_payload = matched
+        if matched_opcode != ack_opcode:
+            log.warning(
+                "[ROKU][STEP] %s matched fallback ack=0x%04X (expected=0x%04X)",
+                step_name,
+                matched_opcode,
+                ack_opcode,
+            )
+        log.info("[ROKU][STEP] %s acked via 0x%04X", step_name, matched_opcode)
+        return True
 
     def _utf16le_padded(self, text: str, *, length: int) -> bytes:
         data = text.encode("utf-16le")
@@ -844,6 +906,277 @@ class X1Proxy:
             if snapshot.get("status") == "success":
                 self._pending_virtual = None
         return snapshot
+
+    def start_roku_create(self) -> None:
+        with self._pending_roku_lock:
+            self._pending_roku_event.clear()
+            self._pending_roku_device_id = None
+        with self._roku_ack_lock:
+            self._roku_ack_events.clear()
+            self._roku_ack_event.clear()
+
+    def update_roku_device_id(self, device_id: int) -> None:
+        with self._pending_roku_lock:
+            self._pending_roku_device_id = device_id & 0xFF
+            self._pending_roku_event.set()
+
+    def wait_for_roku_device_id(self, timeout: float = 5.0) -> int | None:
+        self._pending_roku_event.wait(timeout)
+        with self._pending_roku_lock:
+            return self._pending_roku_device_id
+
+    def notify_roku_ack(self, opcode: int, payload: bytes) -> None:
+        with self._roku_ack_lock:
+            self._roku_ack_events.append((opcode, payload))
+            self._roku_ack_event.set()
+
+    def wait_for_roku_ack(
+        self,
+        opcode: int,
+        *,
+        first_byte: int | None = None,
+        timeout: float = 5.0,
+    ) -> bool:
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._roku_ack_lock:
+                for ack_opcode, ack_payload in self._roku_ack_events:
+                    if ack_opcode != opcode:
+                        continue
+                    if first_byte is not None and (not ack_payload or ack_payload[0] != (first_byte & 0xFF)):
+                        continue
+                    self._roku_ack_events.remove((ack_opcode, ack_payload))
+                    if not self._roku_ack_events:
+                        self._roku_ack_event.clear()
+                    log.info(
+                        "[ROKU] ack opcode=0x%04X payload=%s",
+                        ack_opcode,
+                        ack_payload.hex(" "),
+                    )
+                    return True
+                self._roku_ack_event.clear()
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                log.warning(
+                    "[ROKU] timeout waiting ack opcode=0x%04X first_byte=%s",
+                    opcode,
+                    f"0x{first_byte:02X}" if first_byte is not None else "*",
+                )
+                return False
+            self._roku_ack_event.wait(min(remaining, 0.2))
+
+    def wait_for_roku_ack_any(
+        self,
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._roku_ack_lock:
+                for ack_opcode, ack_payload in self._roku_ack_events:
+                    for want_opcode, want_first_byte in candidates:
+                        if ack_opcode != want_opcode:
+                            continue
+                        if want_first_byte is not None and (not ack_payload or ack_payload[0] != (want_first_byte & 0xFF)):
+                            continue
+                        self._roku_ack_events.remove((ack_opcode, ack_payload))
+                        if not self._roku_ack_events:
+                            self._roku_ack_event.clear()
+                        log.info(
+                            "[ROKU] ack opcode=0x%04X payload=%s",
+                            ack_opcode,
+                            ack_payload.hex(" "),
+                        )
+                        return ack_opcode, ack_payload
+                self._roku_ack_event.clear()
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                wanted = ", ".join(
+                    f"0x{op:04X}/{('*' if first is None else f'0x{first:02X}') }" for op, first in candidates
+                )
+                log.warning("[ROKU] timeout waiting any ack in [%s]", wanted)
+                return None
+            self._roku_ack_event.wait(min(remaining, 0.2))
+
+    def create_roku_device(self) -> dict[str, Any] | None:
+        if not self.can_issue_commands():
+            log.info("[ROKU] create_roku_device ignored: proxy client is connected")
+            return None
+
+        self.start_roku_create()
+        log.info("[ROKU] starting exact Roku create replay sequence")
+
+        if not self._send_roku_step(
+            step_name="create-device",
+            family=0x07,
+            payload=_hex_to_bytes(
+                "01 00 01 01 00 01 00 ff 01 00 0a 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                "4d 00 48 6f 6d 65 20 41 73 73 69 73 74 61 6e 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                "48 6f 6d 65 20 41 73 73 69 73 74 61 6e 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                "fc 55 c0 a8 02 4d fc 00 00 fc 02 00 02 00 fc 00 fc 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+            ),
+            ack_opcode=0x0107,
+        ):
+            return None
+
+        device_id = self.wait_for_roku_device_id(timeout=5.0)
+        if device_id is None:
+            log.warning("[ROKU] hub did not provide device id after create request")
+            return None
+        log.info("[ROKU] hub assigned device id=0x%02X", device_id)
+
+        command_defs: list[tuple[int, int, str, str]] = [
+            (0x01, 0x1718, "PowerOff", "keypress/PowerOff"),
+            (0x02, 0x1713, "PowerOn", "keypress/PowerOn"),
+            (0x03, 0x075A, "InputTuner", "keypress/InputTuner"),
+            (0x04, 0x3202, "InputHDMI1", "keypress/InputHDMI1"),
+            (0x05, 0x3203, "InputHDMI2", "keypress/InputHDMI2"),
+            (0x06, 0x3204, "InputHDMI3", "keypress/InputHDMI3"),
+            (0x07, 0x3205, "InputHDMI4", "keypress/InputHDMI4"),
+            (0x08, 0x3262, "InputAV1", "keypress/InputAV1"),
+            (0x09, 0x0074, "Back", "keypress/Back"),
+            (0x0A, 0x07C7, "Home", "keypress/Home"),
+            (0x0B, 0x0030, "Left", "keypress/Left"),
+            (0x0C, 0x002E, "Up", "keypress/Up"),
+            (0x0D, 0x0031, "Right", "keypress/Right"),
+            (0x0E, 0x002F, "Down", "keypress/Down"),
+            (0x0F, 0x002A, "Ok", "keypress/Select"),
+            (0x10, 0x0256, "InstantReplay", "keypress/InstantReplay"),
+            (0x11, 0x00D3, "Info", "keypress/Info"),
+            (0x12, 0x006A, "VolumeMute", "keypress/VolumeMute"),
+            (0x13, 0x0033, "VolumeDown", "keypress/VolumeDown"),
+            (0x14, 0x2E77, "VolumeUp", "keypress/VolumeUp"),
+            (0x15, 0x008D, "Rev", "keypress/Rev"),
+            (0x16, 0x0092, "Play", "keypress/Play"),
+            (0x17, 0x0097, "Fwd", "keypress/Fwd"),
+            (0x18, 0x4E21, "Emulated App 1", "launch/1"),
+            (0x19, 0x4E22, "Emulated App 2", "launch/2"),
+            (0x1A, 0x4E23, "Emulated App 3", "launch/3"),
+            (0x1B, 0x4E24, "Emulated App 4", "launch/4"),
+            (0x1C, 0x4E25, "Emulated App 5", "launch/5"),
+            (0x1D, 0x4E26, "Emulated App 6", "launch/6"),
+            (0x1E, 0x4E27, "Emulated App 7", "launch/7"),
+            (0x1F, 0x4E28, "Emulated App 8", "launch/8"),
+            (0x20, 0x4E29, "Emulated App 9", "launch/9"),
+            (0x21, 0x4E2A, "Emulated App 10", "launch/10"),
+        ]
+
+        for slot, code, name, action in command_defs:
+            name_blob = name.encode("ascii", errors="ignore")[:30].ljust(30, b"\x00")
+            action_blob = action.encode("ascii", errors="ignore")[:255]
+            payload_base = (
+                bytes([slot, 0x00, 0x01, 0x21, 0x00, 0x01, device_id, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x00])
+                + code.to_bytes(2, "big")
+                + name_blob
+                + bytes([len(action_blob)])
+                + action_blob
+            )
+            payload_token = (sum(payload_base) - (slot + 1)) & 0xFF
+            payload = payload_base + bytes([payload_token])
+            if not self._send_roku_step(
+                step_name=f"define-command[{slot:02d}] {name}",
+                family=0x0E,
+                payload=payload,
+                ack_opcode=0x0103,
+            ):
+                return None
+
+        mapping_defs: list[tuple[int, int]] = [
+            (0xAB, 0x1713),
+            (0xB3, 0x0074),
+            (0xB4, 0x07C7),
+            (0xAF, 0x0030),
+            (0xAE, 0x002E),
+            (0xB1, 0x0031),
+            (0xB2, 0x002F),
+            (0xB0, 0x002A),
+            (0xB8, 0x006A),
+            (0xB9, 0x0033),
+            (0xB6, 0x2E77),
+            (0xBB, 0x008D),
+            (0xBC, 0x0092),
+            (0xBD, 0x0097),
+        ]
+        for button_id, code in mapping_defs:
+            payload = (
+                bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id, button_id, device_id, 0x00, 0x00, 0x00, 0x00])
+                + code.to_bytes(2, "big")
+                + b"\x00" * 10
+            )
+            if not self._send_roku_step(
+                step_name=f"map-button[0x{button_id:02X}]",
+                family=0x3E,
+                payload=payload,
+                ack_opcode=0x013E,
+                ack_first_byte=button_id,
+                ack_fallback_opcodes=(0x0103,),
+            ):
+                return None
+
+        if not self._send_roku_step(
+            step_name="post-map-commit",
+            family=0x41,
+            payload=bytes([device_id, 0x01]),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        for button_id, code, name in ((0xC6, 0x1713, "POWER_ON"), (0xC7, 0x1718, "POWER_OFF")):
+            name_blob = name.encode("ascii", errors="ignore")[:30].ljust(30, b"\x00")
+            payload_base = (
+                bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id, button_id, 0x01, device_id, 0x00, 0x00, 0x00, 0x00, 0x00])
+                + code.to_bytes(2, "big")
+                + b"\x00\xff"
+                + name_blob
+            )
+            payload_token = (sum(payload_base) - 0x02) & 0xFF
+            payload = payload_base + bytes([payload_token])
+            if not self._send_roku_step(
+                step_name=f"define-power[{name}]",
+                family=0x12,
+                payload=payload,
+                ack_opcode=0x0112,
+                ack_first_byte=button_id,
+                ack_fallback_opcodes=(0x0103,),
+            ):
+                return None
+
+        if not self._send_roku_step(
+            step_name="sync-stage-7746",
+            family=0x46,
+            payload=bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 112),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        payload_7b08 = _hex_to_bytes(
+            "01 00 01 01 00 01 00 03 01 00 0a 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "4d 00 48 6f 6d 65 20 41 73 73 69 73 74 61 6e 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "48 6f 6d 65 20 41 73 73 69 73 74 61 6e 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "fc 55 c0 a8 02 4d fc 00 00 fc 02 00 02 00 fc 00 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 00"
+        )
+        payload_7b08 = payload_7b08[:7] + bytes([device_id]) + payload_7b08[8:]
+        if not self._send_roku_step(
+            step_name="finalize-device-7b08",
+            family=0x08,
+            payload=payload_7b08,
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        if not self._send_roku_step(
+            step_name="save-tail-0064",
+            family=0x64,
+            payload=b"",
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        log.info("[ROKU] replayed Roku create sequence for dev=0x%02X", device_id)
+        return {"device_id": device_id, "status": "success"}
 
     def _build_virtual_device_frames(
         self,

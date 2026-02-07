@@ -73,6 +73,9 @@ if TYPE_CHECKING:
     from .x1_proxy import X1Proxy
 
 
+OP_CREATE_DEVICE_ACK = 0x0107
+
+
 def _consume_length_prefixed_string(buf: bytes, offset: int) -> tuple[str, int]:
     """Decode a length-prefixed UTF-8 string from ``buf`` starting at ``offset``."""
 
@@ -484,6 +487,30 @@ class SaveCommitHandler(BaseFrameHandler):
             return
         proxy.update_virtual_device(status="success")
         log.info("[CREATE] save commit/ack success")
+
+
+@register_handler(opcodes=(OP_CREATE_DEVICE_ACK,), directions=("H→A",))
+class RokuCreateDeviceAckHandler(BaseFrameHandler):
+    """Capture device id from create-device ack during Roku replay."""
+
+    def handle(self, frame: FrameContext) -> None:
+        payload = frame.payload
+        if len(payload) < 1:
+            return
+        proxy: X1Proxy = frame.proxy
+        proxy.update_roku_device_id(payload[0])
+        proxy.notify_roku_ack(frame.opcode, payload)
+        log.info("[ROKU] create ack device_id=0x%02X", payload[0])
+
+
+@register_handler(opcodes=(0x0103, 0x013E, 0x0112), directions=("H→A",))
+class RokuAckHandler(BaseFrameHandler):
+    """Capture Roku replay ACK frames so replay can gate each next step."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        proxy.notify_roku_ack(frame.opcode, frame.payload)
+        log.info("[ROKU] ack opcode=0x%04X payload=%s", frame.opcode, frame.payload.hex(" "))
 
 
 @register_handler(opcodes=(OP_REQ_ACTIVATE,), directions=("A→H",))
