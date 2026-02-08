@@ -25,6 +25,7 @@ from .const import (
     CONF_MAC,
     CONF_PROXY_ENABLED,
     CONF_HEX_LOGGING_ENABLED,
+    CONF_ROKU_SERVER_ENABLED,
     CONF_MDNS_VERSION,
     CONF_ENABLE_X2_DISCOVERY,
 )
@@ -34,6 +35,7 @@ from .diagnostics import (
     async_teardown_diagnostics,
 )
 from .hub import SofabatonHub
+from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
 _ALPHANUM_SPACE_RE = re.compile(r"^[A-Za-z0-9 ]+$")
@@ -135,6 +137,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hub_listen_base = opts.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
     proxy_enabled = opts.get(CONF_PROXY_ENABLED, True)
     hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
+    roku_server_enabled = opts.get(CONF_ROKU_SERVER_ENABLED, False)
     version = data.get(CONF_MDNS_VERSION) or opts.get(CONF_MDNS_VERSION)
     hub = SofabatonHub(
         hass=hass,
@@ -147,6 +150,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hub_listen_base=hub_listen_base,
         proxy_enabled=proxy_enabled,
         hex_logging_enabled=hex_logging_enabled,
+        roku_server_enabled=roku_server_enabled,
         version=version,
     )
     await hub.async_start()
@@ -159,6 +163,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     #    hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
         
     hass.data[DOMAIN][entry.entry_id] = hub
+
+    roku_listener = await async_get_roku_listener(hass)
+    await roku_listener.async_register_hub(hub, enabled=roku_server_enabled)
 
     # ← important: tell HA to call us when options change
     entry.async_on_unload(
@@ -195,6 +202,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async_teardown_diagnostics(hass)
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
+            roku_listener = await async_get_roku_listener(hass)
+            await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()
     return unload_ok
     

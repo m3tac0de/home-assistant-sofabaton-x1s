@@ -76,3 +76,52 @@ def test_activity_fetch_clears_inflight_after_favorite_labels(monkeypatch):
     assert hub.get_index_state() == "ready"
 
     loop.close()
+
+
+def test_roku_http_post_records_activation_and_fires_bus_event():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    class _FakeBus:
+        def __init__(self) -> None:
+            self.events: list[tuple[str, dict]] = []
+
+        def async_fire(self, event_type: str, event_data: dict) -> None:
+            self.events.append((event_type, event_data))
+
+    hass = FakeHass(loop)
+    hass.bus = _FakeBus()
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/7/Lights_On",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    activations = hub.get_app_activations()
+    assert activations
+    assert activations[0]["entity_id"] == 7
+    assert activations[0]["command_label"] == "Lights On"
+
+    assert hass.bus.events
+    event_type, event_data = hass.bus.events[0]
+    assert event_type == "sofabaton_x1s_roku_request"
+    assert event_data["entry_id"] == "entry-id"
+
+    loop.close()

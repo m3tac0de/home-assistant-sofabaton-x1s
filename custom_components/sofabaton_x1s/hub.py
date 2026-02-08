@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from functools import partial
 from typing import Any, Dict, Optional
+from urllib.parse import unquote
 
 from homeassistant.components.zeroconf import async_get_instance
 from homeassistant.config_entries import ConfigEntry
@@ -11,9 +13,11 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
+    DOMAIN,
     CONF_HEX_LOGGING_ENABLED,
     CONF_MDNS_VERSION,
     CONF_PROXY_ENABLED,
+    CONF_ROKU_SERVER_ENABLED,
     signal_activity,
     signal_app_activations,
     signal_buttons,
@@ -53,6 +57,7 @@ class SofabatonHub:
         hub_listen_base: int,
         proxy_enabled: bool,
         hex_logging_enabled: bool,
+        roku_server_enabled: bool = False,
         version: str | None = None,
     ) -> None:
         self.hass = hass
@@ -75,6 +80,7 @@ class SofabatonHub:
         self.devices_ready: bool = False
         self.proxy_enabled: bool = proxy_enabled
         self.hex_logging_enabled: bool = hex_logging_enabled
+        self.roku_server_enabled: bool = roku_server_enabled
         # store mac so service can find us by mac
         self.mac = mdns_txt.get("MAC") or mdns_txt.get("mac") or None
 
@@ -674,6 +680,49 @@ class SofabatonHub:
             if macro.get("label")
         ]
 
+    def get_roku_action_id(self) -> str:
+        raw_mac = str(self.mac or "").strip()
+        normalized_mac = "".join(ch for ch in raw_mac if ch.lower() in "0123456789abcdef").lower()
+        if normalized_mac:
+            return normalized_mac
+        return str(self.entry_id).strip()
+
+    async def async_handle_roku_http_post(
+        self,
+        *,
+        path: str,
+        headers: dict[str, str],
+        body: bytes,
+        source_ip: str,
+    ) -> None:
+        parts = [part for part in path.strip("/").split("/") if part]
+        device_id = -1
+        command_label = ""
+        if len(parts) >= 4 and parts[0] == "launch":
+            try:
+                device_id = int(parts[2])
+            except ValueError:
+                device_id = -1
+            command_label = unquote("/".join(parts[3:])).replace("_", " ")
+
+        record = {
+            "entity_id": device_id,
+            "entity_kind": "device",
+            "entity_name": self.devices.get(device_id, {}).get("name") if device_id >= 0 else None,
+            "command_id": command_label,
+            "command_label": command_label,
+            "button_label": command_label,
+            "timestamp": datetime.now(timezone.utc).timestamp(),
+            "iso_time": datetime.now(timezone.utc).isoformat(),
+            "source_ip": source_ip,
+            "path": path,
+            "body": body.decode("utf-8", errors="ignore"),
+            "headers": headers,
+        }
+        self._app_activations = [record] + self._app_activations[:49]
+        async_dispatcher_send(self.hass, signal_app_activations(self.entry_id))
+        self.hass.bus.async_fire(f"{DOMAIN}_roku_request", {"entry_id": self.entry_id, **record})
+
     def get_app_activations(self) -> list[dict[str, Any]]:
         """Return recent app-originated activation requests."""
         return list(self._app_activations)
@@ -740,6 +789,18 @@ class SofabatonHub:
         self.hass.loop.call_soon_threadsafe(
             self._async_update_options, CONF_PROXY_ENABLED, enable
         )
+
+
+    async def async_set_roku_server_enabled(self, enable: bool) -> None:
+        _LOGGER.debug("[%s] Setting Roku server enabled=%s", self.entry_id, enable)
+        self.roku_server_enabled = enable
+        self.hass.loop.call_soon_threadsafe(
+            self._async_update_options, CONF_ROKU_SERVER_ENABLED, enable
+        )
+        from .roku_listener import async_get_roku_listener
+
+        listener = await async_get_roku_listener(self.hass)
+        await listener.async_set_hub_enabled(self.entry_id, enable)
 
     async def async_set_hex_logging_enabled(self, enable: bool) -> None:
         _LOGGER.debug("[%s] Setting hex logging enabled=%s", self.entry_id, enable)
