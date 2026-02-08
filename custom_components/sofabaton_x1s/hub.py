@@ -439,15 +439,15 @@ class SofabatonHub:
         else:
             await self._async_fetch_device_commands(ent_id)
 
-    async def async_create_roku_device(
+    async def async_create_wifi_device(
         self,
         device_name: str = "Home Assistant",
         commands: list[str] | None = None,
     ) -> dict[str, Any] | None:
-        """Replay the Roku virtual-device creation sequence on the selected hub."""
+        """Replay the WiFi virtual-device creation sequence on the selected hub."""
 
         return await self.hass.async_add_executor_job(
-            self._proxy.create_roku_device,
+            self._proxy.create_wifi_device,
             device_name,
             commands,
         )
@@ -800,7 +800,7 @@ class SofabatonHub:
 
 
     async def async_set_roku_server_enabled(self, enable: bool) -> None:
-        _LOGGER.debug("[%s] Setting Roku server enabled=%s", self.entry_id, enable)
+        _LOGGER.debug("[%s] Setting WiFi device enabled=%s", self.entry_id, enable)
         self.roku_server_enabled = enable
         self.hass.loop.call_soon_threadsafe(
             self._async_update_options, CONF_ROKU_SERVER_ENABLED, enable

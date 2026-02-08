@@ -61,18 +61,18 @@ class RokuListenerManager:
                     )
                 except OSError as err:
                     _LOGGER.error(
-                        "[%s] Failed to start Roku listener on port 8060: %s",
+                        "[%s] Failed to start Wifi Device listener on port 8060: %s",
                         DOMAIN,
                         err,
                     )
                     return
 
-                _LOGGER.info("[%s] Roku listener started on port 8060", DOMAIN)
+                _LOGGER.info("[%s] Wifi Device listener started on port 8060", DOMAIN)
             elif not wants_listener and self._server is not None:
                 self._server.close()
                 await self._server.wait_closed()
                 self._server = None
-                _LOGGER.info("[%s] Roku listener stopped", DOMAIN)
+                _LOGGER.info("[%s] Wifi Device listener stopped", DOMAIN)
 
     async def _async_handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
@@ -105,7 +105,7 @@ class RokuListenerManager:
             )
             self._write_response(writer, status, payload)
         except Exception:  # pragma: no cover - defensive network boundary
-            _LOGGER.exception("[%s] Roku listener failed to process request", DOMAIN)
+            _LOGGER.exception("[%s] Wifi Device listener failed to process request", DOMAIN)
             self._write_response(writer, 500, b"internal error")
         finally:
             writer.close()
@@ -139,7 +139,7 @@ class RokuListenerManager:
 
         if target.allowed_ips and source_ip and source_ip not in target.allowed_ips:
             _LOGGER.warning(
-                "[%s] Rejected Roku request for hub=%s from unexpected IP=%s",
+                "[%s] Rejected Wifi Device request for hub=%s from unexpected IP=%s",
                 DOMAIN,
                 target.hub.entry_id,
                 source_ip,

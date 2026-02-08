@@ -241,7 +241,7 @@ def test_send_family_frame_sets_length_in_opcode(monkeypatch) -> None:
     assert sent == [((len(payload) << 8) | 0x0E, payload)]
 
 
-def test_create_roku_device_replays_sequence(monkeypatch) -> None:
+def test_create_wifi_device_replays_sequence(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
@@ -262,7 +262,7 @@ def test_create_roku_device_replays_sequence(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    result = proxy.create_roku_device(commands=["Launch One"])
+    result = proxy.create_wifi_device(commands=["Launch One"])
 
     assert result == {"device_id": 0x07, "status": "success"}
     assert sent
@@ -277,7 +277,7 @@ def test_create_roku_device_replays_sequence(monkeypatch) -> None:
     assert any((0x0112, 0xC7) in wait for wait in ack_waits)
 
 
-def test_create_roku_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
+def test_create_wifi_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
@@ -297,7 +297,7 @@ def test_create_roku_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
-    result = proxy.create_roku_device(device_name="Living Room Roku", commands=["My Cmd"])
+    result = proxy.create_wifi_device(device_name="Living Room Roku", commands=["My Cmd"])
 
     assert result == {"device_id": 0x07, "status": "success"}
     create_payload = sent[0][1]
@@ -314,7 +314,7 @@ def test_create_roku_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
 
 
 
-def test_create_roku_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
+def test_create_wifi_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
         proxy_enabled=False,
@@ -340,7 +340,7 @@ def test_create_roku_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
-    result = proxy.create_roku_device(device_name="Living Room Roku", commands=["My Cmd"])
+    result = proxy.create_wifi_device(device_name="Living Room Roku", commands=["My Cmd"])
 
     assert result == {"device_id": 0x09, "status": "success"}
     create_payload = sent[0][1]
@@ -362,7 +362,7 @@ def test_create_roku_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
 
 
 
-def test_create_roku_device_uses_custom_app_commands(monkeypatch) -> None:
+def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
         proxy_enabled=False,
@@ -388,7 +388,7 @@ def test_create_roku_device_uses_custom_app_commands(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    result = proxy.create_roku_device(commands=["Lights On", "Lights Off"])
+    result = proxy.create_wifi_device(commands=["Lights On", "Lights Off"])
 
     assert result == {"device_id": 0x07, "status": "success"}
     define_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x0E]
@@ -413,7 +413,7 @@ def test_stable_hub_action_id_falls_back_to_proxy_id() -> None:
     assert proxy._stable_hub_action_id() == "proxy-123"
 
 
-def test_create_roku_device_without_custom_commands_defines_no_slots(monkeypatch) -> None:
+def test_create_wifi_device_without_custom_commands_defines_no_slots(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
@@ -432,7 +432,7 @@ def test_create_roku_device_without_custom_commands_defines_no_slots(monkeypatch
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    result = proxy.create_roku_device()
+    result = proxy.create_wifi_device()
 
     assert result == {"device_id": 0x07, "status": "success"}
     define_slots = [payload[0] for opcode, payload in sent if (opcode & 0xFF) == 0x0E]

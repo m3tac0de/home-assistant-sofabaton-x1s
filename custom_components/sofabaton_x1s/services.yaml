@@ -17,9 +17,9 @@ fetch_device_commands:
           max: 255
           mode: box
 
-create_roku_device:
-  name: Create Roku device
-  description: Replay the captured Roku device-creation sequence on the selected hub.
+create_wifi_device:
+  name: Create Wifi Device
+  description: Replay the captured Wifi Device-creation sequence on the selected hub.
   fields:
     device:
       name: Sofabaton hub
@@ -40,14 +40,14 @@ create_roku_device:
           integration: sofabaton_x1s
     device_name:
       name: Device name
-      description: Friendly name to write into the Roku virtual device record.
+      description: Friendly name to write into the Wifi Device virtual device record.
       required: false
       default: Home Assistant
       selector:
         text:
     commands:
       name: Custom commands
-      description: Required list of 1 to 10 custom command names to map into the Roku emulated app slots. Names may contain only letters, numbers, and spaces.
+      description: Required list of 1 to 10 custom command names to map into the Wifi emulated app slots. Names may contain only letters, numbers, and spaces.
       required: true
       selector:
         object:

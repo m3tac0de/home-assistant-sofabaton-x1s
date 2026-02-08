@@ -208,10 +208,10 @@ class SofabatonActivitySensor(SensorEntity):
 
 class SofabatonRecordedKeypressSensor(SensorEntity):
     _attr_should_poll = False
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_has_entity_name = True
     _attr_name = "Recorded keypress"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
+    
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
         self._entry = entry
@@ -357,9 +357,8 @@ class SofabatonRecordedKeypressSensor(SensorEntity):
 class SofabatonIpCommandsSensor(SensorEntity):
     _attr_should_poll = False
     _attr_has_entity_name = True
-    _attr_name = "IP Commands"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
+    _attr_name = "Wifi Commands"
+    
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
         self._entry = entry

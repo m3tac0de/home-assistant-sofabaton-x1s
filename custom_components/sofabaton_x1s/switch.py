@@ -22,7 +22,7 @@ async def async_setup_entry(
         [
             SofabatonProxySwitch(hub, entry),
             SofabatonHexLoggingSwitch(hub, entry),
-            SofabatonRokuServerSwitch(hub, entry),
+            SofabatonWifiDeviceSwitch(hub, entry),
         ]
     )
 
@@ -87,15 +87,15 @@ class SofabatonHexLoggingSwitch(SwitchEntity):
         await self._hub.async_set_hex_logging_enabled(False)
         self.async_write_ha_state()
 
-class SofabatonRokuServerSwitch(SwitchEntity):
+class SofabatonWifiDeviceSwitch(SwitchEntity):
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
         self._entry = entry
-        self._attr_unique_id = f"{entry.data[CONF_MAC]}_roku_server"
-        self._attr_name = f"{entry.data[CONF_NAME]} Roku server"
+        self._attr_unique_id = f"{entry.data[CONF_MAC]}_wifi_device"
+        self._attr_name = f"{entry.data[CONF_NAME]} Wifi Device"
 
     @property
     def device_info(self) -> DeviceInfo:

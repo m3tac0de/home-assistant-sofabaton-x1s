@@ -17,7 +17,7 @@ class _FakeHub:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    async def async_create_roku_device(self, *, device_name: str, commands: list[str]):
+    async def async_create_wifi_device(self, *, device_name: str, commands: list[str]):
         payload = {
             "device_name": device_name,
             "commands": commands,
@@ -26,7 +26,7 @@ class _FakeHub:
         return payload
 
 
-def test_create_roku_device_requires_commands(monkeypatch) -> None:
+def test_create_wifi_device_requires_commands(monkeypatch) -> None:
     hub = _FakeHub()
     async def _resolve(hass, call):
         return hub
@@ -35,13 +35,13 @@ def test_create_roku_device_requires_commands(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="commands requires between 1 and 10 entries"):
         asyncio.run(
-            integration._async_handle_create_roku_device(
+            integration._async_handle_create_wifi_device(
                 _FakeCall({"device_name": "Home Assistant", "commands": []})
             )
         )
 
 
-def test_create_roku_device_validates_device_name(monkeypatch) -> None:
+def test_create_wifi_device_validates_device_name(monkeypatch) -> None:
     hub = _FakeHub()
     async def _resolve(hass, call):
         return hub
@@ -50,13 +50,13 @@ def test_create_roku_device_validates_device_name(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="device_name must contain only letters, numbers, and spaces"):
         asyncio.run(
-            integration._async_handle_create_roku_device(
+            integration._async_handle_create_wifi_device(
                 _FakeCall({"device_name": "Living-Room", "commands": ["Launch"]})
             )
         )
 
 
-def test_create_roku_device_validates_command_names(monkeypatch) -> None:
+def test_create_wifi_device_validates_command_names(monkeypatch) -> None:
     hub = _FakeHub()
     async def _resolve(hass, call):
         return hub
@@ -65,13 +65,13 @@ def test_create_roku_device_validates_command_names(monkeypatch) -> None:
 
     with pytest.raises(ValueError, match="commands entries must contain only letters, numbers, and spaces"):
         asyncio.run(
-            integration._async_handle_create_roku_device(
+            integration._async_handle_create_wifi_device(
                 _FakeCall({"device_name": "Living Room", "commands": ["Do_Thing"]})
             )
         )
 
 
-def test_create_roku_device_accepts_valid_input(monkeypatch) -> None:
+def test_create_wifi_device_accepts_valid_input(monkeypatch) -> None:
     hub = _FakeHub()
     async def _resolve(hass, call):
         return hub
@@ -79,7 +79,7 @@ def test_create_roku_device_accepts_valid_input(monkeypatch) -> None:
     monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
 
     result = asyncio.run(
-        integration._async_handle_create_roku_device(
+        integration._async_handle_create_wifi_device(
             _FakeCall({"device_name": "Living Room", "commands": ["Lights On", "Lights Off"]})
         )
     )

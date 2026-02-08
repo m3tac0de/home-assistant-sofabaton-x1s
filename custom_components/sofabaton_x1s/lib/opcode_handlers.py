@@ -500,7 +500,7 @@ class RokuCreateDeviceAckHandler(BaseFrameHandler):
         proxy: X1Proxy = frame.proxy
         proxy.update_roku_device_id(payload[0])
         proxy.notify_roku_ack(frame.opcode, payload)
-        log.info("[ROKU] create ack device_id=0x%02X", payload[0])
+        log.info("[WIFI] create ack device_id=0x%02X", payload[0])
 
 
 @register_handler(opcodes=(0x0103, 0x013E, 0x0112), directions=("H→A",))
@@ -510,7 +510,7 @@ class RokuAckHandler(BaseFrameHandler):
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         proxy.notify_roku_ack(frame.opcode, frame.payload)
-        log.info("[ROKU] ack opcode=0x%04X payload=%s", frame.opcode, frame.payload.hex(" "))
+        log.info("[ACK] opcode=0x%04X payload=%s", frame.opcode, frame.payload.hex(" "))
 
 
 @register_handler(opcodes=(OP_REQ_ACTIVATE,), directions=("A→H",))

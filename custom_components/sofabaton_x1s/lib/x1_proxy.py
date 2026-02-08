@@ -363,7 +363,7 @@ class X1Proxy:
     def _send_family_frame(self, family: int, payload: bytes) -> None:
         opcode = ((len(payload) & 0xFF) << 8) | (family & 0xFF)
         log.info(
-            "[ROKU] send family=0x%02X opcode=0x%04X payload=%dB",
+            "[WIFI] send family=0x%02X opcode=0x%04X payload=%dB",
             family,
             opcode,
             len(payload),
@@ -382,7 +382,7 @@ class X1Proxy:
         timeout: float = 5.0,
     ) -> bool:
         log.info(
-            "[ROKU][STEP] %s tx family=0x%02X expect_ack=0x%04X first_byte=%s",
+            "[WIFI][STEP] %s tx family=0x%02X expect_ack=0x%04X first_byte=%s",
             step_name,
             family,
             ack_opcode,
@@ -395,7 +395,7 @@ class X1Proxy:
         matched = self.wait_for_roku_ack_any(candidates, timeout=timeout)
         if matched is None:
             log.warning(
-                "[ROKU][STEP] %s failed waiting ack=0x%04X first_byte=%s",
+                "[WIFI][STEP] %s failed waiting ack=0x%04X first_byte=%s",
                 step_name,
                 ack_opcode,
                 f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
@@ -404,12 +404,12 @@ class X1Proxy:
         matched_opcode, _matched_payload = matched
         if matched_opcode != ack_opcode:
             log.warning(
-                "[ROKU][STEP] %s matched fallback ack=0x%04X (expected=0x%04X)",
+                "[WIFI][STEP] %s matched fallback ack=0x%04X (expected=0x%04X)",
                 step_name,
                 matched_opcode,
                 ack_opcode,
             )
-        log.info("[ROKU][STEP] %s acked via 0x%04X", step_name, matched_opcode)
+        log.info("[WIFI][STEP] %s acked via 0x%04X", step_name, matched_opcode)
         return True
 
     def _utf16le_padded(self, text: str, *, length: int) -> bytes:
@@ -980,7 +980,7 @@ class X1Proxy:
                     if not self._roku_ack_events:
                         self._roku_ack_event.clear()
                     log.info(
-                        "[ROKU] ack opcode=0x%04X payload=%s",
+                        "[ACK] opcode=0x%04X payload=%s",
                         ack_opcode,
                         ack_payload.hex(" "),
                     )
@@ -990,7 +990,7 @@ class X1Proxy:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 log.warning(
-                    "[ROKU] timeout waiting ack opcode=0x%04X first_byte=%s",
+                    "[ACK] timeout waiting opcode=0x%04X first_byte=%s",
                     opcode,
                     f"0x{first_byte:02X}" if first_byte is not None else "*",
                 )
@@ -1016,7 +1016,7 @@ class X1Proxy:
                         if not self._roku_ack_events:
                             self._roku_ack_event.clear()
                         log.info(
-                            "[ROKU] ack opcode=0x%04X payload=%s",
+                            "[ACK] opcode=0x%04X payload=%s",
                             ack_opcode,
                             ack_payload.hex(" "),
                         )
@@ -1028,7 +1028,7 @@ class X1Proxy:
                 wanted = ", ".join(
                     f"0x{op:04X}/{('*' if first is None else f'0x{first:02X}') }" for op, first in candidates
                 )
-                log.warning("[ROKU] timeout waiting any ack in [%s]", wanted)
+                log.warning("[ACK] timeout waiting any in [%s]", wanted)
                 return None
             self._roku_ack_event.wait(min(remaining, 0.2))
 
@@ -1103,19 +1103,19 @@ class X1Proxy:
 
         return _route_local_ip(self.real_hub_ip)
 
-    def create_roku_device(
+    def create_wifi_device(
         self,
         device_name: str = "Home Assistant",
         commands: list[str] | None = None,
     ) -> dict[str, Any] | None:
         if not self.can_issue_commands():
-            log.info("[ROKU] create_roku_device ignored: proxy client is connected")
+            log.info("[WIFI] create_wifi_device ignored: proxy client is connected")
             return None
 
         ip_address = self.get_routed_local_ip()
 
         self.start_roku_create()
-        log.info("[ROKU] starting exact Roku create replay sequence")
+        log.info("[WIFI] starting exact Wifi Device create replay sequence")
 
         if not self._send_roku_step(
             step_name="create-device",
@@ -1127,9 +1127,9 @@ class X1Proxy:
 
         device_id = self.wait_for_roku_device_id(timeout=5.0)
         if device_id is None:
-            log.warning("[ROKU] hub did not provide device id after create request")
+            log.warning("[WIFI] hub did not provide device id after create request")
             return None
-        log.info("[ROKU] hub assigned device id=0x%02X", device_id)
+        log.info("[WIFI] hub assigned device id=0x%02X", device_id)
 
         command_defs: list[tuple[int, int, str, str]] = []
 
@@ -1265,11 +1265,11 @@ class X1Proxy:
         ):
             return None
 
-        log.info("[ROKU] replayed Roku create sequence for dev=0x%02X", device_id)
+        log.info("[WIFI] replayed Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
 
     def _stable_hub_action_id(self) -> str:
-        """Return a stable hub identifier for Roku command actions."""
+        """Return a stable hub identifier for WiFi command actions."""
 
         raw_mac = str(self.mdns_txt.get("MAC") or self.mdns_txt.get("mac") or "").strip()
         if raw_mac:
