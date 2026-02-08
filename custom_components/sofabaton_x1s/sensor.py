@@ -22,19 +22,21 @@ from .const import (
     signal_hub,
     signal_macros,
     signal_app_activations,
+    signal_ip_commands,
 )
 from .hub import SofabatonHub, get_hub_model
 
 
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
     hub: SofabatonHub = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        [
-            SofabatonIndexSensor(hub, entry),
-            SofabatonActivitySensor(hub, entry),
-            SofabatonRecordedKeypressSensor(hub, entry),
-        ]
-    )
+    entities = [
+        SofabatonIndexSensor(hub, entry),
+        SofabatonActivitySensor(hub, entry),
+        SofabatonRecordedKeypressSensor(hub, entry),
+    ]
+    if hub.roku_server_enabled:
+        entities.append(SofabatonIpCommandsSensor(hub, entry))
+    async_add_entities(entities)
 
 
 class SofabatonIndexSensor(SensorEntity):
@@ -349,4 +351,108 @@ class SofabatonRecordedKeypressSensor(SensorEntity):
             or self._last_activation.get("button_label"),
             "button_label": self._last_activation.get("button_label"),
             "example_remote_send_command": example_remote_send_command,
+        }
+
+
+class SofabatonIpCommandsSensor(SensorEntity):
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_name = "IP Commands"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
+        self._hub = hub
+        self._entry = entry
+        self._attr_unique_id = f"{entry.data[CONF_MAC]}_ip_commands"
+        self._last_command: dict | None = None
+        self._time_unsub = None
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
+            name=self._entry.data[CONF_NAME],
+            model=get_hub_model(self._entry),
+        )
+
+    async def async_added_to_hass(self) -> None:
+        self._last_command = self._hub.get_last_ip_command()
+        self._schedule_time_updates()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_ip_commands(self._hub.entry_id),
+                self._handle_ip_command,
+            )
+        )
+
+    @callback
+    def _handle_ip_command(self) -> None:
+        self._last_command = self._hub.get_last_ip_command()
+        self._schedule_time_updates()
+        self.async_write_ha_state()
+
+    def _schedule_time_updates(self) -> None:
+        if self._last_command is None:
+            if self._time_unsub:
+                self._time_unsub()
+                self._time_unsub = None
+            return
+
+        if self._time_unsub is None:
+            self._time_unsub = async_track_time_interval(
+                self.hass, self._refresh_state, timedelta(seconds=5)
+            )
+            self.async_on_remove(self._time_unsub)
+
+    @callback
+    def _refresh_state(self, _now) -> None:
+        if self._last_command:
+            self.async_write_ha_state()
+        else:
+            if self._time_unsub:
+                self._time_unsub()
+                self._time_unsub = None
+
+    @property
+    def available(self) -> bool:
+        return self._hub.roku_server_enabled
+
+    @property
+    def state(self) -> str:
+        if not self._last_command:
+            return "No buttons pressed"
+
+        timestamp = self._last_command.get("timestamp")
+        if not timestamp:
+            return "Unknown"
+
+        seconds = int(dt_util.utcnow().timestamp() - float(timestamp))
+        if seconds < 5:
+            return "Just now"
+        if seconds < 60:
+            return f"{seconds} seconds ago"
+        minutes = seconds // 60
+        if minutes < 60:
+            suffix = "minute" if minutes == 1 else "minutes"
+            return f"{minutes} {suffix} ago"
+        hours = minutes // 60
+        if hours < 24:
+            suffix = "hour" if hours == 1 else "hours"
+            return f"{hours} {suffix} ago"
+        days = hours // 24
+        suffix = "day" if days == 1 else "days"
+        return f"{days} {suffix} ago"
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self._last_command:
+            return {}
+
+        return {
+            "received_command": self._last_command.get("command_label"),
+            "from_device": self._last_command.get("entity_name"),
+            "timestamp": self._last_command.get("iso_time")
+            or self._last_command.get("timestamp"),
+            "source_ip": self._last_command.get("source_ip"),
         }

@@ -20,6 +20,7 @@ from .const import (
     CONF_ROKU_SERVER_ENABLED,
     signal_activity,
     signal_app_activations,
+    signal_ip_commands,
     signal_buttons,
     signal_client,
     signal_commands,
@@ -90,6 +91,7 @@ class SofabatonHub:
         self._buttons_ready_for: set[int] = set()
         self._commands_in_flight: set[int] = set()    # entities we are currently fetching
         self._app_activations: list[dict[str, Any]] = []
+        self._last_ip_command: dict[str, Any] | None = None
         self._button_waiters: dict[int, list] = {}
 
         _LOGGER.debug(
@@ -698,30 +700,38 @@ class SofabatonHub:
         parts = [part for part in path.strip("/").split("/") if part]
         device_id = -1
         command_label = ""
+        device_name = None
         if len(parts) >= 4 and parts[0] == "launch":
             try:
                 device_id = int(parts[2])
             except ValueError:
                 device_id = -1
-            command_label = unquote("/".join(parts[3:])).replace("_", " ")
+            command_label = unquote(parts[3]).replace("_", " ")
+            if len(parts) >= 5:
+                device_name = unquote("/".join(parts[4:])).replace("_", " ")
 
+        timestamp = datetime.now(timezone.utc)
         record = {
             "entity_id": device_id,
             "entity_kind": "device",
-            "entity_name": self.devices.get(device_id, {}).get("name") if device_id >= 0 else None,
+            "entity_name": device_name or (self.devices.get(device_id, {}).get("name") if device_id >= 0 else None),
             "command_id": command_label,
             "command_label": command_label,
             "button_label": command_label,
-            "timestamp": datetime.now(timezone.utc).timestamp(),
-            "iso_time": datetime.now(timezone.utc).isoformat(),
+            "timestamp": timestamp.timestamp(),
+            "iso_time": timestamp.isoformat(),
             "source_ip": source_ip,
             "path": path,
             "body": body.decode("utf-8", errors="ignore"),
             "headers": headers,
         }
-        self._app_activations = [record] + self._app_activations[:49]
-        async_dispatcher_send(self.hass, signal_app_activations(self.entry_id))
-        self.hass.bus.async_fire(f"{DOMAIN}_roku_request", {"entry_id": self.entry_id, **record})
+        self._last_ip_command = record
+        async_dispatcher_send(self.hass, signal_ip_commands(self.entry_id))
+
+    def get_last_ip_command(self) -> dict[str, Any] | None:
+        if self._last_ip_command is None:
+            return None
+        return dict(self._last_ip_command)
 
     def get_app_activations(self) -> list[dict[str, Any]]:
         """Return recent app-originated activation requests."""

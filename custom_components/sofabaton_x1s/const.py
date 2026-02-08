@@ -87,6 +87,10 @@ def signal_app_activations(entry_id: str) -> str:
     return f"sofabaton_x1s_app_activations_{entry_id}"
 
 
+def signal_ip_commands(entry_id: str) -> str:
+    return f"sofabaton_x1s_ip_commands_{entry_id}"
+
+
 def classify_hub_version(props: dict[str, str]) -> str:
     """Determine hub version based on advertised properties."""
 

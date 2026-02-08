@@ -401,8 +401,8 @@ def test_create_roku_device_uses_custom_app_commands(monkeypatch) -> None:
 
     assert custom_payloads[0x18][15:45].rstrip(b"\x00") == b"Lights On"
     assert custom_payloads[0x19][15:45].rstrip(b"\x00") == b"Lights Off"
-    assert action_1 == "launch/aabbccddeeff/7/Lights_On"
-    assert action_2 == "launch/aabbccddeeff/7/Lights_Off"
+    assert action_1 == "launch/aabbccddeeff/7/Lights_On/Home_Assistant"
+    assert action_2 == "launch/aabbccddeeff/7/Lights_Off/Home_Assistant"
 
 
 def test_stable_hub_action_id_falls_back_to_proxy_id() -> None:

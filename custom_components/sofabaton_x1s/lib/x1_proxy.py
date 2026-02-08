@@ -1132,7 +1132,8 @@ class X1Proxy:
             for idx, command_name in enumerate(commands[: len(_ROKU_APP_SLOTS)]):
                 slot, code = _ROKU_APP_SLOTS[idx]
                 normalized = command_name.replace(" ", "_")
-                action = f"launch/{hub_action_id}/{device_id}/{normalized}"
+                normalized_device = device_name.replace(" ", "_")
+                action = f"launch/{hub_action_id}/{device_id}/{normalized}/{normalized_device}"
                 command_defs.append((slot, code, command_name, action))
 
         for slot, code, name, action in command_defs:
