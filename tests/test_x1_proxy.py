@@ -296,7 +296,8 @@ def test_create_roku_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    result = proxy.create_roku_device(device_name="Living Room Roku", ip_address="10.0.0.7", commands=["My Cmd"])
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+    result = proxy.create_roku_device(device_name="Living Room Roku", commands=["My Cmd"])
 
     assert result == {"device_id": 0x07, "status": "success"}
     create_payload = sent[0][1]
@@ -338,7 +339,8 @@ def test_create_roku_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    result = proxy.create_roku_device(device_name="Living Room Roku", ip_address="10.0.0.7", commands=["My Cmd"])
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+    result = proxy.create_roku_device(device_name="Living Room Roku", commands=["My Cmd"])
 
     assert result == {"device_id": 0x09, "status": "success"}
     create_payload = sent[0][1]

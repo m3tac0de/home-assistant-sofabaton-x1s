@@ -442,7 +442,6 @@ class SofabatonHub:
     async def async_create_roku_device(
         self,
         device_name: str = "Home Assistant",
-        ip_address: str = "192.168.2.77",
         commands: list[str] | None = None,
     ) -> dict[str, Any] | None:
         """Replay the Roku virtual-device creation sequence on the selected hub."""
@@ -450,7 +449,6 @@ class SofabatonHub:
         return await self.hass.async_add_executor_job(
             self._proxy.create_roku_device,
             device_name,
-            ip_address,
             commands,
         )
 

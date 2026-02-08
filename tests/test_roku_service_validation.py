@@ -17,10 +17,9 @@ class _FakeHub:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    async def async_create_roku_device(self, *, device_name: str, ip_address: str, commands: list[str]):
+    async def async_create_roku_device(self, *, device_name: str, commands: list[str]):
         payload = {
             "device_name": device_name,
-            "ip_address": ip_address,
             "commands": commands,
         }
         self.calls.append(payload)
@@ -37,7 +36,7 @@ def test_create_roku_device_requires_commands(monkeypatch) -> None:
     with pytest.raises(ValueError, match="commands requires between 1 and 10 entries"):
         asyncio.run(
             integration._async_handle_create_roku_device(
-                _FakeCall({"device_name": "Home Assistant", "ip_address": "192.168.1.2", "commands": []})
+                _FakeCall({"device_name": "Home Assistant", "commands": []})
             )
         )
 
@@ -52,7 +51,7 @@ def test_create_roku_device_validates_device_name(monkeypatch) -> None:
     with pytest.raises(ValueError, match="device_name must contain only letters, numbers, and spaces"):
         asyncio.run(
             integration._async_handle_create_roku_device(
-                _FakeCall({"device_name": "Living-Room", "ip_address": "192.168.1.2", "commands": ["Launch"]})
+                _FakeCall({"device_name": "Living-Room", "commands": ["Launch"]})
             )
         )
 
@@ -67,7 +66,7 @@ def test_create_roku_device_validates_command_names(monkeypatch) -> None:
     with pytest.raises(ValueError, match="commands entries must contain only letters, numbers, and spaces"):
         asyncio.run(
             integration._async_handle_create_roku_device(
-                _FakeCall({"device_name": "Living Room", "ip_address": "192.168.1.2", "commands": ["Do_Thing"]})
+                _FakeCall({"device_name": "Living Room", "commands": ["Do_Thing"]})
             )
         )
 
@@ -81,13 +80,12 @@ def test_create_roku_device_accepts_valid_input(monkeypatch) -> None:
 
     result = asyncio.run(
         integration._async_handle_create_roku_device(
-            _FakeCall({"device_name": "Living Room", "ip_address": "10.0.0.7", "commands": ["Lights On", "Lights Off"]})
+            _FakeCall({"device_name": "Living Room", "commands": ["Lights On", "Lights Off"]})
         )
     )
 
     assert result == {
         "device_name": "Living Room",
-        "ip_address": "10.0.0.7",
         "commands": ["Lights On", "Lights Off"],
     }
     assert hub.calls == [result]

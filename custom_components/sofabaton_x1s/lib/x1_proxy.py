@@ -1098,15 +1098,21 @@ class X1Proxy:
         payload[109] = state_byte & 0xFF
         return bytes(payload)
 
+    def get_routed_local_ip(self) -> str:
+        """Return the local IPv4 address selected by OS routing toward the real hub."""
+
+        return _route_local_ip(self.real_hub_ip)
+
     def create_roku_device(
         self,
         device_name: str = "Home Assistant",
-        ip_address: str = "192.168.2.77",
         commands: list[str] | None = None,
     ) -> dict[str, Any] | None:
         if not self.can_issue_commands():
             log.info("[ROKU] create_roku_device ignored: proxy client is connected")
             return None
+
+        ip_address = self.get_routed_local_ip()
 
         self.start_roku_create()
         log.info("[ROKU] starting exact Roku create replay sequence")

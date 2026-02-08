@@ -6,7 +6,6 @@ from pathlib import Path
 import re
 from typing import Any
 from urllib.parse import urlparse
-import ipaddress
 
 import voluptuous as vol
 
@@ -226,12 +225,6 @@ async def _async_handle_create_roku_device(call: ServiceCall):
     device_name = str(call.data.get("device_name", "Home Assistant")).strip() or "Home Assistant"
     if not _ALPHANUM_SPACE_RE.fullmatch(device_name):
         raise ValueError("device_name must contain only letters, numbers, and spaces")
-    ip_address = str(call.data.get("ip_address", "192.168.2.77")).strip()
-    try:
-        ipaddress.IPv4Address(ip_address)
-    except ValueError as exc:
-        raise ValueError("ip_address must be a valid IPv4 address") from exc
-
     raw_commands = call.data.get("commands")
     if not isinstance(raw_commands, list):
         raise ValueError("commands must be a list of strings")
@@ -251,7 +244,6 @@ async def _async_handle_create_roku_device(call: ServiceCall):
 
     return await hub.async_create_roku_device(
         device_name=device_name,
-        ip_address=ip_address,
         commands=commands,
     )
 
