@@ -1088,14 +1088,14 @@ class X1Proxy:
                 "4d 00 "
                 "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
                 "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
-                "fc 55 00 00 00 00 fc 00 00 fc 02 00 02 00 fc 00 fc 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+                "fc 55 00 00 00 00 fc 00 00 fc 02 00 02 00 fc 00 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 00"
             )
         )
         payload[7] = device_id & 0xFF
         payload[32:62] = _ascii_padded(device_name, length=30)
         payload[62:92] = _ascii_padded("m3tac0de", length=30)
         payload[94:98] = ipaddress.IPv4Address(ip_address).packed
-        payload[109] = state_byte & 0xFF
+        payload[103] = state_byte & 0xFF
         return bytes(payload)
 
     def get_routed_local_ip(self) -> str:

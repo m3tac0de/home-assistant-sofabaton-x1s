@@ -311,6 +311,18 @@ def test_create_wifi_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
     assert finalize_payload[62:92].rstrip(b"\x00") == b"m3tac0de"
     assert finalize_payload[94:98] == bytes([10, 0, 0, 7])
 
+    expected_tail_prefix = bytes.fromhex("fc 02")
+    expected_tail_middle = bytes.fromhex("02 00 fc 00 fc")
+    assert create_payload[101:103] == expected_tail_prefix
+    assert create_payload[104:109] == expected_tail_middle
+    assert create_payload[109] == 0x01
+    assert create_payload[103] == 0x00
+
+    assert finalize_payload[101:103] == expected_tail_prefix
+    assert finalize_payload[104:109] == expected_tail_middle
+    assert finalize_payload[109] == 0x01
+    assert finalize_payload[103] == 0x01
+
 
 
 
