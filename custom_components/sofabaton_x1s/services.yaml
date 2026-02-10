@@ -158,3 +158,60 @@ device_to_activity:
           min: 1
           max: 255
           mode: box
+
+
+command_to_favorite:
+  name: Add command to activity favorite
+  description: Replay the captured favorite-write sequence (0x3E -> 0x61 -> 0x65) on the selected hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: false
+      selector:
+        device:
+          integration: sofabaton_x1s
+    hub:
+      name: Hub entry id or MAC (optional)
+      required: false
+      selector:
+        text:
+    entity_id:
+      name: Related entity
+      required: false
+      selector:
+        entity:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    device_id:
+      name: Device id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    command_id:
+      name: Command id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    slot_id:
+      name: Favorite slot id
+      description: Optional slot/index value to store in the favorite mapping payload.
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box

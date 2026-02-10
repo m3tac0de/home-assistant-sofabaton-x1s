@@ -1434,6 +1434,112 @@ class X1Proxy:
             "status": "success",
         }
 
+    def _build_favorite_map_payload(
+        self,
+        *,
+        activity_id: int,
+        device_id: int,
+        command_id: int,
+        slot_id: int,
+    ) -> bytes:
+        payload = bytearray(
+            [
+                0x01,
+                0x00,
+                0x01,
+                0x01,
+                0x00,
+                0x01,
+                activity_id & 0xFF,
+                slot_id & 0xFF,
+                device_id & 0xFF,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+            ]
+        )
+        payload.extend((0x4E24).to_bytes(2, "big"))
+        payload.extend(
+            [
+                command_id & 0xFF,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+            ]
+        )
+        payload.append((sum(payload) - 2) & 0xFF)
+        return bytes(payload)
+
+    def command_to_favorite(
+        self,
+        activity_id: int,
+        device_id: int,
+        command_id: int,
+        *,
+        slot_id: int = 0,
+    ) -> dict[str, Any] | None:
+        """Add a command favorite to an arbitrary activity."""
+
+        if not self.can_issue_commands():
+            log.info("[FAVORITE] command_to_favorite ignored: proxy client is connected")
+            return None
+
+        act_lo = activity_id & 0xFF
+        dev_lo = device_id & 0xFF
+        cmd_lo = command_id & 0xFF
+        slot_lo = slot_id & 0xFF
+
+        self.start_roku_create()
+
+        if not self._send_roku_step(
+            step_name=f"favorite-map[act=0x{act_lo:02X} slot=0x{slot_lo:02X}]",
+            family=0x3E,
+            payload=self._build_favorite_map_payload(
+                activity_id=act_lo,
+                device_id=dev_lo,
+                command_id=cmd_lo,
+                slot_id=slot_lo,
+            ),
+            ack_opcode=0x013E,
+            ack_first_byte=0x01,
+            ack_fallback_opcodes=(0x0103,),
+        ):
+            return None
+
+        if not self._send_roku_step(
+            step_name=f"favorite-stage-61[act=0x{act_lo:02X}]",
+            family=0x61,
+            payload=bytes([0x00, 0x01, 0x01, 0x00, 0x01, act_lo, 0x01, 0x01, 0x6A]),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        if not self._send_roku_step(
+            step_name=f"favorite-commit-65[act=0x{act_lo:02X}]",
+            family=0x65,
+            payload=bytes([act_lo]),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        self.clear_entity_cache(act_lo, clear_buttons=False, clear_favorites=True, clear_macros=False)
+        self._activity_map_complete.discard(act_lo)
+        self.request_activity_mapping(act_lo)
+
+        return {
+            "activity_id": act_lo,
+            "device_id": dev_lo,
+            "command_id": cmd_lo,
+            "slot_id": slot_lo,
+            "status": "success",
+        }
+
     def create_wifi_device(
         self,
         device_name: str = "Home Assistant",

@@ -115,3 +115,49 @@ def test_roku_http_post_updates_last_ip_command_state():
     assert hub.get_app_activations() == []
 
     loop.close()
+
+
+def test_command_to_favorite_executor_job_uses_partial_not_kwargs():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    class StrictHass(FakeHass):
+        async def async_add_executor_job(self, func, *args):  # no kwargs on purpose
+            return func(*args)
+
+    hass = StrictHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    calls: list[tuple[int, int, int, int]] = []
+
+    def _command_to_favorite(activity_id, device_id, command_id, *, slot_id=0):
+        calls.append((activity_id, device_id, command_id, slot_id))
+        return {"status": "success"}
+
+    hub._proxy.command_to_favorite = _command_to_favorite  # type: ignore[method-assign]
+
+    result = loop.run_until_complete(
+        hub.async_command_to_favorite(
+            activity_id=101,
+            device_id=6,
+            command_id=4,
+            slot_id=3,
+        )
+    )
+
+    assert result == {"status": "success"}
+    assert calls == [(101, 6, 4, 3)]
+
+    loop.close()

@@ -1052,3 +1052,103 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
         (0x024F, bytes([0x01, 0x01])),
         (0x024F, bytes([0x06, 0x00])),
     ]
+
+
+def test_build_favorite_map_payload_matches_observed_sample() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    payload = proxy._build_favorite_map_payload(
+        activity_id=0x66,
+        device_id=0x06,
+        command_id=0x04,
+        slot_id=0x00,
+    )
+
+    assert payload == bytes.fromhex(
+        "01 00 01 01 00 01 66 00 06 00 00 00 00 4e 24 04 00 00 00 00 00 00 00 00 e4"
+    )
+
+
+def test_command_to_favorite_replays_sequence(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        ack_calls.append(candidates)
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    requested: list[int] = []
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: requested.append(act_id) or True)
+
+    cleared: list[tuple[int, bool, bool, bool]] = []
+    monkeypatch.setattr(
+        proxy,
+        "clear_entity_cache",
+        lambda ent_id, clear_buttons=False, clear_favorites=False, clear_macros=False: cleared.append(
+            (ent_id, clear_buttons, clear_favorites, clear_macros)
+        ),
+    )
+
+    result = proxy.command_to_favorite(0x66, 0x06, 0x04)
+
+    assert result == {
+        "activity_id": 0x66,
+        "device_id": 0x06,
+        "command_id": 0x04,
+        "slot_id": 0x00,
+        "status": "success",
+    }
+    assert [opcode & 0xFF for opcode, _payload in sent] == [0x3E, 0x61, 0x65]
+    assert sent[0][1] == bytes.fromhex(
+        "01 00 01 01 00 01 66 00 06 00 00 00 00 4e 24 04 00 00 00 00 00 00 00 00 e4"
+    )
+    assert sent[1][1] == bytes([0x00, 0x01, 0x01, 0x00, 0x01, 0x66, 0x01, 0x01, 0x6A])
+    assert sent[2][1] == b"f"
+    assert ack_calls == [
+        [(0x013E, 0x01), (0x0103, None)],
+        [(0x0103, None)],
+        [(0x0103, None)],
+    ]
+    assert cleared == [(0x66, False, True, False)]
+    assert requested == [0x66]
+
+
+def test_command_to_favorite_requires_all_acks(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+
+    attempts = {"count": 0}
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            first_opcode, first_byte = candidates[0]
+            return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+        return None
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    requested: list[int] = []
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: requested.append(act_id) or True)
+
+    assert proxy.command_to_favorite(0x66, 0x06, 0x04) is None
+    assert requested == []

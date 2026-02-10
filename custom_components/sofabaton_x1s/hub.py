@@ -465,6 +465,26 @@ class SofabatonHub:
             device_id,
         )
 
+    async def async_command_to_favorite(
+        self,
+        activity_id: int,
+        device_id: int,
+        command_id: int,
+        *,
+        slot_id: int = 0,
+    ) -> dict[str, Any] | None:
+        """Replay the favorite write sequence on the selected hub."""
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.command_to_favorite,
+                activity_id,
+                device_id,
+                command_id,
+                slot_id=slot_id,
+            )
+        )
+
     async def _async_fetch_activity_commands(self, act_id: int) -> None:
         self._reset_entity_cache(
             act_id, clear_buttons=True, clear_favorites=True, clear_macros=True
