@@ -64,6 +64,7 @@ from .protocol_const import (
     OP_REQ_IPCMD_SYNC,
     OP_REQ_DEVICES,
     OP_REQ_MACRO_LABELS,
+    OP_ACTIVITY_DEVICE_CONFIRM,
     OP_REQ_VERSION,
     OP_WIFI_FW,
     SYNC0,
@@ -1102,6 +1103,81 @@ class X1Proxy:
         """Return the local IPv4 address selected by OS routing toward the real hub."""
 
         return _route_local_ip(self.real_hub_ip)
+
+
+    def _wait_for_activity_map_burst(self, act_id: int, *, timeout: float = 5.0) -> bool:
+        deadline = time.monotonic() + timeout
+        act_lo = act_id & 0xFF
+        while time.monotonic() < deadline:
+            if act_lo in self._activity_map_complete:
+                return True
+            time.sleep(0.05)
+        log.warning("[ACTMAP] timeout waiting for activity map burst act=0x%02X", act_lo)
+        return False
+
+    def add_device_to_activity(self, activity_id: int, device_id: int) -> dict[str, Any] | None:
+        """Attempt to add ``device_id`` to ``activity_id`` using 0x024F confirmations only."""
+
+        if not self.can_issue_commands():
+            log.info("[ACTIVITY_ASSIGN] add_device_to_activity ignored: proxy client is connected")
+            return None
+
+        act_lo = activity_id & 0xFF
+        dev_lo = device_id & 0xFF
+
+        log.info("[ACTIVITY_ASSIGN] start act=0x%02X (%d) add dev=0x%02X (%d)", act_lo, act_lo, dev_lo, dev_lo)
+
+        self._activity_map_complete.discard(act_lo)
+        if not self.request_activity_mapping(act_lo):
+            log.warning("[ACTIVITY_ASSIGN] failed to request activity map for act=0x%02X", act_lo)
+            return None
+        if not self._wait_for_activity_map_burst(act_lo, timeout=5.0):
+            return None
+
+        current_members = sorted(
+            {
+                int(slot.get("device_id", 0)) & 0xFF
+                for slot in self.state.get_activity_favorite_slots(act_lo)
+                if int(slot.get("device_id", 0)) & 0xFF
+            }
+        )
+        if not current_members:
+            log.warning("[ACTIVITY_ASSIGN] no existing members discovered for act=0x%02X", act_lo)
+
+        ordered_members: list[int] = []
+        for member in current_members + [dev_lo]:
+            if member not in ordered_members:
+                ordered_members.append(member)
+
+        log.info("[ACTIVITY_ASSIGN] members before=%s target=%s", current_members, ordered_members)
+
+        self.start_roku_create()
+
+        for member in ordered_members:
+            include_flag = 0x00 if member == dev_lo else 0x01
+            payload = bytes([member & 0xFF, include_flag])
+            log.info(
+                "[ACTIVITY_ASSIGN] confirm member dev=0x%02X include=0x%02X",
+                member & 0xFF,
+                include_flag,
+            )
+            self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
+            if not self.wait_for_roku_ack(0x0103, timeout=5.0):
+                log.warning(
+                    "[ACTIVITY_ASSIGN] missing ACK after 0x024F dev=0x%02X include=0x%02X",
+                    member & 0xFF,
+                    include_flag,
+                )
+                return None
+
+        log.info("[ACTIVITY_ASSIGN] completed act=0x%02X add dev=0x%02X via 0x024F sequence", act_lo, dev_lo)
+        return {
+            "activity_id": act_lo,
+            "device_id": dev_lo,
+            "members_before": current_members,
+            "members_confirmed": ordered_members,
+            "status": "success",
+        }
 
     def create_wifi_device(
         self,

@@ -25,6 +25,14 @@ class _FakeHub:
         self.calls.append(payload)
         return payload
 
+    async def async_add_device_to_activity(self, *, activity_id: int, device_id: int):
+        payload = {
+            "activity_id": activity_id,
+            "device_id": device_id,
+        }
+        self.calls.append(payload)
+        return payload
+
 
 def test_create_wifi_device_requires_commands(monkeypatch) -> None:
     hub = _FakeHub()
@@ -89,3 +97,37 @@ def test_create_wifi_device_accepts_valid_input(monkeypatch) -> None:
         "commands": ["Lights On", "Lights Off"],
     }
     assert hub.calls == [result]
+
+
+def test_device_to_activity_validates_activity_id(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    with pytest.raises(ValueError, match="activity_id must be between 1 and 255"):
+        asyncio.run(
+            integration._async_handle_device_to_activity(
+                _FakeCall({"activity_id": 0, "device_id": 6})
+            )
+        )
+
+
+def test_device_to_activity_accepts_valid_input(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    result = asyncio.run(
+        integration._async_handle_device_to_activity(
+            _FakeCall({"activity_id": 101, "device_id": 6})
+        )
+    )
+
+    assert result == {"activity_id": 101, "device_id": 6}
+    assert hub.calls[-1] == result

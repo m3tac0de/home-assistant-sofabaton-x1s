@@ -120,3 +120,41 @@ create_ip_button:
       required: false
       selector:
         object:
+
+device_to_activity:
+  name: Add device to activity
+  description: Replay the captured activity-device assignment confirmations (0x024F) on the selected hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: false
+      selector:
+        device:
+          integration: sofabaton_x1s
+    hub:
+      name: Hub entry id or MAC (optional)
+      required: false
+      selector:
+        text:
+    entity_id:
+      name: Related entity
+      required: false
+      selector:
+        entity:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    device_id:
+      name: Device id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box

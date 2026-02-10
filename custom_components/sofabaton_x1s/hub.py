@@ -452,6 +452,19 @@ class SofabatonHub:
             commands,
         )
 
+    async def async_add_device_to_activity(
+        self,
+        activity_id: int,
+        device_id: int,
+    ) -> dict[str, Any] | None:
+        """Replay the activity-device confirmation sequence on the selected hub."""
+
+        return await self.hass.async_add_executor_job(
+            self._proxy.add_device_to_activity,
+            activity_id,
+            device_id,
+        )
+
     async def _async_fetch_activity_commands(self, act_id: int) -> None:
         self._reset_entity_cache(
             act_id, clear_buttons=True, clear_favorites=True, clear_macros=True
