@@ -485,6 +485,25 @@ class SofabatonHub:
             )
         )
 
+    async def async_command_to_button(
+        self,
+        activity_id: int,
+        button_id: int,
+        device_id: int,
+        command_id: int,
+    ) -> dict[str, Any] | None:
+        """Replay the button-mapping write sequence on the selected hub."""
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.command_to_button,
+                activity_id,
+                button_id,
+                device_id,
+                command_id,
+            )
+        )
+
     async def _async_fetch_activity_commands(self, act_id: int) -> None:
         self._reset_entity_cache(
             act_id, clear_buttons=True, clear_favorites=True, clear_macros=True

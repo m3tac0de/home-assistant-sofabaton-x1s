@@ -162,6 +162,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "device_to_activity", _async_handle_device_to_activity)
     if not hass.services.has_service(DOMAIN, "command_to_favorite"):
         hass.services.async_register(DOMAIN, "command_to_favorite", _async_handle_command_to_favorite)
+    if not hass.services.has_service(DOMAIN, "command_to_button"):
+        hass.services.async_register(DOMAIN, "command_to_button", _async_handle_command_to_button)
     #if not hass.services.has_service(DOMAIN, "create_ip_button"):
     #    hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
         
@@ -203,6 +205,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "create_wifi_device")
             hass.services.async_remove(DOMAIN, "device_to_activity")
             hass.services.async_remove(DOMAIN, "command_to_favorite")
+            hass.services.async_remove(DOMAIN, "command_to_button")
             #hass.services.async_remove(DOMAIN, "create_ip_button")
             async_teardown_diagnostics(hass)
         async_disable_hex_logging_capture(hass, entry.entry_id)
@@ -299,6 +302,34 @@ async def _async_handle_command_to_favorite(call: ServiceCall):
         device_id=device_id,
         command_id=command_id,
         slot_id=slot_id,
+    )
+
+
+async def _async_handle_command_to_button(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    activity_id = int(call.data["activity_id"])
+    button_id = int(call.data["button_id"])
+    device_id = int(call.data["device_id"])
+    command_id = int(call.data["command_id"])
+
+    if activity_id < 1 or activity_id > 255:
+        raise ValueError("activity_id must be between 1 and 255")
+    if button_id < 1 or button_id > 255:
+        raise ValueError("button_id must be between 1 and 255")
+    if device_id < 1 or device_id > 255:
+        raise ValueError("device_id must be between 1 and 255")
+    if command_id < 1 or command_id > 255:
+        raise ValueError("command_id must be between 1 and 255")
+
+    return await hub.async_command_to_button(
+        activity_id=activity_id,
+        button_id=button_id,
+        device_id=device_id,
+        command_id=command_id,
     )
 
 

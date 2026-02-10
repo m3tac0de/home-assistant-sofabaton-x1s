@@ -1476,6 +1476,43 @@ class X1Proxy:
         payload.append((sum(payload) - 2) & 0xFF)
         return bytes(payload)
 
+    def _build_command_to_button_payload(
+        self,
+        *,
+        activity_id: int,
+        button_id: int,
+        device_id: int,
+        command_id: int,
+    ) -> bytes:
+        """Build the observed 0x193E command-to-button mapping payload."""
+
+        act_lo = activity_id & 0xFF
+        btn_lo = button_id & 0xFF
+        dev_lo = device_id & 0xFF
+        cmd_lo = command_id & 0xFF
+
+        payload = bytearray(
+            [
+                0x01,
+                0x00,
+                0x01,
+                0x01,
+                0x00,
+                0x01,
+                act_lo,
+                btn_lo,
+                dev_lo,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+            ]
+        )
+        payload.extend([0x4E, 0x20 + cmd_lo, cmd_lo])
+        payload.extend([0x00] * 8)
+        payload.append((sum(payload) - 2) & 0xFF)
+        return bytes(payload)
+
     def command_to_favorite(
         self,
         activity_id: int,
@@ -1537,6 +1574,73 @@ class X1Proxy:
             "device_id": dev_lo,
             "command_id": cmd_lo,
             "slot_id": slot_lo,
+            "status": "success",
+        }
+
+    def command_to_button(
+        self,
+        activity_id: int,
+        button_id: int,
+        device_id: int,
+        command_id: int,
+    ) -> dict[str, Any] | None:
+        """Map a device command to a physical activity button using 0x193E."""
+
+        if not self.can_issue_commands():
+            log.info("[KEYMAP_WRITE] command_to_button ignored: proxy client is connected")
+            return None
+
+        act_lo = activity_id & 0xFF
+        btn_lo = button_id & 0xFF
+        dev_lo = device_id & 0xFF
+        cmd_lo = command_id & 0xFF
+
+        payload = self._build_command_to_button_payload(
+            activity_id=act_lo,
+            button_id=btn_lo,
+            device_id=dev_lo,
+            command_id=cmd_lo,
+        )
+        log.info(
+            "[KEYMAP_WRITE] map act=0x%02X button=0x%02X dev=0x%02X cmd=0x%02X",
+            act_lo,
+            btn_lo,
+            dev_lo,
+            cmd_lo,
+        )
+        if self.diag_dump:
+            log.info("[KEYMAP_WRITE] 193E payload %s", payload.hex(" "))
+
+        self.start_roku_create()
+
+        if not self._send_roku_step(
+            step_name=f"keymap-write[act=0x{act_lo:02X} btn=0x{btn_lo:02X}]",
+            family=0x3E,
+            payload=payload,
+            ack_opcode=0x013E,
+            ack_first_byte=btn_lo,
+            ack_fallback_opcodes=(0x0103,),
+        ):
+            return None
+
+        if not self._send_roku_step(
+            step_name=f"keymap-commit-65[act=0x{act_lo:02X}]",
+            family=0x65,
+            payload=bytes([act_lo]),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        self.clear_entity_cache(act_lo, clear_buttons=True, clear_favorites=False, clear_macros=False)
+        self._activity_map_complete.discard(act_lo)
+        self.request_activity_mapping(act_lo)
+        self.get_buttons_for_entity(act_lo, fetch_if_missing=True)
+
+        return {
+            "activity_id": act_lo,
+            "button_id": btn_lo,
+            "device_id": dev_lo,
+            "command_id": cmd_lo,
             "status": "success",
         }
 

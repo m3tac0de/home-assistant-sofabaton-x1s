@@ -215,3 +215,59 @@ command_to_favorite:
           min: 0
           max: 255
           mode: box
+
+
+command_to_button:
+  name: Map command to activity button
+  description: Replay the captured button-write sequence (0x193E -> 0x65) on the selected hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: false
+      selector:
+        device:
+          integration: sofabaton_x1s
+    hub:
+      name: Hub entry id or MAC (optional)
+      required: false
+      selector:
+        text:
+    entity_id:
+      name: Related entity
+      required: false
+      selector:
+        entity:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    button_id:
+      name: Activity button id
+      description: Physical button code in the keymap (for example 182 for VOL_UP, 193 for BLUE).
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    device_id:
+      name: Device id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    command_id:
+      name: Command id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box

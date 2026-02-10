@@ -50,6 +50,23 @@ class _FakeHub:
         self.calls.append(payload)
         return payload
 
+    async def async_command_to_button(
+        self,
+        *,
+        activity_id: int,
+        button_id: int,
+        device_id: int,
+        command_id: int,
+    ):
+        payload = {
+            "activity_id": activity_id,
+            "button_id": button_id,
+            "device_id": device_id,
+            "command_id": command_id,
+        }
+        self.calls.append(payload)
+        return payload
+
 
 def test_create_wifi_device_requires_commands(monkeypatch) -> None:
     hub = _FakeHub()
@@ -182,4 +199,38 @@ def test_command_to_favorite_accepts_valid_input(monkeypatch) -> None:
     )
 
     assert result == {"activity_id": 101, "device_id": 6, "command_id": 4, "slot_id": 0}
+    assert hub.calls[-1] == result
+
+
+def test_command_to_button_validates_button_id(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    with pytest.raises(ValueError, match="button_id must be between 1 and 255"):
+        asyncio.run(
+            integration._async_handle_command_to_button(
+                _FakeCall({"activity_id": 101, "button_id": 0, "device_id": 5, "command_id": 2})
+            )
+        )
+
+
+def test_command_to_button_accepts_valid_input(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    result = asyncio.run(
+        integration._async_handle_command_to_button(
+            _FakeCall({"activity_id": 101, "button_id": 193, "device_id": 5, "command_id": 2})
+        )
+    )
+
+    assert result == {"activity_id": 101, "button_id": 193, "device_id": 5, "command_id": 2}
     assert hub.calls[-1] == result
