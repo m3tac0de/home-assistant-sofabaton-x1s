@@ -726,6 +726,150 @@ def test_targeted_command_burst_end_only_drops_matching_pending() -> None:
     assert ent_lo not in proxy._commands_complete
 
 
+
+
+def test_build_macro_save_payload_from_observed_power_on_payload() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    source_payload = bytes.fromhex(
+        "01 00 01 01 00 01 66 c6 08 "
+        "01 c6 00 00 00 00 00 00 01 ff ff ff ff ff ff ff ff ff ff 01 "
+        "02 c6 00 00 00 00 00 00 01 ff ff ff ff ff ff ff ff ff ff 01 "
+        "01 c5 00 00 00 00 00 00 1d ff ff ff ff ff ff ff ff ff ff 01 "
+        "02 c5 00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff ff ff 01 "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "02 00 00 00 00 00 2d 76 00"
+    )
+
+    payload = proxy._build_macro_save_payload(
+        source_payload,
+        device_id=0x06,
+        button_id=ButtonName.POWER_ON,
+    )
+
+    assert payload is not None
+    assert payload[8] == 0x06
+    assert len(payload) == 100
+    assert bytes([0x06, 0xC6]) in payload
+    assert bytes([0x06, 0xC5]) in payload
+
+
+def test_build_macro_save_payload_from_observed_power_off_payload() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    source_payload = bytes.fromhex(
+        "01 00 01 01 00 01 66 c7 04 "
+        "01 c7 00 00 00 00 00 00 01 ff ff ff ff ff ff ff ff ff ff 01 "
+        "02 c7 00 00 00 00 00 00 01 ff ff ff ff ff ff ff ff ff ff 01 "
+        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 ff ff"
+    )
+
+    payload = proxy._build_macro_save_payload(
+        source_payload,
+        device_id=0x06,
+        button_id=ButtonName.POWER_OFF,
+    )
+
+    assert payload is not None
+    assert payload[8] == 0x03
+    assert len(payload) == 70
+    assert bytes([0x06, 0xC7]) in payload
+
+
+
+def test_build_macro_save_payload_keeps_compact_rows_when_len_divisible_by_20() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    # Compact rows (already 10-byte records), total length divisible by 20.
+    source_payload = bytes.fromhex(
+        "01 00 01 01 00 01 66 c6 06 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "02 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 1d ff "
+        "02 c5 00 00 00 00 00 00 00 ff "
+        "04 c6 00 00 00 00 00 00 00 ff "
+        "04 c5 00 00 00 00 00 00 00 ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "02 00 00 00 00 00 2d 76 2a"
+    )
+
+    payload = proxy._build_macro_save_payload(
+        source_payload,
+        device_id=0x06,
+        button_id=ButtonName.POWER_ON,
+    )
+
+    assert payload is not None
+    # Keep existing 6 rows and append 2 new ones for device 6.
+    assert payload[8] == 0x08
+    assert len(payload) == 120
+    assert bytes([0x02, 0xC6]) in payload
+    assert bytes([0x02, 0xC5]) in payload
+    assert bytes([0x04, 0xC6]) in payload
+    assert bytes([0x04, 0xC5]) in payload
+    assert bytes([0x06, 0xC6]) in payload
+    assert bytes([0x06, 0xC5]) in payload
+
+
+
+def test_build_macro_save_payload_filters_devices_by_activity_members() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    source_payload = bytes.fromhex(
+        "01 00 01 01 00 01 66 c6 06 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "02 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 1d ff "
+        "02 c5 00 00 00 00 00 00 00 ff "
+        "04 c6 00 00 00 00 00 00 00 ff "
+        "04 c5 00 00 00 00 00 00 00 ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "02 00 00 00 00 00 2d 76 2a"
+    )
+
+    payload = proxy._build_macro_save_payload(
+        source_payload,
+        device_id=0x06,
+        button_id=ButtonName.POWER_ON,
+        allowed_device_ids={1, 2, 6},
+    )
+
+    assert payload is not None
+    # Rows for device 4 are removed; device 6 rows are added.
+    assert payload[8] == 0x06
+    assert len(payload) == 100
+    assert bytes([0x04, 0xC6]) not in payload
+    assert bytes([0x04, 0xC5]) not in payload
+    assert bytes([0x06, 0xC6]) in payload
+    assert bytes([0x06, 0xC5]) in payload
+
+
+
+def test_build_macro_save_payload_recomputes_trailing_token() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    source_payload = bytes.fromhex(
+        "01 00 01 01 00 01 66 c6 06 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "02 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 1d ff "
+        "02 c5 00 00 00 00 00 00 00 ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "02 00 00 00 00 00 2d 76 97"
+    )
+
+    payload = proxy._build_macro_save_payload(
+        source_payload,
+        device_id=0x06,
+        button_id=ButtonName.POWER_ON,
+        allowed_device_ids={1, 2, 6},
+    )
+
+    assert payload is not None
+    assert payload[-1] == ((sum(payload[:-1]) - 2) & 0xFF)
+    assert payload[-1] != 0x97
+
 def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -748,13 +892,60 @@ def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    ack_calls: list[int] = []
+    macro_saves: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(
+        proxy,
+        "_send_family_frame",
+        lambda family, payload: macro_saves.append((family, payload)),
+    )
 
-    def _wait_for_roku_ack(opcode: int, *, first_byte=None, timeout: float = 5.0) -> bool:
-        ack_calls.append(opcode)
-        return True
+    macro_payloads = {
+        (101, ButtonName.POWER_ON): bytes.fromhex(
+            "01 00 01 01 00 01 65 c6 "
+            "01 c6 00 00 00 00 00 00 01 ff "
+            "02 c6 00 00 00 00 00 00 01 ff "
+            "01 c5 00 00 00 00 00 00 1a ff "
+            "02 c5 00 00 00 00 00 00 00 ff "
+            "01 ff ff ff ff ff ff ff ff ff "
+            "02 ff ff ff ff ff ff ff ff ff "
+            "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "02 00 00 00 00 00 2d 76 00"
+        ),
+        (101, ButtonName.POWER_OFF): bytes.fromhex(
+            "01 00 01 01 00 01 65 c7 "
+            "01 c7 00 00 00 00 00 00 01 ff "
+            "02 c7 00 00 00 00 00 00 01 ff "
+            "01 ff ff ff ff ff ff ff ff ff "
+            "02 ff ff ff ff ff ff ff ff ff "
+            "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 ff ff"
+        ),
+    }
 
-    monkeypatch.setattr(proxy, "wait_for_roku_ack", _wait_for_roku_ack)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_macro_payload",
+        lambda act, button, timeout=5.0: macro_payloads.get((act, button)),
+    )
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(
+        proxy,
+        "_build_macro_save_payload",
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+    )
+
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        ack_calls.append(candidates)
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
 
     result = proxy.add_device_to_activity(101, 6)
 
@@ -764,14 +955,26 @@ def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
         "device_id": 6,
         "members_before": [1, 2],
         "members_confirmed": [1, 2, 6],
+        "macros_updated": [ButtonName.POWER_ON, ButtonName.POWER_OFF],
         "status": "success",
     }
     assert sent == [
-        (0x024F, b"\x01\x01"),
-        (0x024F, b"\x02\x01"),
-        (0x024F, b"\x06\x00"),
+        (0x024F, bytes([0x01, 0x01])),
+        (0x024F, bytes([0x02, 0x00])),
+        (0x024F, bytes([0x06, 0x00])),
+        (0x024D, bytes([0x65, 0xC6])),
+        (0x0148, b"\x01"),
+        (0x024D, bytes([0x65, 0xC6])),
+        (0x024D, bytes([0x65, 0xC7])),
     ]
-    assert ack_calls == [0x0103, 0x0103, 0x0103]
+    assert macro_saves and all(family == 0x12 for family, _payload in macro_saves)
+    assert ack_calls == [
+        [(0x0103, None)],
+        [(0x0103, None)],
+        [(0x0103, None)],
+        [(0x0112, ButtonName.POWER_ON), (0x0112, 0x01)],
+        [(0x0112, ButtonName.POWER_OFF), (0x0112, 0x01)],
+    ]
 
 
 def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
@@ -791,18 +994,61 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_macro_payload",
+        lambda _act, button, timeout=5.0: (
+            bytes.fromhex(
+                "01 00 01 01 00 01 65 c7 "
+                "01 c7 00 00 00 00 00 00 01 ff "
+                "02 c7 00 00 00 00 00 00 01 ff "
+                "01 ff ff ff ff ff ff ff ff ff "
+                "02 ff ff ff ff ff ff ff ff ff "
+                "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                "00 00 00 00 00 00 ff ff"
+            )
+            if button == ButtonName.POWER_OFF
+            else bytes.fromhex(
+                "01 00 01 01 00 01 65 c6 "
+                "01 c6 00 00 00 00 00 00 01 ff "
+                "02 c6 00 00 00 00 00 00 01 ff "
+                "01 c5 00 00 00 00 00 00 1a ff "
+                "02 c5 00 00 00 00 00 00 00 ff "
+                "01 ff ff ff ff ff ff ff ff ff "
+                "02 ff ff ff ff ff ff ff ff ff "
+                "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+                "02 00 00 00 00 00 2d 76 00"
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        proxy,
+        "_build_macro_save_payload",
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+    )
+
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+
     attempts = {"count": 0}
 
-    def _wait_for_roku_ack(opcode: int, *, first_byte=None, timeout: float = 5.0) -> bool:
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
         attempts["count"] += 1
-        return attempts["count"] == 1
+        if attempts["count"] == 1:
+            first_opcode, first_byte = candidates[0]
+            return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+        return None
 
-    monkeypatch.setattr(proxy, "wait_for_roku_ack", _wait_for_roku_ack)
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
 
     result = proxy.add_device_to_activity(101, 6)
 
     assert result is None
     assert sent == [
-        (0x024F, b"\x01\x01"),
-        (0x024F, b"\x06\x00"),
+        (0x024F, bytes([0x01, 0x01])),
+        (0x024F, bytes([0x06, 0x00])),
     ]

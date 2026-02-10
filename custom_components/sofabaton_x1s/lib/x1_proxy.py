@@ -65,6 +65,7 @@ from .protocol_const import (
     OP_REQ_DEVICES,
     OP_REQ_MACRO_LABELS,
     OP_ACTIVITY_DEVICE_CONFIRM,
+    OP_REQ_ACTIVITY_INPUTS,
     OP_REQ_VERSION,
     OP_WIFI_FW,
     SYNC0,
@@ -278,6 +279,13 @@ class X1Proxy:
         self._roku_ack_lock = threading.Lock()
         self._roku_ack_events: deque[tuple[int, bytes]] = deque()
         self._roku_ack_event = threading.Event()
+        self._macro_payload_lock = threading.Lock()
+        self._macro_payload_events: dict[tuple[int, int], bytes] = {}
+        self._macro_payload_event = threading.Event()
+        self._activity_inputs_lock = threading.Lock()
+        self._activity_inputs_seen = 0
+        self._activity_inputs_last_ts = 0.0
+        self._activity_inputs_event = threading.Event()
 
         self.transport = TransportBridge(
             real_hub_ip,
@@ -946,6 +954,13 @@ class X1Proxy:
         with self._roku_ack_lock:
             self._roku_ack_events.clear()
             self._roku_ack_event.clear()
+        with self._macro_payload_lock:
+            self._macro_payload_events.clear()
+            self._macro_payload_event.clear()
+        with self._activity_inputs_lock:
+            self._activity_inputs_seen = 0
+            self._activity_inputs_last_ts = 0.0
+            self._activity_inputs_event.clear()
 
     def update_roku_device_id(self, device_id: int) -> None:
         with self._pending_roku_lock:
@@ -1033,6 +1048,161 @@ class X1Proxy:
                 return None
             self._roku_ack_event.wait(min(remaining, 0.2))
 
+    def cache_macro_payload(self, activity_id: int, button_id: int, payload: bytes) -> None:
+        key = (activity_id & 0xFF, button_id & 0xFF)
+        with self._macro_payload_lock:
+            self._macro_payload_events[key] = bytes(payload)
+            self._macro_payload_event.set()
+
+    def wait_for_macro_payload(self, activity_id: int, button_id: int, *, timeout: float = 5.0) -> bytes | None:
+        key = (activity_id & 0xFF, button_id & 0xFF)
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._macro_payload_lock:
+                cached = self._macro_payload_events.pop(key, None)
+                if cached is not None:
+                    if not self._macro_payload_events:
+                        self._macro_payload_event.clear()
+                    return cached
+                self._macro_payload_event.clear()
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            self._macro_payload_event.wait(min(remaining, 0.2))
+
+    def notify_activity_inputs_frame(self) -> None:
+        with self._activity_inputs_lock:
+            self._activity_inputs_seen += 1
+            self._activity_inputs_last_ts = time.monotonic()
+            self._activity_inputs_event.set()
+
+    def wait_for_activity_inputs_burst(
+        self,
+        *,
+        timeout: float = 5.0,
+        idle_window: float = 0.35,
+        min_frames: int = 1,
+    ) -> bool:
+        """Wait until at least one 0x47 frame arrives and the burst goes idle."""
+
+        deadline = time.monotonic() + timeout
+        while True:
+            now = time.monotonic()
+            with self._activity_inputs_lock:
+                seen = self._activity_inputs_seen
+                last_ts = self._activity_inputs_last_ts
+                if seen >= min_frames and last_ts > 0 and (now - last_ts) >= idle_window:
+                    self._activity_inputs_seen = 0
+                    self._activity_inputs_last_ts = 0.0
+                    self._activity_inputs_event.clear()
+                    return True
+                self._activity_inputs_event.clear()
+
+            remaining = deadline - now
+            if remaining <= 0:
+                return False
+            self._activity_inputs_event.wait(min(remaining, 0.2))
+
+    def _build_macro_record_chunk(self, *, device_id: int, command_id: int) -> bytes:
+        return bytes([device_id & 0xFF, command_id & 0xFF]) + (b"\x00" * 7) + b"\xff"
+
+    def _build_macro_save_payload(
+        self,
+        source_payload: bytes,
+        *,
+        device_id: int,
+        button_id: int,
+        allowed_device_ids: set[int] | None = None,
+    ) -> bytes | None:
+        """Convert fetched macro payload into the compact save format used by family ``0x12``."""
+
+        if len(source_payload) < 20:
+            return None
+
+        label = b"POWER_ON" if button_id == ButtonName.POWER_ON else b"POWER_OFF"
+        marker_idx = source_payload.find(label)
+        if marker_idx <= 9:
+            return None
+
+        head = bytearray(source_payload[:9])
+        records_blob = source_payload[9:marker_idx]
+        tail = source_payload[marker_idx:]
+
+        compact_records: list[bytes] = []
+
+        expanded_rows = False
+        if len(records_blob) % 20 == 0 and len(records_blob) >= 20:
+            # Distinguish true expanded rows (10-byte record + 10-byte filler)
+            # from compact rows whose total length also happens to be divisible by 20.
+            expanded_rows = True
+            for i in range(0, len(records_blob), 20):
+                back10 = records_blob[i + 10 : i + 20]
+                if len(back10) != 10:
+                    expanded_rows = False
+                    break
+                if back10[0] not in (0xFF, 0x00):
+                    expanded_rows = False
+                    break
+                if any(b not in (0xFF, 0x00, 0x01) for b in back10):
+                    expanded_rows = False
+                    break
+
+        if expanded_rows:
+            for i in range(0, len(records_blob), 20):
+                row20 = records_blob[i : i + 20]
+                row10 = row20[:10]
+                if len(row10) != 10:
+                    return None
+                compact_records.append(row10)
+        elif len(records_blob) % 10 == 0 and len(records_blob) >= 10:
+            for i in range(0, len(records_blob), 10):
+                row10 = records_blob[i : i + 10]
+                if len(row10) != 10:
+                    return None
+                compact_records.append(row10)
+        else:
+            return None
+
+        if allowed_device_ids is not None:
+            allowed = {d & 0xFF for d in allowed_device_ids}
+            compact_records = [
+                row
+                for row in compact_records
+                if row[0] in (0x00, 0xFF) or row[0] in allowed
+            ]
+
+        existing_pairs: set[tuple[int, int]] = set()
+        for row in compact_records:
+            dev = row[0]
+            cmd = row[1]
+            if dev in (0x00, 0xFF) or cmd == 0xFF:
+                continue
+            existing_pairs.add((dev, cmd))
+
+        required_pairs: list[tuple[int, int]]
+        if button_id == ButtonName.POWER_ON:
+            required_pairs = [
+                (device_id & 0xFF, ButtonName.POWER_ON),
+                (device_id & 0xFF, 0xC5),
+            ]
+        else:
+            required_pairs = [(device_id & 0xFF, ButtonName.POWER_OFF)]
+
+        for pair in required_pairs:
+            if pair in existing_pairs:
+                continue
+            compact_records.append(self._build_macro_record_chunk(device_id=pair[0], command_id=pair[1]))
+            existing_pairs.add(pair)
+
+        head[8] = len(compact_records) & 0xFF
+        payload = bytearray(bytes(head) + b"".join(compact_records) + tail)
+        if payload:
+            # Last byte in macro payload is an internal token (distinct from
+            # outer frame checksum); observed app traffic recomputes it as sum-2.
+            payload[-1] = (sum(payload[:-1]) - 2) & 0xFF
+        return bytes(payload)
+
     def _build_roku_device_payload(
         self,
         *,
@@ -1116,7 +1286,7 @@ class X1Proxy:
         return False
 
     def add_device_to_activity(self, activity_id: int, device_id: int) -> dict[str, Any] | None:
-        """Attempt to add ``device_id`` to ``activity_id`` using 0x024F confirmations only."""
+        """Add ``device_id`` to ``activity_id`` and replay POWER_ON/OFF macro updates."""
 
         if not self.can_issue_commands():
             log.info("[ACTIVITY_ASSIGN] add_device_to_activity ignored: proxy client is connected")
@@ -1153,8 +1323,10 @@ class X1Proxy:
 
         self.start_roku_create()
 
-        for member in ordered_members:
-            include_flag = 0x00 if member == dev_lo else 0x01
+        for index, member in enumerate(ordered_members):
+            # Hub expects a 0x01 marker only on the first 0x024F frame in the batch.
+            # All following members (existing + newly-added) use 0x00.
+            include_flag = 0x01 if index == 0 else 0x00
             payload = bytes([member & 0xFF, include_flag])
             log.info(
                 "[ACTIVITY_ASSIGN] confirm member dev=0x%02X include=0x%02X",
@@ -1162,7 +1334,7 @@ class X1Proxy:
                 include_flag,
             )
             self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
-            if not self.wait_for_roku_ack(0x0103, timeout=5.0):
+            if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0) is None:
                 log.warning(
                     "[ACTIVITY_ASSIGN] missing ACK after 0x024F dev=0x%02X include=0x%02X",
                     member & 0xFF,
@@ -1170,12 +1342,95 @@ class X1Proxy:
                 )
                 return None
 
-        log.info("[ACTIVITY_ASSIGN] completed act=0x%02X add dev=0x%02X via 0x024F sequence", act_lo, dev_lo)
+        macro_updates: list[int] = []
+        for macro_button in (ButtonName.POWER_ON, ButtonName.POWER_OFF):
+            macro_name = BUTTONNAME_BY_CODE.get(macro_button, f"0x{macro_button:02X}")
+            log.info("[ACTIVITY_ASSIGN] fetch macro act=0x%02X button=%s", act_lo, macro_name)
+            self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
+
+            # POWER_ON follows an extra input-selection wizard step on the hub.
+            # Replay it to keep the save-state machine aligned with the app.
+            if macro_button == ButtonName.POWER_ON:
+                pre_payload = self.wait_for_macro_payload(act_lo, macro_button, timeout=5.0)
+                if pre_payload is None:
+                    log.warning(
+                        "[ACTIVITY_ASSIGN] missing pre-input macro payload act=0x%02X button=0x%02X",
+                        act_lo,
+                        macro_button,
+                    )
+                    return None
+                self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, b"\x01")
+                if not self.wait_for_activity_inputs_burst(timeout=5.0):
+                    log.warning("[ACTIVITY_ASSIGN] missing activity-inputs response act=0x%02X", act_lo)
+                    return None
+                self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
+
+            source_payload = self.wait_for_macro_payload(act_lo, macro_button, timeout=5.0)
+            if source_payload is None:
+                log.warning(
+                    "[ACTIVITY_ASSIGN] missing macro payload act=0x%02X button=0x%02X",
+                    act_lo,
+                    macro_button,
+                )
+                return None
+
+            updated_payload = self._build_macro_save_payload(
+                source_payload,
+                device_id=dev_lo,
+                button_id=macro_button,
+                allowed_device_ids=set(ordered_members),
+            )
+            if updated_payload is None:
+                log.warning(
+                    "[ACTIVITY_ASSIGN] unable to build macro save payload act=0x%02X button=0x%02X",
+                    act_lo,
+                    macro_button,
+                )
+                return None
+
+            save_opcode = ((len(updated_payload) & 0xFF) << 8) | 0x12
+            row_count = updated_payload[8] if len(updated_payload) >= 9 else 0
+            log.info(
+                "[ACTIVITY_ASSIGN] save macro act=0x%02X button=0x%02X opcode=0x%04X payload=%dB rows=%d",
+                act_lo,
+                macro_button,
+                save_opcode,
+                len(updated_payload),
+                row_count,
+            )
+            if self.diag_dump:
+                log.info("[ACTIVITY_ASSIGN] save macro payload %s", updated_payload.hex(" "))
+
+            self._send_family_frame(0x12, updated_payload)
+            macro_ack = self.wait_for_roku_ack_any(
+                [(0x0112, macro_button), (0x0112, 0x01)],
+                timeout=5.0,
+            )
+            if macro_ack is None:
+                log.warning(
+                    "[ACTIVITY_ASSIGN] missing ACK after macro save act=0x%02X button=0x%02X",
+                    act_lo,
+                    macro_button,
+                )
+                return None
+
+            ack_opcode, ack_payload = macro_ack
+            if ack_opcode == 0x0112 and ack_payload and ack_payload[0] != (macro_button & 0xFF):
+                log.info(
+                    "[ACTIVITY_ASSIGN] macro save ack fallback act=0x%02X button=0x%02X ack=0x%02X",
+                    act_lo,
+                    macro_button,
+                    ack_payload[0],
+                )
+            macro_updates.append(macro_button)
+
+        log.info("[ACTIVITY_ASSIGN] completed act=0x%02X add dev=0x%02X with macro updates", act_lo, dev_lo)
         return {
             "activity_id": act_lo,
             "device_id": dev_lo,
             "members_before": current_members,
             "members_confirmed": ordered_members,
+            "macros_updated": macro_updates,
             "status": "success",
         }
 
