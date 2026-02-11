@@ -960,7 +960,7 @@ def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
     }
     assert sent == [
         (0x024F, bytes([0x01, 0x01])),
-        (0x024F, bytes([0x02, 0x00])),
+        (0x024F, bytes([0x02, 0x01])),
         (0x024F, bytes([0x06, 0x00])),
         (0x024D, bytes([0x65, 0xC6])),
         (0x0148, b"\x01"),
@@ -976,6 +976,76 @@ def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
         [(0x0112, ButtonName.POWER_OFF), (0x0112, 0x01)],
     ]
 
+
+
+
+def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(
+        proxy,
+        "request_activity_mapping",
+        lambda act_id: proxy._activity_map_complete.add(act_id & 0xFF) or True,
+    )
+
+    # Favorites only reveal two members, but activity-map membership includes device 6.
+    proxy.state.activity_favorite_slots[101] = [
+        {"button_id": 1, "device_id": 1, "command_id": 0x10},
+        {"button_id": 2, "device_id": 2, "command_id": 0x11},
+    ]
+    proxy.state.record_activity_member(101, 1)
+    proxy.state.record_activity_member(101, 2)
+    proxy.state.record_activity_member(101, 6)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_macro_payload",
+        lambda _act, _button, timeout=5.0: bytes.fromhex(
+            "01 00 01 01 00 01 65 c7 "
+            "01 c7 00 00 00 00 00 00 01 ff "
+            "02 c7 00 00 00 00 00 00 01 ff "
+            "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 ff ff"
+        )
+        if _button == ButtonName.POWER_OFF
+        else bytes.fromhex(
+            "01 00 01 01 00 01 65 c6 "
+            "01 c6 00 00 00 00 00 00 01 ff "
+            "02 c6 00 00 00 00 00 00 01 ff "
+            "01 c5 00 00 00 00 00 00 1a ff "
+            "02 c5 00 00 00 00 00 00 00 ff "
+            "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "02 00 00 00 00 00 2d 76 00"
+        ),
+    )
+    monkeypatch.setattr(
+        proxy,
+        "_build_macro_save_payload",
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+    )
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], bytes([candidates[0][1] if candidates[0][1] is not None else 0x00])),
+    )
+
+    result = proxy.add_device_to_activity(101, 5)
+
+    assert result is not None
+    assert result["members_before"] == [1, 2, 6]
+    assert result["members_confirmed"] == [1, 2, 6, 5]
+    assert sent[:4] == [
+        (0x024F, bytes([0x01, 0x01])),
+        (0x024F, bytes([0x02, 0x01])),
+        (0x024F, bytes([0x06, 0x00])),
+        (0x024F, bytes([0x05, 0x00])),
+    ]
 
 def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
@@ -1050,7 +1120,7 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
     assert result is None
     assert sent == [
         (0x024F, bytes([0x01, 0x01])),
-        (0x024F, bytes([0x06, 0x00])),
+        (0x024F, bytes([0x06, 0x01])),
     ]
 
 

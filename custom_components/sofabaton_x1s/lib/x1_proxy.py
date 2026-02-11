@@ -815,6 +815,7 @@ class X1Proxy:
         if clear_favorites:
             self.state.activity_command_refs.pop(ent_lo, None)
             self.state.activity_favorite_slots.pop(ent_lo, None)
+            self.state.activity_members.pop(ent_lo, None)
             self.state.activity_favorite_labels.pop(ent_lo, None)
             self._clear_favorite_label_requests_for_activity(ent_lo)
             self._pending_activity_map_requests.discard(ent_lo)
@@ -1304,13 +1305,16 @@ class X1Proxy:
         if not self._wait_for_activity_map_burst(act_lo, timeout=5.0):
             return None
 
-        current_members = sorted(
-            {
-                int(slot.get("device_id", 0)) & 0xFF
-                for slot in self.state.get_activity_favorite_slots(act_lo)
-                if int(slot.get("device_id", 0)) & 0xFF
-            }
-        )
+        current_members = self.state.get_activity_members(act_lo)
+        if not current_members:
+            # Fallback for older cached data paths where only favorites were parsed.
+            current_members = sorted(
+                {
+                    int(slot.get("device_id", 0)) & 0xFF
+                    for slot in self.state.get_activity_favorite_slots(act_lo)
+                    if int(slot.get("device_id", 0)) & 0xFF
+                }
+            )
         if not current_members:
             log.warning("[ACTIVITY_ASSIGN] no existing members discovered for act=0x%02X", act_lo)
 
@@ -1324,9 +1328,11 @@ class X1Proxy:
         self.start_roku_create()
 
         for index, member in enumerate(ordered_members):
-            # Hub expects a 0x01 marker only on the first 0x024F frame in the batch.
-            # All following members (existing + newly-added) use 0x00.
-            include_flag = 0x01 if index == 0 else 0x00
+            # Observed app traffic keeps 0x01 on the first two rows in the
+            # device-confirm batch and uses 0x00 for subsequent rows.
+            # Replaying this pattern prevents later adds from displacing the
+            # previously-added third device.
+            include_flag = 0x01 if index < 2 else 0x00
             payload = bytes([member & 0xFF, include_flag])
             log.info(
                 "[ACTIVITY_ASSIGN] confirm member dev=0x%02X include=0x%02X",

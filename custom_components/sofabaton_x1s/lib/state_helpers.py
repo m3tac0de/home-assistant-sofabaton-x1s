@@ -20,6 +20,7 @@ class ActivityCache:
         self.ip_buttons: Dict[int, Dict[int, Dict[str, Any]]] = defaultdict(dict)
         self.activity_command_refs: dict[int, set[tuple[int, int]]] = defaultdict(set)
         self.activity_favorite_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
+        self.activity_members: dict[int, set[int]] = defaultdict(set)
         self.activity_favorite_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
         self.activity_macros: dict[int, list[dict[str, int | str]]] = defaultdict(list)
         self.keymap_remainders: dict[int, bytes] = {}
@@ -150,6 +151,19 @@ class ActivityCache:
 
         return list(self.activity_favorite_slots.get(act_lo, []))
 
+
+    def record_activity_member(self, act_lo: int, device_id: int) -> None:
+        """Record a device as being linked to the activity."""
+
+        dev_lo = device_id & 0xFF
+        if dev_lo:
+            self.activity_members[act_lo & 0xFF].add(dev_lo)
+
+    def get_activity_members(self, act_lo: int) -> list[int]:
+        """Return linked device ids discovered for the activity."""
+
+        return sorted(self.activity_members.get(act_lo & 0xFF, set()))
+
     def record_activity_mapping(
         self,
         act_lo: int,
@@ -160,7 +174,10 @@ class ActivityCache:
     ) -> None:
         """Record an activity favorite mapping entry."""
 
-        pair = (device_id & 0xFF, command_id & 0xFF)
+        dev_lo = device_id & 0xFF
+        self.record_activity_member(act_lo, dev_lo)
+
+        pair = (dev_lo, command_id & 0xFF)
         if pair in self.activity_command_refs.get(act_lo, set()):
             return
 

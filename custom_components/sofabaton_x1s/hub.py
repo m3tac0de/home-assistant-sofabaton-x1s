@@ -597,6 +597,7 @@ class SofabatonHub:
         if clear_favorites:
             self._proxy.state.activity_command_refs.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_favorite_slots.pop(ent_id & 0xFF, None)
+            self._proxy.state.activity_members.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_favorite_labels.pop(ent_id & 0xFF, None)
             self._proxy._clear_favorite_label_requests_for_activity(ent_id & 0xFF)
 

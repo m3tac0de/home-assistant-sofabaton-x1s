@@ -848,6 +848,8 @@ class ActivityMapHandler(BaseFrameHandler):
         if dev_lo == 0:
             return
 
+        proxy.state.record_activity_member(act_lo, dev_lo)
+
         now = time.monotonic()
         burst_key = f"activity_map:{act_lo}"
         if proxy._burst.active and proxy._burst.kind == burst_key:
