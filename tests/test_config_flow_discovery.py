@@ -11,6 +11,7 @@ from custom_components.sofabaton_x1s.const import (
     HUB_VERSION_X2,
     DOMAIN,
     MDNS_SERVICE_TYPES,
+    format_hub_entry_title,
 )
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
@@ -163,3 +164,29 @@ def test_zeroconf_x2_prompts_when_enabled() -> None:
 
     assert result["type"] == "form"
     assert result["step_id"] == "zeroconf_confirm"
+
+
+def test_manual_flow_formats_entry_title_with_version_host_and_mac() -> None:
+    flow = _flow_with_x2_enabled(False)
+
+    _run(flow.async_step_manual({
+        "name": "Manual Hub",
+        "host": "192.168.2.181",
+        CONF_MDNS_VERSION: HUB_VERSION_X2,
+    }))
+
+    result = _run(flow.async_step_ports({
+        "proxy_udp_port": 8000,
+        "hub_listen_base": 8200,
+    }))
+
+    assert result["type"] == "create_entry"
+    assert result["title"] == format_hub_entry_title(
+        HUB_VERSION_X2,
+        "192.168.2.181",
+        result["data"]["mac"],
+    )
+
+
+def test_format_hub_entry_title_defaults_unknown_values() -> None:
+    assert format_hub_entry_title(None, None, None) == "Sofabaton X1 (unknown / unknown)"

@@ -27,6 +27,7 @@ from .const import (
     HUB_VERSION_X2,
     MDNS_SERVICE_TYPES,
     classify_hub_version,
+    format_hub_entry_title,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -194,7 +195,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             # store ports in options (per entry)
             return self.async_create_entry(
-                title=hub_info["name"],
+                title=format_hub_entry_title(version, hub_info["host"], mac),
                 data=data,
                 options={
                     "proxy_udp_port": proxy_udp_port,

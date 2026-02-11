@@ -108,3 +108,12 @@ def mdns_service_type_for_props(props: dict[str, str]) -> str:
 
     version = classify_hub_version(props)
     return MDNS_SERVICE_TYPE_BY_VERSION.get(version, MDNS_SERVICE_TYPE_X1)
+
+
+def format_hub_entry_title(version: str | None, host: str | None, mac: str | None) -> str:
+    """Return a consistent config-entry title for integration cards."""
+
+    display_version = (version or DEFAULT_HUB_VERSION).strip() or DEFAULT_HUB_VERSION
+    display_host = (host or "unknown").strip() or "unknown"
+    display_mac = (mac or "unknown").strip() or "unknown"
+    return f"Sofabaton {display_version} ({display_host} / {display_mac})"

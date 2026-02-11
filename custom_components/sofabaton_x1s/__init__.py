@@ -27,6 +27,7 @@ from .const import (
     CONF_ROKU_SERVER_ENABLED,
     CONF_MDNS_VERSION,
     CONF_ENABLE_X2_DISCOVERY,
+    format_hub_entry_title,
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
@@ -138,6 +139,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
     roku_server_enabled = opts.get(CONF_ROKU_SERVER_ENABLED, False)
     version = data.get(CONF_MDNS_VERSION) or opts.get(CONF_MDNS_VERSION)
+
+    expected_title = format_hub_entry_title(version, data.get("host"), data.get(CONF_MAC))
+    if entry.title != expected_title:
+        hass.config_entries.async_update_entry(entry, title=expected_title)
+
     hub = SofabatonHub(
         hass=hass,
         entry_id=entry.entry_id,
