@@ -4,7 +4,7 @@ fetch_device_commands:
   fields:
     device:
       name: Sofabaton hub
-      required: false
+      required: true
       selector:
         device:
           integration: sofabaton_x1s
@@ -19,29 +19,18 @@ fetch_device_commands:
 
 create_wifi_device:
   name: Create Wifi Device
-  description: Replay the captured Wifi Device-creation sequence on the selected hub.
+  description: Creates a Wifi device on the selected hub.
   fields:
     device:
       name: Sofabaton hub
-      required: false
+      required: true
       selector:
         device:
           integration: sofabaton_x1s
-    hub:
-      name: Hub entry id or MAC (optional)
-      required: false
-      selector:
-        text:
-    entity_id:
-      name: Related entity
-      required: false
-      selector:
-        entity:
-          integration: sofabaton_x1s
     device_name:
       name: Device name
-      description: Friendly name to write into the Wifi Device virtual device record.
-      required: false
+      description: Name that the Wifi device will be given on the hub.
+      required: true
       default: Home Assistant
       selector:
         text:
@@ -53,7 +42,7 @@ create_wifi_device:
         object:
     request_port:
       name: Request port
-      description: TCP port used by Virtual IP Wifi devices (X1S/X2).
+      description: DO NOT TOUCH FOR NOW. TCP port used by Virtual IP Wifi devices (X1S/X2).
       required: false
       default: 8060
       selector:
@@ -133,32 +122,21 @@ create_ip_button:
 
 device_to_activity:
   name: Add device to activity
-  description: Replay the captured activity-device assignment confirmations (0x024F) on the selected hub.
+  description: Adds a device to an activity on the selected hub.
   fields:
     device:
       name: Sofabaton hub
-      required: false
+      required: true
       selector:
         device:
-          integration: sofabaton_x1s
-    hub:
-      name: Hub entry id or MAC (optional)
-      required: false
-      selector:
-        text:
-    entity_id:
-      name: Related entity
-      required: false
-      selector:
-        entity:
           integration: sofabaton_x1s
     activity_id:
       name: Activity id
       required: true
       selector:
         number:
-          min: 1
-          max: 255
+          min: 101
+          max: 200
           mode: box
     device_id:
       name: Device id
@@ -166,37 +144,25 @@ device_to_activity:
       selector:
         number:
           min: 1
-          max: 255
+          max: 99
           mode: box
-
 
 command_to_favorite:
   name: Add command to activity favorite
-  description: Replay the captured favorite-write sequence (0x3E -> 0x61 -> 0x65) on the selected hub.
+  description: Makes a favorite from a command on the selected hub.
   fields:
     device:
       name: Sofabaton hub
-      required: false
+      required: true
       selector:
         device:
-          integration: sofabaton_x1s
-    hub:
-      name: Hub entry id or MAC (optional)
-      required: false
-      selector:
-        text:
-    entity_id:
-      name: Related entity
-      required: false
-      selector:
-        entity:
           integration: sofabaton_x1s
     activity_id:
       name: Activity id
       required: true
       selector:
         number:
-          min: 1
+          min: 101
           max: 255
           mode: box
     device_id:
@@ -205,7 +171,7 @@ command_to_favorite:
       selector:
         number:
           min: 1
-          max: 255
+          max: 99
           mode: box
     command_id:
       name: Command id
@@ -226,27 +192,15 @@ command_to_favorite:
           max: 255
           mode: box
 
-
 command_to_button:
   name: Map command to activity button
-  description: Replay the captured button-write sequence (0x193E -> 0x65) on the selected hub.
+  description: Maps commands to buttons on the selected hub.
   fields:
     device:
       name: Sofabaton hub
-      required: false
+      required: true
       selector:
         device:
-          integration: sofabaton_x1s
-    hub:
-      name: Hub entry id or MAC (optional)
-      required: false
-      selector:
-        text:
-    entity_id:
-      name: Related entity
-      required: false
-      selector:
-        entity:
           integration: sofabaton_x1s
     activity_id:
       name: Activity id
