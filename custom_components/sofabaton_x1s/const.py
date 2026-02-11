@@ -16,6 +16,7 @@ CONF_MDNS_VERSION = "mdns_version"
 CONF_PROXY_ENABLED = "proxy_enabled"
 CONF_HEX_LOGGING_ENABLED = "hex_logging_enabled"
 CONF_ROKU_SERVER_ENABLED = "roku_server_enabled"
+CONF_ROKU_LISTEN_PORT = "roku_listen_port"
 CONF_ENABLE_X2_DISCOVERY = "enable_x2_discovery"
 
 # Hub version classification
@@ -43,6 +44,7 @@ MDNS_SERVICE_TYPE_BY_VERSION = {
 
 DEFAULT_PROXY_UDP_PORT = 8102
 DEFAULT_HUB_LISTEN_BASE = 8200
+DEFAULT_ROKU_LISTEN_PORT = 8060
 
 PLATFORMS = [
     "select",

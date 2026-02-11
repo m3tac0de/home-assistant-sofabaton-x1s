@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Select Sofabaton hub",
-        "description": "Select the Sofabaton hub that was discovered on your network, or choose manual setup if yours isn’t listed."
+        "description": "Select the Sofabaton hub that was discovered on your network, or choose manual setup if yours isn\u2019t listed."
       },
       "manual": {
         "title": "Manual hub setup",
@@ -16,10 +16,11 @@
       },
       "ports": {
         "title": "Proxy ports",
-        "description": "These ports are used by the local Sofabaton proxy. UDP (default 8102) lets the official app discover the virtual hub and is shared by all hubs, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
+        "description": "These ports are used by the local Sofabaton proxy. UDP (default 8102) lets the official app discover the virtual hub and is shared by all hubs, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base. WiFi listener port (default 8060) is shared by all hubs and used for virtual WiFi device callbacks.",
         "data": {
           "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
-          "proxy_udp_port": "UDP Listener port (for the app to connect)"
+          "proxy_udp_port": "UDP Listener port (for the app to connect)",
+          "roku_listen_port": "WiFi listener port (for Roku-style HTTP commands)"
         }
       },
       "zeroconf_confirm": {
@@ -35,10 +36,11 @@
     "step": {
       "ports": {
         "title": "Proxy ports",
-        "description": "These ports are used by the local Sofabaton proxy and apply to all hubs. UDP (default 8102) lets the official app discover the virtual hub, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
+        "description": "These ports are used by the local Sofabaton proxy and apply to all hubs. UDP (default 8102) lets the official app discover the virtual hub, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base. WiFi listener port (default 8060) is shared by all hubs and used for virtual WiFi device callbacks.",
         "data": {
           "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
-          "proxy_udp_port": "UDP Listener port (for the app to connect)"
+          "proxy_udp_port": "UDP Listener port (for the app to connect)",
+          "roku_listen_port": "WiFi listener port (for Roku-style HTTP commands)"
         }
       }
     }

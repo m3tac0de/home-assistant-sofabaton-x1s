@@ -27,6 +27,8 @@ from .const import (
     CONF_ROKU_SERVER_ENABLED,
     CONF_MDNS_VERSION,
     CONF_ENABLE_X2_DISCOVERY,
+    CONF_ROKU_LISTEN_PORT,
+    DEFAULT_ROKU_LISTEN_PORT,
     format_hub_entry_title,
 )
 from .diagnostics import (
@@ -138,6 +140,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     proxy_enabled = opts.get(CONF_PROXY_ENABLED, True)
     hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
     roku_server_enabled = opts.get(CONF_ROKU_SERVER_ENABLED, False)
+    roku_listen_port = opts.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT)
     version = data.get(CONF_MDNS_VERSION) or opts.get(CONF_MDNS_VERSION)
 
     expected_title = format_hub_entry_title(version, data.get("host"), data.get(CONF_MAC))
@@ -176,6 +179,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = hub
 
     roku_listener = await async_get_roku_listener(hass)
+    await roku_listener.async_set_listen_port(int(roku_listen_port))
     await roku_listener.async_register_hub(hub, enabled=roku_server_enabled)
 
     # ← important: tell HA to call us when options change
@@ -201,6 +205,10 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
         proxy_udp_port=proxy_udp_port,
         hub_listen_base=hub_listen_base,
     )
+
+    roku_listen_port = entry.options.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT)
+    roku_listener = await async_get_roku_listener(hass)
+    await roku_listener.async_set_listen_port(int(roku_listen_port))
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
@@ -257,9 +265,11 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
             raise ValueError("commands entries must contain only letters, numbers, and spaces")
         commands.append(command_name)
 
-    request_port = int(call.data.get("request_port", 8060))
-    if request_port < 1 or request_port > 65535:
-        raise ValueError("request_port must be between 1 and 65535")
+    entry = hass.config_entries.async_get_entry(hub.entry_id)
+    if entry is None:
+        raise ValueError("Could not resolve config entry for selected Sofabaton hub")
+
+    request_port = int(entry.options.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT))
 
     return await hub.async_create_wifi_device(
         device_name=device_name,

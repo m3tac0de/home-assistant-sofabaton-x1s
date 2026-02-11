@@ -22,10 +22,12 @@ from .const import (
     DEFAULT_HUB_LISTEN_BASE,
     DEFAULT_HUB_VERSION,
     CONF_ENABLE_X2_DISCOVERY,
+    CONF_ROKU_LISTEN_PORT,
     HUB_VERSION_X1,
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
     MDNS_SERVICE_TYPES,
+    DEFAULT_ROKU_LISTEN_PORT,
     classify_hub_version,
     format_hub_entry_title,
 )
@@ -148,10 +150,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
-    # step ports: per-entry (but effectively global) parameters
+    # step ports: per-entry (but effectively global) listener parameters
     # ------------------------------------------------------------------
     async def async_step_ports(self, user_input: Dict[str, Any] | None = None):
-        """Let user adjust the two base ports."""
+        """Let user adjust the shared listener ports."""
         if self._chosen_hub is None:
             # should not happen
             return self.async_abort(reason="unknown")
@@ -163,13 +165,16 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             first = existing_entries[0]
             current_proxy_udp = first.options.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
             current_hub_listen_base = first.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
+            current_roku_listen_port = first.options.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT)
         else:
             current_proxy_udp = DEFAULT_PROXY_UDP_PORT
             current_hub_listen_base = DEFAULT_HUB_LISTEN_BASE
+            current_roku_listen_port = DEFAULT_ROKU_LISTEN_PORT
 
         if user_input is not None:
             proxy_udp_port = user_input["proxy_udp_port"]
             hub_listen_base = user_input["hub_listen_base"]
+            roku_listen_port = user_input.get(CONF_ROKU_LISTEN_PORT, current_roku_listen_port)
 
             # finish
             hub_info = self._chosen_hub
@@ -200,6 +205,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 options={
                     "proxy_udp_port": proxy_udp_port,
                     "hub_listen_base": hub_listen_base,
+                    CONF_ROKU_LISTEN_PORT: roku_listen_port,
                     CONF_MDNS_VERSION: version,
                 },
             )
@@ -208,6 +214,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         schema = vol.Schema({
             vol.Required("proxy_udp_port", default=current_proxy_udp): PORT_VALIDATOR,
             vol.Required("hub_listen_base", default=current_hub_listen_base): PORT_VALIDATOR,
+            vol.Required(CONF_ROKU_LISTEN_PORT, default=current_roku_listen_port): PORT_VALIDATOR,
         })
 
         return self.async_show_form(
@@ -346,7 +353,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 # ----------------------------------------------------------------------
-# options flow — user can later change the two port bases
+# options flow — user can later change shared listener ports
 # ----------------------------------------------------------------------
 class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, entry: config_entries.ConfigEntry) -> None:
@@ -381,6 +388,10 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required(
                 "hub_listen_base",
                 default=self.entry.options.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE),
+            ): PORT_VALIDATOR,
+            vol.Required(
+                CONF_ROKU_LISTEN_PORT,
+                default=self.entry.options.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT),
             ): PORT_VALIDATOR,
         })
 

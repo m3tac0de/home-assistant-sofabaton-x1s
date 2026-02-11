@@ -40,17 +40,6 @@ create_wifi_device:
       required: true
       selector:
         object:
-    request_port:
-      name: Request port
-      description: DO NOT TOUCH FOR NOW. TCP port used by Virtual IP Wifi devices (X1S/X2).
-      required: false
-      default: 8060
-      selector:
-        number:
-          min: 1
-          max: 65535
-          mode: box
-
 create_ip_button:
   name: Create virtual IP button
   description: Create a virtual HTTP device/button on the hub based on an IP command definition.

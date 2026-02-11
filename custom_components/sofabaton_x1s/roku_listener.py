@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 from typing import Any
 
-from .const import DOMAIN
+from .const import DOMAIN, DEFAULT_ROKU_LISTEN_PORT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,13 +20,27 @@ class _HubRegistration:
 
 
 class RokuListenerManager:
-    """Singleton listener that accepts Roku-style POST callbacks on port 8060."""
+    """Singleton listener that accepts Roku-style POST callbacks."""
 
     def __init__(self, hass: Any) -> None:
         self._hass = hass
         self._server: asyncio.AbstractServer | None = None
         self._hubs: dict[str, _HubRegistration] = {}
         self._state_lock = asyncio.Lock()
+        self._listen_port = DEFAULT_ROKU_LISTEN_PORT
+        self._bound_port: int | None = None
+
+
+    async def async_set_listen_port(self, listen_port: int) -> None:
+        new_port = int(listen_port)
+        if new_port < 1 or new_port > 65535:
+            raise ValueError("roku_listen_port must be between 1 and 65535")
+
+        if new_port == self._listen_port:
+            return
+
+        self._listen_port = new_port
+        await self._async_ensure_server_state()
 
     async def async_register_hub(self, hub: Any, *, enabled: bool) -> None:
         action_id = hub.get_roku_action_id()
@@ -53,27 +67,43 @@ class RokuListenerManager:
     async def _async_ensure_server_state(self) -> None:
         async with self._state_lock:
             wants_listener = any(reg.enabled for reg in self._hubs.values())
-            if wants_listener and self._server is None:
-                try:
-                    self._server = await asyncio.start_server(
-                        self._async_handle_client,
-                        host="0.0.0.0",
-                        port=8060,
-                    )
-                except OSError as err:
-                    _LOGGER.error(
-                        "[%s] Failed to start Wifi Device listener on port 8060: %s",
-                        DOMAIN,
-                        err,
-                    )
-                    return
-
-                _LOGGER.info("[%s] Wifi Device listener started on port 8060", DOMAIN)
-            elif not wants_listener and self._server is not None:
+            if not wants_listener and self._server is not None:
                 self._server.close()
                 await self._server.wait_closed()
                 self._server = None
+                self._bound_port = None
                 _LOGGER.info("[%s] Wifi Device listener stopped", DOMAIN)
+                return
+
+            if not wants_listener:
+                return
+
+            if self._server is not None and self._bound_port == self._listen_port:
+                return
+
+            if self._server is not None:
+                self._server.close()
+                await self._server.wait_closed()
+                self._server = None
+                self._bound_port = None
+
+            try:
+                self._server = await asyncio.start_server(
+                    self._async_handle_client,
+                    host="0.0.0.0",
+                    port=self._listen_port,
+                )
+            except OSError as err:
+                _LOGGER.error(
+                    "[%s] Failed to start Wifi Device listener on port %s: %s",
+                    DOMAIN,
+                    self._listen_port,
+                    err,
+                )
+                return
+
+            self._bound_port = self._listen_port
+            _LOGGER.info("[%s] Wifi Device listener started on port %s", DOMAIN, self._listen_port)
 
     async def _async_handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")

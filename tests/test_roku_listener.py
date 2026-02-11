@@ -146,3 +146,34 @@ def test_listener_concurrent_register_only_binds_once(monkeypatch) -> None:
         assert manager._server is not None
 
     asyncio.run(_run())
+
+
+def test_listener_restarts_when_port_changes(monkeypatch) -> None:
+    async def _run() -> None:
+        manager = RokuListenerManager(_FakeHass())
+        starts: list[int] = []
+
+        class _Server:
+            def __init__(self) -> None:
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+            async def wait_closed(self):
+                return None
+
+        async def _start_server(*args, **kwargs):
+            starts.append(kwargs["port"])
+            return _Server()
+
+        monkeypatch.setattr(asyncio, "start_server", _start_server)
+
+        hub = _FakeHub(entry_id="e1", action_id="abc123", host="10.0.0.12")
+        await manager.async_register_hub(hub, enabled=True)
+        await manager.async_set_listen_port(8765)
+
+        assert starts == [8060, 8765]
+        assert manager._bound_port == 8765
+
+    asyncio.run(_run())
