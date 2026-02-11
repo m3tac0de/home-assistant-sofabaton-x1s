@@ -10,6 +10,13 @@ from .const import DOMAIN, DEFAULT_ROKU_LISTEN_PORT
 
 _LOGGER = logging.getLogger(__name__)
 
+DEFAULT_MAX_REQUEST_LINE_BYTES = 4096
+DEFAULT_MAX_HEADER_BYTES = 16384
+DEFAULT_MAX_HEADER_COUNT = 100
+DEFAULT_MAX_BODY_BYTES = 1024
+DEFAULT_READ_TIMEOUT_SECONDS = 1.0
+DEFAULT_MAX_PATH_SEGMENT_LENGTH = 30
+
 
 @dataclass
 class _HubRegistration:
@@ -29,7 +36,12 @@ class RokuListenerManager:
         self._state_lock = asyncio.Lock()
         self._listen_port = DEFAULT_ROKU_LISTEN_PORT
         self._bound_port: int | None = None
-
+        self._max_request_line_bytes = DEFAULT_MAX_REQUEST_LINE_BYTES
+        self._max_header_bytes = DEFAULT_MAX_HEADER_BYTES
+        self._max_header_count = DEFAULT_MAX_HEADER_COUNT
+        self._max_body_bytes = DEFAULT_MAX_BODY_BYTES
+        self._read_timeout_seconds = DEFAULT_READ_TIMEOUT_SECONDS
+        self._max_path_segment_length = DEFAULT_MAX_PATH_SEGMENT_LENGTH
 
     async def async_set_listen_port(self, listen_port: int) -> None:
         new_port = int(listen_port)
@@ -110,31 +122,71 @@ class RokuListenerManager:
         source_ip = str(peer[0]) if isinstance(peer, tuple) and peer else ""
 
         try:
-            request_line = await reader.readline()
+            request_line = await asyncio.wait_for(reader.readline(), timeout=self._read_timeout_seconds)
             if not request_line:
                 self._write_response(writer, 400, b"bad request")
                 return
+            if len(request_line) > self._max_request_line_bytes:
+                self._write_response(writer, 431, b"request headers too large")
+                return
 
-            method, path, _ = request_line.decode("utf-8", errors="ignore").strip().split(" ", 2)
+            decoded_request_line = request_line.decode("utf-8", errors="ignore").strip()
+            request_parts = decoded_request_line.split()
+            if len(request_parts) != 3:
+                self._write_response(writer, 400, b"bad request")
+                return
+
+            method, path, version = request_parts
+            if version not in ("HTTP/1.0", "HTTP/1.1"):
+                self._write_response(writer, 400, b"bad request")
+                return
+
             headers: dict[str, str] = {}
+            header_bytes = 0
+            header_count = 0
             while True:
-                line = await reader.readline()
+                line = await asyncio.wait_for(reader.readline(), timeout=self._read_timeout_seconds)
                 if not line or line in (b"\r\n", b"\n"):
                     break
+
+                header_count += 1
+                header_bytes += len(line)
+                if header_count > self._max_header_count or header_bytes > self._max_header_bytes:
+                    self._write_response(writer, 431, b"request headers too large")
+                    return
+
                 key, _, value = line.decode("utf-8", errors="ignore").partition(":")
                 headers[key.strip().lower()] = value.strip()
 
-            content_length = int(headers.get("content-length", "0"))
-            body = await reader.readexactly(content_length) if content_length else b""
+            content_length_raw = headers.get("content-length", "0")
+            try:
+                content_length = int(content_length_raw)
+            except (TypeError, ValueError):
+                self._write_response(writer, 400, b"bad request")
+                return
+
+            if content_length < 0:
+                self._write_response(writer, 400, b"bad request")
+                return
+
+            if content_length > self._max_body_bytes:
+                self._write_response(writer, 413, b"payload too large")
+                return
+
+            # Path carries the actionable payload for Sofabaton requests.
+            # We do not consume request bodies; we only enforce a small max size
+            # based on declared Content-Length to guard against abuse.
 
             status, payload = await self.async_handle_post(
                 method=method,
                 path=path,
                 headers=headers,
-                body=body,
+                body=b"",
                 source_ip=source_ip,
             )
             self._write_response(writer, status, payload)
+        except asyncio.TimeoutError:
+            self._write_response(writer, 408, b"request timeout")
         except Exception:  # pragma: no cover - defensive network boundary
             _LOGGER.exception("[%s] Wifi Device listener failed to process request", DOMAIN)
             self._write_response(writer, 500, b"internal error")
@@ -156,6 +208,8 @@ class RokuListenerManager:
 
         normalized_path = self._normalize_request_path(path)
         parts = [part for part in normalized_path.strip("/").split("/") if part]
+        if any(len(part) > self._max_path_segment_length for part in parts):
+            return (400, b"bad request")
         if len(parts) < 4 or parts[0] != "launch":
             return (404, b"not found")
 
@@ -211,6 +265,9 @@ class RokuListenerManager:
             403: "Forbidden",
             404: "Not Found",
             405: "Method Not Allowed",
+            408: "Request Timeout",
+            413: "Payload Too Large",
+            431: "Request Header Fields Too Large",
             500: "Internal Server Error",
         }.get(status, "OK")
         response = (
