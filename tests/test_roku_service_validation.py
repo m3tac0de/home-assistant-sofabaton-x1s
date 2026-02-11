@@ -17,10 +17,11 @@ class _FakeHub:
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    async def async_create_wifi_device(self, *, device_name: str, commands: list[str]):
+    async def async_create_wifi_device(self, *, device_name: str, commands: list[str], request_port: int):
         payload = {
             "device_name": device_name,
             "commands": commands,
+            "request_port": request_port,
         }
         self.calls.append(payload)
         return payload
@@ -129,8 +130,25 @@ def test_create_wifi_device_accepts_valid_input(monkeypatch) -> None:
     assert result == {
         "device_name": "Living Room",
         "commands": ["Lights On", "Lights Off"],
+        "request_port": 8060,
     }
     assert hub.calls == [result]
+
+
+def test_create_wifi_device_validates_request_port(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    with pytest.raises(ValueError, match="request_port must be between 1 and 65535"):
+        asyncio.run(
+            integration._async_handle_create_wifi_device(
+                _FakeCall({"device_name": "Living Room", "commands": ["Lights On"], "request_port": 0})
+            )
+        )
 
 
 def test_device_to_activity_validates_activity_id(monkeypatch) -> None:

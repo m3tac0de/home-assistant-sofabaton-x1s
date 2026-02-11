@@ -1695,12 +1695,21 @@ class X1Proxy:
         self,
         device_name: str = "Home Assistant",
         commands: list[str] | None = None,
+        request_port: int = 8060,
     ) -> dict[str, Any] | None:
         if not self.can_issue_commands():
             log.info("[WIFI] create_wifi_device ignored: proxy client is connected")
             return None
 
         ip_address = self.get_routed_local_ip()
+
+        if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
+            return self._create_virtual_ip_wifi_device(
+                device_name=device_name,
+                commands=commands,
+                ip_address=ip_address,
+                request_port=request_port,
+            )
 
         self.start_roku_create()
         log.info("[WIFI] starting exact Wifi Device create replay sequence")
@@ -1855,6 +1864,105 @@ class X1Proxy:
 
         log.info("[WIFI] replayed Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
+
+    def _create_virtual_ip_wifi_device(
+        self,
+        *,
+        device_name: str,
+        commands: list[str] | None,
+        ip_address: str,
+        request_port: int,
+    ) -> dict[str, Any] | None:
+        self.start_roku_create()
+        log.info("[WIFI] starting virtual IP Wifi Device create replay sequence")
+
+        if not self._send_roku_step(
+            step_name="create-device",
+            family=0x07,
+            payload=self._build_roku_device_payload(device_name=device_name, ip_address=ip_address, state_byte=0x00),
+            ack_opcode=0x0107,
+        ):
+            return None
+
+        device_id = self.wait_for_roku_device_id(timeout=5.0)
+        if device_id is None:
+            log.warning("[WIFI] hub did not provide device id after create request")
+            return None
+
+        request_ip = ipaddress.IPv4Address(ip_address).packed
+        for idx, command_name in enumerate((commands or [])[:10]):
+            slot = (idx + 1) & 0xFF
+            # Observed 0xAE0E payloads use a 60-byte UTF-16LE command label field.
+            command_utf16 = self._utf16le_padded(command_name, length=60)
+            request_blob = self._build_virtual_ip_http_request(ip_address, request_port)
+            payload_base = (
+                bytes([slot, 0x00, 0x01, 0x03, 0x00, 0x01, device_id, 0x00, 0x1C])
+                + (b"\x00" * 7)
+                + command_utf16
+                + request_ip
+                + int(request_port & 0xFFFF).to_bytes(2, "big")
+                + b"\x00"
+                + bytes([len(request_blob) & 0xFF])
+                + request_blob
+            )
+            payload_token = (sum(payload_base) - (slot + 1)) & 0xFF
+            payload = payload_base + bytes([payload_token])
+            if not self._send_roku_step(
+                step_name=f"define-ip-command[{slot:02d}] {command_name}",
+                family=0x0E,
+                payload=payload,
+                ack_opcode=0x0103,
+            ):
+                return None
+
+        if not self._send_roku_step(
+            step_name="post-map-commit",
+            family=0x41,
+            payload=bytes([device_id, 0x04]),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        if not self._send_roku_step(
+            step_name="sync-stage-7746",
+            family=0x46,
+            payload=bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 112),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        payload_7b08 = self._build_roku_device_payload(
+            device_name=device_name,
+            ip_address=ip_address,
+            state_byte=0x01,
+            device_id=device_id,
+        )
+        if not self._send_roku_step(
+            step_name="finalize-device-7b08",
+            family=0x08,
+            payload=payload_7b08,
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        if not self._send_roku_step(
+            step_name="save-tail-0064",
+            family=0x64,
+            payload=b"",
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
+        return {"device_id": device_id, "status": "success"}
+
+    def _build_virtual_ip_http_request(self, host: str, port: int) -> bytes:
+        return (
+            f"POST  HTTP/1.1\r\n"
+            f"Host:{host}:{int(port) & 0xFFFF}\r\n"
+            "Content-Type:application/x-www-form-urlencoded\r\n"
+            "\r\n"
+        ).encode("ascii")
 
     def _stable_hub_action_id(self) -> str:
         """Return a stable hub identifier for WiFi command actions."""

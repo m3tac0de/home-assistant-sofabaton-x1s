@@ -443,6 +443,7 @@ class SofabatonHub:
         self,
         device_name: str = "Home Assistant",
         commands: list[str] | None = None,
+        request_port: int = 8060,
     ) -> dict[str, Any] | None:
         """Replay the WiFi virtual-device creation sequence on the selected hub."""
 
@@ -450,6 +451,7 @@ class SofabatonHub:
             self._proxy.create_wifi_device,
             device_name,
             commands,
+            request_port,
         )
 
     async def async_add_device_to_activity(

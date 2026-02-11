@@ -251,9 +251,14 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
             raise ValueError("commands entries must contain only letters, numbers, and spaces")
         commands.append(command_name)
 
+    request_port = int(call.data.get("request_port", 8060))
+    if request_port < 1 or request_port > 65535:
+        raise ValueError("request_port must be between 1 and 65535")
+
     return await hub.async_create_wifi_device(
         device_name=device_name,
         commands=commands,
+        request_port=request_port,
     )
 
 
