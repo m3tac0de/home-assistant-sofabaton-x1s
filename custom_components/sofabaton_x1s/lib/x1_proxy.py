@@ -1473,10 +1473,14 @@ class X1Proxy:
                 0x00,
             ]
         )
-        payload.extend((0x4E24).to_bytes(2, "big"))
+        cmd_lo = command_id & 0xFF
+        if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
+            payload.extend([0x4E, 0x20 + cmd_lo])
+        else:
+            payload.extend((0x4E24).to_bytes(2, "big"))
         payload.extend(
             [
-                command_id & 0xFF,
+                cmd_lo,
                 0x00,
                 0x00,
                 0x00,
@@ -1489,6 +1493,35 @@ class X1Proxy:
         )
         payload.append((sum(payload) - 2) & 0xFF)
         return bytes(payload)
+
+    def _build_favorite_stage_payload(self, activity_id: int) -> bytes:
+        """Build the observed 0x61 stage payload for favorite writes."""
+
+        act_lo = activity_id & 0xFF
+        if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
+            payload = bytearray(
+                [
+                    0x01,
+                    0x00,
+                    0x01,
+                    0x01,
+                    0x00,
+                    0x01,
+                    act_lo,
+                    0x01,
+                    0x01,
+                    0x02,
+                    0x02,
+                    0x03,
+                    0x03,
+                    0x04,
+                    0x04,
+                ]
+            )
+            payload.append((sum(payload) - 2) & 0xFF)
+            return bytes(payload)
+
+        return bytes([0x00, 0x01, 0x01, 0x00, 0x01, act_lo, 0x01, 0x01, 0x6A])
 
     def _build_command_to_button_payload(
         self,
@@ -1558,7 +1591,7 @@ class X1Proxy:
                 slot_id=slot_lo,
             ),
             ack_opcode=0x013E,
-            ack_first_byte=0x01,
+            ack_first_byte=None if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2) else 0x01,
             ack_fallback_opcodes=(0x0103,),
         ):
             return None
@@ -1566,7 +1599,7 @@ class X1Proxy:
         if not self._send_roku_step(
             step_name=f"favorite-stage-61[act=0x{act_lo:02X}]",
             family=0x61,
-            payload=bytes([0x00, 0x01, 0x01, 0x00, 0x01, act_lo, 0x01, 0x01, 0x6A]),
+            payload=self._build_favorite_stage_payload(act_lo),
             ack_opcode=0x0103,
         ):
             return None

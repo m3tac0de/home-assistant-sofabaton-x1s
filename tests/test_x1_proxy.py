@@ -1373,6 +1373,69 @@ def test_command_to_favorite_replays_sequence(monkeypatch) -> None:
     assert requested == [0x66]
 
 
+def test_command_to_favorite_x1s_replays_sequence(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        ack_calls.append(candidates)
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x04])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    requested: list[int] = []
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: requested.append(act_id) or True)
+
+    cleared: list[tuple[int, bool, bool, bool]] = []
+    monkeypatch.setattr(
+        proxy,
+        "clear_entity_cache",
+        lambda ent_id, clear_buttons=False, clear_favorites=False, clear_macros=False: cleared.append(
+            (ent_id, clear_buttons, clear_favorites, clear_macros)
+        ),
+    )
+
+    result = proxy.command_to_favorite(0x68, 0x01, 0x03)
+
+    assert result == {
+        "activity_id": 0x68,
+        "device_id": 0x01,
+        "command_id": 0x03,
+        "slot_id": 0x00,
+        "status": "success",
+    }
+    assert [opcode & 0xFF for opcode, _payload in sent] == [0x3E, 0x61, 0x65]
+    assert sent[0][1] == bytes.fromhex(
+        "01 00 01 01 00 01 68 00 01 00 00 00 00 4e 23 03 00 00 00 00 00 00 00 00 df"
+    )
+    assert sent[1][1] == bytes.fromhex("01 00 01 01 00 01 68 01 01 02 02 03 03 04 04 7e")
+    assert sent[2][1] == b"h"
+    assert ack_calls == [
+        [(0x013E, None), (0x0103, None)],
+        [(0x0103, None)],
+        [(0x0103, None)],
+    ]
+    assert cleared == [(0x68, False, True, False)]
+    assert requested == [0x68]
+
+
 def test_command_to_favorite_requires_all_acks(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
