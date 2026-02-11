@@ -1121,8 +1121,16 @@ class X1Proxy:
         if len(source_payload) < 20:
             return None
 
-        label = b"POWER_ON" if button_id == ButtonName.POWER_ON else b"POWER_OFF"
-        marker_idx = source_payload.find(label)
+        label_ascii = b"POWER_ON" if button_id == ButtonName.POWER_ON else b"POWER_OFF"
+        label_utf16be = label_ascii.decode("ascii").encode("utf-16be")
+        label_utf16le = label_ascii.decode("ascii").encode("utf-16le")
+
+        marker_idx = -1
+        for marker in (label_ascii, label_utf16be, label_utf16le):
+            marker_idx = source_payload.find(marker)
+            if marker_idx > 9:
+                break
+
         if marker_idx <= 9:
             return None
 

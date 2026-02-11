@@ -117,6 +117,7 @@ OP_ACTIVITY_MAP_PAGE = 0x7B6D
 OP_REQ_VERSION = 0x0058  # yields WIFI_FW (0x0359) then INFO_BANNER (0x112F)
 OP_PING2 = 0x0140
 OP_REQ_ACTIVITY_INPUTS = 0x0148  # payload: [0x01] request activity input candidates
+OP_PING2_ACK = 0x0242  # H→A keepalive response observed on X1S/X2
 OP_ACTIVITY_DEVICE_CONFIRM = 0x024F  # payload: [dev_lo, include_flag]
 OP_REQ_MACRO_LABELS = 0x024D  # payload: [act_lo, 0xFF]
 OP_REQ_MACROS = OP_REQ_MACRO_LABELS  # backward-compat alias
@@ -124,6 +125,10 @@ OP_MACROS_A1 = 0x6E13
 OP_MACROS_B1 = 0x5A13
 OP_MACROS_A2 = 0x8213
 OP_MACROS_B2 = 0x6413
+OP_ACTIVITY_INPUTS_PAGE_A = 0xFA47  # H→A activity-input candidates page (X1S/X2)
+OP_ACTIVITY_INPUTS_PAGE_B = 0xC947  # H→A final activity-input candidates page (X1S/X2)
+OP_ACTIVITY_ASSIGN_FINALIZE = 0xD538  # A→H post-macro activity assignment save (X1S/X2)
+OP_ACTIVITY_MAP_PAGE_X1S = 0xD56D  # H→A activity mapping page variant (X1S/X2)
 OP_BANNER = 0x1D02  # hub ident, name, batch, hub fw (first screen)
 OP_WIFI_FW = 0x0359  # WiFi firmware ver (Vx.y.z)
 OP_INFO_BANNER = 0x112F  # vendor tag, batch date, remote fw byte, etc.
@@ -189,7 +194,12 @@ OPNAMES: Dict[int, str] = {
     OP_MACROS_B2: "MACROS_B2",
     OP_ACTIVITY_DEVICE_CONFIRM: "ACTIVITY_DEVICE_CONFIRM",
     OP_REQ_ACTIVITY_INPUTS: "REQ_ACTIVITY_INPUTS",
+    OP_PING2_ACK: "PING2_ACK",
     OP_REQ_MACRO_LABELS: "REQ_MACRO_LABELS",
+    OP_ACTIVITY_INPUTS_PAGE_A: "ACTIVITY_INPUTS_PAGE_A",
+    OP_ACTIVITY_INPUTS_PAGE_B: "ACTIVITY_INPUTS_PAGE_B",
+    OP_ACTIVITY_ASSIGN_FINALIZE: "ACTIVITY_ASSIGN_FINALIZE",
+    OP_ACTIVITY_MAP_PAGE_X1S: "ACTIVITY_MAP_PAGE_X1S",
     OP_REQ_VERSION: "REQ_VERSION",
     OP_PING2: "PING2",
 }
@@ -291,6 +301,7 @@ __all__ = [
     "OP_ACTIVITY_MAP_PAGE",
     "OP_REQ_VERSION",
     "OP_PING2",
+    "OP_PING2_ACK",
     "OP_ACTIVITY_DEVICE_CONFIRM",
     "OP_REQ_ACTIVITY_INPUTS",
     "OP_REQ_MACRO_LABELS",
@@ -298,6 +309,10 @@ __all__ = [
     "OP_MACROS_B1",
     "OP_MACROS_A2",
     "OP_MACROS_B2",
+    "OP_ACTIVITY_INPUTS_PAGE_A",
+    "OP_ACTIVITY_INPUTS_PAGE_B",
+    "OP_ACTIVITY_ASSIGN_FINALIZE",
+    "OP_ACTIVITY_MAP_PAGE_X1S",
     "OP_BANNER",
     "OP_WIFI_FW",
     "OP_INFO_BANNER",

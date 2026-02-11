@@ -62,6 +62,7 @@ from .protocol_const import (
     OP_REQ_COMMANDS,
     OP_REQ_ACTIVITIES,
     OP_ACTIVITY_MAP_PAGE,
+    OP_ACTIVITY_MAP_PAGE_X1S,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
     OP_KEYMAP_EXTRA,
@@ -825,9 +826,9 @@ class RequestActivityMapHandler(BaseFrameHandler):
         log.info("[ACTMAP] A→H request %s", frame.raw.hex(" "))
 
 
-@register_handler(opcodes=(OP_ACTIVITY_MAP_PAGE,), directions=("H→A",))
+@register_handler(opcodes=(OP_ACTIVITY_MAP_PAGE, OP_ACTIVITY_MAP_PAGE_X1S), directions=("H→A",))
 class ActivityMapHandler(BaseFrameHandler):
-    """Accumulate activity mapping pages for X1 favorites."""
+    """Accumulate activity mapping pages for activity favorites (X1/X1S/X2 variants)."""
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
