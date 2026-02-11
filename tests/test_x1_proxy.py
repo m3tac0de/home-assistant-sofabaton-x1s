@@ -362,19 +362,20 @@ def test_create_wifi_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     encoded_name = "Living Room Roku".encode("utf-16le")
     assert encoded_name in create_payload
     assert create_payload[7] == 0xFF
-    assert bytes([10, 0, 0, 7]) in create_payload
+    assert create_payload[10] == 0x1C
+    assert b"\xfc\x00\x00\xfc\x02\x00\x00\x00\xfc\x00\xfc\x00" in create_payload
 
     assert define_payload[0] == 0x01
     assert define_payload[1:6] == bytes([0x00, 0x01, 0x03, 0x00, 0x01])
-    assert define_payload[16:76].startswith("My Cmd".encode("utf-16le"))
-    assert define_payload[76:80] == bytes([10, 0, 0, 7])
-    assert define_payload[80:82] == (8765).to_bytes(2, "big")
-    request_len = define_payload[83]
-    request_start = 84
+    assert define_payload[16:75].startswith("My Cmd".encode("utf-16le"))
+    assert define_payload[75:79] == bytes([10, 0, 0, 7])
+    assert define_payload[79:81] == (8765).to_bytes(2, "big")
+    request_len = define_payload[82]
+    request_start = 83
     request_end = request_start + request_len
     assert request_end == len(define_payload) - 1
     request_blob = define_payload[request_start:request_end]
-    assert request_blob.startswith(b"POST  HTTP/1.1\r\n")
+    assert request_blob.startswith(b"POST /launch/")
     assert b"Host:10.0.0.7:8765\r\n" in request_blob
 
     families = {opcode & 0xFF for opcode, _ in sent}
@@ -382,8 +383,9 @@ def test_create_wifi_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     assert 0x3E not in families
 
     assert finalize_payload[7] == 0x09
+    assert finalize_payload[10] == 0x1C
     assert encoded_name in finalize_payload
-    assert bytes([10, 0, 0, 7]) in finalize_payload
+    assert b"\xfc\x00\x00\xfc\x02\x00\x00\x00\xfc\x00\xfc\x01" in finalize_payload
 
 
 

@@ -1219,9 +1219,12 @@ class X1Proxy:
         ip_address: str,
         state_byte: int,
         device_id: int = 0xFF,
+        device_class_byte: int = 0x01,
+        ip_device: bool = False,
     ) -> bytes:
         if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
             payload = bytearray(_ROKU_X1S_CREATE_BASE)
+            payload[3] = device_class_byte & 0xFF
             payload[7] = device_id & 0xFF
 
             def _write_utf16_slot(start: int, span: int, value: str) -> None:
@@ -1252,14 +1255,22 @@ class X1Proxy:
                 _write_utf16_slot(second_name_idx, tail_bound - second_name_idx, "m3tac0de")
 
             custom_ip = ipaddress.IPv4Address(ip_address).packed
-            if ip_idx >= 0:
-                payload[ip_idx:ip_idx + 4] = custom_ip
+            if ip_device:
+                payload[10] = 0x1C
+                if ip_idx >= 0:
+                    payload[ip_idx:ip_idx + 4] = b"\x00\x00\x00\x00"
+                    marker_start = max(ip_idx - 2, 0)
+                    ip_tail = bytes([0xFC, 0x00, 0x00, 0xFC, 0x02, 0x00, 0x00, 0x00, 0xFC, 0x00, 0xFC, state_byte & 0xFF])
+                    payload[marker_start:marker_start + len(ip_tail)] = ip_tail
+            else:
+                if ip_idx >= 0:
+                    payload[ip_idx:ip_idx + 4] = custom_ip
 
-            state_marker = b"\xfc\x02\x00\x02\x00\xfc\x00\xfc\x00"
-            state_idx = payload.find(state_marker)
-            if state_idx >= 0:
-                payload[state_idx + 2] = state_byte & 0xFF
-                payload[state_idx + 8] = state_byte & 0xFF
+                state_marker = b"\xfc\x02\x00\x02\x00\xfc\x00\xfc\x00"
+                state_idx = payload.find(state_marker)
+                if state_idx >= 0:
+                    payload[state_idx + 2] = state_byte & 0xFF
+                    payload[state_idx + 8] = state_byte & 0xFF
             return bytes(payload)
 
         payload = bytearray(
@@ -1731,12 +1742,13 @@ class X1Proxy:
         command_defs: list[tuple[int, int, str, str]] = []
 
         if commands:
-            hub_action_id = self._stable_hub_action_id()
             for idx, command_name in enumerate(commands[: len(_ROKU_APP_SLOTS)]):
                 slot, code = _ROKU_APP_SLOTS[idx]
-                normalized = command_name.replace(" ", "_")
-                normalized_device = device_name.replace(" ", "_")
-                action = f"launch/{hub_action_id}/{device_id}/{normalized}/{normalized_device}"
+                action = self._build_launch_action_path(
+                    device_id=device_id,
+                    command_name=command_name,
+                    device_name=device_name,
+                )
                 command_defs.append((slot, code, command_name, action))
 
         for slot, code, name, action in command_defs:
@@ -1879,7 +1891,7 @@ class X1Proxy:
         if not self._send_roku_step(
             step_name="create-device",
             family=0x07,
-            payload=self._build_roku_device_payload(device_name=device_name, ip_address=ip_address, state_byte=0x00),
+            payload=self._build_roku_device_payload(device_name=device_name, ip_address=ip_address, state_byte=0x00, ip_device=True),
             ack_opcode=0x0107,
         ):
             return None
@@ -1892,9 +1904,18 @@ class X1Proxy:
         request_ip = ipaddress.IPv4Address(ip_address).packed
         for idx, command_name in enumerate((commands or [])[:10]):
             slot = (idx + 1) & 0xFF
-            # Observed 0xAE0E payloads use a 60-byte UTF-16LE command label field.
-            command_utf16 = self._utf16le_padded(command_name, length=60)
-            request_blob = self._build_virtual_ip_http_request(ip_address, request_port)
+            # Observed X1S/X2 0x?E0E payloads encode command labels in a 59-byte field.
+            # Using 59 keeps downstream request bytes aligned so method parses as POST (not xPOST).
+            command_utf16 = command_name.encode("utf-16le")[:59].ljust(59, b"\x00")
+            request_blob = self._build_virtual_ip_http_request(
+                host=ip_address,
+                port=request_port,
+                path=self._build_launch_action_path(
+                    device_id=device_id,
+                    command_name=command_name,
+                    device_name=device_name,
+                ),
+            )
             payload_base = (
                 bytes([slot, 0x00, 0x01, 0x03, 0x00, 0x01, device_id, 0x00, 0x1C])
                 + (b"\x00" * 7)
@@ -1936,6 +1957,7 @@ class X1Proxy:
             ip_address=ip_address,
             state_byte=0x01,
             device_id=device_id,
+            ip_device=True,
         )
         if not self._send_roku_step(
             step_name="finalize-device-7b08",
@@ -1956,9 +1978,16 @@ class X1Proxy:
         log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
 
-    def _build_virtual_ip_http_request(self, host: str, port: int) -> bytes:
+    def _build_launch_action_path(self, *, device_id: int, command_name: str, device_name: str) -> str:
+        hub_action_id = self._stable_hub_action_id()
+        normalized_command = command_name.replace(" ", "_")
+        normalized_device = device_name.replace(" ", "_")
+        return f"launch/{hub_action_id}/{device_id}/{normalized_command}/{normalized_device}"
+
+    def _build_virtual_ip_http_request(self, host: str, port: int, path: str) -> bytes:
+        normalized_path = f"/{path.lstrip('/')}"
         return (
-            f"POST  HTTP/1.1\r\n"
+            f"POST {normalized_path} HTTP/1.1\r\n"
             f"Host:{host}:{int(port) & 0xFFFF}\r\n"
             "Content-Type:application/x-www-form-urlencoded\r\n"
             "\r\n"

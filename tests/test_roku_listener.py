@@ -45,6 +45,29 @@ def test_listener_routes_post_to_matching_hub() -> None:
     asyncio.run(_run())
 
 
+def test_listener_routes_absolute_url_target_to_matching_hub() -> None:
+    async def _run() -> None:
+        manager = RokuListenerManager(_FakeHass())
+        hub = _FakeHub(entry_id="e1", action_id="abc123", host="10.0.0.12")
+        await manager.async_register_hub(hub, enabled=True)
+
+        status, body = await manager.async_handle_post(
+            method="POST",
+            path="http://10.0.0.7:8765/launch/abc123/7/Lights_On",
+            headers={"content-length": "2"},
+            body=b"{}",
+            source_ip="10.0.0.12",
+        )
+
+        assert status == 200
+        assert body == b"ok"
+        assert hub.received and hub.received[0]["path"] == "/launch/abc123/7/Lights_On"
+
+        await manager.async_remove_hub("e1")
+
+    asyncio.run(_run())
+
+
 def test_listener_rejects_unknown_or_untrusted_source() -> None:
     async def _run() -> None:
         manager = RokuListenerManager(_FakeHass())

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 from typing import Any
 
 from .const import DOMAIN
@@ -123,7 +124,8 @@ class RokuListenerManager:
         if method.upper() != "POST":
             return (405, b"method not allowed")
 
-        parts = [part for part in path.strip("/").split("/") if part]
+        normalized_path = self._normalize_request_path(path)
+        parts = [part for part in normalized_path.strip("/").split("/") if part]
         if len(parts) < 4 or parts[0] != "launch":
             return (404, b"not found")
 
@@ -147,12 +149,30 @@ class RokuListenerManager:
             return (403, b"forbidden")
 
         await target.hub.async_handle_roku_http_post(
-            path=path,
+            path=normalized_path,
             headers=headers,
             body=body,
             source_ip=source_ip,
         )
         return (200, b"ok")
+
+    @staticmethod
+    def _normalize_request_path(path: str) -> str:
+        candidate = (path or "").strip()
+        if not candidate:
+            return "/"
+
+        if "://" in candidate:
+            parsed = urlsplit(candidate)
+            if parsed.path:
+                candidate = parsed.path
+                if parsed.query:
+                    candidate = f"{candidate}?{parsed.query}"
+
+        if not candidate.startswith("/"):
+            candidate = f"/{candidate}"
+
+        return candidate
 
     def _write_response(self, writer: asyncio.StreamWriter, status: int, body: bytes) -> None:
         reason = {
