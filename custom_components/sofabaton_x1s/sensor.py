@@ -8,7 +8,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
-from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.event import async_call_later, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -356,15 +356,18 @@ class SofabatonRecordedKeypressSensor(SensorEntity):
 
 class SofabatonIpCommandsSensor(SensorEntity):
     _attr_should_poll = False
+    _attr_force_update = True
     _attr_has_entity_name = True
     _attr_name = "Wifi Commands"
-    
+
+    _DEFAULT_VALUE = "Waiting for button press"
+
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
         self._entry = entry
         self._attr_unique_id = f"{entry.data[CONF_MAC]}_ip_commands"
-        self._last_command: dict | None = None
-        self._time_unsub = None
+        self._display_command: dict | None = None
+        self._reset_unsub = None
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -375,8 +378,6 @@ class SofabatonIpCommandsSensor(SensorEntity):
         )
 
     async def async_added_to_hass(self) -> None:
-        self._last_command = self._hub.get_last_ip_command()
-        self._schedule_time_updates()
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
@@ -387,31 +388,21 @@ class SofabatonIpCommandsSensor(SensorEntity):
 
     @callback
     def _handle_ip_command(self) -> None:
-        self._last_command = self._hub.get_last_ip_command()
-        self._schedule_time_updates()
+        self._display_command = self._hub.get_last_ip_command()
+        self._schedule_reset()
         self.async_write_ha_state()
 
-    def _schedule_time_updates(self) -> None:
-        if self._last_command is None:
-            if self._time_unsub:
-                self._time_unsub()
-                self._time_unsub = None
-            return
+    def _schedule_reset(self) -> None:
+        if self._reset_unsub:
+            self._reset_unsub()
 
-        if self._time_unsub is None:
-            self._time_unsub = async_track_time_interval(
-                self.hass, self._refresh_state, timedelta(seconds=5)
-            )
-            self.async_on_remove(self._time_unsub)
+        self._reset_unsub = async_call_later(self.hass, 0.3, self._reset_state)
 
     @callback
-    def _refresh_state(self, _now) -> None:
-        if self._last_command:
-            self.async_write_ha_state()
-        else:
-            if self._time_unsub:
-                self._time_unsub()
-                self._time_unsub = None
+    def _reset_state(self, _now) -> None:
+        self._display_command = None
+        self._reset_unsub = None
+        self.async_write_ha_state()
 
     @property
     def available(self) -> bool:
@@ -419,39 +410,30 @@ class SofabatonIpCommandsSensor(SensorEntity):
 
     @property
     def state(self) -> str:
-        if not self._last_command:
-            return "No buttons pressed"
+        if not self._display_command:
+            return self._DEFAULT_VALUE
 
-        timestamp = self._last_command.get("timestamp")
-        if not timestamp:
-            return "Unknown"
-
-        seconds = int(dt_util.utcnow().timestamp() - float(timestamp))
-        if seconds < 5:
-            return "Just now"
-        if seconds < 60:
-            return f"{seconds} seconds ago"
-        minutes = seconds // 60
-        if minutes < 60:
-            suffix = "minute" if minutes == 1 else "minutes"
-            return f"{minutes} {suffix} ago"
-        hours = minutes // 60
-        if hours < 24:
-            suffix = "hour" if hours == 1 else "hours"
-            return f"{hours} {suffix} ago"
-        days = hours // 24
-        suffix = "day" if days == 1 else "days"
-        return f"{days} {suffix} ago"
+        device = self._display_command.get("entity_name") or "Unknown device"
+        command = self._display_command.get("command_label") or "Unknown command"
+        return f"{device}/{command}"
 
     @property
     def extra_state_attributes(self) -> dict:
-        if not self._last_command:
-            return {}
+        if not self._display_command:
+            return {
+                "received_command": self._DEFAULT_VALUE,
+                "from_device": self._DEFAULT_VALUE,
+                "timestamp": None,
+                "source_ip": None,
+            }
 
         return {
-            "received_command": self._last_command.get("command_label"),
-            "from_device": self._last_command.get("entity_name"),
-            "timestamp": self._last_command.get("iso_time")
-            or self._last_command.get("timestamp"),
-            "source_ip": self._last_command.get("source_ip"),
+            "received_command": self._display_command.get("command_label")
+            or "Unknown command",
+            "from_device": self._display_command.get("entity_name")
+            or "Unknown device",
+            "timestamp": self._display_command.get("iso_time")
+            or self._display_command.get("timestamp"),
+            "source_ip": self._display_command.get("source_ip"),
         }
+
