@@ -1,5 +1,5 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.0.9";
+const CARD_VERSION = "0.1.0";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 const PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
@@ -5415,11 +5415,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       show_dpad: true,
       show_nav: true,
       show_mid: true,
+      show_volume: true,
+      show_channel: true,
       show_media: true,
       show_colors: true,
       show_abc: true,
       show_dvr: true,
-      show_automation_assist: false,
       show_macros_button: true,
       show_favorites_button: true,
       group_order: nextOrder,
@@ -5435,14 +5436,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     } else {
       Object.assign(next, enabledDefaults);
     }
-    next.show_automation_assist = false;
     this._config = next;
 
     if (this._form) {
       this._form.data = {
         ...(this._form.data || {}),
         ...enabledDefaults,
-        show_automation_assist: false,
       };
     }
 
