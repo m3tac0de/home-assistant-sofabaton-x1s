@@ -23,6 +23,7 @@ from .const import (
     signal_macros,
     signal_app_activations,
     signal_ip_commands,
+    signal_wifi_device,
 )
 from .hub import SofabatonHub, get_hub_model
 
@@ -385,6 +386,17 @@ class SofabatonIpCommandsSensor(SensorEntity):
                 self._handle_ip_command,
             )
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_wifi_device(self._hub.entry_id),
+                self._handle_wifi_device_toggle,
+            )
+        )
+
+    @callback
+    def _handle_wifi_device_toggle(self) -> None:
+        self.async_write_ha_state()
 
     @callback
     def _handle_ip_command(self) -> None:

@@ -105,3 +105,40 @@ def test_wifi_commands_sensor_force_update_enabled() -> None:
     sensor_module = _build_sensor_module()
 
     assert sensor_module.SofabatonIpCommandsSensor._attr_force_update is True
+
+
+def test_wifi_commands_sensor_updates_on_wifi_device_toggle(monkeypatch) -> None:
+    sensor_module = _build_sensor_module()
+    hub = _Hub(None)
+    hub.entry_id = "entry-1"
+    entry = SimpleNamespace(data={"mac": "aa:bb", "name": "Hub"})
+
+    connected_signals = []
+
+    def _fake_async_dispatcher_connect(_hass, signal, target):
+        connected_signals.append((signal, target))
+        return lambda: None
+
+    monkeypatch.setattr(sensor_module, "async_dispatcher_connect", _fake_async_dispatcher_connect)
+
+    entity = sensor_module.SofabatonIpCommandsSensor(hub, entry)
+    entity.hass = object()
+    removers = []
+    entity.async_on_remove = removers.append
+
+    state_writes = {"count": 0}
+    entity.async_write_ha_state = lambda: state_writes.__setitem__("count", state_writes["count"] + 1)
+
+    import asyncio
+
+    asyncio.run(entity.async_added_to_hass())
+
+    signal_names = [signal for signal, _target in connected_signals]
+    assert sensor_module.signal_ip_commands(hub.entry_id) in signal_names
+    assert sensor_module.signal_wifi_device(hub.entry_id) in signal_names
+
+    hub.roku_server_enabled = False
+    entity._handle_wifi_device_toggle()
+
+    assert entity.available is False
+    assert state_writes["count"] == 1

@@ -21,6 +21,7 @@ from .const import (
     signal_activity,
     signal_app_activations,
     signal_ip_commands,
+    signal_wifi_device,
     signal_buttons,
     signal_client,
     signal_commands,
@@ -860,6 +861,7 @@ class SofabatonHub:
         self.hass.loop.call_soon_threadsafe(
             self._async_update_options, CONF_ROKU_SERVER_ENABLED, enable
         )
+        async_dispatcher_send(self.hass, signal_wifi_device(self.entry_id))
         from .roku_listener import async_get_roku_listener
 
         listener = await async_get_roku_listener(self.hass)
