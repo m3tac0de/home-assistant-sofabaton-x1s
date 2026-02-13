@@ -4642,6 +4642,17 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   setConfig(config) {
+    const prevScroll = this._captureEditorScroll();
+    const incomingConfig = { ...(config || {}) };
+
+    if ("preview_activity" in incomingConfig) {
+      delete incomingConfig.preview_activity;
+    }
+
+    const configUnchanged =
+      !!this._form &&
+      JSON.stringify(this._config || {}) === JSON.stringify(incomingConfig);
+
     if (Object.prototype.hasOwnProperty.call(config, "preview_activity")) {
       this._previewActivity = config?.preview_activity ?? "";
       writePreviewActivity(config?.entity, this._previewActivity);
@@ -4649,12 +4660,18 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const cached = readPreviewActivity(config?.entity);
       this._previewActivity = cached ?? "";
     }
-    this._config = { ...(config || {}) };
-    if ("preview_activity" in this._config) {
-      delete this._config.preview_activity;
+
+    this._config = incomingConfig;
+
+    if (configUnchanged) {
+      this._renderCommandsEditor();
+      this._restoreEditorScroll(prevScroll);
+      return;
     }
+
     this._syncLayoutSelectionWithPreview();
     this._render();
+    this._restoreEditorScroll(prevScroll);
   }
 
   _render() {
@@ -4730,6 +4747,15 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this.appendChild(wrapper);
       this._form = form;
 
+
+
+      if (!this._commandsWrap) {
+        const commandsWrap = document.createElement("div");
+        commandsWrap.className = "sb-commands-wrap";
+        this.appendChild(commandsWrap);
+        this._commandsWrap = commandsWrap;
+      }
+
       // Group order (visual) editor container + styles (created once)
       if (!this._layoutWrap) {
         const layoutWrap = document.createElement("div");
@@ -4767,10 +4793,26 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; justify-self: end; }
+          .sb-commands-wrap { padding: 0 0 12px 0; }
+          .sb-commands-meta { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+          .sb-commands-note { font-size: 12px; opacity: 0.7; }
+          .sb-add-btn { border: 1px solid var(--primary-color); color: var(--primary-color); border-radius: 999px; padding: 8px 14px; background: color-mix(in srgb, var(--primary-color) 10%, transparent); cursor: pointer; font-weight: 600; }
+          .sb-add-btn[disabled] { opacity: 0.45; cursor: default; }
+          .sb-command-list { display:flex; flex-direction:column; gap:10px; }
+          .sb-command-exp { border: 1px solid var(--divider-color); border-radius: 12px; background: var(--ha-card-background, transparent); }
+          .sb-command-exp summary { list-style: none; cursor: pointer; padding: 12px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+          .sb-command-exp summary::-webkit-details-marker { display:none; }
+          .sb-command-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .sb-command-title-sub { font-size: 12px; opacity: 0.7; margin-top: 2px; }
+          .sb-command-remove { border: 0; background: transparent; color: var(--error-color); cursor: pointer; font-weight: 700; }
+          .sb-command-body { border-top: 1px solid var(--divider-color); padding: 12px; display:flex; flex-direction:column; gap:12px; }
+          .sb-command-body ha-textfield,
+          .sb-command-body ha-selector { width: 100%; }
         `;
         this.appendChild(st);
         this._editorStyle = st;
       }
+
     }
 
     // Determine if we should show the color picker
@@ -4862,6 +4904,304 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     };
 
     this._renderGroupOrderEditor();
+    this._renderCommandsEditor();
+  }
+
+  _normalizeCommandAction(action) {
+    const defaultAction = { action: "perform-action" };
+    if (Array.isArray(action)) {
+      const first = action.find((item) => item && typeof item === "object");
+      const normalized = first || defaultAction;
+      return normalized?.action ? normalized : { ...normalized, ...defaultAction };
+    }
+    if (action && typeof action === "object") {
+      return action?.action ? action : { ...action, ...defaultAction };
+    }
+    return defaultAction;
+  }
+
+  _commandsList() {
+    const raw = this._config?.commands;
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .slice(0, 10)
+      .map((item, idx) => {
+        if (!item || typeof item !== "object") return null;
+        return {
+          name: String(item.name ?? `Command ${idx + 1}`),
+          action: this._normalizeCommandAction(item.action),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  _setCommands(nextCommands) {
+    const prevScroll = this._captureEditorScroll();
+
+    const next = { ...this._config, commands: nextCommands.slice(0, 10) };
+    this._config = next;
+    this._fireChanged();
+    this._renderCommandsEditor();
+    this._restoreEditorScroll(prevScroll);
+  }
+
+  _scrollHostForEditor() {
+    let el = this;
+    while (el) {
+      const style = window.getComputedStyle?.(el);
+      const canScroll =
+        style && (style.overflowY === "auto" || style.overflowY === "scroll");
+      if (canScroll && el.scrollHeight > el.clientHeight + 5) return el;
+      el = el.parentElement || el.parentNode?.host || null;
+    }
+    return document.scrollingElement || null;
+  }
+
+  _captureEditorScroll() {
+    const host = this._scrollHostForEditor();
+    return {
+      host,
+      top: host?.scrollTop ?? 0,
+    };
+  }
+
+  _restoreEditorScroll(snapshot) {
+    const host = snapshot?.host;
+    const top = Number(snapshot?.top ?? 0);
+    if (!host) return;
+    requestAnimationFrame(() => {
+      host.scrollTop = top;
+      setTimeout(() => {
+        host.scrollTop = top;
+      }, 50);
+    });
+  }
+
+  _hideUiActionTypeSelector(actionSelector) {
+    if (!actionSelector) return;
+
+    const hideInNode = (node) => {
+      if (!node || typeof node.querySelectorAll !== "function") return false;
+      let changed = false;
+      node.querySelectorAll(".dropdown").forEach((dropdown) => {
+        dropdown.style.display = "none";
+        dropdown.setAttribute("aria-hidden", "true");
+        changed = true;
+      });
+      return changed;
+    };
+
+    const tryHide = () => {
+      let changed = false;
+      changed = hideInNode(actionSelector) || changed;
+      changed = hideInNode(actionSelector.shadowRoot) || changed;
+
+      const uiAction = actionSelector.shadowRoot?.querySelector(
+        "ha-selector-ui_action",
+      );
+      if (uiAction) {
+        changed = hideInNode(uiAction) || changed;
+        changed = hideInNode(uiAction.shadowRoot) || changed;
+
+        const editorInLight = uiAction.querySelector("hui-action-editor");
+        if (editorInLight) {
+          changed = hideInNode(editorInLight) || changed;
+          changed = hideInNode(editorInLight.shadowRoot) || changed;
+        }
+
+        const editorInShadow = uiAction.shadowRoot?.querySelector(
+          "hui-action-editor",
+        );
+        if (editorInShadow) {
+          changed = hideInNode(editorInShadow) || changed;
+          changed = hideInNode(editorInShadow.shadowRoot) || changed;
+        }
+      }
+
+      return changed;
+    };
+
+    // Re-run a few times because nested selector editors render asynchronously.
+    [0, 50, 150, 350, 700].forEach((delay) => {
+      setTimeout(() => {
+        tryHide();
+      }, delay);
+    });
+  }
+
+  _commandActionSummary(action) {
+    const normalized = this._normalizeCommandAction(action);
+    const service = String(
+      normalized.perform_action || normalized.service || "perform-action",
+    ).trim();
+    const entityIds = normalized?.target?.entity_id;
+    const ids = Array.isArray(entityIds)
+      ? entityIds.filter((id) => !!id)
+      : entityIds
+        ? [entityIds]
+        : [];
+    if (!ids.length) return service;
+
+    const shown = ids.slice(0, 2).join(", ");
+    const suffix = ids.length > 2 ? ` +${ids.length - 2}` : "";
+    return `${service} for entities: ${shown}${suffix}`;
+  }
+
+  _renderCommandsEditor() {
+    if (!this._commandsWrap || !this._hass) return;
+
+    if (typeof this._commandsExpanded !== "boolean") this._commandsExpanded = false;
+
+    const commands = this._commandsList();
+    const previouslyOpen = new Set(
+      Array.from(this._commandsWrap.querySelectorAll(".sb-command-exp[open]"))
+        .map((el) => Number(el.dataset.index))
+        .filter((idx) => Number.isFinite(idx)),
+    );
+
+    this._commandsWrap.innerHTML = "";
+
+    const exp = document.createElement("section");
+    exp.className =
+      `sb-exp ${this._commandsExpanded ? "" : "sb-exp-collapsed"}`.trim();
+
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = "sb-exp-hdr";
+    header.setAttribute("aria-expanded", String(!!this._commandsExpanded));
+    header.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._commandsExpanded = !this._commandsExpanded;
+      this._renderCommandsEditor();
+    });
+
+    const headerLeft = document.createElement("div");
+    headerLeft.className = "sb-exp-hdr-left";
+    headerLeft.innerHTML = `
+      <ha-icon icon="mdi:play-box-multiple-outline"></ha-icon>
+      <div class="sb-exp-title">Commands</div>
+    `;
+
+    const chev = document.createElement("ha-icon");
+    chev.className = "sb-exp-chevron";
+    chev.setAttribute(
+      "icon",
+      this._commandsExpanded ? "mdi:chevron-up" : "mdi:chevron-down",
+    );
+
+    header.appendChild(headerLeft);
+    header.appendChild(chev);
+
+    const body = document.createElement("div");
+    body.className = "sb-exp-body";
+
+    const meta = document.createElement("div");
+    meta.className = "sb-commands-meta";
+
+    const note = document.createElement("div");
+    note.className = "sb-commands-note";
+    note.textContent = `${commands.length}/10 configured`;
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "sb-add-btn";
+    addBtn.textContent = "+ Add command";
+    addBtn.disabled = commands.length >= 10;
+    addBtn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      const next = commands.concat({
+        name: `Command ${commands.length + 1}`,
+        action: { action: "perform-action" },
+      });
+      this._setCommands(next);
+    });
+
+    meta.appendChild(note);
+    meta.appendChild(addBtn);
+    body.appendChild(meta);
+
+    const list = document.createElement("div");
+    list.className = "sb-command-list";
+
+    commands.forEach((command, idx) => {
+      const details = document.createElement("details");
+      details.className = "sb-command-exp";
+      details.dataset.index = String(idx);
+      if (previouslyOpen.has(idx)) {
+        details.open = true;
+      }
+
+      const summary = document.createElement("summary");
+
+      const textWrap = document.createElement("div");
+      const title = document.createElement("div");
+      title.className = "sb-command-title";
+      title.textContent = command.name.trim() || `Command ${idx + 1}`;
+      const subtitle = document.createElement("div");
+      subtitle.className = "sb-command-title-sub";
+      subtitle.textContent = this._commandActionSummary(command.action);
+      textWrap.appendChild(title);
+      textWrap.appendChild(subtitle);
+
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "sb-command-remove";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const next = commands.slice();
+        next.splice(idx, 1);
+        this._setCommands(next);
+      });
+
+      summary.appendChild(textWrap);
+      summary.appendChild(remove);
+      details.appendChild(summary);
+
+      const commandBody = document.createElement("div");
+      commandBody.className = "sb-command-body";
+
+      const nameField = document.createElement("ha-textfield");
+      nameField.label = "Name";
+      nameField.value = command.name;
+      nameField.addEventListener("change", (ev) => {
+        const value = String(ev.target?.value ?? "");
+        const next = commands.slice();
+        next[idx] = { ...next[idx], name: value };
+        this._setCommands(next);
+      });
+
+      const actionSelector = document.createElement("ha-selector");
+      actionSelector.hass = this._hass;
+      actionSelector.selector = { ui_action: {} };
+      actionSelector.value = command.action;
+      actionSelector.label = "Action";
+      actionSelector.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        const value = ev.detail?.value;
+        const next = commands.slice();
+        next[idx] = {
+          ...next[idx],
+          action: this._normalizeCommandAction(value),
+        };
+        this._setCommands(next);
+      });
+
+      this._hideUiActionTypeSelector(actionSelector);
+
+      commandBody.appendChild(nameField);
+      commandBody.appendChild(actionSelector);
+      details.appendChild(commandBody);
+      list.appendChild(details);
+    });
+
+    body.appendChild(list);
+    exp.appendChild(header);
+    exp.appendChild(body);
+    this._commandsWrap.appendChild(exp);
   }
 
   _layoutSelectionKey() {
