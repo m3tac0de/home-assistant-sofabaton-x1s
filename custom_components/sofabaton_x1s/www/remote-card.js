@@ -4777,8 +4777,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this.appendChild(wrapper);
       this._form = form;
 
-
-
       if (!this._commandsWrap) {
         const commandsWrap = document.createElement("div");
         commandsWrap.className = "sb-commands-wrap";
@@ -4850,16 +4848,18 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-command-config-block { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:12px; }
           .sb-command-input-row { display:flex; flex-direction:column; gap:6px; }
           .sb-command-input-label { font-size: 12px; opacity: 0.78; }
-          .sb-command-input-text { border: 0; border-bottom: 1px solid var(--divider-color); background: transparent; color: inherit; padding: 6px 2px 8px; font-size: 15px; outline: none; }
+          .sb-command-name-field { width: 100%; }
           .sb-command-input-select { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, transparent); color: inherit; min-height: 40px; padding: 6px 12px; }
-          .sb-command-checkbox { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size: 13px; }
-          .sb-command-checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: color-mix(in srgb, var(--primary-color) 16%, transparent); display:flex; align-items:center; justify-content:center; }
+          .sb-command-checkbox { width: 100%; border: 0; background: transparent; padding: 0; display:flex; align-items:center; justify-content:space-between; gap:10px; font-size: 13px; cursor: pointer; color: inherit; }
+          .sb-command-checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: color-mix(in srgb, var(--ha-card-background, transparent) 88%, #000); display:flex; align-items:center; justify-content:center; transition: background-color 120ms ease, border-color 120ms ease; }
           .sb-command-checkbox-icon ha-icon { --mdc-icon-size: 16px; }
           .sb-command-checkbox-left { display:flex; align-items:center; gap:10px; }
+          .sb-command-checkbox.sb-command-favorite-active .sb-command-checkbox-icon { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
           .sb-command-helper { font-size: 12px; opacity: 0.8; margin-top: 2px; }
           .sb-command-activity-chip-row { display:flex; flex-wrap:wrap; gap:8px; }
           .sb-command-activity-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; cursor: pointer; }
           .sb-command-activity-chip.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); }
+          .sb-command-action-wrap { display:flex; flex-direction:column; gap:8px; }
           .sb-command-dialog-body ha-textfield,
           .sb-command-dialog-body ha-selector { width: 100%; }
           @media (max-width: 700px) {
@@ -4871,7 +4871,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         this.appendChild(st);
         this._editorStyle = st;
       }
-
     }
 
     // Determine if we should show the color picker
@@ -4971,7 +4970,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     if (Array.isArray(action)) {
       const first = action.find((item) => item && typeof item === "object");
       const normalized = first || defaultAction;
-      return normalized?.action ? normalized : { ...normalized, ...defaultAction };
+      return normalized?.action
+        ? normalized
+        : { ...normalized, ...defaultAction };
     }
     if (action && typeof action === "object") {
       return action?.action ? action : { ...action, ...defaultAction };
@@ -5094,9 +5095,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           changed = hideInNode(editorInLight.shadowRoot) || changed;
         }
 
-        const editorInShadow = uiAction.shadowRoot?.querySelector(
-          "hui-action-editor",
-        );
+        const editorInShadow =
+          uiAction.shadowRoot?.querySelector("hui-action-editor");
         if (editorInShadow) {
           changed = hideInNode(editorInShadow) || changed;
           changed = hideInNode(editorInShadow.shadowRoot) || changed;
@@ -5133,9 +5133,27 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _editorHardButtonOptions() {
-    return Object.entries(DEFAULT_KEY_LABELS)
-      .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+    const group = (keys, title) =>
+      keys
+        .filter((key) => DEFAULT_KEY_LABELS[key])
+        .map((key) => ({
+          value: key,
+          label: `${title} • ${DEFAULT_KEY_LABELS[key]}`,
+        }));
+
+    return [
+      ...group(
+        ["up", "down", "left", "right", "ok", "back", "home", "menu"],
+        "Navigation",
+      ),
+      ...group(["volup", "voldn", "mute", "chup", "chdn"], "Transport"),
+      ...group(
+        ["play", "pause", "rew", "fwd", "guide", "dvr", "exit"],
+        "Media",
+      ),
+      ...group(["a", "b", "c"], "ABC"),
+      ...group(["red", "green", "yellow", "blue"], "Color"),
+    ];
   }
 
   _commandSlotIcon(hardButton) {
@@ -5143,16 +5161,75 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     return HARD_BUTTON_ICONS[String(hardButton)] || "mdi:gesture-tap-button";
   }
 
+  _commandSlotIconColor(hardButton) {
+    const key = String(hardButton || "");
+    if (key === "red") return "#ef4444";
+    if (key === "green") return "#22c55e";
+    if (key === "yellow") return "#facc15";
+    if (key === "blue") return "#3b82f6";
+    return null;
+  }
+
+  _renderCommandActionSection() {
+    if (!this._commandEditorActionWrap || !this._hass) return;
+    const idx = this._activeCommandSlot;
+    if (!Number.isInteger(idx)) return;
+    const active = this._commandsList()[idx];
+    if (!active) return;
+
+    this._commandEditorActionWrap.innerHTML = "";
+
+    const actionHelper = document.createElement("div");
+    actionHelper.className = "sb-command-helper";
+    actionHelper.textContent = "Select which Action this Command should run";
+
+    const actionSelector = document.createElement("ha-selector");
+    actionSelector.hass = this._hass;
+    actionSelector.selector = { ui_action: {} };
+    actionSelector.label = "Action";
+    actionSelector.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      const slotIdx = this._activeCommandSlot;
+      if (!Number.isInteger(slotIdx)) return;
+      const value = ev.detail?.value;
+      const next = this._commandsList().slice();
+      next[slotIdx] = {
+        ...next[slotIdx],
+        action: this._normalizeCommandAction(value),
+      };
+      this._commandsDirty = true;
+      this._config = { ...this._config, commands: next };
+
+      // Action editor can restructure based on action type/target; refresh only this section.
+      this._renderCommandActionSection();
+    });
+
+    this._commandEditorActionSelector = actionSelector;
+    this._commandEditorActionWrap.appendChild(actionHelper);
+    this._commandEditorActionWrap.appendChild(actionSelector);
+
+    this._commandEditorActionSelector.value = active.action;
+    this._hideUiActionTypeSelector(this._commandEditorActionSelector);
+  }
+
   _isCommandConfigured(command, idx) {
     const defaultName = `Command ${idx + 1}`;
     const hasCustomName = String(command?.name || "").trim() !== defaultName;
     const hasFavorite = Boolean(command?.add_as_favorite);
     const hasHardButton = Boolean(command?.hard_button);
-    const hasActivities = Array.isArray(command?.activities) && command.activities.length > 0;
+    const hasActivities =
+      Array.isArray(command?.activities) && command.activities.length > 0;
     const details = this._commandActionDetails(command?.action);
     const hasCustomAction =
-      details.service !== "perform-action" || details.entities !== "No target entity";
-    return hasCustomName || hasFavorite || hasHardButton || hasActivities || hasCustomAction;
+      details.service !== "perform-action" ||
+      details.entities !== "No target entity";
+    return (
+      hasCustomName ||
+      hasFavorite ||
+      hasHardButton ||
+      hasActivities ||
+      hasCustomAction
+    );
   }
 
   _closeCommandEditor() {
@@ -5173,7 +5250,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   _renderCommandsEditor() {
     if (!this._commandsWrap || !this._hass) return;
 
-    if (typeof this._commandsExpanded !== "boolean") this._commandsExpanded = false;
+    if (typeof this._commandsExpanded !== "boolean")
+      this._commandsExpanded = false;
 
     const commands = this._commandsList();
 
@@ -5184,6 +5262,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._commandEditorFavoriteInput = null;
     this._commandEditorHardButtonSelector = null;
     this._commandEditorActivitiesChips = null;
+    this._commandEditorActionWrap = null;
     this._commandEditorActionSelector = null;
 
     const exp = document.createElement("section");
@@ -5254,6 +5333,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         "icon",
         configured ? this._commandSlotIcon(command.hard_button) : "mdi:plus",
       );
+      const iconColor = this._commandSlotIconColor(command.hard_button);
+      if (configured && iconColor) {
+        icon.style.color = iconColor;
+      }
       iconWrap.appendChild(icon);
       btn.appendChild(iconWrap);
 
@@ -5271,7 +5354,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
       const name = document.createElement("div");
       name.className = "sb-command-slot-name";
-      name.textContent = String(command.name || "").trim() || `Command ${idx + 1}`;
+      name.textContent =
+        String(command.name || "").trim() || `Command ${idx + 1}`;
 
       const tags = document.createElement("div");
       tags.className = "sb-command-slot-tags";
@@ -5348,15 +5432,16 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       nameRow.className = "sb-command-input-row";
       const nameLabel = document.createElement("label");
       nameLabel.className = "sb-command-input-label";
-      nameLabel.textContent = "Name";
-      const nameField = document.createElement("input");
-      nameField.type = "text";
-      nameField.className = "sb-command-input-text";
+      //nameLabel.textContent = "Name";
+      const nameField = document.createElement("ha-textfield");
+      nameField.className = "sb-command-name-field";
+      nameField.label =
+        "Command name as it appears on the remote, favorites and the app";
       this._commandEditorNameField = nameField;
       nameField.addEventListener("change", (ev) => {
         const idx = this._activeCommandSlot;
         if (!Number.isInteger(idx)) return;
-        const value = String(ev.target?.value ?? "");
+        const value = String(ev.target?.value ?? ev.detail?.value ?? "");
         const next = this._commandsList().slice();
         next[idx] = { ...next[idx], name: value };
         this._commandsDirty = true;
@@ -5366,7 +5451,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       nameRow.appendChild(nameField);
       configBlock.appendChild(nameRow);
 
-      const favoriteWrap = document.createElement("div");
+      const favoriteWrap = document.createElement("button");
+      favoriteWrap.type = "button";
       favoriteWrap.className = "sb-command-checkbox";
       const favoriteLeft = document.createElement("div");
       favoriteLeft.className = "sb-command-checkbox-left";
@@ -5378,18 +5464,26 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       favoriteIcon.setAttribute("icon", "mdi:heart");
       favoriteIconWrap.appendChild(favoriteIcon);
       const favoriteText = document.createElement("span");
-      favoriteText.textContent = "Add as favorite";
+      favoriteText.textContent = "Add this command to Favorites";
       favoriteLeft.appendChild(favoriteIconWrap);
       favoriteLeft.appendChild(favoriteText);
       favoriteWrap.appendChild(favoriteLeft);
       favoriteWrap.appendChild(favoriteInput);
+      favoriteWrap.addEventListener("click", (ev) => {
+        if (ev.target === favoriteInput) return;
+        ev.preventDefault();
+        favoriteInput.checked = !favoriteInput.checked;
+        favoriteInput.dispatchEvent(new Event("change", { bubbles: true }));
+      });
       favoriteInput.addEventListener("change", (ev) => {
         const idx = this._activeCommandSlot;
         if (!Number.isInteger(idx)) return;
+        const checked = Boolean(ev.target?.checked);
         const next = this._commandsList().slice();
-        next[idx] = { ...next[idx], add_as_favorite: Boolean(ev.target?.checked) };
+        next[idx] = { ...next[idx], add_as_favorite: checked };
         this._commandsDirty = true;
         this._config = { ...this._config, commands: next };
+        favoriteWrap.classList.toggle("sb-command-favorite-active", checked);
       });
       configBlock.appendChild(favoriteWrap);
 
@@ -5397,13 +5491,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       buttonRow.className = "sb-command-input-row";
       const buttonLabel = document.createElement("label");
       buttonLabel.className = "sb-command-input-label";
-      buttonLabel.textContent = "Map to physical button";
+      //buttonLabel.textContent = "Map this command to a physical button";
       const buttonSelector = document.createElement("ha-selector");
       buttonSelector.hass = this._hass;
       buttonSelector.selector = {
         select: {
           mode: "dropdown",
-          options: [{ value: "", label: "None" }].concat(
+          options: [{ value: "__none__", label: "None" }].concat(
             this._editorHardButtonOptions().map((option) => ({
               value: option.value,
               label: option.label,
@@ -5411,13 +5505,17 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           ),
         },
       };
-      buttonSelector.label = "Map to physical button";
+      buttonSelector.label = "Map this command to a physical button";
       this._commandEditorHardButtonSelector = buttonSelector;
       buttonSelector.addEventListener("value-changed", (ev) => {
         const idx = this._activeCommandSlot;
         if (!Number.isInteger(idx)) return;
         const next = this._commandsList().slice();
-        next[idx] = { ...next[idx], hard_button: String(ev.detail?.value ?? "") };
+        const mapped = String(ev.detail?.value ?? "");
+        next[idx] = {
+          ...next[idx],
+          hard_button: mapped === "__none__" ? "" : mapped,
+        };
         this._commandsDirty = true;
         this._config = { ...this._config, commands: next };
       });
@@ -5437,33 +5535,11 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       activitiesRow.appendChild(activityChipRow);
       configBlock.appendChild(activitiesRow);
 
-      const actionSelector = document.createElement("ha-selector");
-      actionSelector.hass = this._hass;
-      actionSelector.selector = { ui_action: {} };
-      actionSelector.label = "Action";
-      this._commandEditorActionSelector = actionSelector;
-      actionSelector.addEventListener("value-changed", (ev) => {
-        ev.stopPropagation();
-        const idx = this._activeCommandSlot;
-        if (!Number.isInteger(idx)) return;
-        const value = ev.detail?.value;
-        const next = this._commandsList().slice();
-        next[idx] = {
-          ...next[idx],
-          action: this._normalizeCommandAction(value),
-        };
-        this._commandsDirty = true;
-        this._config = { ...this._config, commands: next };
-      });
-
-      this._hideUiActionTypeSelector(actionSelector);
-
       dialogBody.appendChild(configBlock);
-      const actionHelper = document.createElement("div");
-      actionHelper.className = "sb-command-helper";
-      actionHelper.textContent = "Select which Action this Command should run";
-      dialogBody.appendChild(actionHelper);
-      dialogBody.appendChild(actionSelector);
+      const actionWrap = document.createElement("div");
+      actionWrap.className = "sb-command-action-wrap";
+      this._commandEditorActionWrap = actionWrap;
+      dialogBody.appendChild(actionWrap);
       dialog.appendChild(dialogHeader);
       dialog.appendChild(dialogBody);
       modal.appendChild(dialog);
@@ -5476,30 +5552,60 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     }
 
     const activeIdx = this._activeCommandSlot;
-    if (Number.isInteger(activeIdx) && activeIdx >= 0 && activeIdx < commands.length) {
+    if (
+      Number.isInteger(activeIdx) &&
+      activeIdx >= 0 &&
+      activeIdx < commands.length
+    ) {
       const active = commands[activeIdx];
       this._commandEditorModalTitle.textContent = `Command Slot ${activeIdx + 1}`;
       this._commandEditorNameField.value = active.name;
-      this._commandEditorFavoriteInput.checked = Boolean(active.add_as_favorite);
+      this._commandEditorFavoriteInput.checked = Boolean(
+        active.add_as_favorite,
+      );
+      this._commandEditorFavoriteInput.parentElement?.classList.toggle(
+        "sb-command-favorite-active",
+        Boolean(active.add_as_favorite),
+      );
 
-      this._commandEditorHardButtonSelector.value = String(active.hard_button || "");
+      this._commandEditorHardButtonSelector.value = String(
+        active.hard_button || "",
+      );
 
       const activities = this._editorActivities();
-      const selectedActivities = new Set((active.activities || []).map((id) => String(id)));
+      const fallbackActivity = activities[0] ? String(activities[0].id) : null;
+      const selectedActivities = new Set(
+        (active.activities || []).map((id) => String(id)),
+      );
+      if (selectedActivities.size === 0 && fallbackActivity) {
+        selectedActivities.add(fallbackActivity);
+        const next = this._commandsList().slice();
+        next[activeIdx] = {
+          ...next[activeIdx],
+          activities: Array.from(selectedActivities),
+        };
+        this._commandsDirty = true;
+        this._config = { ...this._config, commands: next };
+      }
       this._commandEditorActivitiesChips.innerHTML = "";
       activities.forEach((activity) => {
         const chip = document.createElement("button");
         chip.type = "button";
-        chip.className = `sb-command-activity-chip ${selectedActivities.has(String(activity.id)) ? "active" : ""}`.trim();
+        chip.className =
+          `sb-command-activity-chip ${selectedActivities.has(String(activity.id)) ? "active" : ""}`.trim();
         chip.textContent = activity.name;
         chip.addEventListener("click", (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
           const idx = this._activeCommandSlot;
           if (!Number.isInteger(idx)) return;
-          const nextSet = new Set((this._commandsList()[idx]?.activities || []).map((id) => String(id)));
+          const nextSet = new Set(
+            (this._commandsList()[idx]?.activities || []).map((id) =>
+              String(id),
+            ),
+          );
           const idKey = String(activity.id);
-          if (nextSet.has(idKey)) nextSet.delete(idKey);
+          if (nextSet.has(idKey) && nextSet.size > 1) nextSet.delete(idKey);
           else nextSet.add(idKey);
           const next = this._commandsList().slice();
           next[idx] = { ...next[idx], activities: Array.from(nextSet) };
@@ -5510,9 +5616,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         this._commandEditorActivitiesChips.appendChild(chip);
       });
 
-      this._commandEditorActionSelector.value = active.action;
+      this._commandEditorHardButtonSelector.value = active.hard_button
+        ? String(active.hard_button)
+        : "__none__";
+
+      this._renderCommandActionSection();
       this._commandEditorModal.classList.add("open");
-      this._hideUiActionTypeSelector(this._commandEditorActionSelector);
     } else {
       this._closeCommandEditor();
     }
