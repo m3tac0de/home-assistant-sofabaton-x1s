@@ -4669,6 +4669,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (this._form) this._form.hass = hass;
+
+    const entityId = String(this._config?.entity || "").trim();
+    if (!entityId) return;
+    if (this._commandConfigLoading) return;
+    if (this._commandConfigLoadedFor === entityId) return;
+
+    this._loadCommandConfigFromBackend().then(() => this._renderCommandsEditor());
   }
 
   setConfig(config) {
@@ -4679,10 +4686,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       delete incomingConfig.preview_activity;
     }
 
-    const configUnchanged =
-      !!this._form &&
-      JSON.stringify(this._config || {}) === JSON.stringify(incomingConfig);
-
     if (Object.prototype.hasOwnProperty.call(config, "preview_activity")) {
       this._previewActivity = config?.preview_activity ?? "";
       writePreviewActivity(config?.entity, this._previewActivity);
@@ -4690,6 +4693,17 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const cached = readPreviewActivity(config?.entity);
       this._previewActivity = cached ?? "";
     }
+
+    const nextEntity = String(incomingConfig?.entity || "");
+    if (nextEntity !== String(this._commandConfigLoadedFor || "")) {
+      this._commandConfigLoadedFor = null;
+    }
+
+    if ("commands" in incomingConfig) delete incomingConfig.commands;
+
+    const configUnchanged =
+      !!this._form &&
+      JSON.stringify(this._config || {}) === JSON.stringify(incomingConfig);
 
     this._config = incomingConfig;
 
@@ -5015,34 +5029,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     };
   }
 
-  _commandsList() {
-    const raw = this._config?.commands;
-    const slots = Array.from({ length: 9 }, (_, idx) =>
-      this._commandSlotDefault(idx),
-    );
-    if (!Array.isArray(raw)) return slots;
-
-    raw.slice(0, 9).forEach((item, idx) => {
-      if (!item || typeof item !== "object") return;
-      slots[idx] = {
-        name: String(item.name ?? `Command ${idx + 1}`),
-        add_as_favorite: Boolean(item.add_as_favorite),
-        hard_button: String(item.hard_button ?? ""),
-        activities: Array.isArray(item.activities)
-          ? item.activities.map((id) => String(id)).filter((id) => id !== "")
-          : [],
-        action: this._normalizeCommandAction(item.action),
-      };
-    });
-
-    return slots;
-  }
-
-  _setCommands(nextCommands, options = {}) {
-    const prevScroll = this._captureEditorScroll();
-    const emitChanged = options.emitChanged !== false;
-
-    const normalized = Array.from({ length: 9 }, (_, idx) => {
+  _normalizeCommandsForStorage(nextCommands) {
+    return Array.from({ length: 9 }, (_, idx) => {
       const item = nextCommands?.[idx] || {};
       return {
         ...this._commandSlotDefault(idx),
@@ -5055,9 +5043,68 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         action: this._normalizeCommandAction(item.action),
       };
     });
+  }
 
-    const next = { ...this._config, commands: normalized };
-    this._config = next;
+  async _loadCommandConfigFromBackend(force = false) {
+    if (!this._hass?.callWS || !this._config?.entity) return;
+    const entityId = String(this._config.entity || "").trim();
+    if (!entityId) return;
+    if (this._commandConfigLoading && !force) return;
+    if (this._commandConfigLoadedFor === entityId && !force) return;
+
+    this._commandConfigLoading = true;
+    try {
+      const result = await this._hass.callWS({
+        type: "sofabaton_x1s/command_config/get",
+        entity_id: entityId,
+      });
+      const commands = this._normalizeCommandsForStorage(result?.commands || []);
+      this._commandConfigHash = String(result?.commands_hash || "");
+      this._commandConfigHashVersion = String(result?.hash_version || "");
+      this._commandConfigLoadedFor = entityId;
+      this._commandsData = commands;
+    } catch (err) {
+      if (!Array.isArray(this._commandsData)) {
+        this._commandsData = this._normalizeCommandsForStorage([]);
+      }
+      this._commandConfigLoadedFor = entityId;
+    } finally {
+      this._commandConfigLoading = false;
+    }
+  }
+
+  _commandsList() {
+    if (!Array.isArray(this._commandsData)) {
+      this._commandsData = this._normalizeCommandsForStorage([]);
+    }
+    return this._commandsData.map((slot, idx) => ({
+      ...this._commandSlotDefault(idx),
+      ...slot,
+      action: this._normalizeCommandAction(slot?.action),
+    }));
+  }
+
+  async _setCommands(nextCommands, options = {}) {
+    const prevScroll = this._captureEditorScroll();
+    const emitChanged = options.emitChanged !== false;
+    const normalized = this._normalizeCommandsForStorage(nextCommands);
+    this._commandsData = normalized;
+
+    const entityId = String(this._config?.entity || "").trim();
+    if (entityId && this._hass?.callWS) {
+      try {
+        const result = await this._hass.callWS({
+          type: "sofabaton_x1s/command_config/set",
+          entity_id: entityId,
+          commands: normalized,
+        });
+        this._commandConfigHash = String(result?.commands_hash || "");
+        this._commandConfigHashVersion = String(result?.hash_version || "");
+      } catch (err) {
+        // noop for now; editor keeps local staged data
+      }
+    }
+
     if (emitChanged) this._fireChanged();
     this._renderCommandsEditor();
     this._restoreEditorScroll(prevScroll);
@@ -5409,6 +5456,17 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
   _renderCommandsEditor() {
     if (!this._commandsWrap || !this._hass) return;
+
+    const entityId = String(this._config?.entity || "").trim();
+    if (entityId && this._commandConfigLoadedFor !== entityId && !this._commandConfigLoading) {
+      this._loadCommandConfigFromBackend().then(() => this._renderCommandsEditor());
+      this._commandsWrap.innerHTML = "";
+      const loading = document.createElement("div");
+      loading.className = "sb-commands-note";
+      loading.textContent = "Loading Commands…";
+      this._commandsWrap.appendChild(loading);
+      return;
+    }
 
     if (typeof this._commandsExpanded !== "boolean")
       this._commandsExpanded = false;
@@ -6614,6 +6672,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const finalConfig = { ...this._config };
     delete finalConfig.use_background_override;
     delete finalConfig.preview_activity;
+    delete finalConfig.commands;
 
     this.dispatchEvent(
       new CustomEvent("config-changed", {

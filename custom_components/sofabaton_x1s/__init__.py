@@ -12,6 +12,7 @@ import voluptuous as vol
 from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -37,10 +38,71 @@ from .diagnostics import (
     async_teardown_diagnostics,
 )
 from .hub import SofabatonHub
+from .command_config import CommandConfigStore
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
 _ALPHANUM_SPACE_RE = re.compile(r"^[A-Za-z0-9 ]+$")
+
+
+async def _async_get_command_config_store(hass: HomeAssistant) -> CommandConfigStore:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    store = domain_data.get("command_config_store")
+    if isinstance(store, CommandConfigStore):
+        return store
+
+    store = CommandConfigStore(hass)
+    await store.async_load()
+    domain_data["command_config_store"] = store
+    return store
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_config/get",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    store = await _async_get_command_config_store(hass)
+    payload = await store.async_get_hub_config(hub.entry_id)
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_config/set",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("commands"): list,
+    }
+)
+@websocket_api.async_response
+async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    store = await _async_get_command_config_store(hass)
+    payload = await store.async_set_hub_commands(hub.entry_id, msg["commands"])
+    connection.send_result(msg["id"], payload)
+
+
+def _register_websocket_commands(hass: HomeAssistant) -> None:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get("ws_registered"):
+        return
+
+    websocket_api.async_register_command(hass, _ws_get_command_config)
+    websocket_api.async_register_command(hass, _ws_set_command_config)
+    domain_data["ws_registered"] = True
+
 
 CONFIG_SCHEMA = vol.Schema(
     {
@@ -62,6 +124,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     # Ensure DOMAIN data is initialized
     hass.data.setdefault(DOMAIN, {})
+
+    _register_websocket_commands(hass)
 
     if not hass.data[DOMAIN].get("frontend_registered"):
         community_card_dir = Path(
@@ -400,43 +464,40 @@ async def _async_handle_create_ip_button(call: ServiceCall):
     return result or {}
 
 async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
+    return await _async_resolve_hub_from_data(hass, call.data)
+
+
+async def _async_resolve_hub_from_data(hass: HomeAssistant, data: dict[str, Any]):
     """Try device → hub text → entity → fallback to single hub."""
     domain_data = hass.data.get(DOMAIN, {})
     hubs = _get_hubs(domain_data)
 
-    # 1) device_id from service
-    device_id = call.data.get("device")
+    device_id = data.get("device")
     if device_id:
         dev_reg = dr.async_get(hass)
-        device = dev_reg.async_get(device_id)
+        device = dev_reg.async_get(device_id) if dev_reg else None
         if device:
-            # we put (DOMAIN, mac) in device identifiers earlier
             for ident_domain, ident in device.identifiers:
                 if ident_domain == DOMAIN:
-                    # find hub by mac
                     for hub in hubs:
                         if getattr(hub, "mac", None) == ident:
                             return hub
 
-    # 2) explicit hub field (mac or entry_id)
-    hub_key = call.data.get("hub")
+    hub_key = data.get("hub")
     if hub_key:
-        # try entry_id
         if hub_key in domain_data and domain_data[hub_key] in hubs:
             return domain_data[hub_key]
-        # try mac
         for hub in hubs:
             if getattr(hub, "mac", None) == hub_key:
                 return hub
 
-    # 3) entity_id 
-    entity_id = call.data.get("entity_id")
+    entity_id = data.get("entity_id")
     if entity_id:
         ent_reg = er.async_get(hass)
-        ent = ent_reg.async_get(entity_id)
+        ent = ent_reg.async_get(entity_id) if ent_reg else None
         if ent and ent.device_id:
             dev_reg = dr.async_get(hass)
-            device = dev_reg.async_get(ent.device_id)
+            device = dev_reg.async_get(ent.device_id) if dev_reg else None
             if device:
                 for ident_domain, ident in device.identifiers:
                     if ident_domain == DOMAIN:
@@ -444,7 +505,6 @@ async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
                             if getattr(hub, "mac", None) == ident:
                                 return hub
 
-    # 4) last resort: if there is only 1 hub, just use it
     if len(hubs) == 1:
         return hubs[0]
 

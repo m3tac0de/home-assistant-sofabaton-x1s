@@ -86,6 +86,7 @@ def _install_homeassistant_stubs() -> None:
 
     config_validation = types.ModuleType("homeassistant.helpers.config_validation")
     config_validation.boolean = lambda value=None: value  # type: ignore[assignment]
+    config_validation.entity_id = lambda value=None: value  # type: ignore[assignment]
     sys.modules.setdefault("homeassistant.helpers.config_validation", config_validation)
 
     service_info = types.ModuleType("homeassistant.helpers.service_info")
@@ -130,6 +131,22 @@ def _install_homeassistant_stubs() -> None:
     device_registry.async_get = lambda hass=None: None
     sys.modules.setdefault("homeassistant.helpers.device_registry", device_registry)
 
+
+    storage = types.ModuleType("homeassistant.helpers.storage")
+
+    class Store:  # pragma: no cover - only used as stub
+        def __init__(self, hass, version, key, minor_version=1):
+            self._data = None
+
+        async def async_load(self):
+            return self._data
+
+        async def async_save(self, data):
+            self._data = data
+
+    storage.Store = Store
+    sys.modules.setdefault("homeassistant.helpers.storage", storage)
+
     entity_registry = types.ModuleType("homeassistant.helpers.entity_registry")
     entity_registry.async_get = lambda hass=None: None
     sys.modules.setdefault("homeassistant.helpers.entity_registry", entity_registry)
@@ -141,6 +158,13 @@ def _install_homeassistant_stubs() -> None:
     frontend.add_extra_js_url = lambda *args, **kwargs: None
     sys.modules.setdefault("homeassistant.components.frontend", frontend)
     components.frontend = frontend
+
+
+    websocket_api = types.ModuleType("homeassistant.components.websocket_api")
+    websocket_api.async_register_command = lambda *args, **kwargs: None
+    websocket_api.websocket_command = lambda schema: (lambda func: func)
+    websocket_api.async_response = lambda func: func
+    sys.modules.setdefault("homeassistant.components.websocket_api", websocket_api)
 
     http = types.ModuleType("homeassistant.components.http")
 
