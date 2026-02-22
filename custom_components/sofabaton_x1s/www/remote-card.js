@@ -4840,7 +4840,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-command-slot-clear { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
           .sb-command-slot-clear:hover { opacity: 1; border-color: var(--primary-color); }
           .sb-command-slot-clear ha-icon { --mdc-icon-size: 16px; }
-          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+          .sb-command-slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
+          .sb-command-slot-action-btn:active { transform: translateY(1px); }
+          .sb-command-slot-action-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary-color); }
           .sb-command-slot-confirm { padding: 14px 12px 10px; display:flex; flex-direction:column; }
           .sb-command-slot-confirm-title { font-weight: 700; font-size: 16px; line-height: 1.15; color: var(--primary-text-color); }
           .sb-command-slot-confirm-sub { margin-top: 1px; font-size: 12px; color: var(--secondary-text-color); }
@@ -4852,11 +4855,18 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-command-slot-empty .sb-command-slot-name { font-size: 18px; font-weight: 500; text-align: center; color: var(--secondary-text-color); }
           .sb-command-modal { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.52); display:none; align-items:center; justify-content:center; padding: 18px; }
           .sb-command-modal.open { display:flex; }
-          .sb-command-dialog { width: min(640px, 100%); max-height: min(680px, 100%); background: var(--ha-card-background, #fff); border-radius: 16px; border: 1px solid var(--divider-color); display:flex; flex-direction:column; overflow:hidden; }
+          .sb-command-dialog { width: min(640px, 100%); max-height: min(680px, 100%); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); display:flex; flex-direction:column; overflow:hidden; box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); }
           .sb-command-dialog-header { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--divider-color); }
           .sb-command-dialog-title { font-size: 16px; font-weight: 700; }
           .sb-command-dialog-close { border: 0; background: transparent; cursor: pointer; color: inherit; display:flex; align-items:center; justify-content:center; }
           .sb-command-dialog-body { padding: 16px; display:flex; flex-direction:column; gap: 12px; overflow:auto; }
+          .sb-command-dialog-footer { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--divider-color); }
+          .sb-command-dialog-footer-note { font-size: 13px; color: var(--error-color); text-align: left; }
+          .sb-command-dialog-footer-actions { display:flex; align-items:center; justify-content:flex-end; gap: 8px; margin-left: auto; }
+          .sb-command-dialog-btn { border: 1px solid var(--divider-color); border-radius: 10px; min-height: 36px; padding: 0 12px; background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color); cursor: pointer; font-size: 14px; }
+          .sb-command-dialog-btn:hover { border-color: var(--primary-color); }
+          .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+          .sb-command-dialog-note { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--secondary-text-color); font-size: 13px; line-height: 1.4; }
           .sb-command-config-block { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:12px; }
           .sb-command-input-row { display:flex; flex-direction:column; gap:6px; }
           .sb-command-input-label { font-size: 12px; opacity: 0.78; }
@@ -4878,8 +4888,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
             .sb-command-grid { grid-template-columns: 1fr; }
           }
           @media (max-width: 700px) {
-            .sb-command-modal { padding: 0; align-items: flex-end; }
-            .sb-command-dialog { width: 100%; max-height: 100%; border-radius: 16px 16px 0 0; }
+            .sb-command-modal { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+            .sb-command-dialog { width: 100%; max-height: 100%; border-radius: 0 0 16px 16px; }
+            .sb-command-dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
           }
         `;
         this.appendChild(st);
@@ -4997,7 +5008,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   _commandSlotDefault(idx) {
     return {
       name: `Command ${idx + 1}`,
-      add_as_favorite: false,
+      add_as_favorite: true,
       hard_button: "",
       activities: [],
       action: { action: "perform-action" },
@@ -5050,6 +5061,84 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     if (emitChanged) this._fireChanged();
     this._renderCommandsEditor();
     this._restoreEditorScroll(prevScroll);
+  }
+
+  _cloneCommandSlot(slot) {
+    return {
+      name: String(slot?.name ?? ""),
+      add_as_favorite: Boolean(slot?.add_as_favorite),
+      hard_button: String(slot?.hard_button ?? ""),
+      activities: Array.isArray(slot?.activities)
+        ? slot.activities.map((id) => String(id)).filter((id) => id !== "")
+        : [],
+      action: this._normalizeCommandAction(slot?.action),
+    };
+  }
+
+  _ensureCommandDraft(slotIdx) {
+    if (!Number.isInteger(slotIdx)) return null;
+    if (
+      !this._commandEditorDrafts ||
+      typeof this._commandEditorDrafts !== "object"
+    ) {
+      this._commandEditorDrafts = {};
+    }
+    if (!this._commandEditorDrafts[slotIdx]) {
+      const source =
+        this._commandsList()[slotIdx] || this._commandSlotDefault(slotIdx);
+      this._commandEditorDrafts[slotIdx] = this._cloneCommandSlot(source);
+    }
+    return this._commandEditorDrafts[slotIdx];
+  }
+
+  _activeCommandDraft() {
+    const idx = this._activeCommandSlot;
+    if (!Number.isInteger(idx)) return null;
+    return this._ensureCommandDraft(idx);
+  }
+
+  _updateActiveCommandDraft(patch) {
+    const idx = this._activeCommandSlot;
+    if (!Number.isInteger(idx)) return null;
+    const current = this._ensureCommandDraft(idx);
+    if (!current) return null;
+    const next = { ...current, ...patch };
+    this._commandEditorDrafts[idx] = this._cloneCommandSlot(next);
+    return this._commandEditorDrafts[idx];
+  }
+
+  _commandSaveValidationMessage(slot = null) {
+    const draft = slot || this._activeCommandDraft();
+    if (!draft) return "";
+    if (!draft.add_as_favorite && !String(draft.hard_button || "").trim()) {
+      return "Add as Favorite or Map to button before saving.";
+    }
+    return "";
+  }
+
+  _saveActiveCommandModal() {
+    const idx = this._activeCommandSlot;
+    if (!Number.isInteger(idx)) return;
+    const draft = this._activeCommandDraft();
+    if (!draft) return;
+
+    const validationMessage = this._commandSaveValidationMessage(draft);
+    if (validationMessage) {
+      this._commandSaveError = validationMessage;
+      this._renderCommandsEditor();
+      return;
+    }
+
+    const next = this._commandsList().slice();
+    next[idx] = this._cloneCommandSlot(draft);
+    this._commandSaveError = "";
+    if (this._commandEditorDrafts && this._commandEditorDrafts[idx]) {
+      delete this._commandEditorDrafts[idx];
+    }
+
+    this._activeCommandModal = null;
+    this._activeCommandSlot = null;
+    this._setCommands(next);
   }
 
   _scrollHostForEditor() {
@@ -5205,14 +5294,15 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     return null;
   }
 
-  _renderCommandActionSection() {
-    if (!this._commandEditorActionWrap || !this._hass) return;
+  _renderCommandActionSection(targetWrap = null) {
+    const wrap = targetWrap || this._commandActionEditorWrap;
+    if (!wrap || !this._hass) return;
     const idx = this._activeCommandSlot;
     if (!Number.isInteger(idx)) return;
-    const active = this._commandsList()[idx];
+    const active = this._activeCommandDraft();
     if (!active) return;
 
-    this._commandEditorActionWrap.innerHTML = "";
+    wrap.innerHTML = "";
 
     const actionHelper = document.createElement("div");
     actionHelper.className = "sb-command-helper";
@@ -5227,30 +5317,28 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const slotIdx = this._activeCommandSlot;
       if (!Number.isInteger(slotIdx)) return;
       const value = ev.detail?.value;
-      const next = this._commandsList().slice();
-      next[slotIdx] = {
-        ...next[slotIdx],
+      this._updateActiveCommandDraft({
         action: this._normalizeCommandAction(value),
-      };
-      this._commandsDirty = true;
-      this._config = { ...this._config, commands: next };
+      });
 
       // Action editor can restructure based on action type/target; refresh only this section.
       this._renderCommandActionSection();
     });
 
-    this._commandEditorActionSelector = actionSelector;
-    this._commandEditorActionWrap.appendChild(actionHelper);
-    this._commandEditorActionWrap.appendChild(actionSelector);
+    this._commandActionEditorSelector = actionSelector;
+    wrap.appendChild(actionHelper);
+    wrap.appendChild(actionSelector);
 
-    this._commandEditorActionSelector.value = active.action;
-    this._hideUiActionTypeSelector(this._commandEditorActionSelector);
+    this._commandActionEditorSelector.value = active.action;
+    this._hideUiActionTypeSelector(this._commandActionEditorSelector);
   }
 
   _isCommandConfigured(command, idx) {
-    const defaultName = `Command ${idx + 1}`;
-    const hasCustomName = String(command?.name || "").trim() !== defaultName;
-    const hasFavorite = Boolean(command?.add_as_favorite);
+    const defaults = this._commandSlotDefault(idx);
+    const hasCustomName =
+      String(command?.name || "").trim() !== String(defaults.name);
+    const hasFavorite =
+      Boolean(command?.add_as_favorite) !== Boolean(defaults.add_as_favorite);
     const hasHardButton = Boolean(command?.hard_button);
     const hasActivities =
       Array.isArray(command?.activities) && command.activities.length > 0;
@@ -5268,18 +5356,54 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _closeCommandEditor() {
-    if (this._commandsDirty) {
-      this._commandsDirty = false;
-      this._fireChanged();
+    const idx = this._activeCommandSlot;
+    if (
+      Number.isInteger(idx) &&
+      this._commandEditorDrafts &&
+      this._commandEditorDrafts[idx]
+    ) {
+      delete this._commandEditorDrafts[idx];
     }
-    if (!this._commandEditorModal) return;
-    this._commandEditorModal.classList.remove("open");
+    if (this._commandEditorModal) {
+      this._commandEditorModal.classList.remove("open");
+    }
+    this._commandSaveError = "";
+    this._activeCommandModal = null;
+    this._activeCommandSlot = null;
+  }
+
+  _closeCommandActionEditor() {
+    const idx = this._activeCommandSlot;
+    if (
+      Number.isInteger(idx) &&
+      this._commandEditorDrafts &&
+      this._commandEditorDrafts[idx]
+    ) {
+      delete this._commandEditorDrafts[idx];
+    }
+    if (this._commandActionEditorModal) {
+      this._commandActionEditorModal.classList.remove("open");
+    }
+    this._commandSaveError = "";
+    this._activeCommandModal = null;
     this._activeCommandSlot = null;
   }
 
   _openCommandEditor(slotIndex) {
     this._confirmClearSlot = null;
+    this._activeCommandModal = "details";
     this._activeCommandSlot = Number(slotIndex);
+    this._commandSaveError = "";
+    this._ensureCommandDraft(this._activeCommandSlot);
+    this._renderCommandsEditor();
+  }
+
+  _openCommandActionEditor(slotIndex) {
+    this._confirmClearSlot = null;
+    this._activeCommandModal = "action";
+    this._activeCommandSlot = Number(slotIndex);
+    this._commandSaveError = "";
+    this._ensureCommandDraft(this._activeCommandSlot);
     this._renderCommandsEditor();
   }
 
@@ -5300,8 +5424,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._commandEditorFavoriteInput = null;
     this._commandEditorHardButtonSelector = null;
     this._commandEditorActivitiesChips = null;
-    this._commandEditorActionWrap = null;
-    this._commandEditorActionSelector = null;
+    this._commandActionEditorModal = null;
+    this._commandActionEditorModalTitle = null;
+    this._commandActionEditorWrap = null;
+    this._commandActionEditorSelector = null;
+    this._commandEditorFooterNote = null;
+    this._commandActionEditorFooterNote = null;
 
     const exp = document.createElement("section");
     exp.className =
@@ -5480,7 +5608,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         confirmTitle.textContent = "Clear command slot?";
         const confirmSub = document.createElement("div");
         confirmSub.className = "sb-command-slot-confirm-sub";
-        confirmSub.textContent = "Removes the current configuration.";
+        confirmSub.textContent = "Resets configuration.";
         confirmWrap.appendChild(confirmTitle);
         confirmWrap.appendChild(confirmSub);
 
@@ -5529,7 +5657,11 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         actionLabel === "No Action configured"
           ? actionLabel
           : `> ${actionLabel}`;
-      actionSummary.addEventListener("click", openEditor);
+      actionSummary.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._openCommandActionEditor(idx);
+      });
 
       main.appendChild(textWrap);
 
@@ -5577,6 +5709,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const dialogBody = document.createElement("div");
       dialogBody.className = "sb-command-dialog-body";
 
+      const detailsNote = document.createElement("div");
+      detailsNote.className = "sb-command-dialog-note";
+      detailsNote.textContent =
+        "Placeholder: explain what this Command Slot controls and how it appears on the remote.";
+      dialogBody.appendChild(detailsNote);
+
       const configBlock = document.createElement("div");
       configBlock.className = "sb-command-config-block";
       const nameRow = document.createElement("div");
@@ -5590,13 +5728,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         "Command name as it appears on the remote, favorites and the app";
       this._commandEditorNameField = nameField;
       nameField.addEventListener("change", (ev) => {
-        const idx = this._activeCommandSlot;
-        if (!Number.isInteger(idx)) return;
         const value = String(ev.target?.value ?? ev.detail?.value ?? "");
-        const next = this._commandsList().slice();
-        next[idx] = { ...next[idx], name: value };
-        this._commandsDirty = true;
-        this._config = { ...this._config, commands: next };
+        this._updateActiveCommandDraft({ name: value });
+        this._commandSaveError = "";
       });
       nameRow.appendChild(nameLabel);
       nameRow.appendChild(nameField);
@@ -5627,13 +5761,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         favoriteInput.dispatchEvent(new Event("change", { bubbles: true }));
       });
       favoriteInput.addEventListener("change", (ev) => {
-        const idx = this._activeCommandSlot;
-        if (!Number.isInteger(idx)) return;
         const checked = Boolean(ev.target?.checked);
-        const next = this._commandsList().slice();
-        next[idx] = { ...next[idx], add_as_favorite: checked };
-        this._commandsDirty = true;
-        this._config = { ...this._config, commands: next };
+        this._updateActiveCommandDraft({ add_as_favorite: checked });
+        this._commandSaveError = "";
         favoriteWrap.classList.toggle("sb-command-favorite-active", checked);
       });
       configBlock.appendChild(favoriteWrap);
@@ -5659,16 +5789,11 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       buttonSelector.label = "Map this command to a physical button";
       this._commandEditorHardButtonSelector = buttonSelector;
       buttonSelector.addEventListener("value-changed", (ev) => {
-        const idx = this._activeCommandSlot;
-        if (!Number.isInteger(idx)) return;
-        const next = this._commandsList().slice();
         const mapped = String(ev.detail?.value ?? "");
-        next[idx] = {
-          ...next[idx],
+        this._updateActiveCommandDraft({
           hard_button: mapped === "__none__" ? "" : mapped,
-        };
-        this._commandsDirty = true;
-        this._config = { ...this._config, commands: next };
+        });
+        this._commandSaveError = "";
       });
       buttonRow.appendChild(buttonLabel);
       buttonRow.appendChild(buttonSelector);
@@ -5687,19 +5812,129 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       configBlock.appendChild(activitiesRow);
 
       dialogBody.appendChild(configBlock);
-      const actionWrap = document.createElement("div");
-      actionWrap.className = "sb-command-action-wrap";
-      this._commandEditorActionWrap = actionWrap;
-      dialogBody.appendChild(actionWrap);
+
+      const detailsFooter = document.createElement("div");
+      detailsFooter.className = "sb-command-dialog-footer";
+      const detailsFooterNote = document.createElement("div");
+      detailsFooterNote.className = "sb-command-dialog-footer-note";
+      this._commandEditorFooterNote = detailsFooterNote;
+      const detailsFooterActions = document.createElement("div");
+      detailsFooterActions.className = "sb-command-dialog-footer-actions";
+      const detailsCancelBtn = document.createElement("button");
+      detailsCancelBtn.type = "button";
+      detailsCancelBtn.className = "sb-command-dialog-btn";
+      detailsCancelBtn.textContent = "Cancel";
+      detailsCancelBtn.addEventListener("click", () =>
+        this._closeCommandEditor(),
+      );
+      const detailsSaveBtn = document.createElement("button");
+      detailsSaveBtn.type = "button";
+      detailsSaveBtn.className =
+        "sb-command-dialog-btn sb-command-dialog-btn-primary";
+      detailsSaveBtn.textContent = "Save";
+      detailsSaveBtn.addEventListener("click", () =>
+        this._saveActiveCommandModal(),
+      );
+      detailsFooterActions.appendChild(detailsCancelBtn);
+      detailsFooterActions.appendChild(detailsSaveBtn);
+      detailsFooter.appendChild(detailsFooterNote);
+      detailsFooter.appendChild(detailsFooterActions);
+
       dialog.appendChild(dialogHeader);
       dialog.appendChild(dialogBody);
+      dialog.appendChild(detailsFooter);
       modal.appendChild(dialog);
       this._commandsWrap.appendChild(modal);
       this._commandEditorModal = modal;
     }
 
-    if (this._commandEditorActionSelector) {
-      this._commandEditorActionSelector.hass = this._hass;
+    if (
+      !this._commandActionEditorModal ||
+      !this._commandActionEditorModal.isConnected
+    ) {
+      const modal = document.createElement("div");
+      modal.className = "sb-command-modal";
+      modal.addEventListener("click", (ev) => {
+        if (ev.target === modal) this._closeCommandActionEditor();
+      });
+
+      const dialog = document.createElement("div");
+      dialog.className = "sb-command-dialog";
+
+      const dialogHeader = document.createElement("div");
+      dialogHeader.className = "sb-command-dialog-header";
+
+      const dialogTitle = document.createElement("div");
+      dialogTitle.className = "sb-command-dialog-title";
+      this._commandActionEditorModalTitle = dialogTitle;
+
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = "sb-command-dialog-close";
+      closeBtn.innerHTML = '<ha-icon icon="mdi:close"></ha-icon>';
+      closeBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._closeCommandActionEditor();
+      });
+
+      dialogHeader.appendChild(dialogTitle);
+      dialogHeader.appendChild(closeBtn);
+
+      const dialogBody = document.createElement("div");
+      dialogBody.className = "sb-command-dialog-body";
+
+      const actionNote = document.createElement("div");
+      actionNote.className = "sb-command-dialog-note";
+      actionNote.textContent =
+        "Placeholder: explain how this Action runs when the Command Slot button is pressed.";
+      dialogBody.appendChild(actionNote);
+
+      const actionBlock = document.createElement("div");
+      actionBlock.className = "sb-command-config-block";
+      const actionWrap = document.createElement("div");
+      actionWrap.className = "sb-command-action-wrap";
+      this._commandActionEditorWrap = actionWrap;
+      actionBlock.appendChild(actionWrap);
+      dialogBody.appendChild(actionBlock);
+
+      const actionFooter = document.createElement("div");
+      actionFooter.className = "sb-command-dialog-footer";
+      const actionFooterNote = document.createElement("div");
+      actionFooterNote.className = "sb-command-dialog-footer-note";
+      this._commandActionEditorFooterNote = actionFooterNote;
+      const actionFooterActions = document.createElement("div");
+      actionFooterActions.className = "sb-command-dialog-footer-actions";
+      const actionCancelBtn = document.createElement("button");
+      actionCancelBtn.type = "button";
+      actionCancelBtn.className = "sb-command-dialog-btn";
+      actionCancelBtn.textContent = "Cancel";
+      actionCancelBtn.addEventListener("click", () =>
+        this._closeCommandActionEditor(),
+      );
+      const actionSaveBtn = document.createElement("button");
+      actionSaveBtn.type = "button";
+      actionSaveBtn.className =
+        "sb-command-dialog-btn sb-command-dialog-btn-primary";
+      actionSaveBtn.textContent = "Save";
+      actionSaveBtn.addEventListener("click", () =>
+        this._saveActiveCommandModal(),
+      );
+      actionFooterActions.appendChild(actionCancelBtn);
+      actionFooterActions.appendChild(actionSaveBtn);
+      actionFooter.appendChild(actionFooterNote);
+      actionFooter.appendChild(actionFooterActions);
+
+      dialog.appendChild(dialogHeader);
+      dialog.appendChild(dialogBody);
+      dialog.appendChild(actionFooter);
+      modal.appendChild(dialog);
+      this._commandsWrap.appendChild(modal);
+      this._commandActionEditorModal = modal;
+    }
+
+    if (this._commandActionEditorSelector) {
+      this._commandActionEditorSelector.hass = this._hass;
     }
 
     const activeIdx = this._activeCommandSlot;
@@ -5708,7 +5943,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       activeIdx >= 0 &&
       activeIdx < commands.length
     ) {
-      const active = commands[activeIdx];
+      const active = this._activeCommandDraft() || commands[activeIdx];
       this._commandEditorModalTitle.textContent = `Command Slot ${activeIdx + 1}`;
       this._commandEditorNameField.value = active.name;
       this._commandEditorFavoriteInput.checked = Boolean(
@@ -5730,13 +5965,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       );
       if (selectedActivities.size === 0 && fallbackActivity) {
         selectedActivities.add(fallbackActivity);
-        const next = this._commandsList().slice();
-        next[activeIdx] = {
-          ...next[activeIdx],
+        this._updateActiveCommandDraft({
           activities: Array.from(selectedActivities),
-        };
-        this._commandsDirty = true;
-        this._config = { ...this._config, commands: next };
+        });
       }
       this._commandEditorActivitiesChips.innerHTML = "";
       activities.forEach((activity) => {
@@ -5751,30 +5982,45 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           const idx = this._activeCommandSlot;
           if (!Number.isInteger(idx)) return;
           const nextSet = new Set(
-            (this._commandsList()[idx]?.activities || []).map((id) =>
+            (this._activeCommandDraft()?.activities || []).map((id) =>
               String(id),
             ),
           );
           const idKey = String(activity.id);
           if (nextSet.has(idKey) && nextSet.size > 1) nextSet.delete(idKey);
           else nextSet.add(idKey);
-          const next = this._commandsList().slice();
-          next[idx] = { ...next[idx], activities: Array.from(nextSet) };
-          this._commandsDirty = true;
-          this._config = { ...this._config, commands: next };
+          this._updateActiveCommandDraft({ activities: Array.from(nextSet) });
+          this._commandSaveError = "";
           chip.classList.toggle("active", nextSet.has(idKey));
         });
         this._commandEditorActivitiesChips.appendChild(chip);
       });
+
+      const validationMessage = this._commandSaveError || "";
+      if (this._commandEditorFooterNote) {
+        this._commandEditorFooterNote.textContent = validationMessage;
+      }
+      if (this._commandActionEditorFooterNote) {
+        this._commandActionEditorFooterNote.textContent = validationMessage;
+      }
 
       this._commandEditorHardButtonSelector.value = active.hard_button
         ? String(active.hard_button)
         : "__none__";
 
       this._renderCommandActionSection();
-      this._commandEditorModal.classList.add("open");
+      if (this._activeCommandModal === "action") {
+        this._commandEditorModal.classList.remove("open");
+        this._commandActionEditorModalTitle.textContent = `Command Slot ${activeIdx + 1} Action`;
+        this._renderCommandActionSection(this._commandActionEditorWrap);
+        this._commandActionEditorModal.classList.add("open");
+      } else {
+        this._commandActionEditorModal.classList.remove("open");
+        this._commandEditorModal.classList.add("open");
+      }
     } else {
       this._closeCommandEditor();
+      this._closeCommandActionEditor();
     }
   }
 
