@@ -3551,7 +3551,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
       .sb-modal__title {
         font-weight: 600;
-        font-size: 15px;
+        font-size: 14px;
       }
 
       .sb-modal__close {
@@ -4824,20 +4824,32 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-commands-wrap { padding: 0 0 12px 0; }
           .sb-commands-meta { margin-bottom: 12px; }
           .sb-commands-note { font-size: 12px; opacity: 0.7; }
-          .sb-command-grid { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-          .sb-command-slot-btn { border: 1px solid var(--divider-color); border-radius: 14px; aspect-ratio: 1 / 1; cursor: pointer; padding: 10px; text-align: left; display:flex; flex-direction:column; gap: 8px; }
-          .sb-command-slot-on { background: color-mix(in srgb, var(--primary-color) 20%, #0b1220); border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color)); }
-          .sb-command-slot-empty { background: color-mix(in srgb, var(--card-background-color, #1f2937) 86%, #000); border-color: color-mix(in srgb, #ffffff 20%, var(--divider-color)); }
+          .sb-command-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+          .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: left; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
           .sb-command-slot-btn:hover { border-color: var(--primary-color); }
-          .sb-command-slot-icon-wrap { min-height: 46px; display:flex; align-items:center; justify-content:center; }
-          .sb-command-slot-icon-wrap ha-icon { --mdc-icon-size: 42px; color: rgba(255,255,255,0.92); }
-          .sb-command-slot-name { font-weight: 600; font-size: 13px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,0.95); }
-          .sb-command-slot-sub { font-size: 11px; opacity: 0.88; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: rgba(255,255,255,0.82); }
-          .sb-command-slot-tags { margin-top: 1px; display:flex; flex-wrap:wrap; gap:4px; }
-          .sb-command-slot-tag { font-size: 10px; line-height: 1; padding: 4px 6px; border-radius: 999px; background: rgba(0,0,0,0.28); border: 1px solid rgba(255,255,255,0.28); color: rgba(255,255,255,0.9); }
-          .sb-command-slot-empty { align-items:center; justify-content:center; gap: 12px; }
-          .sb-command-slot-empty .sb-command-slot-icon-wrap ha-icon { --mdc-icon-size: 54px; opacity: 0.95; }
-          .sb-command-slot-empty .sb-command-slot-empty-text { font-size: 13px; opacity: 0.95; color: rgba(255,255,255,0.95); }
+          .sb-command-slot-main { position: relative; display:flex; align-items:flex-start; gap: 8px; padding: 14px 12px 10px; min-width: 0; }
+                    .sb-command-slot-icon-wrap { width: 20px; min-width: 20px; min-height: 20px; display:flex; align-items:center; justify-content:center; }
+          .sb-command-slot-icon-wrap ha-icon { --mdc-icon-size: 20px; color: var(--state-icon-color); }
+          .sb-command-slot-name { font-weight: 700; font-size: 16px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--primary-text-color); }
+          .sb-command-slot-meta { margin-top: 3px; font-size: 12px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display:flex; align-items:center; gap: 4px; }
+          .sb-command-slot-favorite { color: var(--error-color); display:inline-flex; }
+          .sb-command-slot-favorite ha-icon { --mdc-icon-size: 14px; }
+          .sb-command-slot-meta-icon { color: var(--state-icon-color); display:inline-flex; }
+          .sb-command-slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
+          .sb-command-slot-text-wrap { min-width: 0; padding-top: 1px; flex: 1; }
+          .sb-command-slot-clear { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
+          .sb-command-slot-clear:hover { opacity: 1; border-color: var(--primary-color); }
+          .sb-command-slot-clear ha-icon { --mdc-icon-size: 16px; }
+          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .sb-command-slot-confirm { padding: 14px 12px 10px; display:flex; flex-direction:column; }
+          .sb-command-slot-confirm-title { font-weight: 700; font-size: 16px; line-height: 1.15; color: var(--primary-text-color); }
+          .sb-command-slot-confirm-sub { margin-top: 1px; font-size: 12px; color: var(--secondary-text-color); }
+          .sb-command-slot-confirm-actions { display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 10px 10px; }
+          .sb-command-slot-confirm-actions .sb-command-slot-action-btn { margin: 0; text-align: center; justify-content: center; display:flex; align-items:center; }
+          .sb-command-slot-empty { border-color: var(--divider-color); background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); }
+          .sb-command-slot-empty .sb-command-slot-main { gap: 12px; align-items: center; justify-content: center; flex-direction: column; }
+          .sb-command-slot-empty .sb-command-slot-empty-text { font-size: 64px; line-height: 1; color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; opacity: 0.8; }
+          .sb-command-slot-empty .sb-command-slot-name { font-size: 18px; font-weight: 500; text-align: center; color: var(--secondary-text-color); }
           .sb-command-modal { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.52); display:none; align-items:center; justify-content:center; padding: 18px; }
           .sb-command-modal.open { display:flex; }
           .sb-command-dialog { width: min(640px, 100%); max-height: min(680px, 100%); background: var(--ha-card-background, #fff); border-radius: 16px; border: 1px solid var(--divider-color); display:flex; flex-direction:column; overflow:hidden; }
@@ -4862,8 +4874,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-command-action-wrap { display:flex; flex-direction:column; gap:8px; }
           .sb-command-dialog-body ha-textfield,
           .sb-command-dialog-body ha-selector { width: 100%; }
+          @media (max-width: 760px) {
+            .sb-command-grid { grid-template-columns: 1fr; }
+          }
           @media (max-width: 700px) {
-            .sb-command-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
             .sb-command-modal { padding: 0; align-items: flex-end; }
             .sb-command-dialog { width: 100%; max-height: 100%; border-radius: 16px 16px 0 0; }
           }
@@ -4980,15 +4994,21 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     return defaultAction;
   }
 
-  _commandsList() {
-    const raw = this._config?.commands;
-    const slots = Array.from({ length: 9 }, (_, idx) => ({
+  _commandSlotDefault(idx) {
+    return {
       name: `Command ${idx + 1}`,
       add_as_favorite: false,
       hard_button: "",
       activities: [],
       action: { action: "perform-action" },
-    }));
+    };
+  }
+
+  _commandsList() {
+    const raw = this._config?.commands;
+    const slots = Array.from({ length: 9 }, (_, idx) =>
+      this._commandSlotDefault(idx),
+    );
     if (!Array.isArray(raw)) return slots;
 
     raw.slice(0, 9).forEach((item, idx) => {
@@ -5014,6 +5034,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const normalized = Array.from({ length: 9 }, (_, idx) => {
       const item = nextCommands?.[idx] || {};
       return {
+        ...this._commandSlotDefault(idx),
         name: String(item.name ?? `Command ${idx + 1}`),
         add_as_favorite: Boolean(item.add_as_favorite),
         hard_button: String(item.hard_button ?? ""),
@@ -5126,9 +5147,23 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         ? [entityIds]
         : [];
 
+    const suffix = (value) => {
+      const text = String(value || "").trim();
+      if (!text) return "";
+      const parts = text.split(".");
+      return (parts[parts.length - 1] || text).trim();
+    };
+
+    const actionSuffix = suffix(service);
+    const entitySuffix = ids.length ? suffix(ids[0]) : "";
+
     return {
       service,
       entities: ids.length ? ids.join(", ") : "No target entity",
+      commandSummary:
+        actionSuffix && entitySuffix
+          ? `${actionSuffix} ${entitySuffix}`
+          : "No Action configured",
     };
   }
 
@@ -5243,6 +5278,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _openCommandEditor(slotIndex) {
+    this._confirmClearSlot = null;
     this._activeCommandSlot = Number(slotIndex);
     this._renderCommandsEditor();
   }
@@ -5254,6 +5290,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this._commandsExpanded = false;
 
     const commands = this._commandsList();
+    if (!Number.isInteger(this._confirmClearSlot))
+      this._confirmClearSlot = null;
 
     this._commandsWrap.innerHTML = "";
     this._commandEditorModal = null;
@@ -5314,78 +5352,191 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     grid.className = "sb-command-grid";
 
     commands.forEach((command, idx) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "sb-command-slot-btn";
-      btn.addEventListener("click", (ev) => {
+      const slot = document.createElement("div");
+      slot.className = "sb-command-slot-btn";
+      const isConfirming = this._confirmClearSlot === idx;
+      slot.setAttribute("role", "button");
+      slot.tabIndex = isConfirming ? -1 : 0;
+      const openEditor = (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
         this._openCommandEditor(idx);
-      });
+      };
+      if (!isConfirming) {
+        slot.addEventListener("click", openEditor);
+        slot.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") openEditor(ev);
+        });
+      }
 
       const details = this._commandActionDetails(command.action);
       const configured = this._isCommandConfigured(command, idx);
 
+      const main = document.createElement("div");
+      main.className = "sb-command-slot-main";
+
       const iconWrap = document.createElement("div");
       iconWrap.className = "sb-command-slot-icon-wrap";
       const icon = document.createElement("ha-icon");
-      icon.setAttribute(
-        "icon",
-        configured ? this._commandSlotIcon(command.hard_button) : "mdi:plus",
-      );
+      icon.setAttribute("icon", this._commandSlotIcon(command.hard_button));
       const iconColor = this._commandSlotIconColor(command.hard_button);
-      if (configured && iconColor) {
-        icon.style.color = iconColor;
-      }
+      if (iconColor) icon.style.color = iconColor;
       iconWrap.appendChild(icon);
-      btn.appendChild(iconWrap);
+
+      const textWrap = document.createElement("div");
+      textWrap.className = "sb-command-slot-text-wrap";
 
       if (!configured) {
-        btn.classList.add("sb-command-slot-empty");
-        const emptyText = document.createElement("div");
-        emptyText.className = "sb-command-slot-empty-text";
-        emptyText.textContent = "Configure Slot";
-        btn.appendChild(emptyText);
-        grid.appendChild(btn);
+        slot.classList.add("sb-command-slot-empty");
+        const plusText = document.createElement("div");
+        plusText.className = "sb-command-slot-empty-text";
+        plusText.textContent = "+";
+
+        const name = document.createElement("div");
+        name.className = "sb-command-slot-name";
+        name.textContent = "Configure Slot";
+
+        textWrap.appendChild(name);
+        main.appendChild(plusText);
+        main.appendChild(textWrap);
+
+        slot.appendChild(main);
+        grid.appendChild(slot);
         return;
       }
 
-      btn.classList.add("sb-command-slot-on");
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "sb-command-slot-clear";
+      clearBtn.innerHTML = '<ha-icon icon="mdi:close"></ha-icon>';
+      clearBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._confirmClearSlot = idx;
+        this._renderCommandsEditor();
+      });
 
       const name = document.createElement("div");
       name.className = "sb-command-slot-name";
       name.textContent =
         String(command.name || "").trim() || `Command ${idx + 1}`;
 
-      const tags = document.createElement("div");
-      tags.className = "sb-command-slot-tags";
+      const metaLine = document.createElement("div");
+      metaLine.className = "sb-command-slot-meta";
+      const mappedLabel = DEFAULT_KEY_LABELS[String(command.hard_button || "")];
+      const isFavorite = Boolean(command.add_as_favorite);
+      const activityCount = Array.isArray(command.activities)
+        ? command.activities.length
+        : 0;
+      const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
 
-      if (command.add_as_favorite) {
-        const tag = document.createElement("div");
-        tag.className = "sb-command-slot-tag";
-        tag.textContent = "❤ Favorite";
-        tags.appendChild(tag);
+      if (isFavorite) {
+        const favorite = document.createElement("span");
+        favorite.className = "sb-command-slot-favorite";
+        favorite.innerHTML = '<ha-icon icon="mdi:heart"></ha-icon>';
+        metaLine.appendChild(favorite);
       }
-      if (Array.isArray(command.activities) && command.activities.length) {
-        const tag = document.createElement("div");
-        tag.className = "sb-command-slot-tag";
-        tag.textContent = `⚙ ${command.activities.length} activities`;
-        tags.appendChild(tag);
+
+      if (mappedLabel) {
+        if (isFavorite) {
+          const andText = document.createElement("span");
+          andText.textContent = "and";
+          metaLine.appendChild(andText);
+        }
+
+        const mappedIcon = document.createElement("span");
+        mappedIcon.className = "sb-command-slot-meta-icon";
+        const mappedIconEl = document.createElement("ha-icon");
+        mappedIconEl.setAttribute(
+          "icon",
+          this._commandSlotIcon(command.hard_button),
+        );
+        const mappedColor = this._commandSlotIconColor(command.hard_button);
+        if (mappedColor) mappedIconEl.style.color = mappedColor;
+        mappedIcon.appendChild(mappedIconEl);
+        metaLine.appendChild(mappedIcon);
+
+        const suffix = document.createElement("span");
+        suffix.textContent = `in ${activityCount} ${activitiesLabel}`;
+        metaLine.appendChild(suffix);
+      } else if (isFavorite) {
+        const suffix = document.createElement("span");
+        suffix.textContent = `in ${activityCount} ${activitiesLabel}`;
+        metaLine.appendChild(suffix);
+      } else {
+        const only = document.createElement("span");
+        only.textContent = `${activityCount} ${activitiesLabel}`;
+        metaLine.appendChild(only);
       }
 
-      const actionLine = document.createElement("div");
-      actionLine.className = "sb-command-slot-sub";
-      actionLine.textContent = `◉ ${details.service}`;
+      textWrap.appendChild(name);
+      textWrap.appendChild(metaLine);
 
-      const entitiesLine = document.createElement("div");
-      entitiesLine.className = "sb-command-slot-sub";
-      entitiesLine.textContent = `⚙ ${details.entities}`;
+      if (isConfirming) {
+        const confirmWrap = document.createElement("div");
+        confirmWrap.className = "sb-command-slot-confirm";
+        const confirmTitle = document.createElement("div");
+        confirmTitle.className = "sb-command-slot-confirm-title";
+        confirmTitle.textContent = "Clear command slot?";
+        const confirmSub = document.createElement("div");
+        confirmSub.className = "sb-command-slot-confirm-sub";
+        confirmSub.textContent = "Removes the current configuration.";
+        confirmWrap.appendChild(confirmTitle);
+        confirmWrap.appendChild(confirmSub);
 
-      btn.appendChild(name);
-      if (tags.childElementCount) btn.appendChild(tags);
-      btn.appendChild(actionLine);
-      btn.appendChild(entitiesLine);
-      grid.appendChild(btn);
+        const actions = document.createElement("div");
+        actions.className = "sb-command-slot-confirm-actions";
+        const noBtn = document.createElement("button");
+        noBtn.type = "button";
+        noBtn.className = "sb-command-slot-action-btn";
+        noBtn.textContent = "No";
+        noBtn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this._confirmClearSlot = null;
+          this._renderCommandsEditor();
+        });
+        const yesBtn = document.createElement("button");
+        yesBtn.type = "button";
+        yesBtn.className = "sb-command-slot-action-btn";
+        yesBtn.textContent = "Yes";
+        yesBtn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const next = this._commandsList();
+          next[idx] = this._commandSlotDefault(idx);
+          this._confirmClearSlot = null;
+          this._setCommands(next);
+        });
+        actions.appendChild(noBtn);
+        actions.appendChild(yesBtn);
+
+        slot.innerHTML = "";
+        slot.appendChild(confirmWrap);
+        slot.appendChild(actions);
+        grid.appendChild(slot);
+        return;
+      }
+
+      const actionSummary = document.createElement("button");
+      actionSummary.type = "button";
+      actionSummary.className = "sb-command-slot-action-btn";
+      const actionLabel =
+        details.commandSummary === "No Action configured"
+          ? "No Action configured"
+          : details.service;
+      actionSummary.textContent =
+        actionLabel === "No Action configured"
+          ? actionLabel
+          : `> ${actionLabel}`;
+      actionSummary.addEventListener("click", openEditor);
+
+      main.appendChild(textWrap);
+
+      slot.appendChild(main);
+      slot.appendChild(clearBtn);
+      slot.appendChild(actionSummary);
+      grid.appendChild(slot);
     });
 
     body.appendChild(grid);
