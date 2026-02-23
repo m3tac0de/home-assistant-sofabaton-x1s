@@ -1577,6 +1577,30 @@ def test_command_to_favorite_x1s_replays_sequence(monkeypatch) -> None:
     assert requested == [0x68]
 
 
+def test_command_to_favorite_can_skip_refresh_after_write(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    requested: list[int] = []
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: requested.append(act_id) or True)
+
+    result = proxy.command_to_favorite(0x68, 0x01, 0x03, refresh_after_write=False)
+    assert result is not None
+    assert requested == []
+
+
 def test_command_to_favorite_requires_all_acks(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -1667,6 +1691,39 @@ def test_command_to_button_replays_sequence(monkeypatch) -> None:
     assert cleared == [(0x65, True, False, False)]
     assert requested_map == [0x65]
     assert requested_buttons == [(0x65, True)]
+
+
+def test_command_to_button_can_skip_refresh_after_write(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    requested_map: list[int] = []
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: requested_map.append(act_id) or True)
+
+    requested_buttons: list[tuple[int, bool]] = []
+
+    def _get_buttons_for_entity(ent_id: int, fetch_if_missing: bool = True):
+        requested_buttons.append((ent_id, fetch_if_missing))
+        return [], False
+
+    monkeypatch.setattr(proxy, "get_buttons_for_entity", _get_buttons_for_entity)
+
+    result = proxy.command_to_button(0x65, 0xC1, 0x05, 0x02, refresh_after_write=False)
+    assert result is not None
+    assert requested_map == []
+    assert requested_buttons == []
 
 
 def test_command_to_button_requires_all_acks(monkeypatch) -> None:

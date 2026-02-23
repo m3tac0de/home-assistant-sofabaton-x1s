@@ -243,3 +243,22 @@ command_to_button:
           min: 1
           max: 255
           mode: box
+
+
+sync_command_config:
+  name: Sync command configuration
+  description: Deploys persisted command-slot configuration to the hub by recreating the managed Wifi device and applying activity mappings.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    device_name:
+      name: Device name
+      description: Optional Wifi device name; defaults to Home Assistant.
+      required: false
+      default: Home Assistant
+      selector:
+        text:

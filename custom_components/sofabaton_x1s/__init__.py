@@ -15,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
@@ -94,6 +95,22 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
     connection.send_result(msg["id"], payload)
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_sync/progress",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    connection.send_result(msg["id"], hub.get_command_sync_progress())
+
+
 def _register_websocket_commands(hass: HomeAssistant) -> None:
     domain_data = hass.data.setdefault(DOMAIN, {})
     if domain_data.get("ws_registered"):
@@ -101,6 +118,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
 
     websocket_api.async_register_command(hass, _ws_get_command_config)
     websocket_api.async_register_command(hass, _ws_set_command_config)
+    websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
     domain_data["ws_registered"] = True
 
 
@@ -239,6 +257,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "command_to_favorite", _async_handle_command_to_favorite)
     if not hass.services.has_service(DOMAIN, "command_to_button"):
         hass.services.async_register(DOMAIN, "command_to_button", _async_handle_command_to_button)
+    if not hass.services.has_service(DOMAIN, "sync_command_config"):
+        hass.services.async_register(DOMAIN, "sync_command_config", _async_handle_sync_command_config)
     #if not hass.services.has_service(DOMAIN, "create_ip_button"):
     #    hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
         
@@ -287,6 +307,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "delete_device")
             hass.services.async_remove(DOMAIN, "command_to_favorite")
             hass.services.async_remove(DOMAIN, "command_to_button")
+            hass.services.async_remove(DOMAIN, "sync_command_config")
             #hass.services.async_remove(DOMAIN, "create_ip_button")
             async_teardown_diagnostics(hass)
         async_disable_hex_logging_capture(hass, entry.entry_id)
@@ -296,6 +317,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await hub.async_stop()
     return unload_ok
     
+
+
+def _raise_if_sync_in_progress(hub: SofabatonHub, operation: str) -> None:
+    if bool(getattr(hub, "is_sync_in_progress", False)):
+        raise HomeAssistantError(f"sync_in_progress: {operation}")
+
 async def _async_handle_fetch_device_commands(call: ServiceCall):
     hass = call.hass
     hub = await _async_resolve_hub_from_call(hass, call)
@@ -311,6 +338,8 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
     hub = await _async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_create_wifi_device")
 
     device_name = str(call.data.get("device_name", "Home Assistant")).strip() or "Home Assistant"
     if not _ALPHANUM_SPACE_RE.fullmatch(device_name):
@@ -351,6 +380,8 @@ async def _async_handle_device_to_activity(call: ServiceCall):
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
+    _raise_if_sync_in_progress(hub, "_async_handle_device_to_activity")
+
     activity_id = int(call.data["activity_id"])
     device_id = int(call.data["device_id"])
 
@@ -371,6 +402,8 @@ async def _async_handle_delete_device(call: ServiceCall):
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
+    _raise_if_sync_in_progress(hub, "_async_handle_delete_device")
+
     device_id = int(call.data["device_id"])
     if device_id < 1 or device_id > 255:
         raise ValueError("device_id must be between 1 and 255")
@@ -383,6 +416,8 @@ async def _async_handle_command_to_favorite(call: ServiceCall):
     hub = await _async_resolve_hub_from_call(hass, call)
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_command_to_favorite")
 
     activity_id = int(call.data["activity_id"])
     device_id = int(call.data["device_id"])
@@ -412,6 +447,8 @@ async def _async_handle_command_to_button(call: ServiceCall):
     if hub is None:
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
+    _raise_if_sync_in_progress(hub, "_async_handle_command_to_button")
+
     activity_id = int(call.data["activity_id"])
     button_id = int(call.data["button_id"])
     device_id = int(call.data["device_id"])
@@ -433,6 +470,30 @@ async def _async_handle_command_to_button(call: ServiceCall):
         command_id=command_id,
     )
 
+
+
+
+async def _async_handle_sync_command_config(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    store = await _async_get_command_config_store(hass)
+    payload = await store.async_get_hub_config(hub.entry_id)
+
+    entry = hass.config_entries.async_get_entry(hub.entry_id)
+    if entry is None:
+        raise ValueError("Could not resolve config entry for selected Sofabaton hub")
+
+    request_port = int(entry.options.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT))
+    device_name = str(call.data.get("device_name", "Home Assistant")).strip() or "Home Assistant"
+
+    return await hub.async_sync_command_config(
+        command_payload=payload,
+        request_port=request_port,
+        device_name=device_name,
+    )
 
 async def _async_handle_create_ip_button(call: ServiceCall):
     hass = call.hass

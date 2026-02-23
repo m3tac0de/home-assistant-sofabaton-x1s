@@ -393,37 +393,55 @@ class X1Proxy:
         ack_first_byte: int | None = None,
         ack_fallback_opcodes: tuple[int, ...] = (),
         timeout: float = 5.0,
+        retries: int = 0,
+        retry_delay: float = 0.0,
     ) -> bool:
-        log.info(
-            "[WIFI][STEP] %s tx family=0x%02X expect_ack=0x%04X first_byte=%s",
+        candidates: list[tuple[int, int | None]] = [(ack_opcode, ack_first_byte)]
+        candidates.extend((fallback_opcode, None) for fallback_opcode in ack_fallback_opcodes)
+
+        total_attempts = max(1, int(retries) + 1)
+        for attempt in range(1, total_attempts + 1):
+            log.info(
+                "[WIFI][STEP] %s tx family=0x%02X expect_ack=0x%04X first_byte=%s attempt=%d/%d",
+                step_name,
+                family,
+                ack_opcode,
+                f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
+                attempt,
+                total_attempts,
+            )
+            self._send_family_frame(family, payload)
+
+            matched = self.wait_for_roku_ack_any(candidates, timeout=timeout)
+            if matched is not None:
+                matched_opcode, _matched_payload = matched
+                if matched_opcode != ack_opcode:
+                    log.warning(
+                        "[WIFI][STEP] %s matched fallback ack=0x%04X (expected=0x%04X)",
+                        step_name,
+                        matched_opcode,
+                        ack_opcode,
+                    )
+                log.info("[WIFI][STEP] %s acked via 0x%04X", step_name, matched_opcode)
+                return True
+
+            if attempt < total_attempts:
+                log.warning(
+                    "[WIFI][STEP] %s retrying after ack timeout (attempt %d/%d)",
+                    step_name,
+                    attempt,
+                    total_attempts,
+                )
+                if retry_delay > 0:
+                    time.sleep(retry_delay)
+
+        log.warning(
+            "[WIFI][STEP] %s failed waiting ack=0x%04X first_byte=%s",
             step_name,
-            family,
             ack_opcode,
             f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
         )
-        self._send_family_frame(family, payload)
-
-        candidates: list[tuple[int, int | None]] = [(ack_opcode, ack_first_byte)]
-        candidates.extend((fallback_opcode, None) for fallback_opcode in ack_fallback_opcodes)
-        matched = self.wait_for_roku_ack_any(candidates, timeout=timeout)
-        if matched is None:
-            log.warning(
-                "[WIFI][STEP] %s failed waiting ack=0x%04X first_byte=%s",
-                step_name,
-                ack_opcode,
-                f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
-            )
-            return False
-        matched_opcode, _matched_payload = matched
-        if matched_opcode != ack_opcode:
-            log.warning(
-                "[WIFI][STEP] %s matched fallback ack=0x%04X (expected=0x%04X)",
-                step_name,
-                matched_opcode,
-                ack_opcode,
-            )
-        log.info("[WIFI][STEP] %s acked via 0x%04X", step_name, matched_opcode)
-        return True
+        return False
 
     def _utf16le_padded(self, text: str, *, length: int) -> bytes:
         data = text.encode("utf-16le")
@@ -1225,6 +1243,7 @@ class X1Proxy:
         device_id: int = 0xFF,
         device_class_byte: int = 0x01,
         ip_device: bool = False,
+        brand_name: str = "m3tac0de",
     ) -> bytes:
         if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
             payload = bytearray(_ROKU_X1S_CREATE_BASE)
@@ -1256,7 +1275,7 @@ class X1Proxy:
                 first_name_idx, second_name_idx = name_positions[:2]
                 _write_utf16_slot(first_name_idx, second_name_idx - first_name_idx, device_name)
                 tail_bound = ip_idx if ip_idx > second_name_idx else len(payload)
-                _write_utf16_slot(second_name_idx, tail_bound - second_name_idx, "m3tac0de")
+                _write_utf16_slot(second_name_idx, tail_bound - second_name_idx, brand_name)
 
             custom_ip = ipaddress.IPv4Address(ip_address).packed
             if ip_device:
@@ -1288,7 +1307,7 @@ class X1Proxy:
         )
         payload[7] = device_id & 0xFF
         payload[32:62] = _ascii_padded(device_name, length=30)
-        payload[62:92] = _ascii_padded("m3tac0de", length=30)
+        payload[62:92] = _ascii_padded(brand_name, length=30)
         payload[94:98] = ipaddress.IPv4Address(ip_address).packed
         payload[103] = state_byte & 0xFF
         return bytes(payload)
@@ -1706,6 +1725,7 @@ class X1Proxy:
         command_id: int,
         *,
         slot_id: int = 0,
+        refresh_after_write: bool = True,
     ) -> dict[str, Any] | None:
         """Add a command favorite to an arbitrary activity."""
 
@@ -1732,6 +1752,9 @@ class X1Proxy:
             ack_opcode=0x013E,
             ack_first_byte=None if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2) else 0x01,
             ack_fallback_opcodes=(0x0103,),
+            timeout=7.5,
+            retries=1,
+            retry_delay=0.15,
         ):
             return None
 
@@ -1753,7 +1776,8 @@ class X1Proxy:
 
         self.clear_entity_cache(act_lo, clear_buttons=False, clear_favorites=True, clear_macros=False)
         self._activity_map_complete.discard(act_lo)
-        self.request_activity_mapping(act_lo)
+        if refresh_after_write:
+            self.request_activity_mapping(act_lo)
 
         return {
             "activity_id": act_lo,
@@ -1769,6 +1793,8 @@ class X1Proxy:
         button_id: int,
         device_id: int,
         command_id: int,
+        *,
+        refresh_after_write: bool = True,
     ) -> dict[str, Any] | None:
         """Map a device command to a physical activity button using 0x193E."""
 
@@ -1806,6 +1832,9 @@ class X1Proxy:
             ack_opcode=0x013E,
             ack_first_byte=btn_lo,
             ack_fallback_opcodes=(0x0103,),
+            timeout=7.5,
+            retries=1,
+            retry_delay=0.15,
         ):
             return None
 
@@ -1819,8 +1848,9 @@ class X1Proxy:
 
         self.clear_entity_cache(act_lo, clear_buttons=True, clear_favorites=False, clear_macros=False)
         self._activity_map_complete.discard(act_lo)
-        self.request_activity_mapping(act_lo)
-        self.get_buttons_for_entity(act_lo, fetch_if_missing=True)
+        if refresh_after_write:
+            self.request_activity_mapping(act_lo)
+            self.get_buttons_for_entity(act_lo, fetch_if_missing=True)
 
         return {
             "activity_id": act_lo,
@@ -1835,6 +1865,7 @@ class X1Proxy:
         device_name: str = "Home Assistant",
         commands: list[str] | None = None,
         request_port: int = 8060,
+        brand_name: str = "m3tac0de",
     ) -> dict[str, Any] | None:
         if not self.can_issue_commands():
             log.info("[WIFI] create_wifi_device ignored: proxy client is connected")
@@ -1848,6 +1879,7 @@ class X1Proxy:
                 commands=commands,
                 ip_address=ip_address,
                 request_port=request_port,
+                brand_name=brand_name,
             )
 
         self.start_roku_create()
@@ -1856,7 +1888,7 @@ class X1Proxy:
         if not self._send_roku_step(
             step_name="create-device",
             family=0x07,
-            payload=self._build_roku_device_payload(device_name=device_name, ip_address=ip_address, state_byte=0x00),
+            payload=self._build_roku_device_payload(device_name=device_name, ip_address=ip_address, state_byte=0x00, brand_name=brand_name),
             ack_opcode=0x0107,
         ):
             return None
@@ -1985,6 +2017,7 @@ class X1Proxy:
             ip_address=ip_address,
             state_byte=0x01,
             device_id=device_id,
+            brand_name=brand_name,
         )
         if not self._send_roku_step(
             step_name="finalize-device-7b08",
@@ -2012,6 +2045,7 @@ class X1Proxy:
         commands: list[str] | None,
         ip_address: str,
         request_port: int,
+        brand_name: str = "m3tac0de",
     ) -> dict[str, Any] | None:
         self.start_roku_create()
         log.info("[WIFI] starting virtual IP Wifi Device create replay sequence")
@@ -2019,7 +2053,7 @@ class X1Proxy:
         if not self._send_roku_step(
             step_name="create-device",
             family=0x07,
-            payload=self._build_roku_device_payload(device_name=device_name, ip_address=ip_address, state_byte=0x00, ip_device=True),
+            payload=self._build_roku_device_payload(device_name=device_name, ip_address=ip_address, state_byte=0x00, ip_device=True, brand_name=brand_name),
             ack_opcode=0x0107,
         ):
             return None
@@ -2086,6 +2120,7 @@ class X1Proxy:
             state_byte=0x01,
             device_id=device_id,
             ip_device=True,
+            brand_name=brand_name,
         )
         if not self._send_roku_step(
             step_name="finalize-device-7b08",

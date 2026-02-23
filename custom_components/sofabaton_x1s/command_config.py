@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -17,6 +18,8 @@ COMMAND_BRAND_PREFIX = "m3tac0de"
 COMMAND_SLOT_COUNT = 9
 
 DEFAULT_COMMAND_ACTION = {"action": "perform-action"}
+
+_SPACE_RE = re.compile(r"\s+")
 
 
 def _default_slot(idx: int) -> dict[str, Any]:
@@ -105,6 +108,13 @@ def compute_commands_hash(commands: list[dict[str, Any]]) -> str:
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
     return digest[:15]
+
+
+def normalize_command_name(value: Any) -> str:
+    text = str(value or "")
+    text = text.replace("_", " ")
+    text = _SPACE_RE.sub(" ", text).strip()
+    return text.casefold()
 
 
 class CommandConfigStore:
