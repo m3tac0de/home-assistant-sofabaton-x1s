@@ -782,11 +782,17 @@ class X1CatalogActivityHandler(BaseFrameHandler):
 
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         active_flag = frame.raw[35] if len(frame.raw) > 35 else 0
+        needs_confirm_flag = payload[95] if len(payload) > 95 else 0
         activity_label = payload[32:].split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
         is_active = active_flag == 1
+        needs_confirm = needs_confirm_flag == 1
 
         if act_id is not None:
-            proxy.state.activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
+            proxy.state.activities[act_id & 0xFF] = {
+                "name": activity_label,
+                "active": is_active,
+                "needs_confirm": needs_confirm,
+            }
             if is_active:
                 proxy.state.set_hint(act_id)
             proxy._notify_activity_list_update()

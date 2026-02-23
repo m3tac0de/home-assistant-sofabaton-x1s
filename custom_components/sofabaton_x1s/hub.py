@@ -468,6 +468,14 @@ class SofabatonHub:
             device_id,
         )
 
+    async def async_delete_device(self, device_id: int) -> dict[str, Any] | None:
+        """Delete a device and confirm impacted activities on the selected hub."""
+
+        return await self.hass.async_add_executor_job(
+            self._proxy.delete_device,
+            device_id,
+        )
+
     async def async_command_to_favorite(
         self,
         activity_id: int,

@@ -233,6 +233,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "create_wifi_device", _async_handle_create_wifi_device)
     if not hass.services.has_service(DOMAIN, "device_to_activity"):
         hass.services.async_register(DOMAIN, "device_to_activity", _async_handle_device_to_activity)
+    if not hass.services.has_service(DOMAIN, "delete_device"):
+        hass.services.async_register(DOMAIN, "delete_device", _async_handle_delete_device)
     if not hass.services.has_service(DOMAIN, "command_to_favorite"):
         hass.services.async_register(DOMAIN, "command_to_favorite", _async_handle_command_to_favorite)
     if not hass.services.has_service(DOMAIN, "command_to_button"):
@@ -282,6 +284,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "fetch_device_commands")
             hass.services.async_remove(DOMAIN, "create_wifi_device")
             hass.services.async_remove(DOMAIN, "device_to_activity")
+            hass.services.async_remove(DOMAIN, "delete_device")
             hass.services.async_remove(DOMAIN, "command_to_favorite")
             hass.services.async_remove(DOMAIN, "command_to_button")
             #hass.services.async_remove(DOMAIN, "create_ip_button")
@@ -360,6 +363,19 @@ async def _async_handle_device_to_activity(call: ServiceCall):
         activity_id=activity_id,
         device_id=device_id,
     )
+
+
+async def _async_handle_delete_device(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    device_id = int(call.data["device_id"])
+    if device_id < 1 or device_id > 255:
+        raise ValueError("device_id must be between 1 and 255")
+
+    return await hub.async_delete_device(device_id=device_id)
 
 
 async def _async_handle_command_to_favorite(call: ServiceCall):

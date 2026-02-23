@@ -59,6 +59,8 @@ from .protocol_const import (
     OP_REQ_ACTIVITIES,
     OP_REQ_ACTIVATE,
     OP_REQ_ACTIVITY_MAP,
+    OP_DELETE_DEVICE,
+    OP_ACTIVITY_CONFIRM,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_IPCMD_SYNC,
@@ -1304,6 +1306,108 @@ class X1Proxy:
             time.sleep(0.05)
         log.warning("[ACTMAP] timeout waiting for activity map burst act=0x%02X", act_lo)
         return False
+
+    def _activities_requiring_confirmation(self) -> list[int]:
+        targets: list[int] = []
+        for act_lo, details in sorted(self.state.activities.items()):
+            if not isinstance(details, dict):
+                continue
+            if bool(details.get("needs_confirm", False)):
+                targets.append(act_lo & 0xFF)
+        return targets
+
+    def _build_activity_confirm_payload(self, activity_id: int) -> bytes | None:
+        act_lo = activity_id & 0xFF
+        activity = self.state.activities.get(act_lo)
+        if not isinstance(activity, dict):
+            return None
+
+        name = str(activity.get("name", ""))
+        encoded_name = name.encode("ascii", errors="ignore")[:60].ljust(60, b"\x00")
+        active_flag = 0x01 if bool(activity.get("active", False)) else 0x02
+
+        return (
+            bytes([
+                0x01,
+                0x00,
+                0x01,
+                0x01,
+                0x00,
+                0x01,
+                0x00,
+                act_lo,
+                0x01,
+                active_flag,
+            ])
+            + (b"\x00" * 22)
+            + encoded_name
+            + bytes([0xFC, 0x00, 0xFC, 0x00])
+            + (b"\x00" * 27)
+        )
+
+    def delete_device(self, device_id: int) -> dict[str, Any] | None:
+        if not self.can_issue_commands():
+            log.info("[DELETE] delete_device ignored: proxy client is connected")
+            return None
+
+        dev_lo = device_id & 0xFF
+        self.start_roku_create()
+
+        if not self._send_roku_step(
+            step_name=f"delete-device[dev=0x{dev_lo:02X}]",
+            family=0x09,
+            payload=bytes([dev_lo]),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        if not self.request_activities():
+            log.warning("[DELETE] failed to refresh activities after deleting dev=0x%02X", dev_lo)
+            return None
+
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if self._burst.active and self._burst.kind == "activities":
+                break
+            time.sleep(0.01)
+        while time.monotonic() < deadline:
+            if not self._burst.active:
+                break
+            time.sleep(0.01)
+        if self._burst.active:
+            log.warning("[DELETE] timeout waiting for activities burst after deleting dev=0x%02X", dev_lo)
+            return None
+
+        confirmed_activities: list[int] = []
+        for act_lo in self._activities_requiring_confirmation():
+            confirm_payload = self._build_activity_confirm_payload(act_lo)
+            if confirm_payload is None:
+                log.warning("[DELETE] missing cached activity row for confirm act=0x%02X", act_lo)
+                return None
+
+            log.info("[DELETE] confirming updated activity act=0x%02X", act_lo)
+            self._send_cmd_frame(OP_ACTIVITY_CONFIRM, confirm_payload)
+            if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0) is None:
+                log.warning("[DELETE] missing ACK after activity confirm act=0x%02X", act_lo)
+                return None
+
+            activity = self.state.activities.get(act_lo)
+            if isinstance(activity, dict):
+                activity["needs_confirm"] = False
+            self.clear_entity_cache(act_lo, clear_buttons=True, clear_favorites=True, clear_macros=True)
+            confirmed_activities.append(act_lo)
+
+        self.state.devices.pop(dev_lo, None)
+        self.state.buttons.pop(dev_lo, None)
+        self.state.ip_devices.pop(dev_lo, None)
+        self.state.ip_buttons.pop(dev_lo, None)
+        self.clear_entity_cache(dev_lo)
+
+        return {
+            "device_id": dev_lo,
+            "confirmed_activities": confirmed_activities,
+            "status": "success",
+        }
 
     def add_device_to_activity(self, activity_id: int, device_id: int) -> dict[str, Any] | None:
         """Add ``device_id`` to ``activity_id`` and replay POWER_ON/OFF macro updates."""

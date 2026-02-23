@@ -57,6 +57,7 @@ OP_REQ_BUTTONS = 0x023C  # payload: [act_lo, 0xFF]
 OP_REQ_COMMANDS = 0x025C  # payload: [dev_lo, cmd] (1-byte) or [dev_lo, 0xFF] for full list
 OP_REQ_ACTIVATE = 0x023F  # payload: [id_lo, key_code] (activity or device ID)
 OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites mapping (X1)
+OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
 OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
 OP_FIND_REMOTE_X2 = 0x0323  # payload: [0x00, 0x00, 0x08] observed on X2 hubs
 OP_CREATE_DEVICE_HEAD = 0x07D5  # payload includes UTF-16LE device name
@@ -128,6 +129,7 @@ OP_MACROS_B2 = 0x6413
 OP_ACTIVITY_INPUTS_PAGE_A = 0xFA47  # H→A activity-input candidates page (X1S/X2)
 OP_ACTIVITY_INPUTS_PAGE_B = 0xC947  # H→A final activity-input candidates page (X1S/X2)
 OP_ACTIVITY_ASSIGN_FINALIZE = 0xD538  # A→H post-macro activity assignment save (X1S/X2)
+OP_ACTIVITY_CONFIRM = 0x7B38  # A→H activity confirmation row write (observed X1)
 OP_ACTIVITY_MAP_PAGE_X1S = 0xD56D  # H→A activity mapping page variant (X1S/X2)
 OP_BANNER = 0x1D02  # hub ident, name, batch, hub fw (first screen)
 OP_WIFI_FW = 0x0359  # WiFi firmware ver (Vx.y.z)
@@ -142,6 +144,7 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_COMMANDS: "REQ_COMMANDS",
     OP_REQ_ACTIVATE: "REQ_ACTIVATE",
     OP_REQ_ACTIVITY_MAP: "REQ_ACTIVITY_MAP",
+    OP_DELETE_DEVICE: "DELETE_DEVICE",
     OP_FIND_REMOTE: "FIND_REMOTE",
     OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
     OP_CREATE_DEVICE_HEAD: "CREATE_DEVICE_HEAD",
@@ -199,6 +202,7 @@ OPNAMES: Dict[int, str] = {
     OP_ACTIVITY_INPUTS_PAGE_A: "ACTIVITY_INPUTS_PAGE_A",
     OP_ACTIVITY_INPUTS_PAGE_B: "ACTIVITY_INPUTS_PAGE_B",
     OP_ACTIVITY_ASSIGN_FINALIZE: "ACTIVITY_ASSIGN_FINALIZE",
+    OP_ACTIVITY_CONFIRM: "ACTIVITY_CONFIRM",
     OP_ACTIVITY_MAP_PAGE_X1S: "ACTIVITY_MAP_PAGE_X1S",
     OP_REQ_VERSION: "REQ_VERSION",
     OP_PING2: "PING2",
@@ -256,6 +260,7 @@ __all__ = [
     "OP_REQ_COMMANDS",
     "OP_REQ_ACTIVATE",
     "OP_REQ_ACTIVITY_MAP",
+    "OP_DELETE_DEVICE",
     "OP_FIND_REMOTE",
     "OP_FIND_REMOTE_X2",
     "OP_CREATE_DEVICE_HEAD",
@@ -312,6 +317,7 @@ __all__ = [
     "OP_ACTIVITY_INPUTS_PAGE_A",
     "OP_ACTIVITY_INPUTS_PAGE_B",
     "OP_ACTIVITY_ASSIGN_FINALIZE",
+    "OP_ACTIVITY_CONFIRM",
     "OP_ACTIVITY_MAP_PAGE_X1S",
     "OP_BANNER",
     "OP_WIFI_FW",
