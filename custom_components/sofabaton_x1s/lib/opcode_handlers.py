@@ -676,6 +676,26 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
         elif device_label:
             log.info("[DEV] name='%s'", device_label)
 
+
+
+def _decode_x1s_needs_confirm_flag(payload: bytes) -> bool:
+    """Extract X1S/X2 activity confirm flag from CATALOG_ROW_ACTIVITY payload.
+
+    Observed rows contain a tail marker pattern ``fc xx fc yy`` where ``yy``
+    flips to ``0x01`` for activities impacted by device delete.
+    """
+
+    marker_indexes = [
+        idx
+        for idx in range(max(0, len(payload) - 80), len(payload) - 3)
+        if payload[idx] == 0xFC and payload[idx + 2] == 0xFC
+    ]
+    if not marker_indexes:
+        return False
+
+    flag_index = marker_indexes[-1] + 3
+    return flag_index < len(payload) and payload[flag_index] == 0x01
+
 def _decode_x1s_activity_label(label_bytes_raw: bytes) -> str:
     """Decode first activity label from X1S CATALOG_ROW_ACTIVITY label region.
 
@@ -734,9 +754,15 @@ class CatalogActivityHandler(BaseFrameHandler):
         # activity_label = label_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
         active_state_byte = raw[35] if len(raw) > 35 else 0
         is_active = active_state_byte == 0x01
+        needs_confirm = _decode_x1s_needs_confirm_flag(payload)
 
         if act_id is not None:
-            proxy.state.activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
+            proxy.state.activities[act_id & 0xFF] = {
+                "name": activity_label,
+                "active": is_active,
+                "needs_confirm": needs_confirm,
+            }
+            proxy._activity_row_payloads[act_id & 0xFF] = bytes(payload)
             if is_active:
                 proxy.state.set_hint(act_id)
             proxy._notify_activity_list_update()
@@ -782,11 +808,17 @@ class X1CatalogActivityHandler(BaseFrameHandler):
 
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         active_flag = frame.raw[35] if len(frame.raw) > 35 else 0
+        needs_confirm_flag = payload[95] if len(payload) > 95 else 0
         activity_label = payload[32:].split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
         is_active = active_flag == 1
+        needs_confirm = needs_confirm_flag == 1
 
         if act_id is not None:
-            proxy.state.activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
+            proxy.state.activities[act_id & 0xFF] = {
+                "name": activity_label,
+                "active": is_active,
+                "needs_confirm": needs_confirm,
+            }
             if is_active:
                 proxy.state.set_hint(act_id)
             proxy._notify_activity_list_update()

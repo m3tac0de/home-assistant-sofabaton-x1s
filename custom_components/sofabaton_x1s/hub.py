@@ -205,6 +205,20 @@ class SofabatonHub:
                 self.hass.async_create_task(self._async_prime_buttons_for(new_id))
         self.hass.loop.call_soon_threadsafe(_inner)
 
+
+    def _sync_current_activity_from_cache(self, *, clear_when_unknown: bool = True) -> None:
+        active_id = None
+        for act_id, activity in self.activities.items():
+            if isinstance(activity, dict) and bool(activity.get("active", False)):
+                active_id = int(act_id)
+                break
+
+        if active_id is None and not clear_when_unknown:
+            return
+
+        if active_id != self.current_activity:
+            self.current_activity = active_id
+
     def _on_activities_burst(self, key: str) -> None:
         def _inner() -> None:
             acts, ready = self._proxy.get_activities()
@@ -217,6 +231,7 @@ class SofabatonHub:
             self.activities_ready = ready
             if ready:
                 self.activities = acts
+                self._sync_current_activity_from_cache(clear_when_unknown=True)
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -225,6 +240,7 @@ class SofabatonHub:
             acts, ready = self._proxy.get_activities()
             if acts:
                 self.activities = acts
+                self._sync_current_activity_from_cache(clear_when_unknown=False)
             if ready:
                 self.activities_ready = True
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
@@ -465,6 +481,14 @@ class SofabatonHub:
         return await self.hass.async_add_executor_job(
             self._proxy.add_device_to_activity,
             activity_id,
+            device_id,
+        )
+
+    async def async_delete_device(self, device_id: int) -> dict[str, Any] | None:
+        """Delete a device and confirm impacted activities on the selected hub."""
+
+        return await self.hass.async_add_executor_job(
+            self._proxy.delete_device,
             device_id,
         )
 

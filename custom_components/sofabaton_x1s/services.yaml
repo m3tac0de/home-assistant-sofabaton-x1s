@@ -136,6 +136,25 @@ device_to_activity:
           max: 99
           mode: box
 
+delete_device:
+  name: Delete device
+  description: Deletes a device and confirms all impacted activities on the selected hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    device_id:
+      name: Device id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+
 command_to_favorite:
   name: Add command to activity favorite
   description: Makes a favorite from a command on the selected hub.

@@ -4708,7 +4708,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._config = incomingConfig;
 
     if (configUnchanged) {
-      this._renderCommandsEditor();
       this._restoreEditorScroll(prevScroll);
       return;
     }

@@ -13,6 +13,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_FIND_REMOTE,
     OP_FIND_REMOTE_X2,
     OP_REQ_COMMANDS,
+    OP_ACTIVITY_ASSIGN_FINALIZE,
 )
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
@@ -1315,6 +1316,131 @@ def test_build_favorite_map_payload_matches_observed_sample() -> None:
         "01 00 01 01 00 01 66 00 06 00 00 00 00 4e 24 04 00 00 00 00 00 00 00 00 e4"
     )
 
+
+
+def test_delete_device_replays_delete_and_confirms_impacted_activities(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    def _request_activities() -> bool:
+        proxy._burst.active = True
+        proxy._burst.kind = "activities"
+        proxy._burst.active = False
+        proxy.state.activities[0x66] = {"name": "heyo", "active": False, "needs_confirm": True}
+        proxy.state.activities[0x65] = {"name": "test", "active": True, "needs_confirm": False}
+        return True
+
+    monkeypatch.setattr(proxy, "request_activities", _request_activities)
+
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        ack_calls.append(candidates)
+        return 0x0103, b"\x00"
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    result = proxy.delete_device(0x04)
+
+    assert result == {
+        "device_id": 0x04,
+        "confirmed_activities": [0x66],
+        "status": "success",
+    }
+    assert [opcode for opcode, _payload in sent] == [0x0109, 0x7B38]
+    assert sent[0][1] == b""
+    assert sent[1][1][7] == 0x66
+    assert sent[1][1][9] == 0x02
+    assert sent[1][1][95] == 0x00
+    assert ack_calls == [[(0x0103, None)], [(0x0103, None)]]
+
+
+
+
+
+
+def test_delete_device_uses_x1s_finalize_opcode_for_activity_confirmation(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    def _request_activities() -> bool:
+        proxy._burst.active = True
+        proxy._burst.kind = "activities"
+        proxy._burst.active = False
+        row_payload = bytearray(214)
+        row_payload[0] = 0x04
+        row_payload[6:8] = (0x0068).to_bytes(2, "big")
+        row_payload[170:174] = bytes([0xFC, 0x00, 0xFC, 0x01])
+        proxy.state.activities[0x68] = {
+            "name": "Play Xbox",
+            "active": False,
+            "needs_confirm": True,
+        }
+        proxy._activity_row_payloads[0x68] = bytes(row_payload)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activities", _request_activities)
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", lambda candidates, timeout=5.0: (0x0103, b"\x00"))
+
+    result = proxy.delete_device(0x04)
+
+    assert result is not None
+    assert [opcode for opcode, _payload in sent] == [0x0109, OP_ACTIVITY_ASSIGN_FINALIZE]
+    assert len(sent[1][1]) == 214
+    assert sent[1][1][173] == 0x00
+
+def test_delete_device_uses_30_second_delete_ack_timeout(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=HUB_VERSION_X1)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+
+    observed: dict[str, float] = {}
+
+    def _wait_for_roku_ack_any(candidates, *, timeout=5.0):
+        observed["timeout"] = timeout
+        return 0x0103, b"\x00"
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+    monkeypatch.setattr(proxy, "request_activities", lambda: False)
+
+    assert proxy.delete_device(0x04) is None
+    assert observed["timeout"] == 30.0
+def test_delete_device_requires_delete_ack(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", lambda candidates, timeout=5.0: None)
+
+    requested = {"count": 0}
+
+    def _request_activities() -> bool:
+        requested["count"] += 1
+        return True
+
+    monkeypatch.setattr(proxy, "request_activities", _request_activities)
+
+    assert proxy.delete_device(0x04) is None
+    assert requested["count"] == 0
 
 def test_build_command_to_button_payload_matches_observed_sample() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)

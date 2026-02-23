@@ -53,6 +53,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_G,
+    OP_CATALOG_ROW_ACTIVITY,
     OP_MACROS_A1,
     OP_MACROS_B1,
     OP_X1_ACTIVITY,
@@ -730,7 +731,7 @@ def test_x1_activity_row_updates_state_and_hint() -> None:
 
     handler.handle(frame)
 
-    assert proxy.state.activities[0x65] == {"name": "Jellyfin", "active": False}
+    assert proxy.state.activities[0x65] == {"name": "Jellyfin", "active": False, "needs_confirm": False}
     assert proxy.state.current_activity_hint is None
     assert proxy._burst.kind == "activities"
 
@@ -750,9 +751,66 @@ def test_x1_activity_active_flag_uses_correct_offset() -> None:
 
     handler.handle(frame)
 
-    assert proxy.state.activities[0x66] == {"name": "Room Control", "active": True}
+    assert proxy.state.activities[0x66] == {"name": "Room Control", "active": True, "needs_confirm": False}
     assert proxy.state.current_activity_hint == 0x66
 
+
+def test_x1_activity_row_sets_needs_confirm_flag() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = X1CatalogActivityHandler()
+
+    frame = _build_context(
+        proxy,
+        "a5 5a 7b 3b 02 00 01 02 00 01 00 66 01 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 68 65 79 6f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 9a 6c",
+        OP_X1_ACTIVITY,
+        "X1_ACTIVITY",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.activities[0x66] == {"name": "heyo", "active": False, "needs_confirm": True}
+
+
+
+
+def test_catalog_activity_handler_sets_needs_confirm_from_tail_marker() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = CatalogActivityHandler()
+
+    payload = bytearray(214)
+    payload[0] = 1
+    payload[6:8] = (0x0065).to_bytes(2, "big")
+    payload[32] = 0x01
+    payload[33] = 0x00
+    payload[170:174] = bytes([0xFC, 0x01, 0xFC, 0x01])
+
+    frame = _build_payload_context(proxy, OP_CATALOG_ROW_ACTIVITY, bytes(payload), "CATALOG_ROW_ACTIVITY")
+    handler.handle(frame)
+
+    assert proxy.state.activities[0x65]["needs_confirm"] is True
+    assert len(proxy._activity_row_payloads[0x65]) == 214
+
+
+def test_catalog_activity_handler_clears_needs_confirm_when_tail_marker_unset() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = CatalogActivityHandler()
+
+    payload = bytearray(214)
+    payload[0] = 2
+    payload[6:8] = (0x0066).to_bytes(2, "big")
+    payload[170:174] = bytes([0xFC, 0x00, 0xFC, 0x00])
+
+    frame = _build_payload_context(proxy, OP_CATALOG_ROW_ACTIVITY, bytes(payload), "CATALOG_ROW_ACTIVITY")
+    handler.handle(frame)
+
+    assert proxy.state.activities[0x66]["needs_confirm"] is False
+    assert len(proxy._activity_row_payloads[0x66]) == 214
 
 def test_catalog_activity_handler_decodes_utf16_labels() -> None:
     proxy = X1Proxy(

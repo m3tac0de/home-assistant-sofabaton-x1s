@@ -207,3 +207,148 @@ def test_command_to_button_executor_job_uses_partial_not_kwargs():
     assert calls == [(101, 0xC1, 5, 2)]
 
     loop.close()
+
+
+def test_on_activities_burst_syncs_current_activity_from_active_flag(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_activities",
+        lambda: ({101: {"name": "Watch a movie", "active": True, "needs_confirm": False}}, True),
+    )
+
+    hub.current_activity = None
+    hub._on_activities_burst("activities")
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert hub.current_activity == 101
+
+    loop.close()
+
+
+def test_on_activity_list_update_syncs_current_activity_from_active_flag(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_activities",
+        lambda: ({102: {"name": "Play Steamdeck", "active": True, "needs_confirm": False}}, False),
+    )
+
+    hub.current_activity = None
+    hub._on_activity_list_update()
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert hub.current_activity == 102
+
+    loop.close()
+
+
+def test_activity_list_update_does_not_clear_current_until_burst_complete(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub.current_activity = 101
+
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_activities",
+        lambda: ({101: {"name": "Watch a movie", "active": False}}, False),
+    )
+
+    hub._on_activity_list_update()
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert hub.current_activity == 101
+
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_activities",
+        lambda: ({102: {"name": "Play Steamdeck", "active": True}}, False),
+    )
+
+    hub._on_activity_list_update()
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert hub.current_activity == 102
+
+    loop.close()
+
+
+def test_activities_burst_can_clear_current_when_no_activity_active(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub.current_activity = 101
+
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_activities",
+        lambda: ({101: {"name": "Watch a movie", "active": False}}, True),
+    )
+
+    hub._on_activities_burst("activities")
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert hub.current_activity is None
+
+    loop.close()
