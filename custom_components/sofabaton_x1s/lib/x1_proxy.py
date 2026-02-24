@@ -1724,7 +1724,7 @@ class X1Proxy:
         device_id: int,
         command_id: int,
         *,
-        slot_id: int = 0,
+        slot_id: int | None = None,
         refresh_after_write: bool = True,
     ) -> dict[str, Any] | None:
         """Add a command favorite to an arbitrary activity."""
@@ -1736,7 +1736,7 @@ class X1Proxy:
         act_lo = activity_id & 0xFF
         dev_lo = device_id & 0xFF
         cmd_lo = command_id & 0xFF
-        slot_lo = slot_id & 0xFF
+        slot_lo = (0 if slot_id is None else slot_id) & 0xFF
 
         self.start_roku_create()
 
@@ -1750,7 +1750,7 @@ class X1Proxy:
                 slot_id=slot_lo,
             ),
             ack_opcode=0x013E,
-            ack_first_byte=None if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2) else 0x01,
+            ack_first_byte=None,
             ack_fallback_opcodes=(0x0103,),
             timeout=7.5,
             retries=1,

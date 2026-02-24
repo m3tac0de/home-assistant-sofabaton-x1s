@@ -57,14 +57,15 @@ class _FakeHub:
         activity_id: int,
         device_id: int,
         command_id: int,
-        slot_id: int,
+        slot_id: int | None = None,
     ):
         payload = {
             "activity_id": activity_id,
             "device_id": device_id,
             "command_id": command_id,
-            "slot_id": slot_id,
         }
+        if slot_id is not None:
+            payload["slot_id"] = slot_id
         self.calls.append(payload)
         return payload
 
@@ -252,6 +253,25 @@ def test_command_to_favorite_accepts_valid_input(monkeypatch) -> None:
     assert result == {"activity_id": 101, "device_id": 6, "command_id": 4, "slot_id": 0}
     assert hub.calls[-1] == result
 
+
+
+
+def test_command_to_favorite_omits_slot_when_not_provided(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    result = asyncio.run(
+        integration._async_handle_command_to_favorite(
+            _FakeCall({"activity_id": 101, "device_id": 6, "command_id": 4})
+        )
+    )
+
+    assert result == {"activity_id": 101, "device_id": 6, "command_id": 4}
+    assert hub.calls[-1] == result
 
 def test_command_to_button_validates_button_id(monkeypatch) -> None:
     hub = _FakeHub()

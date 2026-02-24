@@ -19,6 +19,9 @@ from .const import (
     CONF_MDNS_VERSION,
     CONF_PROXY_ENABLED,
     CONF_ROKU_SERVER_ENABLED,
+    HUB_VERSION_X1,
+    HUB_VERSION_X1S,
+    HUB_VERSION_X2,
     signal_activity,
     signal_app_activations,
     signal_ip_commands,
@@ -507,21 +510,16 @@ class SofabatonHub:
         device_id: int,
         command_id: int,
         *,
-        slot_id: int = 0,
+        slot_id: int | None = None,
         refresh_after_write: bool = True,
     ) -> dict[str, Any] | None:
         """Replay the favorite write sequence on the selected hub."""
 
-        if refresh_after_write:
-            return await self.hass.async_add_executor_job(
-                partial(
-                    self._proxy.command_to_favorite,
-                    activity_id,
-                    device_id,
-                    command_id,
-                    slot_id=slot_id,
-                )
-            )
+        kwargs: dict[str, Any] = {}
+        if slot_id is not None:
+            kwargs["slot_id"] = slot_id
+        if not refresh_after_write:
+            kwargs["refresh_after_write"] = False
 
         return await self.hass.async_add_executor_job(
             partial(
@@ -529,8 +527,7 @@ class SofabatonHub:
                 activity_id,
                 device_id,
                 command_id,
-                slot_id=slot_id,
-                refresh_after_write=False,
+                **kwargs,
             )
         )
 
@@ -1025,7 +1022,6 @@ class SofabatonHub:
                         act_id,
                         wifi_device_id,
                         command_id,
-                        slot_id=slot_idx,
                         refresh_after_write=False,
                     )
 

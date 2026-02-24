@@ -352,3 +352,70 @@ def test_activities_burst_can_clear_current_when_no_activity_active(monkeypatch)
     assert hub.current_activity is None
 
     loop.close()
+
+
+
+def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([], True))
+
+    async def _create(*_args, **_kwargs):
+        return {"device_id": 9, "status": "success"}
+
+    async def _add_activity(*_args, **_kwargs):
+        return {"status": "success"}
+
+    favorite_calls: list[tuple[int, int, int, dict]] = []
+
+    async def _favorite(activity_id, device_id, command_id, **kwargs):
+        favorite_calls.append((activity_id, device_id, command_id, dict(kwargs)))
+        return {"status": "success"}
+
+    async def _button(*_args, **_kwargs):
+        return {"status": "success"}
+
+    async def _delete(*_args, **_kwargs):
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_create_wifi_device", _create)
+    monkeypatch.setattr(hub, "async_add_device_to_activity", _add_activity)
+    monkeypatch.setattr(hub, "async_command_to_favorite", _favorite)
+    monkeypatch.setattr(hub, "async_command_to_button", _button)
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+
+    payload = {
+        "commands": [
+            {
+                "name": "Command 1",
+                "add_as_favorite": True,
+                "hard_button": "",
+                "activities": ["101"],
+                "action": {"action": "perform-action"},
+            }
+        ],
+        "commands_hash": "abc",
+    }
+
+    loop.run_until_complete(hub.async_sync_command_config(command_payload=payload, request_port=8060))
+
+    assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
+
+    loop.close()

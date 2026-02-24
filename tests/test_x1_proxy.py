@@ -1506,7 +1506,7 @@ def test_command_to_favorite_replays_sequence(monkeypatch) -> None:
     assert sent[1][1] == bytes([0x00, 0x01, 0x01, 0x00, 0x01, 0x66, 0x01, 0x01, 0x6A])
     assert sent[2][1] == b"f"
     assert ack_calls == [
-        [(0x013E, 0x01), (0x0103, None)],
+        [(0x013E, None), (0x0103, None)],
         [(0x0103, None)],
         [(0x0103, None)],
     ]
@@ -1599,6 +1599,69 @@ def test_command_to_favorite_can_skip_refresh_after_write(monkeypatch) -> None:
     result = proxy.command_to_favorite(0x68, 0x01, 0x03, refresh_after_write=False)
     assert result is not None
     assert requested == []
+
+
+def test_command_to_favorite_x1_does_not_pin_ack_first_byte(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        ack_calls.append(candidates)
+        return 0x013E, b""
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: True)
+
+    result = proxy.command_to_favorite(0x65, 0x04, 0x02, slot_id=3)
+
+    assert result is not None
+    assert ack_calls[0] == [(0x013E, None), (0x0103, None)]
+
+
+def test_command_to_favorite_x1s_does_not_pin_ack_first_byte(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        ack_calls.append(candidates)
+        first_opcode, _first_byte = candidates[0]
+        return first_opcode, b""
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: True)
+
+    result = proxy.command_to_favorite(0x65, 0x04, 0x02, slot_id=3)
+
+    assert result is not None
+    assert ack_calls[0] == [(0x013E, None), (0x0103, None)]
 
 
 def test_command_to_favorite_requires_all_acks(monkeypatch) -> None:

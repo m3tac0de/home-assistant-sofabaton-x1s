@@ -422,7 +422,8 @@ async def _async_handle_command_to_favorite(call: ServiceCall):
     activity_id = int(call.data["activity_id"])
     device_id = int(call.data["device_id"])
     command_id = int(call.data["command_id"])
-    slot_id = int(call.data.get("slot_id", 0))
+    raw_slot_id = call.data.get("slot_id")
+    slot_id = int(raw_slot_id) if raw_slot_id is not None else None
 
     if activity_id < 1 or activity_id > 255:
         raise ValueError("activity_id must be between 1 and 255")
@@ -430,14 +431,18 @@ async def _async_handle_command_to_favorite(call: ServiceCall):
         raise ValueError("device_id must be between 1 and 255")
     if command_id < 1 or command_id > 255:
         raise ValueError("command_id must be between 1 and 255")
-    if slot_id < 0 or slot_id > 255:
+    if slot_id is not None and (slot_id < 0 or slot_id > 255):
         raise ValueError("slot_id must be between 0 and 255")
+
+    kwargs: dict[str, Any] = {}
+    if slot_id is not None:
+        kwargs["slot_id"] = slot_id
 
     return await hub.async_command_to_favorite(
         activity_id=activity_id,
         device_id=device_id,
         command_id=command_id,
-        slot_id=slot_id,
+        **kwargs,
     )
 
 
