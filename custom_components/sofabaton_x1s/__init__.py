@@ -108,7 +108,29 @@ async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: di
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
-    connection.send_result(msg["id"], hub.get_command_sync_progress())
+    store = await _async_get_command_config_store(hass)
+    payload = await store.async_get_hub_config(hub.entry_id)
+    commands_hash = str(payload.get("commands_hash") or "")
+    managed_hashes = hub.get_managed_command_hashes()
+    progress = hub.get_command_sync_progress()
+    progress_hash = str(progress.get("commands_hash") or "")
+    sync_needed = bool(commands_hash) and commands_hash not in managed_hashes
+    if (
+        commands_hash
+        and str(progress.get("status") or "") == "success"
+        and progress_hash == commands_hash
+    ):
+        sync_needed = False
+
+    connection.send_result(
+        msg["id"],
+        {
+            **progress,
+            "commands_hash": commands_hash,
+            "managed_command_hashes": managed_hashes,
+            "sync_needed": sync_needed,
+        },
+    )
 
 
 def _register_websocket_commands(hass: HomeAssistant) -> None:

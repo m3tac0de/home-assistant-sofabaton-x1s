@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from time import monotonic
 from datetime import datetime, timezone
 from functools import partial
 from typing import Any, Dict, Optional
@@ -335,7 +336,8 @@ class SofabatonHub:
         def _inner() -> None:
             ent_id = None
             if ":" in key:
-                _, ent_str = key.split(":", 1)
+                _, ent_segment = key.split(":", 1)
+                ent_str = ent_segment.split(":", 1)[0]
                 try:
                     ent_id = int(ent_str)
                 except ValueError:
@@ -364,7 +366,8 @@ class SofabatonHub:
         def _inner() -> None:
             ent_id = None
             if ":" in key:
-                _, ent_str = key.split(":", 1)
+                _, ent_segment = key.split(":", 1)
+                ent_str = ent_segment.split(":", 1)[0]
                 try:
                     ent_id = int(ent_str)
                 except ValueError:
@@ -576,14 +579,6 @@ class SofabatonHub:
             True,
         )
 
-        _, macros_ready = await self.hass.async_add_executor_job(
-            partial(
-                self._proxy.get_macros_for_activity,
-                act_id,
-                fetch_if_missing=True,
-            )
-        )
-
         _, buttons_ready = await self.hass.async_add_executor_job(
             self._proxy.get_buttons_for_entity, act_id
         )
@@ -591,9 +586,20 @@ class SofabatonHub:
         if not buttons_ready:
             await self._async_wait_for_buttons_ready(act_id)
 
+        await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
+        await self._async_wait_for_activity_map_ready(act_id)
+
         await self.hass.async_add_executor_job(
             partial(
                 self._proxy.ensure_commands_for_activity,
+                act_id,
+                fetch_if_missing=True,
+            )
+        )
+
+        _, macros_ready = await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.get_macros_for_activity,
                 act_id,
                 fetch_if_missing=True,
             )
@@ -622,6 +628,21 @@ class SofabatonHub:
 
         await self.hass.async_add_executor_job(
             partial(self._proxy.get_commands_for_entity, ent_id, fetch_if_missing=True)
+        )
+
+
+    async def _async_wait_for_activity_map_ready(self, act_id: int, *, timeout: float = 5.0) -> None:
+        deadline = monotonic() + timeout
+        act_lo = act_id & 0xFF
+        while monotonic() < deadline:
+            if act_lo in self._proxy._activity_map_complete:
+                return
+            await asyncio.sleep(0.05)
+
+        _LOGGER.debug(
+            "[%s] timed out waiting for activity map for 0x%02X",
+            self.entry_id,
+            act_lo,
         )
 
     async def _async_wait_for_buttons_ready(self, ent_id: int) -> None:
@@ -700,6 +721,9 @@ class SofabatonHub:
         else:
             await self._async_wait_for_buttons_ready(act_id)
 
+        await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
+        await self._async_wait_for_activity_map_ready(act_id)
+
         await self.hass.async_add_executor_job(
             partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
         )
@@ -715,7 +739,7 @@ class SofabatonHub:
         """Return a static map of button_code -> human name."""
         name_map: dict[int, str] = {}
         for attr, val in ButtonName.__dict__.items():
-            if isinstance(val, int):
+            if isinstance(val, int) and attr.isupper() and not attr.startswith("_"):
                 # turn VOL_UP -> Vol Up
                 pretty = attr.replace("_", " ").title()
                 name_map[val] = pretty
@@ -861,6 +885,18 @@ class SofabatonHub:
             if brand.startswith(prefix):
                 managed.append((int(dev_id), brand))
         return managed
+
+    def get_managed_command_hashes(self) -> list[str]:
+        prefix = f"{COMMAND_BRAND_PREFIX}-"
+        hashes: set[str] = set()
+        for _dev_id, brand in self._managed_wifi_devices():
+            text = str(brand or "").strip()
+            if not text.startswith(prefix):
+                continue
+            command_hash = text[len(prefix):].strip()
+            if command_hash:
+                hashes.add(command_hash)
+        return sorted(hashes)
 
     async def _async_execute_action_config(self, action_config: dict[str, Any]) -> None:
         action = str(action_config.get("action") or "").lower().strip()

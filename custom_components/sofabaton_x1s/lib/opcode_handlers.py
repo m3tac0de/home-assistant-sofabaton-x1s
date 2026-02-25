@@ -940,6 +940,12 @@ class ActivityMapHandler(BaseFrameHandler):
                 continue
             if terminator not in (0x00, 0xFC):
                 continue
+            # Skip compact control tuples embedded in ACTIVITY_MAP tails:
+            #   FC <dev> <slot> <cmd> <term> FC
+            # These encode device metadata/power rows on X1 and are not
+            # user-visible favorites.
+            if i > 0 and extra[i - 1] == 0xFC and i + 4 < len(extra) and extra[i + 4] == 0xFC:
+                continue
             entry = (slot_id, command_id)
             if entry in seen:
                 continue

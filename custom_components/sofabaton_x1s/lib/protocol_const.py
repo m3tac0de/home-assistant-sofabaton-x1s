@@ -46,7 +46,9 @@ class ButtonName:
 
 
 BUTTONNAME_BY_CODE = {
-    v: k for k, v in ButtonName.__dict__.items() if isinstance(v, int)
+    v: k
+    for k, v in ButtonName.__dict__.items()
+    if isinstance(v, int) and k.isupper() and not k.startswith("_")
 }
 
 

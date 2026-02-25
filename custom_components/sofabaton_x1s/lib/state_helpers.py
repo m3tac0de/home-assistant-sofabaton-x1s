@@ -118,23 +118,81 @@ class ActivityCache:
 
         button_id = record[1]
         device_id = record[2]
+        command_id = record[9] if len(record) > 9 else button_id
 
         if button_id in BUTTONNAME_BY_CODE:
             self.buttons[act_lo].add(button_id)
+            if self._looks_like_favorite_record(record, device_id=device_id, command_id=command_id):
+                self._upsert_activity_favorite_slot(
+                    act_lo,
+                    button_id=button_id,
+                    device_id=device_id,
+                    command_id=command_id,
+                    source="keymap",
+                )
             return False, True
+
         if favorites_allowed:
-            command_id = record[9] if len(record) > 9 else button_id
-            self.activity_command_refs[act_lo].add((device_id, command_id))
-            self.activity_favorite_slots[act_lo].append(
-                {
-                    "button_id": button_id,
-                    "device_id": device_id,
-                    "command_id": command_id,
-                }
+            self._upsert_activity_favorite_slot(
+                act_lo,
+                button_id=button_id,
+                device_id=device_id,
+                command_id=command_id,
+                source="keymap",
             )
             return True, True
         return favorites_allowed, False
 
+
+    def _looks_like_favorite_record(self, record: bytes, *, device_id: int, command_id: int) -> bool:
+        if len(record) < 18:
+            return False
+        if device_id == 0 or command_id in (0x00, 0xFC):
+            return False
+        # In button-coded rows, favorites use the observed 0x4E marker before
+        # the command tuple. Regular hard-button mappings use other values
+        # (e.g. 0x00/0x07/0x2E) and must not be treated as favorites.
+        if record[7] != 0x4E:
+            return False
+        return record[3:7] == b"\x00" * 4 and record[12:18] == b"\x00" * 6
+
+    def _upsert_activity_favorite_slot(
+        self,
+        act_lo: int,
+        *,
+        button_id: int,
+        device_id: int,
+        command_id: int,
+        source: str,
+    ) -> None:
+        pair = (device_id & 0xFF, command_id & 0xFF)
+        if pair[0] == 0 or pair[1] in (0x00, 0xFC):
+            return
+
+        self.activity_command_refs[act_lo].add(pair)
+        slots = self.activity_favorite_slots[act_lo]
+
+        for idx, slot in enumerate(slots):
+            if (slot["device_id"], slot["command_id"]) != pair:
+                continue
+            existing_source = slot.get("source", "keymap")
+            if existing_source != "activity_map" and source == "activity_map":
+                slots[idx] = {
+                    "button_id": button_id,
+                    "device_id": pair[0],
+                    "command_id": pair[1],
+                    "source": source,
+                }
+            return
+
+        slots.append(
+            {
+                "button_id": button_id,
+                "device_id": pair[0],
+                "command_id": pair[1],
+                "source": source,
+            }
+        )
     def clear_keymap_remainders(self, act_lo: int | None = None) -> None:
         if act_lo is None:
             self.keymap_remainders.clear()
@@ -177,17 +235,12 @@ class ActivityCache:
         dev_lo = device_id & 0xFF
         self.record_activity_member(act_lo, dev_lo)
 
-        pair = (dev_lo, command_id & 0xFF)
-        if pair in self.activity_command_refs.get(act_lo, set()):
-            return
-
-        self.activity_command_refs[act_lo].add(pair)
-        self.activity_favorite_slots[act_lo].append(
-            {
-                "button_id": button_id if button_id is not None else 0,
-                "device_id": device_id & 0xFF,
-                "command_id": command_id & 0xFF,
-            }
+        self._upsert_activity_favorite_slot(
+            act_lo,
+            button_id=button_id if button_id is not None else 0,
+            device_id=device_id & 0xFF,
+            command_id=command_id & 0xFF,
+            source="activity_map",
         )
 
     def record_favorite_label(
@@ -211,12 +264,15 @@ class ActivityCache:
         labels = self.activity_favorite_labels.get(act_lo, {})
 
         favorites: list[dict[str, int | str]] = []
+        seen: set[tuple[int, int]] = set()
         for slot in slots:
             pair = (slot["device_id"], slot["command_id"])
+            if pair in seen:
+                continue
             label = labels.get(pair)
             if not label:
                 continue
-
+            seen.add(pair)
             favorites.append(
                 {
                     "name": label,

@@ -38,6 +38,7 @@ if str(ROOT) not in sys.path:
 
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
+    ActivityMapHandler,
     CatalogActivityHandler,
     KeymapHandler,
     MacroHandler,
@@ -866,3 +867,32 @@ def test_catalog_activity_handler_decodes_utf16_labels() -> None:
             _build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "CATALOG_ROW_ACTIVITY")
         )
         assert proxy.state.activities[act_id & 0xFF]["name"] == expected_label
+
+
+def test_activity_map_ignores_control_tuples_from_x1_tail() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = ActivityMapHandler()
+
+    act = 0x66
+    proxy._pending_activity_map_requests.add(act)
+
+    frames = (
+        "a5 5a 7b 6d 01 00 01 03 00 01 00 01 13 01 0d 07 fc f4 7a 6f 97 eb 45 a4 a5 35 a3 b6 57 b1 f4 25 00 1d 00 01 44 65 6e 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 44 65 6e 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 00 fc 01 01 03 00 fc 01 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 9a 45",
+        "a5 5a 7b 6d 02 00 01 03 00 01 00 02 01 02 0d 02 6f 77 c5 1b b1 22 43 25 90 64 5c f8 86 a9 83 ee 00 00 00 01 53 6f 6e 79 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 53 6f 6e 79 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 00 fc 02 01 03 00 fc 00 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 3e 73",
+    )
+
+    for raw_hex in frames:
+        raw = bytes.fromhex(raw_hex)
+        frame = FrameContext(
+            proxy=proxy,
+            opcode=0x7B6D,
+            direction="H→A",
+            payload=raw[4:-1],
+            raw=raw,
+            name="ACTIVITY_MAP_PAGE",
+        )
+        handler.handle(frame)
+
+    assert proxy.state.get_activity_command_refs(act) == set()

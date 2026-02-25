@@ -419,3 +419,147 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
 
     loop.close()
+
+
+def test_commands_burst_with_targeted_suffix_updates_activity_fetch_state(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_id = 0x0101
+    act_lo = act_id & 0xFF
+    dev_id = 0x0202
+    cmd_id = 0x002A
+
+    hub._commands_in_flight.add(act_id)
+    hub._proxy.state.activities[act_lo] = {"name": "Test Activity"}
+    hub._proxy.state.activity_favorite_slots[act_lo] = [
+        {"button_id": 1, "device_id": dev_id, "command_id": cmd_id}
+    ]
+    hub._proxy.state.record_favorite_label(act_lo, dev_id, cmd_id, "Fav Label")
+
+    hub._on_commands_burst(f"commands:{dev_id & 0xFF}:{cmd_id & 0xFF}")
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert act_id not in hub._commands_in_flight
+
+    loop.close()
+
+
+def test_activity_fetch_requests_activity_map_before_favorite_command_resolution(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_id = 0x0101
+    act_lo = act_id & 0xFF
+    call_order: list[str] = []
+
+    hub._proxy.state.activities[act_lo] = {"name": "Test Activity"}
+
+    monkeypatch.setattr(hub, "_reset_entity_cache", lambda *_, **__: None)
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_, **__: None)
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([], True))
+    async def _noop_wait(*_):
+        return None
+
+    monkeypatch.setattr(hub, "_async_wait_for_buttons_ready", _noop_wait)
+
+    def _request_map(_act_id: int) -> bool:
+        call_order.append("request_activity_mapping")
+        hub._proxy._activity_map_complete.add(_act_id & 0xFF)
+        return True
+
+    def _ensure_commands(_act_id: int, *, fetch_if_missing: bool = True):
+        call_order.append("ensure_commands_for_activity")
+        return ({}, True)
+
+    def _get_macros(_act_id: int, *, fetch_if_missing: bool = True):
+        call_order.append("get_macros_for_activity")
+        return ([], True)
+
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", _request_map)
+    monkeypatch.setattr(hub._proxy, "ensure_commands_for_activity", _ensure_commands)
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", _get_macros)
+
+    loop.run_until_complete(hub.async_fetch_device_commands(act_id))
+
+    assert call_order.index("request_activity_mapping") < call_order.index("ensure_commands_for_activity")
+
+    loop.close()
+
+
+def test_prime_buttons_requests_activity_map_before_favorite_command_resolution(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_id = 0x0101
+    act_lo = act_id & 0xFF
+    call_order: list[str] = []
+
+    hub._proxy.state.activities[act_lo] = {"name": "Test Activity"}
+
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([], True))
+
+    def _request_map(_act_id: int) -> bool:
+        call_order.append("request_activity_mapping")
+        hub._proxy._activity_map_complete.add(_act_id & 0xFF)
+        return True
+
+    def _ensure_commands(_act_id: int, *, fetch_if_missing: bool = True):
+        call_order.append("ensure_commands_for_activity")
+        return ({}, True)
+
+    def _get_macros(_act_id: int, *, fetch_if_missing: bool = True):
+        call_order.append("get_macros_for_activity")
+        return ([], True)
+
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", _request_map)
+    monkeypatch.setattr(hub._proxy, "ensure_commands_for_activity", _ensure_commands)
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", _get_macros)
+
+    loop.run_until_complete(hub._async_prime_buttons_for(act_id))
+
+    assert call_order.index("request_activity_mapping") < call_order.index("ensure_commands_for_activity")
+
+    loop.close()

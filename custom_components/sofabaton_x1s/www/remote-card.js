@@ -4676,6 +4676,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     if (this._commandConfigLoadedFor === entityId) return;
 
     this._loadCommandConfigFromBackend().then(() => this._renderCommandsEditor());
+    this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
   }
 
   setConfig(config) {
@@ -4697,6 +4698,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const nextEntity = String(incomingConfig?.entity || "");
     if (nextEntity !== String(this._commandConfigLoadedFor || "")) {
       this._commandConfigLoadedFor = null;
+      if (this._commandSyncPollTimer) {
+        clearTimeout(this._commandSyncPollTimer);
+        this._commandSyncPollTimer = null;
+      }
     }
 
     if ("commands" in incomingConfig) delete incomingConfig.commands;
@@ -4837,6 +4842,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-commands-wrap { padding: 0 0 12px 0; }
           .sb-commands-meta { margin-bottom: 12px; }
           .sb-commands-note { font-size: 12px; opacity: 0.7; }
+          .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
+          .sb-command-sync-row-running { border-color: var(--primary-color); }
+          .sb-command-sync-row-error { border-color: var(--error-color); }
+          .sb-command-sync-row-ok { border-color: color-mix(in srgb, var(--success-color, #22c55e) 70%, var(--divider-color)); }
+          .sb-command-sync-message { font-size: 13px; color: var(--secondary-text-color); }
+          .sb-command-sync-btn { border: 1px solid var(--primary-color); border-radius: 10px; min-height: 34px; padding: 0 12px; background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--primary-text-color); cursor: pointer; white-space: nowrap; }
+          .sb-command-sync-btn[disabled] { opacity: 0.6; cursor: default; }
           .sb-command-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
           .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: left; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
           .sb-command-slot-btn:hover { border-color: var(--primary-color); }
@@ -5072,6 +5084,87 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     }
   }
 
+
+  async _loadCommandSyncProgress(force = false) {
+    if (!this._hass?.callWS || !this._config?.entity) return;
+    const entityId = String(this._config.entity || "").trim();
+    if (!entityId) return;
+    if (this._commandSyncLoading && !force) return;
+
+    this._commandSyncLoading = true;
+    try {
+      const result = await this._hass.callWS({
+        type: "sofabaton_x1s/command_sync/progress",
+        entity_id: entityId,
+      });
+      this._commandSyncState = {
+        status: String(result?.status || "idle"),
+        current_step: Number(result?.current_step || 0),
+        total_steps: Number(result?.total_steps || 0),
+        message: String(result?.message || "Idle"),
+        commands_hash: String(result?.commands_hash || ""),
+        managed_command_hashes: Array.isArray(result?.managed_command_hashes)
+          ? result.managed_command_hashes.map((item) => String(item || "")).filter(Boolean)
+          : [],
+        sync_needed: Boolean(result?.sync_needed),
+      };
+    } catch (err) {
+      if (!this._commandSyncState || typeof this._commandSyncState !== "object") {
+        this._commandSyncState = {
+          status: "idle",
+          current_step: 0,
+          total_steps: 0,
+          message: "Unable to load sync status",
+          commands_hash: "",
+          managed_command_hashes: [],
+          sync_needed: false,
+        };
+      }
+    } finally {
+      this._commandSyncLoading = false;
+    }
+  }
+
+  _syncStatusTone(status) {
+    if (status === "failed") return "error";
+    if (status === "success") return "ok";
+    if (status === "running") return "running";
+    return "idle";
+  }
+
+  async _runCommandConfigSync() {
+    if (this._commandSyncRunning) return;
+    const entityId = String(this._config?.entity || "").trim();
+    if (!entityId || !this._hass?.callService) return;
+
+    this._commandSyncState = {
+      ...(this._commandSyncState || {}),
+      status: "running",
+      current_step: 0,
+      total_steps: Number(this._commandSyncState?.total_steps || 0),
+      message: "Starting sync",
+      sync_needed: true,
+    };
+    this._commandSyncRunning = true;
+    this._renderCommandsEditor();
+
+    try {
+      await this._hass.callService("sofabaton_x1s", "sync_command_config", {
+        entity_id: entityId,
+      });
+    } catch (err) {
+      this._commandSyncState = {
+        ...(this._commandSyncState || {}),
+        status: "failed",
+        message: String(err?.message || "Sync failed to start"),
+      };
+    } finally {
+      this._commandSyncRunning = false;
+      await this._loadCommandSyncProgress(true);
+      this._renderCommandsEditor();
+    }
+  }
+
   _commandsList() {
     if (!Array.isArray(this._commandsData)) {
       this._commandsData = this._normalizeCommandsForStorage([]);
@@ -5102,6 +5195,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       } catch (err) {
         // noop for now; editor keeps local staged data
       }
+      await this._loadCommandSyncProgress(true);
     }
 
     if (emitChanged) this._fireChanged();
@@ -5459,6 +5553,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const entityId = String(this._config?.entity || "").trim();
     if (entityId && this._commandConfigLoadedFor !== entityId && !this._commandConfigLoading) {
       this._loadCommandConfigFromBackend().then(() => this._renderCommandsEditor());
+      this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
       this._commandsWrap.innerHTML = "";
       const loading = document.createElement("div");
       loading.className = "sb-commands-note";
@@ -5532,6 +5627,62 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     meta.appendChild(note);
     body.appendChild(meta);
+
+    const syncState = this._commandSyncState || {};
+    const syncStatus = String(syncState.status || "idle");
+    const syncTone = this._syncStatusTone(syncStatus);
+    const syncNeeded = Boolean(syncState.sync_needed);
+    const syncRunning = syncStatus === "running";
+
+    const syncRow = document.createElement("div");
+    syncRow.className = `sb-command-sync-row sb-command-sync-row-${syncTone}`;
+
+    const syncMessage = document.createElement("div");
+    syncMessage.className = "sb-command-sync-message";
+    if (syncRunning) {
+      const cur = Number(syncState.current_step || 0);
+      const total = Number(syncState.total_steps || 0);
+      const progress = total > 0 ? ` (${Math.min(cur, total)}/${total})` : "";
+      syncMessage.textContent = `${String(syncState.message || "Sync in progress")}${progress}`;
+    } else if (syncNeeded) {
+      syncMessage.textContent = "Command config changes need to be synced to the hub.";
+    } else if (syncStatus === "success") {
+      syncMessage.textContent = "Hub command configuration is up to date.";
+    } else if (syncStatus === "failed") {
+      syncMessage.textContent = String(syncState.message || "Last sync failed.");
+    } else {
+      syncMessage.textContent = "No sync needed.";
+    }
+
+    syncRow.appendChild(syncMessage);
+
+    if (syncNeeded || syncRunning) {
+      const syncBtn = document.createElement("button");
+      syncBtn.type = "button";
+      syncBtn.className = "sb-command-sync-btn";
+      syncBtn.textContent = syncRunning ? "Syncing…" : "Sync to Hub";
+      syncBtn.disabled = syncRunning || this._commandSyncRunning;
+      syncBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._runCommandConfigSync();
+      });
+      syncRow.appendChild(syncBtn);
+    }
+
+    body.appendChild(syncRow);
+
+    if (syncRunning) {
+      if (this._commandSyncPollTimer) clearTimeout(this._commandSyncPollTimer);
+      this._commandSyncPollTimer = setTimeout(async () => {
+        this._commandSyncPollTimer = null;
+        await this._loadCommandSyncProgress(true);
+        this._renderCommandsEditor();
+      }, 1000);
+    } else if (this._commandSyncPollTimer) {
+      clearTimeout(this._commandSyncPollTimer);
+      this._commandSyncPollTimer = null;
+    }
 
     const grid = document.createElement("div");
     grid.className = "sb-command-grid";
