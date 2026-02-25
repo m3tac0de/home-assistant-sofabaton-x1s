@@ -19,7 +19,7 @@ class _Conn:
 
 
 class _Store:
-    async def async_get_hub_config(self, entry_id):
+    async def async_get_hub_config(self, entry_id, **kwargs):
         return {"commands_hash": "abc123"}
 
 

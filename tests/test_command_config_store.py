@@ -98,3 +98,20 @@ def test_default_commands_produces_expected_defaults() -> None:
     assert defaults[0]["name"] == "Command 1"
     assert defaults[0]["add_as_favorite"] is True
     assert defaults[0]["hard_button"] == ""
+
+
+def test_compute_commands_hash_changes_when_roku_listener_port_changes() -> None:
+    commands = [
+        {
+            "name": "Lights",
+            "add_as_favorite": True,
+            "hard_button": "182",
+            "activities": ["102", "101"],
+            "action": {"action": "perform-action", "service": "x"},
+        }
+    ]
+
+    default_hash = compute_commands_hash(commands, roku_listen_port=8060)
+    updated_hash = compute_commands_hash(commands, roku_listen_port=8070)
+
+    assert default_hash != updated_hash

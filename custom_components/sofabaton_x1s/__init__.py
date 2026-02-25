@@ -46,6 +46,16 @@ _LOGGER = logging.getLogger(__name__)
 _ALPHANUM_SPACE_RE = re.compile(r"^[A-Za-z0-9 ]+$")
 
 
+def _resolve_roku_listen_port(hass: HomeAssistant, entry_id: str) -> int:
+    config_entries = getattr(hass, "config_entries", None)
+    if config_entries is None:
+        return DEFAULT_ROKU_LISTEN_PORT
+
+    entry = config_entries.async_get_entry(entry_id)
+    options = entry.options if entry is not None else {}
+    return int(options.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT))
+
+
 async def _async_get_command_config_store(hass: HomeAssistant) -> CommandConfigStore:
     domain_data = hass.data.setdefault(DOMAIN, {})
     store = domain_data.get("command_config_store")
@@ -72,7 +82,8 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
         return
 
     store = await _async_get_command_config_store(hass)
-    payload = await store.async_get_hub_config(hub.entry_id)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    payload = await store.async_get_hub_config(hub.entry_id, roku_listen_port=roku_listen_port)
     connection.send_result(msg["id"], payload)
 
 
@@ -91,7 +102,12 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
         return
 
     store = await _async_get_command_config_store(hass)
-    payload = await store.async_set_hub_commands(hub.entry_id, msg["commands"])
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    payload = await store.async_set_hub_commands(
+        hub.entry_id,
+        msg["commands"],
+        roku_listen_port=roku_listen_port,
+    )
     connection.send_result(msg["id"], payload)
 
 
@@ -109,7 +125,8 @@ async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: di
         return
 
     store = await _async_get_command_config_store(hass)
-    payload = await store.async_get_hub_config(hub.entry_id)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    payload = await store.async_get_hub_config(hub.entry_id, roku_listen_port=roku_listen_port)
     commands_hash = str(payload.get("commands_hash") or "")
     managed_hashes = hub.get_managed_command_hashes()
     progress = hub.get_command_sync_progress()
@@ -383,11 +400,7 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
             raise ValueError("commands entries must contain only letters, numbers, and spaces")
         commands.append(command_name)
 
-    entry = hass.config_entries.async_get_entry(hub.entry_id)
-    if entry is None:
-        raise ValueError("Could not resolve config entry for selected Sofabaton hub")
-
-    request_port = int(entry.options.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT))
+    request_port = _resolve_roku_listen_port(hass, hub.entry_id)
 
     return await hub.async_create_wifi_device(
         device_name=device_name,
@@ -507,13 +520,10 @@ async def _async_handle_sync_command_config(call: ServiceCall):
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
     store = await _async_get_command_config_store(hass)
-    payload = await store.async_get_hub_config(hub.entry_id)
 
-    entry = hass.config_entries.async_get_entry(hub.entry_id)
-    if entry is None:
-        raise ValueError("Could not resolve config entry for selected Sofabaton hub")
-
-    request_port = int(entry.options.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT))
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    payload = await store.async_get_hub_config(hub.entry_id, roku_listen_port=roku_listen_port)
+    request_port = roku_listen_port
     device_name = str(call.data.get("device_name", "Home Assistant")).strip() or "Home Assistant"
 
     return await hub.async_sync_command_config(

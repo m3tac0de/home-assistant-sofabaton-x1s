@@ -9,11 +9,11 @@ from typing import Any
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN
+from .const import DEFAULT_ROKU_LISTEN_PORT, DOMAIN
 
 COMMAND_CONFIG_STORE_VERSION = 1
 COMMAND_CONFIG_STORE_MINOR_VERSION = 1
-COMMAND_HASH_VERSION = "v1"
+COMMAND_HASH_VERSION = "v2"
 COMMAND_BRAND_PREFIX = "m3tac0de"
 COMMAND_SLOT_COUNT = 9
 
@@ -102,8 +102,15 @@ def _hash_payload(commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return payload
 
 
-def compute_commands_hash(commands: list[dict[str, Any]]) -> str:
-    payload = _hash_payload(normalize_commands(commands))
+def compute_commands_hash(
+    commands: list[dict[str, Any]],
+    *,
+    roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+) -> str:
+    payload = {
+        "commands": _hash_payload(normalize_commands(commands)),
+        "roku_listen_port": int(roku_listen_port),
+    }
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -132,29 +139,49 @@ class CommandConfigStore:
         if isinstance(loaded, dict) and isinstance(loaded.get("hubs"), dict):
             self._data = loaded
 
-    async def async_get_hub_config(self, entry_id: str) -> dict[str, Any]:
+    async def async_get_hub_config(
+        self,
+        entry_id: str,
+        *,
+        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    ) -> dict[str, Any]:
         hub = self._data.setdefault("hubs", {}).get(entry_id)
         if not isinstance(hub, dict):
             commands = default_commands()
             return {
                 "commands": commands,
                 "hash_version": COMMAND_HASH_VERSION,
-                "commands_hash": compute_commands_hash(commands),
+                "commands_hash": compute_commands_hash(
+                    commands,
+                    roku_listen_port=roku_listen_port,
+                ),
             }
 
         commands = normalize_commands(hub.get("commands"))
         return {
             "commands": commands,
             "hash_version": COMMAND_HASH_VERSION,
-            "commands_hash": compute_commands_hash(commands),
+            "commands_hash": compute_commands_hash(
+                commands,
+                roku_listen_port=roku_listen_port,
+            ),
         }
 
-    async def async_set_hub_commands(self, entry_id: str, commands: Any) -> dict[str, Any]:
+    async def async_set_hub_commands(
+        self,
+        entry_id: str,
+        commands: Any,
+        *,
+        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    ) -> dict[str, Any]:
         normalized = normalize_commands(commands)
         payload = {
             "commands": normalized,
             "hash_version": COMMAND_HASH_VERSION,
-            "commands_hash": compute_commands_hash(normalized),
+            "commands_hash": compute_commands_hash(
+                normalized,
+                roku_listen_port=roku_listen_port,
+            ),
         }
         hubs = self._data.setdefault("hubs", {})
         hubs[entry_id] = payload
