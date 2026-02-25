@@ -1,5 +1,6 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
 const CARD_VERSION = "0.1.0";
+const YAML_HELPER_INFO_URL = "#";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 const PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
@@ -4742,10 +4743,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           show_media: "Media Playback Controls",
           show_colors: "Red/Green/Yellow/Blue",
           show_abc: "A/B/C Buttons (X2 only)",
-          show_automation_assist: "Automation Assist",
           show_macros_button: "Macros Button",
           show_favorites_button: "Favorites Button",
-          custom_favorites: "Custom Favorites (advanced)",
           max_width: "Maximum Card Width (px)",
           shrink: "Shrink (higher = smaller)",
           group_order: "Group Order",
@@ -4795,11 +4794,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this.appendChild(wrapper);
       this._form = form;
 
-      if (!this._commandsWrap) {
-        const commandsWrap = document.createElement("div");
-        commandsWrap.className = "sb-commands-wrap";
-        this.appendChild(commandsWrap);
-        this._commandsWrap = commandsWrap;
+      if (!this._stylingWrap) {
+        const stylingWrap = document.createElement("div");
+        stylingWrap.className = "sb-styling-wrap";
+        stylingWrap.style.padding = "0 0 12px 0";
+        this.appendChild(stylingWrap);
+        this._stylingWrap = stylingWrap;
       }
 
       // Group order (visual) editor container + styles (created once)
@@ -4811,15 +4811,23 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         this._layoutWrap = layoutWrap;
       }
 
+      if (!this._commandsWrap) {
+        const commandsWrap = document.createElement("div");
+        commandsWrap.className = "sb-commands-wrap";
+        this.appendChild(commandsWrap);
+        this._commandsWrap = commandsWrap;
+      }
+
       if (!this._editorStyle) {
         const st = document.createElement("style");
         st.textContent = `
           .sb-exp { border: 1px solid var(--divider-color); border-radius: 12px; overflow: visible; }
-          .sb-exp-hdr { width: 100%; display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px; background: var(--ha-card-background, transparent); border: 0; cursor: pointer; }
+          .sb-exp-hdr { width: 100%; display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px; background: var(--ha-card-background, transparent); border: 0; cursor: pointer; transition: background-color 120ms ease; }
           .sb-exp-hdr-left { display:flex; align-items:center; gap: 10px; min-width: 0; }
           .sb-exp-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-          .sb-exp-body { padding: 0 12px 12px 12px; }
+          .sb-exp-body { padding: 8px 12px 12px 12px; }
           .sb-exp-collapsed .sb-exp-body { display: none; }
+          .sb-exp:not(.sb-exp-collapsed) > .sb-exp-hdr { background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); border-radius: 12px 12px 0 0; }
                     
           .sb-layout-title { font-weight: 600; margin: 10px 0 6px; }
           .sb-layout-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px; }
@@ -4835,20 +4843,46 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-layout-footer { margin-top: 10px; display:flex; justify-content:flex-end; }
           .sb-reset-btn { border: 1px solid var(--divider-color); border-radius: 10px; padding: 6px 10px; background: transparent; cursor:pointer; }
           .sb-switch { display:flex; align-items:center; }
+          .sb-styling-wrap { padding: 0 0 12px 0; }
+          .sb-styling-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; }
           .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
           .sb-layout-switch-item-empty { visibility: hidden; }
           .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; justify-self: end; }
           .sb-commands-wrap { padding: 0 0 12px 0; }
           .sb-commands-meta { margin-bottom: 12px; }
-          .sb-commands-note { font-size: 12px; opacity: 0.7; }
-          .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 10px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
-          .sb-command-sync-row-running { border-color: var(--primary-color); }
-          .sb-command-sync-row-error { border-color: var(--error-color); }
-          .sb-command-sync-row-ok { border-color: color-mix(in srgb, var(--success-color, #22c55e) 70%, var(--divider-color)); }
+          .sb-yaml-helper-row { display:flex; align-items:flex-start; justify-content:space-between; gap: 10px; margin-bottom: 10px; }
+          .sb-yaml-helper-drag { color: var(--secondary-text-color); opacity: 0.75; padding-top: 2px; }
+          .sb-yaml-helper-drag ha-icon { --mdc-icon-size: 20px; }
+          .sb-yaml-helper-main { display:flex; flex-direction:column; gap: 4px; flex: 1; min-width: 0; }
+          .sb-yaml-helper-label-wrap { display:flex; align-items:center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+          .sb-yaml-helper-label { line-height: 1.2; }
+          .sb-yaml-helper-desc { font-size: 13px; color: var(--secondary-text-color); line-height: 1.3; }
+          .sb-yaml-helper-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
+          .sb-yaml-helper-link:hover { color: var(--primary-color); opacity: 1; }
+          .sb-yaml-helper-link ha-icon { --mdc-icon-size: 16px; }
+          .sb-commands-divider { height: 1px; background: var(--divider-color); margin: 12px 0 14px; }
+          .sb-commands-section-title-wrap { display:flex; align-items:center; gap: 8px; margin-bottom: 2px; }
+          .sb-commands-section-title { font-size: 18px; font-weight: 600; line-height: 1.2; }
+          .sb-commands-section-help { color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
+          .sb-commands-section-help:hover { color: var(--primary-color); opacity: 1; }
+          .sb-commands-section-help ha-icon { --mdc-icon-size: 16px; }
+          .sb-commands-section-subtitle { font-size: 13px; color: var(--secondary-text-color); margin-bottom: 10px; }
+          .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
+          .sb-command-sync-row-running { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
+          .sb-command-sync-row-error { border-color: var(--error-color); background: color-mix(in srgb, var(--error-color) 10%, transparent); }
+          .sb-command-sync-row-ok { border-color: color-mix(in srgb, var(--success-color, #22c55e) 70%, var(--divider-color)); background: color-mix(in srgb, var(--success-color, #22c55e) 12%, transparent); }
+          .sb-command-sync-message-wrap { display:flex; align-items:center; gap: 8px; min-width: 0; }
+          .sb-command-sync-message-wrap ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); }
+          .sb-command-sync-row-ok .sb-command-sync-message-wrap ha-icon { color: var(--success-color, #22c55e); }
+          .sb-command-sync-row-error .sb-command-sync-message-wrap ha-icon { color: var(--error-color); }
+          .sb-command-sync-row-running .sb-command-sync-message-wrap ha-icon { color: var(--primary-color); }
           .sb-command-sync-message { font-size: 13px; color: var(--secondary-text-color); }
-          .sb-command-sync-btn { border: 1px solid var(--primary-color); border-radius: 10px; min-height: 34px; padding: 0 12px; background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--primary-text-color); cursor: pointer; white-space: nowrap; }
-          .sb-command-sync-btn[disabled] { opacity: 0.6; cursor: default; }
+          .sb-command-sync-btn { border: 1px solid var(--primary-color); border-radius: 10px; min-height: 34px; padding: 0 12px; background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--primary-text-color); cursor: pointer; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+          .sb-command-sync-btn:hover { background: color-mix(in srgb, var(--primary-color) 28%, transparent); border-color: color-mix(in srgb, var(--primary-color) 85%, #000); }
+          .sb-command-sync-btn:active { transform: translateY(1px); }
+          .sb-command-sync-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent); }
+          .sb-command-sync-btn[disabled] { opacity: 0.6; cursor: default; transform: none; }
           .sb-command-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
           .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: left; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
           .sb-command-slot-btn:hover { border-color: var(--primary-color); }
@@ -4923,11 +4957,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       }
     }
 
-    // Determine if we should show the color picker
-    const showColorPicker =
-      this._config.use_background_override ||
-      !!this._config.background_override;
-
     this._form.schema = [
       {
         name: "entity",
@@ -4941,58 +4970,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         },
         required: true,
       },
-      {
-        name: "show_automation_assist",
-        selector: { boolean: {} },
-        description: "Placeholder text for the Automation Assist feature.",
-      },
-      {
-        type: "expandable",
-        title: "Styling Options",
-        icon: "mdi:palette",
-        schema: [
-          // We removed the 'grid' type here so items stack vertically
-          { name: "theme", selector: { theme: {} } },
-          {
-            name: "max_width",
-            selector: {
-              number: {
-                min: 230,
-                max: 1200,
-                step: 5,
-                unit_of_measurement: "px",
-              },
-            },
-          },
-          {
-            name: "shrink",
-            selector: {
-              number: {
-                min: 0,
-                max: 80,
-                step: 1,
-                unit_of_measurement: "%",
-              },
-            },
-          },
-          { name: "use_background_override", selector: { boolean: {} } },
-          ...(showColorPicker
-            ? [{ name: "background_override", selector: { color_rgb: {} } }]
-            : []),
-        ],
-      },
-      ,
-      {
-        type: "expandable",
-        title: "Custom Favorites",
-        icon: "mdi:star-plus",
-        schema: [
-          {
-            name: "custom_favorites",
-            selector: { object: {} },
-          },
-        ],
-      },
     ];
 
     this._form.data = {
@@ -5004,13 +4981,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         this._config.use_background_override ??
         !!this._config.background_override,
       background_override: this._config.background_override ?? [255, 255, 255],
-      custom_favorites: this._config.custom_favorites ?? [],
       max_width: this._config.max_width ?? 360,
       shrink: this._config.shrink ?? 0,
       group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
       show_automation_assist: this._config.show_automation_assist ?? false,
     };
 
+    this._renderStylingOptionsEditor();
     this._renderGroupOrderEditor();
     this._renderCommandsEditor();
   }
@@ -5602,7 +5579,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     headerLeft.className = "sb-exp-hdr-left";
     headerLeft.innerHTML = `
       <ha-icon icon="mdi:play-box-multiple-outline"></ha-icon>
-      <div class="sb-exp-title">Commands</div>
+      <div class="sb-exp-title">Automation Assist</div>
     `;
 
     const chev = document.createElement("ha-icon");
@@ -5621,11 +5598,92 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const meta = document.createElement("div");
     meta.className = "sb-commands-meta";
 
-    const note = document.createElement("div");
-    note.className = "sb-commands-note";
-    note.textContent = "Choose a Command Slot to configure";
+    const helperRow = document.createElement("label");
+    helperRow.className = "sb-yaml-helper-row";
 
-    meta.appendChild(note);
+    const helperDrag = document.createElement("div");
+    helperDrag.className = "sb-yaml-helper-drag";
+    helperDrag.innerHTML = '<ha-icon icon="mdi:drag-vertical-variant"></ha-icon>';
+
+    const helperMain = document.createElement("div");
+    helperMain.className = "sb-yaml-helper-main";
+
+    const helperLabelWrap = document.createElement("div");
+    helperLabelWrap.className = "sb-yaml-helper-label-wrap";
+
+    const helperLabel = document.createElement("span");
+    helperLabel.className = "sb-yaml-helper-label";
+    helperLabel.textContent = "YAML Helper";
+
+    const helperDesc = document.createElement("div");
+    helperDesc.className = "sb-yaml-helper-desc";
+    helperDesc.textContent = "Generate YAML code from remote button presses.";
+
+    const helperLink = document.createElement("a");
+    helperLink.className = "sb-yaml-helper-link";
+    helperLink.href = YAML_HELPER_INFO_URL;
+    helperLink.target = "_blank";
+    helperLink.rel = "noopener noreferrer";
+    helperLink.title = "Learn more about YAML Helper";
+    helperLink.setAttribute("aria-label", "YAML Helper documentation");
+    helperLink.innerHTML = '<ha-icon icon="mdi:help-circle-outline"></ha-icon>';
+    helperLink.addEventListener("click", (ev) => ev.stopPropagation());
+
+    helperLabelWrap.appendChild(helperLabel);
+    helperLabelWrap.appendChild(helperLink);
+    helperMain.appendChild(helperLabelWrap);
+    helperMain.appendChild(helperDesc);
+
+    const helperSwitch = document.createElement("ha-switch");
+    helperSwitch.checked = !!this._config.show_automation_assist;
+    helperSwitch.addEventListener("change", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._setAutomationAssistEnabled(!!helperSwitch.checked);
+    });
+
+    helperLabelWrap.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      helperSwitch.checked = !helperSwitch.checked;
+      this._setAutomationAssistEnabled(!!helperSwitch.checked);
+    });
+
+    helperRow.appendChild(helperDrag);
+    helperRow.appendChild(helperMain);
+    helperRow.appendChild(helperSwitch);
+    meta.appendChild(helperRow);
+
+    const divider = document.createElement("div");
+    divider.className = "sb-commands-divider";
+    meta.appendChild(divider);
+
+    const sectionTitleWrap = document.createElement("div");
+    sectionTitleWrap.className = "sb-commands-section-title-wrap";
+
+    const sectionTitle = document.createElement("div");
+    sectionTitle.className = "sb-commands-section-title";
+    sectionTitle.textContent = "Remote Triggers";
+
+    const sectionHelp = document.createElement("a");
+    sectionHelp.className = "sb-commands-section-help";
+    sectionHelp.href = YAML_HELPER_INFO_URL;
+    sectionHelp.target = "_blank";
+    sectionHelp.rel = "noopener noreferrer";
+    sectionHelp.title = "Learn more about Remote Triggers";
+    sectionHelp.setAttribute("aria-label", "Remote Triggers documentation");
+    sectionHelp.innerHTML = '<ha-icon icon="mdi:help-circle-outline"></ha-icon>';
+    sectionHelp.addEventListener("click", (ev) => ev.stopPropagation());
+
+    sectionTitleWrap.appendChild(sectionTitle);
+    sectionTitleWrap.appendChild(sectionHelp);
+    meta.appendChild(sectionTitleWrap);
+
+    const sectionSub = document.createElement("div");
+    sectionSub.className = "sb-commands-section-subtitle";
+    sectionSub.textContent = "Configure buttons to trigger actions.";
+    meta.appendChild(sectionSub);
+
     body.appendChild(meta);
 
     const syncState = this._commandSyncState || {};
@@ -5654,7 +5712,22 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       syncMessage.textContent = "No sync needed.";
     }
 
-    syncRow.appendChild(syncMessage);
+    const syncMessageWrap = document.createElement("div");
+    syncMessageWrap.className = "sb-command-sync-message-wrap";
+
+    const syncIcon = document.createElement("ha-icon");
+    syncIcon.setAttribute(
+      "icon",
+      syncStatus === "failed"
+        ? "mdi:alert-circle-outline"
+        : syncRunning
+          ? "mdi:progress-clock"
+          : "mdi:information-outline",
+    );
+
+    syncMessageWrap.appendChild(syncIcon);
+    syncMessageWrap.appendChild(syncMessage);
+    syncRow.appendChild(syncMessageWrap);
 
     if (syncNeeded || syncRunning) {
       const syncBtn = document.createElement("button");
@@ -6487,6 +6560,128 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._config = next;
     this._syncFormData(next);
     this._fireChanged();
+  }
+
+  _renderStylingOptionsEditor() {
+    if (!this._stylingWrap || !this._hass) return;
+
+    if (typeof this._stylingExpanded !== "boolean") this._stylingExpanded = false;
+
+    const showColorPicker =
+      this._config.use_background_override ||
+      !!this._config.background_override;
+
+    this._stylingWrap.innerHTML = "";
+
+    const exp = document.createElement("div");
+    exp.className =
+      `sb-exp ${this._stylingExpanded ? "" : "sb-exp-collapsed"}`.trim();
+
+    const hdr = document.createElement("button");
+    hdr.type = "button";
+    hdr.className = "sb-exp-hdr";
+    hdr.setAttribute("aria-expanded", String(!!this._stylingExpanded));
+    hdr.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._stylingExpanded = !this._stylingExpanded;
+      this._renderStylingOptionsEditor();
+    });
+
+    const hdrLeft = document.createElement("div");
+    hdrLeft.className = "sb-exp-hdr-left";
+    const hdrIcon = document.createElement("ha-icon");
+    hdrIcon.setAttribute("icon", "mdi:palette");
+    const hdrTitle = document.createElement("div");
+    hdrTitle.className = "sb-exp-title";
+    hdrTitle.textContent = "Styling Options";
+    hdrLeft.appendChild(hdrIcon);
+    hdrLeft.appendChild(hdrTitle);
+
+    const chev = document.createElement("ha-icon");
+    chev.className = "sb-exp-chevron";
+    chev.setAttribute(
+      "icon",
+      this._stylingExpanded ? "mdi:chevron-up" : "mdi:chevron-down",
+    );
+
+    hdr.appendChild(hdrLeft);
+    hdr.appendChild(chev);
+    exp.appendChild(hdr);
+
+    const body = document.createElement("div");
+    body.className = "sb-exp-body";
+
+    const card = document.createElement("div");
+    card.className = "sb-styling-card";
+
+    const form = document.createElement("ha-form");
+    form.hass = this._hass;
+    form.computeLabel = (schema) => {
+      const labels = {
+        theme: "Apply a theme to the card",
+        max_width: "Maximum Card Width (px)",
+        shrink: "Shrink (higher = smaller)",
+        use_background_override: "Customize background color",
+        background_override: "Select Background Color",
+      };
+      return labels[schema.name] || schema.name;
+    };
+    form.schema = [
+      { name: "theme", selector: { theme: {} } },
+      {
+        name: "max_width",
+        selector: {
+          number: {
+            min: 230,
+            max: 1200,
+            step: 5,
+            unit_of_measurement: "px",
+          },
+        },
+      },
+      {
+        name: "shrink",
+        selector: {
+          number: {
+            min: 0,
+            max: 80,
+            step: 1,
+            unit_of_measurement: "%",
+          },
+        },
+      },
+      { name: "use_background_override", selector: { boolean: {} } },
+      ...(showColorPicker
+        ? [{ name: "background_override", selector: { color_rgb: {} } }]
+        : []),
+    ];
+    form.data = {
+      theme: this._config.theme || "",
+      max_width: this._config.max_width ?? 360,
+      shrink: this._config.shrink ?? 0,
+      use_background_override:
+        this._config.use_background_override ??
+        !!this._config.background_override,
+      background_override: this._config.background_override ?? [255, 255, 255],
+    };
+    form.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      const newValue = { ...this._config, ...ev.detail.value };
+      if (newValue.use_background_override === false) {
+        delete newValue.background_override;
+      }
+      if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
+      this._config = newValue;
+      this._syncFormData(newValue);
+      this._fireChanged();
+      this._renderStylingOptionsEditor();
+    });
+
+    card.appendChild(form);
+    body.appendChild(card);
+    exp.appendChild(body);
+    this._stylingWrap.appendChild(exp);
   }
 
   _renderGroupOrderEditor() {
