@@ -163,6 +163,46 @@ const DEFAULT_KEY_LABELS = {
   c: "C",
 };
 
+const HARD_BUTTON_ID_MAP = {
+  up: ID.UP,
+  down: ID.DOWN,
+  left: ID.LEFT,
+  right: ID.RIGHT,
+  ok: ID.OK,
+  back: ID.BACK,
+  home: ID.HOME,
+  menu: ID.MENU,
+  volup: ID.VOL_UP,
+  voldn: ID.VOL_DOWN,
+  mute: ID.MUTE,
+  chup: ID.CH_UP,
+  chdn: ID.CH_DOWN,
+  guide: ID.GUIDE,
+  dvr: ID.DVR,
+  play: ID.PLAY,
+  exit: ID.EXIT,
+  rew: ID.REW,
+  pause: ID.PAUSE,
+  fwd: ID.FWD,
+  red: ID.RED,
+  green: ID.GREEN,
+  yellow: ID.YELLOW,
+  blue: ID.BLUE,
+  a: ID.A,
+  b: ID.B,
+  c: ID.C,
+};
+
+const X2_ONLY_HARD_BUTTON_IDS = new Set([
+  ID.C,
+  ID.B,
+  ID.A,
+  ID.EXIT,
+  ID.DVR,
+  ID.PLAY,
+  ID.GUIDE,
+]);
+
 const readPreviewActivity = (entityId) => {
   if (!entityId || typeof window === "undefined") return null;
   const cache = window[PREVIEW_ACTIVITY_CACHE_KEY];
@@ -4667,12 +4707,59 @@ class SofabatonRemoteCard extends HTMLElement {
 
 // Editor
 class SofabatonRemoteCardEditor extends HTMLElement {
+  async _ensureEditorIntegration() {
+    if (!this._hass?.callWS || !this._config?.entity) return;
+
+    const entityId = String(this._config.entity);
+    if (this._editorIntegrationEntityId === entityId && this._editorIntegrationDomain)
+      return;
+    if (this._editorIntegrationDetectingFor === entityId) return;
+
+    this._editorIntegrationDetectingFor = entityId;
+    try {
+      const entry = await this._hass.callWS({
+        type: "config/entity_registry/get",
+        entity_id: entityId,
+      });
+      this._editorIntegrationDomain = String(entry?.platform || "");
+      this._editorIntegrationEntityId = entityId;
+    } catch (e) {
+      this._editorIntegrationDomain = null;
+      this._editorIntegrationEntityId = entityId;
+    } finally {
+      this._editorIntegrationDetectingFor = null;
+    }
+  }
+
+  _isHubIntegrationForEditor() {
+    return String(this._editorIntegrationDomain || "") === "sofabaton_hub";
+  }
+
+  _editorHubVersion() {
+    const entityId = String(this._config?.entity || "").trim();
+    if (!entityId) return "";
+    return String(this._hass?.states?.[entityId]?.attributes?.hub_version || "").toUpperCase();
+  }
+
+  _isEditorX2() {
+    if (this._isHubIntegrationForEditor()) return true;
+    return this._editorHubVersion().includes("X2");
+  }
+
   set hass(hass) {
     this._hass = hass;
     if (this._form) this._form.hass = hass;
 
     const entityId = String(this._config?.entity || "").trim();
     if (!entityId) return;
+
+    if (
+      this._editorIntegrationEntityId !== entityId &&
+      this._editorIntegrationDetectingFor !== entityId
+    ) {
+      this._ensureEditorIntegration().then(() => this._renderCommandsEditor());
+    }
+
     if (this._commandConfigLoading) return;
     if (this._commandConfigLoadedFor === entityId) return;
 
@@ -4703,6 +4790,11 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         clearTimeout(this._commandSyncPollTimer);
         this._commandSyncPollTimer = null;
       }
+    }
+    if (nextEntity !== String(this._editorIntegrationEntityId || "")) {
+      this._editorIntegrationEntityId = null;
+      this._editorIntegrationDomain = null;
+      this._editorIntegrationDetectingFor = null;
     }
 
     if ("commands" in incomingConfig) delete incomingConfig.commands;
@@ -5397,6 +5489,17 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     ];
   }
 
+  _editorAvailableHardButtonOptions() {
+    const showX2Keys = this._isEditorX2();
+    return this._editorHardButtonOptions().filter((option) => {
+      const key = String(option?.value || "");
+      const id = HARD_BUTTON_ID_MAP[key];
+      if (!Number.isFinite(id)) return false;
+      if (X2_ONLY_HARD_BUTTON_IDS.has(id) && !showX2Keys) return false;
+      return true;
+    });
+  }
+
   _commandSlotIcon(hardButton) {
     if (!hardButton) return "mdi:gesture-tap-button";
     return HARD_BUTTON_ICONS[String(hardButton)] || "mdi:gesture-tap-button";
@@ -5528,7 +5631,22 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     if (!this._commandsWrap || !this._hass) return;
 
     const entityId = String(this._config?.entity || "").trim();
-    if (entityId && this._commandConfigLoadedFor !== entityId && !this._commandConfigLoading) {
+    if (
+      entityId &&
+      this._editorIntegrationEntityId !== entityId &&
+      this._editorIntegrationDetectingFor !== entityId
+    ) {
+      this._ensureEditorIntegration().then(() => this._renderCommandsEditor());
+    }
+
+    const showRemoteTriggers = !this._isHubIntegrationForEditor();
+
+    if (
+      showRemoteTriggers &&
+      entityId &&
+      this._commandConfigLoadedFor !== entityId &&
+      !this._commandConfigLoading
+    ) {
       this._loadCommandConfigFromBackend().then(() => this._renderCommandsEditor());
       this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
       this._commandsWrap.innerHTML = "";
@@ -5653,6 +5771,21 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     helperRow.appendChild(helperMain);
     helperRow.appendChild(helperSwitch);
     meta.appendChild(helperRow);
+
+    if (!showRemoteTriggers) {
+      if (this._commandSyncPollTimer) {
+        clearTimeout(this._commandSyncPollTimer);
+        this._commandSyncPollTimer = null;
+      }
+      this._confirmClearSlot = null;
+      this._activeCommandModal = null;
+      this._activeCommandSlot = null;
+      body.appendChild(meta);
+      exp.appendChild(header);
+      exp.appendChild(body);
+      this._commandsWrap.appendChild(exp);
+      return;
+    }
 
     const divider = document.createElement("div");
     divider.className = "sb-commands-divider";
@@ -6060,7 +6193,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         select: {
           mode: "dropdown",
           options: [{ value: "__none__", label: "None" }].concat(
-            this._editorHardButtonOptions().map((option) => ({
+            this._editorAvailableHardButtonOptions().map((option) => ({
               value: option.value,
               label: option.label,
             })),
@@ -6797,7 +6930,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     note.textContent = this._layoutSelectionNote();
     card.appendChild(note);
 
-    order.forEach((key, i) => {
+    const isEditorX2 = this._isEditorX2();
+    const visibleOrder = order.filter((key) =>
+      this._isEditorGroupVisible(key, isEditorX2),
+    );
+
+    visibleOrder.forEach((key, i) => {
       const row = document.createElement("div");
       row.className = "sb-layout-row sb-layout-row-order";
 
@@ -6823,13 +6961,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         "mdi:chevron-up",
         `Move ${this._groupLabel(key)} up`,
         i === 0,
-        () => this._moveGroup(i, -1),
+        () => this._moveGroupByKey(key, -1, isEditorX2),
       );
       const downBtn = mkIconBtn(
         "mdi:chevron-down",
         `Move ${this._groupLabel(key)} down`,
-        i === order.length - 1,
-        () => this._moveGroup(i, +1),
+        i === visibleOrder.length - 1,
+        () => this._moveGroupByKey(key, +1, isEditorX2),
       );
 
       const moveWrap = document.createElement("div");
@@ -6887,11 +7025,19 @@ class SofabatonRemoteCardEditor extends HTMLElement {
             this._setGroupEnabled("media", val),
           ),
         );
-        row.appendChild(
-          makeItem("DVR (X2 only)", this._dvrEnabled(), (val) =>
-            this._setDvrEnabled(val),
-          ),
-        );
+        if (isEditorX2) {
+          row.appendChild(
+            makeItem("DVR (X2 only)", this._dvrEnabled(), (val) =>
+              this._setDvrEnabled(val),
+            ),
+          );
+        } else {
+          const emptySlot = document.createElement("div");
+          emptySlot.className =
+            "sb-layout-switch-item sb-layout-switch-item-empty";
+          emptySlot.setAttribute("aria-hidden", "true");
+          row.appendChild(emptySlot);
+        }
         row.appendChild(moveWrap);
       } else {
         row.appendChild(
@@ -6937,15 +7083,32 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._layoutWrap.appendChild(exp);
   }
 
-  _moveGroup(index, delta) {
+  _isEditorGroupVisible(key, isEditorX2 = this._isEditorX2()) {
+    if (!isEditorX2 && key === "abc") return false;
+    return true;
+  }
+
+  _moveGroupByKey(groupKey, delta, isEditorX2 = this._isEditorX2()) {
     const order = this._groupOrderListForEditor();
-    const j = index + delta;
-    if (j < 0 || j >= order.length) return;
+    const visibleOrder = order.filter((key) =>
+      this._isEditorGroupVisible(key, isEditorX2),
+    );
+
+    const fromVisible = visibleOrder.indexOf(String(groupKey));
+    if (fromVisible < 0) return;
+
+    const toVisible = fromVisible + Number(delta);
+    if (toVisible < 0 || toVisible >= visibleOrder.length) return;
+
+    const toKey = visibleOrder[toVisible];
+    const from = order.indexOf(String(groupKey));
+    const to = order.indexOf(toKey);
+    if (from < 0 || to < 0) return;
 
     const next = order.slice();
-    const tmp = next[index];
-    next[index] = next[j];
-    next[j] = tmp;
+    const tmp = next[from];
+    next[from] = next[to];
+    next[to] = tmp;
 
     this._updateLayoutConfig({ group_order: next });
   }
