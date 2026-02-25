@@ -1596,6 +1596,13 @@ class X1Proxy:
                 )
             macro_updates.append(macro_button)
 
+        self.clear_entity_cache(
+            act_lo,
+            clear_buttons=False,
+            clear_favorites=False,
+            clear_macros=True,
+        )
+
         log.info("[ACTIVITY_ASSIGN] completed act=0x%02X add dev=0x%02X with macro updates", act_lo, dev_lo)
         return {
             "activity_id": act_lo,
@@ -2035,6 +2042,9 @@ class X1Proxy:
         ):
             return None
 
+        if not self.request_devices():
+            log.warning("[WIFI] failed to request device list refresh after create")
+
         log.info("[WIFI] replayed Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
 
@@ -2137,6 +2147,9 @@ class X1Proxy:
             ack_opcode=0x0103,
         ):
             return None
+
+        if not self.request_devices():
+            log.warning("[WIFI] failed to request device list refresh after create")
 
         log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}

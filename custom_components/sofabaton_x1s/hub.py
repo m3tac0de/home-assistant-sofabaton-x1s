@@ -1099,6 +1099,16 @@ class SofabatonHub:
                 await self.hass.async_add_executor_job(
                     partial(self._proxy.get_buttons_for_entity, act_id, fetch_if_missing=True)
                 )
+                await self.hass.async_add_executor_job(
+                    self._proxy.clear_entity_cache,
+                    act_id,
+                    False,
+                    False,
+                    True,
+                )
+                await self.hass.async_add_executor_job(
+                    partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
+                )
 
             self._set_command_sync_progress(
                 status="success",

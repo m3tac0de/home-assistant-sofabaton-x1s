@@ -944,6 +944,18 @@ def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
+    clear_calls: list[tuple[int, bool, bool, bool]] = []
+
+    def _clear_entity_cache(
+        ent_id: int,
+        clear_buttons: bool = False,
+        clear_favorites: bool = False,
+        clear_macros: bool = False,
+    ) -> None:
+        clear_calls.append((ent_id, clear_buttons, clear_favorites, clear_macros))
+
+    monkeypatch.setattr(proxy, "clear_entity_cache", _clear_entity_cache)
+
     macro_saves: list[tuple[int, bytes]] = []
     monkeypatch.setattr(
         proxy,
@@ -1027,6 +1039,7 @@ def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
         [(0x0112, ButtonName.POWER_ON), (0x0112, 0x01)],
         [(0x0112, ButtonName.POWER_OFF), (0x0112, 0x01)],
     ]
+    assert clear_calls == [(101, False, False, True)]
 
 
 

@@ -377,6 +377,19 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
     monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([], True))
 
+    macro_refresh_calls: list[tuple[str, int]] = []
+
+    def _clear_entity_cache(ent_id: int, clear_buttons: bool = False, clear_favorites: bool = False, clear_macros: bool = False):
+        if clear_macros:
+            macro_refresh_calls.append(("clear", ent_id))
+
+    def _get_macros_for_activity(act_id: int, *, fetch_if_missing: bool = True):
+        macro_refresh_calls.append(("fetch", act_id))
+        return ([], False)
+
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", _clear_entity_cache)
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", _get_macros_for_activity)
+
     async def _create(*_args, **_kwargs):
         return {"device_id": 9, "status": "success"}
 
@@ -417,6 +430,7 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     loop.run_until_complete(hub.async_sync_command_config(command_payload=payload, request_port=8060))
 
     assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
+    assert macro_refresh_calls == [("clear", 101), ("fetch", 101)]
 
     loop.close()
 
