@@ -36,6 +36,25 @@ def default_commands() -> list[dict[str, Any]]:
     return [_default_slot(idx) for idx in range(COMMAND_SLOT_COUNT)]
 
 
+def _normalize_slot(slot: Any, idx: int) -> dict[str, Any]:
+    if not isinstance(slot, dict):
+        return _default_slot(idx)
+
+    return {
+        "name": str(slot.get("name", f"Command {idx + 1}")),
+        "add_as_favorite": bool(slot.get("add_as_favorite", False)),
+        "hard_button": str(slot.get("hard_button", "")),
+        "activities": [
+            str(activity)
+            for activity in slot.get("activities", [])
+            if str(activity) != ""
+        ]
+        if isinstance(slot.get("activities"), list)
+        else [],
+        "action": _normalize_action(slot.get("action")),
+    }
+
+
 def _normalize_action(action: Any) -> dict[str, Any]:
     if isinstance(action, list):
         first = next((item for item in action if isinstance(item, dict)), None)
@@ -58,23 +77,19 @@ def normalize_commands(raw: Any) -> list[dict[str, Any]]:
         return slots
 
     for idx, item in enumerate(raw[:COMMAND_SLOT_COUNT]):
-        if not isinstance(item, dict):
-            continue
-        slots[idx] = {
-            "name": str(item.get("name", f"Command {idx + 1}")),
-            "add_as_favorite": bool(item.get("add_as_favorite", False)),
-            "hard_button": str(item.get("hard_button", "")),
-            "activities": [
-                str(activity)
-                for activity in item.get("activities", [])
-                if str(activity) != ""
-            ]
-            if isinstance(item.get("activities"), list)
-            else [],
-            "action": _normalize_action(item.get("action")),
-        }
+        slots[idx] = _normalize_slot(item, idx)
 
     return slots
+
+
+def count_configured_command_slots(commands: Any) -> int:
+    normalized = normalize_commands(commands)
+    defaults = default_commands()
+    configured = 0
+    for idx, slot in enumerate(normalized):
+        if _normalize_slot(slot, idx) != _normalize_slot(defaults[idx], idx):
+            configured += 1
+    return configured
 
 
 def _hash_payload(commands: list[dict[str, Any]]) -> list[dict[str, Any]]:

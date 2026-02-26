@@ -7,6 +7,7 @@ from custom_components.sofabaton_x1s.command_config import (
     compute_commands_hash,
     default_commands,
     normalize_commands,
+    count_configured_command_slots,
 )
 
 
@@ -115,3 +116,18 @@ def test_compute_commands_hash_changes_when_roku_listener_port_changes() -> None
     updated_hash = compute_commands_hash(commands, roku_listen_port=8070)
 
     assert default_hash != updated_hash
+
+
+def test_count_configured_command_slots_counts_non_default_slots() -> None:
+    assert count_configured_command_slots([]) == 0
+
+    commands = [
+        {
+            "name": "Launch Netflix",
+            "add_as_favorite": True,
+            "hard_button": "",
+            "activities": [],
+            "action": {"action": "perform-action"},
+        }
+    ]
+    assert count_configured_command_slots(commands) == 1

@@ -39,7 +39,7 @@ from .diagnostics import (
     async_teardown_diagnostics,
 )
 from .hub import SofabatonHub
-from .command_config import CommandConfigStore
+from .command_config import CommandConfigStore, count_configured_command_slots
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
@@ -131,7 +131,13 @@ async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: di
     managed_hashes = hub.get_managed_command_hashes()
     progress = hub.get_command_sync_progress()
     progress_hash = str(progress.get("commands_hash") or "")
-    sync_needed = bool(commands_hash) and commands_hash not in managed_hashes
+    configured_slots = count_configured_command_slots(payload.get("commands"))
+    has_managed_device = bool(managed_hashes)
+    sync_needed = (
+        configured_slots > 0
+        and bool(commands_hash)
+        and commands_hash not in managed_hashes
+    )
     if (
         commands_hash
         and str(progress.get("status") or "") == "success"
@@ -145,6 +151,8 @@ async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: di
             **progress,
             "commands_hash": commands_hash,
             "managed_command_hashes": managed_hashes,
+            "configured_slot_count": configured_slots,
+            "has_managed_device": has_managed_device,
             "sync_needed": sync_needed,
         },
     )

@@ -577,3 +577,60 @@ def test_prime_buttons_requests_activity_map_before_favorite_command_resolution(
     assert call_order.index("request_activity_mapping") < call_order.index("ensure_commands_for_activity")
 
     loop.close()
+
+
+def test_sync_command_config_with_zero_configured_slots_deletes_managed_only(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub.devices = {
+        11: {"brand": "m3tac0de-oldhash", "name": "Managed Device"},
+        12: {"brand": "Other", "name": "Other Device"},
+    }
+
+    deleted: list[int] = []
+
+    async def _delete(dev_id, *_args, **_kwargs):
+        deleted.append(dev_id)
+        return {"status": "success"}
+
+    async def _create(*_args, **_kwargs):
+        raise AssertionError("create should not be called when no slots are configured")
+
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+    monkeypatch.setattr(hub, "async_create_wifi_device", _create)
+
+    payload = {
+        "commands": [],
+        "commands_hash": "abc",
+    }
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert deleted == [11]
+    assert result["status"] == "success"
+    assert result["wifi_device_id"] is None
+    assert result["deleted_managed_devices"] == 1
+
+    progress = hub.get_command_sync_progress()
+    assert progress["status"] == "success"
+    assert progress["commands_hash"] == "abc"
+
+    loop.close()

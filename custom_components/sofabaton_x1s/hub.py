@@ -38,7 +38,7 @@ from .const import (
 from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
 from .lib.protocol_const import ButtonName
 from .lib.x1_proxy import X1Proxy
-from .command_config import COMMAND_BRAND_PREFIX, normalize_command_name
+from .command_config import COMMAND_BRAND_PREFIX, count_configured_command_slots, normalize_command_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -974,6 +974,7 @@ class SofabatonHub:
             )
 
             managed = self._managed_wifi_devices()
+            configured_slots = count_configured_command_slots(commands)
             self._set_command_sync_progress(
                 current_step=1,
                 message="Deleting existing managed Wifi Device(s)",
@@ -988,6 +989,23 @@ class SofabatonHub:
                     raise HomeAssistantError(
                         f"Failed deleting managed device {dev_id}"
                     )
+
+            if configured_slots == 0:
+                self._set_command_sync_progress(
+                    status="success",
+                    current_step=6,
+                    total_steps=total_steps,
+                    message="No configured slots; managed Wifi Device removed",
+                    wifi_device_id=None,
+                    commands_hash=commands_hash,
+                )
+                return {
+                    "status": "success",
+                    "wifi_device_id": None,
+                    "commands_hash": commands_hash,
+                    "activities": [],
+                    "deleted_managed_devices": len(managed),
+                }
 
             slot_labels = [
                 str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"

@@ -20,7 +20,18 @@ class _Conn:
 
 class _Store:
     async def async_get_hub_config(self, entry_id, **kwargs):
-        return {"commands_hash": "abc123"}
+        return {
+            "commands_hash": "abc123",
+            "commands": [
+                {
+                    "name": "Launch Netflix",
+                    "add_as_favorite": True,
+                    "hard_button": "",
+                    "activities": ["101"],
+                    "action": {"action": "perform-action", "service": "script.test"},
+                }
+            ],
+        }
 
 
 class _Hub:
@@ -128,4 +139,44 @@ def test_ws_command_sync_progress_uses_success_hash_to_clear_sync_needed(monkeyp
     assert conn.error is None
     payload = conn.result[1]
     assert payload["status"] == "success"
+    assert payload["sync_needed"] is False
+
+
+class _EmptyStore:
+    async def async_get_hub_config(self, entry_id, **kwargs):
+        return {"commands_hash": "abc123", "commands": []}
+
+
+def test_ws_command_sync_progress_zero_config_and_no_managed_not_needed(monkeypatch):
+    conn = _Conn()
+
+    class _NoManagedHub(_Hub):
+        def get_managed_command_hashes(self):
+            return []
+
+    hub = _NoManagedHub()
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return _EmptyStore()
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_get_command_sync_progress(
+                SimpleNamespace(), conn, {"id": 10, "entity_id": "remote.living_room"}
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    payload = conn.result[1]
+    assert payload["configured_slot_count"] == 0
+    assert payload["has_managed_device"] is False
     assert payload["sync_needed"] is False
