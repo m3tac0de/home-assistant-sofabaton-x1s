@@ -4746,6 +4746,19 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     return this._editorHubVersion().includes("X2");
   }
 
+  _editorRemoteUnavailable(entityId = undefined) {
+    const resolved = String(entityId ?? this._config?.entity || "").trim();
+    if (!resolved) return false;
+    return this._hass?.states?.[resolved]?.state === "unavailable";
+  }
+
+  _sanitizeCommandName(value) {
+    const cleaned = String(value ?? "")
+      .replace(/[^A-Za-z0-9 ]+/g, "")
+      .slice(0, 20);
+    return cleaned;
+  }
+
   set hass(hass) {
     this._hass = hass;
     if (this._form) this._form.hass = hass;
@@ -4760,11 +4773,26 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this._ensureEditorIntegration().then(() => this._renderCommandsEditor());
     }
 
-    if (this._commandConfigLoading) return;
-    if (this._commandConfigLoadedFor === entityId) return;
+    const remoteUnavailable = this._editorRemoteUnavailable(entityId);
+    const availabilityChanged =
+      this._lastEditorRemoteUnavailable !== remoteUnavailable;
+    this._lastEditorRemoteUnavailable = remoteUnavailable;
 
-    this._loadCommandConfigFromBackend().then(() => this._renderCommandsEditor());
-    this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
+    if (this._commandConfigLoading) {
+      if (availabilityChanged) this._renderCommandsEditor();
+      return;
+    }
+
+    if (this._commandConfigLoadedFor !== entityId) {
+      this._loadCommandConfigFromBackend().then(() => this._renderCommandsEditor());
+      this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
+      this._renderCommandsEditor();
+      return;
+    }
+
+    if (availabilityChanged) {
+      this._renderCommandsEditor();
+    }
   }
 
   setConfig(config) {
@@ -5114,7 +5142,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const item = nextCommands?.[idx] || {};
       return {
         ...this._commandSlotDefault(idx),
-        name: String(item.name ?? `Command ${idx + 1}`),
+        name: this._sanitizeCommandName(item.name ?? `Command ${idx + 1}`),
         add_as_favorite: Boolean(item.add_as_favorite),
         hard_button: String(item.hard_button ?? ""),
         activities: Array.isArray(item.activities)
@@ -5274,7 +5302,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
   _cloneCommandSlot(slot) {
     return {
-      name: String(slot?.name ?? ""),
+      name: this._sanitizeCommandName(slot?.name ?? ""),
       add_as_favorite: Boolean(slot?.add_as_favorite),
       hard_button: String(slot?.hard_button ?? ""),
       activities: Array.isArray(slot?.activities)
@@ -5640,6 +5668,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     }
 
     const showRemoteTriggers = !this._isHubIntegrationForEditor();
+    const remoteUnavailable = this._editorRemoteUnavailable(entityId);
 
     if (
       showRemoteTriggers &&
@@ -5821,7 +5850,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const syncState = this._commandSyncState || {};
     const syncStatus = String(syncState.status || "idle");
-    const syncTone = this._syncStatusTone(syncStatus);
+    const syncTone = remoteUnavailable
+      ? "error"
+      : this._syncStatusTone(syncStatus);
     const syncNeeded = Boolean(syncState.sync_needed);
     const syncRunning = syncStatus === "running";
 
@@ -5830,7 +5861,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const syncMessage = document.createElement("div");
     syncMessage.className = "sb-command-sync-message";
-    if (syncRunning) {
+    if (remoteUnavailable) {
+      syncMessage.textContent =
+        "Remote entity unavailable. Is the app connected?";
+    } else if (syncRunning) {
       const cur = Number(syncState.current_step || 0);
       const total = Number(syncState.total_steps || 0);
       const progress = total > 0 ? ` (${Math.min(cur, total)}/${total})` : "";
@@ -5851,7 +5885,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const syncIcon = document.createElement("ha-icon");
     syncIcon.setAttribute(
       "icon",
-      syncStatus === "failed"
+      remoteUnavailable || syncStatus === "failed"
         ? "mdi:alert-circle-outline"
         : syncRunning
           ? "mdi:progress-clock"
@@ -5862,7 +5896,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     syncMessageWrap.appendChild(syncMessage);
     syncRow.appendChild(syncMessageWrap);
 
-    if (syncNeeded || syncRunning) {
+    if (!remoteUnavailable && (syncNeeded || syncRunning)) {
       const syncBtn = document.createElement("button");
       syncBtn.type = "button";
       syncBtn.className = "sb-command-sync-btn";
@@ -5877,6 +5911,20 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     }
 
     body.appendChild(syncRow);
+
+    if (remoteUnavailable) {
+      if (this._commandSyncPollTimer) {
+        clearTimeout(this._commandSyncPollTimer);
+        this._commandSyncPollTimer = null;
+      }
+      this._confirmClearSlot = null;
+      this._activeCommandModal = null;
+      this._activeCommandSlot = null;
+      exp.appendChild(header);
+      exp.appendChild(body);
+      this._commandsWrap.appendChild(exp);
+      return;
+    }
 
     if (syncRunning) {
       if (this._commandSyncPollTimer) clearTimeout(this._commandSyncPollTimer);
@@ -6140,9 +6188,19 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       nameField.className = "sb-command-name-field";
       nameField.label =
         "Command name as it appears on the remote, favorites and the app";
+      nameField.maxLength = 20;
       this._commandEditorNameField = nameField;
+      nameField.addEventListener("input", (ev) => {
+        const value = this._sanitizeCommandName(
+          ev.target?.value ?? ev.detail?.value ?? "",
+        );
+        if (nameField.value !== value) nameField.value = value;
+      });
       nameField.addEventListener("change", (ev) => {
-        const value = String(ev.target?.value ?? ev.detail?.value ?? "");
+        const value = this._sanitizeCommandName(
+          ev.target?.value ?? ev.detail?.value ?? "",
+        );
+        if (nameField.value !== value) nameField.value = value;
         this._updateActiveCommandDraft({ name: value });
         this._commandSaveError = "";
       });
