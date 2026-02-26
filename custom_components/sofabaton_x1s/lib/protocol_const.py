@@ -132,6 +132,7 @@ OP_MACROS_B2 = 0x6413
 OP_ACTIVITY_INPUTS_PAGE_A = 0xFA47  # H→A activity-input candidates page (X1S/X2)
 OP_ACTIVITY_INPUTS_PAGE_B = 0xC947  # H→A final activity-input candidates page (X1S/X2)
 OP_ACTIVITY_ASSIGN_FINALIZE = 0xD538  # A→H post-macro activity assignment save (X1S/X2)
+OP_ACTIVITY_ASSIGN_COMMIT = 0x0265  # A→H post-save commit marker (observed on X2)
 OP_ACTIVITY_CONFIRM = 0x7B38  # A→H activity confirmation row write (observed X1)
 OP_ACTIVITY_MAP_PAGE_X1S = 0xD56D  # H→A activity mapping page variant (X1S/X2)
 OP_BANNER = 0x1D02  # hub ident, name, batch, hub fw (first screen)
@@ -206,6 +207,7 @@ OPNAMES: Dict[int, str] = {
     OP_ACTIVITY_INPUTS_PAGE_A: "ACTIVITY_INPUTS_PAGE_A",
     OP_ACTIVITY_INPUTS_PAGE_B: "ACTIVITY_INPUTS_PAGE_B",
     OP_ACTIVITY_ASSIGN_FINALIZE: "ACTIVITY_ASSIGN_FINALIZE",
+    OP_ACTIVITY_ASSIGN_COMMIT: "ACTIVITY_ASSIGN_COMMIT",
     OP_ACTIVITY_CONFIRM: "ACTIVITY_CONFIRM",
     OP_ACTIVITY_MAP_PAGE_X1S: "ACTIVITY_MAP_PAGE_X1S",
     OP_REQ_VERSION: "REQ_VERSION",

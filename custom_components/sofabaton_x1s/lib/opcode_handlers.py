@@ -891,20 +891,22 @@ class ActivityMapHandler(BaseFrameHandler):
             proxy._burst.start(burst_key, now=now)
 
         entries = self._parse_entries(payload, dev_lo)
-        if not entries:
-            return
+        if entries:
+            for slot_id, command_id in entries:
+                proxy.state.record_activity_mapping(
+                    act_lo, dev_lo, command_id, button_id=slot_id
+                )
 
-        for slot_id, command_id in entries:
-            proxy.state.record_activity_mapping(
-                act_lo, dev_lo, command_id, button_id=slot_id
+            log.info(
+                "[ACTMAP] act=0x%02X dev=0x%02X mapped{%d}",
+                act_lo,
+                dev_lo,
+                len(entries),
             )
 
-        log.info(
-            "[ACTMAP] act=0x%02X dev=0x%02X mapped{%d}",
-            act_lo,
-            dev_lo,
-            len(entries),
-        )
+        if self._is_last_page(payload):
+            proxy._pending_activity_map_requests.discard(act_lo)
+            proxy._activity_map_complete.add(act_lo)
 
     def _burst_activity(self, proxy: "X1Proxy") -> int | None:
         burst_kind = getattr(proxy._burst, "kind", None)
@@ -919,6 +921,13 @@ class ActivityMapHandler(BaseFrameHandler):
         if proxy._pending_activity_map_requests:
             return next(iter(proxy._pending_activity_map_requests))
         return None
+
+    def _is_last_page(self, payload: bytes) -> bool:
+        if len(payload) < 4:
+            return False
+        page_no = payload[0]
+        total_pages = payload[3]
+        return total_pages > 0 and page_no >= total_pages
 
     def _parse_entries(self, payload: bytes, dev_lo: int) -> list[tuple[int, int]]:
         if len(payload) <= 92:

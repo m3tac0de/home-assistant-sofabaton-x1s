@@ -14,7 +14,9 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_FIND_REMOTE_X2,
     OP_REQ_COMMANDS,
     OP_ACTIVITY_ASSIGN_FINALIZE,
+    OP_ACTIVITY_ASSIGN_COMMIT,
 )
+from custom_components.sofabaton_x1s.lib.opcode_handlers import ActivityMapHandler
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -716,6 +718,14 @@ def test_partial_commands_still_trigger_full_fetch(monkeypatch) -> None:
     assert enqueued == []
 
 
+def test_activity_map_handler_detects_last_page_marker() -> None:
+    handler = ActivityMapHandler()
+
+    assert handler._is_last_page(bytes.fromhex("01 00 01 05")) is False
+    assert handler._is_last_page(bytes.fromhex("05 00 01 05")) is True
+    assert handler._is_last_page(bytes.fromhex("06 00 01 05")) is True
+
+
 def test_single_command_burst_end_clears_pending_without_completion() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -887,6 +897,72 @@ def test_build_macro_save_payload_recomputes_trailing_token() -> None:
     assert payload[-1] != 0x97
 
 
+def test_build_macro_save_payload_preserves_trailing_metadata_chunk() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    source_payload = bytes.fromhex(
+        "01 00 01 01 00 02 65 c6 0c "
+        "03 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 05 ff "
+        "06 c6 00 00 00 00 00 00 01 ff "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "02 c6 00 00 00 00 00 00 00 ff "
+        "04 c6 00 00 00 00 00 00 00 ff "
+        "02 c5 00 00 00 00 00 00 00 ff "
+        "03 c5 00 00 00 00 00 00 00 ff "
+        "04 c5 00 00 00 00 00 00 00 ff "
+        "06 c5 00 00 00 00 00 00 00 ff "
+        # metadata chunk observed in failing captures before label region
+        "6a 71 00 00 00 00 00 00 0b e7 "
+        "00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    )
+
+    payload = proxy._build_macro_save_payload(
+        source_payload,
+        device_id=0x08,
+        button_id=ButtonName.POWER_ON,
+        allowed_device_ids={1, 2, 3, 4, 6, 8},
+    )
+
+    assert payload is not None
+    assert bytes.fromhex("6a 71 00 00 00 00 00 00 0b") in payload
+
+
+def test_build_macro_save_payload_drops_placeholder_rows_for_x2_snapshot() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    source_payload = bytes.fromhex(
+        "01 00 01 01 00 02 69 c6 15 "
+        "03 c6 00 00 00 00 00 00 01 ff ff ff ff ff ff ff ff ff ff "
+        "01 01 c5 00 00 00 00 00 00 0b ff ff ff ff ff ff ff ff ff ff "
+        "01 01 c6 00 00 00 00 00 00 01 ff ff ff ff ff ff ff ff ff ff "
+        "01 02 c6 00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff ff ff "
+        "01 04 c6 00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff ff ff "
+        "01 07 c6 00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff ff ff "
+        "01 02 c5 00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff ff ff "
+        "01 03 c5 00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff ff ff "
+        "01 04 c5 00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff ff ff "
+        "01 07 c5 00 00 00 00 00 00 00 ff "
+        "08 c6 00 00 00 00 00 00 00 ff 08 c5 00 00 00 00 00 00 00 ff "
+        "00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fd"
+    )
+
+    payload = proxy._build_macro_save_payload(
+        source_payload,
+        device_id=0x08,
+        button_id=ButtonName.POWER_ON,
+        allowed_device_ids={1, 2, 3, 4, 7, 8},
+    )
+
+    assert payload is not None
+    # Mirrors app's compact save count for this capture style (12 rows).
+    assert payload[8] == 0x0C
+    assert bytes.fromhex("ff ff ff ff ff ff ff ff ff ff") not in payload
+
+
 def test_build_macro_save_payload_accepts_utf16_macro_labels() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -930,7 +1006,10 @@ def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
 
     def _request_activity_mapping(act_id: int) -> bool:
         requested.append(act_id)
-        proxy._activity_map_complete.add(act_id & 0xFF)
+        act_lo = act_id & 0xFF
+        proxy.state.record_activity_member(act_lo, 1)
+        proxy.state.record_activity_member(act_lo, 2)
+        proxy._activity_map_complete.add(act_lo)
         return True
 
     monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
@@ -1044,15 +1123,128 @@ def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
 
 
 
+def test_add_device_to_activity_retries_macro_save_with_source_payload_on_timeout(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        proxy.state.record_activity_member(act_lo, 1)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
+
+    source_payload = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 ff ff"
+    )
+
+    monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: source_payload)
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+
+    updated_payload = source_payload + b"\x00"
+    monkeypatch.setattr(
+        proxy,
+        "_build_macro_save_payload",
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: updated_payload,
+    )
+
+    sent_families: list[bytes] = []
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: sent_families.append(payload))
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+
+    call_count = {"macro": 0}
+
+    def _wait_for_roku_ack_any(candidates, *, timeout=5.0):
+        # 1x confirm ack, then first macro-save ack timeout, then fallback ack,
+        # then POWER_OFF macro ack on first try.
+        if candidates == [(0x0103, None)]:
+            return (0x0103, b"\x00")
+        call_count["macro"] += 1
+        if call_count["macro"] == 1:
+            return None
+        return (0x0112, bytes([candidates[0][1] if candidates[0][1] is not None else 0x00]))
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    result = proxy.add_device_to_activity(101, 6)
+
+    assert result is not None
+    assert sent_families[0] == updated_payload
+    assert sent_families[1] == source_payload
+
+
+def test_add_device_to_activity_discards_stale_members_before_refresh(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    # Simulate stale cache from an earlier run.
+    for dev_id in (1, 2, 3, 4, 5):
+        proxy.state.record_activity_member(101, dev_id)
+
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        # Fresh burst only reports one member before adding a new one.
+        proxy.state.record_activity_member(act_lo, 1)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_macro_payload",
+        lambda _act, _button, timeout=5.0: bytes.fromhex(
+            "01 00 01 01 00 01 65 c7 "
+            "01 c7 00 00 00 00 00 00 01 ff "
+            "01 ff ff ff ff ff ff ff ff ff "
+            "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 ff ff"
+        ),
+    )
+    monkeypatch.setattr(
+        proxy,
+        "_build_macro_save_payload",
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+    )
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], bytes([candidates[0][1] if candidates[0][1] is not None else 0x00])),
+    )
+
+    result = proxy.add_device_to_activity(101, 9)
+
+    assert result is not None
+    # Confirm sequence should use fresh map data (dev 1) + new device only.
+    assert sent[:2] == [
+        (0x024F, bytes([0x01, 0x01])),
+        (0x024F, bytes([0x09, 0x01])),
+    ]
+
+
 def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
-    monkeypatch.setattr(
-        proxy,
-        "request_activity_mapping",
-        lambda act_id: proxy._activity_map_complete.add(act_id & 0xFF) or True,
-    )
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        proxy.state.record_activity_member(act_lo, 1)
+        proxy.state.record_activity_member(act_lo, 2)
+        proxy.state.record_activity_member(act_lo, 6)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
 
     # Favorites only reveal two members, but activity-map membership includes device 6.
     proxy.state.activity_favorite_slots[101] = [
@@ -1116,11 +1308,13 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
-    monkeypatch.setattr(
-        proxy,
-        "request_activity_mapping",
-        lambda act_id: proxy._activity_map_complete.add(act_id & 0xFF) or True,
-    )
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        proxy.state.record_activity_member(act_lo, 1)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
 
     proxy.state.activity_favorite_slots[101] = [
         {"button_id": 1, "device_id": 1, "command_id": 0x10},
@@ -1190,6 +1384,77 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
 
 
 
+
+
+def test_add_device_to_activity_x2_sends_commit_stage(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X2,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        proxy.state.record_activity_member(act_lo, 1)
+        proxy.state.record_activity_member(act_lo, 2)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
+
+    proxy.state.activities[101] = {"name": "Play PlayStation 5", "active": False}
+    proxy.state.activity_favorite_slots[101] = [
+        {"button_id": 1, "device_id": 1, "command_id": 0x10},
+        {"button_id": 2, "device_id": 2, "command_id": 0x11},
+    ]
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    family_sends: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: family_sends.append((family, payload)))
+
+    macro_payload = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "02 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 1a ff "
+        "02 c5 00 00 00 00 00 00 00 ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "02 00 00 00 00 00 2d 76 00"
+    )
+
+    monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: macro_payload)
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(
+        proxy,
+        "_build_macro_save_payload",
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+    )
+
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        ack_calls.append(candidates)
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    result = proxy.add_device_to_activity(101, 6)
+
+    assert result is not None
+    assert sent[-1] == (OP_ACTIVITY_ASSIGN_COMMIT, bytes([0x65, 0x01]))
+    assert len(family_sends) == 2
+    assert ack_calls[-1] == [(0x0103, None)]
+
 def test_add_device_to_activity_x1s_does_not_send_finalize_stage(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
@@ -1200,11 +1465,14 @@ def test_add_device_to_activity_x1s_does_not_send_finalize_stage(monkeypatch) ->
     )
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
-    monkeypatch.setattr(
-        proxy,
-        "request_activity_mapping",
-        lambda act_id: proxy._activity_map_complete.add(act_id & 0xFF) or True,
-    )
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        proxy.state.record_activity_member(act_lo, 1)
+        proxy.state.record_activity_member(act_lo, 2)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
 
     proxy.state.activities[101] = {"name": "Play PlayStation 5", "active": False}
     proxy.state.activity_favorite_slots[101] = [
@@ -1276,11 +1544,13 @@ def test_add_device_to_activity_x1_does_not_send_finalize_stage(monkeypatch) -> 
     )
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
-    monkeypatch.setattr(
-        proxy,
-        "request_activity_mapping",
-        lambda act_id: proxy._activity_map_complete.add(act_id & 0xFF) or True,
-    )
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        proxy.state.record_activity_member(act_lo, 1)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
 
     proxy.state.activity_favorite_slots[101] = [{"button_id": 1, "device_id": 1, "command_id": 0x10}]
 

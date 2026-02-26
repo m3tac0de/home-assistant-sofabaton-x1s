@@ -61,6 +61,7 @@ from .protocol_const import (
     OP_REQ_ACTIVITY_MAP,
     OP_DELETE_DEVICE,
     OP_ACTIVITY_ASSIGN_FINALIZE,
+    OP_ACTIVITY_ASSIGN_COMMIT,
     OP_ACTIVITY_CONFIRM,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
@@ -1195,12 +1196,44 @@ class X1Proxy:
         else:
             return None
 
+        # Drop placeholder/empty rows emitted by some hubs in macro snapshots.
+        # App-issued save payloads do not include these rows.
+        compact_records = [
+            row
+            for row in compact_records
+            if row[0] not in (0x00, 0xFF) and row[1] not in (0x00, 0xFF)
+        ]
+
+        allowed: set[int] | None = None
         if allowed_device_ids is not None:
             allowed = {d & 0xFF for d in allowed_device_ids}
+
+        trailer_prefix = bytearray()
+        while compact_records:
+            row = compact_records[-1]
+
+            dev = row[0]
+            cmd = row[1]
+            if dev in (0x00, 0xFF) or cmd in (0x00, 0xFF):
+                break
+
+            looks_like_metadata_tail = False
+            if dev > 0x20 and cmd > 0x20:
+                looks_like_metadata_tail = True
+            elif row[2:] == (b"\x00" * 8) and dev > 0x20:
+                looks_like_metadata_tail = True
+
+            if not looks_like_metadata_tail:
+                break
+
+            trailer_prefix[:0] = row
+            compact_records.pop()
+
+        if allowed is not None:
             compact_records = [
                 row
                 for row in compact_records
-                if row[0] in (0x00, 0xFF) or row[0] in allowed
+                if row[0] in allowed
             ]
 
         existing_pairs: set[tuple[int, int]] = set()
@@ -1227,7 +1260,7 @@ class X1Proxy:
             existing_pairs.add(pair)
 
         head[8] = len(compact_records) & 0xFF
-        payload = bytearray(bytes(head) + b"".join(compact_records) + tail)
+        payload = bytearray(bytes(head) + b"".join(compact_records) + bytes(trailer_prefix) + tail)
         if payload:
             # Last byte in macro payload is an internal token (distinct from
             # outer frame checksum); observed app traffic recomputes it as sum-2.
@@ -1465,6 +1498,14 @@ class X1Proxy:
         log.info("[ACTIVITY_ASSIGN] start act=0x%02X (%d) add dev=0x%02X (%d)", act_lo, act_lo, dev_lo, dev_lo)
 
         self._activity_map_complete.discard(act_lo)
+        # Refresh mapping-derived members/slots to avoid carrying stale entries
+        # from prior bursts into a new assignment transaction.
+        self.state.activity_members.pop(act_lo, None)
+        self.state.activity_command_refs.pop(act_lo, None)
+        self.state.activity_favorite_slots.pop(act_lo, None)
+        self.state.activity_favorite_labels.pop(act_lo, None)
+        self._clear_favorite_label_requests_for_activity(act_lo)
+
         if not self.request_activity_mapping(act_lo):
             log.warning("[ACTIVITY_ASSIGN] failed to request activity map for act=0x%02X", act_lo)
             return None
@@ -1574,10 +1615,23 @@ class X1Proxy:
                 log.info("[ACTIVITY_ASSIGN] save macro payload %s", updated_payload.hex(" "))
 
             self._send_family_frame(0x12, updated_payload)
+            ack_candidates = [(0x0112, macro_button), (0x0112, 0x01)]
             macro_ack = self.wait_for_roku_ack_any(
-                [(0x0112, macro_button), (0x0112, 0x01)],
+                ack_candidates,
                 timeout=5.0,
             )
+            if macro_ack is None and updated_payload != source_payload:
+                log.warning(
+                    "[ACTIVITY_ASSIGN] missing ACK after macro save act=0x%02X button=0x%02X; retrying source payload",
+                    act_lo,
+                    macro_button,
+                )
+                self._send_family_frame(0x12, source_payload)
+                macro_ack = self.wait_for_roku_ack_any(
+                    ack_candidates,
+                    timeout=5.0,
+                )
+
             if macro_ack is None:
                 log.warning(
                     "[ACTIVITY_ASSIGN] missing ACK after macro save act=0x%02X button=0x%02X",
@@ -1595,6 +1649,14 @@ class X1Proxy:
                     ack_payload[0],
                 )
             macro_updates.append(macro_button)
+
+        if self.hub_version == HUB_VERSION_X2:
+            commit_payload = bytes([act_lo, 0x01])
+            log.info("[ACTIVITY_ASSIGN] commit assignment act=0x%02X payload=%s", act_lo, commit_payload.hex(" "))
+            self._send_cmd_frame(OP_ACTIVITY_ASSIGN_COMMIT, commit_payload)
+            if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0) is None:
+                log.warning("[ACTIVITY_ASSIGN] missing ACK after 0x0265 commit act=0x%02X", act_lo)
+                return None
 
         self.clear_entity_cache(
             act_lo,
