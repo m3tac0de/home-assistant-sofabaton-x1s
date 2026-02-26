@@ -180,3 +180,33 @@ def test_ws_command_sync_progress_zero_config_and_no_managed_not_needed(monkeypa
     assert payload["configured_slot_count"] == 0
     assert payload["has_managed_device"] is False
     assert payload["sync_needed"] is False
+
+
+def test_ws_command_sync_progress_zero_config_with_managed_is_sync_needed(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return _EmptyStore()
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_get_command_sync_progress(
+                SimpleNamespace(), conn, {"id": 11, "entity_id": "remote.living_room"}
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    payload = conn.result[1]
+    assert payload["configured_slot_count"] == 0
+    assert payload["has_managed_device"] is True
+    assert payload["sync_needed"] is True

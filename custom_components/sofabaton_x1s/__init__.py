@@ -134,9 +134,8 @@ async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: di
     configured_slots = count_configured_command_slots(payload.get("commands"))
     has_managed_device = bool(managed_hashes)
     sync_needed = (
-        configured_slots > 0
-        and bool(commands_hash)
-        and commands_hash not in managed_hashes
+        (configured_slots > 0 and bool(commands_hash) and commands_hash not in managed_hashes)
+        or (configured_slots == 0 and has_managed_device)
     )
     if (
         commands_hash
