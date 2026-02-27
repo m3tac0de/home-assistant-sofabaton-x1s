@@ -35,6 +35,9 @@ from .protocol_const import (
     OP_DEVBTN_TAIL,
     OP_FIND_REMOTE,
     OP_FIND_REMOTE_X2,
+    OP_REMOTE_SYNC,
+    OP_X2_REMOTE_LIST,
+    OP_X2_REMOTE_SYNC,
     OP_INFO_BANNER,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
@@ -284,6 +287,9 @@ class X1Proxy:
         self._roku_ack_lock = threading.Lock()
         self._roku_ack_events: deque[tuple[int, bytes]] = deque()
         self._roku_ack_event = threading.Event()
+        self._x2_remote_sync_id_lock = threading.Lock()
+        self._x2_remote_sync_id: bytes | None = None
+        self._x2_remote_sync_id_event = threading.Event()
         self._macro_payload_lock = threading.Lock()
         self._macro_payload_events: dict[tuple[int, int], bytes] = {}
         self._macro_payload_event = threading.Event()
@@ -908,6 +914,38 @@ class X1Proxy:
             return self.enqueue_cmd(OP_FIND_REMOTE_X2, b"\x00\x00\x08")
 
         return self.enqueue_cmd(OP_FIND_REMOTE)
+
+    def update_x2_remote_sync_id(self, remote_id: bytes) -> None:
+        with self._x2_remote_sync_id_lock:
+            self._x2_remote_sync_id = bytes(remote_id[:3])
+            self._x2_remote_sync_id_event.set()
+
+    def wait_for_x2_remote_sync_id(self, timeout: float = 2.0) -> bytes | None:
+        self._x2_remote_sync_id_event.wait(timeout)
+        with self._x2_remote_sync_id_lock:
+            return self._x2_remote_sync_id
+
+    def resync_remote(self, hub_version: str | None = None) -> bool:
+        """Force a physical remote sync with the hub."""
+        version = hub_version or self.hub_version or classify_hub_version(self.mdns_txt)
+        self.hub_version = version
+
+        if version == HUB_VERSION_X2:
+            with self._x2_remote_sync_id_lock:
+                self._x2_remote_sync_id = None
+                self._x2_remote_sync_id_event.clear()
+
+            if not self.enqueue_cmd(OP_X2_REMOTE_LIST, b"\x00"):
+                return False
+
+            remote_id = self.wait_for_x2_remote_sync_id(timeout=2.0)
+            if remote_id is None:
+                log.warning("[REMOTE_SYNC] timed out waiting for X2 remote list response")
+                return False
+
+            return self.enqueue_cmd(OP_X2_REMOTE_SYNC, remote_id + b"\x01")
+
+        return self.enqueue_cmd(OP_REMOTE_SYNC)
 
     # ------------------------------------------------------------------
     # Virtual IP device/button creation

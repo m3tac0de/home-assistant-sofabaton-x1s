@@ -61,6 +61,7 @@ from .protocol_const import (
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_ACTIVITIES,
+    OP_X2_REMOTE_LIST_ROW,
     OP_ACTIVITY_MAP_PAGE,
     OP_ACTIVITY_MAP_PAGE_X1S,
     OP_X1_ACTIVITY,
@@ -528,6 +529,23 @@ class RokuAckHandler(BaseFrameHandler):
         proxy.notify_roku_ack(frame.opcode, frame.payload)
         log.info("[ACK] opcode=0x%04X payload=%s", frame.opcode, frame.payload.hex(" "))
 
+
+
+
+@register_handler(opcodes=(OP_X2_REMOTE_LIST_ROW,), directions=("H→A",))
+class X2RemoteListRowHandler(BaseFrameHandler):
+    """Capture the first remote id from X2 remote-list response rows."""
+
+    def handle(self, frame: FrameContext) -> None:
+        payload = frame.payload
+        if len(payload) < 4:
+            return
+
+        # Observed layout starts with a count byte then a 3-byte remote id.
+        remote_id = payload[1:4]
+        proxy: X1Proxy = frame.proxy
+        proxy.update_x2_remote_sync_id(remote_id)
+        log.info("[REMOTE_SYNC] X2 remote id=%s", remote_id.hex(" "))
 
 @register_handler(opcodes=(OP_REQ_ACTIVATE,), directions=("A→H",))
 class ActivateRequestHandler(BaseFrameHandler):

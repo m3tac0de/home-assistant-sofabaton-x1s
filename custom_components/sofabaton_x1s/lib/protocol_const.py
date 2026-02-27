@@ -62,6 +62,10 @@ OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites map
 OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
 OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
 OP_FIND_REMOTE_X2 = 0x0323  # payload: [0x00, 0x00, 0x08] observed on X2 hubs
+OP_REMOTE_SYNC = 0x0064  # payload: empty; force remote<->hub sync on X1/X1S
+OP_X2_REMOTE_LIST = 0x012E  # payload: [0x00]; request connected remotes on X2
+OP_X2_REMOTE_LIST_ROW = 0x332F  # payload includes 3-byte remote id and remote metadata
+OP_X2_REMOTE_SYNC = 0x0464  # payload: [remote_id:3][0x01]; force sync for selected remote
 OP_CREATE_DEVICE_HEAD = 0x07D5  # payload includes UTF-16LE device name
 OP_DEFINE_IP_CMD = 0x0ED3  # payload includes HTTP method/URL/headers
 OP_DEFINE_IP_CMD_EXISTING = 0x0EAE  # payload defines IP command for an existing device
@@ -151,6 +155,10 @@ OPNAMES: Dict[int, str] = {
     OP_DELETE_DEVICE: "DELETE_DEVICE",
     OP_FIND_REMOTE: "FIND_REMOTE",
     OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
+    OP_REMOTE_SYNC: "REMOTE_SYNC",
+    OP_X2_REMOTE_LIST: "X2_REMOTE_LIST",
+    OP_X2_REMOTE_LIST_ROW: "X2_REMOTE_LIST_ROW",
+    OP_X2_REMOTE_SYNC: "X2_REMOTE_SYNC",
     OP_CREATE_DEVICE_HEAD: "CREATE_DEVICE_HEAD",
     OP_DEFINE_IP_CMD: "DEFINE_IP_CMD",
     OP_DEFINE_IP_CMD_EXISTING: "DEFINE_IP_CMD_EXISTING",
@@ -269,6 +277,10 @@ __all__ = [
     "OP_DELETE_DEVICE",
     "OP_FIND_REMOTE",
     "OP_FIND_REMOTE_X2",
+    "OP_REMOTE_SYNC",
+    "OP_X2_REMOTE_LIST",
+    "OP_X2_REMOTE_LIST_ROW",
+    "OP_X2_REMOTE_SYNC",
     "OP_CREATE_DEVICE_HEAD",
     "OP_DEFINE_IP_CMD",
     "OP_DEFINE_IP_CMD_EXISTING",

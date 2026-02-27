@@ -12,6 +12,9 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
     OP_FIND_REMOTE,
     OP_FIND_REMOTE_X2,
+    OP_REMOTE_SYNC,
+    OP_X2_REMOTE_LIST,
+    OP_X2_REMOTE_SYNC,
     OP_REQ_COMMANDS,
     OP_ACTIVITY_ASSIGN_FINALIZE,
     OP_ACTIVITY_ASSIGN_COMMIT,
@@ -230,6 +233,68 @@ def test_find_remote_uses_x2_opcode(monkeypatch) -> None:
 
     assert proxy.find_remote() is True
     assert sent == [(OP_FIND_REMOTE_X2, b"\x00\x00\x08")]
+
+
+
+def test_resync_remote_uses_classic_opcode(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(
+        proxy,
+        "enqueue_cmd",
+        lambda opcode, payload=b"", **_kwargs: sent.append((opcode, payload)) or True,
+    )
+
+    assert proxy.resync_remote() is True
+    assert sent == [(OP_REMOTE_SYNC, b"")]
+
+
+def test_resync_remote_x2_fetches_id_then_sync(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X2,
+    )
+
+    sent: list[tuple[int, bytes]] = []
+
+    def _enqueue(opcode, payload=b"", **_kwargs):
+        sent.append((opcode, payload))
+        return True
+
+    monkeypatch.setattr(proxy, "enqueue_cmd", _enqueue)
+    monkeypatch.setattr(proxy, "wait_for_x2_remote_sync_id", lambda timeout=2.0: b"\x00\x08\x5e")
+
+    assert proxy.resync_remote() is True
+    assert sent == [
+        (OP_X2_REMOTE_LIST, b"\x00"),
+        (OP_X2_REMOTE_SYNC, b"\x00\x08\x5e\x01"),
+    ]
+
+
+def test_resync_remote_x2_returns_false_without_remote_id(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X2,
+    )
+
+    sent: list[tuple[int, bytes]] = []
+
+    def _enqueue(opcode, payload=b"", **_kwargs):
+        sent.append((opcode, payload))
+        return True
+
+    monkeypatch.setattr(proxy, "enqueue_cmd", _enqueue)
+    monkeypatch.setattr(proxy, "wait_for_x2_remote_sync_id", lambda timeout=2.0: None)
+
+    assert proxy.resync_remote() is False
+    assert sent == [(OP_X2_REMOTE_LIST, b"\x00")]
 
 
 def test_send_family_frame_sets_length_in_opcode(monkeypatch) -> None:

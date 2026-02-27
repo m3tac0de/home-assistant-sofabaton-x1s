@@ -44,6 +44,7 @@ from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     MacroHandler,
     X1CatalogActivityHandler,
     X1CatalogDeviceHandler,
+    X2RemoteListRowHandler,
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
@@ -59,6 +60,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_MACROS_B1,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
+    OP_X2_REMOTE_LIST_ROW,
 )
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -221,6 +223,20 @@ def test_keymap_table_b_parses_x2_buttons_response() -> None:
         ButtonName.BLUE,
     }
 
+
+
+
+def test_x2_remote_list_row_caches_remote_id() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = X2RemoteListRowHandler()
+
+    payload = bytes.fromhex("01 00 08 5e 04 20 25 06")
+    frame = _build_payload_context(proxy, OP_X2_REMOTE_LIST_ROW, payload, "X2_REMOTE_LIST_ROW")
+    handler.handle(frame)
+
+    assert proxy.wait_for_x2_remote_sync_id(timeout=0.01) == bytes.fromhex("00 08 5e")
 
 def test_req_buttons_parses_partial_final_record_example_one() -> None:
     proxy = X1Proxy(
