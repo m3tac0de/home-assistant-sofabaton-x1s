@@ -3651,7 +3651,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
     const assistLabel = document.createElement("div");
     assistLabel.className = "automationAssist__label";
-    assistLabel.textContent = "Automation Assist";
+    assistLabel.textContent = "Key capture";
     this._automationAssistLabel = assistLabel;
 
     const assistStatus = document.createElement("div");
@@ -5014,7 +5014,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-command-sync-btn:hover { background: color-mix(in srgb, var(--primary-color) 28%, transparent); border-color: color-mix(in srgb, var(--primary-color) 85%, #000); }
           .sb-command-sync-btn:active { transform: translateY(1px); }
           .sb-command-sync-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent); }
-          .sb-command-sync-btn[disabled] { opacity: 0.6; cursor: default; transform: none; }
+          .sb-command-sync-btn[disabled],
+          .sb-command-sync-btn.sb-command-sync-btn-static { opacity: 0.6; cursor: default; transform: none; pointer-events: none; }
+          .sb-command-sync-btn.sb-command-sync-btn-static { display: inline-flex; align-items: center; }
           .sb-command-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
           .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: left; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
           .sb-command-slot-btn:hover { border-color: var(--primary-color); }
@@ -5785,12 +5787,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const helperLabel = document.createElement("span");
     helperLabel.className = "sb-yaml-helper-label";
-    helperLabel.textContent = "Snippet Generator";
+    helperLabel.textContent = "Key capture";
 
     const helperDesc = document.createElement("div");
     helperDesc.className = "sb-yaml-helper-desc";
     helperDesc.textContent =
-      "Capture button presses to generate ready-to-use YAML for dashboard buttons and automations.";
+      "Send button presses to the hub: Capture button presses to generate ready-to-use YAML for dashboard buttons and automations.";
 
     const helperLink = document.createElement("a");
     helperLink.className = "sb-yaml-helper-link";
@@ -5871,7 +5873,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const sectionSub = document.createElement("div");
     sectionSub.className = "sb-commands-section-subtitle";
     sectionSub.textContent =
-      "Assign Home Assistant actions to physical buttons or favorites and deploy the configuration to your hub.";
+      "Receive button presses from the hub: Assign Home Assistant actions to physical buttons or favorites and deploy the configuration to your hub.";
     meta.appendChild(sectionSub);
 
     body.appendChild(meta);
@@ -5928,17 +5930,25 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     syncRow.appendChild(syncMessageWrap);
 
     if (!remoteUnavailable && (syncNeeded || syncRunning)) {
-      const syncBtn = document.createElement("button");
-      syncBtn.type = "button";
-      syncBtn.className = "sb-command-sync-btn";
-      syncBtn.textContent = syncRunning ? "Syncing…" : "Sync to Hub";
-      syncBtn.disabled = syncRunning || this._commandSyncRunning;
-      syncBtn.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        this._runCommandConfigSync();
-      });
-      syncRow.appendChild(syncBtn);
+      if (syncRunning) {
+        const syncLabel = document.createElement("div");
+        syncLabel.className = "sb-command-sync-btn sb-command-sync-btn-static";
+        syncLabel.textContent = "Syncing…";
+        syncLabel.setAttribute("aria-disabled", "true");
+        syncRow.appendChild(syncLabel);
+      } else {
+        const syncBtn = document.createElement("button");
+        syncBtn.type = "button";
+        syncBtn.className = "sb-command-sync-btn";
+        syncBtn.textContent = "Sync to Hub";
+        syncBtn.disabled = this._commandSyncRunning;
+        syncBtn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this._runCommandConfigSync();
+        });
+        syncRow.appendChild(syncBtn);
+      }
     }
 
     body.appendChild(syncRow);
