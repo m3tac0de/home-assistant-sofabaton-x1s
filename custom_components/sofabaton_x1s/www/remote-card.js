@@ -4711,7 +4711,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     if (!this._hass?.callWS || !this._config?.entity) return;
 
     const entityId = String(this._config.entity);
-    if (this._editorIntegrationEntityId === entityId && this._editorIntegrationDomain)
+    if (
+      this._editorIntegrationEntityId === entityId &&
+      this._editorIntegrationDomain
+    )
       return;
     if (this._editorIntegrationDetectingFor === entityId) return;
 
@@ -4738,7 +4741,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   _editorHubVersion() {
     const entityId = String(this._config?.entity || "").trim();
     if (!entityId) return "";
-    return String(this._hass?.states?.[entityId]?.attributes?.hub_version || "").toUpperCase();
+    return String(
+      this._hass?.states?.[entityId]?.attributes?.hub_version || "",
+    ).toUpperCase();
   }
 
   _isEditorX2() {
@@ -4747,7 +4752,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _editorRemoteUnavailable(entityId = undefined) {
-    const resolved = String(entityId ?? this._config?.entity || "").trim();
+    const resolved = String((entityId ?? this._config?.entity) || "").trim();
     if (!resolved) return false;
     return this._hass?.states?.[resolved]?.state === "unavailable";
   }
@@ -4784,7 +4789,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     }
 
     if (this._commandConfigLoadedFor !== entityId) {
-      this._loadCommandConfigFromBackend().then(() => this._renderCommandsEditor());
+      this._loadCommandConfigFromBackend().then(() =>
+        this._renderCommandsEditor(),
+      );
       this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
       this._renderCommandsEditor();
       return;
@@ -4862,7 +4869,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           show_mid: "Volume/Channel Rockers",
           show_media: "Media Playback Controls",
           show_colors: "Red/Green/Yellow/Blue",
-          show_abc: "A/B/C Buttons (X2 only)",
+          show_abc: "A/B/C Buttons",
           show_macros_button: "Macros Button",
           show_favorites_button: "Favorites Button",
           max_width: "Maximum Card Width (px)",
@@ -5166,7 +5173,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         type: "sofabaton_x1s/command_config/get",
         entity_id: entityId,
       });
-      const commands = this._normalizeCommandsForStorage(result?.commands || []);
+      const commands = this._normalizeCommandsForStorage(
+        result?.commands || [],
+      );
       this._commandConfigHash = String(result?.commands_hash || "");
       this._commandConfigHashVersion = String(result?.hash_version || "");
       this._commandConfigLoadedFor = entityId;
@@ -5180,7 +5189,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this._commandConfigLoading = false;
     }
   }
-
 
   async _loadCommandSyncProgress(force = false) {
     if (!this._hass?.callWS || !this._config?.entity) return;
@@ -5201,12 +5209,17 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         message: String(result?.message || "Idle"),
         commands_hash: String(result?.commands_hash || ""),
         managed_command_hashes: Array.isArray(result?.managed_command_hashes)
-          ? result.managed_command_hashes.map((item) => String(item || "")).filter(Boolean)
+          ? result.managed_command_hashes
+              .map((item) => String(item || ""))
+              .filter(Boolean)
           : [],
         sync_needed: Boolean(result?.sync_needed),
       };
     } catch (err) {
-      if (!this._commandSyncState || typeof this._commandSyncState !== "object") {
+      if (
+        !this._commandSyncState ||
+        typeof this._commandSyncState !== "object"
+      ) {
         this._commandSyncState = {
           status: "idle",
           current_step: 0,
@@ -5554,7 +5567,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const actionHelper = document.createElement("div");
     actionHelper.className = "sb-command-helper";
-    actionHelper.textContent = "Select which Action this Command should run";
+    actionHelper.textContent = "Select Triggered Action";
 
     const actionSelector = document.createElement("ha-selector");
     actionSelector.hass = this._hass;
@@ -5676,7 +5689,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this._commandConfigLoadedFor !== entityId &&
       !this._commandConfigLoading
     ) {
-      this._loadCommandConfigFromBackend().then(() => this._renderCommandsEditor());
+      this._loadCommandConfigFromBackend().then(() =>
+        this._renderCommandsEditor(),
+      );
       this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
       this._commandsWrap.innerHTML = "";
       const loading = document.createElement("div");
@@ -5750,7 +5765,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const helperDrag = document.createElement("div");
     helperDrag.className = "sb-yaml-helper-drag";
-    helperDrag.innerHTML = '<ha-icon icon="mdi:drag-vertical-variant"></ha-icon>';
+    helperDrag.innerHTML =
+      '<ha-icon icon="mdi:drag-vertical-variant"></ha-icon>';
 
     const helperMain = document.createElement("div");
     helperMain.className = "sb-yaml-helper-main";
@@ -5760,19 +5776,20 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const helperLabel = document.createElement("span");
     helperLabel.className = "sb-yaml-helper-label";
-    helperLabel.textContent = "YAML Helper";
+    helperLabel.textContent = "Snippet Generator";
 
     const helperDesc = document.createElement("div");
     helperDesc.className = "sb-yaml-helper-desc";
-    helperDesc.textContent = "Generate YAML code from remote button presses.";
+    helperDesc.textContent =
+      "Capture button presses to generate ready-to-use YAML for dashboard buttons and automations.";
 
     const helperLink = document.createElement("a");
     helperLink.className = "sb-yaml-helper-link";
     helperLink.href = YAML_HELPER_INFO_URL;
     helperLink.target = "_blank";
     helperLink.rel = "noopener noreferrer";
-    helperLink.title = "Learn more about YAML Helper";
-    helperLink.setAttribute("aria-label", "YAML Helper documentation");
+    helperLink.title = "Learn more about Snippet Generator";
+    helperLink.setAttribute("aria-label", "Snippet Generator documentation");
     helperLink.innerHTML = '<ha-icon icon="mdi:help-circle-outline"></ha-icon>';
     helperLink.addEventListener("click", (ev) => ev.stopPropagation());
 
@@ -5825,16 +5842,17 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const sectionTitle = document.createElement("div");
     sectionTitle.className = "sb-commands-section-title";
-    sectionTitle.textContent = "Remote Triggers";
+    sectionTitle.textContent = "Wifi Commands";
 
     const sectionHelp = document.createElement("a");
     sectionHelp.className = "sb-commands-section-help";
     sectionHelp.href = YAML_HELPER_INFO_URL;
     sectionHelp.target = "_blank";
     sectionHelp.rel = "noopener noreferrer";
-    sectionHelp.title = "Learn more about Remote Triggers";
-    sectionHelp.setAttribute("aria-label", "Remote Triggers documentation");
-    sectionHelp.innerHTML = '<ha-icon icon="mdi:help-circle-outline"></ha-icon>';
+    sectionHelp.title = "Learn more about Wifi Commands";
+    sectionHelp.setAttribute("aria-label", "Wifi Commands documentation");
+    sectionHelp.innerHTML =
+      '<ha-icon icon="mdi:help-circle-outline"></ha-icon>';
     sectionHelp.addEventListener("click", (ev) => ev.stopPropagation());
 
     sectionTitleWrap.appendChild(sectionTitle);
@@ -5843,7 +5861,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const sectionSub = document.createElement("div");
     sectionSub.className = "sb-commands-section-subtitle";
-    sectionSub.textContent = "Configure buttons to trigger actions.";
+    sectionSub.textContent =
+      "Assign Home Assistant actions to physical buttons or favorites and deploy the configuration to your hub.";
     meta.appendChild(sectionSub);
 
     body.appendChild(meta);
@@ -5870,11 +5889,14 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const progress = total > 0 ? ` (${Math.min(cur, total)}/${total})` : "";
       syncMessage.textContent = `${String(syncState.message || "Sync in progress")}${progress}`;
     } else if (syncNeeded) {
-      syncMessage.textContent = "Command config changes need to be synced to the hub.";
+      syncMessage.textContent =
+        "Command config changes need to be synced to the hub.";
     } else if (syncStatus === "success") {
       syncMessage.textContent = "Hub command configuration is up to date.";
     } else if (syncStatus === "failed") {
-      syncMessage.textContent = String(syncState.message || "Last sync failed.");
+      syncMessage.textContent = String(
+        syncState.message || "Last sync failed.",
+      );
     } else {
       syncMessage.textContent = "No sync needed.";
     }
@@ -5984,7 +6006,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
         const name = document.createElement("div");
         name.className = "sb-command-slot-name";
-        name.textContent = "Configure Slot";
+        name.textContent = "Make Command";
 
         textWrap.appendChild(name);
         main.appendChild(plusText);
@@ -6174,7 +6196,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const detailsNote = document.createElement("div");
       detailsNote.className = "sb-command-dialog-note";
       detailsNote.textContent =
-        "Placeholder: explain what this Command Slot controls and how it appears on the remote.";
+        "Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote’s display, in the mobile app, and as the Wifi Command's sensor status.";
       dialogBody.appendChild(detailsNote);
 
       const configBlock = document.createElement("div");
@@ -6186,8 +6208,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       //nameLabel.textContent = "Name";
       const nameField = document.createElement("ha-textfield");
       nameField.className = "sb-command-name-field";
-      nameField.label =
-        "Command name as it appears on the remote, favorites and the app";
+      nameField.label = "Command Display Name";
       nameField.maxLength = 20;
       this._commandEditorNameField = nameField;
       nameField.addEventListener("input", (ev) => {
@@ -6221,7 +6242,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       favoriteIcon.setAttribute("icon", "mdi:heart");
       favoriteIconWrap.appendChild(favoriteIcon);
       const favoriteText = document.createElement("span");
-      favoriteText.textContent = "Add this command to Favorites";
+      favoriteText.textContent = "Make as Favorite";
       favoriteLeft.appendChild(favoriteIconWrap);
       favoriteLeft.appendChild(favoriteText);
       favoriteWrap.appendChild(favoriteLeft);
@@ -6258,7 +6279,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           ),
         },
       };
-      buttonSelector.label = "Map this command to a physical button";
+      buttonSelector.label = "Physical Button Assignment";
       this._commandEditorHardButtonSelector = buttonSelector;
       buttonSelector.addEventListener("value-changed", (ev) => {
         const mapped = String(ev.detail?.value ?? "");
@@ -6359,7 +6380,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const actionNote = document.createElement("div");
       actionNote.className = "sb-command-dialog-note";
       actionNote.textContent =
-        "Placeholder: explain how this Action runs when the Command Slot button is pressed.";
+        "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.";
       dialogBody.appendChild(actionNote);
 
       const actionBlock = document.createElement("div");
@@ -6625,7 +6646,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       mid: "Volume/Channel",
       media: "Media Controls",
       colors: "Color Buttons",
-      abc: "A/B/C (X2 only)",
+      abc: "A/B/C",
     };
     return labels[key] || key;
   }
@@ -6756,7 +6777,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   _renderStylingOptionsEditor() {
     if (!this._stylingWrap || !this._hass) return;
 
-    if (typeof this._stylingExpanded !== "boolean") this._stylingExpanded = false;
+    if (typeof this._stylingExpanded !== "boolean")
+      this._stylingExpanded = false;
 
     const showColorPicker =
       this._config.use_background_override ||
@@ -7085,7 +7107,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         );
         if (isEditorX2) {
           row.appendChild(
-            makeItem("DVR (X2 only)", this._dvrEnabled(), (val) =>
+            makeItem("DVR", this._dvrEnabled(), (val) =>
               this._setDvrEnabled(val),
             ),
           );
