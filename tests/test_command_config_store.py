@@ -57,9 +57,9 @@ def test_compute_commands_hash_is_order_insensitive_for_relevant_fields() -> Non
     assert compute_commands_hash(first) == compute_commands_hash(second)
 
 
-def test_normalize_commands_always_returns_nine_slots() -> None:
+def test_normalize_commands_always_returns_ten_slots() -> None:
     normalized = normalize_commands([{"name": "Only One"}])
-    assert len(normalized) == 9
+    assert len(normalized) == 10
     assert normalized[0]["name"] == "Only One"
     assert normalized[1]["name"] == "Command 2"
 
@@ -69,7 +69,7 @@ def test_command_store_get_set_roundtrip() -> None:
     _run(store.async_load())
 
     default_payload = _run(store.async_get_hub_config("hub-1"))
-    assert len(default_payload["commands"]) == 9
+    assert len(default_payload["commands"]) == 10
     assert default_payload["hash_version"] == COMMAND_HASH_VERSION
 
     updated = _run(

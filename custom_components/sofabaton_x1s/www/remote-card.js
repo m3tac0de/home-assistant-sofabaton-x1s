@@ -5146,12 +5146,15 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _normalizeCommandsForStorage(nextCommands) {
-    return Array.from({ length: 9 }, (_, idx) => {
+    return Array.from({ length: 10 }, (_, idx) => {
       const item = nextCommands?.[idx] || {};
       return {
         ...this._commandSlotDefault(idx),
         name: this._sanitizeCommandName(item.name ?? `Command ${idx + 1}`),
-        add_as_favorite: Boolean(item.add_as_favorite),
+        add_as_favorite:
+          item?.add_as_favorite === undefined
+            ? this._commandSlotDefault(idx).add_as_favorite
+            : Boolean(item.add_as_favorite),
         hard_button: String(item.hard_button ?? ""),
         activities: Array.isArray(item.activities)
           ? item.activities.map((id) => String(id)).filter((id) => id !== "")
