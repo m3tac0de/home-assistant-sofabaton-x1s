@@ -470,6 +470,8 @@ class SofabatonHub:
         else:
             await self._async_fetch_device_commands(ent_id)
 
+        await self._async_wait_for_command_fetch_complete(ent_id)
+
     async def async_create_wifi_device(
         self,
         device_name: str = "Home Assistant",
@@ -660,6 +662,25 @@ class SofabatonHub:
                 waiters.remove(future)
                 if not waiters:
                     self._button_waiters.pop(ent_id, None)
+
+    async def _async_wait_for_command_fetch_complete(
+        self,
+        ent_id: int,
+        *,
+        timeout: float = 10.0,
+    ) -> None:
+        deadline = monotonic() + timeout
+        while monotonic() < deadline:
+            self._maybe_complete_command_fetch(ent_id)
+            if ent_id not in self._commands_in_flight:
+                return
+            await asyncio.sleep(0.05)
+
+        _LOGGER.debug(
+            "[%s] timed out waiting for commands for 0x%02X",
+            self.entry_id,
+            ent_id & 0xFF,
+        )
 
     def _reset_entity_cache(
         self,

@@ -81,6 +81,47 @@ def test_activity_fetch_clears_inflight_after_favorite_labels(monkeypatch):
     loop.close()
 
 
+def test_device_fetch_waits_until_command_burst_completes(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    ent_id = 0x0202
+    ready = {"value": False}
+
+    monkeypatch.setattr(hub, "_reset_entity_cache", lambda *_, **__: None)
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_, **__: None)
+
+    def _get_commands(_ent_id: int, *, fetch_if_missing: bool = True):
+        if ready["value"]:
+            return ({0x01: "Power"}, True)
+        return ({}, False)
+
+    monkeypatch.setattr(hub._proxy, "get_commands_for_entity", _get_commands)
+
+    loop.call_later(0.1, lambda: ready.__setitem__("value", True))
+
+    loop.run_until_complete(hub.async_fetch_device_commands(ent_id))
+
+    assert ready["value"] is True
+    assert ent_id not in hub._commands_in_flight
+
+    loop.close()
+
+
 def test_roku_http_post_updates_last_ip_command_state():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
