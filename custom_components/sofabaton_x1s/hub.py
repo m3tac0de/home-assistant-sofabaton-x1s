@@ -23,6 +23,7 @@ from .const import (
     HUB_VERSION_X1,
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
+    WIFI_DEVICE_ENABLE_DOCS_URL,
     signal_activity,
     signal_app_activations,
     signal_ip_commands,
@@ -965,7 +966,7 @@ class SofabatonHub:
             commands = list(command_payload.get("commands") or [])
             commands_hash = str(command_payload.get("commands_hash") or "")
             brand_name = f"{COMMAND_BRAND_PREFIX}-{commands_hash}"
-            total_steps = 6
+            total_steps = 7
             self._set_command_sync_progress(
                 status="running",
                 current_step=0,
@@ -973,10 +974,35 @@ class SofabatonHub:
                 message="Starting sync",
             )
 
+            self._set_command_sync_progress(
+                current_step=1,
+                message="Ensuring Wifi Device (Roku/HTTP Listener) is enabled",
+            )
+            if not self.roku_server_enabled:
+                await self.async_set_roku_server_enabled(True)
+                from .roku_listener import async_get_roku_listener
+
+                listener = await async_get_roku_listener(self.hass)
+                listener_error = listener.get_last_start_error()
+                if listener_error:
+                    self._set_command_sync_progress(
+                        status="failed",
+                        message=(
+                            "Failed enabling Wifi Device (Roku/HTTP Listener). "
+                            f"Port {request_port} may already be in use. "
+                            f"Details: {listener_error}. See {WIFI_DEVICE_ENABLE_DOCS_URL}"
+                        ),
+                    )
+                    raise HomeAssistantError(
+                        "Unable to enable Wifi Device (Roku/HTTP Listener): "
+                        f"port {request_port} may already be in use. "
+                        f"See {WIFI_DEVICE_ENABLE_DOCS_URL}"
+                    )
+
             managed = self._managed_wifi_devices()
             configured_slots = count_configured_command_slots(commands)
             self._set_command_sync_progress(
-                current_step=1,
+                current_step=2,
                 message="Deleting existing managed Wifi Device(s)",
             )
             for dev_id, _brand in managed:
@@ -993,7 +1019,7 @@ class SofabatonHub:
             if configured_slots == 0:
                 self._set_command_sync_progress(
                     status="success",
-                    current_step=6,
+                    current_step=7,
                     total_steps=total_steps,
                     message="No configured slots; managed Wifi Device removed",
                     wifi_device_id=None,
@@ -1013,7 +1039,7 @@ class SofabatonHub:
             ]
 
             self._set_command_sync_progress(
-                current_step=2,
+                current_step=3,
                 message="Creating Wifi Device on Hub",
             )
             created = await self.async_create_wifi_device(
@@ -1024,8 +1050,8 @@ class SofabatonHub:
             )
             if not created or not created.get("device_id"):
                 self._set_command_sync_progress(
-                    status="failed",
-                    message="Failed creating Wifi Device",
+                status="failed",
+                message="Failed creating Wifi Device",
                 )
                 raise HomeAssistantError("Failed creating Wifi Device")
 
@@ -1041,7 +1067,7 @@ class SofabatonHub:
 
             add_results: dict[int, bool] = {}
             self._set_command_sync_progress(
-                current_step=3,
+                current_step=4,
                 message="Adding Wifi Device to Activities",
             )
             for act_id in sorted(activity_ids):
@@ -1052,13 +1078,13 @@ class SofabatonHub:
                 await self.async_delete_device(wifi_device_id)
                 self._set_command_sync_progress(
                     status="failed",
-                    current_step=4,
+                    current_step=5,
                     message="Failed activity membership; rolled back Wifi Device",
                 )
                 raise HomeAssistantError("Failed adding Wifi Device to all activities")
 
             self._set_command_sync_progress(
-                current_step=4,
+                current_step=5,
                 message="Applying activity favorites",
             )
             for slot_idx, slot in enumerate(commands[:10]):
@@ -1080,7 +1106,7 @@ class SofabatonHub:
                     )
 
             self._set_command_sync_progress(
-                current_step=5,
+                current_step=6,
                 message="Applying activity button mappings",
             )
             for slot_idx, slot in enumerate(commands[:10]):
@@ -1107,7 +1133,7 @@ class SofabatonHub:
                     )
 
             self._set_command_sync_progress(
-                current_step=6,
+                current_step=7,
                 message="Refreshing activity maps and buttons",
             )
             for act_id in sorted(activity_ids):
@@ -1130,7 +1156,7 @@ class SofabatonHub:
 
             self._set_command_sync_progress(
                 status="success",
-                current_step=6,
+                current_step=7,
                 total_steps=total_steps,
                 message="Sync complete",
                 wifi_device_id=wifi_device_id,

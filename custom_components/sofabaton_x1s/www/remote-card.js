@@ -5052,7 +5052,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-command-dialog-btn { border: 1px solid var(--divider-color); border-radius: 10px; min-height: 36px; padding: 0 12px; background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color); cursor: pointer; font-size: 14px; }
           .sb-command-dialog-btn:hover { border-color: var(--primary-color); }
           .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-command-dialog-note { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--secondary-text-color); font-size: 13px; line-height: 1.4; }
+          .sb-command-dialog-note { border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color)); border-radius: 12px; padding: 12px; background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 13px; line-height: 1.45; display:flex; align-items:flex-start; gap:10px; }
+          .sb-command-dialog-note::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: color-mix(in srgb, var(--info-color, var(--primary-color)) 22%, transparent); flex: 0 0 18px; margin-top: 1px; }
           .sb-command-config-block { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:12px; }
           .sb-command-input-row { display:flex; flex-direction:column; gap:6px; }
           .sb-command-input-label { font-size: 12px; opacity: 0.78; }

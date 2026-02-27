@@ -45,6 +45,9 @@ MDNS_SERVICE_TYPE_BY_VERSION = {
 DEFAULT_PROXY_UDP_PORT = 8102
 DEFAULT_HUB_LISTEN_BASE = 8200
 DEFAULT_ROKU_LISTEN_PORT = 8060
+WIFI_DEVICE_ENABLE_DOCS_URL = (
+    "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/networking.md"
+)
 
 PLATFORMS = [
     "select",

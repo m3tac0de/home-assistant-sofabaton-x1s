@@ -42,6 +42,10 @@ class RokuListenerManager:
         self._max_body_bytes = DEFAULT_MAX_BODY_BYTES
         self._read_timeout_seconds = DEFAULT_READ_TIMEOUT_SECONDS
         self._max_path_segment_length = DEFAULT_MAX_PATH_SEGMENT_LENGTH
+        self._last_start_error: str | None = None
+
+    def get_last_start_error(self) -> str | None:
+        return self._last_start_error
 
     async def async_set_listen_port(self, listen_port: int) -> None:
         new_port = int(listen_port)
@@ -84,6 +88,7 @@ class RokuListenerManager:
                 await self._server.wait_closed()
                 self._server = None
                 self._bound_port = None
+                self._last_start_error = None
                 _LOGGER.info("[%s] Wifi Device listener stopped", DOMAIN)
                 return
 
@@ -91,6 +96,7 @@ class RokuListenerManager:
                 return
 
             if self._server is not None and self._bound_port == self._listen_port:
+                self._last_start_error = None
                 return
 
             if self._server is not None:
@@ -106,6 +112,7 @@ class RokuListenerManager:
                     port=self._listen_port,
                 )
             except OSError as err:
+                self._last_start_error = str(err) or repr(err)
                 _LOGGER.error(
                     "[%s] Failed to start Wifi Device listener on port %s: %s",
                     DOMAIN,
@@ -115,6 +122,7 @@ class RokuListenerManager:
                 return
 
             self._bound_port = self._listen_port
+            self._last_start_error = None
             _LOGGER.info("[%s] Wifi Device listener started on port %s", DOMAIN, self._listen_port)
 
     async def _async_handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:

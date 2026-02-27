@@ -1,4 +1,6 @@
 import asyncio
+import pytest
+from types import SimpleNamespace
 
 from custom_components.sofabaton_x1s.hub import SofabatonHub
 
@@ -31,6 +33,7 @@ def test_activity_fetch_clears_inflight_after_favorite_labels(monkeypatch):
         True,
         False,
     )
+    hub.roku_server_enabled = True
 
     hub.hub_connected = True
     hub.activities_ready = True
@@ -96,6 +99,7 @@ def test_roku_http_post_updates_last_ip_command_state():
         True,
         False,
     )
+    hub.roku_server_enabled = True
 
     loop.run_until_complete(
         hub.async_handle_roku_http_post(
@@ -373,6 +377,7 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
         True,
         False,
     )
+    hub.roku_server_enabled = True
 
     monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
     monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([], True))
@@ -597,6 +602,7 @@ def test_sync_command_config_with_zero_configured_slots_deletes_managed_only(mon
         True,
         False,
     )
+    hub.roku_server_enabled = True
 
     hub.devices = {
         11: {"brand": "m3tac0de-oldhash", "name": "Managed Device"},
@@ -632,5 +638,136 @@ def test_sync_command_config_with_zero_configured_slots_deletes_managed_only(mon
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "success"
     assert progress["commands_hash"] == "abc"
+    assert progress["current_step"] == 7
+
+    loop.close()
+
+
+def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub.roku_server_enabled = False
+
+    enable_calls: list[bool] = []
+
+    async def _enable(enabled: bool):
+        enable_calls.append(enabled)
+        hub.roku_server_enabled = enabled
+
+    monkeypatch.setattr(hub, "async_set_roku_server_enabled", _enable)
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.roku_listener.async_get_roku_listener",
+        lambda _hass: asyncio.sleep(0, result=SimpleNamespace(get_last_start_error=lambda: None)),
+    )
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([], True))
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_, **__: None)
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_args, **_kwargs: ([], True))
+
+    async def _create(*_args, **_kwargs):
+        return {"device_id": 9, "status": "success"}
+
+    async def _add_activity(*_args, **_kwargs):
+        return {"status": "success"}
+
+    async def _favorite(*_args, **_kwargs):
+        return {"status": "success"}
+
+    async def _button(*_args, **_kwargs):
+        return {"status": "success"}
+
+    async def _delete(*_args, **_kwargs):
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_create_wifi_device", _create)
+    monkeypatch.setattr(hub, "async_add_device_to_activity", _add_activity)
+    monkeypatch.setattr(hub, "async_command_to_favorite", _favorite)
+    monkeypatch.setattr(hub, "async_command_to_button", _button)
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+
+    payload = {
+        "commands": [
+            {
+                "name": "Command 1",
+                "add_as_favorite": True,
+                "hard_button": "",
+                "activities": ["101"],
+                "action": {"action": "perform-action"},
+            }
+        ],
+        "commands_hash": "abc",
+    }
+
+    loop.run_until_complete(hub.async_sync_command_config(command_payload=payload, request_port=8060))
+
+    assert enable_calls == [True]
+    progress = hub.get_command_sync_progress()
+    assert progress["status"] == "success"
+    assert progress["current_step"] == 7
+
+    loop.close()
+
+
+def test_sync_command_config_reports_wifi_listener_enable_failure(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub.roku_server_enabled = False
+
+    async def _enable(enabled: bool):
+        hub.roku_server_enabled = enabled
+
+    monkeypatch.setattr(hub, "async_set_roku_server_enabled", _enable)
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.roku_listener.async_get_roku_listener",
+        lambda _hass: asyncio.sleep(0, result=SimpleNamespace(get_last_start_error=lambda: "address already in use")),
+    )
+
+    payload = {
+        "commands": [{"name": "Command 1", "activities": ["101"]}],
+        "commands_hash": "abc",
+    }
+
+    with pytest.raises(Exception) as err:
+        loop.run_until_complete(
+            hub.async_sync_command_config(command_payload=payload, request_port=8060)
+        )
+
+    assert "Unable to enable Wifi Device" in str(err.value)
+    progress = hub.get_command_sync_progress()
+    assert progress["status"] == "failed"
+    assert "Port 8060 may already be in use" in progress["message"]
+    assert "docs/networking.md" in progress["message"]
 
     loop.close()
