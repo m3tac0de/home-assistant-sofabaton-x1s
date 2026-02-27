@@ -319,7 +319,18 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   set editMode(value) {
+    const prev = this._editMode;
     this._editMode = !!value;
+    if (this._editMode && this._automationAssistActive) {
+      this._setAutomationAssistActive(false);
+    } else if (
+      prev === true &&
+      this._editMode === false &&
+      this._automationAssistEnabled() &&
+      !this._automationAssistActive
+    ) {
+      this._setAutomationAssistActive(true);
+    }
     this._update();
   }
   // ---------- State helpers ----------
@@ -1865,7 +1876,9 @@ class SofabatonRemoteCard extends HTMLElement {
     const mqttSupported = this._automationAssistMqttSupported();
 
     if (!isActive) {
-      this._automationAssistStatus.textContent = "Tap Start to begin";
+      this._automationAssistStatus.textContent = this._editMode
+        ? "Exit Edit mode to begin"
+        : "Waiting for keypress";
     } else if (this._automationAssistStatusMessage) {
       this._automationAssistStatus.textContent =
         this._automationAssistStatusMessage;
@@ -1875,9 +1888,6 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistStatus.textContent = "Waiting for keypress";
     }
 
-    if (this._automationAssistStart) {
-      this._setVisible(this._automationAssistStart, !isActive);
-    }
     this._updateAutomationAssistModalUI();
   }
 
@@ -3657,14 +3667,9 @@ class SofabatonRemoteCard extends HTMLElement {
       return btn;
     };
 
-    this._automationAssistStart = mkAssistButton("Start", () =>
-      this._setAutomationAssistActive(true),
-    );
-
     const assistHeader = document.createElement("div");
     assistHeader.className = "automationAssist__header";
     assistHeader.appendChild(assistLabel);
-    assistHeader.appendChild(this._automationAssistStart);
 
     this._automationAssistRow.appendChild(assistHeader);
     this._automationAssistRow.appendChild(assistStatus);
