@@ -610,6 +610,7 @@ def test_sync_command_config_with_zero_configured_slots_deletes_managed_only(mon
     }
 
     deleted: list[int] = []
+    enabled_calls: list[bool] = []
 
     async def _delete(dev_id, *_args, **_kwargs):
         deleted.append(dev_id)
@@ -618,8 +619,13 @@ def test_sync_command_config_with_zero_configured_slots_deletes_managed_only(mon
     async def _create(*_args, **_kwargs):
         raise AssertionError("create should not be called when no slots are configured")
 
+    async def _set_enabled(enable: bool):
+        enabled_calls.append(enable)
+        hub.roku_server_enabled = enable
+
     monkeypatch.setattr(hub, "async_delete_device", _delete)
     monkeypatch.setattr(hub, "async_create_wifi_device", _create)
+    monkeypatch.setattr(hub, "async_set_roku_server_enabled", _set_enabled)
 
     payload = {
         "commands": [],
@@ -634,11 +640,57 @@ def test_sync_command_config_with_zero_configured_slots_deletes_managed_only(mon
     assert result["status"] == "success"
     assert result["wifi_device_id"] is None
     assert result["deleted_managed_devices"] == 1
+    assert enabled_calls == [False]
 
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "success"
     assert progress["commands_hash"] == "abc"
     assert progress["current_step"] == 7
+
+
+def test_sync_command_config_with_zero_slots_does_not_enable_wifi_device(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = False
+
+    calls: list[bool] = []
+
+    async def _set_enabled(enable: bool):
+        calls.append(enable)
+        hub.roku_server_enabled = enable
+
+    async def _delete(*_args, **_kwargs):
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_set_roku_server_enabled", _set_enabled)
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+
+    payload = {
+        "commands": [],
+        "commands_hash": "abc",
+    }
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert result["status"] == "success"
+    assert calls == []
 
     loop.close()
 

@@ -151,8 +151,36 @@ def _install_homeassistant_stubs() -> None:
     entity_registry.async_get = lambda hass=None: None
     sys.modules.setdefault("homeassistant.helpers.entity_registry", entity_registry)
 
+    entity = types.ModuleType("homeassistant.helpers.entity")
+
+    class DeviceInfo(dict):  # pragma: no cover - only used as stub
+        pass
+
+    class EntityCategory:  # pragma: no cover - only used as stub
+        CONFIG = "config"
+
+    entity.DeviceInfo = DeviceInfo
+    entity.EntityCategory = EntityCategory
+    sys.modules.setdefault("homeassistant.helpers.entity", entity)
+
+    entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
+    entity_platform.AddEntitiesCallback = object
+    sys.modules.setdefault("homeassistant.helpers.entity_platform", entity_platform)
+
     components = types.ModuleType("homeassistant.components")
     sys.modules.setdefault("homeassistant.components", components)
+
+    switch = types.ModuleType("homeassistant.components.switch")
+
+    class SwitchEntity:  # pragma: no cover - only used as stub
+        def async_on_remove(self, *args, **kwargs):
+            return None
+
+        def async_write_ha_state(self):
+            return None
+
+    switch.SwitchEntity = SwitchEntity
+    sys.modules.setdefault("homeassistant.components.switch", switch)
 
     frontend = types.ModuleType("homeassistant.components.frontend")
     frontend.add_extra_js_url = lambda *args, **kwargs: None

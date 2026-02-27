@@ -4,11 +4,14 @@ from __future__ import annotations
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN, CONF_MAC, CONF_NAME
+from .const import signal_wifi_device
 from .hub import SofabatonHub, get_hub_model
 
 
@@ -104,6 +107,19 @@ class SofabatonWifiDeviceSwitch(SwitchEntity):
             name=self._entry.data[CONF_NAME],
             model=get_hub_model(self._entry),
         )
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_wifi_device(self._hub.entry_id),
+                self._handle_wifi_device_toggle,
+            )
+        )
+
+    @callback
+    def _handle_wifi_device_toggle(self) -> None:
+        self.async_write_ha_state()
 
     @property
     def is_on(self) -> bool:

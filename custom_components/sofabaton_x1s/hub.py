@@ -964,6 +964,7 @@ class SofabatonHub:
 
         async with self._command_sync_lock:
             commands = list(command_payload.get("commands") or [])
+            configured_slots = count_configured_command_slots(commands)
             commands_hash = str(command_payload.get("commands_hash") or "")
             brand_name = f"{COMMAND_BRAND_PREFIX}-{commands_hash}"
             total_steps = 7
@@ -978,7 +979,7 @@ class SofabatonHub:
                 current_step=1,
                 message="Ensuring Wifi Device (Roku/HTTP Listener) is enabled",
             )
-            if not self.roku_server_enabled:
+            if configured_slots > 0 and not self.roku_server_enabled:
                 await self.async_set_roku_server_enabled(True)
                 from .roku_listener import async_get_roku_listener
 
@@ -1000,7 +1001,6 @@ class SofabatonHub:
                     )
 
             managed = self._managed_wifi_devices()
-            configured_slots = count_configured_command_slots(commands)
             self._set_command_sync_progress(
                 current_step=2,
                 message="Deleting existing managed Wifi Device(s)",
@@ -1017,6 +1017,13 @@ class SofabatonHub:
                     )
 
             if configured_slots == 0:
+                if self.roku_server_enabled:
+                    self._set_command_sync_progress(
+                        current_step=3,
+                        message="Disabling Wifi Device",
+                    )
+                    await self.async_set_roku_server_enabled(False)
+
                 self._set_command_sync_progress(
                     status="success",
                     current_step=7,
