@@ -365,12 +365,31 @@ class SofabatonOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_ports(self, user_input: Dict[str, Any] | None = None):
         PORT_VALIDATOR = vol.All(int, vol.Range(min=1, max=65535))
+        shared_option_keys = ("proxy_udp_port", "hub_listen_base", CONF_ROKU_LISTEN_PORT)
 
         if user_input is not None:
             new_options = {
                 **self.entry.options,
                 **user_input,
             }
+
+            shared_options = {
+                key: new_options[key] for key in shared_option_keys if key in new_options
+            }
+
+            for existing_entry in self.hass.config_entries.async_entries(DOMAIN):
+                merged_options = {
+                    **existing_entry.options,
+                    **shared_options,
+                }
+                if merged_options == existing_entry.options:
+                    continue
+
+                self.hass.config_entries.async_update_entry(
+                    existing_entry,
+                    options=merged_options,
+                )
+
             self.hass.config_entries.async_update_entry(
                 self.entry,
                 data={
