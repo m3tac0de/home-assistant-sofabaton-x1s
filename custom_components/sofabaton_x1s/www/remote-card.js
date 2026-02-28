@@ -319,19 +319,12 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   set editMode(value) {
-    const prev = this._editMode;
     this._editMode = !!value;
     if (this._editMode && this._automationAssistActive) {
       this._setAutomationAssistActive(false);
-    } else if (
-      prev === true &&
-      this._editMode === false &&
-      this._automationAssistEnabled() &&
-      !this._automationAssistActive
-    ) {
-      this._setAutomationAssistActive(true);
     }
     this._update();
+    this._updateAutomationAssistUI();
   }
   // ---------- State helpers ----------
   _remoteState() {
@@ -1031,8 +1024,7 @@ class SofabatonRemoteCard extends HTMLElement {
     activityName,
     poweredOff = false,
   }) {
-    if (!this._automationAssistEnabled()) return;
-    if (!this._automationAssistActive) return;
+    if (!this._ensureAutomationAssistCaptureStarted()) return;
 
     const id = Number(activityId);
     const resolvedId = Number.isFinite(id) ? id : null;
@@ -1067,8 +1059,7 @@ class SofabatonRemoteCard extends HTMLElement {
     commandType = "assigned",
     icon = null,
   }) {
-    if (!this._automationAssistEnabled()) return;
-    if (!this._automationAssistActive) return;
+    if (!this._ensureAutomationAssistCaptureStarted()) return;
 
     const command = Number(commandId);
     if (!Number.isFinite(command)) return;
@@ -1324,15 +1315,20 @@ class SofabatonRemoteCard extends HTMLElement {
     let timeoutId = null;
     let unsub = null;
 
+    let finished = false;
     const finish = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (unsub) {
-        try {
-          unsub();
-        } catch (e) {
-          /* no-op */
-        }
+      if (finished) return;
+      finished = true;
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
       }
+
+      const unsubscribe = unsub;
+      unsub = null;
+      this._safeUnsubscribe(unsubscribe);
+
       this._hubMacDetecting = false;
       this._updateAutomationAssistUI();
       this._syncAutomationAssistMqtt();
@@ -1410,13 +1406,10 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _unsubscribeAutomationAssistMqtt() {
     if (this._mqttUnsub) {
-      try {
-        this._mqttUnsub();
-      } catch (e) {
-        /* no-op */
-      }
+      const unsubscribe = this._mqttUnsub;
+      this._mqttUnsub = null;
+      this._safeUnsubscribe(unsubscribe);
     }
-    this._mqttUnsub = null;
     this._automationAssistMqttTopic = null;
   }
 
@@ -1702,11 +1695,9 @@ class SofabatonRemoteCard extends HTMLElement {
           const finish = (name) => {
             if (timeoutId) clearTimeout(timeoutId);
             if (unsub) {
-              try {
-                unsub();
-              } catch (e) {
-                /* no-op */
-              }
+              const unsubscribe = unsub;
+              unsub = null;
+              this._safeUnsubscribe(unsubscribe);
             }
             if (name) {
               this._mqttDeviceNames.set(cacheKey, name);
@@ -1769,11 +1760,9 @@ class SofabatonRemoteCard extends HTMLElement {
           const finish = (commands) => {
             if (timeoutId) clearTimeout(timeoutId);
             if (unsub) {
-              try {
-                unsub();
-              } catch (e) {
-                /* no-op */
-              }
+              const unsubscribe = unsub;
+              unsub = null;
+              this._safeUnsubscribe(unsubscribe);
             }
             if (commands) {
               this._mqttDeviceCommands.set(cacheKey, commands);
@@ -1843,6 +1832,39 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistStatusMessage;
   }
 
+  _safeUnsubscribe(unsubscribe) {
+    if (typeof unsubscribe !== "function") return;
+    try {
+      const maybePromise = unsubscribe();
+      if (maybePromise && typeof maybePromise.catch === "function") {
+        maybePromise.catch(() => {
+          /* no-op */
+        });
+      }
+    } catch (e) {
+      /* no-op */
+    }
+  }
+
+  _ensureAutomationAssistCaptureStarted() {
+    if (!this._automationAssistEnabled()) return false;
+    if (this._editMode) return false;
+    if (!this._automationAssistActive) {
+      this._setAutomationAssistActive(true);
+    }
+    return this._automationAssistActive;
+  }
+
+  _primeAutomationAssistActivityBaseline() {
+    const currentLabel = this._currentActivityLabel();
+    const currentId = this._currentActivityId();
+    this._lastActivityLabel = currentLabel;
+    this._lastActivityId = Number.isFinite(Number(currentId))
+      ? Number(currentId)
+      : null;
+    this._lastPoweredOff = this._isPoweredOffLabel(currentLabel);
+  }
+
   _setAutomationAssistActive(active) {
     const next = !!active;
     if (this._automationAssistActive === next) return;
@@ -1862,6 +1884,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._closeAutomationAssistMqttModal();
     } else {
       this._automationAssistStatusMessage = null;
+      this._primeAutomationAssistActivityBaseline();
       this._syncAutomationAssistMqtt();
     }
     this._updateAutomationAssistUI();
