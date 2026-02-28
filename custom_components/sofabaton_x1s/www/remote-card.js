@@ -5541,6 +5541,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   _commandSaveValidationMessage(slot = null) {
     const draft = slot || this._activeCommandDraft();
     if (!draft) return "";
+    const commandName = String(draft.name ?? "");
+    if (!commandName.length || commandName.startsWith(" ")) {
+      return "Command name must start with a non-space character.";
+    }
     if (!draft.add_as_favorite && !String(draft.hard_button || "").trim()) {
       return "Add as Favorite or Map to button before saving.";
     }
