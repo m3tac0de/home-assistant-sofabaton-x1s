@@ -988,7 +988,7 @@ class SofabatonHub:
             configured_slots = count_configured_command_slots(commands)
             commands_hash = str(command_payload.get("commands_hash") or "")
             brand_name = f"{COMMAND_BRAND_PREFIX}-{commands_hash}"
-            total_steps = 7
+            total_steps = 8 if configured_slots > 0 else 7
             self._set_command_sync_progress(
                 status="running",
                 current_step=0,
@@ -1183,8 +1183,14 @@ class SofabatonHub:
                 )
 
             self._set_command_sync_progress(
+                current_step=8,
+                message="Resyncing physical remote",
+            )
+            await self.async_resync_remote()
+
+            self._set_command_sync_progress(
                 status="success",
-                current_step=7,
+                current_step=8,
                 total_steps=total_steps,
                 message="Sync complete",
                 wifi_device_id=wifi_device_id,

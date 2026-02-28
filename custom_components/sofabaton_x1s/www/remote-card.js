@@ -4953,6 +4953,15 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       if (!this._editorStyle) {
         const st = document.createElement("style");
         st.textContent = `
+          .sb-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); z-index: 9999; }
+          .sb-modal.open { display: flex; }
+          .sb-modal__dialog { width: min(560px, 92vw); max-height: 90vh; overflow: auto; background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); padding: 16px; display: grid; gap: 12px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); }
+          .sb-modal__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+          .sb-modal__title { font-weight: 700; font-size: 18px; }
+          .sb-modal__close { border: none; background: transparent; color: inherit; cursor: pointer; font-size: 22px; line-height: 1; }
+          .sb-modal__text { font-size: 15px; line-height: 1.5; opacity: 0.95; }
+          .sb-modal__optout { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+          .sb-modal__actions { display: flex; gap: 8px; justify-content: flex-end; }
           .sb-exp { border: 1px solid var(--divider-color); border-radius: 12px; overflow: visible; }
           .sb-exp-hdr { width: 100%; display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px; background: var(--ha-card-background, transparent); border: 0; cursor: pointer; transition: background-color 120ms ease; }
           .sb-exp-hdr-left { display:flex; align-items:center; gap: 10px; min-width: 0; }
@@ -5253,10 +5262,148 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     return "idle";
   }
 
+  _commandSyncWarningStorageKey(entityId) {
+    return `sofabaton_x1s:sync_warning_optout:${String(entityId || "").trim()}`;
+  }
+
+  _commandSyncWarningOptedOut(entityId) {
+    const key = this._commandSyncWarningStorageKey(entityId);
+    try {
+      return window.localStorage?.getItem(key) === "1";
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  _setCommandSyncWarningOptOut(entityId, optedOut) {
+    const key = this._commandSyncWarningStorageKey(entityId);
+    try {
+      if (optedOut) window.localStorage?.setItem(key, "1");
+      else window.localStorage?.removeItem(key);
+    } catch (_err) {
+      // Ignore storage errors.
+    }
+  }
+
+  _ensureCommandSyncWarningModal() {
+    if (this._commandSyncWarningModal) return;
+
+    const modal = document.createElement("div");
+    modal.className = "sb-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.addEventListener("click", (ev) => {
+      if (ev.target === modal) this._resolveCommandSyncWarning(false);
+    });
+
+    const dialog = document.createElement("div");
+    dialog.className = "sb-modal__dialog";
+
+    const header = document.createElement("div");
+    header.className = "sb-modal__header";
+
+    const title = document.createElement("div");
+    title.className = "sb-modal__title";
+    title.textContent = "Sync commands to hub?";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "sb-modal__close";
+    closeBtn.textContent = "✕";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.addEventListener("click", () => this._resolveCommandSyncWarning(false));
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const body = document.createElement("div");
+    body.className = "sb-modal__text";
+    body.innerHTML =
+      "This sync can run for several minutes. During this process, other interactions with the hub are blocked.<br><br>At the end of deployment, the physical remote will be force-resynced. It is recommended to finish your full Wifi Commands setup first, then sync once.";
+
+    const optOut = document.createElement("label");
+    optOut.className = "sb-modal__optout";
+    const optOutInput = document.createElement("input");
+    optOutInput.type = "checkbox";
+    this._commandSyncWarningOptOutInput = optOutInput;
+    const optOutText = document.createElement("span");
+    optOutText.textContent = "Don’t show this warning again for this remote.";
+    optOut.appendChild(optOutInput);
+    optOut.appendChild(optOutText);
+
+    const actions = document.createElement("div");
+    actions.className = "sb-modal__actions";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "sb-command-dialog-btn";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => this._resolveCommandSyncWarning(false));
+
+    const confirmBtn = document.createElement("button");
+    confirmBtn.type = "button";
+    confirmBtn.className = "sb-command-dialog-btn sb-command-dialog-btn-primary";
+    confirmBtn.textContent = "Start sync";
+    confirmBtn.addEventListener("click", () => this._resolveCommandSyncWarning(true));
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+
+    dialog.appendChild(header);
+    dialog.appendChild(body);
+    dialog.appendChild(optOut);
+    dialog.appendChild(actions);
+    modal.appendChild(dialog);
+
+    const modalHost = this.shadowRoot || this;
+    if (!modalHost) return;
+    modalHost.appendChild(modal);
+    this._commandSyncWarningModal = modal;
+  }
+
+  _resolveCommandSyncWarning(confirmed) {
+    if (!this._commandSyncWarningModal) return;
+
+    const entityId = String(this._config?.entity || "").trim();
+    if (
+      entityId &&
+      this._commandSyncWarningOptOutInput &&
+      this._commandSyncWarningOptOutInput.checked
+    ) {
+      this._setCommandSyncWarningOptOut(entityId, true);
+    }
+
+    this._commandSyncWarningModal.classList.remove("open");
+    if (this._commandSyncWarningResolver) {
+      this._commandSyncWarningResolver(Boolean(confirmed));
+      this._commandSyncWarningResolver = null;
+    }
+  }
+
+  async _confirmCommandConfigSync() {
+    const entityId = String(this._config?.entity || "").trim();
+    if (!entityId || this._commandSyncWarningOptedOut(entityId)) return true;
+
+    this._ensureCommandSyncWarningModal();
+    if (!this._commandSyncWarningModal) return true;
+
+    if (this._commandSyncWarningOptOutInput) {
+      this._commandSyncWarningOptOutInput.checked = false;
+    }
+
+    this._commandSyncWarningModal.classList.add("open");
+    return new Promise((resolve) => {
+      this._commandSyncWarningResolver = resolve;
+    });
+  }
+
   async _runCommandConfigSync() {
     if (this._commandSyncRunning) return;
     const entityId = String(this._config?.entity || "").trim();
     if (!entityId || !this._hass?.callService) return;
+
+    const confirmed = await this._confirmCommandConfigSync();
+    if (!confirmed) return;
 
     this._commandSyncState = {
       ...(this._commandSyncState || {}),

@@ -460,6 +460,13 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     monkeypatch.setattr(hub, "async_command_to_button", _button)
     monkeypatch.setattr(hub, "async_delete_device", _delete)
 
+    resync_calls: list[bool] = []
+
+    async def _resync_remote():
+        resync_calls.append(True)
+
+    monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+
     payload = {
         "commands": [
             {
@@ -477,6 +484,7 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
 
     assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
     assert macro_refresh_calls == [("clear", 101), ("fetch", 101)]
+    assert resync_calls == [True]
 
     loop.close()
 
@@ -721,6 +729,13 @@ def test_sync_command_config_with_zero_slots_does_not_enable_wifi_device(monkeyp
     monkeypatch.setattr(hub, "async_set_roku_server_enabled", _set_enabled)
     monkeypatch.setattr(hub, "async_delete_device", _delete)
 
+    resync_calls: list[bool] = []
+
+    async def _resync_remote():
+        resync_calls.append(True)
+
+    monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+
     payload = {
         "commands": [],
         "commands_hash": "abc",
@@ -732,6 +747,7 @@ def test_sync_command_config_with_zero_slots_does_not_enable_wifi_device(monkeyp
 
     assert result["status"] == "success"
     assert calls == []
+    assert resync_calls == []
 
     loop.close()
 
@@ -794,6 +810,13 @@ def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
     monkeypatch.setattr(hub, "async_command_to_button", _button)
     monkeypatch.setattr(hub, "async_delete_device", _delete)
 
+    resync_calls: list[bool] = []
+
+    async def _resync_remote():
+        resync_calls.append(True)
+
+    monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+
     payload = {
         "commands": [
             {
@@ -812,7 +835,8 @@ def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
     assert enable_calls == [True]
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "success"
-    assert progress["current_step"] == 7
+    assert progress["current_step"] == 8
+    assert resync_calls == [True]
 
     loop.close()
 
