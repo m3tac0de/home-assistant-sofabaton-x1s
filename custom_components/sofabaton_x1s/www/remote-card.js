@@ -1,5 +1,7 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
 const CARD_VERSION = "0.1.0";
+const KEY_CAPTURE_HELP_URL =
+  "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 const YAML_HELPER_INFO_URL = "#";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
@@ -5970,7 +5972,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     const helperLink = document.createElement("a");
     helperLink.className = "sb-yaml-helper-link";
-    helperLink.href = YAML_HELPER_INFO_URL;
+    helperLink.href = KEY_CAPTURE_HELP_URL;
     helperLink.target = "_blank";
     helperLink.rel = "noopener noreferrer";
     helperLink.title = "Learn more about Snippet Generator";
