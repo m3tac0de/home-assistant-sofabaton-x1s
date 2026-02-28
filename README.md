@@ -171,6 +171,8 @@ In the Sofabaton Virtual Remote card's configuration editor, under **Automation 
 2. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
 3. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.    
 
+  More details are here: [`docs/wifi_commands.md`](docs/wifi_commands.md)
+
   >    - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
   >    - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
   >    - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
