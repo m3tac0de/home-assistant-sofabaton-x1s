@@ -11,7 +11,8 @@ Control your Sofabaton **X1**, **X1S** and **X2** hub from Home Assistant using 
 
 - 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard card**: Sofabaton Virtual Remote
-- 🤖 **Automations**: `remote.send_command`, “recorded keypress”, “index” + fetch action
+- 🤖 **Send key presses to the hub**: `remote.send_command`, “recorded keypress”, “index” + fetch action
+- ⚡ **Receive key presses from the hub**: Sofabaton Virtual Remote, "Wifi Commands"
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
 - 🪵 **Useful logs & diagnostics**: see [`docs/logging.md`](docs/logging.md)
 
@@ -72,10 +73,10 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 - 🧩 **Multiple hubs** supported
 - 🎛 **Activity select** entity (`select.<hub>_activity`)
 - 🔘 **Dynamic button entities** that match your **currently active activity**
-- ⚙️ **Remote entity** per hub (`remote.<hub>_remote`) for scripts/automations
-- 🛠 **Fetch action** to retrieve device/activity command maps (`sofabaton_x1s.fetch_device_commands`)
+- ⚙️ **Send key presses** per hub (`remote.<hub>_remote`) for scripts/automations, for sending key presses to the hub
+- 💎 **Receive key presses**: Wifi Commands configured via the UI, trigger Actions directly from key presses on the physical remote
 - 🔔 **Find Remote** diagnostic button (buzzer)
-- 🟢 **Sensors** for activity, connectivity, app connection, recorded keypress
+- 🟢 **Sensors** for activity, connectivity, app connection, recorded keypress, wifi commands
 - 🧪 **Diagnostic “Index” sensor** for command lists/macros/favorites
 - 🛰 **Proxy can be disabled** per device (stop advertising/binding for the official app)
 
@@ -125,6 +126,8 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
     Enables/disables proxy advertising + UDP binding (does not interrupt active sessions).
   - `switch.<hub>_hex_logging`  
     Enables deep protocol logging for diagnostics (see logging docs).
+  - `switch.<hub>_wifi_device`  
+    Enables/disables the listener for Wifi Commands. Disabled by default, enabled automically when deploying Wifi Commands to the hub.
 
 - **Sensors**
   - `binary_sensor.<hub>_hub_connected` (connected/disconnected)
@@ -132,9 +135,11 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
   - `sensor.<hub>_activity` (current activity; stays accurate regardless of where it changed, **always available**)
   - `sensor.<hub>_recorded_keypress` (ready-to-copy replay payloads from app button presses)
   - `sensor.<hub>_index` (diagnostic: activities/devices/commands/macros/favorites)
+  - `sensor.<hub>_wifi_commands` (updates on Wifi Command key presses)
 
 - **Buttons**
   - `button.<hub>_find_remote`
+  - `button.<hub>_resync_remote` (triggers a configuration re-sync of the physical remote)
   - `button.<hub>_volume_up`, `button.<hub>_mute`, … (dynamic availability by activity)
 
 - **Text**
@@ -155,6 +160,19 @@ This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 > Right now, this integration auto-deploys the card. You DO NOT have to install it separately.
 > Once the card is available as a standard HACS frontend plugin, it's recommended you install it that way, so it can be updated separately from this integration.
 > This integration automatically stops deploying the card as soon as it detects that the card is installed through HACS (a reboot of Home Assistant is required).
+
+### Wifi Commands
+
+In the card's configuration editor, under **Automation Assist > Wifi Commands** 10 slots are available for custom commands.
+1. Make a new command: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
+2. Configure an Action to run whenever a key with our command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. Configuring an Action is optional: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can trigger from it.
+3. Once configuration is completed, press the **Sync to hub** button. This will deploy the configuration directly to the hub.    
+  Note the following:
+     - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
+     - When configuration is successfully deployed to the hub, the physical remote is instructed to synchronize with the hub.
+     - Due to the above, it is best to create a complete configuration before deploying to the hub.
+
+
 
 ---
 
