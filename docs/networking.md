@@ -65,8 +65,8 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 1. **CALL_ME over UDP**: Home Assistant sends a short "call me" packet to the hub's advertised UDP port (usually `8102`).
 2. **TCP connect-back**: The hub opens a TCP session back to Home Assistant on the proxy's listen port. The integration tries up to 32 sequential TCP ports starting from the configured base port, so multiple hubs can coexist without clashes.
 
-### Optional
-When using this integration's "Wifi Commands" feature, the hub will make HTTP requests into the integration. The default port used is 8060. The port is configurable, but changing it breaks compatibility with X1 hubs.
+### Optional / Wifi Commands
+When using this integration's "Wifi Commands" feature, the hub will make HTTP requests into the integration. The default port used is **8060**. The port is configurable in the integration's global options, but changing it breaks compatibility with X1 hubs.
 
 ### Firewall rules to allow
 - mDNS/Bonjour from hub → Home Assistant (or mDNS forwarded across VLANs).
