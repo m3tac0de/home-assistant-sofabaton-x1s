@@ -1,7 +1,8 @@
 # Automation Assist: Wifi Commands
 
+Run Home Assistant Actions when buttons are pressed on the physical remote.  
 In the **Sofabaton Virtual Remote** card's configuration editor, under **Automation Assist > Wifi Commands** 10 slots are available for custom commands.
-These commands are deployed to the hub from the UI after which physical keypresses trigger Home Assistant Actions directly.
+These commands are deployed to the hub, from the UI, after which physical keypresses trigger Home Assistant Actions directly.
 
 1. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
 2. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
