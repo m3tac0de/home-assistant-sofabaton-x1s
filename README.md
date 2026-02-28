@@ -73,8 +73,8 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 - 🧩 **Multiple hubs** supported
 - 🎛 **Activity select** entity (`select.<hub>_activity`)
 - 🔘 **Dynamic button entities** that match your **currently active activity**
-- ⚙️ **Send key presses** per hub (`remote.<hub>_remote`) for scripts/automations, for sending key presses to the hub
-- 💎 **Receive key presses**: Wifi Commands configured via the UI, trigger Actions directly from key presses on the physical remote
+- ⚙️ **Send key presses** (`remote.<hub>_remote`) per hub for scripts/automations
+- 💎 **Receive key presses**: "Wifi Commands" configured via the UI, trigger Actions directly from key presses on the physical remote
 - 🔔 **Find Remote** diagnostic button (buzzer)
 - 🟢 **Sensors** for activity, connectivity, app connection, recorded keypress, wifi commands
 - 🧪 **Diagnostic “Index” sensor** for command lists/macros/favorites
@@ -175,11 +175,11 @@ In the Sofabaton Virtual Remote card's configuration editor, under **Automation 
   >    - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
   >    - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
 
-<img height="200" alt="image" src="https://github.com/user-attachments/assets/79f2d841-e4ef-4252-9a62-e2c7ef577f88" />  
-<img height="200" alt="image" src="https://github.com/user-attachments/assets/de132346-40ca-422e-a5e9-abb7efce6433" />  
-<img height="200" alt="image" src="https://github.com/user-attachments/assets/ead35c29-9a53-4906-a7af-c65009bba3fc" />  
-<img height="200" alt="image" src="https://github.com/user-attachments/assets/7bdad456-f637-43c6-8c50-9c3ccaad6990" />  
-<img height="200" alt="image" src="https://github.com/user-attachments/assets/45e2f748-44f2-48c6-bc70-abee75ad30cf" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/79f2d841-e4ef-4252-9a62-e2c7ef577f88" />  
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/de132346-40ca-422e-a5e9-abb7efce6433" />  
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/ead35c29-9a53-4906-a7af-c65009bba3fc" />  
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/7bdad456-f637-43c6-8c50-9c3ccaad6990" />  
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/45e2f748-44f2-48c6-bc70-abee75ad30cf" />
 
 ### Send a command in the context of the current activity
 
