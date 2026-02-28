@@ -12,7 +12,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 - 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard card**: Sofabaton Virtual Remote
 - 🤖 **Send key presses to the hub**: `remote.send_command`, “recorded keypress”, “index” + fetch action
-- ⚡ **Receive key presses from the hub**: Sofabaton Virtual Remote, "Wifi Commands"
+- ⚡ **Receive key presses from the hub**: Sofabaton Virtual Remote, "Wifi Commands" see [`docs/wifi_commands.md`](docs/wifi_commands.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
 - 🪵 **Useful logs & diagnostics**: see [`docs/logging.md`](docs/logging.md)
 
