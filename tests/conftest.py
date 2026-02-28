@@ -16,9 +16,11 @@ def _install_homeassistant_stubs() -> None:
 
     vol.Schema = _Schema
     vol.Required = lambda key, default=None: key  # type: ignore[assignment]
+    vol.Optional = lambda key, default=None: key  # type: ignore[assignment]
     vol.All = lambda *args, **kwargs: args  # type: ignore[assignment]
     vol.Range = lambda **kwargs: kwargs  # type: ignore[assignment]
     vol.In = lambda *args, **kwargs: args  # type: ignore[assignment]
+    vol.ALLOW_EXTRA = object()
     sys.modules.setdefault("voluptuous", vol)
 
     ha = types.ModuleType("homeassistant")
@@ -84,6 +86,7 @@ def _install_homeassistant_stubs() -> None:
 
     config_validation = types.ModuleType("homeassistant.helpers.config_validation")
     config_validation.boolean = lambda value=None: value  # type: ignore[assignment]
+    config_validation.entity_id = lambda value=None: value  # type: ignore[assignment]
     sys.modules.setdefault("homeassistant.helpers.config_validation", config_validation)
 
     service_info = types.ModuleType("homeassistant.helpers.service_info")
@@ -128,12 +131,79 @@ def _install_homeassistant_stubs() -> None:
     device_registry.async_get = lambda hass=None: None
     sys.modules.setdefault("homeassistant.helpers.device_registry", device_registry)
 
+
+    storage = types.ModuleType("homeassistant.helpers.storage")
+
+    class Store:  # pragma: no cover - only used as stub
+        def __init__(self, hass, version, key, minor_version=1):
+            self._data = None
+
+        async def async_load(self):
+            return self._data
+
+        async def async_save(self, data):
+            self._data = data
+
+    storage.Store = Store
+    sys.modules.setdefault("homeassistant.helpers.storage", storage)
+
     entity_registry = types.ModuleType("homeassistant.helpers.entity_registry")
     entity_registry.async_get = lambda hass=None: None
     sys.modules.setdefault("homeassistant.helpers.entity_registry", entity_registry)
 
+    entity = types.ModuleType("homeassistant.helpers.entity")
+
+    class DeviceInfo(dict):  # pragma: no cover - only used as stub
+        pass
+
+    class EntityCategory:  # pragma: no cover - only used as stub
+        CONFIG = "config"
+
+    entity.DeviceInfo = DeviceInfo
+    entity.EntityCategory = EntityCategory
+    sys.modules.setdefault("homeassistant.helpers.entity", entity)
+
+    entity_platform = types.ModuleType("homeassistant.helpers.entity_platform")
+    entity_platform.AddEntitiesCallback = object
+    sys.modules.setdefault("homeassistant.helpers.entity_platform", entity_platform)
+
     components = types.ModuleType("homeassistant.components")
     sys.modules.setdefault("homeassistant.components", components)
+
+    switch = types.ModuleType("homeassistant.components.switch")
+
+    class SwitchEntity:  # pragma: no cover - only used as stub
+        def async_on_remove(self, *args, **kwargs):
+            return None
+
+        def async_write_ha_state(self):
+            return None
+
+    switch.SwitchEntity = SwitchEntity
+    sys.modules.setdefault("homeassistant.components.switch", switch)
+
+    frontend = types.ModuleType("homeassistant.components.frontend")
+    frontend.add_extra_js_url = lambda *args, **kwargs: None
+    sys.modules.setdefault("homeassistant.components.frontend", frontend)
+    components.frontend = frontend
+
+
+    websocket_api = types.ModuleType("homeassistant.components.websocket_api")
+    websocket_api.async_register_command = lambda *args, **kwargs: None
+    websocket_api.websocket_command = lambda schema: (lambda func: func)
+    websocket_api.async_response = lambda func: func
+    sys.modules.setdefault("homeassistant.components.websocket_api", websocket_api)
+
+    http = types.ModuleType("homeassistant.components.http")
+
+    class StaticPathConfig:  # pragma: no cover - only used as stub
+        def __init__(self, url_path: str, path: str, cache_headers: bool) -> None:
+            self.url_path = url_path
+            self.path = path
+            self.cache_headers = cache_headers
+
+    http.StaticPathConfig = StaticPathConfig
+    sys.modules.setdefault("homeassistant.components.http", http)
 
     zeroconf = types.ModuleType("homeassistant.components.zeroconf")
     zeroconf.async_get_instance = lambda *args, **kwargs: None

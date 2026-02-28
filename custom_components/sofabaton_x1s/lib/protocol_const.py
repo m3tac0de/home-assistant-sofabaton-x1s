@@ -46,7 +46,9 @@ class ButtonName:
 
 
 BUTTONNAME_BY_CODE = {
-    v: k for k, v in ButtonName.__dict__.items() if isinstance(v, int)
+    v: k
+    for k, v in ButtonName.__dict__.items()
+    if isinstance(v, int) and k.isupper() and not k.startswith("_")
 }
 
 
@@ -57,8 +59,13 @@ OP_REQ_BUTTONS = 0x023C  # payload: [act_lo, 0xFF]
 OP_REQ_COMMANDS = 0x025C  # payload: [dev_lo, cmd] (1-byte) or [dev_lo, 0xFF] for full list
 OP_REQ_ACTIVATE = 0x023F  # payload: [id_lo, key_code] (activity or device ID)
 OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites mapping (X1)
+OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
 OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
 OP_FIND_REMOTE_X2 = 0x0323  # payload: [0x00, 0x00, 0x08] observed on X2 hubs
+OP_REMOTE_SYNC = 0x0064  # payload: empty; force remote<->hub sync on X1/X1S
+OP_X2_REMOTE_LIST = 0x012E  # payload: [0x00]; request connected remotes on X2
+OP_X2_REMOTE_LIST_ROW = 0x332F  # payload includes 3-byte remote id and remote metadata
+OP_X2_REMOTE_SYNC = 0x0464  # payload: [remote_id:3][0x01]; force sync for selected remote
 OP_CREATE_DEVICE_HEAD = 0x07D5  # payload includes UTF-16LE device name
 OP_DEFINE_IP_CMD = 0x0ED3  # payload includes HTTP method/URL/headers
 OP_DEFINE_IP_CMD_EXISTING = 0x0EAE  # payload defines IP command for an existing device
@@ -93,6 +100,7 @@ OP_DEVBTN_PAGE_ALT3 = 0x2F5D  # H→A: variant page layout with earlier payload 
 OP_DEVBTN_PAGE_ALT4 = 0xF35D  # H→A: variant page layout with earlier payload offset
 OP_DEVBTN_PAGE_ALT5 = 0x7B5D  # H→A: variant page layout with earlier payload offset
 OP_DEVBTN_PAGE_ALT6 = 0xCB5D  # H→A: variant page layout with earlier payload offset
+OP_DEVBTN_PAGE_ALT7 = 0x535D  # H→A: variant page layout with earlier payload offset
 
 # X1 hub responses
 OP_X1_DEVICE = 0x7B0B  # Row from list of devices (X1 firmware)
@@ -116,12 +124,21 @@ OP_ACTIVITY_MAP_PAGE = 0x7B6D
 # noise we're not using (kept for reference)
 OP_REQ_VERSION = 0x0058  # yields WIFI_FW (0x0359) then INFO_BANNER (0x112F)
 OP_PING2 = 0x0140
+OP_REQ_ACTIVITY_INPUTS = 0x0148  # payload: [0x01] request activity input candidates
+OP_PING2_ACK = 0x0242  # H→A keepalive response observed on X1S/X2
+OP_ACTIVITY_DEVICE_CONFIRM = 0x024F  # payload: [dev_lo, include_flag]
 OP_REQ_MACRO_LABELS = 0x024D  # payload: [act_lo, 0xFF]
 OP_REQ_MACROS = OP_REQ_MACRO_LABELS  # backward-compat alias
 OP_MACROS_A1 = 0x6E13
 OP_MACROS_B1 = 0x5A13
 OP_MACROS_A2 = 0x8213
 OP_MACROS_B2 = 0x6413
+OP_ACTIVITY_INPUTS_PAGE_A = 0xFA47  # H→A activity-input candidates page (X1S/X2)
+OP_ACTIVITY_INPUTS_PAGE_B = 0xC947  # H→A final activity-input candidates page (X1S/X2)
+OP_ACTIVITY_ASSIGN_FINALIZE = 0xD538  # A→H post-macro activity assignment save (X1S/X2)
+OP_ACTIVITY_ASSIGN_COMMIT = 0x0265  # A→H post-save commit marker (observed on X2)
+OP_ACTIVITY_CONFIRM = 0x7B38  # A→H activity confirmation row write (observed X1)
+OP_ACTIVITY_MAP_PAGE_X1S = 0xD56D  # H→A activity mapping page variant (X1S/X2)
 OP_BANNER = 0x1D02  # hub ident, name, batch, hub fw (first screen)
 OP_WIFI_FW = 0x0359  # WiFi firmware ver (Vx.y.z)
 OP_INFO_BANNER = 0x112F  # vendor tag, batch date, remote fw byte, etc.
@@ -135,8 +152,13 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_COMMANDS: "REQ_COMMANDS",
     OP_REQ_ACTIVATE: "REQ_ACTIVATE",
     OP_REQ_ACTIVITY_MAP: "REQ_ACTIVITY_MAP",
+    OP_DELETE_DEVICE: "DELETE_DEVICE",
     OP_FIND_REMOTE: "FIND_REMOTE",
     OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
+    OP_REMOTE_SYNC: "REMOTE_SYNC",
+    OP_X2_REMOTE_LIST: "X2_REMOTE_LIST",
+    OP_X2_REMOTE_LIST_ROW: "X2_REMOTE_LIST_ROW",
+    OP_X2_REMOTE_SYNC: "X2_REMOTE_SYNC",
     OP_CREATE_DEVICE_HEAD: "CREATE_DEVICE_HEAD",
     OP_DEFINE_IP_CMD: "DEFINE_IP_CMD",
     OP_DEFINE_IP_CMD_EXISTING: "DEFINE_IP_CMD_EXISTING",
@@ -175,6 +197,7 @@ OPNAMES: Dict[int, str] = {
     OP_DEVBTN_PAGE_ALT4: "DEVCTL_PAGE_ALT4",
     OP_DEVBTN_PAGE_ALT5: "DEVCTL_PAGE_ALT5",
     OP_DEVBTN_PAGE_ALT6: "DEVCTL_PAGE_ALT6",
+    OP_DEVBTN_PAGE_ALT7: "DEVCTL_PAGE_ALT7",
     OP_X1_DEVICE: "X1_DEVICE",
     OP_X1_ACTIVITY: "X1_ACTIVITY",
     # The rest are unused but kept for completeness
@@ -185,7 +208,16 @@ OPNAMES: Dict[int, str] = {
     OP_MACROS_B1: "MACROS_B1",
     OP_MACROS_A2: "MACROS_A2",
     OP_MACROS_B2: "MACROS_B2",
+    OP_ACTIVITY_DEVICE_CONFIRM: "ACTIVITY_DEVICE_CONFIRM",
+    OP_REQ_ACTIVITY_INPUTS: "REQ_ACTIVITY_INPUTS",
+    OP_PING2_ACK: "PING2_ACK",
     OP_REQ_MACRO_LABELS: "REQ_MACRO_LABELS",
+    OP_ACTIVITY_INPUTS_PAGE_A: "ACTIVITY_INPUTS_PAGE_A",
+    OP_ACTIVITY_INPUTS_PAGE_B: "ACTIVITY_INPUTS_PAGE_B",
+    OP_ACTIVITY_ASSIGN_FINALIZE: "ACTIVITY_ASSIGN_FINALIZE",
+    OP_ACTIVITY_ASSIGN_COMMIT: "ACTIVITY_ASSIGN_COMMIT",
+    OP_ACTIVITY_CONFIRM: "ACTIVITY_CONFIRM",
+    OP_ACTIVITY_MAP_PAGE_X1S: "ACTIVITY_MAP_PAGE_X1S",
     OP_REQ_VERSION: "REQ_VERSION",
     OP_PING2: "PING2",
 }
@@ -242,8 +274,13 @@ __all__ = [
     "OP_REQ_COMMANDS",
     "OP_REQ_ACTIVATE",
     "OP_REQ_ACTIVITY_MAP",
+    "OP_DELETE_DEVICE",
     "OP_FIND_REMOTE",
     "OP_FIND_REMOTE_X2",
+    "OP_REMOTE_SYNC",
+    "OP_X2_REMOTE_LIST",
+    "OP_X2_REMOTE_LIST_ROW",
+    "OP_X2_REMOTE_SYNC",
     "OP_CREATE_DEVICE_HEAD",
     "OP_DEFINE_IP_CMD",
     "OP_DEFINE_IP_CMD_EXISTING",
@@ -287,11 +324,19 @@ __all__ = [
     "OP_ACTIVITY_MAP_PAGE",
     "OP_REQ_VERSION",
     "OP_PING2",
+    "OP_PING2_ACK",
+    "OP_ACTIVITY_DEVICE_CONFIRM",
+    "OP_REQ_ACTIVITY_INPUTS",
     "OP_REQ_MACRO_LABELS",
     "OP_MACROS_A1",
     "OP_MACROS_B1",
     "OP_MACROS_A2",
     "OP_MACROS_B2",
+    "OP_ACTIVITY_INPUTS_PAGE_A",
+    "OP_ACTIVITY_INPUTS_PAGE_B",
+    "OP_ACTIVITY_ASSIGN_FINALIZE",
+    "OP_ACTIVITY_CONFIRM",
+    "OP_ACTIVITY_MAP_PAGE_X1S",
     "OP_BANNER",
     "OP_WIFI_FW",
     "OP_INFO_BANNER",

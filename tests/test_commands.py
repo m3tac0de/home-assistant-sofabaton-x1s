@@ -35,6 +35,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_DEVBTN_PAGE,
     OP_DEVBTN_PAGE_ALT1,
     OP_DEVBTN_PAGE_ALT6,
+    OP_DEVBTN_PAGE_ALT7,
     OP_DEVBTN_TAIL,
     OP_DEVBTN_SINGLE,
     SYNC0,
@@ -657,6 +658,92 @@ def test_alt_page_variant_uses_correct_device_and_offset() -> None:
     handler.handle(alt_frame)
 
     assert proxy.state.commands[dev_id] == {1: "Stop", 2: "Play"}
+
+
+def test_alt_page_variant_535d_preserves_volume_command_ids() -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonFamilyHandler()
+
+    dev_id = 0x01
+
+    header_raw = _build_alt_page_frame(
+        OP_DEVBTN_PAGE_ALT1,
+        1,
+        2,
+        dev_id,
+        121,
+        "Volume_down",
+        add_separator=True,
+    )
+    alt_raw = _build_alt_page_frame(OP_DEVBTN_PAGE_ALT7, 2, 2, dev_id, 122, "Volume_up")
+
+    header_frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_PAGE_ALT1,
+        direction="H→A",
+        payload=header_raw[4:-1],
+        raw=header_raw,
+        name="DEVBTN_PAGE_ALT1",
+    )
+
+    alt_frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_PAGE_ALT7,
+        direction="H→A",
+        payload=alt_raw[4:-1],
+        raw=alt_raw,
+        name="DEVBTN_PAGE_ALT7",
+    )
+
+    handler.handle(header_frame)
+    handler.handle(alt_frame)
+
+    assert proxy.state.commands[dev_id] == {121: "Volume_down", 122: "Volume_up"}
+
+
+def test_parse_device_commands_keeps_single_character_numeric_labels() -> None:
+    frames = [
+        bytes.fromhex(
+            "a5 5a f7 5d 01 00 01 01 00 15 7a 01 01 0d 00 00 00 00 00 01 50 6f 77 65 72 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 02 0d 00 00 00 00 17 18 50 6f 77 65 72 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 03 0d 00 00 00 00 17 13 50 6f 77 65 72 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 04 0d 00 00 00 00 00 38 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 05 0d 00 00 00 00 00 3d 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 06 0d 00 00 00 00 00 42 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 6b"
+        ),
+        bytes.fromhex(
+            "a5 5a f3 5d 01 00 02 01 07 0d 00 00 00 00 00 47 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 08 0d 00 00 00 00 00 4c 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 09 0d 00 00 00 00 00 51 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 0a 0d 00 00 00 00 00 56 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 0b 0d 00 00 00 00 00 5b 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 0c 0d 00 00 00 00 00 60 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0f"
+        ),
+        bytes.fromhex(
+            "a5 5a f3 5d 01 00 03 01 0d 0d 00 00 00 00 00 65 39 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 0e 0d 00 00 00 00 00 12 45 6e 65 72 67 79 5f 73 61 76 69 6e 67 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 5a"
+        ),
+    ]
+
+    assembler = DeviceCommandAssembler()
+    completed: list[tuple[int, bytes]] = []
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, dev_id_override=1))
+
+    if not completed:
+        completed.extend(assembler.finalize_contiguous(1))
+
+    assert len(completed) == 1
+    _, assembled_payload = completed[0]
+
+    proxy = X1Proxy("127.0.0.1")
+    parsed = proxy.parse_device_commands(assembled_payload, 1)
+
+    assert parsed[1] == "Power"
+    assert parsed[2] == "Power off"
+    assert parsed[3] == "Power on"
+    assert parsed[4] == "0"
+    assert parsed[5] == "1"
+    assert parsed[6] == "2"
+    assert parsed[7] == "3"
+    assert parsed[8] == "4"
+    assert parsed[9] == "5"
+    assert parsed[10] == "6"
+    assert parsed[11] == "7"
+    assert parsed[12] == "8"
+    assert parsed[13] == "9"
+    assert parsed[14] == "Energy_saving"
 
 
 def test_parse_device_commands_handles_alt_command_pages() -> None:

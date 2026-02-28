@@ -18,6 +18,7 @@ from .protocol_const import (
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
     OP_DEVBTN_PAGE_ALT6,
+    OP_DEVBTN_PAGE_ALT7,
     OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
     OP_KEYMAP_EXTRA,
@@ -40,6 +41,7 @@ _KNOWN_DEVBTN_OPCODES: set[int] = {
     OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT5,
     OP_DEVBTN_PAGE_ALT6,
+    OP_DEVBTN_PAGE_ALT7,
     OP_DEVBTN_SINGLE,
     OP_DEVBTN_TAIL,
     OP_KEYMAP_EXTRA,
@@ -95,6 +97,7 @@ class DeviceCommandAssembler:
             OP_DEVBTN_PAGE_ALT4,
             OP_DEVBTN_PAGE_ALT5,
             OP_DEVBTN_PAGE_ALT6,
+            OP_DEVBTN_PAGE_ALT7,
         ):
             return 4
 
@@ -149,6 +152,7 @@ class DeviceCommandAssembler:
             OP_DEVBTN_PAGE_ALT3,
             OP_DEVBTN_PAGE_ALT4,
             OP_DEVBTN_PAGE_ALT5,
+            OP_DEVBTN_PAGE_ALT7,
         ):
             if frame_no == 1 or burst.total_frames is None:
                 burst.total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
@@ -161,6 +165,7 @@ class DeviceCommandAssembler:
             OP_DEVBTN_PAGE_ALT3,
             OP_DEVBTN_PAGE_ALT4,
             OP_DEVBTN_PAGE_ALT5,
+            OP_DEVBTN_PAGE_ALT7,
         ) and payload[:6] == b"\x01\x00\x01\x01\x00\x01":
             data_start = 7
         if opcode in (
@@ -375,6 +380,7 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
                 label_start % 2
                 and label_start + 1 < len(chunk)
                 and chunk[label_start + 1] == 0x00
+                and not (32 <= chunk[label_start] <= 126)
             ):
                 label_start += 1
 

@@ -15,6 +15,8 @@ CONF_MDNS_TXT = "mdns_txt"
 CONF_MDNS_VERSION = "mdns_version"
 CONF_PROXY_ENABLED = "proxy_enabled"
 CONF_HEX_LOGGING_ENABLED = "hex_logging_enabled"
+CONF_ROKU_SERVER_ENABLED = "roku_server_enabled"
+CONF_ROKU_LISTEN_PORT = "roku_listen_port"
 CONF_ENABLE_X2_DISCOVERY = "enable_x2_discovery"
 
 # Hub version classification
@@ -42,6 +44,10 @@ MDNS_SERVICE_TYPE_BY_VERSION = {
 
 DEFAULT_PROXY_UDP_PORT = 8102
 DEFAULT_HUB_LISTEN_BASE = 8200
+DEFAULT_ROKU_LISTEN_PORT = 8060
+WIFI_DEVICE_ENABLE_DOCS_URL = (
+    "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/networking.md"
+)
 
 PLATFORMS = [
     "select",
@@ -86,6 +92,18 @@ def signal_app_activations(entry_id: str) -> str:
     return f"sofabaton_x1s_app_activations_{entry_id}"
 
 
+def signal_ip_commands(entry_id: str) -> str:
+    return f"sofabaton_x1s_ip_commands_{entry_id}"
+
+
+def signal_wifi_device(entry_id: str) -> str:
+    return f"sofabaton_x1s_wifi_device_{entry_id}"
+
+
+def signal_command_sync(entry_id: str) -> str:
+    return f"sofabaton_x1s_command_sync_{entry_id}"
+
+
 def classify_hub_version(props: dict[str, str]) -> str:
     """Determine hub version based on advertised properties."""
 
@@ -103,3 +121,12 @@ def mdns_service_type_for_props(props: dict[str, str]) -> str:
 
     version = classify_hub_version(props)
     return MDNS_SERVICE_TYPE_BY_VERSION.get(version, MDNS_SERVICE_TYPE_X1)
+
+
+def format_hub_entry_title(version: str | None, host: str | None, mac: str | None) -> str:
+    """Return a consistent config-entry title for integration cards."""
+
+    display_version = (version or DEFAULT_HUB_VERSION).strip() or DEFAULT_HUB_VERSION
+    display_host = (host or "unknown").strip() or "unknown"
+    display_mac = (mac or "unknown").strip() or "unknown"
+    return f"Sofabaton {display_version} ({display_host} / {display_mac})"

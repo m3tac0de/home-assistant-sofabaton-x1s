@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from custom_components.sofabaton_x1s.lib.protocol_const import ButtonName
+from custom_components.sofabaton_x1s.lib.protocol_const import BUTTONNAME_BY_CODE, ButtonName
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache, BurstScheduler
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -162,3 +162,89 @@ def test_activity_macros_are_replaced_and_deduped() -> None:
 
     assert {entry["command_id"] for entry in macros} == {1, 2}
     assert any(entry["command_id"] == 1 and entry["label"] == "Updated Macro One" for entry in macros)
+
+
+def test_buttonname_lookup_excludes_python_metadata_attrs() -> None:
+    assert 0x0B not in BUTTONNAME_BY_CODE
+
+
+def test_accumulate_keymap_does_not_treat_slot_0x0b_as_standard_button() -> None:
+    cache = ActivityCache()
+    act = 0x67
+
+    payload = bytes.fromhex(
+        "67 01 0b 00 00 00 00 4e 21 01 00 00 00 00 00 00 00 67"
+        " 67 0b 01 00 00 00 00 01 88 17 00 00 00 00 00 00 00 00"
+        " 67 0f 01 00 00 00 00 2e 78 0f 00 00 00 00 00 00 00 00"
+        " 67 ae 01 00 00 00 00 00 2e 16 00 00 00 00 00 00 00 00"
+    )
+
+    cache.accumulate_keymap(act, payload)
+
+    assert {slot["button_id"] for slot in cache.get_activity_favorite_slots(act)} == {0x01, 0x0B, 0x0F}
+    assert cache.get_activity_command_refs(act) == {(0x0B, 0x01), (0x01, 0x17), (0x01, 0x0F)}
+    assert cache.buttons.get(act, set()) == {ButtonName.UP}
+
+
+def test_accumulate_keymap_keeps_ch_up_mapping_as_favorite_slot() -> None:
+    cache = ActivityCache()
+    act = 0x67
+
+    payload = bytes.fromhex(
+        "67 01 0b 00 00 00 00 4e 21 01 00 00 00 00 00 00 00 00"
+        " 67 ae 01 00 00 00 00 00 2e 16 00 00 00 00 00 00 00 00"
+        " 67 b7 0b 00 00 00 00 4e 26 06 00 00 00 00 00 00 00 00"
+    )
+
+    cache.accumulate_keymap(act, payload)
+
+    refs = cache.get_activity_command_refs(act)
+    assert (0x0B, 0x06) in refs
+
+    favorites = cache.get_activity_favorite_slots(act)
+    assert any(
+        slot["button_id"] == ButtonName.CH_UP
+        and slot["device_id"] == 0x0B
+        and slot["command_id"] == 0x06
+        for slot in favorites
+    )
+
+
+def test_activity_mapping_upsert_overrides_keymap_duplicate_pair() -> None:
+    cache = ActivityCache()
+    act = 0x67
+
+    cache.accumulate_keymap(
+        act,
+        bytes.fromhex(
+            "67 b7 0b 00 00 00 00 4e 26 06 00 00 00 00 00 00 00 00"
+        ),
+    )
+    cache.record_activity_mapping(act, 0x0B, 0x06, button_id=0x99)
+
+    slots = [
+        slot
+        for slot in cache.get_activity_favorite_slots(act)
+        if slot["device_id"] == 0x0B and slot["command_id"] == 0x06
+    ]
+
+    assert len(slots) == 1
+    assert slots[0]["button_id"] == 0x99
+
+
+def test_accumulate_keymap_ignores_home_and_vol_up_as_favorites() -> None:
+    cache = ActivityCache()
+    act = 0x67
+
+    payload = bytes.fromhex(
+        "67 b4 01 00 00 00 00 07 c7 10 00 00 00 00 00 00 00 00"
+        " 67 b6 03 00 00 00 00 2e 77 79 00 00 00 00 00 00 00 00"
+        " 67 b7 0b 00 00 00 00 4e 26 06 00 00 00 00 00 00 00 00"
+    )
+
+    cache.accumulate_keymap(act, payload)
+
+    refs = cache.get_activity_command_refs(act)
+    assert (0x0B, 0x06) in refs
+    assert (0x01, 0x10) not in refs
+    assert (0x03, 0x79) not in refs

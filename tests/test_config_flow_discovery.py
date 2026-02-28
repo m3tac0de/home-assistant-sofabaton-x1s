@@ -11,6 +11,7 @@ from custom_components.sofabaton_x1s.const import (
     HUB_VERSION_X2,
     DOMAIN,
     MDNS_SERVICE_TYPES,
+    format_hub_entry_title,
 )
 from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
@@ -163,3 +164,101 @@ def test_zeroconf_x2_prompts_when_enabled() -> None:
 
     assert result["type"] == "form"
     assert result["step_id"] == "zeroconf_confirm"
+
+
+def test_manual_flow_formats_entry_title_with_version_host_and_mac() -> None:
+    flow = _flow_with_x2_enabled(False)
+
+    _run(flow.async_step_manual({
+        "name": "Manual Hub",
+        "host": "192.168.2.181",
+        CONF_MDNS_VERSION: HUB_VERSION_X2,
+    }))
+
+    result = _run(flow.async_step_ports({
+        "proxy_udp_port": 8000,
+        "hub_listen_base": 8200,
+    }))
+
+    assert result["type"] == "create_entry"
+    assert result["title"] == format_hub_entry_title(
+        HUB_VERSION_X2,
+        "192.168.2.181",
+        result["data"]["mac"],
+    )
+
+
+def test_format_hub_entry_title_defaults_unknown_values() -> None:
+    assert format_hub_entry_title(None, None, None) == "Sofabaton X1 (unknown / unknown)"
+
+
+def test_options_flow_syncs_shared_ports_to_all_hubs() -> None:
+    flow = ConfigFlow.async_get_options_flow(
+        SimpleNamespace(
+            entry_id="entry-1",
+            data={"name": "Hub 1"},
+            options={
+                "proxy_udp_port": 8102,
+                "hub_listen_base": 8200,
+                "roku_listen_port": 8060,
+            },
+        )
+    )
+
+    entry_one = SimpleNamespace(
+        entry_id="entry-1",
+        data={"name": "Hub 1"},
+        options={
+            "proxy_udp_port": 8102,
+            "hub_listen_base": 8200,
+            "roku_listen_port": 8060,
+            "other": "one",
+        },
+    )
+    entry_two = SimpleNamespace(
+        entry_id="entry-2",
+        data={"name": "Hub 2"},
+        options={
+            "proxy_udp_port": 9999,
+            "hub_listen_base": 9200,
+            "roku_listen_port": 9060,
+            "other": "two",
+        },
+    )
+
+    updates: list[tuple[str, dict[str, int | str]]] = []
+
+    def _update_entry(entry, *, options=None, data=None):
+        if options is not None:
+            entry.options = options
+            updates.append((entry.entry_id, options))
+        if data is not None:
+            entry.data = data
+
+    flow.hass = SimpleNamespace(
+        config_entries=SimpleNamespace(
+            async_entries=lambda domain: [entry_one, entry_two],
+            async_update_entry=_update_entry,
+        )
+    )
+
+    result = _run(
+        flow.async_step_ports(
+            {
+                "proxy_udp_port": 8300,
+                "hub_listen_base": 8400,
+                "roku_listen_port": 8500,
+            }
+        )
+    )
+
+    assert result["type"] == "create_entry"
+    assert entry_one.options["proxy_udp_port"] == 8300
+    assert entry_one.options["hub_listen_base"] == 8400
+    assert entry_one.options["roku_listen_port"] == 8500
+    assert entry_two.options["proxy_udp_port"] == 8300
+    assert entry_two.options["hub_listen_base"] == 8400
+    assert entry_two.options["roku_listen_port"] == 8500
+    assert entry_one.options["other"] == "one"
+    assert entry_two.options["other"] == "two"
+    assert {entry_id for entry_id, _ in updates} == {"entry-1", "entry-2"}

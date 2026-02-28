@@ -4,7 +4,7 @@ fetch_device_commands:
   fields:
     device:
       name: Sofabaton hub
-      required: false
+      required: true
       selector:
         device:
           integration: sofabaton_x1s
@@ -17,6 +17,29 @@ fetch_device_commands:
           max: 255
           mode: box
 
+create_wifi_device:
+  name: Create Wifi Device
+  description: Creates a Wifi device on the selected hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    device_name:
+      name: Device name
+      description: Name that the Wifi device will be given on the hub.
+      required: true
+      default: Home Assistant
+      selector:
+        text:
+    commands:
+      name: Custom commands
+      description: Required list of 1 to 10 custom command names to map into the Wifi emulated app slots. Names may contain only letters, numbers, and spaces.
+      required: true
+      selector:
+        object:
 create_ip_button:
   name: Create virtual IP button
   description: Create a virtual HTTP device/button on the hub based on an IP command definition.
@@ -85,3 +108,157 @@ create_ip_button:
       required: false
       selector:
         object:
+
+device_to_activity:
+  name: Add device to activity
+  description: Adds a device to an activity on the selected hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 101
+          max: 200
+          mode: box
+    device_id:
+      name: Device id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 99
+          mode: box
+
+delete_device:
+  name: Delete device
+  description: Deletes a device and confirms all impacted activities on the selected hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    device_id:
+      name: Device id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+
+command_to_favorite:
+  name: Add command to activity favorite
+  description: Makes a favorite from a command on the selected hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 101
+          max: 255
+          mode: box
+    device_id:
+      name: Device id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 99
+          mode: box
+    command_id:
+      name: Command id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    slot_id:
+      name: Favorite slot id
+      description: Optional slot/index value to store in the favorite mapping payload.
+      required: false
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 255
+          mode: box
+
+command_to_button:
+  name: Map command to activity button
+  description: Maps commands to buttons on the selected hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    button_id:
+      name: Activity button id
+      description: Physical button code in the keymap (for example 182 for VOL_UP, 193 for BLUE).
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    device_id:
+      name: Device id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    command_id:
+      name: Command id
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+
+
+sync_command_config:
+  name: Sync command configuration
+  description: Deploys persisted command-slot configuration to the hub by recreating the managed Wifi device and applying activity mappings.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    device_name:
+      name: Device name
+      description: Optional Wifi device name; defaults to Home Assistant.
+      required: false
+      default: Home Assistant
+      selector:
+        text:

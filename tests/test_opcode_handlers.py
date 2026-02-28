@@ -38,11 +38,13 @@ if str(ROOT) not in sys.path:
 
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
+    ActivityMapHandler,
     CatalogActivityHandler,
     KeymapHandler,
     MacroHandler,
     X1CatalogActivityHandler,
     X1CatalogDeviceHandler,
+    X2RemoteListRowHandler,
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
@@ -53,10 +55,12 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_G,
+    OP_CATALOG_ROW_ACTIVITY,
     OP_MACROS_A1,
     OP_MACROS_B1,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
+    OP_X2_REMOTE_LIST_ROW,
 )
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -219,6 +223,20 @@ def test_keymap_table_b_parses_x2_buttons_response() -> None:
         ButtonName.BLUE,
     }
 
+
+
+
+def test_x2_remote_list_row_caches_remote_id() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = X2RemoteListRowHandler()
+
+    payload = bytes.fromhex("01 00 08 5e 04 20 25 06")
+    frame = _build_payload_context(proxy, OP_X2_REMOTE_LIST_ROW, payload, "X2_REMOTE_LIST_ROW")
+    handler.handle(frame)
+
+    assert proxy.wait_for_x2_remote_sync_id(timeout=0.01) == bytes.fromhex("00 08 5e")
 
 def test_req_buttons_parses_partial_final_record_example_one() -> None:
     proxy = X1Proxy(
@@ -730,7 +748,7 @@ def test_x1_activity_row_updates_state_and_hint() -> None:
 
     handler.handle(frame)
 
-    assert proxy.state.activities[0x65] == {"name": "Jellyfin", "active": False}
+    assert proxy.state.activities[0x65] == {"name": "Jellyfin", "active": False, "needs_confirm": False}
     assert proxy.state.current_activity_hint is None
     assert proxy._burst.kind == "activities"
 
@@ -750,9 +768,66 @@ def test_x1_activity_active_flag_uses_correct_offset() -> None:
 
     handler.handle(frame)
 
-    assert proxy.state.activities[0x66] == {"name": "Room Control", "active": True}
+    assert proxy.state.activities[0x66] == {"name": "Room Control", "active": True, "needs_confirm": False}
     assert proxy.state.current_activity_hint == 0x66
 
+
+def test_x1_activity_row_sets_needs_confirm_flag() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = X1CatalogActivityHandler()
+
+    frame = _build_context(
+        proxy,
+        "a5 5a 7b 3b 02 00 01 02 00 01 00 66 01 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 68 65 79 6f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 9a 6c",
+        OP_X1_ACTIVITY,
+        "X1_ACTIVITY",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.activities[0x66] == {"name": "heyo", "active": False, "needs_confirm": True}
+
+
+
+
+def test_catalog_activity_handler_sets_needs_confirm_from_tail_marker() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = CatalogActivityHandler()
+
+    payload = bytearray(214)
+    payload[0] = 1
+    payload[6:8] = (0x0065).to_bytes(2, "big")
+    payload[32] = 0x01
+    payload[33] = 0x00
+    payload[170:174] = bytes([0xFC, 0x01, 0xFC, 0x01])
+
+    frame = _build_payload_context(proxy, OP_CATALOG_ROW_ACTIVITY, bytes(payload), "CATALOG_ROW_ACTIVITY")
+    handler.handle(frame)
+
+    assert proxy.state.activities[0x65]["needs_confirm"] is True
+    assert len(proxy._activity_row_payloads[0x65]) == 214
+
+
+def test_catalog_activity_handler_clears_needs_confirm_when_tail_marker_unset() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = CatalogActivityHandler()
+
+    payload = bytearray(214)
+    payload[0] = 2
+    payload[6:8] = (0x0066).to_bytes(2, "big")
+    payload[170:174] = bytes([0xFC, 0x00, 0xFC, 0x00])
+
+    frame = _build_payload_context(proxy, OP_CATALOG_ROW_ACTIVITY, bytes(payload), "CATALOG_ROW_ACTIVITY")
+    handler.handle(frame)
+
+    assert proxy.state.activities[0x66]["needs_confirm"] is False
+    assert len(proxy._activity_row_payloads[0x66]) == 214
 
 def test_catalog_activity_handler_decodes_utf16_labels() -> None:
     proxy = X1Proxy(
@@ -808,3 +883,32 @@ def test_catalog_activity_handler_decodes_utf16_labels() -> None:
             _build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "CATALOG_ROW_ACTIVITY")
         )
         assert proxy.state.activities[act_id & 0xFF]["name"] == expected_label
+
+
+def test_activity_map_ignores_control_tuples_from_x1_tail() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = ActivityMapHandler()
+
+    act = 0x66
+    proxy._pending_activity_map_requests.add(act)
+
+    frames = (
+        "a5 5a 7b 6d 01 00 01 03 00 01 00 01 13 01 0d 07 fc f4 7a 6f 97 eb 45 a4 a5 35 a3 b6 57 b1 f4 25 00 1d 00 01 44 65 6e 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 44 65 6e 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 00 fc 01 01 03 00 fc 01 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 9a 45",
+        "a5 5a 7b 6d 02 00 01 03 00 01 00 02 01 02 0d 02 6f 77 c5 1b b1 22 43 25 90 64 5c f8 86 a9 83 ee 00 00 00 01 53 6f 6e 79 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 53 6f 6e 79 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 00 fc 02 01 03 00 fc 00 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 3e 73",
+    )
+
+    for raw_hex in frames:
+        raw = bytes.fromhex(raw_hex)
+        frame = FrameContext(
+            proxy=proxy,
+            opcode=0x7B6D,
+            direction="H→A",
+            payload=raw[4:-1],
+            raw=raw,
+            name="ACTIVITY_MAP_PAGE",
+        )
+        handler.handle(frame)
+
+    assert proxy.state.get_activity_command_refs(act) == set()

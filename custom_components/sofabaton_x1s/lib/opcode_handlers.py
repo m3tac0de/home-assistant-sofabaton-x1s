@@ -61,7 +61,9 @@ from .protocol_const import (
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
     OP_REQ_ACTIVITIES,
+    OP_X2_REMOTE_LIST_ROW,
     OP_ACTIVITY_MAP_PAGE,
+    OP_ACTIVITY_MAP_PAGE_X1S,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
     OP_KEYMAP_EXTRA,
@@ -71,6 +73,9 @@ from .x1_proxy import log
 
 if TYPE_CHECKING:
     from .x1_proxy import X1Proxy
+
+
+OP_CREATE_DEVICE_ACK = 0x0107
 
 
 def _consume_length_prefixed_string(buf: bytes, offset: int) -> tuple[str, int]:
@@ -168,6 +173,11 @@ class MacroHandler(BaseFrameHandler):
         activity_hint = proxy._macro_assembler._last_activity_id
         burst_key = "macros" if activity_hint is None else f"macros:{activity_hint & 0xFF}"
 
+        if len(frame.payload) >= 8 and frame.payload[2] == 0x01 and frame.payload[5] in (0x01, 0x02):
+            req_activity_id = frame.payload[6] & 0xFF
+            req_button_id = frame.payload[7] & 0xFF
+            proxy.cache_macro_payload(req_activity_id, req_button_id, frame.payload)
+
         if proxy._burst.active and proxy._burst.kind and proxy._burst.kind.startswith("macros"):
             proxy._burst.last_ts = now + proxy._burst.response_grace
             if proxy._burst.kind == "macros":
@@ -195,6 +205,16 @@ class MacroHandler(BaseFrameHandler):
                 ", ".join(f"{m['command_id']}: {m['label']}" for m in macros),
             )
 
+
+
+
+@register_handler(opcode_families_low=(0x47,), directions=("H→A",))
+class ActivityInputsHandler(BaseFrameHandler):
+    """Capture activity-inputs list frames used by the macro assignment wizard."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        proxy.notify_activity_inputs_frame()
 
 def _parse_header_lines(lines: list[str]) -> dict[str, str]:
     headers: dict[str, str] = {}
@@ -486,6 +506,47 @@ class SaveCommitHandler(BaseFrameHandler):
         log.info("[CREATE] save commit/ack success")
 
 
+@register_handler(opcodes=(OP_CREATE_DEVICE_ACK,), directions=("H→A",))
+class RokuCreateDeviceAckHandler(BaseFrameHandler):
+    """Capture device id from create-device ack during Roku replay."""
+
+    def handle(self, frame: FrameContext) -> None:
+        payload = frame.payload
+        if len(payload) < 1:
+            return
+        proxy: X1Proxy = frame.proxy
+        proxy.update_roku_device_id(payload[0])
+        proxy.notify_roku_ack(frame.opcode, payload)
+        log.info("[WIFI] create ack device_id=0x%02X", payload[0])
+
+
+@register_handler(opcodes=(0x0103, 0x013E, 0x0112), directions=("H→A",))
+class RokuAckHandler(BaseFrameHandler):
+    """Capture Roku replay ACK frames so replay can gate each next step."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        proxy.notify_roku_ack(frame.opcode, frame.payload)
+        log.info("[ACK] opcode=0x%04X payload=%s", frame.opcode, frame.payload.hex(" "))
+
+
+
+
+@register_handler(opcodes=(OP_X2_REMOTE_LIST_ROW,), directions=("H→A",))
+class X2RemoteListRowHandler(BaseFrameHandler):
+    """Capture the first remote id from X2 remote-list response rows."""
+
+    def handle(self, frame: FrameContext) -> None:
+        payload = frame.payload
+        if len(payload) < 4:
+            return
+
+        # Observed layout starts with a count byte then a 3-byte remote id.
+        remote_id = payload[1:4]
+        proxy: X1Proxy = frame.proxy
+        proxy.update_x2_remote_sync_id(remote_id)
+        log.info("[REMOTE_SYNC] X2 remote id=%s", remote_id.hex(" "))
+
 @register_handler(opcodes=(OP_REQ_ACTIVATE,), directions=("A→H",))
 class ActivateRequestHandler(BaseFrameHandler):
     """Log activation requests and track activity hints."""
@@ -633,6 +694,26 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
         elif device_label:
             log.info("[DEV] name='%s'", device_label)
 
+
+
+def _decode_x1s_needs_confirm_flag(payload: bytes) -> bool:
+    """Extract X1S/X2 activity confirm flag from CATALOG_ROW_ACTIVITY payload.
+
+    Observed rows contain a tail marker pattern ``fc xx fc yy`` where ``yy``
+    flips to ``0x01`` for activities impacted by device delete.
+    """
+
+    marker_indexes = [
+        idx
+        for idx in range(max(0, len(payload) - 80), len(payload) - 3)
+        if payload[idx] == 0xFC and payload[idx + 2] == 0xFC
+    ]
+    if not marker_indexes:
+        return False
+
+    flag_index = marker_indexes[-1] + 3
+    return flag_index < len(payload) and payload[flag_index] == 0x01
+
 def _decode_x1s_activity_label(label_bytes_raw: bytes) -> str:
     """Decode first activity label from X1S CATALOG_ROW_ACTIVITY label region.
 
@@ -691,9 +772,15 @@ class CatalogActivityHandler(BaseFrameHandler):
         # activity_label = label_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
         active_state_byte = raw[35] if len(raw) > 35 else 0
         is_active = active_state_byte == 0x01
+        needs_confirm = _decode_x1s_needs_confirm_flag(payload)
 
         if act_id is not None:
-            proxy.state.activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
+            proxy.state.activities[act_id & 0xFF] = {
+                "name": activity_label,
+                "active": is_active,
+                "needs_confirm": needs_confirm,
+            }
+            proxy._activity_row_payloads[act_id & 0xFF] = bytes(payload)
             if is_active:
                 proxy.state.set_hint(act_id)
             proxy._notify_activity_list_update()
@@ -739,11 +826,17 @@ class X1CatalogActivityHandler(BaseFrameHandler):
 
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         active_flag = frame.raw[35] if len(frame.raw) > 35 else 0
+        needs_confirm_flag = payload[95] if len(payload) > 95 else 0
         activity_label = payload[32:].split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
         is_active = active_flag == 1
+        needs_confirm = needs_confirm_flag == 1
 
         if act_id is not None:
-            proxy.state.activities[act_id & 0xFF] = {"name": activity_label, "active": is_active}
+            proxy.state.activities[act_id & 0xFF] = {
+                "name": activity_label,
+                "active": is_active,
+                "needs_confirm": needs_confirm,
+            }
             if is_active:
                 proxy.state.set_hint(act_id)
             proxy._notify_activity_list_update()
@@ -783,9 +876,9 @@ class RequestActivityMapHandler(BaseFrameHandler):
         log.info("[ACTMAP] A→H request %s", frame.raw.hex(" "))
 
 
-@register_handler(opcodes=(OP_ACTIVITY_MAP_PAGE,), directions=("H→A",))
+@register_handler(opcodes=(OP_ACTIVITY_MAP_PAGE, OP_ACTIVITY_MAP_PAGE_X1S), directions=("H→A",))
 class ActivityMapHandler(BaseFrameHandler):
-    """Accumulate activity mapping pages for X1 favorites."""
+    """Accumulate activity mapping pages for activity favorites (X1/X1S/X2 variants)."""
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
@@ -806,6 +899,8 @@ class ActivityMapHandler(BaseFrameHandler):
         if dev_lo == 0:
             return
 
+        proxy.state.record_activity_member(act_lo, dev_lo)
+
         now = time.monotonic()
         burst_key = f"activity_map:{act_lo}"
         if proxy._burst.active and proxy._burst.kind == burst_key:
@@ -814,20 +909,22 @@ class ActivityMapHandler(BaseFrameHandler):
             proxy._burst.start(burst_key, now=now)
 
         entries = self._parse_entries(payload, dev_lo)
-        if not entries:
-            return
+        if entries:
+            for slot_id, command_id in entries:
+                proxy.state.record_activity_mapping(
+                    act_lo, dev_lo, command_id, button_id=slot_id
+                )
 
-        for slot_id, command_id in entries:
-            proxy.state.record_activity_mapping(
-                act_lo, dev_lo, command_id, button_id=slot_id
+            log.info(
+                "[ACTMAP] act=0x%02X dev=0x%02X mapped{%d}",
+                act_lo,
+                dev_lo,
+                len(entries),
             )
 
-        log.info(
-            "[ACTMAP] act=0x%02X dev=0x%02X mapped{%d}",
-            act_lo,
-            dev_lo,
-            len(entries),
-        )
+        if self._is_last_page(payload):
+            proxy._pending_activity_map_requests.discard(act_lo)
+            proxy._activity_map_complete.add(act_lo)
 
     def _burst_activity(self, proxy: "X1Proxy") -> int | None:
         burst_kind = getattr(proxy._burst, "kind", None)
@@ -842,6 +939,13 @@ class ActivityMapHandler(BaseFrameHandler):
         if proxy._pending_activity_map_requests:
             return next(iter(proxy._pending_activity_map_requests))
         return None
+
+    def _is_last_page(self, payload: bytes) -> bool:
+        if len(payload) < 4:
+            return False
+        page_no = payload[0]
+        total_pages = payload[3]
+        return total_pages > 0 and page_no >= total_pages
 
     def _parse_entries(self, payload: bytes, dev_lo: int) -> list[tuple[int, int]]:
         if len(payload) <= 92:
@@ -862,6 +966,12 @@ class ActivityMapHandler(BaseFrameHandler):
             if slot_id > 0x20:
                 continue
             if terminator not in (0x00, 0xFC):
+                continue
+            # Skip compact control tuples embedded in ACTIVITY_MAP tails:
+            #   FC <dev> <slot> <cmd> <term> FC
+            # These encode device metadata/power rows on X1 and are not
+            # user-visible favorites.
+            if i > 0 and extra[i - 1] == 0xFC and i + 4 < len(extra) and extra[i + 4] == 0xFC:
                 continue
             entry = (slot_id, command_id)
             if entry in seen:

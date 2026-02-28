@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Select Sofabaton hub",
-        "description": "Select the Sofabaton hub that was discovered on your network, or choose manual setup if yours isn’t listed."
+        "description": "Select the Sofabaton hub that was discovered on your network, or choose manual setup if yours isn\u2019t listed."
       },
       "manual": {
         "title": "Manual hub setup",
@@ -11,15 +11,21 @@
         "data": {
           "name": "Hub name",
           "host": "Hub IP address",
-          "mdns_version": "Hub model (select X1 if unsure)"
+          "mdns_version": "Hub model"
         }
       },
       "ports": {
-        "title": "Proxy ports",
-        "description": "These ports are used by the local Sofabaton proxy. UDP (default 8102) lets the official app discover the virtual hub and is shared by all hubs, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
+        "title": "Integration ports",
+        "description": "These ports are used by this integration and apply to all hubs.",
         "data": {
           "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
-          "proxy_udp_port": "UDP Listener port (for the app to connect)"
+          "proxy_udp_port": "UDP Listener port (for the app to connect)",
+          "roku_listen_port": "HTTP listener port (for the hub to send button presses to Home Assistant)"
+        },
+        "data_description": {
+          "hub_listen_base": "Base TCP port the real hub connects to. Each configured hub uses one port from a 32-port range starting here.",
+          "proxy_udp_port": "Shared UDP listener for official app discovery and handshake. Keep 8102 unless another service already uses it. Changing this port will break discovery in the official iOS app (Android is fine) and prevent it from connecting to your virtual hub.",
+          "roku_listen_port": "Shared HTTP listener for WiFi device callbacks, so the Integration can receive button presses from the physical hub/remote. Changing this port has impact: 1. it will break X1 compatibility (X1S and X2 are fine). 2. If you have created Wifi Devices and commands already, changing this port now will cause those commands to stop working."
         }
       },
       "zeroconf_confirm": {
@@ -34,11 +40,17 @@
   "options": {
     "step": {
       "ports": {
-        "title": "Proxy ports",
-        "description": "These ports are used by the local Sofabaton proxy and apply to all hubs. UDP (default 8102) lets the official app discover the virtual hub, so changing it may break iOS discovery. TCP is the base port the physical hub connects to; each hub uses its own TCP port from a range of up to 32 ports starting at this base.",
+        "title": "Integration ports",
+        "description": "These ports are used by this integration and apply to all hubs.",
         "data": {
           "hub_listen_base": "TCP listener port base (for the physical hub to connect)",
-          "proxy_udp_port": "UDP Listener port (for the app to connect)"
+          "proxy_udp_port": "UDP Listener port (for the app to connect)",
+          "roku_listen_port": "HTTP listener port (for the hub to send button presses to Home Assistant)"
+        },
+        "data_description": {
+          "hub_listen_base": "Base TCP port the real hub connects to. Each configured hub uses one port from a 32-port range starting here.",
+          "proxy_udp_port": "Shared UDP listener for official app discovery and handshake. Keep 8102 unless another service already uses it. Changing this port will break discovery in the official iOS app (Android is fine) and prevent it from connecting to your virtual hub.",
+          "roku_listen_port": "Shared HTTP listener for WiFi device callbacks, so the Integration can receive button presses from the physical hub/remote. Changing this port has impact: 1. it will break X1 compatibility (X1S and X2 are fine). 2. If you have created Wifi Devices and commands already, changing this port now will cause those commands to stop working."
         }
       }
     }

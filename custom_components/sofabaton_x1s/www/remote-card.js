@@ -1,7 +1,12 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.0.8";
+const CARD_VERSION = "0.1.0";
+const KEY_CAPTURE_HELP_URL =
+  "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
+const YAML_HELPER_INFO_URL =
+  "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
+const PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
 const TYPE = "sofabaton-virtual-remote";
 const EDITOR = "sofabaton-virtual-remote-editor";
 const DEFAULT_GROUP_ORDER = [
@@ -15,6 +20,57 @@ const DEFAULT_GROUP_ORDER = [
   "abc",
 ];
 const DEFAULT_GROUP_ORDER_SET = new Set(DEFAULT_GROUP_ORDER);
+const LAYOUT_KEYS = [
+  "group_order",
+  "show_activity",
+  "show_dpad",
+  "show_nav",
+  "show_mid",
+  "show_volume",
+  "show_channel",
+  "show_media",
+  "show_dvr",
+  "show_colors",
+  "show_abc",
+  "show_macros_button",
+  "show_favorites_button",
+];
+
+function layoutBaseConfig(config) {
+  const base = {};
+  if (!config || typeof config !== "object") return base;
+  for (const key of LAYOUT_KEYS) {
+    if (config[key] !== undefined) {
+      base[key] = config[key];
+    }
+  }
+  return base;
+}
+
+function layoutDefaultConfig(config) {
+  const base = layoutBaseConfig(config);
+  const defaultLayout = config?.layouts?.default;
+  if (defaultLayout && typeof defaultLayout === "object") {
+    return { ...base, ...defaultLayout };
+  }
+  return base;
+}
+
+function layoutConfigForActivity(config, activityId) {
+  const base = layoutDefaultConfig(config);
+  const layouts = config?.layouts;
+  if (!layouts || typeof layouts !== "object" || activityId == null) {
+    return base;
+  }
+  const key = String(activityId);
+  const override =
+    layouts[key] ??
+    (Number.isFinite(Number(activityId)) ? layouts[Number(activityId)] : null);
+  if (override && typeof override === "object") {
+    return { ...base, ...override };
+  }
+  return base;
+}
 
 // Numeric IDs (for enabled_buttons)
 const ID = {
@@ -49,6 +105,36 @@ const ID = {
   BLUE: 193,
 };
 
+const HARD_BUTTON_ICONS = {
+  up: "mdi:arrow-up-bold",
+  down: "mdi:arrow-down-bold",
+  left: "mdi:arrow-left-bold",
+  right: "mdi:arrow-right-bold",
+  ok: "mdi:check-circle-outline",
+  back: "mdi:arrow-u-left-top",
+  home: "mdi:home-outline",
+  menu: "mdi:menu",
+  volup: "mdi:volume-plus",
+  voldn: "mdi:volume-minus",
+  mute: "mdi:volume-mute",
+  chup: "mdi:chevron-up-circle-outline",
+  chdn: "mdi:chevron-down-circle-outline",
+  guide: "mdi:television-guide",
+  dvr: "mdi:record-rec",
+  play: "mdi:play-circle-outline",
+  exit: "mdi:close-circle-outline",
+  rew: "mdi:rewind",
+  pause: "mdi:pause-circle-outline",
+  fwd: "mdi:fast-forward",
+  red: "mdi:circle",
+  green: "mdi:circle",
+  yellow: "mdi:circle",
+  blue: "mdi:circle",
+  a: "mdi:alpha-a-circle-outline",
+  b: "mdi:alpha-b-circle-outline",
+  c: "mdi:alpha-c-circle-outline",
+};
+
 const POWERED_OFF_LABELS = new Set(["powered off", "powered_off", "off"]);
 const DEFAULT_KEY_LABELS = {
   up: "Up",
@@ -78,6 +164,64 @@ const DEFAULT_KEY_LABELS = {
   a: "A",
   b: "B",
   c: "C",
+};
+
+const HARD_BUTTON_ID_MAP = {
+  up: ID.UP,
+  down: ID.DOWN,
+  left: ID.LEFT,
+  right: ID.RIGHT,
+  ok: ID.OK,
+  back: ID.BACK,
+  home: ID.HOME,
+  menu: ID.MENU,
+  volup: ID.VOL_UP,
+  voldn: ID.VOL_DOWN,
+  mute: ID.MUTE,
+  chup: ID.CH_UP,
+  chdn: ID.CH_DOWN,
+  guide: ID.GUIDE,
+  dvr: ID.DVR,
+  play: ID.PLAY,
+  exit: ID.EXIT,
+  rew: ID.REW,
+  pause: ID.PAUSE,
+  fwd: ID.FWD,
+  red: ID.RED,
+  green: ID.GREEN,
+  yellow: ID.YELLOW,
+  blue: ID.BLUE,
+  a: ID.A,
+  b: ID.B,
+  c: ID.C,
+};
+
+const X2_ONLY_HARD_BUTTON_IDS = new Set([
+  ID.C,
+  ID.B,
+  ID.A,
+  ID.EXIT,
+  ID.DVR,
+  ID.PLAY,
+  ID.GUIDE,
+]);
+
+const readPreviewActivity = (entityId) => {
+  if (!entityId || typeof window === "undefined") return null;
+  const cache = window[PREVIEW_ACTIVITY_CACHE_KEY];
+  if (!cache || typeof cache !== "object") return null;
+  return cache[entityId] ?? null;
+};
+
+const writePreviewActivity = (entityId, value) => {
+  if (!entityId || typeof window === "undefined") return;
+  const cache =
+    window[PREVIEW_ACTIVITY_CACHE_KEY] &&
+    typeof window[PREVIEW_ACTIVITY_CACHE_KEY] === "object"
+      ? window[PREVIEW_ACTIVITY_CACHE_KEY]
+      : {};
+  cache[entityId] = value ?? "";
+  window[PREVIEW_ACTIVITY_CACHE_KEY] = cache;
 };
 
 function logPillsOnce() {
@@ -121,19 +265,29 @@ class SofabatonRemoteCard extends HTMLElement {
       throw new Error("Select a Sofabaton remote entity");
     }
 
+    if (Object.prototype.hasOwnProperty.call(config, "preview_activity")) {
+      this._previewActivity = config?.preview_activity ?? "";
+      writePreviewActivity(config?.entity, this._previewActivity);
+    } else if (this._previewActivity == null) {
+      const cached = readPreviewActivity(config?.entity);
+      this._previewActivity = cached ?? "";
+    }
+
     // Defaults first, then user config overwrites
     this._config = {
       show_activity: true,
       show_dpad: true,
       show_nav: true,
       show_mid: true,
+      show_volume: true,
+      show_channel: true,
       show_media: true,
+      show_dvr: true,
       show_colors: true,
       show_abc: true,
       theme: "",
       background_override: null,
       show_automation_assist: false,
-      show_macro_favorites: true,
       show_macros_button: null,
       show_favorites_button: null,
       custom_favorites: [],
@@ -165,6 +319,15 @@ class SofabatonRemoteCard extends HTMLElement {
       await this._ensureIntegration();
       this._update();
     });
+  }
+
+  set editMode(value) {
+    this._editMode = !!value;
+    if (this._editMode && this._automationAssistActive) {
+      this._setAutomationAssistActive(false);
+    }
+    this._update();
+    this._updateAutomationAssistUI();
   }
   // ---------- State helpers ----------
   _remoteState() {
@@ -215,16 +378,46 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _showMacrosButton() {
-    // Backwards-compatible: if the new per-button option isn't set, fall back to the old combined toggle
-    if (typeof this._config?.show_macros_button === "boolean")
-      return this._config.show_macros_button;
-    return Boolean(this._config?.show_macro_favorites);
+    const layout = layoutConfigForActivity(
+      this._config,
+      this._effectiveActivityId(),
+    );
+
+    if (typeof layout?.show_macros_button === "boolean")
+      return layout.show_macros_button;
+    return true;
   }
 
   _showFavoritesButton() {
-    if (typeof this._config?.show_favorites_button === "boolean")
-      return this._config.show_favorites_button;
-    return Boolean(this._config?.show_macro_favorites);
+    const layout = layoutConfigForActivity(
+      this._config,
+      this._effectiveActivityId(),
+    );
+    if (typeof layout?.show_favorites_button === "boolean")
+      return layout.show_favorites_button;
+    return true;
+  }
+
+  _volumeEnabled(layout) {
+    if (typeof layout?.show_volume === "boolean") return layout.show_volume;
+    if (typeof layout?.show_mid === "boolean") return layout.show_mid;
+    return true;
+  }
+
+  _channelEnabled(layout) {
+    if (typeof layout?.show_channel === "boolean") return layout.show_channel;
+    if (typeof layout?.show_mid === "boolean") return layout.show_mid;
+    return true;
+  }
+
+  _mediaEnabled(layout) {
+    if (typeof layout?.show_media === "boolean") return layout.show_media;
+    return true;
+  }
+
+  _dvrEnabled(layout) {
+    if (typeof layout?.show_dvr === "boolean") return layout.show_dvr;
+    return true;
   }
 
   _automationAssistEnabled() {
@@ -340,9 +533,13 @@ class SofabatonRemoteCard extends HTMLElement {
     return `${parts.length}:${parts.join(";;")}`;
   }
 
-  _groupOrderList() {
-    const configured = Array.isArray(this._config?.group_order)
-      ? this._config.group_order
+  _groupOrderList(activityId = null) {
+    const layout = layoutConfigForActivity(
+      this._config,
+      activityId ?? this._effectiveActivityId(),
+    );
+    const configured = Array.isArray(layout?.group_order)
+      ? layout.group_order
       : DEFAULT_GROUP_ORDER;
     const order = [];
     const seen = new Set();
@@ -359,18 +556,94 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   _applyGroupOrder() {
-    if (!this._wrap || !this._groupEls) return;
+    if (!this._layoutContainer || !this._groupEls) return;
     const order = this._groupOrderList();
     const sig = order.join("|");
     if (sig === this._groupOrderSig) return;
     this._groupOrderSig = sig;
     for (const key of order) {
       const el = this._groupEls[key];
-      if (el) this._wrap.appendChild(el);
+      if (el) this._layoutContainer.appendChild(el);
     }
     if (this._warn) {
-      this._wrap.appendChild(this._warn);
+      this._layoutContainer.appendChild(this._warn);
     }
+  }
+
+  _layoutSignature(activityId, layoutConfig) {
+    const order = this._groupOrderList(activityId);
+    const parts = [
+      `activity:${activityId ?? "off"}`,
+      `order:${order.join(",")}`,
+    ];
+    for (const key of LAYOUT_KEYS) {
+      if (key === "group_order") continue;
+      parts.push(`${key}:${String(layoutConfig?.[key])}`);
+    }
+    return parts.join("|");
+  }
+
+  _prefersReducedMotion() {
+    return (
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  }
+
+  _clearLayoutOverlay() {
+    if (this._layoutOverlayEl) {
+      this._layoutOverlayEl.remove();
+      this._layoutOverlayEl = null;
+    }
+  }
+
+  _maybeAnimateLayoutChange(nextSignature) {
+    if (!this._layoutContainer || !this._wrap) return;
+    if (this._layoutSignatureCache == null) {
+      this._layoutSignatureCache = nextSignature;
+      return;
+    }
+    if (this._layoutSignatureCache === nextSignature) return;
+    this._layoutSignatureCache = nextSignature;
+    if (this._prefersReducedMotion()) {
+      this._clearLayoutOverlay();
+      return;
+    }
+
+    const wrapRect = this._wrap.getBoundingClientRect();
+    const layoutRect = this._layoutContainer.getBoundingClientRect();
+    if (!wrapRect.width || !layoutRect.width) return;
+
+    this._clearLayoutOverlay();
+    const overlay = document.createElement("div");
+    overlay.className = "layout-overlay";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.style.top = `${layoutRect.top - wrapRect.top}px`;
+    overlay.style.left = `${layoutRect.left - wrapRect.left}px`;
+    overlay.style.width = `${layoutRect.width}px`;
+    overlay.style.height = `${layoutRect.height}px`;
+    overlay.appendChild(this._layoutContainer.cloneNode(true));
+    this._wrap.appendChild(overlay);
+    this._layoutOverlayEl = overlay;
+
+    const cleanup = () => {
+      if (this._layoutOverlayEl === overlay) {
+        overlay.remove();
+        this._layoutOverlayEl = null;
+      }
+    };
+    overlay.addEventListener(
+      "transitionend",
+      (ev) => {
+        if (ev.target === overlay) cleanup();
+      },
+      { once: true },
+    );
+    requestAnimationFrame(() => {
+      overlay.classList.add("layout-overlay--fade");
+    });
+    setTimeout(cleanup, 320);
   }
 
   // ---------- Hub request queue (prevents parallel requests) ----------
@@ -469,6 +742,7 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   async _hubSendCommandList(list, throttleKey = null, minIntervalMs = 3000) {
+    if (this._editMode) return;
     if (!this._isHubIntegration()) return;
     if (!this._hass || !this._config?.entity) return;
 
@@ -543,6 +817,7 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   async _sendDrawerItem(itemType, commandId, deviceId, rawItem) {
+    if (this._editMode) return;
     // X1S/X1 path
     if (!this._isHubIntegration()) {
       return this._sendCommand(commandId, deviceId);
@@ -666,6 +941,42 @@ class SofabatonRemoteCard extends HTMLElement {
     return match?.name || "";
   }
 
+  _previewSelection(activities = null) {
+    if (!this._editMode) return null;
+    const selection = this._previewActivity;
+    if (selection == null || selection === "") {
+      return {
+        activityId: null,
+        label: "Default Layout",
+        poweredOff: false,
+      };
+    }
+    if (selection === "powered_off") {
+      return {
+        activityId: null,
+        label: "Powered Off",
+        poweredOff: true,
+      };
+    }
+    const id = Number(selection);
+    if (!Number.isFinite(id)) return null;
+    const label =
+      this._activityNameForId(id) ||
+      (Array.isArray(activities)
+        ? activities.find((activity) => activity.id === id)?.name || ""
+        : "");
+    return {
+      activityId: id,
+      label,
+      poweredOff: false,
+    };
+  }
+
+  _effectiveActivityId() {
+    if (this._previewState) return this._previewState.activityId;
+    return this._currentActivityId();
+  }
+
   _isPoweredOffLabel(state) {
     const s = String(state || "")
       .trim()
@@ -716,8 +1027,7 @@ class SofabatonRemoteCard extends HTMLElement {
     activityName,
     poweredOff = false,
   }) {
-    if (!this._automationAssistEnabled()) return;
-    if (!this._automationAssistActive) return;
+    if (!this._ensureAutomationAssistCaptureStarted()) return;
 
     const id = Number(activityId);
     const resolvedId = Number.isFinite(id) ? id : null;
@@ -752,8 +1062,7 @@ class SofabatonRemoteCard extends HTMLElement {
     commandType = "assigned",
     icon = null,
   }) {
-    if (!this._automationAssistEnabled()) return;
-    if (!this._automationAssistActive) return;
+    if (!this._ensureAutomationAssistCaptureStarted()) return;
 
     const command = Number(commandId);
     if (!Number.isFinite(command)) return;
@@ -1009,15 +1318,20 @@ class SofabatonRemoteCard extends HTMLElement {
     let timeoutId = null;
     let unsub = null;
 
+    let finished = false;
     const finish = () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (unsub) {
-        try {
-          unsub();
-        } catch (e) {
-          /* no-op */
-        }
+      if (finished) return;
+      finished = true;
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
       }
+
+      const unsubscribe = unsub;
+      unsub = null;
+      this._safeUnsubscribe(unsubscribe);
+
       this._hubMacDetecting = false;
       this._updateAutomationAssistUI();
       this._syncAutomationAssistMqtt();
@@ -1095,13 +1409,10 @@ class SofabatonRemoteCard extends HTMLElement {
 
   _unsubscribeAutomationAssistMqtt() {
     if (this._mqttUnsub) {
-      try {
-        this._mqttUnsub();
-      } catch (e) {
-        /* no-op */
-      }
+      const unsubscribe = this._mqttUnsub;
+      this._mqttUnsub = null;
+      this._safeUnsubscribe(unsubscribe);
     }
-    this._mqttUnsub = null;
     this._automationAssistMqttTopic = null;
   }
 
@@ -1387,11 +1698,9 @@ class SofabatonRemoteCard extends HTMLElement {
           const finish = (name) => {
             if (timeoutId) clearTimeout(timeoutId);
             if (unsub) {
-              try {
-                unsub();
-              } catch (e) {
-                /* no-op */
-              }
+              const unsubscribe = unsub;
+              unsub = null;
+              this._safeUnsubscribe(unsubscribe);
             }
             if (name) {
               this._mqttDeviceNames.set(cacheKey, name);
@@ -1454,11 +1763,9 @@ class SofabatonRemoteCard extends HTMLElement {
           const finish = (commands) => {
             if (timeoutId) clearTimeout(timeoutId);
             if (unsub) {
-              try {
-                unsub();
-              } catch (e) {
-                /* no-op */
-              }
+              const unsubscribe = unsub;
+              unsub = null;
+              this._safeUnsubscribe(unsubscribe);
             }
             if (commands) {
               this._mqttDeviceCommands.set(cacheKey, commands);
@@ -1528,6 +1835,39 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistStatusMessage;
   }
 
+  _safeUnsubscribe(unsubscribe) {
+    if (typeof unsubscribe !== "function") return;
+    try {
+      const maybePromise = unsubscribe();
+      if (maybePromise && typeof maybePromise.catch === "function") {
+        maybePromise.catch(() => {
+          /* no-op */
+        });
+      }
+    } catch (e) {
+      /* no-op */
+    }
+  }
+
+  _ensureAutomationAssistCaptureStarted() {
+    if (!this._automationAssistEnabled()) return false;
+    if (this._editMode) return false;
+    if (!this._automationAssistActive) {
+      this._setAutomationAssistActive(true);
+    }
+    return this._automationAssistActive;
+  }
+
+  _primeAutomationAssistActivityBaseline() {
+    const currentLabel = this._currentActivityLabel();
+    const currentId = this._currentActivityId();
+    this._lastActivityLabel = currentLabel;
+    this._lastActivityId = Number.isFinite(Number(currentId))
+      ? Number(currentId)
+      : null;
+    this._lastPoweredOff = this._isPoweredOffLabel(currentLabel);
+  }
+
   _setAutomationAssistActive(active) {
     const next = !!active;
     if (this._automationAssistActive === next) return;
@@ -1547,6 +1887,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._closeAutomationAssistMqttModal();
     } else {
       this._automationAssistStatusMessage = null;
+      this._primeAutomationAssistActivityBaseline();
       this._syncAutomationAssistMqtt();
     }
     this._updateAutomationAssistUI();
@@ -1561,7 +1902,9 @@ class SofabatonRemoteCard extends HTMLElement {
     const mqttSupported = this._automationAssistMqttSupported();
 
     if (!isActive) {
-      this._automationAssistStatus.textContent = "Tap Start to begin";
+      this._automationAssistStatus.textContent = this._editMode
+        ? "Exit Edit mode to begin"
+        : "Waiting for keypress";
     } else if (this._automationAssistStatusMessage) {
       this._automationAssistStatus.textContent =
         this._automationAssistStatusMessage;
@@ -1569,10 +1912,6 @@ class SofabatonRemoteCard extends HTMLElement {
       this._automationAssistStatus.textContent = `Captured: ${capture.label}`;
     } else {
       this._automationAssistStatus.textContent = "Waiting for keypress";
-    }
-
-    if (this._automationAssistStart) {
-      this._setVisible(this._automationAssistStart, !isActive);
     }
 
     this._updateAutomationAssistModalUI();
@@ -1697,6 +2036,7 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   async _runLovelaceAction(actionConfig, context = null) {
+    if (this._editMode) return;
     if (!actionConfig || typeof actionConfig !== "object") return;
 
     const action = String(actionConfig.action || "").toLowerCase();
@@ -1782,6 +2122,7 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   async _sendCommand(commandId, deviceId = null) {
+    if (this._editMode) return;
     if (!this._hass || !this._config?.entity) return;
 
     // If deviceId isn't provided, fall back to enabled_buttons override (activity_id) or current_activity_id
@@ -1810,6 +2151,7 @@ class SofabatonRemoteCard extends HTMLElement {
     });
   }
   async _setActivity(option) {
+    if (this._editMode) return;
     if (option == null || option === "") return;
     const selected = String(option);
     const current = this._currentActivityLabel();
@@ -2097,6 +2439,25 @@ class SofabatonRemoteCard extends HTMLElement {
       };
     }
     window.addEventListener("resize", this._onResize, { passive: true });
+
+    if (!this._onPreviewActivity) {
+      this._onPreviewActivity = (event) => {
+        const detail = event?.detail || {};
+        if (
+          detail.entity &&
+          this._config?.entity &&
+          detail.entity !== this._config.entity
+        ) {
+          return;
+        }
+        this._previewActivity = detail.previewActivity ?? "";
+        if (this._editMode) this._update();
+      };
+    }
+    window.addEventListener(
+      "sofabaton-preview-activity",
+      this._onPreviewActivity,
+    );
   }
 
   disconnectedCallback() {
@@ -2104,6 +2465,12 @@ class SofabatonRemoteCard extends HTMLElement {
     if (this._onResize) {
       window.removeEventListener("resize", this._onResize);
       this._onResize = null;
+    }
+    if (this._onPreviewActivity) {
+      window.removeEventListener(
+        "sofabaton-preview-activity",
+        this._onPreviewActivity,
+      );
     }
     clearTimeout(this._commandPulseTimeout);
     clearTimeout(this._activityLoadTimeout);
@@ -2325,6 +2692,34 @@ class SofabatonRemoteCard extends HTMLElement {
     }
   }
 
+  _applyButtonTextSizing(btn, sizeVar) {
+    const apply = (attempt = 0) => {
+      const root = btn?.shadowRoot;
+      if (!root) return;
+
+      const value = `var(${sizeVar})`;
+      const card = root.querySelector("ha-card");
+      const name = root.querySelector(".name");
+      const label = root.querySelector(".label");
+      const state = root.querySelector(".state");
+
+      if (card) card.style.setProperty("font-size", value);
+      if (name) name.style.fontSize = value;
+      if (label) label.style.fontSize = value;
+      if (state) state.style.fontSize = value;
+
+      if (!name && !label && !state && attempt < 2) {
+        requestAnimationFrame(() => apply(attempt + 1));
+      }
+    };
+
+    if (btn?.updateComplete && typeof btn.updateComplete.then === "function") {
+      btn.updateComplete.then(() => apply());
+    } else {
+      requestAnimationFrame(() => apply());
+    }
+  }
+
   _mkHuiButton({
     key,
     label,
@@ -2373,6 +2768,7 @@ class SofabatonRemoteCard extends HTMLElement {
     });
 
     wrap.appendChild(btn);
+    this._applyButtonTextSizing(btn, "--sb-key-font-size");
 
     this._keys.push({
       key,
@@ -2469,6 +2865,7 @@ class SofabatonRemoteCard extends HTMLElement {
     });
 
     wrap.appendChild(btn);
+    this._applyButtonTextSizing(btn, "--sb-tab-font-size");
 
     return { wrap, btn };
   }
@@ -2581,6 +2978,7 @@ class SofabatonRemoteCard extends HTMLElement {
   }
 
   async _sendCustomFavoriteCommand(commandId, deviceId) {
+    if (this._editMode) return;
     if (!this._hass || !this._config?.entity) return;
 
     const cmd = Number(commandId);
@@ -2649,9 +3047,26 @@ class SofabatonRemoteCard extends HTMLElement {
         zoom: var(--remote-zoom);
         margin-left: auto;
         margin-right: auto;
+        --sb-key-font-size: clamp(11px, 7cqw, 50px);
+        --sb-tab-font-size: clamp(14px, 6cqw, 50px);
+        --sb-tab-height: clamp(20px, 3cqw, 50px);
+        --sb-color-key-min-height: clamp(12px, 3.2cqw, 20px);
+        container-type: inline-size;
       }
 
       .wrap { padding: 12px; display: grid; gap: 12px; position: relative; }
+      .layout-container { display: grid; gap: 12px; }
+      .layout-overlay {
+        position: absolute;
+        opacity: 1;
+        transition: opacity 240ms ease;
+        pointer-events: none;
+        z-index: 2;
+      }
+      .layout-overlay--fade { opacity: 0; }
+      @media (prefers-reduced-motion: reduce) {
+        .layout-overlay { transition: none; }
+      }
       ha-select { width: 100%; }
 
       .activityRow { 
@@ -2811,8 +3226,11 @@ class SofabatonRemoteCard extends HTMLElement {
         border-left: 1px solid var(--divider-color);
       }
       .macroFavoritesButton hui-button-card {
-        height: 22px;
+        height: var(--sb-tab-height);
         display: block;
+        --mdc-typography-button-font-size: var(--sb-tab-font-size);
+        --paper-font-body1_-_font-size: var(--sb-tab-font-size);
+        font-size: var(--sb-tab-font-size);
       }
 			.macroFavoritesButton:first-child {
         border-right: 1px solid var(--divider-color);
@@ -3020,7 +3438,7 @@ class SofabatonRemoteCard extends HTMLElement {
         gap: 10px;
       }
 
-      /* Mid: VOL rocker | Guide+Mute | CH rocker */
+      /* Mid: Volume/Channel layout variations */
       .mid {
         padding: 12px;
         display: grid;
@@ -3028,18 +3446,35 @@ class SofabatonRemoteCard extends HTMLElement {
         gap: 10px;
         align-items: stretch;
       }
-      .col { display: grid; gap: 10px; align-content: start; }
-
-      /* Center column alignment fix (X1: center mute; X2: guide top, mute bottom) */
-      .midCenter {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        justify-content: center;
+      .mid--dual {
+        grid-template-rows: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+          "volup mute chup"
+          "voldn mute chdn";
       }
-      .midCenter.x2 {
-        justify-content: space-between;
+      .mid--dual.mid--x2 {
+        grid-template-areas:
+          "volup guide chup"
+          "voldn mute chdn";
       }
+      .mid--volume {
+        grid-template-rows: 1fr;
+        grid-template-areas: "mute voldn volup";
+      }
+      .mid--channel.mid--x2 {
+        grid-template-rows: 1fr;
+        grid-template-areas: "guide chdn chup";
+      }
+      .mid--channel.mid--x1 {
+        grid-template-rows: 1fr;
+        grid-template-areas: "chdn . chup";
+      }
+      .mid-btn-volup { grid-area: volup; }
+      .mid-btn-voldn { grid-area: voldn; }
+      .mid-btn-mute { grid-area: mute; align-self: center; }
+      .mid-btn-guide { grid-area: guide; }
+      .mid-btn-chup { grid-area: chup; }
+      .mid-btn-chdn { grid-area: chdn; }
 
       /* Media: X1 is 1 row; X2 is 2 rows */
       .media {
@@ -3048,12 +3483,25 @@ class SofabatonRemoteCard extends HTMLElement {
         gap: 10px;
         align-items: stretch;
       }
-      .media.x1 {
+      .media--play,
+      .media--dvr,
+      .media--both.media--x1,
+      .media--both.media--x2 {
         grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+      .media--play {
+        grid-template-areas: "rew play fwd";
+      }
+      .media--play.media--x1 {
         grid-template-areas: "rew pause fwd";
       }
-      .media.x2 {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+      .media--dvr {
+        grid-template-areas: "dvr pause exit";
+      }
+      .media--both.media--x1 {
+        grid-template-areas: "rew pause fwd";
+      }
+      .media--both.media--x2 {
         grid-template-areas:
           "rew play fwd"
           "dvr pause exit";
@@ -3086,7 +3534,12 @@ class SofabatonRemoteCard extends HTMLElement {
 
 /* Allow grid children to shrink (prevents overflow on mobile / narrow cards) */
 .key { min-width: 0; position: relative; width: 100%; }
-.key hui-button-card { min-width: 0; }
+.key hui-button-card {
+  min-width: 0;
+  --mdc-typography-button-font-size: var(--sb-key-font-size);
+  --paper-font-body1_-_font-size: var(--sb-key-font-size);
+  font-size: var(--sb-key-font-size);
+}
 
 /* --- Square remote keys (scalable) --- */
 .key:not(.key--color) {
@@ -3108,11 +3561,12 @@ class SofabatonRemoteCard extends HTMLElement {
 
 /* Keep color keys as strips (not square) */
 .key--color {
-  aspect-ratio: auto;
+  aspect-ratio: 3 / 1;
+  min-height: var(--sb-color-key-min-height);
   transform: none;
 }
 .key--color hui-button-card {
-  height: 18px !important;
+  height: 100% !important;
   width: 100%;
   display: block;
 }
@@ -3174,7 +3628,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
       .sb-modal__title {
         font-weight: 600;
-        font-size: 15px;
+        font-size: 14px;
       }
 
       .sb-modal__close {
@@ -3215,12 +3669,15 @@ class SofabatonRemoteCard extends HTMLElement {
     wrap.className = "wrap";
     this._wrap = wrap;
 
+    this._layoutContainer = document.createElement("div");
+    this._layoutContainer.className = "layout-container";
+
     this._automationAssistRow = document.createElement("div");
     this._automationAssistRow.className = "automationAssist";
 
     const assistLabel = document.createElement("div");
     assistLabel.className = "automationAssist__label";
-    assistLabel.textContent = "Automation Assist";
+    assistLabel.textContent = "Key capture";
     this._automationAssistLabel = assistLabel;
 
     const assistStatus = document.createElement("div");
@@ -3236,19 +3693,15 @@ class SofabatonRemoteCard extends HTMLElement {
       return btn;
     };
 
-    this._automationAssistStart = mkAssistButton("Start", () =>
-      this._setAutomationAssistActive(true),
-    );
-
     const assistHeader = document.createElement("div");
     assistHeader.className = "automationAssist__header";
     assistHeader.appendChild(assistLabel);
-    assistHeader.appendChild(this._automationAssistStart);
 
     this._automationAssistRow.appendChild(assistHeader);
     this._automationAssistRow.appendChild(assistStatus);
 
     this._wrap.appendChild(this._automationAssistRow);
+    this._wrap.appendChild(this._layoutContainer);
 
     this._automationAssistMqttModal = document.createElement("div");
     this._automationAssistMqttModal.className = "sb-modal";
@@ -3364,6 +3817,7 @@ class SofabatonRemoteCard extends HTMLElement {
     this._activitySelect.label = "Activity";
 
     const handleActivitySelect = (ev) => {
+      if (this._editMode) return;
       if (this._suppressActivityChange) return;
       const value =
         ev?.detail?.value ?? ev?.target?.value ?? this._activitySelect.value;
@@ -3539,83 +3993,71 @@ class SofabatonRemoteCard extends HTMLElement {
       }),
     );
 
-    // Mid section: VOL | Guide+Mute | CH
+    // Mid section: Volume/Channel controls
     this._midEl = document.createElement("div");
     this._midEl.className = "mid";
 
-    const volCol = document.createElement("div");
-    volCol.className = "col";
-    volCol.appendChild(
-      this._mkHuiButton({
+    this._midButtons = {
+      volup: this._mkHuiButton({
         key: "volup",
         label: "",
         icon: "mdi:volume-plus",
         id: ID.VOL_UP,
         cmd: ID.VOL_UP,
+        extraClass: "mid-btn mid-btn-volup",
       }),
-    );
-    volCol.appendChild(
-      this._mkHuiButton({
+      voldn: this._mkHuiButton({
         key: "voldn",
         label: "",
         icon: "mdi:volume-minus",
         id: ID.VOL_DOWN,
         cmd: ID.VOL_DOWN,
+        extraClass: "mid-btn mid-btn-voldn",
       }),
-    );
-    this._midEl.appendChild(volCol);
-
-    const centerCol = document.createElement("div");
-    centerCol.className = "col midCenter";
-    this._midCenterCol = centerCol;
-    centerCol.appendChild(
-      this._mkHuiButton({
+      guide: this._mkHuiButton({
         key: "guide",
         label: "Guide",
         icon: "",
         id: ID.GUIDE,
         cmd: ID.GUIDE,
+        extraClass: "mid-btn mid-btn-guide",
       }),
-    );
-    centerCol.appendChild(
-      this._mkHuiButton({
+      mute: this._mkHuiButton({
         key: "mute",
         label: "",
         icon: "mdi:volume-mute",
         id: ID.MUTE,
         cmd: ID.MUTE,
+        extraClass: "mid-btn mid-btn-mute",
       }),
-    );
-    this._midEl.appendChild(centerCol);
-
-    const chCol = document.createElement("div");
-    chCol.className = "col";
-    chCol.appendChild(
-      this._mkHuiButton({
+      chup: this._mkHuiButton({
         key: "chup",
         label: "",
         icon: "mdi:chevron-up",
         id: ID.CH_UP,
         cmd: ID.CH_UP,
+        extraClass: "mid-btn mid-btn-chup",
       }),
-    );
-    chCol.appendChild(
-      this._mkHuiButton({
+      chdn: this._mkHuiButton({
         key: "chdn",
         label: "",
         icon: "mdi:chevron-down",
         id: ID.CH_DOWN,
         cmd: ID.CH_DOWN,
+        extraClass: "mid-btn mid-btn-chdn",
       }),
+    };
+
+    Object.values(this._midButtons).forEach((btn) =>
+      this._midEl.appendChild(btn),
     );
-    this._midEl.appendChild(chCol);
 
     // Media cluster with X2 layout:
     this._mediaEl = document.createElement("div");
-    this._mediaEl.className = "media x1";
+    this._mediaEl.className = "media";
 
-    this._mediaEl.appendChild(
-      this._mkHuiButton({
+    this._mediaButtons = {
+      rew: this._mkHuiButton({
         key: "rew",
         label: "",
         icon: "mdi:rewind",
@@ -3623,9 +4065,7 @@ class SofabatonRemoteCard extends HTMLElement {
         cmd: ID.REW,
         extraClass: "area-rew",
       }),
-    );
-    this._mediaEl.appendChild(
-      this._mkHuiButton({
+      play: this._mkHuiButton({
         key: "play",
         label: "",
         icon: "mdi:play",
@@ -3633,9 +4073,7 @@ class SofabatonRemoteCard extends HTMLElement {
         cmd: ID.PLAY,
         extraClass: "area-play",
       }),
-    );
-    this._mediaEl.appendChild(
-      this._mkHuiButton({
+      fwd: this._mkHuiButton({
         key: "fwd",
         label: "",
         icon: "mdi:fast-forward",
@@ -3643,10 +4081,7 @@ class SofabatonRemoteCard extends HTMLElement {
         cmd: ID.FWD,
         extraClass: "area-fwd",
       }),
-    );
-
-    this._mediaEl.appendChild(
-      this._mkHuiButton({
+      dvr: this._mkHuiButton({
         key: "dvr",
         label: "DVR",
         icon: "",
@@ -3654,9 +4089,7 @@ class SofabatonRemoteCard extends HTMLElement {
         cmd: ID.DVR,
         extraClass: "area-dvr",
       }),
-    );
-    this._mediaEl.appendChild(
-      this._mkHuiButton({
+      pause: this._mkHuiButton({
         key: "pause",
         label: "",
         icon: "mdi:pause",
@@ -3664,9 +4097,7 @@ class SofabatonRemoteCard extends HTMLElement {
         cmd: ID.PAUSE,
         extraClass: "area-pause",
       }),
-    );
-    this._mediaEl.appendChild(
-      this._mkHuiButton({
+      exit: this._mkHuiButton({
         key: "exit",
         label: "Exit",
         icon: "",
@@ -3674,6 +4105,9 @@ class SofabatonRemoteCard extends HTMLElement {
         cmd: ID.EXIT,
         extraClass: "area-exit",
       }),
+    };
+    Object.values(this._mediaButtons).forEach((btn) =>
+      this._mediaEl.appendChild(btn),
     );
 
     // Colors row (colored bars, no text)
@@ -3782,6 +4216,16 @@ class SofabatonRemoteCard extends HTMLElement {
     // Apply per-card theme (and background) first
     this._applyLocalTheme(this._config?.theme);
     this._updateGroupRadius();
+
+    const remote = this._remoteState();
+    const activities = this._activities();
+    const preview = this._previewSelection(activities);
+    this._previewState = preview;
+    const activityId = preview ? preview.activityId : this._currentActivityId();
+    const layoutConfig = layoutConfigForActivity(this._config, activityId);
+    this._maybeAnimateLayoutChange(
+      this._layoutSignature(activityId, layoutConfig),
+    );
     this._applyGroupOrder();
 
     // Apply per-card max width (centered via CSS)
@@ -3811,11 +4255,8 @@ class SofabatonRemoteCard extends HTMLElement {
       this.style.setProperty("--remote-zoom", String(z));
     }
 
-    const remote = this._remoteState();
     const isUnavailable = remote?.state === "unavailable";
     const loadState = remote?.attributes?.load_state;
-    const activityId = this._currentActivityId();
-    const activities = this._activities();
     const assignedKeys = remote?.attributes?.assigned_keys;
     const macroKeys = remote?.attributes?.macro_keys;
     const favoriteKeys = remote?.attributes?.favorite_keys;
@@ -3949,17 +4390,64 @@ class SofabatonRemoteCard extends HTMLElement {
     }
 
     const isX2 = this._isX2();
+    const showVolume = this._volumeEnabled(layoutConfig);
+    const showChannel = this._channelEnabled(layoutConfig);
+    const showMedia = this._mediaEnabled(layoutConfig);
+    const showDvr = this._dvrEnabled(layoutConfig);
+    const midEnabled =
+      (layoutConfig.show_mid ?? true) && (showVolume || showChannel);
+    const mediaEnabled = isX2 ? showMedia || showDvr : showMedia;
 
-    // Center column alignment behavior
-    if (this._midCenterCol) {
-      this._midCenterCol.classList.toggle("x2", isX2);
+    if (this._midEl) {
+      const midMode =
+        showVolume && showChannel
+          ? "dual"
+          : showVolume
+            ? "volume"
+            : showChannel
+              ? "channel"
+              : "off";
+      this._midEl.classList.toggle("mid--dual", midMode === "dual");
+      this._midEl.classList.toggle("mid--volume", midMode === "volume");
+      this._midEl.classList.toggle("mid--channel", midMode === "channel");
+      this._midEl.classList.toggle("mid--x2", isX2);
+      this._midEl.classList.toggle("mid--x1", !isX2);
     }
 
-    // Media layout class toggles
     if (this._mediaEl) {
-      this._mediaEl.classList.toggle("x2", isX2);
-      this._mediaEl.classList.toggle("x1", !isX2);
+      const mediaMode = isX2
+        ? showMedia && showDvr
+          ? "both"
+          : showMedia
+            ? "play"
+            : showDvr
+              ? "dvr"
+              : "off"
+        : showMedia || showDvr
+          ? "play"
+          : "off";
+      this._mediaEl.classList.toggle("media--play", mediaMode === "play");
+      this._mediaEl.classList.toggle("media--dvr", mediaMode === "dvr");
+      this._mediaEl.classList.toggle("media--both", mediaMode === "both");
+      this._mediaEl.classList.toggle("media--x2", isX2);
+      this._mediaEl.classList.toggle("media--x1", !isX2);
     }
+
+    const showPause = showDvr || (!isX2 && showMedia);
+    this._buttonVisibility = {
+      volup: showVolume,
+      voldn: showVolume,
+      mute: showVolume,
+      guide: isX2 && showChannel,
+      chup: showChannel,
+      chdn: showChannel,
+      rew: showMedia,
+      play: showMedia && isX2,
+      fwd: showMedia,
+      dvr: isX2 && showDvr,
+      pause: showPause,
+      exit: isX2 && showDvr,
+    };
 
     // Activity select sync + Powered Off detection
     let isPoweredOff = false;
@@ -3978,12 +4466,23 @@ class SofabatonRemoteCard extends HTMLElement {
       this._stopActivityLoading();
     } else {
       const options = [
+        ...(this._editMode ? ["Default Layout"] : []),
         "Powered Off",
         ...activities.map((activity) => activity.name),
       ];
-      current = this._currentActivityLabel() || "Powered Off";
+      const previewLabel = preview
+        ? preview.poweredOff
+          ? "Powered Off"
+          : preview.label || `Activity ${preview.activityId}`
+        : null;
+      if (previewLabel && !options.includes(previewLabel)) {
+        options.push(previewLabel);
+      }
+      current = previewLabel || this._currentActivityLabel() || "Powered Off";
 
-      isPoweredOff = activityId == null || this._isPoweredOffLabel(current);
+      isPoweredOff = preview
+        ? preview.poweredOff
+        : activityId == null || this._isPoweredOffLabel(current);
       if (pendingActivity && (pendingExpired || current === pendingActivity)) {
         this._pendingActivity = null;
         this._pendingActivityAt = null;
@@ -4010,7 +4509,8 @@ class SofabatonRemoteCard extends HTMLElement {
       }
       this._suppressActivityChange = false;
 
-      this._activitySelect.disabled = options.length <= 1;
+      this._activitySelect.disabled =
+        this._editMode || (preview ? true : options.length <= 1);
 
       const currentActivity = this._currentActivityLabel();
       if (this._activityLoadActive && this._activityLoadTarget) {
@@ -4071,7 +4571,7 @@ class SofabatonRemoteCard extends HTMLElement {
       this._setAutomationAssistActive(false);
     }
     this._syncAutomationAssistMqtt();
-    this._setVisible(this._activityRow, this._config.show_activity);
+    this._setVisible(this._activityRow, layoutConfig.show_activity);
 
     const showMacrosBtn = this._showMacrosButton();
     const showFavoritesBtn = this._showFavoritesButton();
@@ -4103,22 +4603,24 @@ class SofabatonRemoteCard extends HTMLElement {
       this._syncLayering();
     }
 
-    this._setVisible(this._dpadEl, this._config.show_dpad);
-    this._setVisible(this._navRowEl, this._config.show_nav);
-    this._setVisible(this._midEl, this._config.show_mid);
-    this._setVisible(this._mediaEl, this._config.show_media);
-    this._setVisible(this._colorsEl, this._config.show_colors);
+    this._setVisible(this._dpadEl, layoutConfig.show_dpad);
+    this._setVisible(this._navRowEl, layoutConfig.show_nav);
+    this._setVisible(this._midEl, midEnabled);
+    this._setVisible(this._mediaEl, mediaEnabled);
+    this._setVisible(this._colorsEl, layoutConfig.show_colors);
 
     // ABC: must be enabled in config AND X2
-    this._setVisible(this._abcEl, this._config.show_abc && isX2);
+    this._setVisible(this._abcEl, layoutConfig.show_abc && isX2);
 
     const disableAllButtons =
-      isUnavailable || isPoweredOff || this._activityLoadActive;
+      isUnavailable ||
+      this._activityLoadActive ||
+      (!this._editMode && isPoweredOff);
 
     if (this._macrosButton) {
       this._macrosButton.hass = this._hass;
 
-      const macrosEnabled = macros.length > 0;
+      const macrosEnabled = this._editMode ? true : macros.length > 0;
       this._macrosButtonWrap.classList.toggle(
         "disabled",
         disableAllButtons || !macrosEnabled,
@@ -4128,7 +4630,9 @@ class SofabatonRemoteCard extends HTMLElement {
     if (this._favoritesButton) {
       this._favoritesButton.hass = this._hass;
 
-      const favoritesEnabled = favorites.length + customFavorites.length > 0;
+      const favoritesEnabled = this._editMode
+        ? true
+        : favorites.length + customFavorites.length > 0;
       this._favoritesButtonWrap.classList.toggle(
         "disabled",
         disableAllButtons || !favoritesEnabled,
@@ -4176,14 +4680,16 @@ class SofabatonRemoteCard extends HTMLElement {
     // Update all keys: hass + enabled/disabled + X2-only visibility
     for (const k of this._keys) {
       k.btn.hass = this._hass;
-
-      // Hide X2-only buttons on X1/X1S
-      if (k.isX2Only) {
-        this._setVisible(k.wrap, isX2);
-      }
+      const layoutVisible =
+        this._buttonVisibility && k.key in this._buttonVisibility
+          ? this._buttonVisibility[k.key]
+          : true;
+      const shouldShow = k.isX2Only ? isX2 && layoutVisible : layoutVisible;
+      this._setVisible(k.wrap, shouldShow);
 
       // Disable all buttons if Powered Off
-      const enabled = !disableAllButtons && this._isEnabled(k.id);
+      const enabled =
+        !disableAllButtons && (this._editMode || this._isEnabled(k.id));
       k.wrap.classList.toggle("disabled", !enabled);
     }
 
@@ -4213,11 +4719,13 @@ class SofabatonRemoteCard extends HTMLElement {
       show_dpad: true,
       show_nav: true,
       show_mid: true,
+      show_volume: true,
+      show_channel: true,
       show_media: true,
+      show_dvr: true,
       show_colors: true,
       show_abc: true,
       show_automation_assist: false,
-      show_macro_favorites: true,
       show_macros_button: null,
       show_favorites_button: null,
       custom_favorites: [],
@@ -4230,14 +4738,147 @@ class SofabatonRemoteCard extends HTMLElement {
 
 // Editor
 class SofabatonRemoteCardEditor extends HTMLElement {
+  async _ensureEditorIntegration() {
+    if (!this._hass?.callWS || !this._config?.entity) return;
+
+    const entityId = String(this._config.entity);
+    if (
+      this._editorIntegrationEntityId === entityId &&
+      this._editorIntegrationDomain
+    )
+      return;
+    if (this._editorIntegrationDetectingFor === entityId) return;
+
+    this._editorIntegrationDetectingFor = entityId;
+    try {
+      const entry = await this._hass.callWS({
+        type: "config/entity_registry/get",
+        entity_id: entityId,
+      });
+      this._editorIntegrationDomain = String(entry?.platform || "");
+      this._editorIntegrationEntityId = entityId;
+    } catch (e) {
+      this._editorIntegrationDomain = null;
+      this._editorIntegrationEntityId = entityId;
+    } finally {
+      this._editorIntegrationDetectingFor = null;
+    }
+  }
+
+  _isHubIntegrationForEditor() {
+    return String(this._editorIntegrationDomain || "") === "sofabaton_hub";
+  }
+
+  _editorHubVersion() {
+    const entityId = String(this._config?.entity || "").trim();
+    if (!entityId) return "";
+    return String(
+      this._hass?.states?.[entityId]?.attributes?.hub_version || "",
+    ).toUpperCase();
+  }
+
+  _isEditorX2() {
+    if (this._isHubIntegrationForEditor()) return true;
+    return this._editorHubVersion().includes("X2");
+  }
+
+  _editorRemoteUnavailable(entityId = undefined) {
+    const resolved = String((entityId ?? this._config?.entity) || "").trim();
+    if (!resolved) return false;
+    return this._hass?.states?.[resolved]?.state === "unavailable";
+  }
+
+  _sanitizeCommandName(value) {
+    const cleaned = String(value ?? "")
+      .replace(/[^A-Za-z0-9 ]+/g, "")
+      .slice(0, 20);
+    return cleaned;
+  }
+
   set hass(hass) {
     this._hass = hass;
     if (this._form) this._form.hass = hass;
+
+    const entityId = String(this._config?.entity || "").trim();
+    if (!entityId) return;
+
+    if (
+      this._editorIntegrationEntityId !== entityId &&
+      this._editorIntegrationDetectingFor !== entityId
+    ) {
+      this._ensureEditorIntegration().then(() => this._renderCommandsEditor());
+    }
+
+    const remoteUnavailable = this._editorRemoteUnavailable(entityId);
+    const availabilityChanged =
+      this._lastEditorRemoteUnavailable !== remoteUnavailable;
+    this._lastEditorRemoteUnavailable = remoteUnavailable;
+
+    if (this._commandConfigLoading) {
+      if (availabilityChanged) this._renderCommandsEditor();
+      return;
+    }
+
+    if (this._commandConfigLoadedFor !== entityId) {
+      this._loadCommandConfigFromBackend().then(() =>
+        this._renderCommandsEditor(),
+      );
+      this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
+      this._renderCommandsEditor();
+      return;
+    }
+
+    if (availabilityChanged) {
+      this._renderCommandsEditor();
+    }
   }
 
   setConfig(config) {
-    this._config = { ...(config || {}) };
+    const prevScroll = this._captureEditorScroll();
+    const incomingConfig = { ...(config || {}) };
+
+    if ("preview_activity" in incomingConfig) {
+      delete incomingConfig.preview_activity;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(config, "preview_activity")) {
+      this._previewActivity = config?.preview_activity ?? "";
+      writePreviewActivity(config?.entity, this._previewActivity);
+    } else if (this._previewActivity == null) {
+      const cached = readPreviewActivity(config?.entity);
+      this._previewActivity = cached ?? "";
+    }
+
+    const nextEntity = String(incomingConfig?.entity || "");
+    if (nextEntity !== String(this._commandConfigLoadedFor || "")) {
+      this._commandConfigLoadedFor = null;
+      if (this._commandSyncPollTimer) {
+        clearTimeout(this._commandSyncPollTimer);
+        this._commandSyncPollTimer = null;
+      }
+    }
+    if (nextEntity !== String(this._editorIntegrationEntityId || "")) {
+      this._editorIntegrationEntityId = null;
+      this._editorIntegrationDomain = null;
+      this._editorIntegrationDetectingFor = null;
+    }
+
+    if ("commands" in incomingConfig) delete incomingConfig.commands;
+
+    const configUnchanged =
+      !!this._form &&
+      JSON.stringify(this._config || {}) === JSON.stringify(incomingConfig);
+
+    this._config = incomingConfig;
+
+    if (configUnchanged) {
+      this._restoreEditorScroll(prevScroll);
+      return;
+    }
+
+    this._syncLayoutSelectionWithPreview();
     this._render();
+    this._restoreEditorScroll(prevScroll);
   }
 
   _render() {
@@ -4259,12 +4900,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           show_mid: "Volume/Channel Rockers",
           show_media: "Media Playback Controls",
           show_colors: "Red/Green/Yellow/Blue",
-          show_abc: "A/B/C Buttons (X2 only)",
-          show_automation_assist: "Automation Assist",
+          show_abc: "A/B/C Buttons",
           show_macros_button: "Macros Button",
           show_favorites_button: "Favorites Button",
-          custom_favorites: "Custom Favorites (advanced)",
-          show_macro_favorites: "Macros/Favorites Buttons (deprecated)",
           max_width: "Maximum Card Width (px)",
           shrink: "Shrink (higher = smaller)",
           group_order: "Group Order",
@@ -4277,6 +4915,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         // Merge form changes into the existing config so custom UI fields (like group order)
         // aren't lost when ha-form emits a partial value set.
         const newValue = { ...this._config, ...ev.detail.value };
+        const entityChanged = newValue.entity !== this._config.entity;
 
         // 1. If toggle is off, wipe the color data
         if (newValue.use_background_override === false) {
@@ -4286,8 +4925,25 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         // 2. STABILITY CHECK: Only fire if something actually changed
         if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
 
+        if (entityChanged) {
+          const prevConfig = this._config;
+          this._config = { ...prevConfig, entity: newValue.entity };
+          this._layoutSelection = "default";
+          this._setPreviewActivityForSelection("default");
+          this._config = prevConfig;
+          if (prevConfig?.entity) {
+            writePreviewActivity(prevConfig.entity, "");
+            window.dispatchEvent(
+              new CustomEvent("sofabaton-preview-activity", {
+                detail: { entity: prevConfig.entity, previewActivity: "" },
+              }),
+            );
+          }
+        }
+
         this._config = newValue;
         this._fireChanged();
+        if (entityChanged) this._renderGroupOrderEditor();
       });
 
       const wrapper = document.createElement("div");
@@ -4295,6 +4951,14 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       wrapper.appendChild(form);
       this.appendChild(wrapper);
       this._form = form;
+
+      if (!this._stylingWrap) {
+        const stylingWrap = document.createElement("div");
+        stylingWrap.className = "sb-styling-wrap";
+        stylingWrap.style.padding = "0 0 12px 0";
+        this.appendChild(stylingWrap);
+        this._stylingWrap = stylingWrap;
+      }
 
       // Group order (visual) editor container + styles (created once)
       if (!this._layoutWrap) {
@@ -4305,41 +4969,163 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         this._layoutWrap = layoutWrap;
       }
 
+      if (!this._commandsWrap) {
+        const commandsWrap = document.createElement("div");
+        commandsWrap.className = "sb-commands-wrap";
+        this.appendChild(commandsWrap);
+        this._commandsWrap = commandsWrap;
+      }
+
       if (!this._editorStyle) {
         const st = document.createElement("style");
         st.textContent = `
-          .sb-exp { border: 1px solid var(--divider-color); border-radius: 12px; overflow: hidden; }
-          .sb-exp-hdr { width: 100%; display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px; background: var(--ha-card-background, transparent); border: 0; cursor: pointer; }
+          .sb-modal { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); z-index: 9999; }
+          .sb-modal.open { display: flex; }
+          .sb-modal__dialog { width: min(560px, 92vw); max-height: 90vh; overflow: auto; background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); padding: 16px; display: grid; gap: 12px; box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35); }
+          .sb-modal__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+          .sb-modal__title { font-weight: 700; font-size: 18px; }
+          .sb-modal__close { border: none; background: transparent; color: inherit; cursor: pointer; font-size: 22px; line-height: 1; }
+          .sb-modal__text { font-size: 15px; line-height: 1.5; opacity: 0.95; }
+          .sb-modal__optout { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+          .sb-modal__actions { display: flex; gap: 8px; justify-content: flex-end; }
+          .sb-exp { border: 1px solid var(--divider-color); border-radius: 12px; overflow: visible; }
+          .sb-exp-hdr { width: 100%; display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px; background: var(--ha-card-background, transparent); border: 0; cursor: pointer; transition: background-color 120ms ease; }
           .sb-exp-hdr-left { display:flex; align-items:center; gap: 10px; min-width: 0; }
           .sb-exp-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-          .sb-exp-body { padding: 0 12px 12px 12px; }
+          .sb-exp-body { padding: 8px 12px 12px 12px; }
           .sb-exp-collapsed .sb-exp-body { display: none; }
+          .sb-exp:not(.sb-exp-collapsed) > .sb-exp-hdr { background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); border-radius: 12px 12px 0 0; }
                     
           .sb-layout-title { font-weight: 600; margin: 10px 0 6px; }
           .sb-layout-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px; }
           .sb-layout-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+          .sb-layout-row-order { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
           .sb-layout-row + .sb-layout-row { border-top: 1px solid var(--divider-color); }
-          .sb-layout-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .sb-layout-actions { display: inline-flex; align-items:center; gap: 10px; }
+          .sb-layout-actions-full { flex: 1; }
+          .sb-layout-actions-full ha-select { width: 100%; }
+          .sb-layout-note { font-size: 12px; opacity: 0.7; text-align: right; padding: 2px 0 6px; }
           .sb-icon-btn { width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--divider-color); background: var(--ha-card-background, transparent); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
           .sb-icon-btn[disabled] { opacity: 0.4; cursor: default; }
           .sb-layout-footer { margin-top: 10px; display:flex; justify-content:flex-end; }
           .sb-reset-btn { border: 1px solid var(--divider-color); border-radius: 10px; padding: 6px 10px; background: transparent; cursor:pointer; }
           .sb-switch { display:flex; align-items:center; }
-          .sb-mf-wrap { display:flex; flex-direction:row; align-items:center; gap:14px; }
-          .sb-mf-item { display:flex; align-items:center; gap:8px; }
-          .sb-mf-text { font-size: 13px; opacity: 0.9; }
-          .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; }
+          .sb-styling-wrap { padding: 0 0 12px 0; }
+          .sb-styling-card { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; }
+          .sb-layout-switch-item { display:flex; align-items:center; gap:8px; min-width: 0; }
+          .sb-layout-switch-item-empty { visibility: hidden; }
+          .sb-layout-switch-label { font-size: 13px; opacity: 0.9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+          .sb-move-wrap { display:flex; flex-direction:row; align-items:center; gap:6px; justify-self: end; }
+          .sb-commands-wrap { padding: 0 0 12px 0; }
+          .sb-commands-meta { margin-bottom: 12px; }
+          .sb-yaml-helper-row { display:flex; align-items:flex-start; justify-content:space-between; gap: 10px; margin-bottom: 10px; }
+          .sb-yaml-helper-drag { color: var(--secondary-text-color); opacity: 0.75; padding-top: 2px; }
+          .sb-yaml-helper-drag ha-icon { --mdc-icon-size: 20px; }
+          .sb-yaml-helper-main { display:flex; flex-direction:column; gap: 4px; flex: 1; min-width: 0; }
+          .sb-yaml-helper-label-wrap { display:flex; align-items:center; gap: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+          .sb-yaml-helper-label { line-height: 1.2; }
+          .sb-yaml-helper-desc { font-size: 13px; color: var(--secondary-text-color); line-height: 1.3; }
+          .sb-yaml-helper-link { color: var(--secondary-text-color); display:flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
+          .sb-yaml-helper-link:hover { color: var(--primary-color); opacity: 1; }
+          .sb-yaml-helper-link ha-icon { --mdc-icon-size: 16px; }
+          .sb-commands-divider { height: 1px; background: var(--divider-color); margin: 12px 0 14px; }
+          .sb-commands-section-title-wrap { display:flex; align-items:center; gap: 8px; margin-bottom: 2px; }
+          .sb-commands-section-title { font-size: 18px; font-weight: 600; line-height: 1.2; }
+          .sb-commands-section-help { color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; text-decoration:none; opacity: 0.85; }
+          .sb-commands-section-help:hover { color: var(--primary-color); opacity: 1; }
+          .sb-commands-section-help ha-icon { --mdc-icon-size: 16px; }
+          .sb-commands-section-subtitle { font-size: 13px; color: var(--secondary-text-color); margin-bottom: 10px; }
+          .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
+          .sb-command-sync-row-running { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
+          .sb-command-sync-row-error { border-color: var(--error-color); background: color-mix(in srgb, var(--error-color) 10%, transparent); }
+          .sb-command-sync-row-ok { border-color: color-mix(in srgb, var(--success-color, #22c55e) 70%, var(--divider-color)); background: color-mix(in srgb, var(--success-color, #22c55e) 12%, transparent); }
+          .sb-command-sync-message-wrap { display:flex; align-items:center; gap: 8px; min-width: 0; }
+          .sb-command-sync-message-wrap ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); }
+          .sb-command-sync-row-ok .sb-command-sync-message-wrap ha-icon { color: var(--success-color, #22c55e); }
+          .sb-command-sync-row-error .sb-command-sync-message-wrap ha-icon { color: var(--error-color); }
+          .sb-command-sync-row-running .sb-command-sync-message-wrap ha-icon { color: var(--primary-color); }
+          .sb-command-sync-message { font-size: 13px; color: var(--secondary-text-color); }
+          .sb-command-sync-btn { border: 1px solid var(--primary-color); border-radius: 10px; min-height: 34px; padding: 0 12px; background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--primary-text-color); cursor: pointer; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+          .sb-command-sync-btn:hover { background: color-mix(in srgb, var(--primary-color) 28%, transparent); border-color: color-mix(in srgb, var(--primary-color) 85%, #000); }
+          .sb-command-sync-btn:active { transform: translateY(1px); }
+          .sb-command-sync-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent); }
+          .sb-command-sync-btn[disabled],
+          .sb-command-sync-btn.sb-command-sync-btn-static { opacity: 0.6; cursor: default; transform: none; pointer-events: none; }
+          .sb-command-sync-btn.sb-command-sync-btn-static { display: inline-flex; align-items: center; }
+          .sb-command-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+          .sb-command-slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: left; display:flex; flex-direction:column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
+          .sb-command-slot-btn:hover { border-color: var(--primary-color); }
+          .sb-command-slot-main { position: relative; display:flex; align-items:flex-start; gap: 8px; padding: 14px 12px 10px; min-width: 0; }
+                    .sb-command-slot-icon-wrap { width: 20px; min-width: 20px; min-height: 20px; display:flex; align-items:center; justify-content:center; }
+          .sb-command-slot-icon-wrap ha-icon { --mdc-icon-size: 20px; color: var(--state-icon-color); }
+          .sb-command-slot-name { font-weight: 700; font-size: 16px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--primary-text-color); }
+          .sb-command-slot-meta { margin-top: 3px; font-size: 12px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display:flex; align-items:center; gap: 4px; }
+          .sb-command-slot-favorite { color: var(--error-color); display:inline-flex; }
+          .sb-command-slot-favorite ha-icon { --mdc-icon-size: 14px; }
+          .sb-command-slot-meta-icon { color: var(--state-icon-color); display:inline-flex; }
+          .sb-command-slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
+          .sb-command-slot-text-wrap { min-width: 0; padding-top: 1px; flex: 1; }
+          .sb-command-slot-clear { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
+          .sb-command-slot-clear:hover { opacity: 1; border-color: var(--primary-color); }
+          .sb-command-slot-clear ha-icon { --mdc-icon-size: 16px; }
+          .sb-command-slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+          .sb-command-slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
+          .sb-command-slot-action-btn:active { transform: translateY(1px); }
+          .sb-command-slot-action-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--primary-color); }
+          .sb-command-slot-confirm { padding: 14px 12px 10px; display:flex; flex-direction:column; }
+          .sb-command-slot-confirm-title { font-weight: 700; font-size: 16px; line-height: 1.15; color: var(--primary-text-color); }
+          .sb-command-slot-confirm-sub { margin-top: 1px; font-size: 12px; color: var(--secondary-text-color); }
+          .sb-command-slot-confirm-actions { display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 10px 10px; }
+          .sb-command-slot-confirm-actions .sb-command-slot-action-btn { margin: 0; text-align: center; justify-content: center; display:flex; align-items:center; }
+          .sb-command-slot-empty { border-color: var(--divider-color); background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); }
+          .sb-command-slot-empty .sb-command-slot-main { gap: 12px; align-items: center; justify-content: center; flex-direction: column; }
+          .sb-command-slot-empty .sb-command-slot-empty-text { font-size: 64px; line-height: 1; color: var(--secondary-text-color); display:inline-flex; align-items:center; justify-content:center; opacity: 0.8; }
+          .sb-command-slot-empty .sb-command-slot-name { font-size: 18px; font-weight: 500; text-align: center; color: var(--secondary-text-color); }
+          .sb-command-modal { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0.52); display:none; align-items:center; justify-content:center; padding: 18px; }
+          .sb-command-modal.open { display:flex; }
+          .sb-command-dialog { width: min(640px, 100%); max-height: min(680px, 100%); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); color: var(--primary-text-color); border-radius: 16px; border: 1px solid var(--divider-color); display:flex; flex-direction:column; overflow:hidden; box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); }
+          .sb-command-dialog-header { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--divider-color); }
+          .sb-command-dialog-title { font-size: 16px; font-weight: 700; }
+          .sb-command-dialog-close { border: 0; background: transparent; cursor: pointer; color: inherit; display:flex; align-items:center; justify-content:center; }
+          .sb-command-dialog-body { padding: 16px; display:flex; flex-direction:column; gap: 12px; overflow:auto; }
+          .sb-command-dialog-footer { display:flex; align-items:center; justify-content:space-between; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--divider-color); }
+          .sb-command-dialog-footer-note { font-size: 13px; color: var(--error-color); text-align: left; }
+          .sb-command-dialog-footer-actions { display:flex; align-items:center; justify-content:flex-end; gap: 8px; margin-left: auto; }
+          .sb-command-dialog-btn { border: 1px solid var(--divider-color); border-radius: 10px; min-height: 36px; padding: 0 12px; background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color); cursor: pointer; font-size: 14px; }
+          .sb-command-dialog-btn:hover { border-color: var(--primary-color); }
+          .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+          .sb-command-dialog-note { border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color)); border-radius: 12px; padding: 12px; background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 13px; line-height: 1.45; display:flex; align-items:flex-start; gap:10px; }
+          .sb-command-dialog-note::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: color-mix(in srgb, var(--info-color, var(--primary-color)) 22%, transparent); flex: 0 0 18px; margin-top: 1px; }
+          .sb-command-config-block { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:12px; }
+          .sb-command-input-row { display:flex; flex-direction:column; gap:6px; }
+          .sb-command-input-label { font-size: 12px; opacity: 0.78; }
+          .sb-command-name-field { width: 100%; }
+          .sb-command-input-select { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, transparent); color: inherit; min-height: 40px; padding: 6px 12px; }
+          .sb-command-checkbox { width: 100%; border: 0; background: transparent; padding: 0; display:flex; align-items:center; justify-content:space-between; gap:10px; font-size: 13px; cursor: pointer; color: inherit; }
+          .sb-command-checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: color-mix(in srgb, var(--ha-card-background, transparent) 88%, #000); display:flex; align-items:center; justify-content:center; transition: background-color 120ms ease, border-color 120ms ease; }
+          .sb-command-checkbox-icon ha-icon { --mdc-icon-size: 16px; }
+          .sb-command-checkbox-left { display:flex; align-items:center; gap:10px; }
+          .sb-command-checkbox.sb-command-favorite-active .sb-command-checkbox-icon { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
+          .sb-command-helper { font-size: 12px; opacity: 0.8; margin-top: 2px; }
+          .sb-command-activity-chip-row { display:flex; flex-wrap:wrap; gap:8px; }
+          .sb-command-activity-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; cursor: pointer; }
+          .sb-command-activity-chip.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); }
+          .sb-command-action-wrap { display:flex; flex-direction:column; gap:8px; }
+          .sb-command-dialog-body ha-textfield,
+          .sb-command-dialog-body ha-selector { width: 100%; }
+          @media (max-width: 760px) {
+            .sb-command-grid { grid-template-columns: 1fr; }
+          }
+          @media (max-width: 700px) {
+            .sb-command-modal { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+            .sb-command-dialog { width: 100%; max-height: 100%; border-radius: 0 0 16px 16px; }
+            .sb-command-dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
+          }
         `;
         this.appendChild(st);
         this._editorStyle = st;
       }
     }
-
-    // Determine if we should show the color picker
-    const showColorPicker =
-      this._config.use_background_override ||
-      !!this._config.background_override;
 
     this._form.schema = [
       {
@@ -4354,57 +5140,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         },
         required: true,
       },
-      {
-        name: "show_automation_assist",
-        selector: { boolean: {} },
-      },
-      {
-        type: "expandable",
-        title: "Styling Options",
-        icon: "mdi:palette",
-        schema: [
-          // We removed the 'grid' type here so items stack vertically
-          { name: "theme", selector: { theme: {} } },
-          {
-            name: "max_width",
-            selector: {
-              number: {
-                min: 230,
-                max: 1200,
-                step: 5,
-                unit_of_measurement: "px",
-              },
-            },
-          },
-          {
-            name: "shrink",
-            selector: {
-              number: {
-                min: 0,
-                max: 80,
-                step: 1,
-                unit_of_measurement: "%",
-              },
-            },
-          },
-          { name: "use_background_override", selector: { boolean: {} } },
-          ...(showColorPicker
-            ? [{ name: "background_override", selector: { color_rgb: {} } }]
-            : []),
-        ],
-      },
-      ,
-      {
-        type: "expandable",
-        title: "Custom Favorites",
-        icon: "mdi:star-plus",
-        schema: [
-          {
-            name: "custom_favorites",
-            selector: { object: {} },
-          },
-        ],
-      },
     ];
 
     this._form.data = {
@@ -4416,19 +5151,1673 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         this._config.use_background_override ??
         !!this._config.background_override,
       background_override: this._config.background_override ?? [255, 255, 255],
-      custom_favorites: this._config.custom_favorites ?? [],
       max_width: this._config.max_width ?? 360,
       shrink: this._config.shrink ?? 0,
       group_order: this._config.group_order ?? DEFAULT_GROUP_ORDER.slice(),
       show_automation_assist: this._config.show_automation_assist ?? false,
     };
 
+    this._renderStylingOptionsEditor();
+    this._renderGroupOrderEditor();
+    this._renderCommandsEditor();
+  }
+
+  _normalizeCommandAction(action) {
+    const defaultAction = { action: "perform-action" };
+    if (Array.isArray(action)) {
+      const first = action.find((item) => item && typeof item === "object");
+      const normalized = first || defaultAction;
+      return normalized?.action
+        ? normalized
+        : { ...normalized, ...defaultAction };
+    }
+    if (action && typeof action === "object") {
+      return action?.action ? action : { ...action, ...defaultAction };
+    }
+    return defaultAction;
+  }
+
+  _commandSlotDefault(idx) {
+    return {
+      name: `Command ${idx + 1}`,
+      add_as_favorite: true,
+      hard_button: "",
+      activities: [],
+      action: { action: "perform-action" },
+    };
+  }
+
+  _normalizeCommandsForStorage(nextCommands) {
+    return Array.from({ length: 10 }, (_, idx) => {
+      const item = nextCommands?.[idx] || {};
+      return {
+        ...this._commandSlotDefault(idx),
+        name: this._sanitizeCommandName(item.name ?? `Command ${idx + 1}`),
+        add_as_favorite:
+          item?.add_as_favorite === undefined
+            ? this._commandSlotDefault(idx).add_as_favorite
+            : Boolean(item.add_as_favorite),
+        hard_button: String(item.hard_button ?? ""),
+        activities: Array.isArray(item.activities)
+          ? item.activities.map((id) => String(id)).filter((id) => id !== "")
+          : [],
+        action: this._normalizeCommandAction(item.action),
+      };
+    });
+  }
+
+  async _loadCommandConfigFromBackend(force = false) {
+    if (!this._hass?.callWS || !this._config?.entity) return;
+    const entityId = String(this._config.entity || "").trim();
+    if (!entityId) return;
+    if (this._commandConfigLoading && !force) return;
+    if (this._commandConfigLoadedFor === entityId && !force) return;
+
+    this._commandConfigLoading = true;
+    try {
+      const result = await this._hass.callWS({
+        type: "sofabaton_x1s/command_config/get",
+        entity_id: entityId,
+      });
+      const commands = this._normalizeCommandsForStorage(
+        result?.commands || [],
+      );
+      this._commandConfigHash = String(result?.commands_hash || "");
+      this._commandConfigHashVersion = String(result?.hash_version || "");
+      this._commandConfigLoadedFor = entityId;
+      this._commandsData = commands;
+    } catch (err) {
+      if (!Array.isArray(this._commandsData)) {
+        this._commandsData = this._normalizeCommandsForStorage([]);
+      }
+      this._commandConfigLoadedFor = entityId;
+    } finally {
+      this._commandConfigLoading = false;
+    }
+  }
+
+  async _loadCommandSyncProgress(force = false) {
+    if (!this._hass?.callWS || !this._config?.entity) return;
+    const entityId = String(this._config.entity || "").trim();
+    if (!entityId) return;
+    if (this._commandSyncLoading && !force) return;
+
+    this._commandSyncLoading = true;
+    try {
+      const result = await this._hass.callWS({
+        type: "sofabaton_x1s/command_sync/progress",
+        entity_id: entityId,
+      });
+      this._commandSyncState = {
+        status: String(result?.status || "idle"),
+        current_step: Number(result?.current_step || 0),
+        total_steps: Number(result?.total_steps || 0),
+        message: String(result?.message || "Idle"),
+        commands_hash: String(result?.commands_hash || ""),
+        managed_command_hashes: Array.isArray(result?.managed_command_hashes)
+          ? result.managed_command_hashes
+              .map((item) => String(item || ""))
+              .filter(Boolean)
+          : [],
+        sync_needed: Boolean(result?.sync_needed),
+      };
+    } catch (err) {
+      if (
+        !this._commandSyncState ||
+        typeof this._commandSyncState !== "object"
+      ) {
+        this._commandSyncState = {
+          status: "idle",
+          current_step: 0,
+          total_steps: 0,
+          message: "Unable to load sync status",
+          commands_hash: "",
+          managed_command_hashes: [],
+          sync_needed: false,
+        };
+      }
+    } finally {
+      this._commandSyncLoading = false;
+    }
+  }
+
+  _syncStatusTone(status) {
+    if (status === "failed") return "error";
+    if (status === "success") return "ok";
+    if (status === "running") return "running";
+    return "idle";
+  }
+
+  _commandSyncWarningStorageKey(entityId) {
+    return `sofabaton_x1s:sync_warning_optout:${String(entityId || "").trim()}`;
+  }
+
+  _commandSyncWarningOptedOut(entityId) {
+    const key = this._commandSyncWarningStorageKey(entityId);
+    try {
+      return window.localStorage?.getItem(key) === "1";
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  _setCommandSyncWarningOptOut(entityId, optedOut) {
+    const key = this._commandSyncWarningStorageKey(entityId);
+    try {
+      if (optedOut) window.localStorage?.setItem(key, "1");
+      else window.localStorage?.removeItem(key);
+    } catch (_err) {
+      // Ignore storage errors.
+    }
+  }
+
+  _ensureCommandSyncWarningModal() {
+    if (this._commandSyncWarningModal) return;
+
+    const modal = document.createElement("div");
+    modal.className = "sb-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.addEventListener("click", (ev) => {
+      if (ev.target === modal) this._resolveCommandSyncWarning(false);
+    });
+
+    const dialog = document.createElement("div");
+    dialog.className = "sb-modal__dialog";
+
+    const header = document.createElement("div");
+    header.className = "sb-modal__header";
+
+    const title = document.createElement("div");
+    title.className = "sb-modal__title";
+    title.textContent = "Sync commands to hub?";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "sb-modal__close";
+    closeBtn.textContent = "✕";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.addEventListener("click", () => this._resolveCommandSyncWarning(false));
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const body = document.createElement("div");
+    body.className = "sb-modal__text";
+    body.innerHTML =
+      "This sync can run for several minutes. During this process, other interactions with the hub are blocked.<br><br>At the end of deployment, the physical remote will be force-resynced. It is recommended to finish your full Wifi Commands setup first, then sync once.";
+
+    const optOut = document.createElement("label");
+    optOut.className = "sb-modal__optout";
+    const optOutInput = document.createElement("input");
+    optOutInput.type = "checkbox";
+    this._commandSyncWarningOptOutInput = optOutInput;
+    const optOutText = document.createElement("span");
+    optOutText.textContent = "Don’t show this warning again for this remote.";
+    optOut.appendChild(optOutInput);
+    optOut.appendChild(optOutText);
+
+    const actions = document.createElement("div");
+    actions.className = "sb-modal__actions";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "sb-command-dialog-btn";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => this._resolveCommandSyncWarning(false));
+
+    const confirmBtn = document.createElement("button");
+    confirmBtn.type = "button";
+    confirmBtn.className = "sb-command-dialog-btn sb-command-dialog-btn-primary";
+    confirmBtn.textContent = "Start sync";
+    confirmBtn.addEventListener("click", () => this._resolveCommandSyncWarning(true));
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+
+    dialog.appendChild(header);
+    dialog.appendChild(body);
+    dialog.appendChild(optOut);
+    dialog.appendChild(actions);
+    modal.appendChild(dialog);
+
+    const modalHost = this.shadowRoot || this;
+    if (!modalHost) return;
+    modalHost.appendChild(modal);
+    this._commandSyncWarningModal = modal;
+  }
+
+  _resolveCommandSyncWarning(confirmed) {
+    if (!this._commandSyncWarningModal) return;
+
+    const entityId = String(this._config?.entity || "").trim();
+    if (
+      entityId &&
+      this._commandSyncWarningOptOutInput &&
+      this._commandSyncWarningOptOutInput.checked
+    ) {
+      this._setCommandSyncWarningOptOut(entityId, true);
+    }
+
+    this._commandSyncWarningModal.classList.remove("open");
+    if (this._commandSyncWarningResolver) {
+      this._commandSyncWarningResolver(Boolean(confirmed));
+      this._commandSyncWarningResolver = null;
+    }
+  }
+
+  async _confirmCommandConfigSync() {
+    const entityId = String(this._config?.entity || "").trim();
+    if (!entityId || this._commandSyncWarningOptedOut(entityId)) return true;
+
+    this._ensureCommandSyncWarningModal();
+    if (!this._commandSyncWarningModal) return true;
+
+    if (this._commandSyncWarningOptOutInput) {
+      this._commandSyncWarningOptOutInput.checked = false;
+    }
+
+    this._commandSyncWarningModal.classList.add("open");
+    return new Promise((resolve) => {
+      this._commandSyncWarningResolver = resolve;
+    });
+  }
+
+  async _runCommandConfigSync() {
+    if (this._commandSyncRunning) return;
+    const entityId = String(this._config?.entity || "").trim();
+    if (!entityId || !this._hass?.callService) return;
+
+    const confirmed = await this._confirmCommandConfigSync();
+    if (!confirmed) return;
+
+    this._commandSyncState = {
+      ...(this._commandSyncState || {}),
+      status: "running",
+      current_step: 0,
+      total_steps: Number(this._commandSyncState?.total_steps || 0),
+      message: "Starting sync",
+      sync_needed: true,
+    };
+    this._commandSyncRunning = true;
+    this._renderCommandsEditor();
+
+    try {
+      await this._hass.callService("sofabaton_x1s", "sync_command_config", {
+        entity_id: entityId,
+      });
+    } catch (err) {
+      this._commandSyncState = {
+        ...(this._commandSyncState || {}),
+        status: "failed",
+        message: String(err?.message || "Sync failed to start"),
+      };
+    } finally {
+      this._commandSyncRunning = false;
+      await this._loadCommandSyncProgress(true);
+      this._renderCommandsEditor();
+    }
+  }
+
+  _commandsList() {
+    if (!Array.isArray(this._commandsData)) {
+      this._commandsData = this._normalizeCommandsForStorage([]);
+    }
+    return this._commandsData.map((slot, idx) => ({
+      ...this._commandSlotDefault(idx),
+      ...slot,
+      action: this._normalizeCommandAction(slot?.action),
+    }));
+  }
+
+  async _setCommands(nextCommands, options = {}) {
+    const prevScroll = this._captureEditorScroll();
+    const emitChanged = options.emitChanged !== false;
+    const normalized = this._normalizeCommandsForStorage(nextCommands);
+    this._commandsData = normalized;
+
+    const entityId = String(this._config?.entity || "").trim();
+    if (entityId && this._hass?.callWS) {
+      try {
+        const result = await this._hass.callWS({
+          type: "sofabaton_x1s/command_config/set",
+          entity_id: entityId,
+          commands: normalized,
+        });
+        this._commandConfigHash = String(result?.commands_hash || "");
+        this._commandConfigHashVersion = String(result?.hash_version || "");
+      } catch (err) {
+        // noop for now; editor keeps local staged data
+      }
+      await this._loadCommandSyncProgress(true);
+    }
+
+    if (emitChanged) this._fireChanged();
+    this._renderCommandsEditor();
+    this._restoreEditorScroll(prevScroll);
+  }
+
+  _cloneCommandSlot(slot) {
+    return {
+      name: this._sanitizeCommandName(slot?.name ?? ""),
+      add_as_favorite: Boolean(slot?.add_as_favorite),
+      hard_button: String(slot?.hard_button ?? ""),
+      activities: Array.isArray(slot?.activities)
+        ? slot.activities.map((id) => String(id)).filter((id) => id !== "")
+        : [],
+      action: this._normalizeCommandAction(slot?.action),
+    };
+  }
+
+  _ensureCommandDraft(slotIdx) {
+    if (!Number.isInteger(slotIdx)) return null;
+    if (
+      !this._commandEditorDrafts ||
+      typeof this._commandEditorDrafts !== "object"
+    ) {
+      this._commandEditorDrafts = {};
+    }
+    if (!this._commandEditorDrafts[slotIdx]) {
+      const source =
+        this._commandsList()[slotIdx] || this._commandSlotDefault(slotIdx);
+      this._commandEditorDrafts[slotIdx] = this._cloneCommandSlot(source);
+    }
+    return this._commandEditorDrafts[slotIdx];
+  }
+
+  _activeCommandDraft() {
+    const idx = this._activeCommandSlot;
+    if (!Number.isInteger(idx)) return null;
+    return this._ensureCommandDraft(idx);
+  }
+
+  _updateActiveCommandDraft(patch) {
+    const idx = this._activeCommandSlot;
+    if (!Number.isInteger(idx)) return null;
+    const current = this._ensureCommandDraft(idx);
+    if (!current) return null;
+    const next = { ...current, ...patch };
+    this._commandEditorDrafts[idx] = this._cloneCommandSlot(next);
+    return this._commandEditorDrafts[idx];
+  }
+
+  _commandSaveValidationMessage(slot = null) {
+    const draft = slot || this._activeCommandDraft();
+    if (!draft) return "";
+    const commandName = String(draft.name ?? "");
+    if (!commandName.length || commandName.startsWith(" ")) {
+      return "Command name must start with a non-space character.";
+    }
+    if (!draft.add_as_favorite && !String(draft.hard_button || "").trim()) {
+      return "Add as Favorite or Map to button before saving.";
+    }
+    return "";
+  }
+
+  _saveActiveCommandModal() {
+    const idx = this._activeCommandSlot;
+    if (!Number.isInteger(idx)) return;
+    const draft = this._activeCommandDraft();
+    if (!draft) return;
+
+    const validationMessage = this._commandSaveValidationMessage(draft);
+    if (validationMessage) {
+      this._commandSaveError = validationMessage;
+      this._renderCommandsEditor();
+      return;
+    }
+
+    const next = this._commandsList().slice();
+    next[idx] = this._cloneCommandSlot(draft);
+    this._commandSaveError = "";
+    if (this._commandEditorDrafts && this._commandEditorDrafts[idx]) {
+      delete this._commandEditorDrafts[idx];
+    }
+
+    this._activeCommandModal = null;
+    this._activeCommandSlot = null;
+    this._setCommands(next);
+  }
+
+  _scrollHostForEditor() {
+    let el = this;
+    while (el) {
+      const style = window.getComputedStyle?.(el);
+      const canScroll =
+        style && (style.overflowY === "auto" || style.overflowY === "scroll");
+      if (canScroll && el.scrollHeight > el.clientHeight + 5) return el;
+      el = el.parentElement || el.parentNode?.host || null;
+    }
+    return document.scrollingElement || null;
+  }
+
+  _captureEditorScroll() {
+    const host = this._scrollHostForEditor();
+    return {
+      host,
+      top: host?.scrollTop ?? 0,
+    };
+  }
+
+  _restoreEditorScroll(snapshot) {
+    const host = snapshot?.host;
+    const top = Number(snapshot?.top ?? 0);
+    if (!host) return;
+    requestAnimationFrame(() => {
+      host.scrollTop = top;
+      setTimeout(() => {
+        host.scrollTop = top;
+      }, 50);
+    });
+  }
+
+  _hideUiActionTypeSelector(actionSelector) {
+    if (!actionSelector) return;
+
+    const hideInNode = (node) => {
+      if (!node || typeof node.querySelectorAll !== "function") return false;
+      let changed = false;
+      node.querySelectorAll(".dropdown").forEach((dropdown) => {
+        dropdown.style.display = "none";
+        dropdown.setAttribute("aria-hidden", "true");
+        changed = true;
+      });
+      return changed;
+    };
+
+    const tryHide = () => {
+      let changed = false;
+      changed = hideInNode(actionSelector) || changed;
+      changed = hideInNode(actionSelector.shadowRoot) || changed;
+
+      const uiAction = actionSelector.shadowRoot?.querySelector(
+        "ha-selector-ui_action",
+      );
+      if (uiAction) {
+        changed = hideInNode(uiAction) || changed;
+        changed = hideInNode(uiAction.shadowRoot) || changed;
+
+        const editorInLight = uiAction.querySelector("hui-action-editor");
+        if (editorInLight) {
+          changed = hideInNode(editorInLight) || changed;
+          changed = hideInNode(editorInLight.shadowRoot) || changed;
+        }
+
+        const editorInShadow =
+          uiAction.shadowRoot?.querySelector("hui-action-editor");
+        if (editorInShadow) {
+          changed = hideInNode(editorInShadow) || changed;
+          changed = hideInNode(editorInShadow.shadowRoot) || changed;
+        }
+      }
+
+      return changed;
+    };
+
+    // Re-run a few times because nested selector editors render asynchronously.
+    [0, 50, 150, 350, 700].forEach((delay) => {
+      setTimeout(() => {
+        tryHide();
+      }, delay);
+    });
+  }
+
+  _commandActionDetails(action) {
+    const normalized = this._normalizeCommandAction(action);
+    const service = String(
+      normalized.perform_action || normalized.service || "perform-action",
+    ).trim();
+    const entityIds = normalized?.target?.entity_id;
+    const ids = Array.isArray(entityIds)
+      ? entityIds.filter((id) => !!id)
+      : entityIds
+        ? [entityIds]
+        : [];
+
+    const suffix = (value) => {
+      const text = String(value || "").trim();
+      if (!text) return "";
+      const parts = text.split(".");
+      return (parts[parts.length - 1] || text).trim();
+    };
+
+    const actionSuffix = suffix(service);
+    const entitySuffix = ids.length ? suffix(ids[0]) : "";
+
+    return {
+      service,
+      entities: ids.length ? ids.join(", ") : "No target entity",
+      commandSummary:
+        actionSuffix && entitySuffix
+          ? `${actionSuffix} ${entitySuffix}`
+          : "No Action configured",
+    };
+  }
+
+  _editorHardButtonOptions() {
+    const group = (keys, title) =>
+      keys
+        .filter((key) => DEFAULT_KEY_LABELS[key])
+        .map((key) => ({
+          value: key,
+          label: `${title} • ${DEFAULT_KEY_LABELS[key]}`,
+        }));
+
+    return [
+      ...group(
+        ["up", "down", "left", "right", "ok", "back", "home", "menu"],
+        "Navigation",
+      ),
+      ...group(["volup", "voldn", "mute", "chup", "chdn"], "Transport"),
+      ...group(
+        ["play", "pause", "rew", "fwd", "guide", "dvr", "exit"],
+        "Media",
+      ),
+      ...group(["a", "b", "c"], "ABC"),
+      ...group(["red", "green", "yellow", "blue"], "Color"),
+    ];
+  }
+
+  _editorAvailableHardButtonOptions() {
+    const showX2Keys = this._isEditorX2();
+    return this._editorHardButtonOptions().filter((option) => {
+      const key = String(option?.value || "");
+      const id = HARD_BUTTON_ID_MAP[key];
+      if (!Number.isFinite(id)) return false;
+      if (X2_ONLY_HARD_BUTTON_IDS.has(id) && !showX2Keys) return false;
+      return true;
+    });
+  }
+
+  _commandSlotIcon(hardButton) {
+    if (!hardButton) return "mdi:gesture-tap-button";
+    return HARD_BUTTON_ICONS[String(hardButton)] || "mdi:gesture-tap-button";
+  }
+
+  _commandSlotIconColor(hardButton) {
+    const key = String(hardButton || "");
+    if (key === "red") return "#ef4444";
+    if (key === "green") return "#22c55e";
+    if (key === "yellow") return "#facc15";
+    if (key === "blue") return "#3b82f6";
+    return null;
+  }
+
+  _renderCommandActionSection(targetWrap = null) {
+    const wrap = targetWrap || this._commandActionEditorWrap;
+    if (!wrap || !this._hass) return;
+    const idx = this._activeCommandSlot;
+    if (!Number.isInteger(idx)) return;
+    const active = this._activeCommandDraft();
+    if (!active) return;
+
+    wrap.innerHTML = "";
+
+    const actionHelper = document.createElement("div");
+    actionHelper.className = "sb-command-helper";
+    actionHelper.textContent = "Select Triggered Action";
+
+    const actionSelector = document.createElement("ha-selector");
+    actionSelector.hass = this._hass;
+    actionSelector.selector = { ui_action: {} };
+    actionSelector.label = "Action";
+    actionSelector.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      const slotIdx = this._activeCommandSlot;
+      if (!Number.isInteger(slotIdx)) return;
+      const value = ev.detail?.value;
+      this._updateActiveCommandDraft({
+        action: this._normalizeCommandAction(value),
+      });
+
+      // Action editor can restructure based on action type/target; refresh only this section.
+      this._renderCommandActionSection();
+    });
+
+    this._commandActionEditorSelector = actionSelector;
+    wrap.appendChild(actionHelper);
+    wrap.appendChild(actionSelector);
+
+    this._commandActionEditorSelector.value = active.action;
+    this._hideUiActionTypeSelector(this._commandActionEditorSelector);
+  }
+
+  _isCommandConfigured(command, idx) {
+    const defaults = this._commandSlotDefault(idx);
+    const hasCustomName =
+      String(command?.name || "").trim() !== String(defaults.name);
+    const hasFavorite =
+      Boolean(command?.add_as_favorite) !== Boolean(defaults.add_as_favorite);
+    const hasHardButton = Boolean(command?.hard_button);
+    const hasActivities =
+      Array.isArray(command?.activities) && command.activities.length > 0;
+    const details = this._commandActionDetails(command?.action);
+    const hasCustomAction =
+      details.service !== "perform-action" ||
+      details.entities !== "No target entity";
+    return (
+      hasCustomName ||
+      hasFavorite ||
+      hasHardButton ||
+      hasActivities ||
+      hasCustomAction
+    );
+  }
+
+  _closeCommandEditor() {
+    const idx = this._activeCommandSlot;
+    if (
+      Number.isInteger(idx) &&
+      this._commandEditorDrafts &&
+      this._commandEditorDrafts[idx]
+    ) {
+      delete this._commandEditorDrafts[idx];
+    }
+    if (this._commandEditorModal) {
+      this._commandEditorModal.classList.remove("open");
+    }
+    this._commandSaveError = "";
+    this._activeCommandModal = null;
+    this._activeCommandSlot = null;
+  }
+
+  _closeCommandActionEditor() {
+    const idx = this._activeCommandSlot;
+    if (
+      Number.isInteger(idx) &&
+      this._commandEditorDrafts &&
+      this._commandEditorDrafts[idx]
+    ) {
+      delete this._commandEditorDrafts[idx];
+    }
+    if (this._commandActionEditorModal) {
+      this._commandActionEditorModal.classList.remove("open");
+    }
+    this._commandSaveError = "";
+    this._activeCommandModal = null;
+    this._activeCommandSlot = null;
+  }
+
+  _openCommandEditor(slotIndex) {
+    this._confirmClearSlot = null;
+    this._activeCommandModal = "details";
+    this._activeCommandSlot = Number(slotIndex);
+    this._commandSaveError = "";
+    this._ensureCommandDraft(this._activeCommandSlot);
+    this._renderCommandsEditor();
+  }
+
+  _openCommandActionEditor(slotIndex) {
+    this._confirmClearSlot = null;
+    this._activeCommandModal = "action";
+    this._activeCommandSlot = Number(slotIndex);
+    this._commandSaveError = "";
+    this._ensureCommandDraft(this._activeCommandSlot);
+    this._renderCommandsEditor();
+  }
+
+  _renderCommandsEditor() {
+    if (!this._commandsWrap || !this._hass) return;
+
+    const entityId = String(this._config?.entity || "").trim();
+    if (
+      entityId &&
+      this._editorIntegrationEntityId !== entityId &&
+      this._editorIntegrationDetectingFor !== entityId
+    ) {
+      this._ensureEditorIntegration().then(() => this._renderCommandsEditor());
+    }
+
+    const showRemoteTriggers = !this._isHubIntegrationForEditor();
+    const remoteUnavailable = this._editorRemoteUnavailable(entityId);
+
+    if (
+      showRemoteTriggers &&
+      entityId &&
+      this._commandConfigLoadedFor !== entityId &&
+      !this._commandConfigLoading
+    ) {
+      this._loadCommandConfigFromBackend().then(() =>
+        this._renderCommandsEditor(),
+      );
+      this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
+      this._commandsWrap.innerHTML = "";
+      const loading = document.createElement("div");
+      loading.className = "sb-commands-note";
+      loading.textContent = "Loading Commands…";
+      this._commandsWrap.appendChild(loading);
+      return;
+    }
+
+    if (typeof this._commandsExpanded !== "boolean")
+      this._commandsExpanded = false;
+
+    const commands = this._commandsList();
+    if (!Number.isInteger(this._confirmClearSlot))
+      this._confirmClearSlot = null;
+
+    this._commandsWrap.innerHTML = "";
+    this._commandEditorModal = null;
+    this._commandEditorModalTitle = null;
+    this._commandEditorNameField = null;
+    this._commandEditorFavoriteInput = null;
+    this._commandEditorHardButtonSelector = null;
+    this._commandEditorActivitiesChips = null;
+    this._commandActionEditorModal = null;
+    this._commandActionEditorModalTitle = null;
+    this._commandActionEditorWrap = null;
+    this._commandActionEditorSelector = null;
+    this._commandEditorFooterNote = null;
+    this._commandActionEditorFooterNote = null;
+
+    const exp = document.createElement("section");
+    exp.className =
+      `sb-exp ${this._commandsExpanded ? "" : "sb-exp-collapsed"}`.trim();
+
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = "sb-exp-hdr";
+    header.setAttribute("aria-expanded", String(!!this._commandsExpanded));
+    header.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._commandsExpanded = !this._commandsExpanded;
+      this._renderCommandsEditor();
+    });
+
+    const headerLeft = document.createElement("div");
+    headerLeft.className = "sb-exp-hdr-left";
+    headerLeft.innerHTML = `
+      <ha-icon icon="mdi:play-box-multiple-outline"></ha-icon>
+      <div class="sb-exp-title">Automation Assist</div>
+    `;
+
+    const chev = document.createElement("ha-icon");
+    chev.className = "sb-exp-chevron";
+    chev.setAttribute(
+      "icon",
+      this._commandsExpanded ? "mdi:chevron-up" : "mdi:chevron-down",
+    );
+
+    header.appendChild(headerLeft);
+    header.appendChild(chev);
+
+    const body = document.createElement("div");
+    body.className = "sb-exp-body";
+
+    const meta = document.createElement("div");
+    meta.className = "sb-commands-meta";
+
+    const helperRow = document.createElement("label");
+    helperRow.className = "sb-yaml-helper-row";
+
+    const helperDrag = document.createElement("div");
+    helperDrag.className = "sb-yaml-helper-drag";
+    helperDrag.innerHTML =
+      '<ha-icon icon="mdi:drag-vertical-variant"></ha-icon>';
+
+    const helperMain = document.createElement("div");
+    helperMain.className = "sb-yaml-helper-main";
+
+    const helperLabelWrap = document.createElement("div");
+    helperLabelWrap.className = "sb-yaml-helper-label-wrap";
+
+    const helperLabel = document.createElement("span");
+    helperLabel.className = "sb-yaml-helper-label";
+    helperLabel.textContent = "Key capture";
+
+    const helperDesc = document.createElement("div");
+    helperDesc.className = "sb-yaml-helper-desc";
+    helperDesc.textContent =
+      "Send button presses to the hub: Capture button presses to generate ready-to-use YAML for dashboard buttons and automations.";
+
+    const helperLink = document.createElement("a");
+    helperLink.className = "sb-yaml-helper-link";
+    helperLink.href = KEY_CAPTURE_HELP_URL;
+    helperLink.target = "_blank";
+    helperLink.rel = "noopener noreferrer";
+    helperLink.title = "Learn more about Snippet Generator";
+    helperLink.setAttribute("aria-label", "Snippet Generator documentation");
+    helperLink.innerHTML = '<ha-icon icon="mdi:help-circle-outline"></ha-icon>';
+    helperLink.addEventListener("click", (ev) => ev.stopPropagation());
+
+    helperLabelWrap.appendChild(helperLabel);
+    helperLabelWrap.appendChild(helperLink);
+    helperMain.appendChild(helperLabelWrap);
+    helperMain.appendChild(helperDesc);
+
+    const helperSwitch = document.createElement("ha-switch");
+    helperSwitch.checked = !!this._config.show_automation_assist;
+    helperSwitch.addEventListener("change", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._setAutomationAssistEnabled(!!helperSwitch.checked);
+    });
+
+    helperLabelWrap.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      helperSwitch.checked = !helperSwitch.checked;
+      this._setAutomationAssistEnabled(!!helperSwitch.checked);
+    });
+
+    helperRow.appendChild(helperDrag);
+    helperRow.appendChild(helperMain);
+    helperRow.appendChild(helperSwitch);
+    meta.appendChild(helperRow);
+
+    if (!showRemoteTriggers) {
+      if (this._commandSyncPollTimer) {
+        clearTimeout(this._commandSyncPollTimer);
+        this._commandSyncPollTimer = null;
+      }
+      this._confirmClearSlot = null;
+      this._activeCommandModal = null;
+      this._activeCommandSlot = null;
+      body.appendChild(meta);
+      exp.appendChild(header);
+      exp.appendChild(body);
+      this._commandsWrap.appendChild(exp);
+      return;
+    }
+
+    const divider = document.createElement("div");
+    divider.className = "sb-commands-divider";
+    meta.appendChild(divider);
+
+    const sectionTitleWrap = document.createElement("div");
+    sectionTitleWrap.className = "sb-commands-section-title-wrap";
+
+    const sectionTitle = document.createElement("div");
+    sectionTitle.className = "sb-commands-section-title";
+    sectionTitle.textContent = "Wifi Commands";
+
+    const sectionHelp = document.createElement("a");
+    sectionHelp.className = "sb-commands-section-help";
+    sectionHelp.href = YAML_HELPER_INFO_URL;
+    sectionHelp.target = "_blank";
+    sectionHelp.rel = "noopener noreferrer";
+    sectionHelp.title = "Learn more about Wifi Commands";
+    sectionHelp.setAttribute("aria-label", "Wifi Commands documentation");
+    sectionHelp.innerHTML =
+      '<ha-icon icon="mdi:help-circle-outline"></ha-icon>';
+    sectionHelp.addEventListener("click", (ev) => ev.stopPropagation());
+
+    sectionTitleWrap.appendChild(sectionTitle);
+    sectionTitleWrap.appendChild(sectionHelp);
+    meta.appendChild(sectionTitleWrap);
+
+    const sectionSub = document.createElement("div");
+    sectionSub.className = "sb-commands-section-subtitle";
+    sectionSub.textContent =
+      "Receive button presses from the hub: Assign Home Assistant actions to physical buttons or favorites and deploy the configuration to your hub.";
+    meta.appendChild(sectionSub);
+
+    body.appendChild(meta);
+
+    const syncState = this._commandSyncState || {};
+    const syncStatus = String(syncState.status || "idle");
+    const syncTone = remoteUnavailable
+      ? "error"
+      : this._syncStatusTone(syncStatus);
+    const syncNeeded = Boolean(syncState.sync_needed);
+    const syncRunning = syncStatus === "running";
+
+    const syncRow = document.createElement("div");
+    syncRow.className = `sb-command-sync-row sb-command-sync-row-${syncTone}`;
+
+    const syncMessage = document.createElement("div");
+    syncMessage.className = "sb-command-sync-message";
+    if (remoteUnavailable) {
+      syncMessage.textContent =
+        "Remote entity unavailable. Is the app connected?";
+    } else if (syncRunning) {
+      const cur = Number(syncState.current_step || 0);
+      const total = Number(syncState.total_steps || 0);
+      const progress = total > 0 ? ` (${Math.min(cur, total)}/${total})` : "";
+      syncMessage.textContent = `${String(syncState.message || "Sync in progress")}${progress}`;
+    } else if (syncNeeded) {
+      syncMessage.textContent =
+        "Command config changes need to be synced to the hub.";
+    } else if (syncStatus === "success") {
+      syncMessage.textContent = "Hub command configuration is up to date.";
+    } else if (syncStatus === "failed") {
+      syncMessage.textContent = String(
+        syncState.message || "Last sync failed.",
+      );
+    } else {
+      syncMessage.textContent = "No sync needed.";
+    }
+
+    const syncMessageWrap = document.createElement("div");
+    syncMessageWrap.className = "sb-command-sync-message-wrap";
+
+    const syncIcon = document.createElement("ha-icon");
+    syncIcon.setAttribute(
+      "icon",
+      remoteUnavailable || syncStatus === "failed"
+        ? "mdi:alert-circle-outline"
+        : syncRunning
+          ? "mdi:progress-clock"
+          : "mdi:information-outline",
+    );
+
+    syncMessageWrap.appendChild(syncIcon);
+    syncMessageWrap.appendChild(syncMessage);
+    syncRow.appendChild(syncMessageWrap);
+
+    if (!remoteUnavailable && (syncNeeded || syncRunning)) {
+      if (syncRunning) {
+        const syncLabel = document.createElement("div");
+        syncLabel.className = "sb-command-sync-btn sb-command-sync-btn-static";
+        syncLabel.textContent = "Syncing…";
+        syncLabel.setAttribute("aria-disabled", "true");
+        syncRow.appendChild(syncLabel);
+      } else {
+        const syncBtn = document.createElement("button");
+        syncBtn.type = "button";
+        syncBtn.className = "sb-command-sync-btn";
+        syncBtn.textContent = "Sync to Hub";
+        syncBtn.disabled = this._commandSyncRunning;
+        syncBtn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this._runCommandConfigSync();
+        });
+        syncRow.appendChild(syncBtn);
+      }
+    }
+
+    body.appendChild(syncRow);
+
+    if (remoteUnavailable) {
+      if (this._commandSyncPollTimer) {
+        clearTimeout(this._commandSyncPollTimer);
+        this._commandSyncPollTimer = null;
+      }
+      this._confirmClearSlot = null;
+      this._activeCommandModal = null;
+      this._activeCommandSlot = null;
+      exp.appendChild(header);
+      exp.appendChild(body);
+      this._commandsWrap.appendChild(exp);
+      return;
+    }
+
+    if (syncRunning) {
+      if (this._commandSyncPollTimer) clearTimeout(this._commandSyncPollTimer);
+      this._commandSyncPollTimer = setTimeout(async () => {
+        this._commandSyncPollTimer = null;
+        await this._loadCommandSyncProgress(true);
+        this._renderCommandsEditor();
+      }, 1000);
+    } else if (this._commandSyncPollTimer) {
+      clearTimeout(this._commandSyncPollTimer);
+      this._commandSyncPollTimer = null;
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "sb-command-grid";
+
+    commands.forEach((command, idx) => {
+      const slot = document.createElement("div");
+      slot.className = "sb-command-slot-btn";
+      const isConfirming = this._confirmClearSlot === idx;
+      slot.setAttribute("role", "button");
+      slot.tabIndex = isConfirming ? -1 : 0;
+      const openEditor = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._openCommandEditor(idx);
+      };
+      if (!isConfirming) {
+        slot.addEventListener("click", openEditor);
+        slot.addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter" || ev.key === " ") openEditor(ev);
+        });
+      }
+
+      const details = this._commandActionDetails(command.action);
+      const configured = this._isCommandConfigured(command, idx);
+
+      const main = document.createElement("div");
+      main.className = "sb-command-slot-main";
+
+      const iconWrap = document.createElement("div");
+      iconWrap.className = "sb-command-slot-icon-wrap";
+      const icon = document.createElement("ha-icon");
+      icon.setAttribute("icon", this._commandSlotIcon(command.hard_button));
+      const iconColor = this._commandSlotIconColor(command.hard_button);
+      if (iconColor) icon.style.color = iconColor;
+      iconWrap.appendChild(icon);
+
+      const textWrap = document.createElement("div");
+      textWrap.className = "sb-command-slot-text-wrap";
+
+      if (!configured) {
+        slot.classList.add("sb-command-slot-empty");
+        const plusText = document.createElement("div");
+        plusText.className = "sb-command-slot-empty-text";
+        plusText.textContent = "+";
+
+        const name = document.createElement("div");
+        name.className = "sb-command-slot-name";
+        name.textContent = "Make Command";
+
+        textWrap.appendChild(name);
+        main.appendChild(plusText);
+        main.appendChild(textWrap);
+
+        slot.appendChild(main);
+        grid.appendChild(slot);
+        return;
+      }
+
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className = "sb-command-slot-clear";
+      clearBtn.innerHTML = '<ha-icon icon="mdi:close"></ha-icon>';
+      clearBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._confirmClearSlot = idx;
+        this._renderCommandsEditor();
+      });
+
+      const name = document.createElement("div");
+      name.className = "sb-command-slot-name";
+      name.textContent =
+        String(command.name || "").trim() || `Command ${idx + 1}`;
+
+      const metaLine = document.createElement("div");
+      metaLine.className = "sb-command-slot-meta";
+      const mappedLabel = DEFAULT_KEY_LABELS[String(command.hard_button || "")];
+      const isFavorite = Boolean(command.add_as_favorite);
+      const activityCount = Array.isArray(command.activities)
+        ? command.activities.length
+        : 0;
+      const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
+
+      if (isFavorite) {
+        const favorite = document.createElement("span");
+        favorite.className = "sb-command-slot-favorite";
+        favorite.innerHTML = '<ha-icon icon="mdi:heart"></ha-icon>';
+        metaLine.appendChild(favorite);
+      }
+
+      if (mappedLabel) {
+        if (isFavorite) {
+          const andText = document.createElement("span");
+          andText.textContent = "and";
+          metaLine.appendChild(andText);
+        }
+
+        const mappedIcon = document.createElement("span");
+        mappedIcon.className = "sb-command-slot-meta-icon";
+        const mappedIconEl = document.createElement("ha-icon");
+        mappedIconEl.setAttribute(
+          "icon",
+          this._commandSlotIcon(command.hard_button),
+        );
+        const mappedColor = this._commandSlotIconColor(command.hard_button);
+        if (mappedColor) mappedIconEl.style.color = mappedColor;
+        mappedIcon.appendChild(mappedIconEl);
+        metaLine.appendChild(mappedIcon);
+
+        const suffix = document.createElement("span");
+        suffix.textContent = `in ${activityCount} ${activitiesLabel}`;
+        metaLine.appendChild(suffix);
+      } else if (isFavorite) {
+        const suffix = document.createElement("span");
+        suffix.textContent = `in ${activityCount} ${activitiesLabel}`;
+        metaLine.appendChild(suffix);
+      } else {
+        const only = document.createElement("span");
+        only.textContent = `${activityCount} ${activitiesLabel}`;
+        metaLine.appendChild(only);
+      }
+
+      textWrap.appendChild(name);
+      textWrap.appendChild(metaLine);
+
+      if (isConfirming) {
+        const confirmWrap = document.createElement("div");
+        confirmWrap.className = "sb-command-slot-confirm";
+        const confirmTitle = document.createElement("div");
+        confirmTitle.className = "sb-command-slot-confirm-title";
+        confirmTitle.textContent = "Clear command slot?";
+        const confirmSub = document.createElement("div");
+        confirmSub.className = "sb-command-slot-confirm-sub";
+        confirmSub.textContent = "Resets configuration.";
+        confirmWrap.appendChild(confirmTitle);
+        confirmWrap.appendChild(confirmSub);
+
+        const actions = document.createElement("div");
+        actions.className = "sb-command-slot-confirm-actions";
+        const noBtn = document.createElement("button");
+        noBtn.type = "button";
+        noBtn.className = "sb-command-slot-action-btn";
+        noBtn.textContent = "No";
+        noBtn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this._confirmClearSlot = null;
+          this._renderCommandsEditor();
+        });
+        const yesBtn = document.createElement("button");
+        yesBtn.type = "button";
+        yesBtn.className = "sb-command-slot-action-btn";
+        yesBtn.textContent = "Yes";
+        yesBtn.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const next = this._commandsList();
+          next[idx] = this._commandSlotDefault(idx);
+          this._confirmClearSlot = null;
+          this._setCommands(next);
+        });
+        actions.appendChild(noBtn);
+        actions.appendChild(yesBtn);
+
+        slot.innerHTML = "";
+        slot.appendChild(confirmWrap);
+        slot.appendChild(actions);
+        grid.appendChild(slot);
+        return;
+      }
+
+      const actionSummary = document.createElement("button");
+      actionSummary.type = "button";
+      actionSummary.className = "sb-command-slot-action-btn";
+      const actionLabel =
+        details.commandSummary === "No Action configured"
+          ? "No Action configured"
+          : details.service;
+      actionSummary.textContent =
+        actionLabel === "No Action configured"
+          ? actionLabel
+          : `> ${actionLabel}`;
+      actionSummary.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._openCommandActionEditor(idx);
+      });
+
+      main.appendChild(textWrap);
+
+      slot.appendChild(main);
+      slot.appendChild(clearBtn);
+      slot.appendChild(actionSummary);
+      grid.appendChild(slot);
+    });
+
+    body.appendChild(grid);
+    exp.appendChild(header);
+    exp.appendChild(body);
+    this._commandsWrap.appendChild(exp);
+
+    if (!this._commandEditorModal || !this._commandEditorModal.isConnected) {
+      const modal = document.createElement("div");
+      modal.className = "sb-command-modal";
+      modal.addEventListener("click", (ev) => {
+        if (ev.target === modal) this._closeCommandEditor();
+      });
+
+      const dialog = document.createElement("div");
+      dialog.className = "sb-command-dialog";
+
+      const dialogHeader = document.createElement("div");
+      dialogHeader.className = "sb-command-dialog-header";
+
+      const dialogTitle = document.createElement("div");
+      dialogTitle.className = "sb-command-dialog-title";
+      this._commandEditorModalTitle = dialogTitle;
+
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = "sb-command-dialog-close";
+      closeBtn.innerHTML = '<ha-icon icon="mdi:close"></ha-icon>';
+      closeBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._closeCommandEditor();
+      });
+
+      dialogHeader.appendChild(dialogTitle);
+      dialogHeader.appendChild(closeBtn);
+
+      const dialogBody = document.createElement("div");
+      dialogBody.className = "sb-command-dialog-body";
+
+      const detailsNote = document.createElement("div");
+      detailsNote.className = "sb-command-dialog-note";
+      detailsNote.textContent =
+        "Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote’s display, in the mobile app, and as the Wifi Command's sensor status.";
+      dialogBody.appendChild(detailsNote);
+
+      const configBlock = document.createElement("div");
+      configBlock.className = "sb-command-config-block";
+      const nameRow = document.createElement("div");
+      nameRow.className = "sb-command-input-row";
+      const nameLabel = document.createElement("label");
+      nameLabel.className = "sb-command-input-label";
+      //nameLabel.textContent = "Name";
+      const nameField = document.createElement("ha-textfield");
+      nameField.className = "sb-command-name-field";
+      nameField.label = "Command Display Name";
+      nameField.maxLength = 20;
+      this._commandEditorNameField = nameField;
+      nameField.addEventListener("input", (ev) => {
+        const value = this._sanitizeCommandName(
+          ev.target?.value ?? ev.detail?.value ?? "",
+        );
+        if (nameField.value !== value) nameField.value = value;
+      });
+      nameField.addEventListener("change", (ev) => {
+        const value = this._sanitizeCommandName(
+          ev.target?.value ?? ev.detail?.value ?? "",
+        );
+        if (nameField.value !== value) nameField.value = value;
+        this._updateActiveCommandDraft({ name: value });
+        this._commandSaveError = "";
+      });
+      nameRow.appendChild(nameLabel);
+      nameRow.appendChild(nameField);
+      configBlock.appendChild(nameRow);
+
+      const favoriteWrap = document.createElement("button");
+      favoriteWrap.type = "button";
+      favoriteWrap.className = "sb-command-checkbox";
+      const favoriteLeft = document.createElement("div");
+      favoriteLeft.className = "sb-command-checkbox-left";
+      const favoriteInput = document.createElement("ha-switch");
+      this._commandEditorFavoriteInput = favoriteInput;
+      const favoriteIconWrap = document.createElement("span");
+      favoriteIconWrap.className = "sb-command-checkbox-icon";
+      const favoriteIcon = document.createElement("ha-icon");
+      favoriteIcon.setAttribute("icon", "mdi:heart");
+      favoriteIconWrap.appendChild(favoriteIcon);
+      const favoriteText = document.createElement("span");
+      favoriteText.textContent = "Make as Favorite";
+      favoriteLeft.appendChild(favoriteIconWrap);
+      favoriteLeft.appendChild(favoriteText);
+      favoriteWrap.appendChild(favoriteLeft);
+      favoriteWrap.appendChild(favoriteInput);
+      favoriteWrap.addEventListener("click", (ev) => {
+        if (ev.target === favoriteInput) return;
+        ev.preventDefault();
+        favoriteInput.checked = !favoriteInput.checked;
+        favoriteInput.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      favoriteInput.addEventListener("change", (ev) => {
+        const checked = Boolean(ev.target?.checked);
+        this._updateActiveCommandDraft({ add_as_favorite: checked });
+        this._commandSaveError = "";
+        favoriteWrap.classList.toggle("sb-command-favorite-active", checked);
+      });
+      configBlock.appendChild(favoriteWrap);
+
+      const buttonRow = document.createElement("div");
+      buttonRow.className = "sb-command-input-row";
+      const buttonLabel = document.createElement("label");
+      buttonLabel.className = "sb-command-input-label";
+      //buttonLabel.textContent = "Map this command to a physical button";
+      const buttonSelector = document.createElement("ha-selector");
+      buttonSelector.hass = this._hass;
+      buttonSelector.selector = {
+        select: {
+          mode: "dropdown",
+          options: [{ value: "__none__", label: "None" }].concat(
+            this._editorAvailableHardButtonOptions().map((option) => ({
+              value: option.value,
+              label: option.label,
+            })),
+          ),
+        },
+      };
+      buttonSelector.label = "Physical Button Assignment";
+      this._commandEditorHardButtonSelector = buttonSelector;
+      buttonSelector.addEventListener("value-changed", (ev) => {
+        const mapped = String(ev.detail?.value ?? "");
+        this._updateActiveCommandDraft({
+          hard_button: mapped === "__none__" ? "" : mapped,
+        });
+        this._commandSaveError = "";
+      });
+      buttonRow.appendChild(buttonLabel);
+      buttonRow.appendChild(buttonSelector);
+      configBlock.appendChild(buttonRow);
+
+      const activitiesRow = document.createElement("div");
+      activitiesRow.className = "sb-command-input-row";
+      const activitiesLabel = document.createElement("label");
+      activitiesLabel.className = "sb-command-input-label";
+      activitiesLabel.textContent = "Apply to these Activities";
+      const activityChipRow = document.createElement("div");
+      activityChipRow.className = "sb-command-activity-chip-row";
+      this._commandEditorActivitiesChips = activityChipRow;
+      activitiesRow.appendChild(activitiesLabel);
+      activitiesRow.appendChild(activityChipRow);
+      configBlock.appendChild(activitiesRow);
+
+      dialogBody.appendChild(configBlock);
+
+      const detailsFooter = document.createElement("div");
+      detailsFooter.className = "sb-command-dialog-footer";
+      const detailsFooterNote = document.createElement("div");
+      detailsFooterNote.className = "sb-command-dialog-footer-note";
+      this._commandEditorFooterNote = detailsFooterNote;
+      const detailsFooterActions = document.createElement("div");
+      detailsFooterActions.className = "sb-command-dialog-footer-actions";
+      const detailsCancelBtn = document.createElement("button");
+      detailsCancelBtn.type = "button";
+      detailsCancelBtn.className = "sb-command-dialog-btn";
+      detailsCancelBtn.textContent = "Cancel";
+      detailsCancelBtn.addEventListener("click", () =>
+        this._closeCommandEditor(),
+      );
+      const detailsSaveBtn = document.createElement("button");
+      detailsSaveBtn.type = "button";
+      detailsSaveBtn.className =
+        "sb-command-dialog-btn sb-command-dialog-btn-primary";
+      detailsSaveBtn.textContent = "Save";
+      detailsSaveBtn.addEventListener("click", () =>
+        this._saveActiveCommandModal(),
+      );
+      detailsFooterActions.appendChild(detailsCancelBtn);
+      detailsFooterActions.appendChild(detailsSaveBtn);
+      detailsFooter.appendChild(detailsFooterNote);
+      detailsFooter.appendChild(detailsFooterActions);
+
+      dialog.appendChild(dialogHeader);
+      dialog.appendChild(dialogBody);
+      dialog.appendChild(detailsFooter);
+      modal.appendChild(dialog);
+      this._commandsWrap.appendChild(modal);
+      this._commandEditorModal = modal;
+    }
+
+    if (
+      !this._commandActionEditorModal ||
+      !this._commandActionEditorModal.isConnected
+    ) {
+      const modal = document.createElement("div");
+      modal.className = "sb-command-modal";
+      modal.addEventListener("click", (ev) => {
+        if (ev.target === modal) this._closeCommandActionEditor();
+      });
+
+      const dialog = document.createElement("div");
+      dialog.className = "sb-command-dialog";
+
+      const dialogHeader = document.createElement("div");
+      dialogHeader.className = "sb-command-dialog-header";
+
+      const dialogTitle = document.createElement("div");
+      dialogTitle.className = "sb-command-dialog-title";
+      this._commandActionEditorModalTitle = dialogTitle;
+
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = "sb-command-dialog-close";
+      closeBtn.innerHTML = '<ha-icon icon="mdi:close"></ha-icon>';
+      closeBtn.addEventListener("click", (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this._closeCommandActionEditor();
+      });
+
+      dialogHeader.appendChild(dialogTitle);
+      dialogHeader.appendChild(closeBtn);
+
+      const dialogBody = document.createElement("div");
+      dialogBody.className = "sb-command-dialog-body";
+
+      const actionNote = document.createElement("div");
+      actionNote.className = "sb-command-dialog-note";
+      actionNote.textContent =
+        "Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.";
+      dialogBody.appendChild(actionNote);
+
+      const actionBlock = document.createElement("div");
+      actionBlock.className = "sb-command-config-block";
+      const actionWrap = document.createElement("div");
+      actionWrap.className = "sb-command-action-wrap";
+      this._commandActionEditorWrap = actionWrap;
+      actionBlock.appendChild(actionWrap);
+      dialogBody.appendChild(actionBlock);
+
+      const actionFooter = document.createElement("div");
+      actionFooter.className = "sb-command-dialog-footer";
+      const actionFooterNote = document.createElement("div");
+      actionFooterNote.className = "sb-command-dialog-footer-note";
+      this._commandActionEditorFooterNote = actionFooterNote;
+      const actionFooterActions = document.createElement("div");
+      actionFooterActions.className = "sb-command-dialog-footer-actions";
+      const actionCancelBtn = document.createElement("button");
+      actionCancelBtn.type = "button";
+      actionCancelBtn.className = "sb-command-dialog-btn";
+      actionCancelBtn.textContent = "Cancel";
+      actionCancelBtn.addEventListener("click", () =>
+        this._closeCommandActionEditor(),
+      );
+      const actionSaveBtn = document.createElement("button");
+      actionSaveBtn.type = "button";
+      actionSaveBtn.className =
+        "sb-command-dialog-btn sb-command-dialog-btn-primary";
+      actionSaveBtn.textContent = "Save";
+      actionSaveBtn.addEventListener("click", () =>
+        this._saveActiveCommandModal(),
+      );
+      actionFooterActions.appendChild(actionCancelBtn);
+      actionFooterActions.appendChild(actionSaveBtn);
+      actionFooter.appendChild(actionFooterNote);
+      actionFooter.appendChild(actionFooterActions);
+
+      dialog.appendChild(dialogHeader);
+      dialog.appendChild(dialogBody);
+      dialog.appendChild(actionFooter);
+      modal.appendChild(dialog);
+      this._commandsWrap.appendChild(modal);
+      this._commandActionEditorModal = modal;
+    }
+
+    if (this._commandActionEditorSelector) {
+      this._commandActionEditorSelector.hass = this._hass;
+    }
+
+    const activeIdx = this._activeCommandSlot;
+    if (
+      Number.isInteger(activeIdx) &&
+      activeIdx >= 0 &&
+      activeIdx < commands.length
+    ) {
+      const active = this._activeCommandDraft() || commands[activeIdx];
+      this._commandEditorModalTitle.textContent = `Command Slot ${activeIdx + 1}`;
+      this._commandEditorNameField.value = active.name;
+      this._commandEditorFavoriteInput.checked = Boolean(
+        active.add_as_favorite,
+      );
+      this._commandEditorFavoriteInput.parentElement?.classList.toggle(
+        "sb-command-favorite-active",
+        Boolean(active.add_as_favorite),
+      );
+
+      this._commandEditorHardButtonSelector.value = String(
+        active.hard_button || "",
+      );
+
+      const activities = this._editorActivities();
+      const fallbackActivity = activities[0] ? String(activities[0].id) : null;
+      const selectedActivities = new Set(
+        (active.activities || []).map((id) => String(id)),
+      );
+      if (selectedActivities.size === 0 && fallbackActivity) {
+        selectedActivities.add(fallbackActivity);
+        this._updateActiveCommandDraft({
+          activities: Array.from(selectedActivities),
+        });
+      }
+      this._commandEditorActivitiesChips.innerHTML = "";
+      activities.forEach((activity) => {
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className =
+          `sb-command-activity-chip ${selectedActivities.has(String(activity.id)) ? "active" : ""}`.trim();
+        chip.textContent = activity.name;
+        chip.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const idx = this._activeCommandSlot;
+          if (!Number.isInteger(idx)) return;
+          const nextSet = new Set(
+            (this._activeCommandDraft()?.activities || []).map((id) =>
+              String(id),
+            ),
+          );
+          const idKey = String(activity.id);
+          if (nextSet.has(idKey) && nextSet.size > 1) nextSet.delete(idKey);
+          else nextSet.add(idKey);
+          this._updateActiveCommandDraft({ activities: Array.from(nextSet) });
+          this._commandSaveError = "";
+          chip.classList.toggle("active", nextSet.has(idKey));
+        });
+        this._commandEditorActivitiesChips.appendChild(chip);
+      });
+
+      const validationMessage = this._commandSaveError || "";
+      if (this._commandEditorFooterNote) {
+        this._commandEditorFooterNote.textContent = validationMessage;
+      }
+      if (this._commandActionEditorFooterNote) {
+        this._commandActionEditorFooterNote.textContent = validationMessage;
+      }
+
+      this._commandEditorHardButtonSelector.value = active.hard_button
+        ? String(active.hard_button)
+        : "__none__";
+
+      this._renderCommandActionSection();
+      if (this._activeCommandModal === "action") {
+        this._commandEditorModal.classList.remove("open");
+        this._commandActionEditorModalTitle.textContent = `Command Slot ${activeIdx + 1} Action`;
+        this._renderCommandActionSection(this._commandActionEditorWrap);
+        this._commandActionEditorModal.classList.add("open");
+      } else {
+        this._commandActionEditorModal.classList.remove("open");
+        this._commandEditorModal.classList.add("open");
+      }
+    } else {
+      this._closeCommandEditor();
+      this._closeCommandActionEditor();
+    }
+  }
+
+  _layoutSelectionKey() {
+    return this._layoutSelection ?? "default";
+  }
+
+  _syncLayoutSelectionWithPreview() {
+    const preview = this._previewActivity;
+    if (preview == null || preview === "" || preview === "powered_off") {
+      this._layoutSelection = "default";
+      return;
+    }
+    this._layoutSelection = String(preview);
+  }
+
+  _layoutHasCustomOverride(selection) {
+    const layouts = this._config?.layouts;
+    if (!layouts || typeof layouts !== "object") return false;
+    const key = String(selection ?? "");
+    const override =
+      layouts[key] ??
+      (Number.isFinite(Number(selection)) ? layouts[Number(selection)] : null);
+    return Boolean(override && typeof override === "object");
+  }
+
+  _layoutSelectionNote() {
+    const selection = this._layoutSelectionKey();
+    if (selection === "default") {
+      return "Used for Activities without their own layout";
+    }
+    return this._layoutHasCustomOverride(selection)
+      ? "Using custom layout"
+      : "Using default layout";
+  }
+
+  _setPreviewActivityForSelection(selection) {
+    const nextPreview = selection === "default" ? "" : String(selection);
+    if (this._previewActivity === nextPreview) return;
+    this._previewActivity = nextPreview;
+    writePreviewActivity(this._config?.entity, nextPreview);
+    window.dispatchEvent(
+      new CustomEvent("sofabaton-preview-activity", {
+        detail: { entity: this._config?.entity, previewActivity: nextPreview },
+      }),
+    );
+  }
+
+  _editorActivities() {
+    const entityId = this._config?.entity;
+    if (!entityId || !this._hass) return [];
+    const state = this._hass?.states?.[entityId];
+    const list = state?.attributes?.activities;
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((activity) => ({
+        id: Number(activity?.id),
+        name: String(activity?.name ?? ""),
+      }))
+      .filter((activity) => Number.isFinite(activity.id) && activity.name);
+  }
+
+  _layoutConfigForSelection() {
+    const selection = this._layoutSelectionKey();
+    if (selection === "default") {
+      return layoutDefaultConfig(this._config);
+    }
+    return layoutConfigForActivity(this._config, selection);
+  }
+
+  _updateLayoutConfig(patch) {
+    const selection = this._layoutSelectionKey();
+    const next = { ...this._config };
+
+    if (selection === "default") {
+      const defaultLayout = next.layouts?.default;
+      if (defaultLayout && typeof defaultLayout === "object") {
+        next.layouts = {
+          ...(next.layouts || {}),
+          default: { ...defaultLayout, ...patch },
+        };
+      } else {
+        Object.assign(next, patch);
+      }
+      this._config = next;
+      this._syncFormData(patch);
+      this._fireChanged();
+      this._renderGroupOrderEditor();
+      return;
+    }
+
+    const layouts = { ...(next.layouts || {}) };
+    const existing =
+      layouts[selection] && typeof layouts[selection] === "object"
+        ? layouts[selection]
+        : {};
+    layouts[selection] = { ...existing, ...patch };
+    next.layouts = layouts;
+
+    this._config = next;
+    this._fireChanged();
     this._renderGroupOrderEditor();
   }
 
   _groupOrderListForEditor() {
-    const configured = Array.isArray(this._config?.group_order)
-      ? this._config.group_order
+    const layout = this._layoutConfigForSelection();
+    const configured = Array.isArray(layout?.group_order)
+      ? layout.group_order
       : DEFAULT_GROUP_ORDER;
     const order = [];
     const seen = new Set();
@@ -4453,7 +6842,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       mid: "Volume/Channel",
       media: "Media Controls",
       colors: "Color Buttons",
-      abc: "A/B/C (X2 only)",
+      abc: "A/B/C",
     };
     return labels[key] || key;
   }
@@ -4470,22 +6859,41 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     };
     const prop = map[key];
     if (!prop) return true;
-    return this._config?.[prop] ?? true;
+    const layout = this._layoutConfigForSelection();
+    return layout?.[prop] ?? true;
   }
 
-  _macroEnabled(cfg = this._config) {
+  _macroEnabled(cfg = this._layoutConfigForSelection()) {
     if (typeof cfg?.show_macros_button === "boolean")
       return cfg.show_macros_button;
-    if (typeof cfg?.show_macro_favorites === "boolean")
-      return cfg.show_macro_favorites;
     return true;
   }
 
-  _favoritesEnabled(cfg = this._config) {
+  _favoritesEnabled(cfg = this._layoutConfigForSelection()) {
     if (typeof cfg?.show_favorites_button === "boolean")
       return cfg.show_favorites_button;
-    if (typeof cfg?.show_macro_favorites === "boolean")
-      return cfg.show_macro_favorites;
+    return true;
+  }
+
+  _volumeEnabled(cfg = this._layoutConfigForSelection()) {
+    if (typeof cfg?.show_volume === "boolean") return cfg.show_volume;
+    if (typeof cfg?.show_mid === "boolean") return cfg.show_mid;
+    return true;
+  }
+
+  _channelEnabled(cfg = this._layoutConfigForSelection()) {
+    if (typeof cfg?.show_channel === "boolean") return cfg.show_channel;
+    if (typeof cfg?.show_mid === "boolean") return cfg.show_mid;
+    return true;
+  }
+
+  _mediaEnabled(cfg = this._layoutConfigForSelection()) {
+    if (typeof cfg?.show_media === "boolean") return cfg.show_media;
+    return true;
+  }
+
+  _dvrEnabled(cfg = this._layoutConfigForSelection()) {
+    if (typeof cfg?.show_dvr === "boolean") return cfg.show_dvr;
     return true;
   }
 
@@ -4495,34 +6903,53 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   _setMacroEnabled(enabled) {
-    const next = { ...this._config };
-    next.show_macros_button = !!enabled;
-
-    const favs = this._favoritesEnabled(next);
-    // Legacy combined toggle can only represent "both on" reliably
-    next.show_macro_favorites = !!enabled && !!favs;
-
-    this._config = next;
-    this._syncFormData(next);
-    this._fireChanged();
-    this._renderGroupOrderEditor();
+    const layout = this._layoutConfigForSelection();
+    const favs = this._favoritesEnabled(layout);
+    const patch = {
+      show_macros_button: !!enabled,
+      show_favorites_button: !!favs,
+    };
+    this._updateLayoutConfig(patch);
   }
 
   _setFavoritesEnabled(enabled) {
-    const next = { ...this._config };
-    next.show_favorites_button = !!enabled;
+    const layout = this._layoutConfigForSelection();
+    const macros = this._macroEnabled(layout);
+    const patch = {
+      show_macros_button: !!macros,
+      show_favorites_button: !!enabled,
+    };
+    this._updateLayoutConfig(patch);
+  }
 
-    const macros = this._macroEnabled(next);
-    next.show_macro_favorites = !!enabled && !!macros;
+  _setVolumeEnabled(enabled) {
+    const layout = this._layoutConfigForSelection();
+    const channel = this._channelEnabled(layout);
+    const patch = {
+      show_volume: !!enabled,
+      show_mid: !!enabled || !!channel,
+    };
+    this._updateLayoutConfig(patch);
+  }
 
-    this._config = next;
-    this._syncFormData(next);
-    this._fireChanged();
-    this._renderGroupOrderEditor();
+  _setChannelEnabled(enabled) {
+    const layout = this._layoutConfigForSelection();
+    const volume = this._volumeEnabled(layout);
+    const patch = {
+      show_channel: !!enabled,
+      show_mid: !!enabled || !!volume,
+    };
+    this._updateLayoutConfig(patch);
+  }
+
+  _setDvrEnabled(enabled) {
+    const patch = {
+      show_dvr: !!enabled,
+    };
+    this._updateLayoutConfig(patch);
   }
 
   _setGroupEnabled(key, enabled) {
-    const next = { ...this._config };
     const map = {
       activity: "show_activity",
       dpad: "show_dpad",
@@ -4533,11 +6960,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       abc: "show_abc",
     };
     const prop = map[key];
-    if (prop) next[prop] = !!enabled;
-
-    this._config = next;
-    this._syncFormData(next);
-    this._fireChanged();
+    if (prop) this._updateLayoutConfig({ [prop]: !!enabled });
   }
 
   _setAutomationAssistEnabled(enabled) {
@@ -4547,12 +6970,133 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._fireChanged();
   }
 
+  _renderStylingOptionsEditor() {
+    if (!this._stylingWrap || !this._hass) return;
+
+    if (typeof this._stylingExpanded !== "boolean")
+      this._stylingExpanded = false;
+
+    const showColorPicker =
+      this._config.use_background_override ||
+      !!this._config.background_override;
+
+    this._stylingWrap.innerHTML = "";
+
+    const exp = document.createElement("div");
+    exp.className =
+      `sb-exp ${this._stylingExpanded ? "" : "sb-exp-collapsed"}`.trim();
+
+    const hdr = document.createElement("button");
+    hdr.type = "button";
+    hdr.className = "sb-exp-hdr";
+    hdr.setAttribute("aria-expanded", String(!!this._stylingExpanded));
+    hdr.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      this._stylingExpanded = !this._stylingExpanded;
+      this._renderStylingOptionsEditor();
+    });
+
+    const hdrLeft = document.createElement("div");
+    hdrLeft.className = "sb-exp-hdr-left";
+    const hdrIcon = document.createElement("ha-icon");
+    hdrIcon.setAttribute("icon", "mdi:palette");
+    const hdrTitle = document.createElement("div");
+    hdrTitle.className = "sb-exp-title";
+    hdrTitle.textContent = "Styling Options";
+    hdrLeft.appendChild(hdrIcon);
+    hdrLeft.appendChild(hdrTitle);
+
+    const chev = document.createElement("ha-icon");
+    chev.className = "sb-exp-chevron";
+    chev.setAttribute(
+      "icon",
+      this._stylingExpanded ? "mdi:chevron-up" : "mdi:chevron-down",
+    );
+
+    hdr.appendChild(hdrLeft);
+    hdr.appendChild(chev);
+    exp.appendChild(hdr);
+
+    const body = document.createElement("div");
+    body.className = "sb-exp-body";
+
+    const card = document.createElement("div");
+    card.className = "sb-styling-card";
+
+    const form = document.createElement("ha-form");
+    form.hass = this._hass;
+    form.computeLabel = (schema) => {
+      const labels = {
+        theme: "Apply a theme to the card",
+        max_width: "Maximum Card Width (px)",
+        shrink: "Shrink (higher = smaller)",
+        use_background_override: "Customize background color",
+        background_override: "Select Background Color",
+      };
+      return labels[schema.name] || schema.name;
+    };
+    form.schema = [
+      { name: "theme", selector: { theme: {} } },
+      {
+        name: "max_width",
+        selector: {
+          number: {
+            min: 230,
+            max: 1200,
+            step: 5,
+            unit_of_measurement: "px",
+          },
+        },
+      },
+      {
+        name: "shrink",
+        selector: {
+          number: {
+            min: 0,
+            max: 80,
+            step: 1,
+            unit_of_measurement: "%",
+          },
+        },
+      },
+      { name: "use_background_override", selector: { boolean: {} } },
+      ...(showColorPicker
+        ? [{ name: "background_override", selector: { color_rgb: {} } }]
+        : []),
+    ];
+    form.data = {
+      theme: this._config.theme || "",
+      max_width: this._config.max_width ?? 360,
+      shrink: this._config.shrink ?? 0,
+      use_background_override:
+        this._config.use_background_override ??
+        !!this._config.background_override,
+      background_override: this._config.background_override ?? [255, 255, 255],
+    };
+    form.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      const newValue = { ...this._config, ...ev.detail.value };
+      if (newValue.use_background_override === false) {
+        delete newValue.background_override;
+      }
+      if (JSON.stringify(this._config) === JSON.stringify(newValue)) return;
+      this._config = newValue;
+      this._syncFormData(newValue);
+      this._fireChanged();
+      this._renderStylingOptionsEditor();
+    });
+
+    card.appendChild(form);
+    body.appendChild(card);
+    exp.appendChild(body);
+    this._stylingWrap.appendChild(exp);
+  }
+
   _renderGroupOrderEditor() {
     if (!this._layoutWrap) return;
 
     if (typeof this._layoutExpanded !== "boolean") this._layoutExpanded = false;
-
-    const order = this._groupOrderListForEditor();
 
     this._layoutWrap.innerHTML = "";
 
@@ -4594,19 +7138,82 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const body = document.createElement("div");
     body.className = "sb-exp-body";
 
+    const activities = this._editorActivities();
+    const selectionOptions = [
+      { value: "default", label: "Default layout" },
+      ...activities.map((activity) => ({
+        value: String(activity.id),
+        label: activity.name,
+      })),
+    ];
+    const selectionValues = new Set(
+      selectionOptions.map((option) => option.value),
+    );
+    if (!selectionValues.has(this._layoutSelectionKey())) {
+      this._layoutSelection = "default";
+    }
+
+    const order = this._groupOrderListForEditor();
+
     const card = document.createElement("div");
     card.className = "sb-layout-card";
 
-    order.forEach((key, i) => {
+    const selectRow = document.createElement("div");
+    selectRow.className = "sb-layout-row";
+
+    const selectActions = document.createElement("div");
+    selectActions.className = "sb-layout-actions sb-layout-actions-full";
+
+    const layoutSelect = document.createElement("ha-select");
+    layoutSelect.fixedMenuPosition = true;
+    layoutSelect.label = "Layout";
+    layoutSelect.hass = this._hass;
+    layoutSelect.value = this._layoutSelectionKey();
+    layoutSelect.innerHTML = "";
+    selectionOptions.forEach((option) => {
+      const item = document.createElement("mwc-list-item");
+      item.value = option.value;
+      item.textContent = option.label;
+      layoutSelect.appendChild(item);
+    });
+
+    const handleLayoutSelect = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      ev.stopImmediatePropagation?.();
+      const selected =
+        ev?.detail?.value ?? ev?.target?.value ?? layoutSelect.value;
+      const nextSelection = selectionValues.has(selected)
+        ? selected
+        : "default";
+      if (nextSelection === this._layoutSelectionKey()) return;
+      this._layoutSelection = nextSelection;
+      this._setPreviewActivityForSelection(nextSelection);
+      this._renderGroupOrderEditor();
+    };
+    layoutSelect.addEventListener("selected", handleLayoutSelect);
+    layoutSelect.addEventListener("change", handleLayoutSelect);
+    layoutSelect.addEventListener("closed", (ev) => {
+      ev.stopPropagation();
+    });
+
+    selectActions.appendChild(layoutSelect);
+    selectRow.appendChild(selectActions);
+    card.appendChild(selectRow);
+
+    const note = document.createElement("div");
+    note.className = "sb-layout-note";
+    note.textContent = this._layoutSelectionNote();
+    card.appendChild(note);
+
+    const isEditorX2 = this._isEditorX2();
+    const visibleOrder = order.filter((key) =>
+      this._isEditorGroupVisible(key, isEditorX2),
+    );
+
+    visibleOrder.forEach((key, i) => {
       const row = document.createElement("div");
-      row.className = "sb-layout-row";
-
-      const label = document.createElement("div");
-      label.className = "sb-layout-label";
-      label.textContent = this._groupLabel(key);
-
-      const actions = document.createElement("div");
-      actions.className = "sb-layout-actions";
+      row.className = "sb-layout-row sb-layout-row-order";
 
       const mkIconBtn = (icon, aria, disabled, onClick) => {
         const btn = document.createElement("button");
@@ -4630,13 +7237,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         "mdi:chevron-up",
         `Move ${this._groupLabel(key)} up`,
         i === 0,
-        () => this._moveGroup(i, -1),
+        () => this._moveGroupByKey(key, -1, isEditorX2),
       );
       const downBtn = mkIconBtn(
         "mdi:chevron-down",
         `Move ${this._groupLabel(key)} down`,
-        i === order.length - 1,
-        () => this._moveGroup(i, +1),
+        i === visibleOrder.length - 1,
+        () => this._moveGroupByKey(key, +1, isEditorX2),
       );
 
       const moveWrap = document.createElement("div");
@@ -4644,60 +7251,84 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       moveWrap.appendChild(upBtn);
       moveWrap.appendChild(downBtn);
 
+      const makeItem = (text, checked, onSet) => {
+        const item = document.createElement("div");
+        item.className = "sb-layout-switch-item";
+        const sw = document.createElement("ha-switch");
+        sw.checked = !!checked;
+        sw.addEventListener("change", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          onSet(!!sw.checked);
+        });
+        item.appendChild(sw);
+        const t = document.createElement("div");
+        t.className = "sb-layout-switch-label";
+        t.textContent = text;
+        item.appendChild(t);
+        return item;
+      };
+
       if (key === "macro_favorites") {
-        const mfWrap = document.createElement("div");
-        mfWrap.className = "sb-mf-wrap";
-
-        const makeItem = (text, checked, onSet) => {
-          const item = document.createElement("div");
-          item.className = "sb-mf-item";
-          const t = document.createElement("div");
-          t.className = "sb-mf-text";
-          t.textContent = text;
-          const sw = document.createElement("ha-switch");
-          sw.checked = !!checked;
-          sw.addEventListener("change", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-            onSet(!!sw.checked);
-          });
-          item.appendChild(t);
-          item.appendChild(sw);
-          return item;
-        };
-
         // Keep independent toggles, but one shared move control.
-        mfWrap.appendChild(
+        row.appendChild(
           makeItem("Macros", this._macroEnabled(), (val) =>
             this._setMacroEnabled(val),
           ),
         );
-        mfWrap.appendChild(
+        row.appendChild(
           makeItem("Favorites", this._favoritesEnabled(), (val) =>
             this._setFavoritesEnabled(val),
           ),
         );
 
-        actions.appendChild(mfWrap);
-        actions.appendChild(moveWrap);
+        row.appendChild(moveWrap);
+      } else if (key === "mid") {
+        row.appendChild(
+          makeItem("Volume", this._volumeEnabled(), (val) =>
+            this._setVolumeEnabled(val),
+          ),
+        );
+        row.appendChild(
+          makeItem("Channel", this._channelEnabled(), (val) =>
+            this._setChannelEnabled(val),
+          ),
+        );
+        row.appendChild(moveWrap);
+      } else if (key === "media") {
+        row.appendChild(
+          makeItem("Media Controls", this._mediaEnabled(), (val) =>
+            this._setGroupEnabled("media", val),
+          ),
+        );
+        if (isEditorX2) {
+          row.appendChild(
+            makeItem("DVR", this._dvrEnabled(), (val) =>
+              this._setDvrEnabled(val),
+            ),
+          );
+        } else {
+          const emptySlot = document.createElement("div");
+          emptySlot.className =
+            "sb-layout-switch-item sb-layout-switch-item-empty";
+          emptySlot.setAttribute("aria-hidden", "true");
+          row.appendChild(emptySlot);
+        }
+        row.appendChild(moveWrap);
       } else {
-        const switchWrap = document.createElement("div");
-        switchWrap.className = "sb-switch";
-        const sw = document.createElement("ha-switch");
-        sw.checked = !!this._isGroupEnabled(key);
-        sw.addEventListener("change", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          this._setGroupEnabled(key, !!sw.checked);
-        });
-        switchWrap.appendChild(sw);
-
-        actions.appendChild(switchWrap);
-        actions.appendChild(moveWrap);
+        row.appendChild(
+          makeItem(this._groupLabel(key), this._isGroupEnabled(key), (val) =>
+            this._setGroupEnabled(key, val),
+          ),
+        );
+        const emptySlot = document.createElement("div");
+        emptySlot.className =
+          "sb-layout-switch-item sb-layout-switch-item-empty";
+        emptySlot.setAttribute("aria-hidden", "true");
+        row.appendChild(emptySlot);
+        row.appendChild(moveWrap);
       }
 
-      row.appendChild(label);
-      row.appendChild(actions);
       card.appendChild(row);
     });
 
@@ -4707,7 +7338,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const reset = document.createElement("button");
     reset.type = "button";
     reset.className = "sb-reset-btn";
-    reset.textContent = "Reset to default";
+    reset.textContent =
+      this._layoutSelectionKey() === "default"
+        ? "Reset to card default"
+        : "Reset to default layout";
     reset.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
@@ -4725,29 +7359,57 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._layoutWrap.appendChild(exp);
   }
 
-  _moveGroup(index, delta) {
+  _isEditorGroupVisible(key, isEditorX2 = this._isEditorX2()) {
+    if (!isEditorX2 && key === "abc") return false;
+    return true;
+  }
+
+  _moveGroupByKey(groupKey, delta, isEditorX2 = this._isEditorX2()) {
     const order = this._groupOrderListForEditor();
-    const j = index + delta;
-    if (j < 0 || j >= order.length) return;
+    const visibleOrder = order.filter((key) =>
+      this._isEditorGroupVisible(key, isEditorX2),
+    );
+
+    const fromVisible = visibleOrder.indexOf(String(groupKey));
+    if (fromVisible < 0) return;
+
+    const toVisible = fromVisible + Number(delta);
+    if (toVisible < 0 || toVisible >= visibleOrder.length) return;
+
+    const toKey = visibleOrder[toVisible];
+    const from = order.indexOf(String(groupKey));
+    const to = order.indexOf(toKey);
+    if (from < 0 || to < 0) return;
 
     const next = order.slice();
-    const tmp = next[index];
-    next[index] = next[j];
-    next[j] = tmp;
+    const tmp = next[from];
+    next[from] = next[to];
+    next[to] = tmp;
 
-    this._config = { ...this._config, group_order: next };
-
-    // Keep form data in sync (even though group_order is no longer in the schema)
-    if (this._form) {
-      this._form.data = { ...(this._form.data || {}), group_order: next };
-    }
-
-    this._fireChanged();
-    this._renderGroupOrderEditor();
+    this._updateLayoutConfig({ group_order: next });
   }
 
   _resetGroupOrder() {
-    const next = DEFAULT_GROUP_ORDER.slice();
+    const selection = this._layoutSelectionKey();
+    if (selection !== "default") {
+      const next = { ...this._config };
+      const layouts = { ...(next.layouts || {}) };
+      delete layouts[selection];
+      if (Number.isFinite(Number(selection))) {
+        delete layouts[Number(selection)];
+      }
+      if (Object.keys(layouts).length) {
+        next.layouts = layouts;
+      } else {
+        delete next.layouts;
+      }
+      this._config = next;
+      this._fireChanged();
+      this._renderGroupOrderEditor();
+      return;
+    }
+
+    const nextOrder = DEFAULT_GROUP_ORDER.slice();
 
     // Reset order AND turn all groups back on
     const enabledDefaults = {
@@ -4755,23 +7417,33 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       show_dpad: true,
       show_nav: true,
       show_mid: true,
+      show_volume: true,
+      show_channel: true,
       show_media: true,
       show_colors: true,
       show_abc: true,
-      show_automation_assist: false,
-      // Macro/Favorites: support both new and legacy flags
+      show_dvr: true,
       show_macros_button: true,
       show_favorites_button: true,
-      show_macro_favorites: true,
+      group_order: nextOrder,
     };
 
-    this._config = { ...this._config, ...enabledDefaults, group_order: next };
+    const next = { ...this._config };
+    const defaultLayout = next.layouts?.default;
+    if (defaultLayout && typeof defaultLayout === "object") {
+      next.layouts = {
+        ...(next.layouts || {}),
+        default: { ...defaultLayout, ...enabledDefaults },
+      };
+    } else {
+      Object.assign(next, enabledDefaults);
+    }
+    this._config = next;
 
     if (this._form) {
       this._form.data = {
         ...(this._form.data || {}),
         ...enabledDefaults,
-        group_order: next,
       };
     }
 
@@ -4783,6 +7455,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     // 3. CLEANUP: Strip out the helper toggle before saving to HASS YAML
     const finalConfig = { ...this._config };
     delete finalConfig.use_background_override;
+    delete finalConfig.preview_activity;
+    delete finalConfig.commands;
 
     this.dispatchEvent(
       new CustomEvent("config-changed", {
