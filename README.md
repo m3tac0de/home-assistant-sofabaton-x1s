@@ -155,33 +155,31 @@ This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 - Repo + docs: https://github.com/m3tac0de/sofabaton-virtual-remote
 - The card is designed to work with **this integration** and the **official X2 integration**.
 
-> **Transition note:**
-> 
-> Right now, this integration auto-deploys the card. You DO NOT have to install it separately.
-> Once the card is available as a standard HACS frontend plugin, it's recommended you install it that way, so it can be updated separately from this integration.
+> This integration auto-deploys the card. You DO NOT have to install it separately.
+> The card is also available as a separate HACS frontend plugin. It's recommended you install it that way, so it can be updated separately from this integration.
 > This integration automatically stops deploying the card as soon as it detects that the card is installed through HACS (a reboot of Home Assistant is required).
 
-### Wifi Commands
 
-In the card's configuration editor, under **Automation Assist > Wifi Commands** 10 slots are available for custom commands.
+---
+
+## 🤖 Automations
+
+### Wifi Commands: Receive key presses from the hub and trigger an automation.
+
+In the Sofabaton Virtual Remote card's configuration editor, under **Automation Assist > Wifi Commands** 10 slots are available for custom commands.
 1. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
 2. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
 3. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.    
-  > **Note the following**:
+
   >    - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
   >    - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
-  >    - Due to the above, it is best to create a complete configuration before deploying to the hub. Note that Actions can be modified without the need to resync; you can add/remove and change them at any time.
+  >    - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
 
 <img height="200" alt="image" src="https://github.com/user-attachments/assets/79f2d841-e4ef-4252-9a62-e2c7ef577f88" />  
 <img height="200" alt="image" src="https://github.com/user-attachments/assets/de132346-40ca-422e-a5e9-abb7efce6433" />  
 <img height="200" alt="image" src="https://github.com/user-attachments/assets/ead35c29-9a53-4906-a7af-c65009bba3fc" />  
 <img height="200" alt="image" src="https://github.com/user-attachments/assets/7bdad456-f637-43c6-8c50-9c3ccaad6990" />  
 <img height="200" alt="image" src="https://github.com/user-attachments/assets/45e2f748-44f2-48c6-bc70-abee75ad30cf" />
-
-
----
-
-## 🤖 Automations
 
 ### Send a command in the context of the current activity
 
@@ -216,7 +214,7 @@ IDs share the same range: **devices start at 1**, **activities at 101**.
 
 ### 1) Using Sofabaton Virtual Remote (recommended)
 
-The easiest way to retrieve the needed IDs is to add the **Virtual Remote card** to your dashboard, and enable its feature **Automation Assist**.
+The easiest way to retrieve the needed IDs is to add the **Virtual Remote card** to your dashboard, and enable its feature **Automation Assist > Key capture**.
 This will give you IDs and ready-to-use YAML as Notifications in your Home Assistant side bar.
 
 
@@ -228,7 +226,7 @@ Use the official Sofabaton app connected to the **virtual hub**, press a button 
 
 It contains ready-to-copy `remote.send_command` payloads.
 
-Tip: to see live updates while pressing buttons, use Developer Tools → Template:
+Tip: to see live updates while pressing buttons, use Settings → Developer Tools → Template:
 
 ```yaml
 {% set command_data = state_attr('sensor.[YOUR_HUB_NAME]_recorded_keypress', 'example_remote_send_command') %}
@@ -244,9 +242,9 @@ target:
 
 The hub can have a lot of commands; fetching everything on every startup is slow/noisy, so it’s on-demand.
 
-Check: `sensor.<hub>_index` (Developer Tools → States). You will see your devices and activities, along with their respective `end_id` values.
+Check: `sensor.<hub>_index` (Settings → Developer Tools → States). You will see your devices and activities, along with their respective `end_id` values.
 
-Run the action **in UI mode at least once** (Developer Tools → Actions) so you can select the hub:
+Run the action **in UI mode at least once** (Settings → Developer Tools → Actions) so you can select the hub:
 
 In the fetch action, device is the Home Assistant Device for your hub (pick it from the UI dropdown). ent_id is the Sofabaton entity id (device/activity id on the hub).
 ```yaml
