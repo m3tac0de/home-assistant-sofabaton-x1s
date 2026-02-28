@@ -50,6 +50,7 @@ Forces a resync of the physical remote. Automatically called at the end of a hub
 This has been built for robustness and security, and has been extensively tested across all hub versions.
 - significantly fortified HTTP listener
 - if at any stage deployment of the Wifi Device fails, a rollback is performed and no trace will be left on the hub
+- manual removal: this feature creates a Device on the Sofabaton hub. Removing it through the app is safe and removes the Wifi Commands configuration from your hub. The integration will notice hub configuration is no longer in sync, and provides the option to re-sync.
 
-However, since this involves reconfiguring the hub, it is a good idea to create a backup of your hub configuration before using this feature.  
+This feature involves reconfiguring the hub, it is therefore a good idea to create a backup of your hub configuration before using this feature.  
 Please [open an issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues) in case of any problems, make sure to [include detailed logs](logging.md).
