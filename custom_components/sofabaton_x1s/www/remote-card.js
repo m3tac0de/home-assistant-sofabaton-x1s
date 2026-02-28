@@ -2,7 +2,8 @@ const CARD_NAME = "Sofabaton Virtual Remote";
 const CARD_VERSION = "0.1.0";
 const KEY_CAPTURE_HELP_URL =
   "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
-const YAML_HELPER_INFO_URL = "#";
+const YAML_HELPER_INFO_URL =
+  "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 const PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
