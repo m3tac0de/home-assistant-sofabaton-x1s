@@ -1,6 +1,6 @@
 # Sofabaton X1/X1S/X2 – Home Assistant Custom Integration
 
-Control your Sofabaton **X1**, **X1S** and **X2** hub from Home Assistant using **100% local APIs**.
+Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Home Assistant, using **100% local APIs**.
 
 > **X2 discovery is disabled by default!** Enable it in `configuration.yaml` (see below).  
 > There is also an **official X2 integration** (MQTT-based): https://github.com/yomonpet/ha-sofabaton-hub
@@ -164,14 +164,19 @@ This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 ### Wifi Commands
 
 In the card's configuration editor, under **Automation Assist > Wifi Commands** 10 slots are available for custom commands.
-1. Make a new command: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
-2. Configure an Action to run whenever a key with our command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. Configuring an Action is optional: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can trigger from it.
-3. Once configuration is completed, press the **Sync to hub** button. This will deploy the configuration directly to the hub.    
-  Note the following:
-     - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
-     - When configuration is successfully deployed to the hub, the physical remote is instructed to synchronize with the hub.
-     - Due to the above, it is best to create a complete configuration before deploying to the hub.
+1. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
+2. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
+3. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.    
+  > **Note the following**:
+  >    - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
+  >    - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
+  >    - Due to the above, it is best to create a complete configuration before deploying to the hub. Note that Actions can be modified without the need to resync; you can add/remove and change them at any time.
 
+<img height="200" alt="image" src="https://github.com/user-attachments/assets/79f2d841-e4ef-4252-9a62-e2c7ef577f88" />  
+<img height="200" alt="image" src="https://github.com/user-attachments/assets/de132346-40ca-422e-a5e9-abb7efce6433" />  
+<img height="200" alt="image" src="https://github.com/user-attachments/assets/ead35c29-9a53-4906-a7af-c65009bba3fc" />  
+<img height="200" alt="image" src="https://github.com/user-attachments/assets/7bdad456-f637-43c6-8c50-9c3ccaad6990" />  
+<img height="200" alt="image" src="https://github.com/user-attachments/assets/45e2f748-44f2-48c6-bc70-abee75ad30cf" />
 
 
 ---
