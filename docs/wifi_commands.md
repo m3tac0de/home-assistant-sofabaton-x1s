@@ -32,7 +32,8 @@ The **Wifi Commands** feature uses an HTTP listener that will by default attempt
 > **⚠️  Emulated Roku**  
 > If you are currently using Emulated Roku, these ports will conflict, causing either Emulated Roku or Wifi Commands to fail.
 
-The port the HTTP listener binds to can be changed in the integration's general config, but doing so will break X1 compatibility. Other hub versions can freely change ports.
+The port the HTTP listener binds to can be changed in the integration's general config, but doing so will break X1 compatibility. Other hub versions can freely change ports. 
+Detailed networking documentation is [here](networking.md).
 
 ## Relevant entities
 `sensor.<hub>_wifi_commands`  
@@ -49,4 +50,5 @@ This has been built for robustness and security, and has been extensively tested
 - significantly fortified HTTP listener
 - if at any stage deployment of the Wifi Device fails, a rollback is performed and no trace will be left on the hub
 
-However, since this involves reconfiguring the hub, it is a good idea to create a backup of your hub configuration before using this feature.
+However, since this involves reconfiguring the hub, it is a good idea to create a backup of your hub configuration before using this feature.  
+Please [open an issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues) in case of any problems, make sure to [include detailed logs](logging.md).
