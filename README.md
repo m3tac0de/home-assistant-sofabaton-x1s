@@ -12,7 +12,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 - 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard card**: Sofabaton Virtual Remote
 - 🤖 **Send key presses to the hub**: `remote.send_command`, “recorded keypress”, “index” + fetch action
-- ⚡ **Receive key presses from the hub**: Sofabaton Virtual Remote, "Wifi Commands"
+- ⚡ **Receive key presses from the hub**: Sofabaton Virtual Remote, "Wifi Commands" see [`docs/wifi_commands.md`](docs/wifi_commands.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
 - 🪵 **Useful logs & diagnostics**: see [`docs/logging.md`](docs/logging.md)
 
@@ -73,7 +73,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 - 🧩 **Multiple hubs** supported
 - 🎛 **Activity select** entity (`select.<hub>_activity`)
 - 🔘 **Dynamic button entities** that match your **currently active activity**
-- ⚙️ **Send key presses** (`remote.<hub>_remote`) per hub for scripts/automations
+- ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations
 - 💎 **Receive key presses**: "Wifi Commands" configured via the UI, trigger Actions directly from key presses on the physical remote
 - 🔔 **Find Remote** diagnostic button (buzzer)
 - 🟢 **Sensors** for activity, connectivity, app connection, recorded keypress, wifi commands
@@ -170,6 +170,8 @@ In the Sofabaton Virtual Remote card's configuration editor, under **Automation 
 1. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
 2. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
 3. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.    
+
+  More details are here: [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
   >    - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
   >    - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.

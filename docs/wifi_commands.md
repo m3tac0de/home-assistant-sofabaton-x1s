@@ -1,7 +1,10 @@
 # Automation Assist: Wifi Commands
 
+Run Home Assistant Actions when buttons are pressed on the physical remote.  
+
+
 In the **Sofabaton Virtual Remote** card's configuration editor, under **Automation Assist > Wifi Commands** 10 slots are available for custom commands.
-These commands are deployed to the hub from the UI after which physical keypresses trigger Home Assistant Actions directly.
+These commands are deployed to the hub, from the UI, after which physical keypresses trigger Home Assistant Actions directly.
 
 1. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
 2. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
@@ -49,6 +52,7 @@ Forces a resync of the physical remote. Automatically called at the end of a hub
 This has been built for robustness and security, and has been extensively tested across all hub versions.
 - significantly fortified HTTP listener
 - if at any stage deployment of the Wifi Device fails, a rollback is performed and no trace will be left on the hub
+- manual removal: this feature creates a Device on the Sofabaton hub. Removing it through the app is safe and removes the Wifi Commands configuration from your hub. The integration will notice hub configuration is no longer in sync, and provides the option to re-sync.
 
-However, since this involves reconfiguring the hub, it is a good idea to create a backup of your hub configuration before using this feature.  
+This feature involves reconfiguring the hub, it is therefore a good idea to create a backup of your hub configuration before using this feature.  
 Please [open an issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues) in case of any problems, make sure to [include detailed logs](logging.md).
