@@ -1599,6 +1599,113 @@ def test_add_device_to_activity_x1s_does_not_send_finalize_stage(monkeypatch) ->
     assert ack_calls[-1] == [(0x0112, ButtonName.POWER_OFF), (0x0112, 0x01)]
 
 
+def test_add_device_to_activity_accepts_ack_only_activity_inputs(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        proxy.state.record_activity_member(act_lo, 1)
+        proxy.state.record_activity_member(act_lo, 3)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    family_sends: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: family_sends.append((family, payload)))
+
+    macro_payload = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "03 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 1a ff "
+        "03 c5 00 00 00 00 00 00 00 ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "02 00 00 00 00 00 2d 76 00"
+    )
+
+    monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: macro_payload)
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: False)
+    monkeypatch.setattr(
+        proxy,
+        "_build_macro_save_payload",
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+    )
+
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    def _wait_for_roku_ack_any(candidates: list[tuple[int, int | None]], *, timeout: float = 5.0):
+        ack_calls.append(candidates)
+        if candidates == [(0x0103, None)]:
+            return 0x0103, b"\x07"
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    result = proxy.add_device_to_activity(101, 6)
+
+    assert result is not None
+    assert (0x0148, b"\x01") in sent
+    assert len(family_sends) == 2
+    assert [(0x0103, None)] in ack_calls
+
+
+def test_add_device_to_activity_rejects_activity_inputs_error_ack(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        proxy.state.record_activity_member(act_lo, 1)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+
+    macro_payload = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 1a ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "01 00 00 00 00 00 2d 76 00"
+    )
+
+    monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: macro_payload)
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: False)
+
+    def _wait_for_roku_ack_any(candidates: list[tuple[int, int | None]], *, timeout: float = 5.0):
+        if candidates == [(0x0103, None)]:
+            return 0x0103, b"\xff"
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    assert proxy.add_device_to_activity(101, 6) is None
+
+
 def test_add_device_to_activity_x1_does_not_send_finalize_stage(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",

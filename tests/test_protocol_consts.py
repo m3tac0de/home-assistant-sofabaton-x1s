@@ -56,3 +56,10 @@ def test_family_constants_align_with_examples() -> None:
     assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_HEADER)
     assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_TAIL)
     assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_SINGLE)
+
+
+def test_ack_opcodes_are_named() -> None:
+    """ACK opcodes used by sync/create flows should be named for clean logs."""
+
+    assert const.OPNAMES[const.OP_ACK_GENERIC] == "ACK_GENERIC"
+    assert const.OPNAMES[const.OP_CREATE_DEVICE_ACK] == "CREATE_DEVICE_ACK"

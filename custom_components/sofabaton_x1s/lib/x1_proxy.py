@@ -1612,8 +1612,24 @@ class X1Proxy:
                     return None
                 self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, b"\x01")
                 if not self.wait_for_activity_inputs_burst(timeout=5.0):
-                    log.warning("[ACTIVITY_ASSIGN] missing activity-inputs response act=0x%02X", act_lo)
-                    return None
+                    ack_result = self.wait_for_roku_ack_any([(0x0103, None)], timeout=0.5)
+                    if ack_result is None:
+                        log.warning("[ACTIVITY_ASSIGN] missing activity-inputs response act=0x%02X", act_lo)
+                        return None
+                    ack_payload = ack_result[1]
+                    ack_code = ack_payload[0] if ack_payload else 0x00
+                    if ack_code not in (0x00, 0x07):
+                        log.warning(
+                            "[ACTIVITY_ASSIGN] activity-inputs returned error-like ACK act=0x%02X code=0x%02X",
+                            act_lo,
+                            ack_code,
+                        )
+                        return None
+                    log.info(
+                        "[ACTIVITY_ASSIGN] activity-inputs fell back to ACK-only response act=0x%02X code=0x%02X",
+                        act_lo,
+                        ack_code,
+                    )
                 self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
 
             source_payload = self.wait_for_macro_payload(act_lo, macro_button, timeout=5.0)

@@ -43,6 +43,7 @@ from .protocol_const import (
     OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_G,
+    OP_CREATE_DEVICE_ACK,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
     OP_DEFINE_IP_CMD_EXISTING,
@@ -74,8 +75,6 @@ from .x1_proxy import log
 if TYPE_CHECKING:
     from .x1_proxy import X1Proxy
 
-
-OP_CREATE_DEVICE_ACK = 0x0107
 
 
 def _consume_length_prefixed_string(buf: bytes, offset: int) -> tuple[str, int]:

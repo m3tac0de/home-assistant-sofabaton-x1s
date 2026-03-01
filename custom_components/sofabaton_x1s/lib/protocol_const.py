@@ -74,6 +74,8 @@ OP_FINALIZE_DEVICE = 0x4677
 OP_DEVICE_SAVE_HEAD = 0x8D5D  # hub assigns device id
 OP_SAVE_COMMIT = 0x6501
 ACK_SUCCESS = 0x0301
+OP_ACK_GENERIC = 0x0103  # generic success/error ack used during write/replay phases
+OP_CREATE_DEVICE_ACK = 0x0107  # create-device response carrying assigned device id
 
 # IP command synchronization (existing devices)
 OP_REQ_IPCMD_SYNC = 0x0C02
@@ -172,6 +174,8 @@ OPNAMES: Dict[int, str] = {
     OP_IPCMD_ROW_C: "IPCMD_ROW_C",
     OP_IPCMD_ROW_D: "IPCMD_ROW_D",
     ACK_SUCCESS: "ACK_SUCCESS",
+    OP_ACK_GENERIC: "ACK_GENERIC",
+    OP_CREATE_DEVICE_ACK: "CREATE_DEVICE_ACK",
     OP_ACK_READY: "ACK_READY",
     OP_MARKER: "MARKER",
     OP_CATALOG_ROW_DEVICE: "CATALOG_ROW_DEVICE",
