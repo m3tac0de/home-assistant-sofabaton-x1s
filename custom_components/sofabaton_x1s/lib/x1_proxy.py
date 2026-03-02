@@ -287,6 +287,8 @@ class X1Proxy:
         self._roku_ack_lock = threading.Lock()
         self._roku_ack_events: deque[tuple[int, bytes]] = deque()
         self._roku_ack_event = threading.Event()
+        self._scoped_roku_ack_waiters: dict[int, dict[str, Any]] = {}
+        self._scoped_roku_ack_waiter_seq = 0
         self._x2_remote_sync_id_lock = threading.Lock()
         self._x2_remote_sync_id: bytes | None = None
         self._x2_remote_sync_id_event = threading.Event()
@@ -1036,8 +1038,117 @@ class X1Proxy:
 
     def notify_roku_ack(self, opcode: int, payload: bytes) -> None:
         with self._roku_ack_lock:
+            for waiter in self._scoped_roku_ack_waiters.values():
+                if opcode != waiter["opcode"]:
+                    continue
+                want_first_byte = waiter["first_byte"]
+                if want_first_byte is not None and (not payload or payload[0] != (want_first_byte & 0xFF)):
+                    continue
+                waiter["events"].append((opcode, payload))
+                waiter["event"].set()
+                return
             self._roku_ack_events.append((opcode, payload))
             self._roku_ack_event.set()
+
+    def _register_scoped_roku_ack_waiter(
+        self,
+        opcode: int,
+        *,
+        first_byte: int | None = None,
+    ) -> int:
+        with self._roku_ack_lock:
+            self._scoped_roku_ack_waiter_seq += 1
+            waiter_id = self._scoped_roku_ack_waiter_seq
+            waiter = {
+                "opcode": opcode,
+                "first_byte": first_byte,
+                "events": deque(),
+                "event": threading.Event(),
+            }
+            for ack_opcode, ack_payload in list(self._roku_ack_events):
+                if ack_opcode != opcode:
+                    continue
+                if first_byte is not None and (not ack_payload or ack_payload[0] != (first_byte & 0xFF)):
+                    continue
+                self._roku_ack_events.remove((ack_opcode, ack_payload))
+                waiter["events"].append((ack_opcode, ack_payload))
+                waiter["event"].set()
+            if not self._roku_ack_events:
+                self._roku_ack_event.clear()
+            self._scoped_roku_ack_waiters[waiter_id] = waiter
+            return waiter_id
+
+    def _unregister_scoped_roku_ack_waiter(self, waiter_id: int) -> None:
+        with self._roku_ack_lock:
+            self._scoped_roku_ack_waiters.pop(waiter_id, None)
+
+    def _pop_scoped_roku_ack(self, waiter_id: int) -> tuple[int, bytes] | None:
+        with self._roku_ack_lock:
+            waiter = self._scoped_roku_ack_waiters.get(waiter_id)
+            if waiter is None:
+                return None
+            events = waiter["events"]
+            if not events:
+                waiter["event"].clear()
+                return None
+            matched = events.popleft()
+            if not events:
+                waiter["event"].clear()
+            return matched
+
+    def _wait_for_activity_inputs_or_ack(
+        self,
+        *,
+        timeout: float = 5.0,
+        idle_window: float = 0.35,
+        min_frames: int = 1,
+    ) -> bool:
+        """Wait for either activity-input burst completion or ACK 0x0103 {0x00,0x07}."""
+
+        waiter_id = self._register_scoped_roku_ack_waiter(0x0103)
+        deadline = time.monotonic() + timeout
+        try:
+            while True:
+                now = time.monotonic()
+
+                with self._activity_inputs_lock:
+                    seen = self._activity_inputs_seen
+                    last_ts = self._activity_inputs_last_ts
+                    if seen >= min_frames and last_ts > 0 and (now - last_ts) >= idle_window:
+                        self._activity_inputs_seen = 0
+                        self._activity_inputs_last_ts = 0.0
+                        self._activity_inputs_event.clear()
+                        return True
+                    self._activity_inputs_event.clear()
+
+                ack_result = self._pop_scoped_roku_ack(waiter_id)
+                if ack_result is not None:
+                    _ack_opcode, ack_payload = ack_result
+                    ack_code = ack_payload[0] if ack_payload else 0x00
+                    if ack_code in (0x00, 0x07):
+                        log.info(
+                            "[ACTIVITY_ASSIGN] activity-inputs accepted ACK-only response code=0x%02X",
+                            ack_code,
+                        )
+                        return True
+                    log.warning(
+                        "[ACTIVITY_ASSIGN] activity-inputs returned error-like ACK code=0x%02X",
+                        ack_code,
+                    )
+                    return False
+
+                remaining = deadline - now
+                if remaining <= 0:
+                    return False
+
+                with self._roku_ack_lock:
+                    waiter = self._scoped_roku_ack_waiters.get(waiter_id)
+                    waiter_event = waiter["event"] if waiter is not None else None
+                if waiter_event is not None and waiter_event.wait(min(remaining, 0.2)):
+                    continue
+                self._activity_inputs_event.wait(min(remaining, 0.05))
+        finally:
+            self._unregister_scoped_roku_ack_waiter(waiter_id)
 
     def wait_for_roku_ack(
         self,
@@ -1621,25 +1732,9 @@ class X1Proxy:
                     )
                     return None
                 self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, b"\x01")
-                if not self.wait_for_activity_inputs_burst(timeout=5.0):
-                    ack_result = self.wait_for_roku_ack_any([(0x0103, None)], timeout=0.5)
-                    if ack_result is None:
-                        log.warning("[ACTIVITY_ASSIGN] missing activity-inputs response act=0x%02X", act_lo)
-                        return None
-                    ack_payload = ack_result[1]
-                    ack_code = ack_payload[0] if ack_payload else 0x00
-                    if ack_code not in (0x00, 0x07):
-                        log.warning(
-                            "[ACTIVITY_ASSIGN] activity-inputs returned error-like ACK act=0x%02X code=0x%02X",
-                            act_lo,
-                            ack_code,
-                        )
-                        return None
-                    log.info(
-                        "[ACTIVITY_ASSIGN] activity-inputs fell back to ACK-only response act=0x%02X code=0x%02X",
-                        act_lo,
-                        ack_code,
-                    )
+                if not self._wait_for_activity_inputs_or_ack(timeout=5.0):
+                    log.warning("[ACTIVITY_ASSIGN] missing activity-inputs response act=0x%02X", act_lo)
+                    return None
                 self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
 
             source_payload = self.wait_for_macro_payload(act_lo, macro_button, timeout=5.0)

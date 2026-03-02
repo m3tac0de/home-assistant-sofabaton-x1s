@@ -1167,7 +1167,7 @@ def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
         "wait_for_macro_payload",
         lambda act, button, timeout=5.0: macro_payloads.get((act, button)),
     )
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_activity_inputs_or_ack", lambda timeout=5.0: True)
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
@@ -1241,7 +1241,7 @@ def test_add_device_to_activity_retries_macro_save_with_source_payload_on_timeou
     )
 
     monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: source_payload)
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_activity_inputs_or_ack", lambda timeout=5.0: True)
 
     updated_payload = source_payload + b"\x00"
     monkeypatch.setattr(
@@ -1295,7 +1295,7 @@ def test_add_device_to_activity_discards_stale_members_before_refresh(monkeypatc
 
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_activity_inputs_or_ack", lambda timeout=5.0: True)
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_payload",
@@ -1355,7 +1355,7 @@ def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> N
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_activity_inputs_or_ack", lambda timeout=5.0: True)
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_payload",
@@ -1420,7 +1420,7 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_activity_inputs_or_ack", lambda timeout=5.0: True)
     monkeypatch.setattr(
         proxy,
         "wait_for_macro_payload",
@@ -1525,7 +1525,7 @@ def test_add_device_to_activity_x2_sends_commit_stage(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: macro_payload)
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_activity_inputs_or_ack", lambda timeout=5.0: True)
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
@@ -1594,7 +1594,7 @@ def test_add_device_to_activity_x1s_does_not_send_finalize_stage(monkeypatch) ->
     )
 
     monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: macro_payload)
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_activity_inputs_or_ack", lambda timeout=5.0: True)
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
@@ -1668,7 +1668,7 @@ def test_add_device_to_activity_accepts_ack_only_activity_inputs(monkeypatch) ->
     )
 
     monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: macro_payload)
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: False)
+    monkeypatch.setattr(proxy, "_wait_for_activity_inputs_or_ack", lambda timeout=5.0: True)
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
@@ -1679,8 +1679,6 @@ def test_add_device_to_activity_accepts_ack_only_activity_inputs(monkeypatch) ->
 
     def _wait_for_roku_ack_any(candidates: list[tuple[int, int | None]], *, timeout: float = 5.0):
         ack_calls.append(candidates)
-        if candidates == [(0x0103, None)]:
-            return 0x0103, b"\x07"
         first_opcode, first_byte = candidates[0]
         return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
 
@@ -1691,7 +1689,7 @@ def test_add_device_to_activity_accepts_ack_only_activity_inputs(monkeypatch) ->
     assert result is not None
     assert (0x0148, b"\x01") in sent
     assert len(family_sends) == 2
-    assert [(0x0103, None)] in ack_calls
+    assert ack_calls.count([(0x0103, None)]) == 3
 
 
 def test_add_device_to_activity_rejects_activity_inputs_error_ack(monkeypatch) -> None:
@@ -1725,7 +1723,7 @@ def test_add_device_to_activity_rejects_activity_inputs_error_ack(monkeypatch) -
     )
 
     monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: macro_payload)
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: False)
+    monkeypatch.setattr(proxy, "_wait_for_activity_inputs_or_ack", lambda timeout=5.0: True)
 
     def _wait_for_roku_ack_any(candidates: list[tuple[int, int | None]], *, timeout: float = 5.0):
         if candidates == [(0x0103, None)]:
@@ -1772,7 +1770,7 @@ def test_add_device_to_activity_x1_does_not_send_finalize_stage(monkeypatch) -> 
     )
 
     monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: macro_payload)
-    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_activity_inputs_or_ack", lambda timeout=5.0: True)
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
@@ -2302,3 +2300,46 @@ def test_command_to_button_requires_all_acks(monkeypatch) -> None:
 
     assert proxy.command_to_button(0x65, 0xC1, 0x05, 0x02) is None
     assert requested_map == []
+
+
+def test_wait_for_activity_inputs_or_ack_accepts_ack_07_without_burst() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy.notify_roku_ack(0x0103, b"\x07")
+
+    assert proxy._wait_for_activity_inputs_or_ack(timeout=0.2) is True
+
+
+def test_wait_for_activity_inputs_or_ack_accepts_burst_without_ack() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy.notify_activity_inputs_frame()
+
+    assert proxy._wait_for_activity_inputs_or_ack(timeout=0.6, idle_window=0.01) is True
+
+
+def test_wait_for_activity_inputs_or_ack_rejects_error_ack_code() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy.notify_roku_ack(0x0103, b"\xff")
+
+    assert proxy._wait_for_activity_inputs_or_ack(timeout=0.2) is False
+
+
+def test_wait_for_activity_inputs_or_ack_scoped_waiter_prevents_competing_consumer() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    def _competing_consumer() -> bool:
+        return proxy.wait_for_roku_ack_any([(0x0103, None)], timeout=0.05) is not None
+
+    import threading
+
+    consumer_done: list[bool] = []
+    consumer_thread = threading.Thread(target=lambda: consumer_done.append(_competing_consumer()))
+    consumer_thread.start()
+    proxy.notify_roku_ack(0x0103, b"\x07")
+
+    assert proxy._wait_for_activity_inputs_or_ack(timeout=0.4) is True
+
+    consumer_thread.join(timeout=0.2)
+    assert consumer_done == [False]
