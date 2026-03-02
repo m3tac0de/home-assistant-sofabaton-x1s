@@ -4525,7 +4525,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
       if (
         this._automationAssistEnabled() &&
-        this._automationAssistActive &&
+        //this._automationAssistActive &&
         this._lastActivityLabel != null &&
         current !== this._lastActivityLabel
       ) {
@@ -5337,7 +5337,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     closeBtn.className = "sb-modal__close";
     closeBtn.textContent = "✕";
     closeBtn.setAttribute("aria-label", "Close");
-    closeBtn.addEventListener("click", () => this._resolveCommandSyncWarning(false));
+    closeBtn.addEventListener("click", () =>
+      this._resolveCommandSyncWarning(false),
+    );
 
     header.appendChild(title);
     header.appendChild(closeBtn);
@@ -5364,13 +5366,18 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     cancelBtn.type = "button";
     cancelBtn.className = "sb-command-dialog-btn";
     cancelBtn.textContent = "Cancel";
-    cancelBtn.addEventListener("click", () => this._resolveCommandSyncWarning(false));
+    cancelBtn.addEventListener("click", () =>
+      this._resolveCommandSyncWarning(false),
+    );
 
     const confirmBtn = document.createElement("button");
     confirmBtn.type = "button";
-    confirmBtn.className = "sb-command-dialog-btn sb-command-dialog-btn-primary";
+    confirmBtn.className =
+      "sb-command-dialog-btn sb-command-dialog-btn-primary";
     confirmBtn.textContent = "Start sync";
-    confirmBtn.addEventListener("click", () => this._resolveCommandSyncWarning(true));
+    confirmBtn.addEventListener("click", () =>
+      this._resolveCommandSyncWarning(true),
+    );
 
     actions.appendChild(cancelBtn);
     actions.appendChild(confirmBtn);

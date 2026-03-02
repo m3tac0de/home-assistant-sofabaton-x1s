@@ -1062,6 +1062,38 @@ def test_build_macro_save_payload_accepts_utf16_macro_labels() -> None:
     assert b"\x00P\x00O\x00W" in payload
 
 
+def test_build_macro_save_payload_without_embedded_label_uses_row_count_hint() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    # Observed variant from OP_F013: no embedded POWER_ON label marker,
+    # compact 10-byte rows followed by trailing metadata bytes.
+    source_payload = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 09 "
+        "11 03 c6 00 00 00 00 00 00 00 "
+        "01 05 c6 00 00 00 00 00 00 00 "
+        "01 01 c5 00 00 00 00 00 00 00 "
+        "01 01 c6 00 00 00 00 00 00 00 "
+        "01 07 c6 00 00 00 00 00 00 00 "
+        "01 03 c5 00 00 00 00 00 00 00 "
+        "02 03 1d 00 00 00 00 00 00 00 "
+        "01 07 c5 00 00 00 00 00 00 00 "
+        "01 05 c5 00 00 00 00 00 00 06 "
+        "00 00 00 00 00 00 00 00 00 00 00 00"
+    )
+
+    payload = proxy._build_macro_save_payload(
+        source_payload,
+        device_id=0x09,
+        button_id=ButtonName.POWER_ON,
+        allowed_device_ids={1, 3, 5, 7, 9},
+    )
+
+    assert payload is not None
+    assert payload[8] >= 0x08
+    assert bytes([0x09, 0xC6]) in payload
+    assert bytes([0x09, 0xC5]) in payload
+
+
 def test_add_device_to_activity_replays_confirm_sequence(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
