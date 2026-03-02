@@ -124,6 +124,7 @@ def test_manual_flow_persists_selected_hub_version() -> None:
     assert result["type"] == "create_entry"
     assert result["data"][CONF_MDNS_VERSION] == HUB_VERSION_X2
     assert result["options"][CONF_MDNS_VERSION] == HUB_VERSION_X2
+    assert result["data"]["mdns_txt"]["HVER"] == "3"
 
 
 def test_zeroconf_x2_aborts_when_disabled() -> None:

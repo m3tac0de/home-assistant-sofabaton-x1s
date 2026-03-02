@@ -26,6 +26,9 @@ from .const import (
     HUB_VERSION_X1,
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
+    HVER_X1,
+    HVER_X1S,
+    HVER_X2,
     MDNS_SERVICE_TYPES,
     DEFAULT_ROKU_LISTEN_PORT,
     classify_hub_version,
@@ -33,6 +36,13 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+_HVER_BY_VERSION = {
+    HUB_VERSION_X1: HVER_X1,
+    HUB_VERSION_X1S: HVER_X1S,
+    HUB_VERSION_X2: HVER_X2,
+}
 
 
 def generate_static_mac(host: str, port: int) -> str:
@@ -120,7 +130,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             version = user_input[CONF_MDNS_VERSION]
             port = DEFAULT_PROXY_UDP_PORT
             mac = generate_static_mac(host, port)
-            props = {"MAC": mac, "NAME": name}
+            props = {
+                "MAC": mac,
+                "NAME": name,
+                "HVER": _HVER_BY_VERSION.get(version, HVER_X1),
+            }
 
             self._chosen_hub = {
                 "name": name,

@@ -120,6 +120,7 @@ class SofabatonHub:
             async_enable_hex_logging_capture(self.hass, self.entry_id)
 
     def _create_proxy(self) -> X1Proxy:
+        normalized_version = self.version if self.version in (HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2) else None
         proxy = X1Proxy(
             real_hub_ip=self.host,
             real_hub_udp_port=self.port,
@@ -131,6 +132,7 @@ class SofabatonHub:
             proxy_udp_port=self._proxy_udp_port,
             hub_listen_base=self._hub_listen_base,
             proxy_enabled=self.proxy_enabled,
+            hub_version=normalized_version,
         )
 
         proxy.on_activity_change(self._on_activity_change)

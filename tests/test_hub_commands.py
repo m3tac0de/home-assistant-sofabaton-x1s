@@ -3,6 +3,7 @@ import pytest
 from types import SimpleNamespace
 
 from custom_components.sofabaton_x1s.hub import SofabatonHub
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 
 
 class FakeHass:
@@ -886,5 +887,29 @@ def test_sync_command_config_reports_wifi_listener_enable_failure(monkeypatch):
     assert progress["status"] == "failed"
     assert "Port 8060 may already be in use" in progress["message"]
     assert "docs/networking.md" in progress["message"]
+
+    loop.close()
+
+
+def test_hub_create_proxy_uses_explicit_hub_version() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version=HUB_VERSION_X1S,
+    )
+
+    assert hub._proxy.hub_version == HUB_VERSION_X1S
 
     loop.close()

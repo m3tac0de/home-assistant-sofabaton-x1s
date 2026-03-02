@@ -40,6 +40,7 @@ from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     ActivityMapHandler,
     CatalogActivityHandler,
+    CatalogDeviceHandler,
     KeymapHandler,
     MacroHandler,
     X1CatalogActivityHandler,
@@ -63,6 +64,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_X2_REMOTE_LIST_ROW,
 )
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S
 
 
 def _build_context(proxy: X1Proxy, raw_hex: str, opcode: int, name: str) -> FrameContext:
@@ -912,3 +914,29 @@ def test_activity_map_ignores_control_tuples_from_x1_tail() -> None:
         handler.handle(frame)
 
     assert proxy.state.get_activity_command_refs(act) == set()
+
+
+def test_catalog_device_handler_infers_modern_hub_version() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=HUB_VERSION_X1
+    )
+    handler = CatalogDeviceHandler()
+
+    payload = bytes([0x01, 0x00, 0x01, 0x06, 0x00, 0x01, 0x00, 0x06]) + (b"\x00" * 210)
+    frame = _build_payload_context(proxy, 0xD50B, payload, "CATALOG_ROW_DEVICE")
+    handler.handle(frame)
+
+    assert proxy.hub_version == HUB_VERSION_X1S
+
+
+def test_x1_catalog_device_handler_infers_x1_hub_version() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=HUB_VERSION_X1S
+    )
+    handler = X1CatalogDeviceHandler()
+
+    payload = bytes([0x01, 0x00, 0x01, 0x06, 0x00, 0x01, 0x00, 0x06]) + (b"\x00" * 80)
+    frame = _build_payload_context(proxy, OP_X1_DEVICE, payload, "X1_DEVICE")
+    handler.handle(frame)
+
+    assert proxy.hub_version == HUB_VERSION_X1
