@@ -17,6 +17,8 @@ from homeassistant.exceptions import HomeAssistantError
 from .const import (
     DOMAIN,
     CONF_HEX_LOGGING_ENABLED,
+    CONF_MAC,
+    CONF_MDNS_TXT,
     CONF_MDNS_VERSION,
     CONF_PROXY_ENABLED,
     CONF_ROKU_SERVER_ENABLED,
@@ -24,6 +26,9 @@ from .const import (
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
     WIFI_DEVICE_ENABLE_DOCS_URL,
+    HVER_BY_HUB_VERSION,
+    classify_hub_version,
+    format_hub_entry_title,
     signal_activity,
     signal_app_activations,
     signal_ip_commands,
@@ -47,7 +52,13 @@ _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.
 
 
 def get_hub_model(entry: ConfigEntry) -> str:
-    """Return the model string for this hub, with a sensible default."""
+    """Return the model string for this hub, preferring detected mDNS metadata."""
+
+    mdns_txt = entry.data.get("mdns_txt", {})
+    if isinstance(mdns_txt, dict):
+        detected_model = classify_hub_version(mdns_txt)
+        if detected_model:
+            return detected_model
 
     model = entry.options.get(CONF_MDNS_VERSION) or entry.data.get(CONF_MDNS_VERSION)
     if isinstance(model, str) and model:
@@ -131,6 +142,7 @@ class SofabatonHub:
             proxy_udp_port=self._proxy_udp_port,
             hub_listen_base=self._hub_listen_base,
             proxy_enabled=self.proxy_enabled,
+            hub_version=self.version,
         )
 
         proxy.on_activity_change(self._on_activity_change)
@@ -195,6 +207,7 @@ class SofabatonHub:
         self._proxy = self._create_proxy()
         await self.async_start()
         self.hass.async_create_task(self._async_initial_sync())
+
 
 
     # ------------------------------------------------------------------
@@ -1267,6 +1280,39 @@ class SofabatonHub:
             new_options = entry.options.copy()
             new_options[key] = value
             self.hass.config_entries.async_update_entry(entry, options=new_options)
+
+    async def async_set_hub_version(self, version: str) -> None:
+        """Set hub version override and persist to config entry metadata."""
+
+        if version not in HVER_BY_HUB_VERSION:
+            raise HomeAssistantError("hub_version must be one of: X1, X1S, X2")
+
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        if entry is None:
+            raise HomeAssistantError("Config entry not found")
+
+        data = dict(entry.data)
+        options = dict(entry.options)
+        mdns_txt_raw = data.get(CONF_MDNS_TXT, {})
+        mdns_txt = dict(mdns_txt_raw) if isinstance(mdns_txt_raw, dict) else {}
+        mdns_txt["HVER"] = HVER_BY_HUB_VERSION[version]
+
+        data[CONF_MDNS_TXT] = mdns_txt
+        data[CONF_MDNS_VERSION] = version
+        options[CONF_MDNS_VERSION] = version
+
+        self.version = version
+        self.mdns_txt = mdns_txt
+        self._proxy.hub_version = version
+        self._proxy.mdns_txt["HVER"] = mdns_txt["HVER"]
+
+        self.hass.config_entries.async_update_entry(
+            entry,
+            data=data,
+            options=options,
+            title=format_hub_entry_title(version, data.get("host"), data.get(CONF_MAC)),
+        )
+        async_dispatcher_send(self.hass, signal_hub(self.entry_id))
 
     async def async_set_proxy_enabled(self, enable: bool) -> None:
         _LOGGER.debug("[%s] Setting proxy enabled=%s", self.entry_id, enable)

@@ -916,7 +916,7 @@ def test_activity_map_ignores_control_tuples_from_x1_tail() -> None:
     assert proxy.state.get_activity_command_refs(act) == set()
 
 
-def test_catalog_device_handler_infers_modern_hub_version() -> None:
+def test_catalog_device_handler_keeps_mdns_hub_version() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=HUB_VERSION_X1
     )
@@ -926,10 +926,10 @@ def test_catalog_device_handler_infers_modern_hub_version() -> None:
     frame = _build_payload_context(proxy, 0xD50B, payload, "CATALOG_ROW_DEVICE")
     handler.handle(frame)
 
-    assert proxy.hub_version == HUB_VERSION_X1S
+    assert proxy.hub_version == HUB_VERSION_X1
 
 
-def test_x1_catalog_device_handler_infers_x1_hub_version() -> None:
+def test_x1_catalog_device_handler_keeps_mdns_hub_version() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=HUB_VERSION_X1S
     )
@@ -939,4 +939,4 @@ def test_x1_catalog_device_handler_infers_x1_hub_version() -> None:
     frame = _build_payload_context(proxy, OP_X1_DEVICE, payload, "X1_DEVICE")
     handler.handle(frame)
 
-    assert proxy.hub_version == HUB_VERSION_X1
+    assert proxy.hub_version == HUB_VERSION_X1S

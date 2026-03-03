@@ -2,7 +2,7 @@ import asyncio
 import pytest
 from types import SimpleNamespace
 
-from custom_components.sofabaton_x1s.hub import SofabatonHub
+from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 
 
@@ -911,5 +911,92 @@ def test_hub_create_proxy_uses_explicit_hub_version() -> None:
     )
 
     assert hub._proxy.hub_version == HUB_VERSION_X1S
+
+    loop.close()
+
+
+def test_get_hub_model_prefers_mdns_hver_over_stale_version() -> None:
+    entry = SimpleNamespace(
+        data={"mdns_txt": {"HVER": "2"}, "mdns_version": "X1"},
+        options={"mdns_version": "X1"},
+    )
+
+    assert get_hub_model(entry) == "X1S"
+
+
+def test_on_devices_burst_does_not_override_mdns_hub_version() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hub = SofabatonHub(
+        FakeHass(loop),
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version="X1",
+    )
+
+    hub._proxy.hub_version = "X1S"
+    hub._proxy.get_devices = lambda: ({1: {"name": "TV", "brand": "Sony"}}, True)
+
+    hub._on_devices_burst("devices")
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert hub.version == "X1"
+
+    loop.close()
+
+
+def test_async_set_hub_version_persists_hver_and_updates_proxy() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    entry = SimpleNamespace(
+        entry_id="entry-id",
+        title="Old title",
+        data={"host": "127.0.0.1", "mac": "aa:bb:cc", "mdns_txt": {}, "mdns_version": "X1"},
+        options={"mdns_version": "X1"},
+    )
+    updates: list[dict] = []
+
+    class HassWithEntries(FakeHass):
+        def __init__(self, l):
+            super().__init__(l)
+            self.config_entries = SimpleNamespace(
+                async_get_entry=lambda _entry_id: entry,
+                async_update_entry=lambda _entry, **kwargs: updates.append(kwargs),
+            )
+
+    hass = HassWithEntries(loop)
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version="X1",
+    )
+
+    loop.run_until_complete(hub.async_set_hub_version("X1S"))
+
+    assert hub.version == "X1S"
+    assert hub._proxy.hub_version == "X1S"
+    assert hub._proxy.mdns_txt["HVER"] == "2"
+    assert updates
+    update = updates[-1]
+    assert update["data"]["mdns_txt"]["HVER"] == "2"
+    assert update["data"]["mdns_version"] == "X1S"
+    assert update["options"]["mdns_version"] == "X1S"
 
     loop.close()

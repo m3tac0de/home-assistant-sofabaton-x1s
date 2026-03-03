@@ -648,6 +648,7 @@ class CatalogDeviceHandler(BaseFrameHandler):
         brand_bytes_raw = raw[96 : 96 + 60]
         brand_label = brand_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
 
+
         if dev_id is not None:
             proxy.state.devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
             log.info(

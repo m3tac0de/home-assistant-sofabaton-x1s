@@ -167,6 +167,7 @@ def test_zeroconf_x2_prompts_when_enabled() -> None:
     assert result["step_id"] == "zeroconf_confirm"
 
 
+
 def test_manual_flow_formats_entry_title_with_version_host_and_mac() -> None:
     flow = _flow_with_x2_enabled(False)
 

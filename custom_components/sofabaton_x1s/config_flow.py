@@ -30,6 +30,7 @@ from .const import (
     DEFAULT_ROKU_LISTEN_PORT,
     classify_hub_version,
     format_hub_entry_title,
+    HVER_BY_HUB_VERSION,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -101,6 +102,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             .get(CONF_ENABLE_X2_DISCOVERY, False)
         )
 
+
     # ------------------------------------------------------------------
     # step 1: pick hub (discovered or manual)
     # ------------------------------------------------------------------
@@ -121,6 +123,8 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             port = DEFAULT_PROXY_UDP_PORT
             mac = generate_static_mac(host, port)
             props = {"MAC": mac, "NAME": name}
+            if version in HVER_BY_HUB_VERSION:
+                props["HVER"] = HVER_BY_HUB_VERSION[version]
 
             self._chosen_hub = {
                 "name": name,
@@ -285,6 +289,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             None,
         )
+
 
         if existing_entry is not None:
             if (

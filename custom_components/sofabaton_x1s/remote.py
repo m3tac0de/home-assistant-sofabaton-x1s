@@ -113,7 +113,7 @@ class SofabatonRemote(RemoteEntity):
             ]
         return {
             "proxy_client_connected": self._hub.client_connected,
-            "hub_version": self._hub.version,
+            "hub_version": get_hub_model(self._entry),
             "hub_mac": hub_mac,
             "activities": activities,
             "assigned_keys": assigned_keys,

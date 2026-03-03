@@ -170,6 +170,19 @@ def _install_homeassistant_stubs() -> None:
     components = types.ModuleType("homeassistant.components")
     sys.modules.setdefault("homeassistant.components", components)
 
+
+    select = types.ModuleType("homeassistant.components.select")
+
+    class SelectEntity:  # pragma: no cover - only used as stub
+        def async_on_remove(self, *args, **kwargs):
+            return None
+
+        def async_write_ha_state(self):
+            return None
+
+    select.SelectEntity = SelectEntity
+    sys.modules.setdefault("homeassistant.components.select", select)
+
     switch = types.ModuleType("homeassistant.components.switch")
 
     class SwitchEntity:  # pragma: no cover - only used as stub

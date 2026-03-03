@@ -4,7 +4,7 @@ import json
 import logging
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlparse
 
 import voluptuous as vol
@@ -32,6 +32,9 @@ from .const import (
     CONF_ROKU_LISTEN_PORT,
     DEFAULT_ROKU_LISTEN_PORT,
     format_hub_entry_title,
+    DEFAULT_HUB_VERSION,
+    HVER_BY_HUB_VERSION,
+    HUB_VERSION_BY_HVER,
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
@@ -242,6 +245,50 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     return True
 
 
+def _reconcile_version_metadata(
+    data: Mapping[str, Any],
+    opts: Mapping[str, Any],
+) -> tuple[str, dict[str, Any], dict[str, Any], bool]:
+    """Normalize hub version metadata and determine whether entry updates are needed."""
+
+    current_data = dict(data)
+    current_opts = dict(opts)
+    mdns_txt_raw = current_data.get("mdns_txt", {})
+    mdns_txt = dict(mdns_txt_raw) if isinstance(mdns_txt_raw, dict) else {}
+
+    hvertxt = mdns_txt.get("HVER")
+    detected_version = HUB_VERSION_BY_HVER.get(str(hvertxt).strip()) if hvertxt is not None else None
+
+    stored_version = current_data.get(CONF_MDNS_VERSION) or current_opts.get(CONF_MDNS_VERSION)
+    if isinstance(stored_version, str):
+        stored_version = stored_version.strip() or None
+
+    resolved_version = detected_version or stored_version or DEFAULT_HUB_VERSION
+    confidence_version = detected_version or stored_version
+
+    changed = False
+    if (
+        mdns_txt.get("HVER") is None
+        and confidence_version in HVER_BY_HUB_VERSION
+    ):
+        mdns_txt["HVER"] = HVER_BY_HUB_VERSION[confidence_version]
+        changed = True
+
+    if current_data.get("mdns_txt", {}) != mdns_txt:
+        current_data["mdns_txt"] = mdns_txt
+        changed = True
+
+    if current_data.get(CONF_MDNS_VERSION) != resolved_version:
+        current_data[CONF_MDNS_VERSION] = resolved_version
+        changed = True
+
+    if current_opts.get(CONF_MDNS_VERSION) != resolved_version:
+        current_opts[CONF_MDNS_VERSION] = resolved_version
+        changed = True
+
+    return resolved_version, current_data, current_opts, changed
+
+
 async def _async_get_integration_version(hass: HomeAssistant) -> str:
     manifest_path = Path(__file__).parent / "manifest.json"
     try:
@@ -263,13 +310,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     data = entry.data
     opts = entry.options
 
+    version, reconciled_data, reconciled_opts, metadata_changed = _reconcile_version_metadata(data, opts)
+    if metadata_changed:
+        hass.config_entries.async_update_entry(
+            entry,
+            data=reconciled_data,
+            options=reconciled_opts,
+        )
+        data = reconciled_data
+        opts = reconciled_opts
+
     proxy_udp_port = opts.get("proxy_udp_port", DEFAULT_PROXY_UDP_PORT)
     hub_listen_base = opts.get("hub_listen_base", DEFAULT_HUB_LISTEN_BASE)
     proxy_enabled = opts.get(CONF_PROXY_ENABLED, True)
     hex_logging_enabled = opts.get(CONF_HEX_LOGGING_ENABLED, False)
     roku_server_enabled = opts.get(CONF_ROKU_SERVER_ENABLED, False)
     roku_listen_port = opts.get(CONF_ROKU_LISTEN_PORT, DEFAULT_ROKU_LISTEN_PORT)
-    version = data.get(CONF_MDNS_VERSION) or opts.get(CONF_MDNS_VERSION)
 
     expected_title = format_hub_entry_title(version, data.get("host"), data.get(CONF_MAC))
     if entry.title != expected_title:

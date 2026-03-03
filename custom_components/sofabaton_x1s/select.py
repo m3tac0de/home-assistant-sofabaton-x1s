@@ -7,15 +7,19 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     DOMAIN,
     CONF_MAC,
     CONF_NAME,
+    HUB_VERSION_X1,
+    HUB_VERSION_X1S,
+    HUB_VERSION_X2,
     signal_activity,
     signal_client,
+    signal_hub,
 )
 from .hub import SofabatonHub, get_hub_model
 
@@ -30,7 +34,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     hub: SofabatonHub = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([SofabatonActivitySelect(hub, entry)])
+    async_add_entities([SofabatonActivitySelect(hub, entry), SofabatonHubVersionSelect(hub, entry)])
 
 
 class SofabatonActivitySelect(SelectEntity):
@@ -117,3 +121,51 @@ class SofabatonActivitySelect(SelectEntity):
             _LOGGER.warning("Unknown activity %s", option)
             return
         await self._hub.async_activate_activity(act_id)
+
+
+class SofabatonHubVersionSelect(SelectEntity):
+    _attr_should_poll = False
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False
+    _attr_icon = "mdi:source-branch"
+
+    def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
+        self._hub = hub
+        self._entry = entry
+        self._attr_unique_id = f"{entry.data[CONF_MAC]}_hub_version"
+        self._attr_name = f"{entry.data[CONF_NAME]} hub version"
+        self._attr_options = [HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2]
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._entry.data[CONF_MAC])},
+            name=self._entry.data[CONF_NAME],
+            manufacturer="Sofabaton",
+            model=get_hub_model(self._entry),
+        )
+
+    @property
+    def current_option(self) -> str | None:
+        value = get_hub_model(self._entry)
+        return value if value in self._attr_options else None
+
+    async def async_added_to_hass(self) -> None:
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                signal_hub(self._hub.entry_id),
+                self._handle_update,
+            )
+        )
+
+    @callback
+    def _handle_update(self) -> None:
+        self.async_write_ha_state()
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in self._attr_options:
+            raise ValueError(f"Invalid hub version: {option}")
+
+        await self._hub.async_set_hub_version(option)
+        self.async_write_ha_state()
