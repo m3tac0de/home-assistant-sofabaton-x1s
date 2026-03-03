@@ -8,7 +8,7 @@ import unicodedata
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from ..const import HUB_VERSION_X1, HUB_VERSION_X1S
+from ..const import HUB_VERSION_X1
 from .frame_handlers import BaseFrameHandler, FrameContext, register_handler
 from .macros import MacroAssembler, decode_macro_records
 from .protocol_const import (
@@ -43,7 +43,6 @@ from .protocol_const import (
     OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_E,
     OP_KEYMAP_TBL_G,
-    OP_CREATE_DEVICE_ACK,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
     OP_DEFINE_IP_CMD_EXISTING,
@@ -76,15 +75,7 @@ if TYPE_CHECKING:
     from .x1_proxy import X1Proxy
 
 
-def _set_runtime_hub_version(proxy: "X1Proxy", version: str, reason: str) -> None:
-    """Update proxy model when observed hub traffic proves the protocol variant."""
-
-    if proxy.hub_version == version:
-        return
-
-    previous = proxy.hub_version
-    proxy.hub_version = version
-    log.info("[MODEL] inferred hub version %s from %s (was %s)", version, reason, previous)
+OP_CREATE_DEVICE_ACK = 0x0107
 
 
 def _consume_length_prefixed_string(buf: bytes, offset: int) -> tuple[str, int]:
@@ -658,7 +649,6 @@ class CatalogDeviceHandler(BaseFrameHandler):
         brand_label = brand_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
 
         if dev_id is not None:
-            _set_runtime_hub_version(proxy, HUB_VERSION_X1S, "CATALOG_ROW_DEVICE")
             proxy.state.devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
             log.info(
                 "[DEV] #%s id=0x%04X (%d) brand='%s' name='%s'",
@@ -692,7 +682,6 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
         brand_label = brand_bytes.split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
 
         if dev_id is not None:
-            _set_runtime_hub_version(proxy, HUB_VERSION_X1, "X1_DEVICE")
             proxy.state.devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
             log.info(
                 "[DEV] #%s id=0x%04X (%d) brand='%s' name='%s'",
