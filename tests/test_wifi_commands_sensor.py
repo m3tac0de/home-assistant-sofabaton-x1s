@@ -20,11 +20,14 @@ def _install_missing_sensor_stubs() -> None:
         pass
 
     class EntityCategory:
+        CONFIG = "config"
         DIAGNOSTIC = "diagnostic"
 
     entity_mod.DeviceInfo = DeviceInfo
     entity_mod.EntityCategory = EntityCategory
-    sys.modules.setdefault("homeassistant.helpers.entity", entity_mod)
+    # Replace helper entity module for this test file so imports are deterministic
+    # regardless of what other tests inserted into sys.modules first.
+    sys.modules["homeassistant.helpers.entity"] = entity_mod
 
     event_mod = types.ModuleType("homeassistant.helpers.event")
     event_mod.async_track_time_interval = lambda *args, **kwargs: (lambda: None)
@@ -105,6 +108,28 @@ def test_wifi_commands_sensor_force_update_enabled() -> None:
     sensor_module = _build_sensor_module()
 
     assert sensor_module.SofabatonIpCommandsSensor._attr_force_update is True
+
+
+def test_wifi_commands_sensor_is_always_added(monkeypatch) -> None:
+    sensor_module = _build_sensor_module()
+
+    added_entities = []
+
+    def _fake_add_entities(entities):
+        added_entities.extend(entities)
+
+    hub = _Hub(None)
+    hub.roku_server_enabled = False
+    hub.entry_id = "entry-1"
+
+    hass = SimpleNamespace(data={sensor_module.DOMAIN: {"entry-1": hub}})
+    entry = SimpleNamespace(entry_id="entry-1", data={"mac": "aa:bb", "name": "Hub"})
+
+    import asyncio
+
+    asyncio.run(sensor_module.async_setup_entry(hass, entry, _fake_add_entities))
+
+    assert any(isinstance(entity, sensor_module.SofabatonIpCommandsSensor) for entity in added_entities)
 
 
 def test_wifi_commands_sensor_updates_on_wifi_device_toggle(monkeypatch) -> None:

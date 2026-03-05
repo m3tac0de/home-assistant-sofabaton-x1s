@@ -34,9 +34,8 @@ async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
         SofabatonIndexSensor(hub, entry),
         SofabatonActivitySensor(hub, entry),
         SofabatonRecordedKeypressSensor(hub, entry),
+        SofabatonIpCommandsSensor(hub, entry),
     ]
-    if hub.roku_server_enabled:
-        entities.append(SofabatonIpCommandsSensor(hub, entry))
     async_add_entities(entities)
 
 

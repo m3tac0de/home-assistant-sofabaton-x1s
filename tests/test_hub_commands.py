@@ -957,7 +957,7 @@ def test_sync_command_config_reports_wifi_listener_enable_failure(monkeypatch):
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "failed"
     assert "Port 8060 may already be in use" in progress["message"]
-    assert "docs/networking.md" in progress["message"]
+    assert "docs/wifi_commands.md" in progress["message"]
 
     loop.close()
 
