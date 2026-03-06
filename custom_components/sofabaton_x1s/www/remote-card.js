@@ -6155,15 +6155,15 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const total = Number(syncState.total_steps || 0);
       const progress = total > 0 ? ` (${Math.min(cur, total)}/${total})` : "";
       syncMessage.textContent = `${String(syncState.message || "Sync in progress")}${progress}`;
+    } else if (syncStatus === "failed") {
+      syncMessage.textContent = String(
+        syncState.message || "Last sync failed.",
+      );
     } else if (syncNeeded) {
       syncMessage.textContent =
         "Command config changes need to be synced to the hub.";
     } else if (syncStatus === "success") {
       syncMessage.textContent = "Hub command configuration is up to date.";
-    } else if (syncStatus === "failed") {
-      syncMessage.textContent = String(
-        syncState.message || "Last sync failed.",
-      );
     } else {
       syncMessage.textContent = "No sync needed.";
     }
