@@ -5167,6 +5167,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-command-dialog-btn { border: 1px solid var(--divider-color); border-radius: 10px; min-height: 36px; padding: 0 12px; background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color); cursor: pointer; font-size: 14px; }
           .sb-command-dialog-btn:hover { border-color: var(--primary-color); }
           .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+          .sb-hub-version-warn-btn { all: unset; cursor: pointer; text-decoration: underline; display: block; }
+          .sb-hub-version-chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
+          .sb-hub-version-chip { border: 1px solid var(--divider-color); border-radius: 20px; padding: 4px 14px; background: transparent; color: var(--primary-text-color); cursor: pointer; font-size: 13px; }
+          .sb-hub-version-chip.active { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
           .sb-command-dialog-note { border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color)); border-radius: 12px; padding: 12px; background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 13px; line-height: 1.45; display:flex; align-items:flex-start; gap:10px; }
           .sb-command-dialog-note::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: color-mix(in srgb, var(--info-color, var(--primary-color)) 22%, transparent); flex: 0 0 18px; margin-top: 1px; }
           .sb-command-config-block { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:12px; }
@@ -5483,6 +5487,133 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this._commandSyncWarningResolver(Boolean(confirmed));
       this._commandSyncWarningResolver = null;
     }
+  }
+
+  _ensureHubVersionModal() {
+    if (this._hubVersionModal) return;
+
+    const modal = document.createElement("div");
+    modal.className = "sb-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.addEventListener("click", (ev) => {
+      if (ev.target === modal) this._closeHubVersionModal();
+    });
+
+    const dialog = document.createElement("div");
+    dialog.className = "sb-modal__dialog";
+
+    const header = document.createElement("div");
+    header.className = "sb-modal__header";
+
+    const title = document.createElement("div");
+    title.className = "sb-modal__title";
+    title.textContent = "Unknown hub version";
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "sb-modal__close";
+    closeBtn.textContent = "\u2715";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.addEventListener("click", () => this._closeHubVersionModal());
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const body = document.createElement("div");
+    body.className = "sb-modal__text";
+    body.textContent =
+      "We couldn\u2019t automatically detect your hub model. Select the correct version below \u2014 the change takes effect immediately, no restart needed.";
+
+    const chipRow = document.createElement("div");
+    chipRow.className = "sb-hub-version-chip-row";
+
+    const chips = [];
+    for (const ver of ["X1", "X1S", "X2"]) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "sb-hub-version-chip";
+      chip.textContent = ver;
+      chip.dataset.version = ver;
+      chip.addEventListener("click", () => {
+        this._hubVersionModalSelectedVersion = ver;
+        for (const c of chips) {
+          c.classList.toggle("active", c.dataset.version === ver);
+        }
+      });
+      chips.push(chip);
+      chipRow.appendChild(chip);
+    }
+    this._hubVersionModalChips = chips;
+
+    const actions = document.createElement("div");
+    actions.className = "sb-modal__actions";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "sb-command-dialog-btn";
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.addEventListener("click", () => this._closeHubVersionModal());
+
+    const confirmBtn = document.createElement("button");
+    confirmBtn.type = "button";
+    confirmBtn.className =
+      "sb-command-dialog-btn sb-command-dialog-btn-primary";
+    confirmBtn.textContent = "Confirm";
+    confirmBtn.addEventListener("click", () => this._submitHubVersionModal());
+    this._hubVersionModalConfirm = confirmBtn;
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+
+    dialog.appendChild(header);
+    dialog.appendChild(body);
+    dialog.appendChild(chipRow);
+    dialog.appendChild(actions);
+    modal.appendChild(dialog);
+
+    const modalHost = this.shadowRoot || this;
+    if (!modalHost) return;
+    modalHost.appendChild(modal);
+    this._hubVersionModal = modal;
+  }
+
+  _openHubVersionModal() {
+    this._ensureHubVersionModal();
+    if (!this._hubVersionModal) return;
+
+    const current = String(
+      this._remoteState()?.attributes?.hub_version || "X1",
+    ).toUpperCase();
+    this._hubVersionModalSelectedVersion = current;
+    for (const chip of this._hubVersionModalChips || []) {
+      chip.classList.toggle("active", chip.dataset.version === current);
+    }
+
+    this._hubVersionModal.classList.add("open");
+  }
+
+  _closeHubVersionModal() {
+    if (!this._hubVersionModal) return;
+    this._hubVersionModal.classList.remove("open");
+  }
+
+  async _submitHubVersionModal() {
+    const entityId = String(this._config?.entity || "").trim();
+    const selected = this._hubVersionModalSelectedVersion;
+    if (!entityId || !selected || !this._hass?.callWS) return;
+
+    this._hubVersionModalConfirm.disabled = true;
+    try {
+      await this._hass.callWS({
+        type: "sofabaton_x1s/hub/set_version",
+        entity_id: entityId,
+        version: selected,
+      });
+    } finally {
+      this._hubVersionModalConfirm.disabled = false;
+    }
+    this._closeHubVersionModal();
   }
 
   async _confirmCommandConfigSync() {
@@ -6135,11 +6266,17 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const hubVersionConfident =
       this._remoteState()?.attributes?.hub_version_confident !== false;
     if (!hubVersionConfident) {
-      const versionWarn = document.createElement("div");
-      versionWarn.className = "sb-commands-section-subtitle";
-      versionWarn.innerHTML =
-        '\u26a0\ufe0f Your hub may be miss-versioned! <a href="https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/hub-versioning.md" target="_blank" rel="noopener noreferrer">Click here</a> for more information.';
-      meta.appendChild(versionWarn);
+      const versionWarnBtn = document.createElement("button");
+      versionWarnBtn.type = "button";
+      versionWarnBtn.className =
+        "sb-commands-section-subtitle sb-hub-version-warn-btn";
+      versionWarnBtn.textContent =
+        "\u26a0\ufe0f Your hub may be miss-versioned! Click here for more information.";
+      versionWarnBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this._openHubVersionModal();
+      });
+      meta.appendChild(versionWarnBtn);
     }
 
     body.appendChild(meta);
