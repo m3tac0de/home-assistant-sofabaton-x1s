@@ -5583,7 +5583,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     if (!this._hubVersionModal) return;
 
     const current = String(
-      this._remoteState()?.attributes?.hub_version || "X1",
+      this._hass?.states?.[this._config?.entity]?.attributes?.hub_version ||
+        "X1",
     ).toUpperCase();
     this._hubVersionModalSelectedVersion = current;
     for (const chip of this._hubVersionModalChips || []) {
@@ -6264,7 +6265,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     meta.appendChild(sectionSub);
 
     const hubVersionConfident =
-      this._remoteState()?.attributes?.hub_version_confident !== false;
+      this._hass?.states?.[this._config?.entity]?.attributes
+        ?.hub_version_confident !== false;
     if (!hubVersionConfident) {
       const versionWarnBtn = document.createElement("button");
       versionWarnBtn.type = "button";
