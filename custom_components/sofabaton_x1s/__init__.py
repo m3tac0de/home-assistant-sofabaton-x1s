@@ -160,27 +160,6 @@ async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: di
     )
 
 
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): f"{DOMAIN}/hub/set_version",
-        vol.Required("entity_id"): cv.entity_id,
-        vol.Required("version"): str,
-    }
-)
-@websocket_api.async_response
-async def _ws_set_hub_version(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
-    if hub is None:
-        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
-        return
-    try:
-        await hub.async_set_hub_version(msg["version"])
-    except HomeAssistantError as err:
-        connection.send_error(msg["id"], "invalid_format", str(err))
-        return
-    connection.send_result(msg["id"], {"ok": True})
-
-
 def _register_websocket_commands(hass: HomeAssistant) -> None:
     domain_data = hass.data.setdefault(DOMAIN, {})
     if domain_data.get("ws_registered"):
@@ -189,7 +168,6 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_get_command_config)
     websocket_api.async_register_command(hass, _ws_set_command_config)
     websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
-    websocket_api.async_register_command(hass, _ws_set_hub_version)
     domain_data["ws_registered"] = True
 
 
