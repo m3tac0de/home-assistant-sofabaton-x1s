@@ -6132,6 +6132,16 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       "Receive button presses from the hub: Assign Home Assistant actions to physical buttons or favorites and deploy the configuration to your hub.";
     meta.appendChild(sectionSub);
 
+    const hubVersionConfident =
+      this._remoteState()?.attributes?.hub_version_confident !== false;
+    if (!hubVersionConfident) {
+      const versionWarn = document.createElement("div");
+      versionWarn.className = "sb-commands-section-subtitle";
+      versionWarn.innerHTML =
+        '\u26a0\ufe0f Your hub may be miss-versioned! <a href="https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/hub-versioning.md" target="_blank" rel="noopener noreferrer">Click here</a> for more information.';
+      meta.appendChild(versionWarn);
+    }
+
     body.appendChild(meta);
 
     const syncState = this._commandSyncState || {};

@@ -111,9 +111,14 @@ class SofabatonRemote(RemoteEntity):
                 for fav in favorites
                 if fav.get("command_id") is not None
             ]
+        mdns_txt = self._entry.data.get("mdns_txt", {})
+        hub_version_confident = (
+            isinstance(mdns_txt, dict) and mdns_txt.get("HVER") is not None
+        )
         return {
             "proxy_client_connected": self._hub.client_connected,
             "hub_version": get_hub_model(self._entry),
+            "hub_version_confident": hub_version_confident,
             "hub_mac": hub_mac,
             "activities": activities,
             "assigned_keys": assigned_keys,
