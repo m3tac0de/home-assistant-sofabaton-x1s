@@ -6273,7 +6273,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       versionWarnBtn.className =
         "sb-commands-section-subtitle sb-hub-version-warn-btn";
       versionWarnBtn.textContent =
-        "\u26a0\ufe0f Your hub may be miss-versioned! Click here for more information.";
+        "\u26a0\ufe0f Your hub may be miss-versioned! Click here to fix it.";
       versionWarnBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         this._openHubVersionModal();
