@@ -8,6 +8,7 @@ This guide explains how to use:
 …to discover **device/activity IDs** and **command IDs** for use with `remote.send_command`.
 
 If you just want to capture a single button press quickly, the **Recorded Keypress sensor** is usually faster:
+- **Key Capture**, a feature of the Sofabaton Virtual Remote card (see main README)
 - `sensor.<hub>_recorded_keypress` (see main README)
 
 ---
