@@ -14,5 +14,5 @@ This workflow ensures the diagnostic download includes the hex logging details n
 It also improves anonimity as it exclusively contains log data from the integration and redacts IP and MAC addresses.
 
 ## Attaching logs to an issue
-Include the downloaded diagnostics JSON in your GitHub issue.
+[Create an issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues) and include the downloaded diagnostics JSON in your GitHub issue.
 

@@ -8,6 +8,7 @@ This guide explains how to use:
 …to discover **device/activity IDs** and **command IDs** for use with `remote.send_command`.
 
 If you just want to capture a single button press quickly, the **Recorded Keypress sensor** is usually faster:
+- **Key Capture**, a feature of the Sofabaton Virtual Remote card (see main README)
 - `sensor.<hub>_recorded_keypress` (see main README)
 
 ---
@@ -39,7 +40,7 @@ data:
 
 ## What `sensor.<hub>_index` contains
 
-Open **Developer Tools → States → `sensor.<hub>_index`** and inspect the **attributes**.
+Open **Settings → Developer Tools → States → `sensor.<hub>_index`** and inspect the **attributes**.
 
 The Index sensor is a structured map that can contain:
 
@@ -66,7 +67,7 @@ The device/activity list is populated always, but **commands/macros/favorites po
 
 - `device`  
   This is the **Home Assistant Device** representing your Sofabaton hub entry (NOT the Sofabaton device id).  
-  Use **Developer Tools → Actions → UI mode** to select it from the dropdown.
+  Use **Settings → Developer Tools → Actions → UI mode** to select it from the dropdown.
 
 - `ent_id`  
   This is the **Sofabaton entity id** you want to fetch commands for:  
@@ -74,7 +75,7 @@ The device/activity list is populated always, but **commands/macros/favorites po
 
 ### Recommended: run in UI mode once
 
-Go to **Developer Tools → Actions**, select `sofabaton_x1s.fetch_device_commands`, then switch to **UI mode**.
+Go to **Settings → Developer Tools → Actions**, select `sofabaton_x1s.fetch_device_commands`, then switch to **UI mode**.
 
 - Pick the hub (the HA Device dropdown)
 - Enter `ent_id` for the device/activity you want

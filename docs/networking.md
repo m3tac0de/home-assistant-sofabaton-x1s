@@ -66,7 +66,7 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 2. **TCP connect-back**: The hub opens a TCP session back to Home Assistant on the proxy's listen port. The integration tries up to 32 sequential TCP ports starting from the configured base port, so multiple hubs can coexist without clashes.
 
 ### Optional / Wifi Commands
-When using this integration's "Wifi Commands" feature, the hub will make HTTP requests into the integration. The default port used is **8060**. The port is configurable in the integration's global options, but changing it breaks compatibility with X1 hubs.
+When using this integration's "[Wifi Commands](wifi_commands.md)" feature, the hub will make HTTP requests into the integration. The default port used is **8060**. The port is configurable in the integration's global options, but changing it breaks compatibility with X1 hubs.
 
 ### Firewall rules to allow
 - mDNS/Bonjour from hub → Home Assistant (or mDNS forwarded across VLANs).
@@ -128,6 +128,8 @@ When the app is connected, command-sending entities in Home Assistant intentiona
     VLAN/broadcast domain or run a UDP broadcast relay between VLANs. Plain inter-VLAN
     routing is not enough for broadcast traffic.
 - Keep the proxy UDP listener on 8102 whenever iOS discovery is required.
+- **The iOS app cannot discover more than 1 hub at a time from this integration's proxy!**
+  A side effect of how iOS discovery works. The app assumes that each hub has a unique MAC address. In iOS discovery it reads the MAC address from the header of a UDP packet that the hub broadcasts. The integration cannot work around this.
 
 ## Troubleshooting
 - **Seen in discovery but never connects:** likely missing TCP allow rule from hub to Home Assistant.
@@ -137,6 +139,7 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 - **iOS app can’t discover across VLANs but manual connections work:** this is expected
   without a UDP broadcast relay. iOS discovery uses broadcast, which does not cross VLAN
   boundaries by default.
+- **iOS app sees only 1 hub while there should be more:** this is an unfortunate limitation of how iOS discovery works and cannot be resolved.
 
 ## For the road
 ```

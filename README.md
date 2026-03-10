@@ -118,8 +118,11 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 - **Remote**: `remote.<hub>_remote`  
   Used for automations (`remote.send_command`). Unavailable while the official app is connected to the proxy.
 
-- **Select**: `select.<hub>_activity`  
-  Options = `Powered off` + all activities. Selecting activates it. Unavailable while app is connected.
+- **Select**:
+  - `select.<hub>_activity`  
+    Options = `Powered off` + all activities. Selecting activates it. Unavailable while app is connected.
+  - `select.<hub>_hub_version` (disabled by default)  
+    Force-override the version of the hub in the integration's configuration. Do not use unless certain a correction is required.
 
 - **Switches**
   - `switch.<hub>_proxy_enabled`  
@@ -183,6 +186,8 @@ In the Sofabaton Virtual Remote card's configuration editor, under **Automation 
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/7bdad456-f637-43c6-8c50-9c3ccaad6990" />  
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/45e2f748-44f2-48c6-bc70-abee75ad30cf" />
 
+---
+
 ### Send a command in the context of the current activity
 
 ```yaml
@@ -198,6 +203,9 @@ Common built-in commands include:
 
 ### Send a command directly to a device/activity by ID
 
+In this mode the integration **does not** use the current activity — it targets the given entity ID directly.  
+IDs share the same range: **devices start at 1**, **activities at 101**.
+
 ```yaml
 action: remote.send_command
 target:
@@ -207,8 +215,15 @@ data:
   device: 3
 ```
 
-In this mode the integration **does not** use the current activity — it targets the given entity ID directly.  
-IDs share the same range: **devices start at 1**, **activities at 101**.
+### Start an Activity
+
+```yaml
+action: remote.turn_on
+target:
+  entity_id: remote.<hub>_remote
+data:
+  activity: Watch a movie
+```
 
 ---
 

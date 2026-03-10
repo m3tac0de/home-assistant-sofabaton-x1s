@@ -10,6 +10,7 @@ class _MacroBurst:
     total_frames: int | None = None
     frames: Dict[int, bytes] = field(default_factory=dict)
     activity_id: int | None = None
+    record_start_frames: set = field(default_factory=set)
 
 
 class MacroAssembler:
@@ -28,11 +29,11 @@ class MacroAssembler:
 
     def _parse_header_from_payload(
         self, payload: bytes
-    ) -> tuple[int | None, int | None, int | None, bytes]:
-        """Return (activity_id, frame_no, total_frames, body)."""
+    ) -> tuple[int | None, int | None, int | None, bytes, bool]:
+        """Return (activity_id, frame_no, total_frames, body, is_record_start)."""
 
         if len(payload) < 7:
-            return self._last_activity_id, 1, None, payload
+            return self._last_activity_id, 1, None, payload, False
 
         p0, _, x, p3, _, y, a = payload[:7]
         body = payload[7:]
@@ -47,16 +48,18 @@ class MacroAssembler:
             total_frames = p3 or None
             if total_frames is not None and not (1 <= total_frames <= 16):
                 total_frames = None
+            is_record_start = True
         else:
             activity_id = self._last_activity_id
             frame_no = None
             total_frames = None
+            is_record_start = False
 
-        return activity_id, frame_no, total_frames, body
+        return activity_id, frame_no, total_frames, body, is_record_start
 
     def _process_fragment(
-        self, *, activity_id: int, frame_no: int, total_frames: int | None, body: bytes
-    ) -> List[Tuple[int, bytes]]:
+        self, *, activity_id: int, frame_no: int, total_frames: int | None, body: bytes, is_record_start: bool
+    ) -> List[Tuple[int, bytes, List[int]]]:
         burst = self._get_buffer(activity_id)
         self._last_activity_id = activity_id
 
@@ -67,6 +70,8 @@ class MacroAssembler:
             frame_no += 1
 
         burst.frames[frame_no] = body
+        if is_record_start:
+            burst.record_start_frames.add(frame_no)
         if total_frames is not None and burst.total_frames is None:
             burst.total_frames = total_frames
 
@@ -82,11 +87,20 @@ class MacroAssembler:
         if not finished:
             return []
 
-        ordered = b"".join(burst.frames[i] for i in sorted(burst.frames))
-        del self._buffers[activity_id]
-        return [(activity_id, ordered)]
+        sorted_frames = sorted(burst.frames)
+        ordered = b"".join(burst.frames[i] for i in sorted_frames)
 
-    def feed(self, opcode: int, payload: bytes, raw: bytes | None = None) -> List[Tuple[int, bytes]]:
+        record_boundaries: List[int] = []
+        offset = 0
+        for frame_no_sorted in sorted_frames:
+            if frame_no_sorted in burst.record_start_frames:
+                record_boundaries.append(offset)
+            offset += len(burst.frames[frame_no_sorted])
+
+        del self._buffers[activity_id]
+        return [(activity_id, ordered, record_boundaries)]
+
+    def feed(self, opcode: int, payload: bytes, raw: bytes | None = None) -> List[Tuple[int, bytes, List[int]]]:
         """Feed a macro-family payload and return completed assemblies."""
 
         if not payload and not raw:
@@ -96,13 +110,14 @@ class MacroAssembler:
         if raw and len(raw) >= 6 and raw[0] == 0xA5 and raw[1] == 0x5A:
             payload_bytes = raw[4:-1]
 
-        activity_id, frame_no, total_frames, body = self._parse_header_from_payload(payload_bytes)
+        activity_id, frame_no, total_frames, body, is_record_start = self._parse_header_from_payload(payload_bytes)
 
         if activity_id is None:
             return []
 
         return self._process_fragment(
-            activity_id=activity_id, frame_no=frame_no, total_frames=total_frames, body=body
+            activity_id=activity_id, frame_no=frame_no, total_frames=total_frames, body=body,
+            is_record_start=is_record_start,
         )
 
 
@@ -112,10 +127,70 @@ _ASCII_PATTERN = re.compile(rb"([\x20-\x7E]{3,})\x00{2,}")
 _ASCII_FALLBACK_PATTERN = re.compile(rb"([\x20-\x7E]{3,})")
 
 
-def decode_macro_records(payload: bytes, activity_id: int) -> list[tuple[int, int, str]]:
+def _find_label_in_region(payload: bytes, start: int, end: int) -> str:
+    """Find and decode a macro label in payload[start:end]."""
+    region = payload[start:end]
+
+    candidates: list[tuple[int, int, bytes, str, bool]] = []
+
+    match = _UTF16_PATTERN.search(region)
+    if match:
+        candidates.append((match.start(1), match.end(), match.group(1), "utf-16le", False))
+
+    ascii_match = _ASCII_PATTERN.search(region)
+    if ascii_match:
+        candidates.append((ascii_match.start(1), ascii_match.end(), ascii_match.group(1), "ascii", False))
+
+    utf16_fallback = _UTF16_FALLBACK_PATTERN.search(region)
+    if utf16_fallback and len(region) - utf16_fallback.end() <= 4:
+        candidates.append((utf16_fallback.start(1), utf16_fallback.end(), utf16_fallback.group(1), "utf-16le", True))
+
+    ascii_fallback = _ASCII_FALLBACK_PATTERN.search(region)
+    if ascii_fallback and len(region) - ascii_fallback.end() <= 4:
+        candidates.append((ascii_fallback.start(1), ascii_fallback.end(), ascii_fallback.group(1), "ascii", True))
+
+    if not candidates:
+        return ""
+
+    candidates.sort(key=lambda item: (item[0], -item[1]))
+    label_start, label_end, label_bytes, decoder, allow_trailing = candidates[0]
+
+    if (
+        allow_trailing
+        and decoder == "utf-16le"
+        and label_end < len(region)
+        and 0x20 <= region[label_end] <= 0x7E
+        and (label_end + 1 >= len(region) or region[label_end + 1] != 0x00)
+    ):
+        label_bytes += bytes([region[label_end], 0x00])
+
+    try:
+        label = label_bytes.decode(decoder, errors="ignore").replace("\x00", "").strip()
+    except Exception:
+        return ""
+
+    if label:
+        label = re.sub(r"[^\x20-\x7E]", "", label)
+        label = label.lstrip("0123456789")
+    return label
+
+
+def decode_macro_records(payload: bytes, activity_id: int, record_boundaries: list[int] | None = None) -> list[tuple[int, int, str]]:
     """Parse macro records from a complete, reassembled payload."""
 
-    records: list[tuple[int, int, str]] = []
+    if record_boundaries is not None:
+        records: list[tuple[int, int, str]] = []
+        for idx, boundary in enumerate(record_boundaries):
+            if boundary >= len(payload):
+                continue
+            command_id = payload[boundary]
+            region_end = record_boundaries[idx + 1] if idx + 1 < len(record_boundaries) else len(payload)
+            label = _find_label_in_region(payload, boundary + 1, region_end)
+            if label and not label.upper().startswith("POWER_"):
+                records.append((activity_id, command_id, label))
+        return records
+
+    records = []
     consumed = 0
 
     starts: list[int] = []

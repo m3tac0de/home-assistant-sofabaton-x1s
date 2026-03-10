@@ -190,8 +190,8 @@ class MacroHandler(BaseFrameHandler):
 
         grouped: dict[int, list[dict[str, int | str]]] = defaultdict(list)
 
-        for activity_id, assembled in completed:
-            for act, command_id, label in decode_macro_records(assembled, activity_id):
+        for activity_id, assembled, boundaries in completed:
+            for act, command_id, label in decode_macro_records(assembled, activity_id, boundaries):
                 grouped[act & 0xFF].append({"command_id": command_id, "label": label})
 
         for act_lo, macros in grouped.items():
