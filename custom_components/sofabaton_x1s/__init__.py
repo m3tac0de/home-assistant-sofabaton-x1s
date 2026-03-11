@@ -49,6 +49,16 @@ _LOGGER = logging.getLogger(__name__)
 _ALPHANUM_SPACE_RE = re.compile(r"^[A-Za-z0-9 ]+$")
 
 
+def _inspect_frontend_dir(frontend_dir: Path) -> tuple[str, bool, list[str]]:
+    """Resolve and inspect the packaged frontend directory."""
+
+    abs_path = str(frontend_dir.resolve())
+    if not frontend_dir.is_dir():
+        return abs_path, False, []
+
+    return abs_path, True, [entry.name for entry in frontend_dir.iterdir()]
+
+
 def _resolve_roku_listen_port(hass: HomeAssistant, entry_id: str) -> int:
     config_entries = getattr(hass, "config_entries", None)
     if config_entries is None:
@@ -232,15 +242,16 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             return True
 
         frontend_dir = Path(__file__).parent / "www"
-        abs_path = str(frontend_dir.resolve())
-        
+        abs_path, frontend_dir_exists, contents = await hass.async_add_executor_job(
+            _inspect_frontend_dir, frontend_dir
+        )
+
         _LOGGER.info("[%s] Resolved static path: %s", DOMAIN, abs_path)
-        
-        if frontend_dir.exists() and frontend_dir.is_dir():
-            contents = list(frontend_dir.iterdir())
-            _LOGGER.info("[%s] Directory exists. Found %s files: %s", 
-                         DOMAIN, len(contents), [f.name for f in contents])
-            
+
+        if frontend_dir_exists:
+            _LOGGER.info("[%s] Directory exists. Found %s files: %s",
+                         DOMAIN, len(contents), contents)
+
             await hass.http.async_register_static_paths(
                 [
                     StaticPathConfig(
@@ -250,7 +261,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                     )
                 ]
             )
-            
+
             # 4. Inject JS URLs
             version_suffix = await _async_get_integration_version(hass)
             js_version = f"?v={version_suffix}" if version_suffix else ""
@@ -259,7 +270,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 url = f"/{DOMAIN}/www/{js_file}"
                 _LOGGER.info("[%s] Adding extra JS URL: %s", DOMAIN, url)
                 frontend.add_extra_js_url(hass, url)
-            
+
             hass.data[DOMAIN]["frontend_registered"] = True
         else:
             _LOGGER.error("[%s] FRONTEND DIR MISSING: Expected at %s", DOMAIN, abs_path)
@@ -385,7 +396,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "sync_command_config", _async_handle_sync_command_config)
     #if not hass.services.has_service(DOMAIN, "create_ip_button"):
     #    hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
-        
+
     hass.data[DOMAIN][entry.entry_id] = hub
 
     roku_listener = await async_get_roku_listener(hass)
@@ -440,7 +451,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()
     return unload_ok
-    
+
 
 
 def _raise_if_sync_in_progress(hub: SofabatonHub, operation: str) -> None:
