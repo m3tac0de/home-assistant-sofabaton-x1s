@@ -907,9 +907,12 @@ class SofabatonHub:
             for k, v in raw_commands.items():
                 if isinstance(v, dict):
                     ent_id = int(k)
-                    self._proxy.state.commands[ent_id & 0xFF] = {
+                    ent_lo = ent_id & 0xFF
+                    self._proxy.state.commands[ent_lo] = {
                         int(ck): cv for ck, cv in v.items()
                     }
+                    # Mark as complete so get_commands_for_entity returns ready=True
+                    self._proxy._commands_complete.add(ent_lo)
                     self._command_entities.add(ent_id)
 
         raw_macros = cache.get("macros") or {}
