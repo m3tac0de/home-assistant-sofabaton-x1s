@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from .const import (
     DOMAIN,
@@ -35,6 +36,7 @@ from .const import (
     DEFAULT_HUB_VERSION,
     HVER_BY_HUB_VERSION,
     HUB_VERSION_BY_HVER,
+    signal_commands,
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
@@ -464,6 +466,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if cached:
             await hub.async_seed_from_cache(cached)
 
+    async def _on_commands_ready() -> None:
+        """Save cache when hub reaches ready state after a commands update."""
+        if hub.get_index_state() != "ready":
+            return
+        cs = await async_get_cache_store(hass)
+        if not cs.is_cache_enabled():
+            return
+        snapshot = await hub.async_get_cache_snapshot()
+        await cs.async_save_hub_cache(entry.entry_id, snapshot)
+
+    entry.async_on_unload(
+        async_dispatcher_connect(hass, signal_commands(entry.entry_id), _on_commands_ready)
+    )
+
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
     if not hass.services.has_service(DOMAIN, "create_wifi_device"):
@@ -516,6 +532,15 @@ async def async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await roku_listener.async_set_listen_port(int(roku_listen_port))
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    # Save cache before unloading platforms (while hub is still fully running).
+    # This runs regardless of whether platforms unload cleanly.
+    hub = hass.data[DOMAIN].get(entry.entry_id)
+    if hub is not None:
+        cache_store = await async_get_cache_store(hass)
+        if cache_store.is_cache_enabled():
+            snapshot = await hub.async_get_cache_snapshot()
+            await cache_store.async_save_hub_cache(entry.entry_id, snapshot)
+
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hub = hass.data[DOMAIN].pop(entry.entry_id, None)
@@ -531,10 +556,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async_teardown_diagnostics(hass)
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
-            cache_store = await async_get_cache_store(hass)
-            if cache_store.is_cache_enabled():
-                snapshot = await hub.async_get_cache_snapshot()
-                await cache_store.async_save_hub_cache(entry.entry_id, snapshot)
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()
