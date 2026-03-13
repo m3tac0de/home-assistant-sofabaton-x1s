@@ -1,5 +1,6 @@
 const LOADER_URL = new URL(import.meta.url, window.location.href);
 const VERSION = LOADER_URL.searchParams.get("v") || "dev";
+const LOAD_REMOTE = LOADER_URL.searchParams.get("remote") === "1";
 
 function withVersion(url) {
   const u = new URL(url, window.location.href);
@@ -19,8 +20,10 @@ function loadModuleScript(url) {
 }
 
 async function boot() {
-  const cardUrl = withVersion("/sofabaton_x1s/www/remote-card.js");
-  await loadModuleScript(cardUrl);
+  await loadModuleScript(withVersion("/sofabaton_x1s/www/sofabaton-power-tools.js"));
+  if (LOAD_REMOTE) {
+    await loadModuleScript(withVersion("/sofabaton_x1s/www/remote-card.js"));
+  }
   document.dispatchEvent(new Event("ll-rebuild", { bubbles: true, composed: true }));
 }
 

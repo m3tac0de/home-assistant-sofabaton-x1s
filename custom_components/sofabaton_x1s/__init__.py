@@ -43,6 +43,7 @@ from .diagnostics import (
 )
 from .hub import SofabatonHub
 from .command_config import CommandConfigStore, count_configured_command_slots
+from .cache_store import CacheStore, async_get_cache_store
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
@@ -191,6 +192,80 @@ async def _ws_set_hub_version(hass: HomeAssistant, connection, msg: dict[str, An
     connection.send_result(msg["id"], {"ok": True})
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/cache/get_settings",
+    }
+)
+@websocket_api.async_response
+async def _ws_cache_get_settings(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    store = await async_get_cache_store(hass)
+    connection.send_result(msg["id"], {"persistent_cache_enabled": store.is_cache_enabled()})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/cache/set_enabled",
+        vol.Required("enabled"): bool,
+    }
+)
+@websocket_api.async_response
+async def _ws_cache_set_enabled(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    store = await async_get_cache_store(hass)
+    await store.async_set_cache_enabled(msg["enabled"])
+    connection.send_result(msg["id"], {"ok": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/cache/get_snapshot",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_cache_get_snapshot(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    snapshot = await hub.async_get_cache_snapshot()
+    connection.send_result(msg["id"], snapshot)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/cache/refresh_activity",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("activity_id"): int,
+    }
+)
+@websocket_api.async_response
+async def _ws_cache_refresh_activity(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    await hub.async_refresh_entity_cache(msg["activity_id"])
+    connection.send_result(msg["id"], {"ok": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/cache/refresh_device",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("device_id"): int,
+    }
+)
+@websocket_api.async_response
+async def _ws_cache_refresh_device(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    await hub.async_refresh_entity_cache(msg["device_id"])
+    connection.send_result(msg["id"], {"ok": True})
+
+
 def _register_websocket_commands(hass: HomeAssistant) -> None:
     domain_data = hass.data.setdefault(DOMAIN, {})
     if domain_data.get("ws_registered"):
@@ -200,6 +275,11 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_set_command_config)
     websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
     websocket_api.async_register_command(hass, _ws_set_hub_version)
+    websocket_api.async_register_command(hass, _ws_cache_get_settings)
+    websocket_api.async_register_command(hass, _ws_cache_set_enabled)
+    websocket_api.async_register_command(hass, _ws_cache_get_snapshot)
+    websocket_api.async_register_command(hass, _ws_cache_refresh_activity)
+    websocket_api.async_register_command(hass, _ws_cache_refresh_device)
     domain_data["ws_registered"] = True
 
 
@@ -235,11 +315,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         )
         if community_card_exists:
             _LOGGER.info(
-                "[%s] Skipping frontend injection; community card found at %s",
+                "[%s] Community card found at %s; remote-card injection skipped",
                 DOMAIN,
                 community_card_dir,
             )
-            return True
 
         frontend_dir = Path(__file__).parent / "www"
         abs_path, frontend_dir_exists, contents = await hass.async_add_executor_job(
@@ -262,14 +341,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 ]
             )
 
-            # 4. Inject JS URLs
             version_suffix = await _async_get_integration_version(hass)
             js_version = f"?v={version_suffix}" if version_suffix else ""
-            js_files = [f"card-loader.js{js_version}"]
-            for js_file in js_files:
-                url = f"/{DOMAIN}/www/{js_file}"
-                _LOGGER.info("[%s] Adding extra JS URL: %s", DOMAIN, url)
-                frontend.add_extra_js_url(hass, url)
+            # Always load power-tools; additionally load remote-card when no community card
+            remote_param = "&remote=1" if not community_card_exists else ""
+            url = f"/{DOMAIN}/www/card-loader.js{js_version}{remote_param}"
+            _LOGGER.info("[%s] Adding extra JS URL: %s", DOMAIN, url)
+            frontend.add_extra_js_url(hass, url)
 
             hass.data[DOMAIN]["frontend_registered"] = True
         else:
@@ -380,6 +458,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     await hub.async_start()
 
+    cache_store = await async_get_cache_store(hass)
+    if cache_store.is_cache_enabled():
+        cached = cache_store.get_hub_cache(entry.entry_id)
+        if cached:
+            await hub.async_seed_from_cache(cached)
+
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
     if not hass.services.has_service(DOMAIN, "create_wifi_device"):
@@ -447,6 +531,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async_teardown_diagnostics(hass)
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
+            cache_store = await async_get_cache_store(hass)
+            if cache_store.is_cache_enabled():
+                snapshot = await hub.async_get_cache_snapshot()
+                await cache_store.async_save_hub_cache(entry.entry_id, snapshot)
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()

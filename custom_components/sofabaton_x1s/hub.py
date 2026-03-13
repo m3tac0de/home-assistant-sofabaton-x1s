@@ -855,6 +855,101 @@ class SofabatonHub:
             if macro.get("label")
         ]
 
+    async def async_get_cache_snapshot(self) -> dict[str, Any]:
+        """Return all in-memory cache data as a JSON-serializable dict."""
+        buttons = self.get_all_cached_buttons()
+        commands = self.get_all_cached_commands()
+        macros = self.get_all_cached_macros()
+        favorites = self.get_activity_favorites()
+        return {
+            "activities": {str(k): v for k, v in self.activities.items()},
+            "devices": {str(k): v for k, v in self.devices.items()},
+            "buttons": {str(k): list(v) for k, v in buttons.items()},
+            "commands": {
+                str(k): {str(ck): cv for ck, cv in v.items()}
+                for k, v in commands.items()
+            },
+            "macros": {str(k): v for k, v in macros.items()},
+            "favorites": {str(k): v for k, v in favorites.items()},
+        }
+
+    async def async_seed_from_cache(self, cache: dict[str, Any]) -> None:
+        """Populate hub state from a persisted cache snapshot."""
+        raw_activities = cache.get("activities") or {}
+        if isinstance(raw_activities, dict):
+            self.activities = {
+                int(k): v for k, v in raw_activities.items() if isinstance(v, dict)
+            }
+            self.activities_ready = bool(self.activities)
+            for k, v in self.activities.items():
+                self._proxy.state.activities[k & 0xFF] = v
+
+        raw_devices = cache.get("devices") or {}
+        if isinstance(raw_devices, dict):
+            self.devices = {
+                int(k): v for k, v in raw_devices.items() if isinstance(v, dict)
+            }
+            self.devices_ready = bool(self.devices)
+            self._devices_generation += 1
+            for k, v in self.devices.items():
+                self._proxy.state.devices[k & 0xFF] = v
+
+        raw_buttons = cache.get("buttons") or {}
+        if isinstance(raw_buttons, dict):
+            for k, v in raw_buttons.items():
+                if isinstance(v, list):
+                    act_id = int(k)
+                    self._proxy.state.buttons[act_id & 0xFF] = set(int(b) for b in v)
+                    self._buttons_ready_for.add(act_id)
+
+        raw_commands = cache.get("commands") or {}
+        if isinstance(raw_commands, dict):
+            for k, v in raw_commands.items():
+                if isinstance(v, dict):
+                    ent_id = int(k)
+                    self._proxy.state.commands[ent_id & 0xFF] = {
+                        int(ck): cv for ck, cv in v.items()
+                    }
+                    self._command_entities.add(ent_id)
+
+        raw_macros = cache.get("macros") or {}
+        if isinstance(raw_macros, dict):
+            for k, v in raw_macros.items():
+                if isinstance(v, list):
+                    act_lo = int(k) & 0xFF
+                    self._proxy.state.activity_macros[act_lo] = list(v)
+                    self._proxy._macros_complete.add(act_lo)
+
+        raw_favorites = cache.get("favorites") or {}
+        if isinstance(raw_favorites, dict):
+            for k, v in raw_favorites.items():
+                if isinstance(v, list):
+                    act_lo = int(k) & 0xFF
+                    slots: list[dict[str, int]] = []
+                    labels: dict[tuple[int, int], str] = {}
+                    for item in v:
+                        if isinstance(item, dict):
+                            dev_id = int(item.get("device_id", 0))
+                            cmd_id = int(item.get("command_id", 0))
+                            label = str(item.get("name", ""))
+                            slots.append({"device_id": dev_id, "command_id": cmd_id})
+                            labels[(dev_id, cmd_id)] = label
+                    self._proxy.state.activity_favorite_slots[act_lo] = slots
+                    self._proxy.state.activity_favorite_labels[act_lo] = labels
+
+        if self.activities:
+            async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+        if self.devices:
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+        if self._buttons_ready_for:
+            async_dispatcher_send(self.hass, signal_buttons(self.entry_id))
+        if self._command_entities:
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+
+    async def async_refresh_entity_cache(self, ent_id: int) -> None:
+        """Clear and re-fetch cache for a specific entity (activity or device)."""
+        await self.async_fetch_device_commands(ent_id)
+
     def get_roku_action_id(self) -> str:
         raw_mac = str(self.mac or "").strip()
         normalized_mac = "".join(ch for ch in raw_mac if ch.lower() in "0123456789abcdef").lower()
