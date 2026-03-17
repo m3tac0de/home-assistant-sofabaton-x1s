@@ -29,6 +29,7 @@ from .const import (
     CONF_ROKU_SERVER_ENABLED,
     CONF_MDNS_VERSION,
     CONF_ENABLE_X2_DISCOVERY,
+    CONF_PERSISTENT_CACHE_ENABLED,
     CONF_ROKU_LISTEN_PORT,
     DEFAULT_ROKU_LISTEN_PORT,
     format_hub_entry_title,
@@ -43,6 +44,7 @@ from .diagnostics import (
 )
 from .hub import SofabatonHub
 from .command_config import CommandConfigStore, count_configured_command_slots
+from .cache_store import PersistentCacheStore
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
@@ -79,6 +81,43 @@ async def _async_get_command_config_store(hass: HomeAssistant) -> CommandConfigS
     await store.async_load()
     domain_data["command_config_store"] = store
     return store
+
+
+async def _async_get_persistent_cache_store(hass: HomeAssistant) -> PersistentCacheStore:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    store = domain_data.get("persistent_cache_store")
+    if isinstance(store, PersistentCacheStore):
+        return store
+
+    store = PersistentCacheStore(hass)
+    await store.async_load()
+    domain_data["persistent_cache_store"] = store
+    return store
+
+
+async def _async_persist_hub_cache(hass: HomeAssistant, hub: SofabatonHub) -> bool:
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        return False
+
+    await store.async_set_hub_cache(hub.entry_id, await hub.async_export_cache_state())
+    return True
+
+
+async def _async_persist_all_hub_cache(hass: HomeAssistant) -> int:
+    persisted = 0
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        return persisted
+
+    for hub in _get_hubs(hass.data.get(DOMAIN, {})):
+        try:
+            await store.async_set_hub_cache(hub.entry_id, await hub.async_export_cache_state())
+            persisted += 1
+        except Exception:
+            _LOGGER.exception("[%s] Failed to persist cache for hub %s during shutdown", DOMAIN, hub.entry_id)
+
+    return persisted
 
 
 @websocket_api.websocket_command(
@@ -191,6 +230,96 @@ async def _ws_set_hub_version(hass: HomeAssistant, connection, msg: dict[str, An
     connection.send_result(msg["id"], {"ok": True})
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/persistent_cache/get",
+    }
+)
+@websocket_api.async_response
+async def _ws_get_persistent_cache(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    store = await _async_get_persistent_cache_store(hass)
+    hubs = _get_hubs(hass.data.get(DOMAIN, {}))
+    payload = {
+        "enabled": store.enabled,
+        "hubs": [
+            {
+                "entry_id": hub.entry_id,
+                "name": hub.name,
+            }
+            for hub in hubs
+        ],
+    }
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/persistent_cache/set",
+        vol.Required("enabled"): cv.boolean,
+    }
+)
+@websocket_api.async_response
+async def _ws_set_persistent_cache(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    store = await _async_get_persistent_cache_store(hass)
+    enabled = bool(msg["enabled"])
+    await store.async_set_enabled(enabled)
+
+    if not enabled:
+        await store.async_clear_all_hub_cache()
+
+    connection.send_result(msg["id"], {"enabled": enabled})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/persistent_cache/refresh",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("kind"): vol.In(["activity", "device"]),
+        vol.Required("target_id"): int,
+    }
+)
+@websocket_api.async_response
+async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        connection.send_error(msg["id"], "disabled", "Persistent cache is disabled")
+        return
+
+    target_id = int(msg["target_id"])
+    if target_id < 1 or target_id > 255:
+        connection.send_error(msg["id"], "invalid_id", "target_id must be between 1 and 255")
+        return
+
+    await hub.async_clear_cache_for(kind=msg["kind"], ent_id=target_id)
+    payload = await hub.async_export_cache_state()
+    await store.async_set_hub_cache(hub.entry_id, payload)
+    connection.send_result(msg["id"], {"ok": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/persistent_cache/contents",
+    }
+)
+@websocket_api.async_response
+async def _ws_get_persistent_cache_contents(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        connection.send_result(msg["id"], {"enabled": False, "hubs": []})
+        return
+
+    hub_payloads = []
+    for hub in _get_hubs(hass.data.get(DOMAIN, {})):
+        hub_payloads.append(await hub.async_get_cache_contents())
+
+    connection.send_result(msg["id"], {"enabled": True, "hubs": hub_payloads})
+
+
 def _register_websocket_commands(hass: HomeAssistant) -> None:
     domain_data = hass.data.setdefault(DOMAIN, {})
     if domain_data.get("ws_registered"):
@@ -200,6 +329,10 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_set_command_config)
     websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
     websocket_api.async_register_command(hass, _ws_set_hub_version)
+    websocket_api.async_register_command(hass, _ws_get_persistent_cache)
+    websocket_api.async_register_command(hass, _ws_set_persistent_cache)
+    websocket_api.async_register_command(hass, _ws_refresh_persistent_cache_entry)
+    websocket_api.async_register_command(hass, _ws_get_persistent_cache_contents)
     domain_data["ws_registered"] = True
 
 
@@ -220,11 +353,21 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].setdefault("config", {})
     hass.data[DOMAIN]["config"][CONF_ENABLE_X2_DISCOVERY] = enable_x2_discovery
+    hass.data[DOMAIN]["config"].setdefault(CONF_PERSISTENT_CACHE_ENABLED, False)
 
     # Ensure DOMAIN data is initialized
     hass.data.setdefault(DOMAIN, {})
 
     _register_websocket_commands(hass)
+
+    if not hass.data[DOMAIN].get("stop_listener_registered"):
+        async def _async_handle_hass_stop(_event: Any) -> None:
+            persisted = await _async_persist_all_hub_cache(hass)
+            if persisted:
+                _LOGGER.info("[%s] Persisted cache for %s hub(s) on Home Assistant stop", DOMAIN, persisted)
+
+        hass.bus.async_listen_once("homeassistant_stop", _async_handle_hass_stop)
+        hass.data[DOMAIN]["stop_listener_registered"] = True
 
     if not hass.data[DOMAIN].get("frontend_registered"):
         community_card_dir = Path(
@@ -233,13 +376,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         community_card_exists = await hass.async_add_executor_job(
             lambda: community_card_dir.exists() and community_card_dir.is_dir()
         )
+        inject_remote_card = not community_card_exists
         if community_card_exists:
             _LOGGER.info(
-                "[%s] Skipping frontend injection; community card found at %s",
+                "[%s] Community remote card found at %s; only injecting power tools card",
                 DOMAIN,
                 community_card_dir,
             )
-            return True
 
         frontend_dir = Path(__file__).parent / "www"
         abs_path, frontend_dir_exists, contents = await hass.async_add_executor_job(
@@ -267,7 +410,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             js_version = f"?v={version_suffix}" if version_suffix else ""
             js_files = [f"card-loader.js{js_version}"]
             for js_file in js_files:
-                url = f"/{DOMAIN}/www/{js_file}"
+                remote_flag = "1" if inject_remote_card else "0"
+                separator = "&" if "?" in js_file else "?"
+                url = f"/{DOMAIN}/www/{js_file}{separator}inject_remote={remote_flag}"
                 _LOGGER.info("[%s] Adding extra JS URL: %s", DOMAIN, url)
                 frontend.add_extra_js_url(hass, url)
 
@@ -380,6 +525,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     await hub.async_start()
 
+    cache_store = await _async_get_persistent_cache_store(hass)
+    hass.data[DOMAIN]["config"][CONF_PERSISTENT_CACHE_ENABLED] = cache_store.enabled
+    if cache_store.enabled:
+        cache_payload = await cache_store.async_get_hub_cache(entry.entry_id)
+        if cache_payload:
+            await hub.async_restore_persistent_cache(cache_payload)
+
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
     if not hass.services.has_service(DOMAIN, "create_wifi_device"):
@@ -447,6 +599,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             async_teardown_diagnostics(hass)
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
+            await _async_persist_hub_cache(hass, hub)
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()

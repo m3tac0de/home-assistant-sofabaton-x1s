@@ -623,12 +623,15 @@ class X1Proxy:
 
         return ok
         
-    def get_activities(self) -> tuple[dict[int, dict], bool]:
+    def get_activities(self, *, force_refresh: bool = True) -> tuple[dict[int, dict], bool]:
+        if force_refresh:
+            if self.can_issue_commands():
+                self.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+            return ({}, False)
+
         if self.state.activities:
             return ({k: v.copy() for k, v in self.state.activities.items()}, True)
-            
-        if self.can_issue_commands():
-            self.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+
         return ({}, False)
 
     def get_devices(self) -> tuple[dict[int, dict], bool]:
@@ -680,6 +683,189 @@ class X1Proxy:
             return (dict(commands), complete)
 
         return ({}, False)
+
+    def export_cache_state(self) -> dict[str, Any]:
+        return {
+            "devices": {str(k): dict(v) for k, v in self.state.devices.items()},
+            "buttons": {str(k): sorted(v) for k, v in self.state.buttons.items()},
+            "commands": {
+                str(k): {str(cmd_id): label for cmd_id, label in commands.items()}
+                for k, commands in self.state.commands.items()
+            },
+            "ip_devices": {str(k): dict(v) for k, v in self.state.ip_devices.items()},
+            "ip_buttons": {
+                str(k): {str(btn_id): dict(meta) for btn_id, meta in buttons.items()}
+                for k, buttons in self.state.ip_buttons.items()
+            },
+            "activity_macros": {
+                str(k): list(macros) for k, macros in self.state.activity_macros.items()
+            },
+            "activity_command_refs": {
+                str(k): [[dev_id, command_id] for dev_id, command_id in sorted(refs)]
+                for k, refs in self.state.activity_command_refs.items()
+            },
+            "activity_favorite_slots": {
+                str(k): [dict(slot) for slot in slots]
+                for k, slots in self.state.activity_favorite_slots.items()
+            },
+            "activity_members": {
+                str(k): sorted(members)
+                for k, members in self.state.activity_members.items()
+            },
+            "activity_favorite_labels": {
+                str(k): [
+                    {
+                        "device_id": dev_id,
+                        "command_id": command_id,
+                        "label": label,
+                    }
+                    for (dev_id, command_id), label in labels.items()
+                ]
+                for k, labels in self.state.activity_favorite_labels.items()
+            },
+        }
+
+    def import_cache_state(self, payload: dict[str, Any]) -> None:
+        data = payload if isinstance(payload, dict) else {}
+
+        devices = data.get("devices", {})
+        self.state.devices = {
+            int(k) & 0xFF: dict(v) for k, v in devices.items() if isinstance(v, dict)
+        }
+
+        buttons = data.get("buttons", {})
+        self.state.buttons = {
+            int(k) & 0xFF: {int(btn) & 0xFF for btn in v}
+            for k, v in buttons.items()
+            if isinstance(v, list)
+        }
+
+        self.state.commands.clear()
+        commands = data.get("commands", {})
+        for key, entity_commands in commands.items():
+            if not isinstance(entity_commands, dict):
+                continue
+            ent_id = int(key) & 0xFF
+            self.state.commands[ent_id] = {
+                int(cmd_id) & 0xFF: str(label)
+                for cmd_id, label in entity_commands.items()
+            }
+
+        ip_devices = data.get("ip_devices", {})
+        self.state.ip_devices = {
+            int(k) & 0xFF: dict(v) for k, v in ip_devices.items() if isinstance(v, dict)
+        }
+
+        self.state.ip_buttons.clear()
+        ip_buttons = data.get("ip_buttons", {})
+        for key, button_map in ip_buttons.items():
+            if not isinstance(button_map, dict):
+                continue
+            ent_id = int(key) & 0xFF
+            self.state.ip_buttons[ent_id] = {
+                int(btn_id) & 0xFF: dict(meta)
+                for btn_id, meta in button_map.items()
+                if isinstance(meta, dict)
+            }
+
+        activity_macros = data.get("activity_macros", {})
+        self.state.activity_macros = {
+            int(k) & 0xFF: list(v)
+            for k, v in activity_macros.items()
+            if isinstance(v, list)
+        }
+
+        self.state.activity_command_refs.clear()
+        activity_command_refs = data.get("activity_command_refs", {})
+        for key, refs in activity_command_refs.items():
+            if not isinstance(refs, list):
+                continue
+            act_lo = int(key) & 0xFF
+            parsed_refs: set[tuple[int, int]] = set()
+            for item in refs:
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    parsed_refs.add((int(item[0]) & 0xFF, int(item[1]) & 0xFF))
+            if parsed_refs:
+                self.state.activity_command_refs[act_lo] = parsed_refs
+
+        self.state.activity_favorite_slots.clear()
+        activity_favorite_slots = data.get("activity_favorite_slots", {})
+        for key, slots in activity_favorite_slots.items():
+            if not isinstance(slots, list):
+                continue
+            act_lo = int(key) & 0xFF
+            normalized_slots: list[dict[str, int]] = []
+            for slot in slots:
+                if not isinstance(slot, dict):
+                    continue
+                normalized_slots.append(
+                    {
+                        "button_id": int(slot.get("button_id", 0)) & 0xFF,
+                        "device_id": int(slot.get("device_id", 0)) & 0xFF,
+                        "command_id": int(slot.get("command_id", 0)) & 0xFF,
+                        "source": str(slot.get("source", "cache")),
+                    }
+                )
+            if normalized_slots:
+                self.state.activity_favorite_slots[act_lo] = normalized_slots
+
+        self.state.activity_members.clear()
+        activity_members = data.get("activity_members", {})
+        for key, members in activity_members.items():
+            if isinstance(members, list):
+                self.state.activity_members[int(key) & 0xFF] = {int(member) & 0xFF for member in members}
+
+        self.state.activity_favorite_labels.clear()
+        activity_favorite_labels = data.get("activity_favorite_labels", {})
+        for key, labels in activity_favorite_labels.items():
+            if not isinstance(labels, list):
+                continue
+            act_lo = int(key) & 0xFF
+            parsed_labels: dict[tuple[int, int], str] = {}
+            for row in labels:
+                if not isinstance(row, dict):
+                    continue
+                dev_id = int(row.get("device_id", 0)) & 0xFF
+                command_id = int(row.get("command_id", 0)) & 0xFF
+                label = str(row.get("label", "")).strip()
+                if dev_id and command_id and label:
+                    parsed_labels[(dev_id, command_id)] = label
+            if parsed_labels:
+                self.state.activity_favorite_labels[act_lo] = parsed_labels
+
+        self._commands_complete = set(self.state.commands.keys())
+        self._macros_complete = set(self.state.activity_macros.keys())
+
+        self._activity_map_complete = {
+            act_lo
+            for act_lo in set(self.state.activity_favorite_slots.keys())
+            | set(self.state.activity_members.keys())
+            | set(self.state.activity_command_refs.keys())
+        }
+
+        self._pending_button_requests.clear()
+        self._pending_command_requests.clear()
+        self._pending_macro_requests.clear()
+        self._pending_activity_map_requests.clear()
+
+    def clear_persistent_cache_for(self, ent_id: int, *, kind: str) -> None:
+        ent_lo = ent_id & 0xFF
+        if kind == "device":
+            self.state.devices.pop(ent_lo, None)
+            self.state.buttons.pop(ent_lo, None)
+            self.state.commands.pop(ent_lo, None)
+            self.state.ip_devices.pop(ent_lo, None)
+            self.state.ip_buttons.pop(ent_lo, None)
+            self._commands_complete.discard(ent_lo)
+            return
+
+        if kind == "activity":
+            self.state.activity_macros.pop(ent_lo, None)
+            self.state.activity_members.pop(ent_lo, None)
+            self.state.activity_favorite_slots.pop(ent_lo, None)
+            self.state.activity_favorite_labels.pop(ent_lo, None)
+            self.state.activity_command_refs.pop(ent_lo, None)
+            self._macros_complete.discard(ent_lo)
 
     def get_macros_for_activity(self, act_id: int, *, fetch_if_missing: bool = True) -> tuple[list[dict[str, int | str]], bool]:
         act_lo = act_id & 0xFF

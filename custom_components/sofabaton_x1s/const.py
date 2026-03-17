@@ -18,6 +18,7 @@ CONF_HEX_LOGGING_ENABLED = "hex_logging_enabled"
 CONF_ROKU_SERVER_ENABLED = "roku_server_enabled"
 CONF_ROKU_LISTEN_PORT = "roku_listen_port"
 CONF_ENABLE_X2_DISCOVERY = "enable_x2_discovery"
+CONF_PERSISTENT_CACHE_ENABLED = "persistent_cache_enabled"
 
 # Hub version classification
 HVER_X1 = "1"

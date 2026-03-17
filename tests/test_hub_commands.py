@@ -1077,3 +1077,120 @@ def test_async_set_hub_version_persists_hver_and_updates_proxy() -> None:
     assert update["options"]["mdns_version"] == "X1S"
 
     loop.close()
+
+def test_prime_buttons_skips_activity_map_when_cached(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_id = 0x0105
+    act_lo = act_id & 0xFF
+
+    hub._proxy.state.activity_favorite_slots[act_lo] = [
+        {"button_id": 1, "device_id": 2, "command_id": 3, "source": "cache"}
+    ]
+
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([1, 2], True))
+    monkeypatch.setattr(hub._proxy, "ensure_commands_for_activity", lambda *_args, **_kwargs: ({}, True))
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_args, **_kwargs: ([], True))
+
+    called = {"request_map": 0}
+
+    def _request_map(_act_id: int) -> bool:
+        called["request_map"] += 1
+        return True
+
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", _request_map)
+
+    loop.run_until_complete(hub._async_prime_buttons_for(act_id))
+
+    assert called["request_map"] == 0
+
+    loop.close()
+
+
+def test_prime_buttons_fetches_activity_map_when_not_cached(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_id = 0x0106
+
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([1, 2], True))
+    monkeypatch.setattr(hub._proxy, "ensure_commands_for_activity", lambda *_args, **_kwargs: ({}, True))
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_args, **_kwargs: ([], True))
+
+    called = {"request_map": 0}
+
+    def _request_map(_act_id: int) -> bool:
+        called["request_map"] += 1
+        hub._proxy._activity_map_complete.add(_act_id & 0xFF)
+        return True
+
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", _request_map)
+
+    loop.run_until_complete(hub._async_prime_buttons_for(act_id))
+
+    assert called["request_map"] == 1
+
+    loop.close()
+
+def test_restore_persistent_cache_primes_hub_trackers():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    payload = {
+        "devices": {"104": {"name": "Xbox", "brand": "Xbox"}},
+        "buttons": {"104": [174, 176]},
+        "commands": {"104": {"1": "Power"}},
+        "activity_favorite_slots": {"104": [{"button_id": 1, "device_id": 2, "command_id": 3, "source": "cache"}]},
+    }
+
+    loop.run_until_complete(hub.async_restore_persistent_cache(payload))
+
+    assert 104 in hub._buttons_ready_for
+    assert 104 in hub._command_entities
+    assert 104 in hub._proxy._activity_map_complete
+    assert hub.devices.get(104, {}).get("name") == "Xbox"
+
+    loop.close()

@@ -612,14 +612,26 @@ class AckReadyHandler(BaseFrameHandler):
             proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
             if proxy.state.current_activity_hint is not None:
                 ent_lo = proxy.state.current_activity_hint & 0xFF
-                proxy.request_buttons_for_entity(ent_lo)
+
+                _, buttons_ready = proxy.get_buttons_for_entity(
+                    ent_lo,
+                    fetch_if_missing=False,
+                )
+                if not buttons_ready:
+                    proxy.request_buttons_for_entity(ent_lo)
+
                 if proxy.hub_version != HUB_VERSION_X1:
-                    proxy.enqueue_cmd(
-                        OP_REQ_COMMANDS,
-                        bytes([ent_lo, 0xFF]),
-                        expects_burst=True,
-                        burst_kind=f"commands:{ent_lo}",
+                    _, commands_ready = proxy.get_commands_for_entity(
+                        ent_lo,
+                        fetch_if_missing=False,
                     )
+                    if not commands_ready:
+                        proxy.enqueue_cmd(
+                            OP_REQ_COMMANDS,
+                            bytes([ent_lo, 0xFF]),
+                            expects_burst=True,
+                            burst_kind=f"commands:{ent_lo}",
+                        )
         else:
             log.info("[HINT] proxy client connected; skipping auto-requests")
             new_id, old_id = proxy.state.update_activity_state()

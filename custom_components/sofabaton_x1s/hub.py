@@ -245,9 +245,16 @@ class SofabatonHub:
         if active_id != self.current_activity:
             self.current_activity = active_id
 
+
+    def _get_activities_cached(self) -> tuple[dict[int, dict[str, Any]], bool]:
+        try:
+            return self._proxy.get_activities(force_refresh=False)
+        except TypeError:
+            return self._proxy.get_activities()
+
     def _on_activities_burst(self, key: str) -> None:
         def _inner() -> None:
-            acts, ready = self._proxy.get_activities()
+            acts, ready = self._get_activities_cached()
             _LOGGER.debug(
                 "[%s] on_burst_end('activities'): ready=%s, count=%s",
                 self.entry_id,
@@ -263,7 +270,7 @@ class SofabatonHub:
 
     def _on_activity_list_update(self) -> None:
         def _inner() -> None:
-            acts, ready = self._proxy.get_activities()
+            acts, ready = self._get_activities_cached()
             if acts:
                 self.activities = acts
                 self._sync_current_activity_from_cache(clear_when_unknown=False)
@@ -408,7 +415,7 @@ class SofabatonHub:
     # async helpers
     # ------------------------------------------------------------------
     async def _async_initial_sync(self) -> None:
-        acts, acts_ready = await self.hass.async_add_executor_job(self._proxy.get_activities)
+        acts, acts_ready = await self.hass.async_add_executor_job(partial(self._proxy.get_activities, force_refresh=True))
         _LOGGER.debug(
             "[%s] initial_sync: got activities ready=%s count=%s",
             self.entry_id,
@@ -441,6 +448,59 @@ class SofabatonHub:
                 self.current_activity,
             )
             await self._async_prime_buttons_for(self.current_activity)
+
+
+    async def async_restore_persistent_cache(self, payload: dict[str, Any]) -> None:
+        await self.hass.async_add_executor_job(self._proxy.import_cache_state, payload)
+
+        devs, devs_ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
+        self.devices_ready = devs_ready
+        if devs_ready:
+            self.devices = devs
+            self._devices_generation += 1
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+
+        # Prime hub-side readiness trackers from restored proxy cache.
+        self._buttons_ready_for = {int(ent_id) for ent_id in self._proxy.state.buttons.keys()}
+        self._command_entities = {int(ent_id) for ent_id in self._proxy.state.commands.keys()}
+
+        _LOGGER.debug(
+            "[%s] Restored persistent cache: devices=%s buttons=%s commands=%s macros=%s activities_map=%s",
+            self.entry_id,
+            len(self._proxy.state.devices),
+            len(self._proxy.state.buttons),
+            len(self._proxy.state.commands),
+            len(self._proxy.state.activity_macros),
+            len(self._proxy._activity_map_complete),
+        )
+
+        async_dispatcher_send(self.hass, signal_buttons(self.entry_id))
+        async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+        async_dispatcher_send(self.hass, signal_macros(self.entry_id))
+
+    async def async_export_cache_state(self) -> dict[str, Any]:
+        return await self.hass.async_add_executor_job(self._proxy.export_cache_state)
+
+    async def async_clear_cache_for(self, *, kind: str, ent_id: int) -> None:
+        await self.hass.async_add_executor_job(self._proxy.clear_persistent_cache_for, ent_id, kind=kind)
+        if kind == "device":
+            devs, ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
+            self.devices_ready = ready
+            if ready:
+                self.devices = devs
+                self._devices_generation += 1
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+        else:
+            async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+
+        async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+        async_dispatcher_send(self.hass, signal_macros(self.entry_id))
+
+    async def async_get_cache_contents(self) -> dict[str, Any]:
+        data = await self.async_export_cache_state()
+        data["entry_id"] = self.entry_id
+        data["name"] = self.name
+        return data
 
 
 
@@ -725,6 +785,26 @@ class SofabatonHub:
             self._proxy._pending_macro_requests.discard(ent_id & 0xFF)
             self._proxy._macros_complete.discard(ent_id & 0xFF)
 
+    def _activity_map_cached(self, act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        if act_lo in self._proxy._activity_map_complete:
+            return True
+
+        # Restored persistent cache may not populate _activity_map_complete,
+        # but these structures indicate we already captured activity mapping data.
+        return bool(
+            self._proxy.state.activity_favorite_slots.get(act_lo)
+            or self._proxy.state.activity_members.get(act_lo)
+            or self._proxy.state.activity_command_refs.get(act_lo)
+        )
+
+    def _activity_favorites_ready(self, act_id: int) -> bool:
+        _, ready = self._proxy.ensure_commands_for_activity(
+            act_id,
+            fetch_if_missing=False,
+        )
+        return ready
+
     async def _async_prime_buttons_for(self, act_id: int) -> None:
         # dedupe here
         if act_id in self._pending_button_fetch:
@@ -759,15 +839,30 @@ class SofabatonHub:
         else:
             await self._async_wait_for_buttons_ready(act_id)
 
-        await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
-        await self._async_wait_for_activity_map_ready(act_id)
+        map_cached = await self.hass.async_add_executor_job(self._activity_map_cached, act_id)
+        if not map_cached:
+            await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
+            await self._async_wait_for_activity_map_ready(act_id)
+            await self.hass.async_add_executor_job(
+                partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
+            )
+        else:
+            favorites_ready = await self.hass.async_add_executor_job(
+                self._activity_favorites_ready,
+                act_id,
+            )
+            if not favorites_ready:
+                await self.hass.async_add_executor_job(
+                    partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
+                )
 
-        await self.hass.async_add_executor_job(
-            partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
+        _, macros_ready = await self.hass.async_add_executor_job(
+            partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=False)
         )
-        await self.hass.async_add_executor_job(
-            partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
-        )
+        if not macros_ready:
+            await self.hass.async_add_executor_job(
+                partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
+            )
 
     # ------------------------------------------------------------------
     # helpers for entities

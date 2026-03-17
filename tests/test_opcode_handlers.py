@@ -39,6 +39,7 @@ if str(ROOT) not in sys.path:
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     ActivityMapHandler,
+    AckReadyHandler,
     CatalogActivityHandler,
     CatalogDeviceHandler,
     KeymapHandler,
@@ -57,6 +58,10 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_G,
     OP_CATALOG_ROW_ACTIVITY,
+    OP_ACK_READY,
+    OP_REQ_ACTIVITIES,
+    OP_REQ_BUTTONS,
+    OP_REQ_COMMANDS,
     OP_MACROS_A1,
     OP_MACROS_B1,
     OP_X1_ACTIVITY,
@@ -982,3 +987,57 @@ def test_keymap_handler_parses_x2_followup_d73d_page_buttons() -> None:
         ButtonName.VOL_UP,
     }
     assert expected.issubset(proxy.state.buttons.get(0x65, set()))
+
+
+def test_ack_ready_skips_button_and_command_prefetch_when_cached() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = AckReadyHandler()
+
+    proxy.state.current_activity_hint = 0x68
+    proxy.hub_version = HUB_VERSION_X1S
+    proxy.state.buttons[0x68] = {174, 176}
+    proxy.state.commands[0x68] = {1: "Power"}
+    proxy._commands_complete.add(0x68)
+
+    captured: list[tuple[int, bytes, dict]] = []
+
+    def _enqueue(opcode: int, payload: bytes = b"", **kwargs):
+        captured.append((opcode, payload, kwargs))
+        return True
+
+    proxy.enqueue_cmd = _enqueue  # type: ignore[assignment]
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+
+    frame = _build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY")
+    handler.handle(frame)
+
+    assert [row[0] for row in captured] == [OP_REQ_ACTIVITIES]
+
+
+def test_ack_ready_prefetches_when_cache_missing() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = AckReadyHandler()
+
+    proxy.state.current_activity_hint = 0x68
+    proxy.hub_version = HUB_VERSION_X1S
+
+    captured: list[tuple[int, bytes, dict]] = []
+
+    def _enqueue(opcode: int, payload: bytes = b"", **kwargs):
+        captured.append((opcode, payload, kwargs))
+        return True
+
+    proxy.enqueue_cmd = _enqueue  # type: ignore[assignment]
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+
+    frame = _build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY")
+    handler.handle(frame)
+
+    opcodes = [row[0] for row in captured]
+    assert OP_REQ_ACTIVITIES in opcodes
+    assert OP_REQ_BUTTONS in opcodes
+    assert OP_REQ_COMMANDS in opcodes
