@@ -399,6 +399,12 @@ class SofabatonHub:
             if ent_id is not None:
                 self._maybe_complete_command_fetch(ent_id)
 
+                # Burst keys carry the low-byte entity id while in-flight tracking may
+                # hold full ids. Re-check any matching in-flight entries by low byte.
+                for inflight_ent_id in list(self._commands_in_flight):
+                    if (inflight_ent_id & 0xFF) == (ent_id & 0xFF):
+                        self._maybe_complete_command_fetch(inflight_ent_id)
+
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
             async_dispatcher_send(self.hass, signal_macros(self.entry_id))
 
@@ -482,8 +488,11 @@ class SofabatonHub:
         return await self.hass.async_add_executor_job(self._proxy.export_cache_state)
 
     async def async_clear_cache_for(self, *, kind: str, ent_id: int) -> None:
-        await self.hass.async_add_executor_job(self._proxy.clear_persistent_cache_for, ent_id, kind=kind)
+        await self.hass.async_add_executor_job(
+            partial(self._proxy.clear_persistent_cache_for, ent_id, kind=kind)
+        )
         if kind == "device":
+            await self._async_refresh_devices_snapshot(timeout_seconds=5.0)
             devs, ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
             self.devices_ready = ready
             if ready:
@@ -518,11 +527,9 @@ class SofabatonHub:
                 ent_id, fetch_if_missing=False
             )
             act_lo = ent_id & 0xFF
-            macros, macros_ready = self._proxy.get_macros_for_activity(
+            _, macros_ready = self._proxy.get_macros_for_activity(
                 ent_id, fetch_if_missing=False
             )
-            if not macros:
-                macros_ready = True
             return commands_ready and macros_ready
 
         _, ready = self._proxy.get_commands_for_entity(ent_id, fetch_if_missing=False)

@@ -126,6 +126,7 @@ class SofabatonRemote(RemoteEntity):
             "favorite_keys": favorite_keys,
             "current_activity_id": activity_id,
             "load_state": self._hub.get_index_state(),
+            "entry_id": self._entry.entry_id,
         }
 
     @property

@@ -37,9 +37,13 @@ class _Hub:
 
     def __init__(self):
         self.cleared = None
+        self.fetched = None
 
     async def async_clear_cache_for(self, *, kind, ent_id):
         self.cleared = (kind, ent_id)
+
+    async def async_fetch_device_commands(self, ent_id):
+        self.fetched = ent_id
 
     async def async_export_cache_state(self):
         return {"devices": {"1": {"name": "TV"}}}
@@ -111,6 +115,7 @@ def test_ws_refresh_persistent_cache_entry(monkeypatch):
     assert conn.error is None
     assert conn.result == (2, {"ok": True})
     assert hub.cleared == ("device", 17)
+    assert hub.fetched == 17
     assert saved["entry-1"] == {"devices": {"1": {"name": "TV"}}}
 
 
@@ -133,3 +138,50 @@ def test_ws_get_persistent_cache_contents_disabled(monkeypatch):
 
     assert conn.error is None
     assert conn.result == (3, {"enabled": False, "hubs": []})
+
+
+def test_ws_refresh_persistent_cache_entry_by_entry_id(monkeypatch):
+    conn = _Conn()
+    store = _CacheStore(enabled=True)
+    hub = _Hub()
+
+    async def fake_store(_hass):
+        return store
+
+    async def fake_resolve(_hass, data):
+        assert data["entry_id"] == "entry-1"
+        assert data["entity_id"] is None
+        return hub
+
+    saved = {}
+
+    async def fake_set_hub_cache(entry_id, payload):
+        saved[entry_id] = payload
+
+    store.async_set_hub_cache = fake_set_hub_cache
+
+    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_refresh_persistent_cache_entry(
+                SimpleNamespace(),
+                conn,
+                {
+                    "id": 4,
+                    "entry_id": "entry-1",
+                    "kind": "activity",
+                    "target_id": 33,
+                },
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    assert conn.result == (4, {"ok": True})
+    assert hub.cleared == ("activity", 33)
+    assert hub.fetched == 33
+    assert saved["entry-1"] == {"devices": {"1": {"name": "TV"}}}

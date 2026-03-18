@@ -128,7 +128,13 @@ async def _async_persist_all_hub_cache(hass: HomeAssistant) -> int:
 )
 @websocket_api.async_response
 async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(
+        hass,
+        {
+            "entity_id": msg.get("entity_id"),
+            "entry_id": msg.get("entry_id"),
+        },
+    )
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -273,14 +279,21 @@ async def _ws_set_persistent_cache(hass: HomeAssistant, connection, msg: dict[st
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/persistent_cache/refresh",
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
         vol.Required("kind"): vol.In(["activity", "device"]),
         vol.Required("target_id"): int,
     }
 )
 @websocket_api.async_response
 async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(
+        hass,
+        {
+            "entity_id": msg.get("entity_id"),
+            "entry_id": msg.get("entry_id"),
+        },
+    )
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -296,6 +309,7 @@ async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, ms
         return
 
     await hub.async_clear_cache_for(kind=msg["kind"], ent_id=target_id)
+    await hub.async_fetch_device_commands(target_id)
     payload = await hub.async_export_cache_state()
     await store.async_set_hub_cache(hub.entry_id, payload)
     connection.send_result(msg["id"], {"ok": True})
@@ -852,6 +866,12 @@ async def _async_resolve_hub_from_data(hass: HomeAssistant, data: dict[str, Any]
             return domain_data[hub_key]
         for hub in hubs:
             if getattr(hub, "mac", None) == hub_key:
+                return hub
+
+    entry_id = data.get("entry_id")
+    if entry_id:
+        for hub in hubs:
+            if getattr(hub, "entry_id", None) == entry_id:
                 return hub
 
     entity_id = data.get("entity_id")

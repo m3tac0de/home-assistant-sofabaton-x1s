@@ -71,6 +71,13 @@ def test_activity_fetch_clears_inflight_after_favorite_labels(monkeypatch):
     hub._on_commands_burst(f"commands:{dev_id & 0xFF}")
     loop.run_until_complete(asyncio.sleep(0))
 
+    # Activity fetch should stay in-flight until macro burst completion is observed.
+    assert act_id in hub._commands_in_flight
+
+    hub._proxy._macros_complete.add(act_lo)
+    hub._on_macros_burst(f"macros:{act_lo}")
+    loop.run_until_complete(asyncio.sleep(0))
+
     assert act_id not in hub._commands_in_flight
     assert hub._commands_in_flight == set()
     assert hub._pending_button_fetch == set()
@@ -254,6 +261,53 @@ def test_command_to_button_executor_job_uses_partial_not_kwargs():
 
     loop.close()
 
+
+
+
+def test_clear_cache_for_executor_job_uses_partial_not_kwargs(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    class StrictHass(FakeHass):
+        async def async_add_executor_job(self, func, *args):  # no kwargs on purpose
+            return func(*args)
+
+    hass = StrictHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    cleared: list[tuple[int, str]] = []
+
+    def _clear_persistent_cache_for(ent_id, *, kind):
+        cleared.append((ent_id, kind))
+
+    hub._proxy.clear_persistent_cache_for = _clear_persistent_cache_for  # type: ignore[method-assign]
+    hub._proxy.get_devices = lambda: ({}, True)  # type: ignore[method-assign]
+
+    sent_signals: list[tuple[str, str]] = []
+
+    def _fake_dispatcher_send(_hass, signal):
+        sent_signals.append(("signal", signal))
+
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", _fake_dispatcher_send)
+
+    loop.run_until_complete(hub.async_clear_cache_for(kind="activity", ent_id=42))
+
+    assert cleared == [(42, "activity")]
+    assert sent_signals
+
+    loop.close()
 
 def test_on_activities_burst_syncs_current_activity_from_active_flag(monkeypatch):
     loop = asyncio.new_event_loop()
@@ -1192,5 +1246,72 @@ def test_restore_persistent_cache_primes_hub_trackers():
     assert 104 in hub._command_entities
     assert 104 in hub._proxy._activity_map_complete
     assert hub.devices.get(104, {}).get("name") == "Xbox"
+
+    loop.close()
+
+
+def test_clear_cache_for_device_requests_fresh_devices(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    refreshed = {"called": False}
+
+    async def _fake_refresh_devices_snapshot(timeout_seconds: float = 15.0):
+        refreshed["called"] = True
+        return {}
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _fake_refresh_devices_snapshot)
+
+    hub._proxy.clear_persistent_cache_for = lambda ent_id, *, kind: None  # type: ignore[method-assign]
+    hub._proxy.get_devices = lambda: ({}, True)  # type: ignore[method-assign]
+
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
+
+    loop.run_until_complete(hub.async_clear_cache_for(kind="device", ent_id=9))
+
+    assert refreshed["called"] is True
+
+    loop.close()
+
+
+def test_commands_ready_for_activity_waits_for_macro_completion(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_id = 0x22
+    hub._proxy.state.activities[act_id] = {"name": "Watch TV"}
+
+    monkeypatch.setattr(hub._proxy, "ensure_commands_for_activity", lambda *_args, **_kwargs: ({1: "Power"}, True))
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_args, **_kwargs: ([], False))
+
+    assert hub._commands_ready_for(act_id) is False
 
     loop.close()
