@@ -309,7 +309,7 @@ async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, ms
         return
 
     await hub.async_clear_cache_for(kind=msg["kind"], ent_id=target_id)
-    await hub.async_fetch_device_commands(target_id)
+    await hub.async_fetch_device_commands(target_id, wait_timeout=30.0)
     payload = await hub.async_export_cache_state()
     await store.async_set_hub_cache(hub.entry_id, payload)
     connection.send_result(msg["id"], {"ok": True})

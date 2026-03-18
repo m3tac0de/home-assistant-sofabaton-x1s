@@ -42,8 +42,8 @@ class _Hub:
     async def async_clear_cache_for(self, *, kind, ent_id):
         self.cleared = (kind, ent_id)
 
-    async def async_fetch_device_commands(self, ent_id):
-        self.fetched = ent_id
+    async def async_fetch_device_commands(self, ent_id, wait_timeout=10.0):
+        self.fetched = (ent_id, wait_timeout)
 
     async def async_export_cache_state(self):
         return {"devices": {"1": {"name": "TV"}}}
@@ -115,7 +115,7 @@ def test_ws_refresh_persistent_cache_entry(monkeypatch):
     assert conn.error is None
     assert conn.result == (2, {"ok": True})
     assert hub.cleared == ("device", 17)
-    assert hub.fetched == 17
+    assert hub.fetched == (17, 30.0)
     assert saved["entry-1"] == {"devices": {"1": {"name": "TV"}}}
 
 
@@ -183,5 +183,5 @@ def test_ws_refresh_persistent_cache_entry_by_entry_id(monkeypatch):
     assert conn.error is None
     assert conn.result == (4, {"ok": True})
     assert hub.cleared == ("activity", 33)
-    assert hub.fetched == 33
+    assert hub.fetched == (33, 30.0)
     assert saved["entry-1"] == {"devices": {"1": {"name": "TV"}}}

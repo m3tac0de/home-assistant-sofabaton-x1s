@@ -543,7 +543,12 @@ class SofabatonHub:
             self._commands_in_flight.discard(ent_id)
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
-    async def async_fetch_device_commands(self, ent_id: int) -> None:
+    async def async_fetch_device_commands(
+        self,
+        ent_id: int,
+        *,
+        wait_timeout: float = 10.0,
+    ) -> None:
         """User asked to fetch commands for this device/activity."""
         self._commands_in_flight.add(ent_id)
         async_dispatcher_send(self.hass, signal_commands(self.entry_id))
@@ -553,7 +558,7 @@ class SofabatonHub:
         else:
             await self._async_fetch_device_commands(ent_id)
 
-        await self._async_wait_for_command_fetch_complete(ent_id)
+        await self._async_wait_for_command_fetch_complete(ent_id, timeout=wait_timeout)
 
     async def async_create_wifi_device(
         self,
