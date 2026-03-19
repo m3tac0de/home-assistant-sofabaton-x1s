@@ -21,6 +21,9 @@ class ActivityCache:
         self.activity_command_refs: dict[int, set[tuple[int, int]]] = defaultdict(set)
         self.activity_favorite_slots: dict[int, list[dict[str, int]]] = defaultdict(list)
         self.activity_members: dict[int, set[int]] = defaultdict(set)
+        # Favorites ordering: maps act_lo → list of (fav_id, slot) pairs in hub order
+        # Populated by OP_FAV_ORDER_RESP (family 0x63) response to OP_FAV_ORDER_REQ (0x0162)
+        self.activity_favorites_order: dict[int, list[tuple[int, int]]] = {}
         self.activity_favorite_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
         self.activity_macros: dict[int, list[dict[str, int | str]]] = defaultdict(list)
         self.keymap_remainders: dict[int, bytes] = {}
