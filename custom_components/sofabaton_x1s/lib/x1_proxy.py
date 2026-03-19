@@ -2054,17 +2054,22 @@ class X1Proxy:
     def delete_favorite(
         self,
         activity_id: int,
-        fav_id: int,
+        button_id: int,
         *,
         refresh_after_write: bool = True,
     ) -> dict[str, Any] | None:
-        """Delete *fav_id* from the favorites list for *activity_id*.
+        """Delete the favorite identified by *button_id* from *activity_id*.
+
+        *button_id* is the same value stored in ``activity_favorite_slots`` —
+        the slot_id assigned when the favorite was created via
+        ``command_to_favorite``.  Use ``get_activity_favorite_slots`` to
+        discover available button_ids and the device/command they represent.
 
         The hub requires the remaining ordered list to be re-sent after the
-        deletion.  This method first fetches the current ordering, removes the
-        specified favorite, then executes:
+        deletion.  This method first fetches the current ordering from the hub,
+        removes the specified entry, then executes:
 
-            1. family 0x10 DELETE_FAV (act_lo, fav_id) → ACK 0x0103  (~5 s hub delay)
+            1. family 0x10 DELETE_FAV (act_lo, button_id) → ACK 0x0103  (~5 s hub delay)
             2. family 0x61 SET_FAVORITES_ORDER (remaining) → ACK 0x0103
             3. family 0x65 COMMIT                          → ACK 0x0103
         """
@@ -2073,7 +2078,7 @@ class X1Proxy:
             return None
 
         act_lo = activity_id & 0xFF
-        fav_lo = fav_id & 0xFF
+        btn_lo = button_id & 0xFF
 
         # Fetch current ordering so we can build the post-delete list
         current_order = self.request_favorites_order(act_lo)
@@ -2081,30 +2086,30 @@ class X1Proxy:
             log.warning("[FAV_DELETE] could not fetch current order act=0x%02X", act_lo)
             return None
 
-        # Remove the target fav_id and re-slot the rest
-        remaining_fav_ids = [fid for fid, _slot in current_order if (fid & 0xFF) != fav_lo]
-        if len(remaining_fav_ids) == len(current_order):
+        # Remove the target button_id and re-slot the rest
+        remaining_btn_ids = [fid for fid, _slot in current_order if (fid & 0xFF) != btn_lo]
+        if len(remaining_btn_ids) == len(current_order):
             log.warning(
-                "[FAV_DELETE] fav_id=0x%02X not found in current order for act=0x%02X",
-                fav_lo,
+                "[FAV_DELETE] button_id=0x%02X not found in current order for act=0x%02X",
+                btn_lo,
                 act_lo,
             )
             return None
 
         log.info(
-            "[FAV_DELETE] act=0x%02X deleting fav=0x%02X; %d remaining",
+            "[FAV_DELETE] act=0x%02X deleting button_id=0x%02X; %d remaining",
             act_lo,
-            fav_lo,
-            len(remaining_fav_ids),
+            btn_lo,
+            len(remaining_btn_ids),
         )
 
         self.start_roku_create()
 
         # Step 1: signal deletion to hub (hub takes ~5 s to process)
         if not self._send_roku_step(
-            step_name=f"fav-delete-10[act=0x{act_lo:02X} fav=0x{fav_lo:02X}]",
+            step_name=f"fav-delete-10[act=0x{act_lo:02X} btn=0x{btn_lo:02X}]",
             family=FAMILY_FAV_DELETE,
-            payload=bytes([act_lo, fav_lo]),
+            payload=bytes([act_lo, btn_lo]),
             ack_opcode=0x0103,
             timeout=7.5,
         ):
@@ -2114,7 +2119,7 @@ class X1Proxy:
         if not self._send_roku_step(
             step_name=f"fav-delete-reorder-61[act=0x{act_lo:02X}]",
             family=0x61,
-            payload=self._build_favorites_reorder_payload(act_lo, remaining_fav_ids),
+            payload=self._build_favorites_reorder_payload(act_lo, remaining_btn_ids),
             ack_opcode=0x0103,
         ):
             return None
@@ -2136,8 +2141,8 @@ class X1Proxy:
 
         return {
             "activity_id": act_lo,
-            "deleted_fav_id": fav_lo,
-            "remaining": len(remaining_fav_ids),
+            "deleted_button_id": btn_lo,
+            "remaining": len(remaining_btn_ids),
             "status": "success",
         }
 
