@@ -2003,14 +2003,20 @@ class X1Proxy:
     def reorder_favorites(
         self,
         activity_id: int,
-        ordered_fav_ids: list[int],
+        ordered_button_ids: list[int],
         *,
         refresh_after_write: bool = True,
     ) -> dict[str, Any] | None:
-        """Re-order favorites for *activity_id* to match *ordered_fav_ids*.
+        """Re-order favorites for *activity_id* to match *ordered_button_ids*.
 
-        *ordered_fav_ids* is the complete list of hub-internal favorite IDs in
-        the desired display order (first element = position 1).
+        *ordered_button_ids* is the list of ``button_id`` values (from
+        ``get_activity_favorite_slots``) in the desired display order
+        (first element = position 1).
+
+        button_id is the display slot assigned at creation time and is the
+        same value returned by the ``get_favorites`` service.  Internally
+        the hub uses different fav_id identifiers; this method fetches the
+        current ordering to resolve the mapping before sending.
 
         Protocol sequence (mirrors the Sofabaton app):
             1. family 0x61 SET_FAVORITES_ORDER → ACK 0x0103
@@ -2021,6 +2027,31 @@ class X1Proxy:
             return None
 
         act_lo = activity_id & 0xFF
+
+        # Fetch current ordering to resolve button_id (display slot) → fav_id
+        current_order = self.request_favorites_order(act_lo)
+        if current_order is None:
+            log.warning("[FAV_REORDER] could not fetch current order act=0x%02X", act_lo)
+            return None
+
+        slot_to_fav = {slot: fav_id for fav_id, slot in current_order}
+        ordered_fav_ids: list[int] = []
+        for btn in ordered_button_ids:
+            btn_lo = btn & 0xFF
+            fav_id = slot_to_fav.get(btn_lo)
+            if fav_id is None:
+                log.warning(
+                    "[FAV_REORDER] button_id=0x%02X not found in current order for act=0x%02X, skipping",
+                    btn_lo,
+                    act_lo,
+                )
+                continue
+            ordered_fav_ids.append(fav_id)
+
+        if not ordered_fav_ids:
+            log.warning("[FAV_REORDER] no valid button_ids resolved for act=0x%02X", act_lo)
+            return None
+
         self.start_roku_create()
 
         if not self._send_roku_step(
@@ -2047,7 +2078,7 @@ class X1Proxy:
 
         return {
             "activity_id": act_lo,
-            "order": [f & 0xFF for f in ordered_fav_ids],
+            "order": [f & 0xFF for f in ordered_button_ids],
             "status": "success",
         }
 
@@ -2086,9 +2117,12 @@ class X1Proxy:
             log.warning("[FAV_DELETE] could not fetch current order act=0x%02X", act_lo)
             return None
 
-        # Remove the target button_id and re-slot the rest
-        remaining_btn_ids = [fid for fid, _slot in current_order if (fid & 0xFF) != btn_lo]
-        if len(remaining_btn_ids) == len(current_order):
+        # button_id is the display slot (1-based position); fav_id is the hub's
+        # internal identifier for that favorite — they are not the same value.
+        # Build a slot→fav_id mapping from the hub's order response.
+        slot_to_fav = {slot: fav_id for fav_id, slot in current_order}
+        target_fav_id = slot_to_fav.get(btn_lo)
+        if target_fav_id is None:
             log.warning(
                 "[FAV_DELETE] button_id=0x%02X not found in current order for act=0x%02X",
                 btn_lo,
@@ -2096,20 +2130,22 @@ class X1Proxy:
             )
             return None
 
+        remaining_fav_ids = [fid for fid, _slot in current_order if fid != target_fav_id]
         log.info(
-            "[FAV_DELETE] act=0x%02X deleting button_id=0x%02X; %d remaining",
+            "[FAV_DELETE] act=0x%02X deleting button_id=0x%02X (fav_id=0x%02X); %d remaining",
             act_lo,
             btn_lo,
-            len(remaining_btn_ids),
+            target_fav_id,
+            len(remaining_fav_ids),
         )
 
         self.start_roku_create()
 
         # Step 1: signal deletion to hub (hub takes ~5 s to process)
         if not self._send_roku_step(
-            step_name=f"fav-delete-10[act=0x{act_lo:02X} btn=0x{btn_lo:02X}]",
+            step_name=f"fav-delete-10[act=0x{act_lo:02X} fav=0x{target_fav_id:02X}]",
             family=FAMILY_FAV_DELETE,
-            payload=bytes([act_lo, btn_lo]),
+            payload=bytes([act_lo, target_fav_id & 0xFF]),
             ack_opcode=0x0103,
             timeout=7.5,
         ):
@@ -2119,7 +2155,7 @@ class X1Proxy:
         if not self._send_roku_step(
             step_name=f"fav-delete-reorder-61[act=0x{act_lo:02X}]",
             family=0x61,
-            payload=self._build_favorites_reorder_payload(act_lo, remaining_btn_ids),
+            payload=self._build_favorites_reorder_payload(act_lo, remaining_fav_ids),
             ack_opcode=0x0103,
         ):
             return None
@@ -2142,7 +2178,7 @@ class X1Proxy:
         return {
             "activity_id": act_lo,
             "deleted_button_id": btn_lo,
-            "remaining": len(remaining_btn_ids),
+            "remaining": len(remaining_fav_ids),
             "status": "success",
         }
 
