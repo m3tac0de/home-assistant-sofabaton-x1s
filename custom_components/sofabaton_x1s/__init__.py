@@ -763,7 +763,16 @@ async def _async_handle_get_favorites(call: ServiceCall):
     if activity_id < 1 or activity_id > 255:
         raise ValueError("activity_id must be between 1 and 255")
 
-    return {"favorites": hub.get_favorites(activity_id=activity_id)}
+    order = await hub.async_request_favorites_order(activity_id)
+    if order is None:
+        raise ValueError(f"Hub did not respond to favorites order request for activity {activity_id}")
+
+    return {
+        "favorites": [
+            {"button_id": fav_id, "slot": slot}
+            for fav_id, slot in sorted(order, key=lambda p: p[1])
+        ]
+    }
 
 
 async def _async_handle_reorder_favorites(call: ServiceCall):
