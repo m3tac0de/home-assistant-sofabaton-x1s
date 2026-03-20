@@ -2492,10 +2492,11 @@ class X1Proxy:
             ):
                 return None
 
+        _7746_base = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 111)
         if not self._send_roku_step(
             step_name="sync-stage-7746",
             family=0x46,
-            payload=bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 112),
+            payload=_7746_base + bytes([(sum(_7746_base) - 2) & 0xFF]),
             ack_opcode=0x0103,
         ):
             return None
@@ -2608,10 +2609,11 @@ class X1Proxy:
         ):
             return None
 
+        _7746_base = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 111)
         if not self._send_roku_step(
             step_name="sync-stage-7746",
             family=0x46,
-            payload=bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 112),
+            payload=_7746_base + bytes([(sum(_7746_base) - 2) & 0xFF]),
             ack_opcode=0x0103,
         ):
             return None

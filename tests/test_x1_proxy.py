@@ -344,6 +344,9 @@ def test_create_wifi_device_replays_sequence(monkeypatch) -> None:
     assert any((0x013E, 0xAB) in wait for wait in ack_waits)
     assert any((0x0112, 0xC6) in wait for wait in ack_waits)
     assert any((0x0112, 0xC7) in wait for wait in ack_waits)
+    frame_7746 = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x46)
+    expected_token = (sum(frame_7746[:-1]) - 2) & 0xFF
+    assert frame_7746[-1] == expected_token
 
 
 def test_create_wifi_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
@@ -457,7 +460,9 @@ def test_create_wifi_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     assert finalize_payload[10] == 0x1C
     assert encoded_name in finalize_payload
     assert b"\xfc\x00\x00\xfc\x02\x00\x00\x00\xfc\x00\xfc\x01" in finalize_payload
-
+    frame_7746 = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x46)
+    expected_token = (sum(frame_7746[:-1]) - 2) & 0xFF
+    assert frame_7746[-1] == expected_token
 
 
 def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
