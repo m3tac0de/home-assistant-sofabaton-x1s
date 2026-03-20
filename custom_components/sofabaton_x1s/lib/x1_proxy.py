@@ -2009,14 +2009,10 @@ class X1Proxy:
     ) -> dict[str, Any] | None:
         """Re-order favorites for *activity_id* to match *ordered_button_ids*.
 
-        *ordered_button_ids* is the list of ``button_id`` values (from
-        ``get_activity_favorite_slots``) in the desired display order
-        (first element = position 1).
-
-        button_id is the display slot assigned at creation time and is the
-        same value returned by the ``get_favorites`` service.  Internally
-        the hub uses different fav_id identifiers; this method fetches the
-        current ordering to resolve the mapping before sending.
+        *ordered_button_ids* is the list of ``button_id`` values returned by
+        the ``get_favorites`` service in the desired display order
+        (first element = position 1).  button_id equals fav_id (the hub's
+        internal identifier from FAV_ORDER_RESP).
 
         Protocol sequence (mirrors the Sofabaton app):
             1. family 0x61 SET_FAVORITES_ORDER → ACK 0x0103
@@ -2028,28 +2024,28 @@ class X1Proxy:
 
         act_lo = activity_id & 0xFF
 
-        # Fetch current ordering to resolve button_id (display slot) → fav_id
+        # Fetch current ordering to validate the supplied fav_ids
         current_order = self.request_favorites_order(act_lo)
         if current_order is None:
             log.warning("[FAV_REORDER] could not fetch current order act=0x%02X", act_lo)
             return None
 
-        slot_to_fav = {slot: fav_id for fav_id, slot in current_order}
+        # button_id == fav_id (as returned by get_favorites); use directly.
+        known_fav_ids = {fid for fid, _slot in current_order}
         ordered_fav_ids: list[int] = []
         for btn in ordered_button_ids:
             btn_lo = btn & 0xFF
-            fav_id = slot_to_fav.get(btn_lo)
-            if fav_id is None:
+            if btn_lo not in known_fav_ids:
                 log.warning(
-                    "[FAV_REORDER] button_id=0x%02X not found in current order for act=0x%02X, skipping",
+                    "[FAV_REORDER] fav_id=0x%02X not in current order for act=0x%02X, skipping",
                     btn_lo,
                     act_lo,
                 )
                 continue
-            ordered_fav_ids.append(fav_id)
+            ordered_fav_ids.append(btn_lo)
 
         if not ordered_fav_ids:
-            log.warning("[FAV_REORDER] no valid button_ids resolved for act=0x%02X", act_lo)
+            log.warning("[FAV_REORDER] no valid fav_ids for act=0x%02X", act_lo)
             return None
 
         self.start_roku_create()
@@ -2091,16 +2087,15 @@ class X1Proxy:
     ) -> dict[str, Any] | None:
         """Delete the favorite identified by *button_id* from *activity_id*.
 
-        *button_id* is the same value stored in ``activity_favorite_slots`` —
-        the slot_id assigned when the favorite was created via
-        ``command_to_favorite``.  Use ``get_activity_favorite_slots`` to
-        discover available button_ids and the device/command they represent.
+        *button_id* is the fav_id returned by the ``get_favorites`` service —
+        the hub-internal identifier for the favorite (same value as in the
+        FAV_ORDER_RESP).
 
         The hub requires the remaining ordered list to be re-sent after the
         deletion.  This method first fetches the current ordering from the hub,
         removes the specified entry, then executes:
 
-            1. family 0x10 DELETE_FAV (act_lo, button_id) → ACK 0x0103  (~5 s hub delay)
+            1. family 0x10 DELETE_FAV (act_lo, fav_id) → ACK 0x0103  (~5 s hub delay)
             2. family 0x61 SET_FAVORITES_ORDER (remaining) → ACK 0x0103
             3. family 0x65 COMMIT                          → ACK 0x0103
         """
@@ -2109,7 +2104,7 @@ class X1Proxy:
             return None
 
         act_lo = activity_id & 0xFF
-        btn_lo = button_id & 0xFF
+        btn_lo = button_id & 0xFF  # btn_lo IS the fav_id (get_favorites returns fav_id as button_id)
 
         # Fetch current ordering so we can build the post-delete list
         current_order = self.request_favorites_order(act_lo)
@@ -2117,25 +2112,20 @@ class X1Proxy:
             log.warning("[FAV_DELETE] could not fetch current order act=0x%02X", act_lo)
             return None
 
-        # button_id is the display slot (1-based position); fav_id is the hub's
-        # internal identifier for that favorite — they are not the same value.
-        # Build a slot→fav_id mapping from the hub's order response.
-        slot_to_fav = {slot: fav_id for fav_id, slot in current_order}
-        target_fav_id = slot_to_fav.get(btn_lo)
-        if target_fav_id is None:
+        # button_id == fav_id as returned by get_favorites; search directly.
+        if not any(fid == btn_lo for fid, _slot in current_order):
             log.warning(
-                "[FAV_DELETE] button_id=0x%02X not found in current order for act=0x%02X",
+                "[FAV_DELETE] fav_id=0x%02X not found in current order for act=0x%02X",
                 btn_lo,
                 act_lo,
             )
             return None
 
-        remaining_fav_ids = [fid for fid, _slot in current_order if fid != target_fav_id]
+        remaining_fav_ids = [fid for fid, _slot in current_order if fid != btn_lo]
         log.info(
-            "[FAV_DELETE] act=0x%02X deleting button_id=0x%02X (fav_id=0x%02X); %d remaining",
+            "[FAV_DELETE] act=0x%02X deleting fav_id=0x%02X; %d remaining",
             act_lo,
             btn_lo,
-            target_fav_id,
             len(remaining_fav_ids),
         )
 
@@ -2143,9 +2133,9 @@ class X1Proxy:
 
         # Step 1: signal deletion to hub (hub takes ~5 s to process)
         if not self._send_roku_step(
-            step_name=f"fav-delete-10[act=0x{act_lo:02X} fav=0x{target_fav_id:02X}]",
+            step_name=f"fav-delete-10[act=0x{act_lo:02X} fav=0x{btn_lo:02X}]",
             family=FAMILY_FAV_DELETE,
-            payload=bytes([act_lo, target_fav_id & 0xFF]),
+            payload=bytes([act_lo, btn_lo]),
             ack_opcode=0x0103,
             timeout=7.5,
         ):
