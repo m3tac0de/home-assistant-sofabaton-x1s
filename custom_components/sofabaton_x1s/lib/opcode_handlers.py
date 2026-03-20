@@ -1299,6 +1299,8 @@ class DeviceButtonFamilyHandler(BaseFrameHandler):
             self._header.handle(frame)
             return
 
+        self._payload.handle(frame)
+
 
 @register_handler(opcode_families_low=(FAMILY_FAV_ORDER_RESP,), directions=("H→A",))
 class FavoritesOrderHandler(BaseFrameHandler):
@@ -1355,5 +1357,3 @@ class FavoritesOrderHandler(BaseFrameHandler):
 
         # Signal any waiting request_favorites_order() call
         proxy.notify_roku_ack(self.SYNTHETIC_ACK, bytes([act_lo]))
-
-        self._payload.handle(frame)
