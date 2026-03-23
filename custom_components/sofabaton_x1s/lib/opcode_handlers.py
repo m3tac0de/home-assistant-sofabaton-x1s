@@ -15,6 +15,7 @@ from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
     FAMILY_DEVBTNS,
+    FAMILY_FAV_ORDER_RESP,
     FAMILY_MACROS,
     FAMILY_KEYMAP,
     OP_ACK_READY,
@@ -1299,3 +1300,60 @@ class DeviceButtonFamilyHandler(BaseFrameHandler):
             return
 
         self._payload.handle(frame)
+
+
+@register_handler(opcode_families_low=(FAMILY_FAV_ORDER_RESP,), directions=("H→A",))
+class FavoritesOrderHandler(BaseFrameHandler):
+    """Parse hub response containing current favorites ordering for an activity.
+
+    Triggered by the app sending OP_FAV_ORDER_REQ (family 0x62 / opcode 0x0162).
+    The hub replies with a family-0x63 frame whose payload is:
+
+        [01 00 01 01 00 01] [act_lo] [fav_id slot] × N
+
+    Each (fav_id, slot) pair describes which hub-internal favorite identifier
+    occupies which display position (slot 1 = first shown).
+
+    After parsing the pairs are stored in ``proxy.state.activity_favorites_order``
+    and a synthetic ACK ``0xFF63`` is fired so that
+    ``wait_for_roku_ack_any([(0xFF63, act_lo)])`` can unblock.
+    """
+
+    # Synthetic opcode used to signal completion via notify_roku_ack
+    SYNTHETIC_ACK = 0xFF63
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy = frame.proxy
+        payload = frame.payload
+
+        # Minimum: 6-byte fixed header + 1 act_lo byte
+        if len(payload) < 7:
+            log.debug("[FAV_ORDER] payload too short (%dB), skipping", len(payload))
+            return
+
+        act_lo = payload[6] & 0xFF
+        pairs_data = payload[7:]
+
+        if len(pairs_data) % 2 != 0:
+            log.warning(
+                "[FAV_ORDER] act=0x%02X odd pairs length %d, truncating",
+                act_lo,
+                len(pairs_data),
+            )
+            pairs_data = pairs_data[: len(pairs_data) - 1]
+
+        pairs: list[tuple[int, int]] = [
+            (pairs_data[i], pairs_data[i + 1])
+            for i in range(0, len(pairs_data), 2)
+        ]
+
+        proxy.state.activity_favorites_order[act_lo] = pairs
+        log.info(
+            "[FAV_ORDER] act=0x%02X received %d favorite(s): %s",
+            act_lo,
+            len(pairs),
+            " ".join(f"fav{fav}→slot{slot}" for fav, slot in pairs),
+        )
+
+        # Signal any waiting request_favorites_order() call
+        proxy.notify_roku_ack(self.SYNTHETIC_ACK, bytes([act_lo]))

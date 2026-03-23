@@ -248,6 +248,11 @@ FAMILY_MACROS = 0x13  # macro pages (OP_MACROS_A1/B1/A2/B2)
 FAMILY_KEYMAP = 0x3D  # keymap / continuation / devbtn-extra pages
 FAMILY_DEVBTNS = 0x5D  # device button pages (header, body, tail, variants)
 
+# Favorites reorder / delete families (observed in app traffic)
+FAMILY_FAV_DELETE = 0x10      # A→H: delete a single favorite from an activity (opcode 0x0210)
+FAMILY_FAV_ORDER_REQ = 0x62   # A→H: request current favorites ordering (opcode 0x0162)
+FAMILY_FAV_ORDER_RESP = 0x63  # H→A: hub returns current favorites ordering (opcode variable)
+
 
 def group_known_opcodes_by_family() -> dict[int, list[str]]:
     """Return a mapping of low-byte opcode families to names defined here."""
@@ -349,4 +354,7 @@ __all__ = [
     "FAMILY_MACROS",
     "FAMILY_KEYMAP",
     "FAMILY_DEVBTNS",
+    "FAMILY_FAV_DELETE",
+    "FAMILY_FAV_ORDER_REQ",
+    "FAMILY_FAV_ORDER_RESP",
 ]

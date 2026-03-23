@@ -13,7 +13,7 @@ from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -556,6 +556,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "delete_device", _async_handle_delete_device)
     if not hass.services.has_service(DOMAIN, "command_to_favorite"):
         hass.services.async_register(DOMAIN, "command_to_favorite", _async_handle_command_to_favorite)
+    if not hass.services.has_service(DOMAIN, "get_favorites"):
+        hass.services.async_register(DOMAIN, "get_favorites", _async_handle_get_favorites, supports_response=SupportsResponse.OPTIONAL)
+    if not hass.services.has_service(DOMAIN, "reorder_favorites"):
+        hass.services.async_register(DOMAIN, "reorder_favorites", _async_handle_reorder_favorites)
+    if not hass.services.has_service(DOMAIN, "delete_favorite"):
+        hass.services.async_register(DOMAIN, "delete_favorite", _async_handle_delete_favorite)
     if not hass.services.has_service(DOMAIN, "command_to_button"):
         hass.services.async_register(DOMAIN, "command_to_button", _async_handle_command_to_button)
     if not hass.services.has_service(DOMAIN, "sync_command_config"):
@@ -607,6 +613,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "device_to_activity")
             hass.services.async_remove(DOMAIN, "delete_device")
             hass.services.async_remove(DOMAIN, "command_to_favorite")
+            hass.services.async_remove(DOMAIN, "get_favorites")
+            hass.services.async_remove(DOMAIN, "reorder_favorites")
+            hass.services.async_remove(DOMAIN, "delete_favorite")
             hass.services.async_remove(DOMAIN, "command_to_button")
             hass.services.async_remove(DOMAIN, "sync_command_config")
             #hass.services.async_remove(DOMAIN, "create_ip_button")
@@ -741,6 +750,72 @@ async def _async_handle_command_to_favorite(call: ServiceCall):
         device_id=device_id,
         command_id=command_id,
         **kwargs,
+    )
+
+
+async def _async_handle_get_favorites(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    activity_id = int(call.data["activity_id"])
+    if activity_id < 1 or activity_id > 255:
+        raise ValueError("activity_id must be between 1 and 255")
+
+    order = await hub.async_request_favorites_order(activity_id)
+    if order is None:
+        raise ValueError(f"Hub did not respond to favorites order request for activity {activity_id}")
+
+    return {
+        "favorites": [
+            {"button_id": fav_id, "slot": slot}
+            for fav_id, slot in sorted(order, key=lambda p: p[1])
+        ]
+    }
+
+
+async def _async_handle_reorder_favorites(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_reorder_favorites")
+
+    activity_id = int(call.data["activity_id"])
+    ordered_button_ids = [int(x) for x in call.data["order"]]
+
+    if activity_id < 1 or activity_id > 255:
+        raise ValueError("activity_id must be between 1 and 255")
+    if not ordered_button_ids:
+        raise ValueError("order must be a non-empty list of button_ids")
+
+    return await hub.async_reorder_favorites(
+        activity_id=activity_id,
+        ordered_button_ids=ordered_button_ids,
+    )
+
+
+async def _async_handle_delete_favorite(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_delete_favorite")
+
+    activity_id = int(call.data["activity_id"])
+    button_id = int(call.data["button_id"])
+
+    if activity_id < 1 or activity_id > 255:
+        raise ValueError("activity_id must be between 1 and 255")
+    if button_id < 1 or button_id > 255:
+        raise ValueError("button_id must be between 1 and 255")
+
+    return await hub.async_delete_favorite(
+        activity_id=activity_id,
+        button_id=button_id,
     )
 
 

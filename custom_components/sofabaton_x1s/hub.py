@@ -625,6 +625,67 @@ class SofabatonHub:
             )
         )
 
+    def get_favorites(self, activity_id: int) -> list[dict[str, Any]]:
+        """Return cached favorites for *activity_id* (no hub round-trip).
+
+        Each entry contains ``button_id``, ``device_id``, ``command_id``, and
+        ``source``.  Pass ``button_id`` values to ``async_delete_favorite`` or
+        ``async_reorder_favorites``.
+        """
+        act_lo = activity_id & 0xFF
+        return self._proxy.state.get_activity_favorite_slots(act_lo)
+
+    async def async_request_favorites_order(
+        self,
+        activity_id: int,
+    ) -> list[tuple[int, int]] | None:
+        """Fetch the current favorites ordering for *activity_id* from the hub."""
+        return await self.hass.async_add_executor_job(
+            self._proxy.request_favorites_order,
+            activity_id,
+        )
+
+    async def async_reorder_favorites(
+        self,
+        activity_id: int,
+        ordered_button_ids: list[int],
+        *,
+        refresh_after_write: bool = True,
+    ) -> dict[str, Any] | None:
+        """Re-order favorites for *activity_id* to match *ordered_button_ids*.
+
+        *ordered_button_ids* is the list of ``button_id`` values (from
+        ``get_favorites``) in the desired display order.
+        """
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.reorder_favorites,
+                activity_id,
+                ordered_button_ids,
+                refresh_after_write=refresh_after_write,
+            )
+        )
+
+    async def async_delete_favorite(
+        self,
+        activity_id: int,
+        button_id: int,
+        *,
+        refresh_after_write: bool = True,
+    ) -> dict[str, Any] | None:
+        """Delete the favorite identified by *button_id* from *activity_id*.
+
+        Use ``get_favorites`` to discover available ``button_id`` values.
+        """
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.delete_favorite,
+                activity_id,
+                button_id,
+                refresh_after_write=refresh_after_write,
+            )
+        )
+
     async def async_command_to_button(
         self,
         activity_id: int,

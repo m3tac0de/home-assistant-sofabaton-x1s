@@ -262,3 +262,81 @@ sync_command_config:
       default: Home Assistant
       selector:
         text:
+
+get_favorites:
+  name: Get activity favorites
+  description: Fetches the current ordered favorites list from the hub for the given activity. Each entry contains button_id (use with delete_favorite / reorder_favorites) and slot (display position).
+  response_fields:
+    favorites:
+      name: Favorites
+      description: List of favorite entries from the hub, each with button_id and slot.
+      selector:
+        object:
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 101
+          max: 255
+          mode: box
+
+reorder_favorites:
+  name: Reorder activity favorites
+  description: Reorders the favorites of an activity on the hub. Provide the button_ids in the desired new order.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 101
+          max: 255
+          mode: box
+    ordered_button_ids:
+      name: Ordered button ids
+      description: List of button_id values in the desired display order (use get_favorites to retrieve them).
+      required: true
+      selector:
+        object:
+
+delete_favorite:
+  name: Delete activity favorite
+  description: Deletes a single favorite from an activity on the hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 101
+          max: 255
+          mode: box
+    button_id:
+      name: Button id
+      description: The button_id of the favorite to delete (use get_favorites to retrieve it).
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
