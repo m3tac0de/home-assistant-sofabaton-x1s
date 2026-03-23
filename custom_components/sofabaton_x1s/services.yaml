@@ -244,7 +244,6 @@ command_to_button:
           max: 255
           mode: box
 
-
 sync_command_config:
   name: Sync command configuration
   description: Deploys persisted command-slot configuration to the hub by recreating the managed Wifi device and applying activity mappings.
@@ -266,12 +265,6 @@ sync_command_config:
 get_favorites:
   name: Get activity favorites
   description: Fetches the current ordered favorites list from the hub for the given activity. Each entry contains button_id (use with delete_favorite / reorder_favorites) and slot (display position).
-  response_fields:
-    favorites:
-      name: Favorites
-      description: List of favorite entries from the hub, each with button_id and slot.
-      selector:
-        object:
   fields:
     device:
       name: Sofabaton hub
