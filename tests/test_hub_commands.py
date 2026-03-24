@@ -164,8 +164,47 @@ def test_roku_http_post_updates_last_ip_command_state():
     assert ip_command["entity_id"] == 7
     assert ip_command["command_label"] == "Lights On"
     assert ip_command["entity_name"] == "Living Room TV"
+    assert ip_command["press_type"] == "short"
 
     assert hub.get_app_activations() == []
+
+    loop.close()
+
+
+def test_roku_http_post_parses_long_press_suffix():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/7/Lights_On/Living_Room_TV/long",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    ip_command = hub.get_last_ip_command()
+    assert ip_command
+    assert ip_command["command_label"] == "Lights On"
+    assert ip_command["entity_name"] == "Living Room TV"
+    assert ip_command["press_type"] == "long"
 
     loop.close()
 

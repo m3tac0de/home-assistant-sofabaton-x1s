@@ -111,6 +111,16 @@ _ROKU_APP_SLOTS: list[tuple[int, int]] = [
     (0x1F, 0x4E28),
     (0x20, 0x4E29),
     (0x21, 0x4E2A),
+    (0x22, 0x4E2B),
+    (0x23, 0x4E2C),
+    (0x24, 0x4E2D),
+    (0x25, 0x4E2E),
+    (0x26, 0x4E2F),
+    (0x27, 0x4E30),
+    (0x28, 0x4E31),
+    (0x29, 0x4E32),
+    (0x2A, 0x4E33),
+    (0x2B, 0x4E34),
 ]
 
 
@@ -2397,7 +2407,7 @@ class X1Proxy:
     def create_wifi_device(
         self,
         device_name: str = "Home Assistant",
-        commands: list[str] | None = None,
+        commands: list[Any] | None = None,
         request_port: int = 8060,
         brand_name: str = "m3tac0de",
     ) -> dict[str, Any] | None:
@@ -2436,12 +2446,29 @@ class X1Proxy:
         command_defs: list[tuple[int, int, str, str]] = []
 
         if commands:
-            for idx, command_name in enumerate(commands[: len(_ROKU_APP_SLOTS)]):
+            for idx, command_spec in enumerate(commands[: len(_ROKU_APP_SLOTS)]):
                 slot, code = _ROKU_APP_SLOTS[idx]
+                if isinstance(command_spec, dict):
+                    command_name = str(
+                        command_spec.get("display_name")
+                        or command_spec.get("name")
+                        or f"Command {idx + 1}"
+                    ).strip() or f"Command {idx + 1}"
+                    trigger_name = str(
+                        command_spec.get("trigger_name")
+                        or command_spec.get("name")
+                        or command_name
+                    ).strip() or command_name
+                    press_type = str(command_spec.get("press_type") or "short").strip().lower()
+                else:
+                    command_name = str(command_spec or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                    trigger_name = command_name
+                    press_type = "short"
                 action = self._build_launch_action_path(
                     device_id=device_id,
-                    command_name=command_name,
+                    command_name=trigger_name,
                     device_name=device_name,
+                    press_type=press_type,
                 )
                 command_defs.append((slot, code, command_name, action))
 
@@ -2689,11 +2716,22 @@ class X1Proxy:
         log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
 
-    def _build_launch_action_path(self, *, device_id: int, command_name: str, device_name: str) -> str:
+    def _build_launch_action_path(
+        self,
+        *,
+        device_id: int,
+        command_name: str,
+        device_name: str,
+        press_type: str = "short",
+    ) -> str:
         hub_action_id = self._stable_hub_action_id()
         normalized_command = command_name.replace(" ", "_")
         normalized_device = device_name.replace(" ", "_")
-        return f"launch/{hub_action_id}/{device_id}/{normalized_command}/{normalized_device}"
+        normalized_press_type = "long" if str(press_type).lower() == "long" else "short"
+        return (
+            f"launch/{hub_action_id}/{device_id}/{normalized_command}/"
+            f"{normalized_device}/{normalized_press_type}"
+        )
 
     def _build_virtual_ip_http_request(self, host: str, port: int, path: str) -> bytes:
         normalized_path = f"/{path.lstrip('/')}"

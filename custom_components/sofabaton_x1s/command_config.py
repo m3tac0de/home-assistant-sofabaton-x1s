@@ -12,8 +12,8 @@ from homeassistant.helpers.storage import Store
 from .const import DEFAULT_ROKU_LISTEN_PORT, DOMAIN
 
 COMMAND_CONFIG_STORE_VERSION = 1
-COMMAND_CONFIG_STORE_MINOR_VERSION = 1
-COMMAND_HASH_VERSION = "v2"
+COMMAND_CONFIG_STORE_MINOR_VERSION = 2
+COMMAND_HASH_VERSION = "v3"
 COMMAND_BRAND_PREFIX = "m3tac0de"
 COMMAND_SLOT_COUNT = 10
 
@@ -27,8 +27,10 @@ def _default_slot(idx: int) -> dict[str, Any]:
         "name": f"Command {idx + 1}",
         "add_as_favorite": True,
         "hard_button": "",
+        "long_press_enabled": False,
         "activities": [],
         "action": deepcopy(DEFAULT_COMMAND_ACTION),
+        "long_press_action": deepcopy(DEFAULT_COMMAND_ACTION),
     }
 
 
@@ -44,6 +46,8 @@ def _normalize_slot(slot: Any, idx: int) -> dict[str, Any]:
         "name": str(slot.get("name", f"Command {idx + 1}")),
         "add_as_favorite": bool(slot.get("add_as_favorite", False)),
         "hard_button": str(slot.get("hard_button", "")),
+        "long_press_enabled": bool(slot.get("long_press_enabled", False))
+        and bool(str(slot.get("hard_button", "")).strip()),
         "activities": [
             str(activity)
             for activity in slot.get("activities", [])
@@ -52,6 +56,7 @@ def _normalize_slot(slot: Any, idx: int) -> dict[str, Any]:
         if isinstance(slot.get("activities"), list)
         else [],
         "action": _normalize_action(slot.get("action")),
+        "long_press_action": _normalize_action(slot.get("long_press_action")),
     }
 
 
@@ -100,6 +105,8 @@ def _hash_payload(commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "name": str(slot.get("name", "")).strip(),
                 "is_favorite": bool(slot.get("add_as_favorite", False)),
                 "mapped_key": str(slot.get("hard_button", "")).strip(),
+                "long_press_enabled": bool(slot.get("long_press_enabled", False))
+                and bool(str(slot.get("hard_button", "")).strip()),
                 "activities": sorted(
                     [str(activity).strip() for activity in slot.get("activities", []) if str(activity).strip()],
                 ),
@@ -110,6 +117,7 @@ def _hash_payload(commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
         key=lambda row: (
             row["name"].lower(),
             row["mapped_key"],
+            "1" if row["long_press_enabled"] else "0",
             "1" if row["is_favorite"] else "0",
             ",".join(row["activities"]),
         )

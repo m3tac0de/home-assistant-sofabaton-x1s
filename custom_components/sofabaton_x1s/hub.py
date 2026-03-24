@@ -49,6 +49,8 @@ from .command_config import COMMAND_BRAND_PREFIX, count_configured_command_slots
 _LOGGER = logging.getLogger(__name__)
 
 _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.DOWN, "left": ButtonName.LEFT, "right": ButtonName.RIGHT, "ok": ButtonName.OK, "back": ButtonName.BACK, "home": ButtonName.HOME, "menu": ButtonName.MENU, "volup": ButtonName.VOL_UP, "voldn": ButtonName.VOL_DOWN, "mute": ButtonName.MUTE, "chup": ButtonName.CH_UP, "chdn": ButtonName.CH_DOWN, "guide": ButtonName.GUIDE, "dvr": ButtonName.DVR, "play": ButtonName.PLAY, "exit": ButtonName.EXIT, "rew": ButtonName.REW, "pause": ButtonName.PAUSE, "fwd": ButtonName.FWD, "red": ButtonName.RED, "green": ButtonName.GREEN, "yellow": ButtonName.YELLOW, "blue": ButtonName.BLUE, "a": ButtonName.A, "b": ButtonName.B, "c": ButtonName.C}
+_WIFI_COMMAND_SLOT_COUNT = 10
+_WIFI_COMMAND_LONG_PRESS_OFFSET = 10
 
 
 def get_hub_model(entry: ConfigEntry) -> str:
@@ -563,7 +565,7 @@ class SofabatonHub:
     async def async_create_wifi_device(
         self,
         device_name: str = "Home Assistant",
-        commands: list[str] | None = None,
+        commands: list[Any] | None = None,
         request_port: int = 8060,
         brand_name: str = "m3tac0de",
     ) -> dict[str, Any] | None:
@@ -1039,14 +1041,19 @@ class SofabatonHub:
         device_id = -1
         command_label = ""
         device_name = None
+        press_type = "short"
         if len(parts) >= 4 and parts[0] == "launch":
             try:
                 device_id = int(parts[2])
             except ValueError:
                 device_id = -1
             command_label = unquote(parts[3]).replace("_", " ")
-            if len(parts) >= 5:
-                device_name = unquote("/".join(parts[4:])).replace("_", " ")
+            trailing_parts = parts[4:]
+            if trailing_parts and trailing_parts[-1] in ("short", "long"):
+                press_type = trailing_parts[-1]
+                trailing_parts = trailing_parts[:-1]
+            if trailing_parts:
+                device_name = unquote("/".join(trailing_parts)).replace("_", " ")
 
         timestamp = datetime.now(timezone.utc)
         record = {
@@ -1056,6 +1063,7 @@ class SofabatonHub:
             "command_id": command_label,
             "command_label": command_label,
             "button_label": command_label,
+            "press_type": press_type,
             "timestamp": timestamp.timestamp(),
             "iso_time": timestamp.isoformat(),
             "source_ip": source_ip,
@@ -1065,7 +1073,7 @@ class SofabatonHub:
         }
         self._last_ip_command = record
         async_dispatcher_send(self.hass, signal_ip_commands(self.entry_id))
-        await self._async_maybe_run_configured_ip_action(command_label)
+        await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
 
     @property
     def is_sync_in_progress(self) -> bool:
@@ -1148,7 +1156,12 @@ class SofabatonHub:
                 blocking=True,
             )
 
-    async def _async_maybe_run_configured_ip_action(self, command_label: str) -> None:
+    async def _async_maybe_run_configured_ip_action(
+        self,
+        command_label: str,
+        *,
+        press_type: str = "short",
+    ) -> None:
         hass_data = getattr(self.hass, "data", {})
         domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
         store = domain_data.get("command_config_store")
@@ -1160,7 +1173,16 @@ class SofabatonHub:
         for slot in payload.get("commands", []):
             if normalize_command_name(slot.get("name")) != command_key:
                 continue
-            action = slot.get("action") if isinstance(slot.get("action"), dict) else {}
+            if press_type == "long":
+                if not bool(slot.get("long_press_enabled")):
+                    return
+                action = (
+                    slot.get("long_press_action")
+                    if isinstance(slot.get("long_press_action"), dict)
+                    else {}
+                )
+            else:
+                action = slot.get("action") if isinstance(slot.get("action"), dict) else {}
             try:
                 await self._async_execute_action_config(action)
             except Exception as err:  # pragma: no cover - service boundary
@@ -1261,10 +1283,25 @@ class SofabatonHub:
                     "deleted_managed_devices": len(managed),
                 }
 
-            slot_labels = [
-                str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
-                for idx, slot in enumerate(commands[:10])
-            ]
+            command_defs: list[dict[str, str]] = []
+            for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                command_defs.append(
+                    {
+                        "display_name": name,
+                        "trigger_name": name,
+                        "press_type": "short",
+                    }
+                )
+            for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                command_defs.append(
+                    {
+                        "display_name": f"{name} Long Press",
+                        "trigger_name": name,
+                        "press_type": "long",
+                    }
+                )
 
             self._set_command_sync_progress(
                 current_step=3,
@@ -1272,7 +1309,7 @@ class SofabatonHub:
             )
             created = await self.async_create_wifi_device(
                 device_name=device_name,
-                commands=slot_labels,
+                commands=command_defs,
                 request_port=request_port,
                 brand_name=brand_name,
             )
@@ -1315,7 +1352,7 @@ class SofabatonHub:
                 current_step=5,
                 message="Applying activity favorites",
             )
-            for slot_idx, slot in enumerate(commands[:10]):
+            for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
                 if not slot.get("add_as_favorite"):
                     continue
                 command_id = slot_idx + 1
@@ -1337,7 +1374,7 @@ class SofabatonHub:
                 current_step=6,
                 message="Applying activity button mappings",
             )
-            for slot_idx, slot in enumerate(commands[:10]):
+            for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
                 hard_button = str(slot.get("hard_button") or "").strip().lower()
                 if not hard_button:
                     continue
@@ -1345,6 +1382,12 @@ class SofabatonHub:
                 if not button_id:
                     continue
                 command_id = slot_idx + 1
+                long_press_enabled = bool(slot.get("long_press_enabled"))
+                long_press_command_id = (
+                    slot_idx + 1 + _WIFI_COMMAND_LONG_PRESS_OFFSET
+                    if long_press_enabled
+                    else None
+                )
                 for act in slot.get("activities", []):
                     try:
                         act_id = int(act)
@@ -1357,6 +1400,8 @@ class SofabatonHub:
                         button_id,
                         wifi_device_id,
                         command_id,
+                        long_press_device_id=wifi_device_id if long_press_enabled else None,
+                        long_press_command_id=long_press_command_id,
                         refresh_after_write=False,
                     )
 

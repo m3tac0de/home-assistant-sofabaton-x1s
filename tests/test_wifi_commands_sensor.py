@@ -70,11 +70,19 @@ def test_wifi_commands_sensor_defaults_to_waiting_state() -> None:
     assert entity.state == "Waiting for button press"
     assert entity.extra_state_attributes["from_device"] == "Waiting for button press"
     assert entity.extra_state_attributes["received_command"] == "Waiting for button press"
+    assert entity.extra_state_attributes["press_type"] == "short"
 
 
 def test_wifi_commands_sensor_flashes_then_resets(monkeypatch) -> None:
     sensor_module = _build_sensor_module()
-    hub = _Hub({"entity_name": "Living Room TV", "command_label": "Home", "timestamp": 123})
+    hub = _Hub(
+        {
+            "entity_name": "Living Room TV",
+            "command_label": "Home",
+            "press_type": "long",
+            "timestamp": 123,
+        }
+    )
     entry = SimpleNamespace(data={"mac": "aa:bb", "name": "Hub"})
 
     callback_holder = {}
@@ -95,6 +103,7 @@ def test_wifi_commands_sensor_flashes_then_resets(monkeypatch) -> None:
     assert entity.state == "Living Room TV/Home"
     assert entity.extra_state_attributes["from_device"] == "Living Room TV"
     assert entity.extra_state_attributes["received_command"] == "Home"
+    assert entity.extra_state_attributes["press_type"] == "long"
     assert callback_holder["delay"] == 0.3
 
     callback_holder["cb"](None)

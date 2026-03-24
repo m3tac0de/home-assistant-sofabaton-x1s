@@ -434,6 +434,7 @@ class SofabatonIpCommandsSensor(SensorEntity):
             return {
                 "received_command": self._DEFAULT_VALUE,
                 "from_device": self._DEFAULT_VALUE,
+                "press_type": "short",
                 "timestamp": None,
                 "source_ip": None,
             }
@@ -443,8 +444,8 @@ class SofabatonIpCommandsSensor(SensorEntity):
             or "Unknown command",
             "from_device": self._display_command.get("entity_name")
             or "Unknown device",
+            "press_type": self._display_command.get("press_type") or "short",
             "timestamp": self._display_command.get("iso_time")
             or self._display_command.get("timestamp"),
             "source_ip": self._display_command.get("source_ip"),
         }
-

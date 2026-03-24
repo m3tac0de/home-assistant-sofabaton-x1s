@@ -5188,6 +5188,9 @@ class SofabatonRemoteCardEditor extends HTMLElement {
           .sb-command-activity-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; cursor: pointer; }
           .sb-command-activity-chip.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); }
           .sb-command-action-wrap { display:flex; flex-direction:column; gap:8px; }
+          .sb-command-action-tabs { display:flex; gap:8px; }
+          .sb-command-action-tab { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 8px 12px; cursor:pointer; font: inherit; }
+          .sb-command-action-tab.active { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
           .sb-command-dialog-body ha-textfield,
           .sb-command-dialog-body ha-selector { width: 100%; }
           @media (max-width: 760px) {
@@ -5258,8 +5261,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       name: `Command ${idx + 1}`,
       add_as_favorite: true,
       hard_button: "",
+      long_press_enabled: false,
       activities: [],
       action: { action: "perform-action" },
+      long_press_action: { action: "perform-action" },
     };
   }
 
@@ -5274,10 +5279,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
             ? this._commandSlotDefault(idx).add_as_favorite
             : Boolean(item.add_as_favorite),
         hard_button: String(item.hard_button ?? ""),
+        long_press_enabled:
+          Boolean(item.long_press_enabled) && Boolean(String(item.hard_button ?? "")),
         activities: Array.isArray(item.activities)
           ? item.activities.map((id) => String(id)).filter((id) => id !== "")
           : [],
         action: this._normalizeCommandAction(item.action),
+        long_press_action: this._normalizeCommandAction(item.long_press_action),
       };
     });
   }
@@ -5713,10 +5721,13 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       name: this._sanitizeCommandName(slot?.name ?? ""),
       add_as_favorite: Boolean(slot?.add_as_favorite),
       hard_button: String(slot?.hard_button ?? ""),
+      long_press_enabled:
+        Boolean(slot?.long_press_enabled) && Boolean(String(slot?.hard_button ?? "")),
       activities: Array.isArray(slot?.activities)
         ? slot.activities.map((id) => String(id)).filter((id) => id !== "")
         : [],
       action: this._normalizeCommandAction(slot?.action),
+      long_press_action: this._normalizeCommandAction(slot?.long_press_action),
     };
   }
 
@@ -5750,6 +5761,30 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const next = { ...current, ...patch };
     this._commandEditorDrafts[idx] = this._cloneCommandSlot(next);
     return this._commandEditorDrafts[idx];
+  }
+
+  _activeCommandActionTabKey() {
+    const draft = this._activeCommandDraft();
+    if (!draft?.long_press_enabled) return "short";
+    return this._activeCommandActionTab === "long" ? "long" : "short";
+  }
+
+  _setActiveCommandActionTab(tab) {
+    this._activeCommandActionTab = tab === "long" ? "long" : "short";
+    this._renderCommandActionSection();
+  }
+
+  _commandActionForPress(slot, pressType = "short") {
+    const key = pressType === "long" ? "long_press_action" : "action";
+    return this._normalizeCommandAction(slot?.[key]);
+  }
+
+  _commandHasCustomAction(action) {
+    const details = this._commandActionDetails(action);
+    return (
+      details.service !== "perform-action" ||
+      details.entities !== "No target entity"
+    );
   }
 
   _commandSaveValidationMessage(slot = null) {
@@ -5964,9 +5999,31 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
     wrap.innerHTML = "";
 
+    if (active.long_press_enabled) {
+      const tabs = document.createElement("div");
+      tabs.className = "sb-command-action-tabs";
+      ["short", "long"].forEach((pressType) => {
+        const tab = document.createElement("button");
+        tab.type = "button";
+        tab.className =
+          `sb-command-action-tab ${this._activeCommandActionTabKey() === pressType ? "active" : ""}`.trim();
+        tab.textContent = pressType === "long" ? "Long press" : "Short press";
+        tab.addEventListener("click", (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          this._setActiveCommandActionTab(pressType);
+        });
+        tabs.appendChild(tab);
+      });
+      wrap.appendChild(tabs);
+    }
+
     const actionHelper = document.createElement("div");
     actionHelper.className = "sb-command-helper";
-    actionHelper.textContent = "Select Triggered Action";
+    actionHelper.textContent =
+      this._activeCommandActionTabKey() === "long"
+        ? "Select Long-Press Action"
+        : "Select Triggered Action";
 
     const actionSelector = document.createElement("ha-selector");
     actionSelector.hass = this._hass;
@@ -5977,9 +6034,11 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       const slotIdx = this._activeCommandSlot;
       if (!Number.isInteger(slotIdx)) return;
       const value = ev.detail?.value;
-      this._updateActiveCommandDraft({
-        action: this._normalizeCommandAction(value),
-      });
+      const patch =
+        this._activeCommandActionTabKey() === "long"
+          ? { long_press_action: this._normalizeCommandAction(value) }
+          : { action: this._normalizeCommandAction(value) };
+      this._updateActiveCommandDraft(patch);
 
       // Action editor can restructure based on action type/target; refresh only this section.
       this._renderCommandActionSection();
@@ -5989,7 +6048,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     wrap.appendChild(actionHelper);
     wrap.appendChild(actionSelector);
 
-    this._commandActionEditorSelector.value = active.action;
+    this._commandActionEditorSelector.value = this._commandActionForPress(
+      active,
+      this._activeCommandActionTabKey(),
+    );
     this._hideUiActionTypeSelector(this._commandActionEditorSelector);
   }
 
@@ -6002,16 +6064,18 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const hasHardButton = Boolean(command?.hard_button);
     const hasActivities =
       Array.isArray(command?.activities) && command.activities.length > 0;
-    const details = this._commandActionDetails(command?.action);
-    const hasCustomAction =
-      details.service !== "perform-action" ||
-      details.entities !== "No target entity";
+    const hasCustomAction = this._commandHasCustomAction(command?.action);
+    const hasCustomLongPressAction =
+      Boolean(command?.long_press_enabled) &&
+      this._commandHasCustomAction(command?.long_press_action);
     return (
       hasCustomName ||
       hasFavorite ||
       hasHardButton ||
+      Boolean(command?.long_press_enabled) ||
       hasActivities ||
-      hasCustomAction
+      hasCustomAction ||
+      hasCustomLongPressAction
     );
   }
 
@@ -6053,6 +6117,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._confirmClearSlot = null;
     this._activeCommandModal = "details";
     this._activeCommandSlot = Number(slotIndex);
+    this._activeCommandActionTab = "short";
     this._commandSaveError = "";
     this._ensureCommandDraft(this._activeCommandSlot);
     this._renderCommandsEditor();
@@ -6062,6 +6127,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._confirmClearSlot = null;
     this._activeCommandModal = "action";
     this._activeCommandSlot = Number(slotIndex);
+    this._activeCommandActionTab = "short";
     this._commandSaveError = "";
     this._ensureCommandDraft(this._activeCommandSlot);
     this._renderCommandsEditor();
@@ -6113,6 +6179,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._commandEditorNameField = null;
     this._commandEditorFavoriteInput = null;
     this._commandEditorHardButtonSelector = null;
+    this._commandEditorLongPressWrap = null;
+    this._commandEditorLongPressInput = null;
     this._commandEditorActivitiesChips = null;
     this._commandActionEditorModal = null;
     this._commandActionEditorModalTitle = null;
@@ -6492,6 +6560,14 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         mappedIcon.appendChild(mappedIconEl);
         metaLine.appendChild(mappedIcon);
 
+        if (command.long_press_enabled) {
+          const longPressIcon = document.createElement("span");
+          longPressIcon.className = "sb-command-slot-meta-icon";
+          longPressIcon.innerHTML =
+            '<ha-icon icon="mdi:timer-sand-full"></ha-icon>';
+          metaLine.appendChild(longPressIcon);
+        }
+
         const suffix = document.createElement("span");
         suffix.textContent = `in ${activityCount} ${activitiesLabel}`;
         metaLine.appendChild(suffix);
@@ -6707,17 +6783,59 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this._commandEditorHardButtonSelector = buttonSelector;
       buttonSelector.addEventListener("value-changed", (ev) => {
         const mapped = String(ev.detail?.value ?? "");
+        const hasButton = mapped !== "__none__";
         this._updateActiveCommandDraft({
-          hard_button: mapped === "__none__" ? "" : mapped,
+          hard_button: hasButton ? mapped : "",
+          long_press_enabled: hasButton
+            ? Boolean(this._activeCommandDraft()?.long_press_enabled)
+            : false,
+          long_press_action: hasButton
+            ? this._commandActionForPress(this._activeCommandDraft(), "long")
+            : this._normalizeCommandAction(null),
         });
         if (Boolean(customElements.get("ha-dropdown-item"))) {
           buttonSelector.value = mapped;
         }
+        if (!hasButton) this._activeCommandActionTab = "short";
         this._commandSaveError = "";
       });
       buttonRow.appendChild(buttonLabel);
       buttonRow.appendChild(buttonSelector);
       configBlock.appendChild(buttonRow);
+
+      const longPressWrap = document.createElement("button");
+      longPressWrap.type = "button";
+      longPressWrap.className = "sb-command-checkbox";
+      longPressWrap.style.display = "none";
+      const longPressLeft = document.createElement("div");
+      longPressLeft.className = "sb-command-checkbox-left";
+      const longPressInput = document.createElement("ha-switch");
+      this._commandEditorLongPressInput = longPressInput;
+      this._commandEditorLongPressWrap = longPressWrap;
+      const longPressIconWrap = document.createElement("span");
+      longPressIconWrap.className = "sb-command-checkbox-icon";
+      const longPressIcon = document.createElement("ha-icon");
+      longPressIcon.setAttribute("icon", "mdi:timer-sand-full");
+      longPressIconWrap.appendChild(longPressIcon);
+      const longPressText = document.createElement("span");
+      longPressText.textContent = "Enable longpress";
+      longPressLeft.appendChild(longPressIconWrap);
+      longPressLeft.appendChild(longPressText);
+      longPressWrap.appendChild(longPressLeft);
+      longPressWrap.appendChild(longPressInput);
+      longPressWrap.addEventListener("click", (ev) => {
+        if (ev.target === longPressInput) return;
+        ev.preventDefault();
+        longPressInput.checked = !longPressInput.checked;
+        longPressInput.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      longPressInput.addEventListener("change", (ev) => {
+        const checked = Boolean(ev.target?.checked);
+        this._updateActiveCommandDraft({ long_press_enabled: checked });
+        this._commandSaveError = "";
+        longPressWrap.classList.toggle("sb-command-favorite-active", checked);
+      });
+      configBlock.appendChild(longPressWrap);
 
       const activitiesRow = document.createElement("div");
       activitiesRow.className = "sb-command-input-row";
@@ -6877,6 +6995,19 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this._commandEditorHardButtonSelector.value = String(
         active.hard_button || "",
       );
+      const hasMappedButton = Boolean(String(active.hard_button || "").trim());
+      if (this._commandEditorLongPressWrap && this._commandEditorLongPressInput) {
+        this._commandEditorLongPressWrap.style.display = hasMappedButton
+          ? ""
+          : "none";
+        this._commandEditorLongPressInput.checked = Boolean(
+          hasMappedButton && active.long_press_enabled,
+        );
+        this._commandEditorLongPressWrap.classList.toggle(
+          "sb-command-favorite-active",
+          Boolean(hasMappedButton && active.long_press_enabled),
+        );
+      }
 
       const activities = this._editorActivities();
       const fallbackActivity = activities[0] ? String(activities[0].id) : null;
@@ -6928,6 +7059,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         ? String(active.hard_button)
         : "__none__";
 
+      if (!active.long_press_enabled) this._activeCommandActionTab = "short";
       this._renderCommandActionSection();
       if (this._activeCommandModal === "action") {
         this._commandEditorModal.classList.remove("open");
