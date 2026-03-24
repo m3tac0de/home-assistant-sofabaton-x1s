@@ -841,11 +841,24 @@ async def _async_handle_command_to_button(call: ServiceCall):
     if command_id < 1 or command_id > 255:
         raise ValueError("command_id must be between 1 and 255")
 
+    long_press_device_id = call.data.get("long_press_device_id")
+    long_press_command_id = call.data.get("long_press_command_id")
+    if long_press_device_id is not None:
+        long_press_device_id = int(long_press_device_id)
+        if long_press_device_id < 1 or long_press_device_id > 255:
+            raise ValueError("long_press_device_id must be between 1 and 255")
+    if long_press_command_id is not None:
+        long_press_command_id = int(long_press_command_id)
+        if long_press_command_id < 1 or long_press_command_id > 255:
+            raise ValueError("long_press_command_id must be between 1 and 255")
+
     return await hub.async_command_to_button(
         activity_id=activity_id,
         button_id=button_id,
         device_id=device_id,
         command_id=command_id,
+        long_press_device_id=long_press_device_id,
+        long_press_command_id=long_press_command_id,
     )
 
 

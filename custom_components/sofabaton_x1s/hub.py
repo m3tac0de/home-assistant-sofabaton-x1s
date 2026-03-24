@@ -693,20 +693,11 @@ class SofabatonHub:
         device_id: int,
         command_id: int,
         *,
+        long_press_device_id: int | None = None,
+        long_press_command_id: int | None = None,
         refresh_after_write: bool = True,
     ) -> dict[str, Any] | None:
         """Replay the button-mapping write sequence on the selected hub."""
-
-        if refresh_after_write:
-            return await self.hass.async_add_executor_job(
-                partial(
-                    self._proxy.command_to_button,
-                    activity_id,
-                    button_id,
-                    device_id,
-                    command_id,
-                )
-            )
 
         return await self.hass.async_add_executor_job(
             partial(
@@ -715,7 +706,9 @@ class SofabatonHub:
                 button_id,
                 device_id,
                 command_id,
-                refresh_after_write=False,
+                long_press_device_id=long_press_device_id,
+                long_press_command_id=long_press_command_id,
+                refresh_after_write=refresh_after_write,
             )
         )
 
@@ -963,7 +956,11 @@ class SofabatonHub:
             if ready and btns:
                 result[ent_id] = btns
         return result
-        
+
+    def get_all_cached_button_details(self) -> dict[int, dict[int, dict[str, int]]]:
+        """Return per-button mapping details (short + long press) from proxy cache."""
+        return dict(self._proxy.state.button_details)
+
     def get_all_cached_commands(self) -> dict[int, dict[int, str]]:
         """Build a view from the proxy's cache, without triggering new fetches."""
         result: dict[int, dict[int, str]] = {}

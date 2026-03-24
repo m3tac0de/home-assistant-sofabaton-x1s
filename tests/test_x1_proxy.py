@@ -1632,6 +1632,28 @@ def test_build_command_to_button_payload_matches_observed_sample() -> None:
     )
 
 
+def test_build_command_to_button_payload_with_long_press() -> None:
+    """Verify the long-press payload matches the captured protocol sample.
+
+    The sample was captured from the official app setting OK button (0xB0)
+    with short press (dev=0x05, cmd=0x01) and long press (dev=0x05, cmd=0x02).
+    """
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    payload = proxy._build_command_to_button_payload(
+        activity_id=0x65,
+        button_id=0xB0,
+        device_id=0x05,
+        command_id=0x01,
+        long_press_device_id=0x05,
+        long_press_command_id=0x02,
+    )
+
+    assert payload == bytes.fromhex(
+        "01 00 01 01 00 01 65 b0 05 00 00 00 00 4e 21 01 05 00 00 00 00 4e 22 02 03"
+    )
+
+
 def test_command_to_favorite_replays_sequence(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -1929,6 +1951,51 @@ def test_command_to_button_replays_sequence(monkeypatch) -> None:
     assert cleared == [(0x65, True, False, False)]
     assert requested_map == [0x65]
     assert requested_buttons == [(0x65, True)]
+
+
+def test_command_to_button_with_long_press(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: True)
+    monkeypatch.setattr(proxy, "get_buttons_for_entity", lambda ent_id, fetch_if_missing=True: ([], False))
+    monkeypatch.setattr(
+        proxy,
+        "clear_entity_cache",
+        lambda ent_id, clear_buttons=False, clear_favorites=False, clear_macros=False: None,
+    )
+
+    result = proxy.command_to_button(
+        0x65, 0xB0, 0x05, 0x01,
+        long_press_device_id=0x05,
+        long_press_command_id=0x02,
+    )
+
+    assert result == {
+        "activity_id": 0x65,
+        "button_id": 0xB0,
+        "device_id": 0x05,
+        "command_id": 0x01,
+        "long_press_device_id": 0x05,
+        "long_press_command_id": 0x02,
+        "status": "success",
+    }
+    assert sent[0][1] == bytes.fromhex(
+        "01 00 01 01 00 01 65 b0 05 00 00 00 00 4e 21 01 05 00 00 00 00 4e 22 02 03"
+    )
 
 
 def test_command_to_button_can_skip_refresh_after_write(monkeypatch) -> None:

@@ -239,10 +239,10 @@ def test_command_to_button_executor_job_uses_partial_not_kwargs():
         False,
     )
 
-    calls: list[tuple[int, int, int, int]] = []
+    calls: list[tuple] = []
 
-    def _command_to_button(activity_id, button_id, device_id, command_id):
-        calls.append((activity_id, button_id, device_id, command_id))
+    def _command_to_button(activity_id, button_id, device_id, command_id, **kwargs):
+        calls.append((activity_id, button_id, device_id, command_id, kwargs))
         return {"status": "success"}
 
     hub._proxy.command_to_button = _command_to_button  # type: ignore[method-assign]
@@ -257,7 +257,7 @@ def test_command_to_button_executor_job_uses_partial_not_kwargs():
     )
 
     assert result == {"status": "success"}
-    assert calls == [(101, 0xC1, 5, 2)]
+    assert calls[0][:4] == (101, 0xC1, 5, 2)
 
     loop.close()
 

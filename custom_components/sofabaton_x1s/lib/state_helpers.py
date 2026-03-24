@@ -15,6 +15,8 @@ class ActivityCache:
         self.activities: Dict[int, Dict[str, Any]] = {}
         self.devices: Dict[int, Dict[str, Any]] = {}
         self.buttons: Dict[int, set[int]] = {}
+        # Per-button mapping details: act_lo → {button_id → {device_id, command_id, long_press_device_id?, long_press_command_id?}}
+        self.button_details: Dict[int, Dict[int, Dict[str, int]]] = defaultdict(dict)
         self.commands: dict[int, dict[int, str]] = defaultdict(dict)
         self.ip_devices: Dict[int, Dict[str, Any]] = {}
         self.ip_buttons: Dict[int, Dict[int, Dict[str, Any]]] = defaultdict(dict)
@@ -129,6 +131,15 @@ class ActivityCache:
 
         if button_id in BUTTONNAME_BY_CODE:
             self.buttons[act_lo].add(button_id)
+            details: Dict[str, int] = {"device_id": device_id, "command_id": command_id}
+            if (
+                len(record) >= 18
+                and record[10] != 0
+                and record[15] == 0x4E
+            ):
+                details["long_press_device_id"] = record[10]
+                details["long_press_command_id"] = record[17]
+            self.button_details[act_lo][button_id] = details
             if self._looks_like_favorite_record(record, device_id=device_id, command_id=command_id):
                 self._upsert_activity_favorite_slot(
                     act_lo,

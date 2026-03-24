@@ -76,13 +76,19 @@ class _FakeHub:
         button_id: int,
         device_id: int,
         command_id: int,
+        long_press_device_id: int | None = None,
+        long_press_command_id: int | None = None,
     ):
-        payload = {
+        payload: dict[str, int | None] = {
             "activity_id": activity_id,
             "button_id": button_id,
             "device_id": device_id,
             "command_id": command_id,
         }
+        if long_press_device_id is not None:
+            payload["long_press_device_id"] = long_press_device_id
+        if long_press_command_id is not None:
+            payload["long_press_command_id"] = long_press_command_id
         self.calls.append(payload)
         return payload
 

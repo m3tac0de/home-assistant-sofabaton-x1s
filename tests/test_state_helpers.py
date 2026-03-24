@@ -248,3 +248,65 @@ def test_accumulate_keymap_ignores_home_and_vol_up_as_favorites() -> None:
     assert (0x0B, 0x06) in refs
     assert (0x01, 0x10) not in refs
     assert (0x03, 0x79) not in refs
+
+
+def test_accumulate_keymap_extracts_long_press_details() -> None:
+    """Verify that a keymap record with long-press data populates button_details."""
+    cache = ActivityCache()
+    act = 0x65
+
+    # OK button (0xB0) with short press (dev=0x05, cmd=0x01) and long press (dev=0x05, cmd=0x02)
+    # Mirrors captured protocol data from the official Sofabaton app.
+    record = bytes(
+        [
+            act,
+            ButtonName.OK,  # 0xB0
+            0x05,           # short press device_id
+            0x00, 0x00, 0x00, 0x00,
+            0x4E, 0x21,     # marker + encoded short press cmd
+            0x01,           # short press command_id
+            0x05,           # long press device_id
+            0x00, 0x00, 0x00, 0x00,
+            0x4E, 0x22,     # marker + encoded long press cmd
+            0x02,           # long press command_id
+        ]
+    )
+
+    cache.accumulate_keymap(act, record)
+
+    assert ButtonName.OK in cache.buttons[act]
+    details = cache.button_details[act][ButtonName.OK]
+    assert details["device_id"] == 0x05
+    assert details["command_id"] == 0x01
+    assert details["long_press_device_id"] == 0x05
+    assert details["long_press_command_id"] == 0x02
+
+
+def test_accumulate_keymap_no_long_press_omits_long_press_details() -> None:
+    """Verify that a keymap record without long-press data has no long_press keys."""
+    cache = ActivityCache()
+    act = 0x65
+
+    record = bytes(
+        [
+            act,
+            ButtonName.BLUE,  # 0xC1
+            0x04,             # device_id
+            0x00, 0x00, 0x00, 0x00,
+            0x4E, 0x21,
+            0x01,
+            0x00,             # no long press device
+            0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00,       # no long press marker
+            0x00,
+        ]
+    )
+
+    cache.accumulate_keymap(act, record)
+
+    assert ButtonName.BLUE in cache.buttons[act]
+    details = cache.button_details[act][ButtonName.BLUE]
+    assert details["device_id"] == 0x04
+    assert details["command_id"] == 0x01
+    assert "long_press_device_id" not in details
+    assert "long_press_command_id" not in details

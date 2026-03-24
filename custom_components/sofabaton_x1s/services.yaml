@@ -243,6 +243,24 @@ command_to_button:
           min: 1
           max: 255
           mode: box
+    long_press_device_id:
+      name: Long press device id
+      description: Device id for the long-press action. Must be used together with long_press_command_id.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    long_press_command_id:
+      name: Long press command id
+      description: Command id for the long-press action. Must be used together with long_press_device_id.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
 
 sync_command_config:
   name: Sync command configuration

@@ -1027,6 +1027,7 @@ class X1Proxy:
 
         if clear_buttons:
             self.state.buttons.pop(ent_lo, None)
+            self.state.button_details.pop(ent_lo, None)
             self._pending_button_requests.discard(ent_lo)
 
         if clear_favorites:
@@ -2179,8 +2180,15 @@ class X1Proxy:
         button_id: int,
         device_id: int,
         command_id: int,
+        long_press_device_id: int | None = None,
+        long_press_command_id: int | None = None,
     ) -> bytes:
-        """Build the observed 0x193E command-to-button mapping payload."""
+        """Build the observed 0x193E command-to-button mapping payload.
+
+        Bytes 8-15 hold the short-press command slot.
+        Bytes 16-23 hold the optional long-press command slot (all zeros
+        when no long press is configured).
+        """
 
         act_lo = activity_id & 0xFF
         btn_lo = button_id & 0xFF
@@ -2205,7 +2213,12 @@ class X1Proxy:
             ]
         )
         payload.extend([0x4E, 0x20 + cmd_lo, cmd_lo])
-        payload.extend([0x00] * 8)
+        if long_press_device_id is not None and long_press_command_id is not None:
+            lp_dev = long_press_device_id & 0xFF
+            lp_cmd = long_press_command_id & 0xFF
+            payload.extend([lp_dev, 0x00, 0x00, 0x00, 0x00, 0x4E, 0x20 + lp_cmd, lp_cmd])
+        else:
+            payload.extend([0x00] * 8)
         payload.append((sum(payload) - 2) & 0xFF)
         return bytes(payload)
 
@@ -2285,9 +2298,16 @@ class X1Proxy:
         device_id: int,
         command_id: int,
         *,
+        long_press_device_id: int | None = None,
+        long_press_command_id: int | None = None,
         refresh_after_write: bool = True,
     ) -> dict[str, Any] | None:
-        """Map a device command to a physical activity button using 0x193E."""
+        """Map a device command to a physical activity button using 0x193E.
+
+        When *long_press_device_id* and *long_press_command_id* are both
+        provided the hub will also fire that command on a long-press of the
+        same physical button.
+        """
 
         if not self.can_issue_commands():
             log.info("[KEYMAP_WRITE] command_to_button ignored: proxy client is connected")
@@ -2303,14 +2323,28 @@ class X1Proxy:
             button_id=btn_lo,
             device_id=dev_lo,
             command_id=cmd_lo,
+            long_press_device_id=long_press_device_id,
+            long_press_command_id=long_press_command_id,
         )
-        log.info(
-            "[KEYMAP_WRITE] map act=0x%02X button=0x%02X dev=0x%02X cmd=0x%02X",
-            act_lo,
-            btn_lo,
-            dev_lo,
-            cmd_lo,
-        )
+        if long_press_device_id is not None and long_press_command_id is not None:
+            log.info(
+                "[KEYMAP_WRITE] map act=0x%02X button=0x%02X dev=0x%02X cmd=0x%02X"
+                " long_dev=0x%02X long_cmd=0x%02X",
+                act_lo,
+                btn_lo,
+                dev_lo,
+                cmd_lo,
+                long_press_device_id & 0xFF,
+                long_press_command_id & 0xFF,
+            )
+        else:
+            log.info(
+                "[KEYMAP_WRITE] map act=0x%02X button=0x%02X dev=0x%02X cmd=0x%02X",
+                act_lo,
+                btn_lo,
+                dev_lo,
+                cmd_lo,
+            )
         if self.diag_dump:
             log.info("[KEYMAP_WRITE] 193E payload %s", payload.hex(" "))
 
@@ -2343,13 +2377,17 @@ class X1Proxy:
             self.request_activity_mapping(act_lo)
             self.get_buttons_for_entity(act_lo, fetch_if_missing=True)
 
-        return {
+        result: dict[str, Any] = {
             "activity_id": act_lo,
             "button_id": btn_lo,
             "device_id": dev_lo,
             "command_id": cmd_lo,
             "status": "success",
         }
+        if long_press_device_id is not None and long_press_command_id is not None:
+            result["long_press_device_id"] = long_press_device_id & 0xFF
+            result["long_press_command_id"] = long_press_command_id & 0xFF
+        return result
 
 
     def _cache_created_wifi_device(self, *, device_id: int, device_name: str, brand_name: str) -> None:
