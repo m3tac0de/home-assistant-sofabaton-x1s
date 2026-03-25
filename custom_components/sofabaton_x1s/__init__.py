@@ -767,12 +767,7 @@ async def _async_handle_get_favorites(call: ServiceCall):
     if order is None:
         raise ValueError(f"Hub did not respond to favorites order request for activity {activity_id}")
 
-    return {
-        "favorites": [
-            {"button_id": fav_id, "slot": slot}
-            for fav_id, slot in sorted(order, key=lambda p: p[1])
-        ]
-    }
+    return {"favorites": hub.describe_favorites_order(activity_id, order)}
 
 
 async def _async_handle_reorder_favorites(call: ServiceCall):
@@ -784,16 +779,19 @@ async def _async_handle_reorder_favorites(call: ServiceCall):
     _raise_if_sync_in_progress(hub, "_async_handle_reorder_favorites")
 
     activity_id = int(call.data["activity_id"])
-    ordered_button_ids = [int(x) for x in call.data["order"]]
+    raw_order = call.data.get("ordered_fav_ids", call.data.get("order"))
+    if raw_order is None:
+        raise ValueError("ordered_fav_ids is required")
+    ordered_fav_ids = [int(x) for x in raw_order]
 
     if activity_id < 1 or activity_id > 255:
         raise ValueError("activity_id must be between 1 and 255")
-    if not ordered_button_ids:
-        raise ValueError("order must be a non-empty list of button_ids")
+    if not ordered_fav_ids:
+        raise ValueError("ordered_fav_ids must be a non-empty list of fav_ids")
 
     return await hub.async_reorder_favorites(
         activity_id=activity_id,
-        ordered_button_ids=ordered_button_ids,
+        ordered_fav_ids=ordered_fav_ids,
     )
 
 
@@ -806,16 +804,19 @@ async def _async_handle_delete_favorite(call: ServiceCall):
     _raise_if_sync_in_progress(hub, "_async_handle_delete_favorite")
 
     activity_id = int(call.data["activity_id"])
-    button_id = int(call.data["button_id"])
+    raw_fav_id = call.data.get("fav_id", call.data.get("button_id"))
+    if raw_fav_id is None:
+        raise ValueError("fav_id is required")
+    fav_id = int(raw_fav_id)
 
     if activity_id < 1 or activity_id > 255:
         raise ValueError("activity_id must be between 1 and 255")
-    if button_id < 1 or button_id > 255:
-        raise ValueError("button_id must be between 1 and 255")
+    if fav_id < 1 or fav_id > 255:
+        raise ValueError("fav_id must be between 1 and 255")
 
     return await hub.async_delete_favorite(
         activity_id=activity_id,
-        button_id=button_id,
+        fav_id=fav_id,
     )
 
 
@@ -841,11 +842,24 @@ async def _async_handle_command_to_button(call: ServiceCall):
     if command_id < 1 or command_id > 255:
         raise ValueError("command_id must be between 1 and 255")
 
+    long_press_device_id = call.data.get("long_press_device_id")
+    long_press_command_id = call.data.get("long_press_command_id")
+    if long_press_device_id is not None:
+        long_press_device_id = int(long_press_device_id)
+        if long_press_device_id < 1 or long_press_device_id > 255:
+            raise ValueError("long_press_device_id must be between 1 and 255")
+    if long_press_command_id is not None:
+        long_press_command_id = int(long_press_command_id)
+        if long_press_command_id < 1 or long_press_command_id > 255:
+            raise ValueError("long_press_command_id must be between 1 and 255")
+
     return await hub.async_command_to_button(
         activity_id=activity_id,
         button_id=button_id,
         device_id=device_id,
         command_id=command_id,
+        long_press_device_id=long_press_device_id,
+        long_press_command_id=long_press_command_id,
     )
 
 

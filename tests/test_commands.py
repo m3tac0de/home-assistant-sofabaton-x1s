@@ -294,6 +294,35 @@ def test_single_command_handler_routes_favorite_labels() -> None:
     assert proxy.state.activity_favorite_labels[0x66] == {(1, 2): "Exit"}
 
 
+
+
+def test_single_command_handler_routes_keybinding_labels() -> None:
+    proxy = X1Proxy("127.0.0.1")
+    handler = DeviceButtonSingleHandler()
+
+    proxy._keybinding_label_requests[(1, 2)] = {0x66}
+
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d0"
+    )
+
+    payload = raw[4:-1]
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_DEVBTN_SINGLE,
+        direction="H→A",
+        payload=payload,
+        raw=raw,
+        name="DEVBTN_SINGLE",
+    )
+
+    handler.handle(frame)
+
+    assert proxy.state.commands == {}
+    assert proxy.state.activity_keybinding_labels[0x66] == {(1, 2): "Exit"}
+
 def test_single_command_handler_normalizes_x1s_0x1c_command_id() -> None:
     proxy = X1Proxy("127.0.0.1")
     handler = DeviceButtonSingleHandler()
@@ -900,6 +929,93 @@ def test_parse_device_commands_handles_alt_command_pages() -> None:
         31: "VolumeDown",
         32: "VolumeMute",
         33: "VolumeUp",
+    }
+
+
+def test_parse_device_commands_handles_wifi_device_twenty_command_capture() -> None:
+    frames_hex = (
+        "a5 5a f7 5d 01 00 01 01 00 04 14 04 01 0a 00 00 00 00 4e 21 43 6f 6d 6d 61 6e 64 20 31 20 20 74 65 73 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 02 0a 00 00 00 00 4e 22 43 6f 6d 6d 61 6e 64 20 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 03 0a 00 00 00 00 4e 23 43 6f 6d 6d 61 6e 64 20 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 04 0a 00 00 00 00 4e 24 43 6f 6d 6d 61 6e 64 20 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 05 0a 00 00 00 00 4e 25 43 6f 6d 6d 61 6e 64 20 35 20 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 06 0a 00 00 00 00 4e 26 43 6f 6d 6d 61 6e 64 20 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 3a",
+        "a5 5a f3 5d 01 00 02 04 07 0a 00 00 00 00 4e 27 43 6f 6d 6d 61 6e 64 20 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 08 0a 00 00 00 00 4e 28 43 6f 6d 6d 61 6e 64 20 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 09 0a 00 00 00 00 4e 29 43 6f 6d 6d 61 6e 64 20 39 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 0a 0a 00 00 00 00 4e 2a 43 6f 6d 6d 61 6e 64 20 31 30 20 61 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 0b 0a 00 00 00 00 4e 2b 43 6f 6d 6d 61 6e 64 20 31 20 20 74 65 73 74 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 ff 04 0c 0a 00 00 00 00 4e 2c 43 6f 6d 6d 61 6e 64 20 32 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 87",
+        "a5 5a f3 5d 01 00 03 04 0d 0a 00 00 00 00 4e 2d 43 6f 6d 6d 61 6e 64 20 33 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 04 0e 0a 00 00 00 00 4e 2e 43 6f 6d 6d 61 6e 64 20 34 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 04 0f 0a 00 00 00 00 4e 2f 43 6f 6d 6d 61 6e 64 20 35 20 31 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 ff 04 10 0a 00 00 00 00 4e 30 43 6f 6d 6d 61 6e 64 20 36 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 04 11 0a 00 00 00 00 4e 31 43 6f 6d 6d 61 6e 64 20 37 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 04 12 0a 00 00 00 00 4e 32 43 6f 6d 6d 61 6e 64 20 38 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff e9",
+        "a5 5a 53 5d 01 00 04 04 13 0a 00 00 00 00 4e 33 43 6f 6d 6d 61 6e 64 20 39 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 04 14 0a 00 00 00 00 4e 34 43 6f 6d 6d 61 6e 64 20 31 30 20 61 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 ff 8b",
+    )
+
+    frames = [bytes.fromhex(block) for block in frames_hex]
+
+    assembler = DeviceCommandAssembler()
+    completed: list[tuple[int, bytes]] = []
+    dev_id = frames[0][11]
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id))
+
+    if not completed:
+        completed.extend(assembler.finalize_contiguous(dev_id))
+
+    assert len(completed) == 1
+
+    assembled_dev_id, assembled_payload = completed[0]
+    proxy = X1Proxy("127.0.0.1")
+    parsed = proxy.parse_device_commands(assembled_payload, assembled_dev_id)
+
+    assert parsed[1] == "Command 1  test"
+    assert parsed[10] == "Command 10 a"
+    assert parsed[11] == "Command 1  test Long Press"
+    assert parsed[20] == "Command 10 a Long Press"
+    assert len(parsed) == 20
+
+
+def test_parse_device_commands_handles_x2_wifi_fixed_width_capture() -> None:
+    frames_hex = (
+        "a5 5a d9 5d 01 00 01 01 00 07 14 08 01 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 08 02 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 08 03 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 03 fe",
+        "a5 5a d5 5d 01 00 02 08 04 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04 08 05 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 05 08 06 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 06 fa",
+        "a5 5a d5 5d 01 00 03 08 07 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 07 08 08 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 08 08 09 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 39 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 09 16",
+        "a5 5a d5 5d 01 00 04 08 0a 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 31 00 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0a 08 0b 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 31 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0b 08 0c 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 32 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0c ff",
+        "a5 5a d5 5d 01 00 05 08 0d 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 33 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0d 08 0e 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 34 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0e 08 0f 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 35 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 0f c7",
+        "a5 5a d5 5d 01 00 06 08 10 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 36 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 10 08 11 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 37 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 11 08 12 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 38 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 12 e3",
+        "a5 5a 8f 5d 01 00 07 08 13 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 39 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 13 08 14 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 31 00 30 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 14 9b",
+    )
+
+    frames = [bytes.fromhex(block) for block in frames_hex]
+    assembler = DeviceCommandAssembler()
+    completed: list[tuple[int, bytes]] = []
+    dev_id = frames[0][11]
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id))
+
+    if not completed:
+        completed.extend(assembler.finalize_contiguous(dev_id))
+
+    assert len(completed) == 1
+
+    assembled_dev_id, assembled_payload = completed[0]
+    proxy = X1Proxy("127.0.0.1")
+    parsed = proxy.parse_device_commands(assembled_payload, assembled_dev_id)
+
+    assert parsed == {
+        1: "Command 1",
+        2: "Command 2",
+        3: "Command 3",
+        4: "Command 4",
+        5: "Command 5",
+        6: "Command 6",
+        7: "Command 7",
+        8: "Command 8",
+        9: "Command 9",
+        10: "Command 10",
+        11: "Command 1 Long Press",
+        12: "Command 2 Long Press",
+        13: "Command 3 Long Press",
+        14: "Command 4 Long Press",
+        15: "Command 5 Long Press",
+        16: "Command 6 Long Press",
+        17: "Command 7 Long Press",
+        18: "Command 8 Long Press",
+        19: "Command 9 Long Press",
+        20: "Command 10 Long Press",
     }
 
 

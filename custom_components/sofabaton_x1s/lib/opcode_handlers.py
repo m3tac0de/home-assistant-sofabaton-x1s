@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 import time
 import unicodedata
-from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from ..const import HUB_VERSION_X1
@@ -189,22 +188,22 @@ class MacroHandler(BaseFrameHandler):
         if not completed:
             return
 
-        grouped: dict[int, list[dict[str, int | str]]] = defaultdict(list)
-
         for activity_id, assembled, boundaries in completed:
+            act_lo = activity_id & 0xFF
+            macros: list[dict[str, int | str]] = []
             for act, command_id, label in decode_macro_records(assembled, activity_id, boundaries):
-                grouped[act & 0xFF].append({"command_id": command_id, "label": label})
+                macros.append({"command_id": command_id, "label": label})
 
-        for act_lo, macros in grouped.items():
             proxy.state.replace_activity_macros(act_lo, macros)
             proxy._macros_complete.add(act_lo)
             proxy._pending_macro_requests.discard(act_lo)
-            log.info(
-                "[MACRO] act=0x%02X macros{%d}: %s",
-                act_lo,
-                len(macros),
-                ", ".join(f"{m['command_id']}: {m['label']}" for m in macros),
-            )
+            if macros:
+                log.info(
+                    "[MACRO] act=0x%02X macros{%d}: %s",
+                    act_lo,
+                    len(macros),
+                    ", ".join(f"{m['command_id']}: {m['label']}" for m in macros),
+                )
 
 
 
@@ -1181,15 +1180,19 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
                 for cmd_id, label in commands.items():
                     pair = (complete_dev_id, cmd_id)
                     awaiting = proxy._favorite_label_requests.get(pair)
-                    if awaiting:
-                        for act_id in awaiting:
+                    awaiting_keybindings = proxy._keybinding_label_requests.get(pair)
+                    if awaiting or awaiting_keybindings:
+                        for act_id in awaiting or set():
                             proxy.state.record_favorite_label(act_id, complete_dev_id, cmd_id, label)
+                        for act_id in awaiting_keybindings or set():
+                            proxy.state.record_keybinding_label(act_id, complete_dev_id, cmd_id, label)
                         proxy._favorite_label_requests.pop(pair, None)
+                        proxy._keybinding_label_requests.pop(pair, None)
                         continue
 
                     pending_for_device = [
                         candidate
-                        for candidate in proxy._favorite_label_requests
+                        for candidate in set(proxy._favorite_label_requests) | set(proxy._keybinding_label_requests)
                         if candidate[0] == complete_dev_id
                     ]
 
@@ -1200,7 +1203,12 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
                             proxy.state.record_favorite_label(
                                 act_id, complete_dev_id, pending_cmd_id, label
                             )
+                        for act_id in proxy._keybinding_label_requests.get(pending_pair, set()):
+                            proxy.state.record_keybinding_label(
+                                act_id, complete_dev_id, pending_cmd_id, label
+                            )
                         proxy._favorite_label_requests.pop(pending_pair, None)
+                        proxy._keybinding_label_requests.pop(pending_pair, None)
 
                         cmds = proxy.state.commands.setdefault(dev_key, {})
                         cmds[cmd_id] = label

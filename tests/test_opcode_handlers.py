@@ -718,6 +718,27 @@ def test_macro_handler_parses_sample_activity_69() -> None:
     assert any(entry["command_id"] == 0x05 and entry["label"] == "bla" for entry in macros)
 
 
+def test_macro_handler_marks_activity_complete_when_only_power_macros_exist() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = MacroHandler()
+
+    proxy._pending_macro_requests.add(0x65)
+
+    fragments = [
+        "a5 5a 78 13 01 00 01 02 00 01 65 c6 08 01 c6 00 00 00 00 00 00 01 ff 02 c6 00 00 00 00 00 00 01 ff 01 c5 00 00 00 00 00 00 1a ff 02 c5 00 00 00 00 00 00 00 ff 05 c6 00 00 00 00 00 00 00 ff 05 c5 00 00 00 00 00 00 00 ff 04 c6 00 00 00 00 00 00 00 ff 04 c5 00 00 00 00 00 00 00 ff 50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 2d 76 bb 03",
+        "a5 5a 50 13 02 00 01 02 00 01 65 c7 04 01 c7 00 00 00 00 00 00 01 ff 02 c7 00 00 00 00 00 00 01 ff 05 c7 00 00 00 00 00 00 00 ff 04 c7 00 00 00 00 00 00 00 ff 50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 1e a2",
+    ]
+
+    for raw_hex in fragments:
+        handler.handle(_build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "MACROS_SAMPLE"))
+
+    assert proxy.state.get_activity_macros(0x65) == []
+    assert 0x65 in proxy._macros_complete
+    assert 0x65 not in proxy._pending_macro_requests
+
+
 def test_x1_device_row_updates_state_and_burst() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False

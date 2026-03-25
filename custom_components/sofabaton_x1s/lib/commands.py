@@ -161,7 +161,13 @@ class DeviceCommandAssembler:
             burst.total_frames = frame_no
 
         data_start = self._data_offset(opcode)
-        if opcode in (
+        if (
+            opcode == OP_DEVBTN_PAGE_ALT1
+            and len(payload) > 7
+            and payload[:5] == b"\x01\x00\x01\x01\x00"
+        ):
+            data_start = 7
+        elif opcode in (
             OP_DEVBTN_PAGE_ALT3,
             OP_DEVBTN_PAGE_ALT4,
             OP_DEVBTN_PAGE_ALT5,
@@ -318,8 +324,61 @@ def _matches_control_block(block: bytes) -> bool:
     return block[:6] == b"\x1a\x00\x00\x00\x00\x17"
 
 
+def _iter_fixed_width_utf16_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
+    """Yield records for the X2 wifi fixed-width UTF-16 command layout.
+
+    Some X2 wifi devices return command pages as tightly packed 70-byte records:
+
+        [dev_id] [command_id] [0x1C] [7x 0x00] [UTF-16-BE label padded] [command_id]
+
+    There are no ``0xFF`` separators between records, so the generic chunk-based
+    parser treats the whole payload as one label. Detect that shape explicitly
+    and only accept it when every record in the payload matches the pattern.
+    """
+
+    target = dev_id & 0xFF
+    record_size = 70
+    header_size = 10
+
+    if len(data) < record_size * 2 or len(data) % record_size:
+        return
+
+    records: list[CommandRecord] = []
+    for start in range(0, len(data), record_size):
+        block = data[start : start + record_size]
+        if (
+            len(block) != record_size
+            or block[0] != target
+            or block[2] != 0x1C
+            or block[3:10] != b"\x00" * 7
+            or block[-1] != block[1]
+        ):
+            return
+
+        label = _decode_label(block[header_size:-1])
+        if not label:
+            return
+
+        records.append(
+            CommandRecord(
+                dev_id=target,
+                command_id=block[1],
+                control=block[2:10],
+                label=label,
+            )
+        )
+
+    yield from records
+
+
 def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
     target = dev_id & 0xFF
+    if b"\xff" not in data:
+        fixed_width_records = tuple(_iter_fixed_width_utf16_records(data, dev_id))
+        if fixed_width_records:
+            yield from fixed_width_records
+            return
+
     chunks: Iterable[bytes] = data.split(b"\xff")
 
     for chunk in chunks:

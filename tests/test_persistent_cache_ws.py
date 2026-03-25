@@ -49,7 +49,15 @@ class _Hub:
         return {"devices": {"1": {"name": "TV"}}}
 
     async def async_get_cache_contents(self):
-        return {"entry_id": self.entry_id, "name": self.name, "devices": {"1": {"name": "TV"}}}
+        return {
+            "entry_id": self.entry_id,
+            "name": self.name,
+            "devices": {"1": {"name": "TV"}},
+            "activities": [{"id": 101, "name": "Movies", "favorite_count": 1, "keybinding_count": 1, "macro_count": 0}],
+            "activity_favorites": {"101": [{"button_id": 1, "device_id": 1, "device_name": "TV", "command_id": 2, "label": "Power", "source": "activity_map"}]},
+            "activity_keybindings": {"101": [{"button_id": 183, "button_name": "Ch Up", "device_id": 1, "device_name": "TV", "command_id": 3, "label": "Channel Up", "source": "keymap"}]},
+            "devices_list": [{"id": 1, "name": "TV", "command_count": 1, "has_commands": True}],
+        }
 
 
 def test_ws_set_persistent_cache(monkeypatch):
@@ -138,6 +146,45 @@ def test_ws_get_persistent_cache_contents_disabled(monkeypatch):
 
     assert conn.error is None
     assert conn.result == (3, {"enabled": False, "hubs": []})
+
+
+def test_ws_get_persistent_cache_contents_returns_derived_activity_data(monkeypatch):
+    conn = _Conn()
+    store = _CacheStore(enabled=True)
+    hub = _Hub()
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_get_persistent_cache_contents(SimpleNamespace(data={}), conn, {"id": 33})
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    assert conn.result == (
+        33,
+        {
+            "enabled": True,
+            "hubs": [
+                {
+                    "entry_id": "entry-1",
+                    "name": "Living Room",
+                    "devices": {"1": {"name": "TV"}},
+                    "activities": [{"id": 101, "name": "Movies", "favorite_count": 1, "keybinding_count": 1, "macro_count": 0}],
+                    "activity_favorites": {"101": [{"button_id": 1, "device_id": 1, "device_name": "TV", "command_id": 2, "label": "Power", "source": "activity_map"}]},
+                    "activity_keybindings": {"101": [{"button_id": 183, "button_name": "Ch Up", "device_id": 1, "device_name": "TV", "command_id": 3, "label": "Channel Up", "source": "keymap"}]},
+                    "devices_list": [{"id": 1, "name": "TV", "command_count": 1, "has_commands": True}],
+                }
+            ],
+        },
+    )
 
 
 def test_ws_refresh_persistent_cache_entry_by_entry_id(monkeypatch):

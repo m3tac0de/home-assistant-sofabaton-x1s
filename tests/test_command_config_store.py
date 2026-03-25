@@ -99,6 +99,7 @@ def test_default_commands_produces_expected_defaults() -> None:
     assert defaults[0]["name"] == "Command 1"
     assert defaults[0]["add_as_favorite"] is True
     assert defaults[0]["hard_button"] == ""
+    assert defaults[0]["long_press_enabled"] is False
 
 
 def test_compute_commands_hash_changes_when_roku_listener_port_changes() -> None:
@@ -116,6 +117,23 @@ def test_compute_commands_hash_changes_when_roku_listener_port_changes() -> None
     updated_hash = compute_commands_hash(commands, roku_listen_port=8070)
 
     assert default_hash != updated_hash
+
+
+def test_compute_commands_hash_changes_when_long_press_toggle_changes() -> None:
+    commands = [
+        {
+            "name": "Lights",
+            "add_as_favorite": True,
+            "hard_button": "182",
+            "long_press_enabled": False,
+            "activities": ["102", "101"],
+            "action": {"action": "perform-action", "service": "x"},
+        }
+    ]
+
+    with_long_press = [{**commands[0], "long_press_enabled": True}]
+
+    assert compute_commands_hash(commands) != compute_commands_hash(with_long_press)
 
 
 def test_count_configured_command_slots_counts_non_default_slots() -> None:

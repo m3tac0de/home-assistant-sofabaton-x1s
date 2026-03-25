@@ -106,6 +106,77 @@ def test_ensure_commands_for_activity_only_favorites(monkeypatch) -> None:
     }
 
 
+
+
+def test_ensure_commands_for_activity_fetches_keybinding_labels(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    cache = ActivityCache()
+    act = 0x10
+    cache.activity_favorite_slots[act] = [
+        {"button_id": 0x01, "device_id": 0x01, "command_id": 0x1111},
+    ]
+    cache.activity_keybinding_slots[act] = [
+        {"button_id": ButtonName.VOL_DOWN, "device_id": 0x01, "command_id": 0x2222},
+    ]
+    proxy.state = cache
+
+    calls: list[tuple[int, int, bool]] = []
+
+    def fake_get_single(ent_id: int, command_id: int, fetch_if_missing: bool = True):
+        calls.append((ent_id, command_id, fetch_if_missing))
+        mappings = {
+            (0x01, 0x1111): ({0x1111: "Favorite One"}, True),
+            (0x01, 0x2222): ({0x2222: "Volume Down Cmd"}, False),
+        }
+        return mappings.get((ent_id, command_id), ({}, False))
+
+    monkeypatch.setattr(proxy, "get_single_command_for_entity", fake_get_single)
+
+    commands_by_device, ready = proxy.ensure_commands_for_activity(act)
+
+    assert ready is True
+    assert set(calls) == {(0x01, 0x1111, True), (0x01, 0x2222, True)}
+    assert commands_by_device == {0x01: {0x1111: "Favorite One", 0x2222: "Volume Down Cmd"}}
+    assert proxy.state.activity_favorite_labels[act] == {(0x01, 0x1111): "Favorite One"}
+    assert proxy.state.activity_keybinding_labels[act] == {(0x01, 0x2222): "Volume Down Cmd"}
+    assert proxy._keybinding_label_requests == {(0x01, 0x2222): {act}}
+
+
+def test_ensure_commands_for_activity_does_not_requeue_keybinding_fetches_during_poll(
+    monkeypatch,
+) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    cache = ActivityCache()
+    act = 0x10
+    cache.activity_favorite_slots[act] = [
+        {"button_id": 0x01, "device_id": 0x01, "command_id": 0x1111},
+    ]
+    cache.activity_keybinding_slots[act] = [
+        {"button_id": ButtonName.VOL_DOWN, "device_id": 0x01, "command_id": 0x2222},
+    ]
+    proxy.state = cache
+    proxy._keybinding_label_requests[(0x01, 0x2222)] = {act}
+
+    calls: list[tuple[int, int, bool]] = []
+
+    def fake_get_single(ent_id: int, command_id: int, fetch_if_missing: bool = True):
+        calls.append((ent_id, command_id, fetch_if_missing))
+        mappings = {
+            (0x01, 0x1111): ({0x1111: "Favorite One"}, True),
+        }
+        return mappings.get((ent_id, command_id), ({}, False))
+
+    monkeypatch.setattr(proxy, "get_single_command_for_entity", fake_get_single)
+
+    commands_by_device, ready = proxy.ensure_commands_for_activity(act, fetch_if_missing=False)
+
+    assert ready is True
+    assert calls == [(0x01, 0x1111, False)]
+    assert commands_by_device == {0x01: {0x1111: "Favorite One"}}
+    assert proxy._keybinding_label_requests == {(0x01, 0x2222): {act}}
+
 def test_start_mdns_stops_on_bad_service_type(monkeypatch) -> None:
     registered = []
 
@@ -465,6 +536,60 @@ def test_create_wifi_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     assert frame_7746[-1] == expected_token
 
 
+def test_create_wifi_device_x1s_accepts_command_definitions_with_press_type(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+        proxy_id="proxy-123",
+        mdns_txt={"MAC": "AA:BB:CC:DD:EE:FF"},
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x09)
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        first_opcode = candidates[0][0]
+        return first_opcode, b"\x00"
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(
+        device_name="Living Room Roku",
+        commands=[
+            {"display_name": "My Cmd", "trigger_name": "My Cmd", "press_type": "short"},
+            {"display_name": "My Cmd Long Press", "trigger_name": "My Cmd", "press_type": "long"},
+        ],
+        request_port=8765,
+    )
+
+    assert result == {"device_id": 0x09, "status": "success"}
+    define_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x0E]
+    assert len(define_payloads) == 2
+
+    short_request_len = define_payloads[0][82]
+    short_request = define_payloads[0][83 : 83 + short_request_len]
+    long_request_len = define_payloads[1][82]
+    long_request = define_payloads[1][83 : 83 + long_request_len]
+
+    assert define_payloads[0][16:75].startswith("My Cmd".encode("utf-16le"))
+    assert define_payloads[1][16:75].startswith("My Cmd Long Press".encode("utf-16le"))
+    assert short_request.startswith(b"POST /launch/")
+    assert long_request.startswith(b"POST /launch/")
+    assert b"/My_Cmd/Living_Room_Roku/short" in short_request
+    assert b"/My_Cmd/Living_Room_Roku/long" in long_request
+
+
 def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
@@ -507,8 +632,8 @@ def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
 
     assert custom_payloads[0x18][15:45].rstrip(b"\x00") == b"Lights On"
     assert custom_payloads[0x19][15:45].rstrip(b"\x00") == b"Lights Off"
-    assert action_1 == "launch/aabbccddeeff/7/Lights_On/Home_Assistant"
-    assert action_2 == "launch/aabbccddeeff/7/Lights_Off/Home_Assistant"
+    assert action_1 == "launch/aabbccddeeff/7/Lights_On/Home_Assistant/short"
+    assert action_2 == "launch/aabbccddeeff/7/Lights_Off/Home_Assistant/short"
 
 
 def test_stable_hub_action_id_falls_back_to_proxy_id() -> None:
@@ -1632,6 +1757,28 @@ def test_build_command_to_button_payload_matches_observed_sample() -> None:
     )
 
 
+def test_build_command_to_button_payload_with_long_press() -> None:
+    """Verify the long-press payload matches the captured protocol sample.
+
+    The sample was captured from the official app setting OK button (0xB0)
+    with short press (dev=0x05, cmd=0x01) and long press (dev=0x05, cmd=0x02).
+    """
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    payload = proxy._build_command_to_button_payload(
+        activity_id=0x65,
+        button_id=0xB0,
+        device_id=0x05,
+        command_id=0x01,
+        long_press_device_id=0x05,
+        long_press_command_id=0x02,
+    )
+
+    assert payload == bytes.fromhex(
+        "01 00 01 01 00 01 65 b0 05 00 00 00 00 4e 21 01 05 00 00 00 00 4e 22 02 03"
+    )
+
+
 def test_command_to_favorite_replays_sequence(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -1774,6 +1921,150 @@ def test_command_to_favorite_can_skip_refresh_after_write(monkeypatch) -> None:
     result = proxy.command_to_favorite(0x68, 0x01, 0x03, refresh_after_write=False)
     assert result is not None
     assert requested == []
+
+
+def test_delete_favorite_requires_explicit_fav_id(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "request_favorites_order", lambda act_id: [(0x02, 0x01), (0x04, 0x02), (0x06, 0x03)])
+
+    steps: list[tuple[str, int, bytes, float]] = []
+
+    def _send_roku_step(*, step_name, family, payload, ack_opcode, timeout=5.0):
+        steps.append((step_name, family, payload, timeout))
+        return True
+
+    monkeypatch.setattr(proxy, "_send_roku_step", _send_roku_step)
+    monkeypatch.setattr(proxy, "start_roku_create", lambda: None)
+    monkeypatch.setattr(proxy, "clear_entity_cache", lambda *args, **kwargs: None)
+    requested: list[int] = []
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: requested.append(act_id) or True)
+
+    result = proxy.delete_favorite(0x66, 0x04)
+
+    assert result == {
+        "activity_id": 0x66,
+        "deleted_fav_id": 0x04,
+        "remaining": 2,
+        "status": "success",
+    }
+    assert steps == [
+        ("fav-delete-10[act=0x66 fav=0x04]", 0x10, bytes([0x66, 0x04]), 7.5),
+        ("fav-delete-reorder-61[act=0x66]", 0x61, bytes.fromhex("01 00 01 01 00 01 66 02 01 06 02 73"), 5.0),
+        ("fav-delete-commit-65[act=0x66]", 0x65, b"\x66", 5.0),
+    ]
+    assert requested == [0x66]
+
+
+def test_delete_favorite_rejects_unknown_fav_id(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "request_favorites_order", lambda act_id: [(0x02, 0x01), (0x04, 0x02), (0x06, 0x03)])
+
+    assert proxy.delete_favorite(0x66, 0x09) is None
+
+
+def test_reorder_favorites_requires_explicit_fav_ids(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "request_favorites_order", lambda act_id: [(0x02, 0x01), (0x04, 0x02), (0x06, 0x03)])
+
+    steps: list[tuple[str, int, bytes]] = []
+
+    def _send_roku_step(*, step_name, family, payload, ack_opcode, timeout=5.0):
+        steps.append((step_name, family, payload))
+        return True
+
+    monkeypatch.setattr(proxy, "_send_roku_step", _send_roku_step)
+    monkeypatch.setattr(proxy, "start_roku_create", lambda: None)
+    monkeypatch.setattr(proxy, "clear_entity_cache", lambda *args, **kwargs: None)
+    requested: list[int] = []
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: requested.append(act_id) or True)
+
+    result = proxy.reorder_favorites(0x66, [0x06, 0x02, 0x04])
+
+    assert result == {"activity_id": 0x66, "fav_ids": [0x06, 0x02, 0x04], "status": "success"}
+    assert steps == [
+        ("fav-reorder-61[act=0x66]", 0x61, bytes.fromhex("01 00 01 01 00 01 66 06 01 02 02 04 03 7a")),
+        ("fav-reorder-commit-65[act=0x66]", 0x65, b"\x66"),
+    ]
+    assert requested == [0x66]
+
+
+def test_reorder_favorites_skips_unknown_fav_ids(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "request_favorites_order", lambda act_id: [(0x02, 0x01), (0x04, 0x02), (0x06, 0x03)])
+
+    steps: list[tuple[str, int, bytes]] = []
+
+    def _send_roku_step(*, step_name, family, payload, ack_opcode, timeout=5.0):
+        steps.append((step_name, family, payload))
+        return True
+
+    monkeypatch.setattr(proxy, "_send_roku_step", _send_roku_step)
+    monkeypatch.setattr(proxy, "start_roku_create", lambda: None)
+    monkeypatch.setattr(proxy, "clear_entity_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: True)
+
+    result = proxy.reorder_favorites(0x66, [0x06, 0x09, 0x04])
+
+    assert result == {"activity_id": 0x66, "fav_ids": [0x06, 0x04], "status": "success"}
+    assert steps == [
+        ("fav-reorder-61[act=0x66]", 0x61, bytes.fromhex("01 00 01 01 00 01 66 06 01 04 02 75")),
+        ("fav-reorder-commit-65[act=0x66]", 0x65, b"\x66"),
+    ]
+
+
+def test_reorder_favorites_accepts_keymap_backfilled_ids_when_hub_order_is_partial(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    act_lo = 0x65
+    proxy.state.activity_favorite_slots[act_lo] = [
+        {"button_id": 0x01, "device_id": 0x04, "command_id": 0x1A, "source": "keymap"},
+        {"button_id": 0x02, "device_id": 0x04, "command_id": 0x20, "source": "keymap"},
+        {"button_id": 0x03, "device_id": 0x08, "command_id": 0x01, "source": "keymap"},
+        {"button_id": 0x04, "device_id": 0x08, "command_id": 0x02, "source": "keymap"},
+        {"button_id": 0x05, "device_id": 0x08, "command_id": 0x03, "source": "keymap"},
+        {"button_id": 0x06, "device_id": 0x08, "command_id": 0x04, "source": "keymap"},
+        {"button_id": 0x07, "device_id": 0x08, "command_id": 0x05, "source": "keymap"},
+    ]
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "request_favorites_order", lambda activity_id: [(0x01, 0x01), (0x02, 0x02), (0x03, 0x03), (0x04, 0x04)])
+
+    steps: list[tuple[str, int, bytes]] = []
+
+    def _send_roku_step(*, step_name, family, payload, ack_opcode, timeout=5.0):
+        steps.append((step_name, family, payload))
+        return True
+
+    monkeypatch.setattr(proxy, "_send_roku_step", _send_roku_step)
+    monkeypatch.setattr(proxy, "start_roku_create", lambda: None)
+    monkeypatch.setattr(proxy, "clear_entity_cache", lambda *args, **kwargs: None)
+    requested: list[int] = []
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda activity_id: requested.append(activity_id) or True)
+
+    result = proxy.reorder_favorites(act_lo, [0x05, 0x06, 0x01, 0x02, 0x03, 0x07, 0x04])
+
+    assert result == {
+        "activity_id": act_lo,
+        "fav_ids": [0x05, 0x06, 0x01, 0x02, 0x03, 0x07, 0x04],
+        "status": "success",
+    }
+    assert steps == [
+        (
+            "fav-reorder-61[act=0x65]",
+            0x61,
+            bytes.fromhex("01 00 01 01 00 01 65 05 01 06 02 01 03 02 04 03 05 07 06 04 07 9f"),
+        ),
+        ("fav-reorder-commit-65[act=0x65]", 0x65, b"\x65"),
+    ]
+    assert requested == [act_lo]
 
 
 def test_command_to_favorite_x1_does_not_pin_ack_first_byte(monkeypatch) -> None:
@@ -1929,6 +2220,51 @@ def test_command_to_button_replays_sequence(monkeypatch) -> None:
     assert cleared == [(0x65, True, False, False)]
     assert requested_map == [0x65]
     assert requested_buttons == [(0x65, True)]
+
+
+def test_command_to_button_with_long_press(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+    monkeypatch.setattr(proxy, "request_activity_mapping", lambda act_id: True)
+    monkeypatch.setattr(proxy, "get_buttons_for_entity", lambda ent_id, fetch_if_missing=True: ([], False))
+    monkeypatch.setattr(
+        proxy,
+        "clear_entity_cache",
+        lambda ent_id, clear_buttons=False, clear_favorites=False, clear_macros=False: None,
+    )
+
+    result = proxy.command_to_button(
+        0x65, 0xB0, 0x05, 0x01,
+        long_press_device_id=0x05,
+        long_press_command_id=0x02,
+    )
+
+    assert result == {
+        "activity_id": 0x65,
+        "button_id": 0xB0,
+        "device_id": 0x05,
+        "command_id": 0x01,
+        "long_press_device_id": 0x05,
+        "long_press_command_id": 0x02,
+        "status": "success",
+    }
+    assert sent[0][1] == bytes.fromhex(
+        "01 00 01 01 00 01 65 b0 05 00 00 00 00 4e 21 01 05 00 00 00 00 4e 22 02 03"
+    )
 
 
 def test_command_to_button_can_skip_refresh_after_write(monkeypatch) -> None:
