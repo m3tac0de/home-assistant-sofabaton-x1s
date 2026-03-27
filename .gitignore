@@ -16,3 +16,6 @@ pytest-cache-files-*/
 .venv/
 .venv-py313/
 .venv-py313-smoke/
+pytest.ini
+.python-version
+.claude/

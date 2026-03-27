@@ -1,6 +1,25 @@
-const TOOLS_TYPE = "sofabaton-power-tools";
+const TOOLS_TYPE = "sofabaton-control-panel";
 
-class SofabatonPowerToolsCard extends HTMLElement {
+// Mirrors ButtonName from lib/protocol_const.py — same .title() label transform.
+const BUTTON_NAMES = {
+  0x97: "C",        0x98: "B",        0x99: "A",        0x9A: "Exit",
+  0x9B: "Dvr",      0x9C: "Play",     0x9D: "Guide",
+  0xAE: "Up",       0xB2: "Down",     0xAF: "Left",     0xB1: "Right",
+  0xB0: "Ok",       0xB4: "Home",     0xB3: "Back",     0xB5: "Menu",
+  0xB6: "Vol Up",   0xB9: "Vol Down", 0xB8: "Mute",
+  0xB7: "Ch Up",    0xBA: "Ch Down",
+  0xBB: "Rew",      0xBC: "Pause",    0xBD: "Fwd",
+  0xBE: "Red",      0xBF: "Green",    0xC0: "Yellow",   0xC1: "Blue",
+  0xC6: "Power On", 0xC7: "Power Off",
+};
+
+class SofabatonControlPanelCard extends HTMLElement {
+  // ─── Lifecycle ───────────────────────────────────────────────────────────────
+
+  static getConfigElement() {
+    return document.createElement(`${TOOLS_TYPE}-editor`);
+  }
+
   setConfig(config) {
     this._config = config || {};
   }
@@ -11,6 +30,8 @@ class SofabatonPowerToolsCard extends HTMLElement {
 
     if (!this._root) {
       this._root = this.attachShadow({ mode: "open" });
+      this._openSection = "activities";
+      this._openEntity = null;
       this._lastHassFingerprint = fingerprint;
       this._loadState();
       this._render();
@@ -26,6 +47,8 @@ class SofabatonPowerToolsCard extends HTMLElement {
   getCardSize() {
     return 8;
   }
+
+  // ─── WebSocket helpers ────────────────────────────────────────────────────────
 
   async _ws(msg) {
     return this._hass.callWS(msg);
@@ -52,111 +75,56 @@ class SofabatonPowerToolsCard extends HTMLElement {
     }
   }
 
-  _escape(value) {
-    return String(value ?? "")
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
+  // ─── Entity finders ───────────────────────────────────────────────────────────
+
+  _remoteEntities() {
+    return Object.keys(this._hass?.states || {}).filter((id) => id.startsWith("remote."));
   }
+
+  _entityForHub(hub) {
+    return (
+      this._remoteEntities().find(
+        (id) => this._hass.states[id]?.attributes?.entry_id === hub.entry_id
+      ) || null
+    );
+  }
+
+  _proxyClientConnected(hub) {
+    if (!hub) return false;
+    const entityId = this._entityForHub(hub);
+    return !!(this._hass?.states[entityId]?.attributes?.proxy_client_connected);
+  }
+
+  // ─── Fingerprint ──────────────────────────────────────────────────────────────
 
   _hassFingerprint() {
     if (!this._hass?.states) return "";
 
-    const remoteData = this._remoteEntities()
+    return this._remoteEntities()
       .sort()
-      .map((entityId) => {
-        const attrs = this._hass.states[entityId]?.attributes || {};
-        const activities = Array.isArray(attrs.activities)
-          ? attrs.activities.map((activity) => `${activity?.id}:${activity?.name || ""}`).join("|")
-          : "";
-        return `${entityId};${attrs.entry_id || ""};${activities}`;
-      });
-
-    return remoteData.join("||");
+      .map((id) => {
+        const attrs = this._hass.states[id]?.attributes || {};
+        return `${id};${attrs.entry_id || ""};${attrs.proxy_client_connected ? "1" : "0"}`;
+      })
+      .join("||");
   }
 
-  _remoteEntities() {
-    return Object.keys(this._hass?.states || {}).filter((entityId) => entityId.startsWith("remote."));
-  }
-
-  _entityForHub(hub) {
-    const entities = this._remoteEntities();
-    return entities.find((entityId) => this._hass.states[entityId]?.attributes?.entry_id === hub.entry_id) || null;
-  }
-
-  _formatError(err) {
-    if (!err) return "Unknown error";
-    if (typeof err === "string") return err;
-
-    const candidates = [
-      err?.message,
-      err?.error?.message,
-      err?.body?.message,
-      err?.error,
-      err?.code,
-      err?.statusText,
-      err?.type,
-    ];
-
-    for (const candidate of candidates) {
-      if (typeof candidate === "string" && candidate.trim()) {
-        return candidate;
-      }
-    }
-
-    const asString = String(err || "").trim();
-    if (asString && asString !== "[object Object]") {
-      return asString;
-    }
-
-    return "Unknown error (check Home Assistant logs)";
-  }
-
-  _sortByName(items) {
-    return [...(items || [])].sort((left, right) =>
-      String(left?.name || left?.label || "").localeCompare(String(right?.name || right?.label || ""))
-    );
-  }
-
-  _sortById(items) {
-    return [...(items || [])].sort((left, right) => Number(left?.id || left?.button_id || 0) - Number(right?.id || right?.button_id || 0));
-  }
+  // ─── Cache data helpers ───────────────────────────────────────────────────────
 
   _syncSelection() {
     const hubs = Array.isArray(this._contents?.hubs) ? this._contents.hubs : [];
     if (!hubs.length) {
       this._selectedHubEntryId = null;
-      this._selectedActivityId = null;
       return;
     }
-
-    if (!hubs.some((hub) => hub.entry_id === this._selectedHubEntryId)) {
+    if (!hubs.some((h) => h.entry_id === this._selectedHubEntryId)) {
       this._selectedHubEntryId = hubs[0].entry_id;
-    }
-
-    const hub = this._selectedHub();
-    const activities = Array.isArray(hub?.activities) ? this._sortById(hub.activities) : [];
-
-    if (!activities.length) {
-      this._selectedActivityId = null;
-      return;
-    }
-
-    if (!activities.some((activity) => Number(activity.id) === Number(this._selectedActivityId))) {
-      this._selectedActivityId = Number(activities[0].id);
     }
   }
 
   _selectedHub() {
     const hubs = Array.isArray(this._contents?.hubs) ? this._contents.hubs : [];
-    return hubs.find((hub) => hub.entry_id === this._selectedHubEntryId) || hubs[0] || null;
-  }
-
-  _selectedActivity(hub = this._selectedHub()) {
-    const activities = Array.isArray(hub?.activities) ? hub.activities : [];
-    return activities.find((activity) => Number(activity.id) === Number(this._selectedActivityId)) || activities[0] || null;
+    return hubs.find((h) => h.entry_id === this._selectedHubEntryId) || hubs[0] || null;
   }
 
   _hubActivities(hub) {
@@ -168,14 +136,19 @@ class SofabatonPowerToolsCard extends HTMLElement {
     return this._sortById(Array.isArray(rows) ? rows : []);
   }
 
-  _activityKeybindings(hub, activityId) {
-    const rows = hub?.activity_keybindings?.[String(activityId)];
-    return this._sortByName(Array.isArray(rows) ? rows : []);
-  }
-
   _activityMacros(hub, activityId) {
     const rows = hub?.activity_macros?.[String(activityId)];
-    return this._sortByName(Array.isArray(rows) ? rows : []);
+    return Array.isArray(rows) ? rows : [];
+  }
+
+  _activityButtons(hub, activityId) {
+    // hub.buttons[actId] = array of physical button IDs assigned to this activity
+    const ids = hub?.buttons?.[String(activityId)];
+    return Array.isArray(ids) ? ids.map(Number) : [];
+  }
+
+  _buttonName(btnId) {
+    return BUTTON_NAMES[btnId] || `Button ${btnId}`;
   }
 
   _devicesForHub(hub) {
@@ -185,886 +158,911 @@ class SofabatonPowerToolsCard extends HTMLElement {
   _deviceCommands(hub, deviceId) {
     const commands = hub?.commands?.[String(deviceId)] || {};
     return Object.entries(commands)
-      .map(([commandId, label]) => ({
-        id: Number(commandId),
-        label: String(label || `Command ${commandId}`),
+      .map(([cmdId, label]) => ({
+        id: Number(cmdId),
+        label: String(label || `Command ${cmdId}`),
       }))
-      .sort((left, right) => left.label.localeCompare(right.label));
+      .sort((a, b) => a.label.localeCompare(b.label));
   }
+
+  // ─── Sorting ──────────────────────────────────────────────────────────────────
+
+  _sortByName(items) {
+    return [...(items || [])].sort((a, b) =>
+      String(a?.name || a?.label || "").localeCompare(String(b?.name || b?.label || ""))
+    );
+  }
+
+  _sortById(items) {
+    return [...(items || [])].sort(
+      (a, b) => Number(a?.id || a?.button_id || 0) - Number(b?.id || b?.button_id || 0)
+    );
+  }
+
+  // ─── Utilities ────────────────────────────────────────────────────────────────
+
+  _escape(v) {
+    return String(v ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+  }
+
+  _idBadge(type, value) {
+    return `<span class="id-badge"><span class="id-type">${type}:</span><span class="id-value">${this._escape(String(value))}</span></span>`;
+  }
+
+  _formatError(err) {
+    if (!err) return "Unknown error";
+    if (typeof err === "string") return err;
+    const candidates = [
+      err?.message,
+      err?.error?.message,
+      err?.body?.message,
+      err?.error,
+      err?.code,
+      err?.statusText,
+      err?.type,
+    ];
+    for (const c of candidates) {
+      if (typeof c === "string" && c.trim()) return c;
+    }
+    const s = String(err || "").trim();
+    if (s && s !== "[object Object]") return s;
+    return "Unknown error (check Home Assistant logs)";
+  }
+
+  _scrollEntityToTop(key) {
+    const entity = this._root.getElementById(`entity-${key}`);
+    if (!entity) return;
+    const body = entity.closest(".acc-body");
+    if (!body) return;
+    const entityTop = entity.getBoundingClientRect().top;
+    const bodyTop   = body.getBoundingClientRect().top;
+    body.scrollTo({ top: body.scrollTop + (entityTop - bodyTop), behavior: "smooth" });
+  }
+
+  _showToast(msg) {
+    const el = this._root?.getElementById("toast");
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add("visible");
+    clearTimeout(this._toastTimer);
+    this._toastTimer = setTimeout(() => el?.classList.remove("visible"), 2400);
+  }
+
+  // ─── Actions ──────────────────────────────────────────────────────────────────
 
   async _togglePersistent(enabled) {
-    await this._ws({ type: "sofabaton_x1s/persistent_cache/set", enabled: !!enabled });
-    this._actionMessage = null;
-    await this._loadState();
+    try {
+      await this._ws({ type: "sofabaton_x1s/persistent_cache/set", enabled: !!enabled });
+      await this._loadState();
+    } catch (err) {
+      this._showToast(`Error: ${this._formatError(err)}`);
+      this._render();
+    }
   }
 
-  async _refreshForHub(kind, hubEntryId, targetId) {
-    if (this._refreshBusy) return;
-
+  _refreshPayload(kind, hubEntryId, targetId) {
     const hubs = Array.isArray(this._contents?.hubs) ? this._contents.hubs : [];
-    const hub = hubs.find((item) => item.entry_id === hubEntryId);
+    const hub = hubs.find((h) => h.entry_id === hubEntryId);
     const entityId = hub ? this._entityForHub(hub) : null;
     const payload = {
       type: "sofabaton_x1s/persistent_cache/refresh",
       kind,
       target_id: Number(targetId),
     };
+    if (entityId) payload.entity_id = entityId;
+    else payload.entry_id = hubEntryId;
+    return payload;
+  }
 
-    if (entityId) {
-      payload.entity_id = entityId;
-    } else {
-      payload.entry_id = hubEntryId;
-    }
+  async _refreshForHub(kind, hubEntryId, targetId, key) {
+    if (this._refreshBusy) return;
 
     this._refreshBusy = true;
-    this._actionMessage = `Refreshing ${kind} ${targetId} for ${hub?.name || hubEntryId}...`;
+    this._activeRefreshLabel = key;
     this._render();
 
     try {
-      await this._ws(payload);
-      this._actionMessage = `Refreshed ${kind} ${targetId} for ${hub?.name || hubEntryId}.`;
+      await this._ws(this._refreshPayload(kind, hubEntryId, targetId));
       await this._loadState();
     } catch (err) {
-      this._actionMessage = `Refresh failed: ${this._formatError(err)}`;
-      this._render();
+      this._showToast(`Refresh failed: ${this._formatError(err)}`);
     } finally {
       this._refreshBusy = false;
+      this._activeRefreshLabel = null;
+      this._render();
+      requestAnimationFrame(() => this._scrollEntityToTop(key));
+    }
+  }
+
+  async _refreshSection(sectionId) {
+    if (this._refreshBusy) return;
+    const hub = this._selectedHub();
+    if (!hub) return;
+
+    this._refreshBusy = true;
+    this._render();
+
+    try {
+      await this._ws({
+        type: "sofabaton_x1s/catalog/refresh",
+        entry_id: hub.entry_id,
+        kind: sectionId,  // "activities" or "devices"
+      });
+      await this._loadState();
+    } catch (err) {
+      this._showToast(`Refresh failed: ${this._formatError(err)}`);
+    } finally {
+      this._refreshBusy = false;
+      this._activeRefreshLabel = null;
       this._render();
     }
   }
 
-  _renderStatus() {
-    if (this._loadError) {
-      return `<div class="status status-error">${this._escape(this._loadError)}</div>`;
-    }
-
-    if (this._actionMessage) {
-      return `<div class="status">${this._escape(this._actionMessage)}</div>`;
-    }
-
-    if (this._loading) {
-      return `<div class="status status-subtle">Loading cache contents...</div>`;
-    }
-
-    if (this._refreshBusy) {
-      return `<div class="status status-subtle">Refresh in progress, please wait...</div>`;
-    }
-
-    return "";
-  }
-
-  _renderToggle() {
-    return `
-      <div class="toolbar-chip toolbar-chip--toggle">
-        <span class="toolbar-label">Cache</span>
-        <ha-switch id="persist-toggle" aria-label="Persistent cache"></ha-switch>
-      </div>
-    `;
-  }
-
-  _renderHubPicker(hub) {
-    const hubs = Array.isArray(this._contents?.hubs) ? this._contents.hubs : [];
-    if (!hubs.length) return "";
-
-    return `
-      <label class="toolbar-chip toolbar-chip--select">
-        <span class="toolbar-label">Hub</span>
-        <select id="hub-select" class="field-control">
-          ${hubs
-            .map(
-              (item) =>
-                `<option value="${this._escape(item.entry_id)}" ${item.entry_id === hub?.entry_id ? "selected" : ""}>${this._escape(item.name || item.entry_id)}</option>`
-            )
-            .join("")}
-        </select>
-      </label>
-    `;
-  }
-
-  _renderToolbar(hub, enabled) {
-    return `
-      <div class="toolbar">
-        <div class="toolbar-title">
-          <span class="title">Sofabaton Power Tools</span>
-          <span class="subtitle subtitle--inline">Cache inspector</span>
-        </div>
-        <div class="toolbar-actions">
-          ${enabled ? this._renderHubPicker(hub) : ""}
-          ${this._renderToggle()}
-        </div>
-      </div>
-    `;
-  }
-
-  _renderActivityTabs(hub, selectedActivity) {
-    const activities = this._hubActivities(hub);
-    if (!activities.length) {
-      return `
-        <div class="empty-card">
-          <div class="empty-title">No cached activities</div>
-          <div class="empty-copy">Refresh an activity once persistent cache is enabled to populate this workspace.</div>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="activity-strip" role="tablist" aria-label="Activities">
-        ${activities
-          .map((activity) => {
-            const isSelected = Number(activity.id) === Number(selectedActivity?.id);
-            return `
-              <button
-                class="activity-tab ${isSelected ? "is-active" : ""}"
-                type="button"
-                role="tab"
-                aria-selected="${isSelected ? "true" : "false"}"
-                data-activity-id="${Number(activity.id)}"
-              >
-                <span class="activity-tab__title">${this._escape(activity.name || `Activity ${activity.id}`)}</span>
-                <span class="activity-tab__meta">
-                  ${Number(activity.favorite_count || 0)} favorites
-                  · ${Number(activity.keybinding_count || 0)} bindings
-                  · ${Number(activity.macro_count || 0)} macros
-                </span>
-              </button>
-            `;
-          })
-          .join("")}
-      </div>
-    `;
-  }
-
-  _renderFavoritesSection(hub, selectedActivity) {
-    const favorites = this._activityFavorites(hub, selectedActivity?.id);
-    if (!favorites.length) {
-      return `
-        <div class="section-card">
-          <div class="section-heading">Favorites</div>
-          <div class="empty-card empty-card--flat">
-            <div class="empty-title">No cached favorites</div>
-            <div class="empty-copy">This activity does not currently expose any cached quick-access favorites.</div>
-          </div>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="section-card">
-        <div class="section-heading">Favorites</div>
-        <div class="list-grid">
-          ${favorites
-            .map(
-              (favorite) => `
-                <div class="data-row">
-                  <div class="data-row__main">
-                    <div class="data-row__title">${this._escape(favorite.label || `Command ${favorite.command_id}`)}</div>
-                    <div class="data-row__meta">${this._escape(favorite.device_name || `Device ${favorite.device_id}`)} · Command ${Number(favorite.command_id)}</div>
-                  </div>
-                  <div class="data-row__badge">Slot ${Number(favorite.button_id)}</div>
-                </div>
-              `
-            )
-            .join("")}
-        </div>
-      </div>
-    `;
-  }
-
-  _renderMacrosSection(hub, selectedActivity) {
-    const macros = this._activityMacros(hub, selectedActivity?.id);
-    if (!macros.length) {
-      return `
-        <div class="section-card">
-          <div class="section-heading">Macros</div>
-          <div class="empty-card empty-card--flat">
-            <div class="empty-title">No cached macros</div>
-            <div class="empty-copy">Macro data will appear here once this activity has been cached.</div>
-          </div>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="section-card">
-        <div class="section-heading">Macros</div>
-        <div class="list-grid">
-          ${macros
-            .map(
-              (macro) => `
-                <div class="data-row">
-                  <div class="data-row__main">
-                    <div class="data-row__title">${this._escape(macro.label || macro.name || `Macro ${macro.command_id}`)}</div>
-                    <div class="data-row__meta">Macro command ${Number(macro.command_id)}</div>
-                  </div>
-                </div>
-              `
-            )
-            .join("")}
-        </div>
-      </div>
-    `;
-  }
-
-  _renderKeybindingsSection(hub, selectedActivity) {
-    const keybindings = this._activityKeybindings(hub, selectedActivity?.id);
-    if (!keybindings.length) {
-      return `
-        <div class="section-card section-card--full">
-          <div class="section-heading">Key bindings</div>
-          <div class="empty-card empty-card--flat">
-            <div class="empty-title">No cached keybindings</div>
-            <div class="empty-copy">Mapped hard buttons for this activity will appear here when available in cache.</div>
-          </div>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="section-card section-card--full">
-        <div class="section-heading">Key bindings</div>
-        <div class="list-grid">
-          ${keybindings
-            .map(
-              (binding) => `
-                <div class="data-row">
-                  <div class="data-row__main">
-                    <div class="data-row__title">${this._escape(binding.button_name || `Button ${binding.button_id}`)}</div>
-                    <div class="data-row__meta">${this._escape(binding.device_name || `Device ${binding.device_id}`)} · ${this._escape(binding.label || `Command ${binding.command_id}`)}</div>
-                  </div>
-                  <div class="data-row__badge">#${Number(binding.button_id)}</div>
-                </div>
-              `
-            )
-            .join("")}
-        </div>
-      </div>
-    `;
-  }
-
-  _renderActivityWorkspace(hub) {
-    const selectedActivity = this._selectedActivity(hub);
-    const activityTitle = selectedActivity?.name || "Activity workspace";
-
-    if (!selectedActivity) {
-      return `
-        <div class="workspace-header">
-          <div>
-            <div class="workspace-title">Activity workspace</div>
-            <div class="workspace-subtitle">Choose a hub with cached activity data to inspect favorites and keybindings.</div>
-          </div>
-        </div>
-        ${this._renderActivityTabs(hub, selectedActivity)}
-      `;
-    }
-
-    return `
-      <div class="workspace-header workspace-header--compact">
-        <div class="workspace-header__main">
-          <div class="workspace-title">${this._escape(activityTitle)}</div>
-          <div class="workspace-metrics">
-            <span>${Number(selectedActivity.favorite_count || 0)} favorites</span>
-            <span>${Number(selectedActivity.keybinding_count || 0)} bindings</span>
-            <span>${Number(selectedActivity.macro_count || 0)} macros</span>
-          </div>
-        </div>
-        <button
-          class="action-btn action-btn--small"
-          type="button"
-          data-refresh-kind="activity"
-          data-refresh-target="${Number(selectedActivity.id)}"
-          ${this._refreshBusy ? "disabled" : ""}
-        >
-          ${this._refreshBusy ? "Refreshing..." : "Refresh"}
-        </button>
-      </div>
-      ${this._renderActivityTabs(hub, selectedActivity)}
-      <div class="workspace-grid">
-        <div class="workspace-column">
-          ${this._renderFavoritesSection(hub, selectedActivity)}
-          ${this._renderMacrosSection(hub, selectedActivity)}
-        </div>
-        <div class="workspace-column">
-          ${this._renderKeybindingsSection(hub, selectedActivity)}
-        </div>
-      </div>
-    `;
-  }
-
-  _renderDevicesSection(hub) {
-    const devices = this._devicesForHub(hub);
-    if (!devices.length) {
-      return `
-        <details class="device-panel">
-          <summary class="device-panel__summary">
-            <span class="section-heading section-heading--compact">Devices cache</span>
-            <span class="device-panel__meta">0 devices</span>
-          </summary>
-          <div class="device-panel__body">
-            <div class="empty-card empty-card--flat">
-              <div class="empty-title">No cached devices</div>
-              <div class="empty-copy">Device cache entries will appear here after individual devices are refreshed.</div>
-            </div>
-          </div>
-        </details>
-      `;
-    }
-
-    return `
-      <details class="device-panel">
-        <summary class="device-panel__summary">
-          <span class="section-heading section-heading--compact">Devices cache</span>
-          <span class="device-panel__meta">${devices.length} devices</span>
-        </summary>
-        <div class="device-panel__body">
-          <div class="devices-list">
-            ${devices
-              .map((device) => {
-                const commands = this._deviceCommands(hub, device.id);
-                return `
-                  <details class="device-card">
-                    <summary class="device-card__summary">
-                      <div class="device-card__main">
-                        <div class="device-card__title">${this._escape(device.name || `Device ${device.id}`)}</div>
-                        <div class="device-card__meta">${Number(device.command_count || 0)} cached commands</div>
-                      </div>
-                      <button
-                        class="action-btn action-btn--small"
-                        type="button"
-                        data-refresh-kind="device"
-                        data-refresh-target="${Number(device.id)}"
-                        ${this._refreshBusy ? "disabled" : ""}
-                      >
-                        ${this._refreshBusy ? "Refreshing..." : "Refresh"}
-                      </button>
-                    </summary>
-                    <div class="device-card__body">
-                      ${
-                        commands.length
-                          ? `<div class="list-grid">${commands
-                              .map(
-                                (command) => `
-                                  <div class="data-row data-row--compact">
-                                    <div class="data-row__main">
-                                      <div class="data-row__title">${this._escape(command.label)}</div>
-                                    </div>
-                                    <div class="data-row__badge">#${Number(command.id)}</div>
-                                  </div>
-                                `
-                              )
-                              .join("")}</div>`
-                          : `<div class="empty-card empty-card--flat"><div class="empty-title">No cached commands</div><div class="empty-copy">Refresh this device to fetch command labels into cache.</div></div>`
-                      }
-                    </div>
-                  </details>
-                `;
-              })
-              .join("")}
-          </div>
-        </div>
-      </details>
-    `;
-  }
-
-  _renderDisabledState() {
-    return `
-      <div class="empty-card">
-        <div class="empty-title">Persistent cache is disabled</div>
-        <div class="empty-copy">Enable persistent cache to browse hub cache contents and inspect activity favorites, macros, and keybindings.</div>
-      </div>
-    `;
-  }
-
-  _renderEmptyState() {
-    return `
-      <div class="empty-card">
-        <div class="empty-title">No hubs found</div>
-        <div class="empty-copy">Add or reconnect a Sofabaton hub to use the power tools workspace.</div>
-      </div>
-    `;
-  }
+  // ─── Styles ───────────────────────────────────────────────────────────────────
 
   _styles() {
-    return `
-      <style>
-        :host {
-          display: block;
-          color: var(--primary-text-color);
-        }
+    return `<style>
+      :host { display: block; }
+      *, *::before, *::after { box-sizing: border-box; }
 
-        ha-card {
-          overflow: hidden;
-        }
+      /* Fixed-height flex column inside ha-card — border-radius + overflow clips content to card corners */
+      .card-inner {
+        height: var(--tools-card-height, 480px);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-radius: var(--ha-card-border-radius, 12px);
+      }
 
-        .card-shell {
-          display: grid;
-          gap: 12px;
-          padding: 14px;
-        }
+      /* ── Header ── */
+      .card-header {
+        flex-shrink: 0;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--divider-color);
+      }
+      .card-title { font-size: 16px; font-weight: 600; }
+      /* ── Hub picker (custom dropdown — no native select) ── */
+      .hub-picker-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid var(--divider-color);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: var(--secondary-background-color, var(--ha-card-background));
+        cursor: pointer;
+        font-family: inherit;
+        color: var(--primary-text-color);
+        flex-shrink: 0;
+      }
+      .hub-picker-btn:hover { border-color: var(--primary-color); }
+      .hub-picker-btn .chip-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+      }
+      .hub-picker-btn .chip-name {
+        font-size: 13px;
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .hub-picker-btn .chip-arrow { font-size: 10px; color: var(--secondary-text-color); }
 
-        .toolbar {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          flex-wrap: wrap;
-        }
+      /* Dialog sits in the top layer — not clipped by card overflow */
+      .hub-picker-dialog {
+        position: fixed;
+        margin: 0;
+        padding: 0;
+        border: 1px solid var(--divider-color);
+        border-radius: var(--ha-card-border-radius, 12px);
+        background: var(--card-background-color, var(--ha-card-background, white));
+        color: var(--primary-text-color);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+        min-width: 160px;
+        overflow: hidden;
+      }
+      .hub-picker-dialog::backdrop { background: transparent; }
+      .hub-option {
+        padding: 9px 14px;
+        font-size: 13px;
+        cursor: pointer;
+        color: var(--primary-text-color);
+      }
+      .hub-option:hover { background: var(--secondary-background-color, var(--primary-background-color)); }
+      .hub-option.selected { font-weight: 600; color: var(--primary-color); }
 
-        .toolbar-title {
-          display: flex;
-          align-items: baseline;
-          gap: 10px;
-          min-width: 0;
-        }
+      /* ── Main body: fills remaining height after header ── */
+      .card-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
 
-        .title {
-          margin: 0;
-          font-size: 18px;
-          font-weight: 500;
-          line-height: 1.2;
-        }
+      /* ── Cache panel: accordion ── */
+      .cache-panel {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+      .accordion-section {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        border-top: 1px solid var(--divider-color);
+      }
+      .accordion-section:first-child { border-top: none; }
+      .accordion-section.open { flex: 1; }
 
-        .subtitle {
-          color: var(--secondary-text-color);
-          font-size: 12px;
-          line-height: 1.3;
-        }
+      .acc-header {
+        flex-shrink: 0;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .acc-title {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+      }
+      .badge {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--secondary-text-color);
+        background: var(--secondary-background-color, var(--ha-card-background));
+        border: 1px solid var(--divider-color);
+        border-radius: 999px;
+        padding: 1px 7px;
+      }
+      .flex-spacer { flex: 1; }
 
-        .subtitle--inline {
-          white-space: nowrap;
-        }
+      .icon-btn {
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--divider-color);
+        border-radius: calc(var(--ha-card-border-radius, 12px) * 0.6);
+        background: transparent;
+        color: var(--secondary-text-color);
+        font-size: 13px;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: color 120ms, border-color 120ms, background 120ms;
+        padding: 0;
+        line-height: 1;
+      }
+      .icon-btn:hover {
+        color: var(--primary-color);
+        border-color: var(--primary-color);
+        background: rgba(3, 169, 244, 0.05);
+      }
+      .icon-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+        pointer-events: none;
+      }
+      .icon-btn.spinning {
+        animation: spin 0.7s linear infinite;
+        color: var(--primary-color);
+        border-color: var(--primary-color);
+        opacity: 1 !important;
+        pointer-events: none;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
 
-        .workspace-header,
-        .section-card,
-        .empty-card,
-        .device-card,
-        .activity-tab,
-        .status,
-        .device-panel,
-        .toolbar-chip {
-          border: 1px solid var(--divider-color);
-          border-radius: 12px;
-          background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
-        }
+      .chevron {
+        font-size: 10px;
+        color: var(--secondary-text-color);
+        transition: transform 150ms;
+        flex-shrink: 0;
+      }
+      .accordion-section.open .chevron { transform: rotate(180deg); }
 
-        .toolbar-actions {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
+      /* Scrollable body — only present when section is open */
+      .acc-body {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding: 0 16px 12px;
+        display: grid;
+        gap: 6px;
+        align-content: start;
+      }
 
-        .toolbar-chip {
-          display: inline-flex;
-          align-items: center;
-          gap: 8px;
-          min-height: 38px;
-          padding: 0 10px;
-        }
+      /* ── Entity blocks ── */
+      .entity-block {
+        border: 1px solid var(--divider-color);
+        border-radius: var(--ha-card-border-radius, 12px);
+        background: var(--secondary-background-color, var(--ha-card-background));
+        overflow-x: clip;
+      }
+      .entity-summary {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 9px 10px 9px 12px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .entity-name {
+        font-size: 13px;
+        font-weight: 500;
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .id-badge {
+        display: inline-flex;
+        align-items: center;
+        font-size: 10px;
+        font-weight: 600;
+        font-family: "SF Mono", "Fira Code", Consolas, monospace;
+        background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+        border: 1px solid var(--divider-color);
+        border-radius: calc(var(--ha-card-border-radius, 12px) * 0.4);
+        padding: 2px 5px;
+        flex-shrink: 0;
+        white-space: nowrap;
+        min-width: 68px;
+        justify-content: space-between;
+      }
+      .id-badge .id-type { color: var(--secondary-text-color); opacity: 0.75; }
+      .id-badge .id-value { color: var(--primary-text-color); text-align: right; }
+      .entity-count {
+        font-size: 11px;
+        color: var(--secondary-text-color);
+        flex-shrink: 0;
+        white-space: nowrap;
+      }
+      .entity-chevron {
+        font-size: 9px;
+        color: var(--secondary-text-color);
+        transition: transform 150ms;
+        flex-shrink: 0;
+      }
+      .entity-block.open .entity-chevron { transform: rotate(180deg); }
 
-        .toolbar-chip--select {
-          min-width: 180px;
-          padding-right: 6px;
-        }
+      /* Sticky header while open entity scrolls within acc-body */
+      .entity-block.open > .entity-summary {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: var(--secondary-background-color, var(--ha-card-background));
+        border-bottom: 1px solid var(--divider-color);
+        /* Keep top corners rounded whether or not the entity-block top is in view */
+        border-radius: var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px) 0 0;
+      }
 
-        .toolbar-label {
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: var(--secondary-text-color);
-        }
+      .entity-body { display: none; }
+      .entity-block.open .entity-body { display: block; }
 
-        .field-control {
-          min-height: 30px;
-          border: 0;
-          background: transparent;
-          color: var(--primary-text-color);
-          padding: 0 6px 0 0;
-          font: inherit;
-        }
+      .inner-section-label {
+        padding: 7px 12px 3px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+      }
+      .inner-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 8px;
+      }
+      .inner-row:hover { background: rgba(0, 0, 0, 0.03); }
+      .inner-label {
+        font-size: 12px;
+        font-weight: 500;
+        flex: 1;
+        min-width: 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .inner-badges { display: flex; gap: 4px; flex-shrink: 0; }
+      .buttons-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        column-gap: 6px;
+      }
+      .buttons-col { display: flex; flex-direction: column; }
+      .inner-empty {
+        padding: 8px 12px;
+        font-size: 11px;
+        color: var(--secondary-text-color);
+        font-style: italic;
+      }
 
-        .status {
-          padding: 8px 10px;
-          font-size: 12px;
-          line-height: 1.4;
-        }
+      /* ── Cache panel states ── */
+      .cache-state {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 24px 16px;
+        text-align: center;
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--secondary-text-color);
+      }
+      .cache-state.error { color: var(--error-color, #db4437); }
+      .cache-state-icon  { font-size: 32px; line-height: 1; margin-bottom: 4px; }
+      .cache-state-title { font-size: 14px; font-weight: 600; color: var(--primary-text-color); }
+      .cache-state-sub   { font-size: 12px; line-height: 1.5; max-width: 220px; }
 
-        .status-subtle {
-          color: var(--secondary-text-color);
-        }
+      /* ── Cache footer (always visible — cache on/off toggle) ── */
+      .cache-footer {
+        flex-shrink: 0;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 16px;
+        border-top: 1px solid var(--divider-color);
+      }
+      .cache-footer-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--secondary-text-color);
+      }
 
-        .status-error {
-          color: var(--error-color);
-        }
-
-        .workspace-header {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 10px 12px;
-        }
-
-        .workspace-header--compact {
-          margin-top: 2px;
-        }
-
-        .workspace-header__main {
-          display: grid;
-          gap: 4px;
-        }
-
-        .workspace-title {
-          font-size: 18px;
-          font-weight: 500;
-          line-height: 1.2;
-        }
-
-        .workspace-metrics {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 6px 12px;
-          color: var(--secondary-text-color);
-          font-size: 12px;
-          line-height: 1.35;
-        }
-
-        .activity-strip {
-          display: flex;
-          gap: 8px;
-          overflow-x: auto;
-          padding-bottom: 1px;
-        }
-
-        .activity-tab {
-          min-width: 156px;
-          display: grid;
-          gap: 2px;
-          padding: 8px 10px;
-          text-align: left;
-          cursor: pointer;
-          color: inherit;
-          font: inherit;
-          transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
-        }
-
-        .activity-tab.is-active {
-          border-color: var(--primary-color);
-          box-shadow: inset 0 -2px 0 var(--primary-color);
-        }
-
-        .activity-tab__title {
-          font-size: 14px;
-          font-weight: 500;
-          line-height: 1.2;
-        }
-
-        .activity-tab__meta {
-          color: var(--secondary-text-color);
-          font-size: 11px;
-          line-height: 1.35;
-        }
-
-        .workspace-grid {
-          display: grid;
-          gap: 12px;
-          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        }
-
-        .workspace-column {
-          display: grid;
-          gap: 12px;
-          align-content: start;
-        }
-
-        .section-card {
-          display: grid;
-          gap: 10px;
-          padding: 10px 12px;
-        }
-
-        .section-card--full {
-          min-height: 100%;
-        }
-
-        .section-heading {
-          font-size: 15px;
-          font-weight: 500;
-          line-height: 1.2;
-        }
-
-        .section-heading--compact {
-          font-size: 14px;
-        }
-
-        .list-grid,
-        .devices-list {
-          display: grid;
-          gap: 8px;
-        }
-
-        .data-row {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          padding: 9px 10px;
-          border: 1px solid var(--divider-color);
-          border-radius: 10px;
-          background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color)));
-        }
-
-        .data-row--compact {
-          padding: 7px 9px;
-        }
-
-        .data-row__main {
-          display: grid;
-          gap: 2px;
-          min-width: 0;
-        }
-
-        .data-row__title {
-          font-size: 14px;
-          font-weight: 500;
-          line-height: 1.25;
-          word-break: break-word;
-        }
-
-        .data-row__meta {
-          color: var(--secondary-text-color);
-          font-size: 11px;
-          line-height: 1.4;
-          word-break: break-word;
-        }
-
-        .data-row__badge {
-          white-space: nowrap;
-          color: var(--secondary-text-color);
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 0.02em;
-        }
-
-        .empty-card {
-          display: grid;
-          gap: 6px;
-          padding: 12px;
-        }
-
-        .empty-card--flat {
-          border-style: dashed;
-          background: transparent;
-        }
-
-        .empty-title {
-          font-size: 14px;
-          font-weight: 500;
-          line-height: 1.3;
-        }
-
-        .empty-copy {
-          color: var(--secondary-text-color);
-          font-size: 12px;
-          line-height: 1.5;
-        }
-
-        .action-btn {
-          min-height: 32px;
-          padding: 0 10px;
-          border: 1px solid var(--divider-color);
-          border-radius: 10px;
-          background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
-          color: var(--primary-text-color);
-          font: inherit;
-          cursor: pointer;
-        }
-
-        .action-btn--small {
-          min-height: 28px;
-          padding: 0 8px;
-          font-size: 12px;
-        }
-
-        .action-btn:disabled {
-          opacity: 0.6;
-          cursor: default;
-        }
-
-        .device-panel {
-          overflow: hidden;
-        }
-
-        .device-panel__summary {
-          list-style: none;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 10px;
-          padding: 10px 12px;
-          cursor: pointer;
-        }
-
-        .device-panel__summary::-webkit-details-marker {
-          display: none;
-        }
-
-        .device-panel__meta {
-          color: var(--secondary-text-color);
-          font-size: 11px;
-          font-weight: 600;
-          letter-spacing: 0.02em;
-          text-transform: uppercase;
-        }
-
-        .device-panel__body {
-          padding: 0 12px 12px;
-        }
-
-        .device-card {
-          overflow: hidden;
-        }
-
-        .device-card__summary {
-          list-style: none;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 12px;
-          padding: 10px 12px;
-          cursor: pointer;
-        }
-
-        .device-card__summary::-webkit-details-marker {
-          display: none;
-        }
-
-        .device-card__main {
-          display: grid;
-          gap: 2px;
-          min-width: 0;
-        }
-
-        .device-card__title {
-          font-size: 14px;
-          font-weight: 500;
-          line-height: 1.3;
-        }
-
-        .device-card__meta {
-          color: var(--secondary-text-color);
-          font-size: 11px;
-          line-height: 1.4;
-        }
-
-        .device-card__body {
-          padding: 0 12px 12px;
-        }
-
-        @media (max-width: 900px) {
-          .workspace-grid {
-            grid-template-columns: minmax(0, 1fr);
-          }
-
-          .workspace-header,
-          .device-card__summary,
-          .toolbar,
-          .toolbar-actions,
-          .device-panel__summary {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .action-btn,
-          .action-btn--small {
-            width: 100%;
-          }
-        }
-      </style>
-    `;
+      /* ── Toast ── */
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+        color: white;
+        background: #333;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+        opacity: 0;
+        transition: opacity 200ms;
+        pointer-events: none;
+        white-space: nowrap;
+        z-index: 100;
+      }
+      .toast.visible { opacity: 1; }
+    </style>`;
   }
 
-  _renderEnabledContent() {
-    const hub = this._selectedHub();
-    if (!hub) {
-      return this._renderEmptyState();
+  // ─── Render: Activity entity block ────────────────────────────────────────────
+
+  _renderActivity(hub, activity) {
+    const id = Number(activity.id);
+    const key = `act-${id}`;
+    const isOpen = this._openEntity === key;
+    const proxyLocked = this._proxyClientConnected(hub);
+    const locked = this._refreshBusy || proxyLocked;
+    const isSpinning = this._refreshBusy && this._activeRefreshLabel === key;
+
+    const favCount = Number(activity.favorite_count ?? 0);
+    const macCount = Number(activity.macro_count ?? 0);
+    // Use hub.buttons[actId] for the authoritative assigned-button count
+    const btnIds   = this._activityButtons(hub, id);
+    const btnCount = btnIds.length;
+
+    let bodyHtml = "";
+    if (isOpen) {
+      const favorites = this._activityFavorites(hub, id);
+      const macros    = this._activityMacros(hub, id);
+
+      const favHtml = favorites.length
+        ? `<div class="inner-section-label">Favorites</div>` +
+          favorites
+            .map(
+              (f) => `
+              <div class="inner-row">
+                <span class="inner-label">${this._escape(f.label)}</span>
+                <span class="inner-badges">
+                  ${this._idBadge("FavID", f.button_id)}
+                  ${this._idBadge("DevID", f.device_id)}
+                  ${this._idBadge("ComID", f.command_id)}
+                </span>
+              </div>`
+            )
+            .join("")
+        : "";
+
+      const macHtml = macros.length
+        ? `<div class="inner-section-label">Macros</div>` +
+          macros
+            .map(
+              (m) => `
+              <div class="inner-row">
+                <span class="inner-label">${this._escape(m.label || m.name || `Macro ${m.command_id}`)}</span>
+                <span class="inner-badges">
+                  ${this._idBadge("FavID", m.command_id)}
+                  ${this._idBadge("ComID", m.command_id)}
+                </span>
+              </div>`
+            )
+            .join("")
+        : "";
+
+      const btnHtml = (() => {
+        if (!btnIds.length) return "";
+        const half = Math.ceil(btnIds.length / 2);
+        const cols = [btnIds.slice(0, half), btnIds.slice(half)];
+        return (
+          `<div class="inner-section-label">Buttons</div>` +
+          `<div class="buttons-grid">` +
+          cols
+            .map(
+              (col) =>
+                `<div class="buttons-col">` +
+                col
+                  .map(
+                    (btnId) => `
+                  <div class="inner-row">
+                    <span class="inner-label">${this._escape(this._buttonName(btnId))}</span>
+                    <span class="inner-badges">${this._idBadge("ComID", btnId)}</span>
+                  </div>`
+                  )
+                  .join("") +
+                `</div>`
+            )
+            .join("") +
+          `</div>`
+        );
+      })();
+
+      const empty =
+        !favorites.length && !macros.length && !btnIds.length
+          ? `<div class="inner-empty">No cached data yet.</div>`
+          : "";
+
+      bodyHtml = `<div class="entity-body">${favHtml}${macHtml}${btnHtml}${empty}</div>`;
     }
 
     return `
-      ${this._renderToolbar(hub, true)}
-      ${this._renderStatus()}
-      ${this._renderActivityWorkspace(hub)}
-      ${this._renderDevicesSection(hub)}
-    `;
+      <div class="entity-block${isOpen ? " open" : ""}" id="entity-${key}">
+        <div class="entity-summary" data-entity-key="${key}">
+          <span class="entity-name">${this._escape(activity.name || `Activity ${id}`)}</span>
+          ${this._idBadge("DevID", id)}
+          <span class="entity-count">${favCount} favs · ${macCount} macros · ${btnCount} btns</span>
+          <button class="icon-btn${isSpinning ? " spinning" : ""}"
+            title="${proxyLocked ? "Unavailable while proxy client is connected" : "Refresh"}"
+            data-refresh-kind="activity"
+            data-refresh-target="${id}"
+            ${locked ? "disabled" : ""}>↻</button>
+          <span class="entity-chevron">▼</span>
+        </div>
+        ${bodyHtml}
+      </div>`;
   }
+
+  // ─── Render: Device entity block ──────────────────────────────────────────────
+
+  _renderDevice(hub, device) {
+    const id = Number(device.id);
+    const key = `dev-${id}`;
+    const isOpen = this._openEntity === key;
+    const proxyLocked = this._proxyClientConnected(hub);
+    const locked = this._refreshBusy || proxyLocked;
+    const isSpinning = this._refreshBusy && this._activeRefreshLabel === key;
+
+    let bodyHtml = "";
+    if (isOpen) {
+      const commands = this._deviceCommands(hub, id);
+      bodyHtml =
+        `<div class="entity-body">` +
+        (commands.length
+          ? commands
+              .map(
+                (c) => `
+              <div class="inner-row">
+                <span class="inner-label">${this._escape(c.label)}</span>
+                <span class="inner-badges">${this._idBadge("ComID", c.id)}</span>
+              </div>`
+              )
+              .join("")
+          : `<div class="inner-empty">No cached commands.</div>`) +
+        `</div>`;
+    }
+
+    return `
+      <div class="entity-block${isOpen ? " open" : ""}" id="entity-${key}">
+        <div class="entity-summary" data-entity-key="${key}">
+          <span class="entity-name">${this._escape(device.name || `Device ${id}`)}</span>
+          ${this._idBadge("DevID", id)}
+          <span class="entity-count">${Number(device.command_count || 0)} cmds</span>
+          <button class="icon-btn${isSpinning ? " spinning" : ""}"
+            title="${proxyLocked ? "Unavailable while proxy client is connected" : "Refresh"}"
+            data-refresh-kind="device"
+            data-refresh-target="${id}"
+            ${locked ? "disabled" : ""}>↻</button>
+          <span class="entity-chevron">▼</span>
+        </div>
+        ${bodyHtml}
+      </div>`;
+  }
+
+  // ─── Render: Accordion section ────────────────────────────────────────────────
+
+  _renderAccordionSection(sectionId, title, count, itemsHtml) {
+    const isOpen = this._openSection === sectionId;
+    const proxyLocked = this._proxyClientConnected(this._selectedHub());
+    const locked = this._refreshBusy || proxyLocked;
+
+    return `
+      <div class="accordion-section${isOpen ? " open" : ""}" id="acc-${sectionId}">
+        <div class="acc-header" data-section="${sectionId}">
+          <span class="acc-title">${title}</span>
+          <span class="badge">${count}</span>
+          <span class="flex-spacer"></span>
+          <button class="icon-btn${this._refreshBusy ? " spinning" : ""}"
+            id="refresh-${sectionId}"
+            title="${proxyLocked ? "Unavailable while proxy client is connected" : `Refresh ${title.toLowerCase()}`}"
+            ${locked ? "disabled" : ""}>↻</button>
+          <span class="chevron">▼</span>
+        </div>
+        ${isOpen ? `<div class="acc-body" id="acc-body-${sectionId}">${itemsHtml}</div>` : ""}
+      </div>`;
+  }
+
+  // ─── Render: Cache panel ──────────────────────────────────────────────────────
+
+  _renderCache(hub) {
+    if (this._loading) {
+      return `<div class="cache-state">Loading…</div>`;
+    }
+    if (this._loadError) {
+      return `<div class="cache-state error">${this._escape(this._loadError)}</div>`;
+    }
+    if (!this._state?.enabled) {
+      return `
+        <div class="cache-state">
+          <div class="cache-state-icon">💾</div>
+          <div class="cache-state-title">Persistent cache is off</div>
+          <div class="cache-state-sub">Enable it using the toggle below to browse cached activities and devices</div>
+        </div>`;
+    }
+    if (!hub) {
+      return `<div class="cache-state">No hubs found.</div>`;
+    }
+
+    const activities = this._hubActivities(hub);
+    const devices = this._devicesForHub(hub);
+
+    return `
+      <div class="cache-panel">
+        ${this._renderAccordionSection(
+          "activities",
+          "Activities",
+          activities.length,
+          activities.map((a) => this._renderActivity(hub, a)).join("")
+        )}
+        ${this._renderAccordionSection(
+          "devices",
+          "Devices",
+          devices.length,
+          devices.map((d) => this._renderDevice(hub, d)).join("")
+        )}
+      </div>`;
+  }
+
+  // ─── Render: Main ─────────────────────────────────────────────────────────────
 
   _render() {
     if (!this._hass || !this._root) return;
 
-    const enabled = !!this._state?.enabled;
-    const content = enabled ? this._renderEnabledContent() : `
-      ${this._renderToolbar(null, false)}
-      ${this._renderStatus()}
-      ${this._renderDisabledState()}
-    `;
+    const hub = this._selectedHub();
+    const hubs = Array.isArray(this._contents?.hubs) ? this._contents.hubs : [];
 
     this._root.innerHTML = `
       ${this._styles()}
       <ha-card>
-        <div class="card-shell">
-          ${content}
+        <div class="card-inner" style="height:${this._config?.card_height ?? 480}px">
+          <div class="card-header">
+            <span class="card-title">Sofabaton Control Panel</span>
+            ${
+              hubs.length > 1
+                ? `<button class="hub-picker-btn" id="hub-picker-btn">
+                    <span class="chip-label">Hub</span>
+                    <span class="chip-name">${this._escape(hub?.name || hub?.entry_id || "")}</span>
+                    <span class="chip-arrow">▾</span>
+                  </button>`
+                : ""
+            }
+          </div>
+          <div class="card-body">
+            ${this._renderCache(hub)}
+          </div>
+          <div class="cache-footer">
+            <span class="cache-footer-label">Persistent cache</span>
+            <div class="flex-spacer"></div>
+            <ha-switch id="sw-cache"></ha-switch>
+          </div>
         </div>
       </ha-card>
+      ${
+        hubs.length > 1
+          ? `<dialog id="hub-picker-dialog" class="hub-picker-dialog">
+              ${hubs
+                .map(
+                  (h) =>
+                    `<div class="hub-option${h.entry_id === this._selectedHubEntryId ? " selected" : ""}" data-entry-id="${this._escape(h.entry_id)}">${this._escape(h.name || h.entry_id)}</div>`
+                )
+                .join("")}
+             </dialog>`
+          : ""
+      }
+      <div class="toast" id="toast"></div>
     `;
 
-    const switchEl = this._root.querySelector("#persist-toggle");
-    if (switchEl) {
-      switchEl.checked = enabled;
-      switchEl.disabled = this._loading || this._refreshBusy;
-      switchEl.addEventListener("change", (ev) => {
-        const checked = !!ev.target?.checked;
-        this._togglePersistent(checked);
+    this._wireUp(hub);
+  }
+
+  // ─── Event wiring ─────────────────────────────────────────────────────────────
+
+  _wireUp(hub) {
+    const root = this._root;
+    const entryId = hub?.entry_id || null;
+
+    // ── Hub picker (custom dropdown via <dialog>) ──
+    const pickerBtn    = root.getElementById("hub-picker-btn");
+    const pickerDialog = root.getElementById("hub-picker-dialog");
+    if (pickerBtn && pickerDialog) {
+      pickerBtn.addEventListener("click", () => {
+        const rect = pickerBtn.getBoundingClientRect();
+        pickerDialog.style.top  = (rect.bottom + 4) + "px";
+        pickerDialog.style.left = Math.max(8, rect.right - (pickerDialog.offsetWidth || 160)) + "px";
+        pickerDialog.showModal();
+        // Re-align now that browser has laid out the dialog
+        pickerDialog.style.left = Math.max(8, rect.right - pickerDialog.offsetWidth) + "px";
+      });
+      pickerDialog.addEventListener("click", (e) => {
+        const opt = e.target.closest(".hub-option");
+        if (opt) {
+          this._selectedHubEntryId = opt.dataset.entryId;
+          this._openEntity = null;
+          pickerDialog.close();
+          this._render();
+        } else {
+          pickerDialog.close();
+        }
       });
     }
 
-    this._root.querySelector("#hub-select")?.addEventListener("change", (ev) => {
-      this._selectedHubEntryId = ev.target?.value || null;
-      const hub = this._selectedHub();
-      const firstActivity = this._hubActivities(hub)[0] || null;
-      this._selectedActivityId = firstActivity ? Number(firstActivity.id) : null;
-      this._render();
-    });
+    // ── Cache footer toggle (always present) ──
+    const swCache = root.getElementById("sw-cache");
+    if (swCache) {
+      swCache.checked  = !!this._state?.enabled;
+      swCache.disabled = !!this._loading;
+      swCache.addEventListener("change", (ev) => this._togglePersistent(!!ev.target?.checked));
+    }
 
-    this._root.querySelectorAll("[data-activity-id]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this._selectedActivityId = Number(button.getAttribute("data-activity-id"));
+    // ── Cache accordion ──
+    root.querySelectorAll("[data-section]").forEach((header) => {
+      header.addEventListener("click", (e) => {
+        if (e.target.closest(".icon-btn")) return;
+        const sectionId = header.dataset.section;
+        this._openSection = this._openSection === sectionId ? null : sectionId;
+        this._openEntity = null;
         this._render();
       });
     });
 
-    this._root.querySelectorAll("[data-refresh-kind]").forEach((button) => {
-      button.addEventListener("click", (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const kind = button.getAttribute("data-refresh-kind");
-        const targetId = button.getAttribute("data-refresh-target");
-        const hub = this._selectedHub();
-        if (!kind || !targetId || !hub?.entry_id) return;
-        this._refreshForHub(kind, hub.entry_id, Number(targetId));
+    // Section refresh buttons — refresh all entities in the section sequentially
+    ["activities", "devices"].forEach((sectionId) => {
+      root.getElementById(`refresh-${sectionId}`)?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this._refreshSection(sectionId);
+      });
+    });
+
+    // Entity expand / collapse (single-open)
+    root.querySelectorAll("[data-entity-key]").forEach((summary) => {
+      summary.addEventListener("click", (e) => {
+        if (e.target.closest(".icon-btn")) return;
+        const key = summary.dataset.entityKey;
+        const opening = this._openEntity !== key;
+        this._openEntity = opening ? key : null;
+        this._render();
+        if (opening) requestAnimationFrame(() => this._scrollEntityToTop(key));
+      });
+    });
+
+    // Per-entity refresh
+    root.querySelectorAll("[data-refresh-kind]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!hub) return;
+        const kind = btn.getAttribute("data-refresh-kind");
+        const targetId = Number(btn.getAttribute("data-refresh-target"));
+        const key = `${kind === "activity" ? "act" : "dev"}-${targetId}`;
+        this._refreshForHub(kind, hub.entry_id, targetId, key);
       });
     });
   }
 }
 
+class SofabatonControlPanelEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config || {};
+    this._render();
+  }
+
+  _render() {
+    const height = this._config?.card_height ?? 480;
+    this.innerHTML = `
+      <style>
+        .editor-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+        .editor-row label { flex: 1; font-size: 14px; color: var(--primary-text-color); }
+        .editor-row input[type=number] {
+          width: 90px; padding: 6px 8px;
+          border: 1px solid var(--divider-color);
+          border-radius: 6px;
+          background: var(--card-background-color);
+          color: var(--primary-text-color);
+          font-size: 14px;
+        }
+        .editor-hint { font-size: 12px; color: var(--secondary-text-color); padding-bottom: 4px; }
+      </style>
+      <div class="editor-row">
+        <label>Card height (px)</label>
+        <input type="number" id="card-height" min="200" max="1200" step="10" value="${height}">
+      </div>
+      <div class="editor-hint">Controls how much of the activity/device lists is visible. Default: 480 px.</div>
+    `;
+    this.querySelector("#card-height").addEventListener("change", (ev) => {
+      const value = parseInt(ev.target.value, 10);
+      if (!isNaN(value) && value >= 200 && value <= 1200) {
+        this.dispatchEvent(new CustomEvent("config-changed", {
+          detail: { config: { ...this._config, card_height: value } },
+          bubbles: true,
+          composed: true,
+        }));
+      }
+    });
+  }
+}
+
+const EDITOR_TYPE = `${TOOLS_TYPE}-editor`;
 if (!customElements.get(TOOLS_TYPE)) {
-  customElements.define(TOOLS_TYPE, SofabatonPowerToolsCard);
+  customElements.define(TOOLS_TYPE, SofabatonControlPanelCard);
+}
+if (!customElements.get(EDITOR_TYPE)) {
+  customElements.define(EDITOR_TYPE, SofabatonControlPanelEditor);
 }
 
 window.customCards = window.customCards || [];
-if (!window.customCards.find((card) => card.type === TOOLS_TYPE)) {
+if (!window.customCards.find((c) => c.type === TOOLS_TYPE)) {
   window.customCards.push({
     type: TOOLS_TYPE,
-    name: "Sofabaton Power Tools",
-    description: "Manage and inspect the Sofabaton integration cache",
+    name: "Sofabaton Control Panel",
+    description: "Manage and inspect the Sofabaton X1S integration",
   });
 }

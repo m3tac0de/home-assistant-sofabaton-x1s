@@ -104,6 +104,7 @@ class SofabatonHub:
         self.activities_ready: bool = False
         self.devices_ready: bool = False
         self._devices_generation: int = 0
+        self._activities_generation: int = 0
         self.proxy_enabled: bool = proxy_enabled
         self.hex_logging_enabled: bool = hex_logging_enabled
         self.roku_server_enabled: bool = roku_server_enabled
@@ -266,6 +267,7 @@ class SofabatonHub:
             self.activities_ready = ready
             if ready:
                 self.activities = acts
+                self._activities_generation += 1
                 self._sync_current_activity_from_cache(clear_when_unknown=True)
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
@@ -1415,6 +1417,21 @@ class SofabatonHub:
             await asyncio.sleep(0.1)
 
         return dict(self.devices)
+
+    async def async_request_catalog(self, kind: str, timeout_seconds: float = 30.0) -> None:
+        """Send REQ_ACTIVITIES or REQ_DEVICES to the hub and wait for the burst to complete."""
+        if kind == "activities":
+            previous_generation = self._activities_generation
+            await self.hass.async_add_executor_job(self._proxy.request_activities)
+            deadline = monotonic() + timeout_seconds
+            while monotonic() < deadline:
+                if self._activities_generation > previous_generation:
+                    return
+                await asyncio.sleep(0.1)
+        elif kind == "devices":
+            await self._async_refresh_devices_snapshot(timeout_seconds=timeout_seconds)
+        else:
+            raise ValueError(f"Unknown catalog kind: {kind!r}")
 
     def get_managed_command_hashes(self) -> list[str]:
         prefix = f"{COMMAND_BRAND_PREFIX}-"

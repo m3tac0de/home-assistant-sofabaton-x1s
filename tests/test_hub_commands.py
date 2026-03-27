@@ -470,6 +470,148 @@ def test_roku_http_post_parses_long_press_suffix():
     loop.close()
 
 
+def test_roku_http_post_runs_configured_short_press_action():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+    service_calls: list[tuple[str, str, dict, dict | None, bool]] = []
+    async def _async_call(domain, service, data, target=None, blocking=False):
+        service_calls.append((domain, service, data, target, blocking))
+    async def _async_get_hub_config(_entry_id):
+        return {
+            "commands": [
+                {
+                    "name": "Lights On",
+                    "action": {
+                        "action": "perform-action",
+                        "perform_action": "light.turn_on",
+                        "target": {"entity_id": "light.living_room"},
+                    },
+                }
+            ]
+        }
+    hass.services = SimpleNamespace(
+        async_call=_async_call
+    )
+    hass.data = {
+        "sofabaton_x1s": {
+            "command_config_store": SimpleNamespace(
+                async_get_hub_config=_async_get_hub_config
+            )
+        }
+    }
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/7/Lights_On/Living_Room_TV",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    assert service_calls == [
+        (
+            "light",
+            "turn_on",
+            {},
+            {"entity_id": "light.living_room"},
+            True,
+        )
+    ]
+
+    loop.close()
+
+
+def test_roku_http_post_runs_configured_long_press_action():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+    service_calls: list[tuple[str, str, dict, dict | None, bool]] = []
+    async def _async_call(domain, service, data, target=None, blocking=False):
+        service_calls.append((domain, service, data, target, blocking))
+    async def _async_get_hub_config(_entry_id):
+        return {
+            "commands": [
+                {
+                    "name": "Lights On",
+                    "long_press_enabled": True,
+                    "action": {
+                        "action": "perform-action",
+                        "perform_action": "light.turn_off",
+                        "target": {"entity_id": "light.short_press_only"},
+                    },
+                    "long_press_action": {
+                        "action": "perform-action",
+                        "perform_action": "light.turn_on",
+                        "target": {"entity_id": "light.long_press_target"},
+                    },
+                }
+            ]
+        }
+    hass.services = SimpleNamespace(
+        async_call=_async_call
+    )
+    hass.data = {
+        "sofabaton_x1s": {
+            "command_config_store": SimpleNamespace(
+                async_get_hub_config=_async_get_hub_config
+            )
+        }
+    }
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/7/Lights_On/Living_Room_TV/long",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    assert service_calls == [
+        (
+            "light",
+            "turn_on",
+            {},
+            {"entity_id": "light.long_press_target"},
+            True,
+        )
+    ]
+
+    loop.close()
+
+
 def test_command_to_favorite_executor_job_uses_partial_not_kwargs():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

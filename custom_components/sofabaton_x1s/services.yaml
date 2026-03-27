@@ -284,12 +284,6 @@ sync_command_config:
 get_favorites:
   name: Get activity favorites
   description: Fetches the current ordered quick-access list from the hub for the given activity. The response may contain both favorites and macros, each with its shared hub-order id, display slot, type, and best-known label.
-  response_fields:
-    favorites:
-      name: Favorites
-      description: List of ordered quick-access entries from the hub, each with fav_id, legacy button_id alias, slot, type, and label when known.
-      selector:
-        object:
   fields:
     device:
       name: Sofabaton hub

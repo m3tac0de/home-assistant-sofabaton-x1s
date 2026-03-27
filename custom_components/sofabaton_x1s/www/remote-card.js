@@ -5686,6 +5686,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       ...this._commandSlotDefault(idx),
       ...slot,
       action: this._normalizeCommandAction(slot?.action),
+      long_press_action: this._normalizeCommandAction(slot?.long_press_action),
     }));
   }
 
@@ -5910,9 +5911,10 @@ class SofabatonRemoteCardEditor extends HTMLElement {
 
   _commandActionDetails(action) {
     const normalized = this._normalizeCommandAction(action);
-    const service = String(
-      normalized.perform_action || normalized.service || "perform-action",
+    const explicitService = String(
+      normalized.perform_action || normalized.service || "",
     ).trim();
+    const service = explicitService || "perform-action";
     const entityIds = normalized?.target?.entity_id;
     const ids = Array.isArray(entityIds)
       ? entityIds.filter((id) => !!id)
@@ -5934,10 +5936,129 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       service,
       entities: ids.length ? ids.join(", ") : "No target entity",
       commandSummary:
-        actionSuffix && entitySuffix
+        explicitService && actionSuffix && entitySuffix
           ? `${actionSuffix} ${entitySuffix}`
-          : "No Action configured",
+          : explicitService && actionSuffix
+            ? actionSuffix
+            : "No Action configured",
     };
+  }
+
+  _commandSlotSummaryDetails(command) {
+    const shortDetails = this._commandActionDetails(command?.action);
+    if (shortDetails.commandSummary !== "No Action configured") {
+      return shortDetails;
+    }
+    if (!Boolean(command?.long_press_enabled)) {
+      return shortDetails;
+    }
+    const longDetails = this._commandActionDetails(command?.long_press_action);
+    return longDetails.commandSummary !== "No Action configured"
+      ? longDetails
+      : shortDetails;
+  }
+
+  _commandActionRefreshKey(action) {
+    const normalized = this._normalizeCommandAction(action);
+    const normalizeIdValue = (value) =>
+      Array.isArray(value)
+        ? value.map((item) => String(item || "")).filter(Boolean).sort()
+        : value
+          ? [String(value)]
+          : [];
+
+    const target = normalized?.target || {};
+    const payload = {
+      action: String(normalized?.action || "").trim(),
+      service: String(
+        normalized?.perform_action || normalized?.service || "",
+      ).trim(),
+      target_entity_id: normalizeIdValue(
+        target?.entity_id ||
+          normalized?.entity_id ||
+          normalized?.data?.entity_id ||
+          normalized?.service_data?.entity_id,
+      ),
+      target_device_id: normalizeIdValue(
+        target?.device_id ||
+          normalized?.device_id ||
+          normalized?.data?.device_id ||
+          normalized?.service_data?.device_id,
+      ),
+      target_area_id: normalizeIdValue(
+        target?.area_id ||
+          normalized?.area_id ||
+          normalized?.data?.area_id ||
+          normalized?.service_data?.area_id,
+      ),
+      navigation_path: String(normalized?.navigation_path || "").trim(),
+      url_path: String(normalized?.url_path || "").trim(),
+    };
+
+    try {
+      return JSON.stringify(payload);
+    } catch (_err) {
+      return "";
+    }
+  }
+
+  _buildCommandActionSelector(pressType) {
+    const actionSelector = document.createElement("ha-selector");
+    actionSelector.hass = this._hass;
+    actionSelector.selector = { ui_action: {} };
+    actionSelector.label = "Action";
+    actionSelector.addEventListener("value-changed", (ev) => {
+      ev.stopPropagation();
+      const slotIdx = this._activeCommandSlot;
+      if (!Number.isInteger(slotIdx)) return;
+      const previousValue = this._commandActionForPress(
+        this._activeCommandDraft(),
+        pressType,
+      );
+      const nextValue = this._normalizeCommandAction(ev.detail?.value);
+      this._updateActiveCommandDraft(
+        pressType === "long"
+          ? { long_press_action: nextValue }
+          : { action: nextValue },
+      );
+      this._commandSaveError = "";
+      this._hideUiActionTypeSelector(actionSelector);
+      if (
+        this._commandActionRefreshKey(previousValue) !==
+        this._commandActionRefreshKey(nextValue)
+      ) {
+        this._rebuildCommandActionSelector(pressType);
+      }
+    });
+    return actionSelector;
+  }
+
+  _rebuildCommandActionSelector(pressType) {
+    const wrap =
+      pressType === "long"
+        ? this._commandActionEditorLongWrap
+        : this._commandActionEditorShortWrap;
+    if (!wrap) return;
+
+    const nextSelector = this._buildCommandActionSelector(pressType);
+    const active = this._activeCommandDraft();
+    if (active) {
+      nextSelector.value = this._commandActionForPress(active, pressType);
+    }
+
+    wrap.innerHTML = "";
+    wrap.appendChild(nextSelector);
+    this._hideUiActionTypeSelector(nextSelector);
+
+    if (pressType === "long") {
+      this._commandActionEditorLongSelector = nextSelector;
+    } else {
+      this._commandActionEditorShortSelector = nextSelector;
+    }
+
+    if (this._activeCommandActionTabKey() === pressType) {
+      this._commandActionEditorSelector = nextSelector;
+    }
   }
 
   _editorHardButtonOptions() {
@@ -5997,62 +6118,101 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const active = this._activeCommandDraft();
     if (!active) return;
 
-    wrap.innerHTML = "";
+    if (this._commandActionEditorWrapHost !== wrap || !wrap.dataset.sbActionEditorReady) {
+      wrap.innerHTML = "";
+      wrap.dataset.sbActionEditorReady = "1";
+      this._commandActionEditorWrapHost = wrap;
 
-    if (active.long_press_enabled) {
       const tabs = document.createElement("div");
       tabs.className = "sb-command-action-tabs";
+      this._commandActionEditorTabs = tabs;
       ["short", "long"].forEach((pressType) => {
         const tab = document.createElement("button");
         tab.type = "button";
-        tab.className =
-          `sb-command-action-tab ${this._activeCommandActionTabKey() === pressType ? "active" : ""}`.trim();
+        tab.className = "sb-command-action-tab";
         tab.textContent = pressType === "long" ? "Long press" : "Short press";
         tab.addEventListener("click", (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
           this._setActiveCommandActionTab(pressType);
         });
+        if (pressType === "long") this._commandActionEditorLongTab = tab;
+        else this._commandActionEditorShortTab = tab;
         tabs.appendChild(tab);
       });
       wrap.appendChild(tabs);
+
+      const actionHelper = document.createElement("div");
+      actionHelper.className = "sb-command-helper";
+      this._commandActionEditorHelper = actionHelper;
+      wrap.appendChild(actionHelper);
+
+      const buildSelectorWrap = (pressType) => {
+        const selectorWrap = document.createElement("div");
+        selectorWrap.className = "sb-command-action-selector-wrap";
+        const actionSelector = this._buildCommandActionSelector(pressType);
+        selectorWrap.appendChild(actionSelector);
+        wrap.appendChild(selectorWrap);
+        return { selectorWrap, actionSelector };
+      };
+
+      const shortEditor = buildSelectorWrap("short");
+      this._commandActionEditorShortWrap = shortEditor.selectorWrap;
+      this._commandActionEditorShortSelector = shortEditor.actionSelector;
+
+      const longEditor = buildSelectorWrap("long");
+      this._commandActionEditorLongWrap = longEditor.selectorWrap;
+      this._commandActionEditorLongSelector = longEditor.actionSelector;
     }
 
-    const actionHelper = document.createElement("div");
-    actionHelper.className = "sb-command-helper";
-    actionHelper.textContent =
-      this._activeCommandActionTabKey() === "long"
-        ? "Select Long-Press Action"
-        : "Select Triggered Action";
+    const activeTab = this._activeCommandActionTabKey();
+    const showLongPress = Boolean(active.long_press_enabled);
 
-    const actionSelector = document.createElement("ha-selector");
-    actionSelector.hass = this._hass;
-    actionSelector.selector = { ui_action: {} };
-    actionSelector.label = "Action";
-    actionSelector.addEventListener("value-changed", (ev) => {
-      ev.stopPropagation();
-      const slotIdx = this._activeCommandSlot;
-      if (!Number.isInteger(slotIdx)) return;
-      const value = ev.detail?.value;
-      const patch =
-        this._activeCommandActionTabKey() === "long"
-          ? { long_press_action: this._normalizeCommandAction(value) }
-          : { action: this._normalizeCommandAction(value) };
-      this._updateActiveCommandDraft(patch);
-
-      // Action editor can restructure based on action type/target; refresh only this section.
-      this._renderCommandActionSection();
-    });
-
-    this._commandActionEditorSelector = actionSelector;
-    wrap.appendChild(actionHelper);
-    wrap.appendChild(actionSelector);
-
-    this._commandActionEditorSelector.value = this._commandActionForPress(
-      active,
-      this._activeCommandActionTabKey(),
+    if (this._commandActionEditorTabs) {
+      this._commandActionEditorTabs.style.display = showLongPress ? "" : "none";
+    }
+    this._commandActionEditorShortTab?.classList.toggle(
+      "active",
+      activeTab === "short",
     );
-    this._hideUiActionTypeSelector(this._commandActionEditorSelector);
+    this._commandActionEditorLongTab?.classList.toggle(
+      "active",
+      activeTab === "long",
+    );
+    if (this._commandActionEditorHelper) {
+      this._commandActionEditorHelper.textContent =
+        activeTab === "long" ? "Select Long-Press Action" : "Select Triggered Action";
+    }
+
+    if (this._commandActionEditorShortWrap) {
+      this._commandActionEditorShortWrap.style.display = activeTab === "short" ? "" : "none";
+    }
+    if (this._commandActionEditorLongWrap) {
+      this._commandActionEditorLongWrap.style.display =
+        showLongPress && activeTab === "long" ? "" : "none";
+    }
+
+    if (this._commandActionEditorShortSelector) {
+      this._commandActionEditorShortSelector.hass = this._hass;
+      this._commandActionEditorShortSelector.value = this._commandActionForPress(
+        active,
+        "short",
+      );
+      this._hideUiActionTypeSelector(this._commandActionEditorShortSelector);
+    }
+    if (this._commandActionEditorLongSelector) {
+      this._commandActionEditorLongSelector.hass = this._hass;
+      this._commandActionEditorLongSelector.value = this._commandActionForPress(
+        active,
+        "long",
+      );
+      this._hideUiActionTypeSelector(this._commandActionEditorLongSelector);
+    }
+
+    this._commandActionEditorSelector =
+      activeTab === "long"
+        ? this._commandActionEditorLongSelector
+        : this._commandActionEditorShortSelector;
   }
 
   _isCommandConfigured(command, idx) {
@@ -6185,6 +6345,15 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._commandActionEditorModal = null;
     this._commandActionEditorModalTitle = null;
     this._commandActionEditorWrap = null;
+    this._commandActionEditorWrapHost = null;
+    this._commandActionEditorTabs = null;
+    this._commandActionEditorShortTab = null;
+    this._commandActionEditorLongTab = null;
+    this._commandActionEditorHelper = null;
+    this._commandActionEditorShortWrap = null;
+    this._commandActionEditorLongWrap = null;
+    this._commandActionEditorShortSelector = null;
+    this._commandActionEditorLongSelector = null;
     this._commandActionEditorSelector = null;
     this._commandEditorFooterNote = null;
     this._commandActionEditorFooterNote = null;
@@ -6473,7 +6642,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         });
       }
 
-      const details = this._commandActionDetails(command.action);
+      const details = this._commandSlotSummaryDetails(command);
       const configured = this._isCommandConfigured(command, idx);
 
       const main = document.createElement("div");
@@ -7060,7 +7229,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
         : "__none__";
 
       if (!active.long_press_enabled) this._activeCommandActionTab = "short";
-      this._renderCommandActionSection();
       if (this._activeCommandModal === "action") {
         this._commandEditorModal.classList.remove("open");
         this._commandActionEditorModalTitle.textContent = `Command Slot ${activeIdx + 1} Action`;

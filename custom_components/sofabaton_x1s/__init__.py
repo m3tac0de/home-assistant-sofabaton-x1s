@@ -334,6 +334,31 @@ async def _ws_get_persistent_cache_contents(hass: HomeAssistant, connection, msg
     connection.send_result(msg["id"], {"enabled": True, "hubs": hub_payloads})
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/catalog/refresh",
+        vol.Optional("entry_id"): str,
+        vol.Required("kind"): vol.In(["activities", "devices"]),
+    }
+)
+@websocket_api.async_response
+async def _ws_refresh_catalog(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(
+        hass,
+        {"entry_id": msg.get("entry_id")},
+    )
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    await hub.async_request_catalog(msg["kind"])
+    store = await _async_get_persistent_cache_store(hass)
+    if store.enabled:
+        payload = await hub.async_export_cache_state()
+        await store.async_set_hub_cache(hub.entry_id, payload)
+    connection.send_result(msg["id"], {"ok": True})
+
+
 def _register_websocket_commands(hass: HomeAssistant) -> None:
     domain_data = hass.data.setdefault(DOMAIN, {})
     if domain_data.get("ws_registered"):
@@ -347,6 +372,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_set_persistent_cache)
     websocket_api.async_register_command(hass, _ws_refresh_persistent_cache_entry)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache_contents)
+    websocket_api.async_register_command(hass, _ws_refresh_catalog)
     domain_data["ws_registered"] = True
 
 
