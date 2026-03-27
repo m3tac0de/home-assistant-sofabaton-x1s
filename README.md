@@ -10,7 +10,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 ## Start here
 
 - 🚀 **Quick start**: install + add your hub
-- 🕹️ **Dashboard card**: Sofabaton Virtual Remote
+- 🕹️ **Dashboard cards**: Sofabaton Virtual Remote & Sofabaton Control Panel
 - 🤖 **Send key presses to the hub**: `remote.send_command`, “recorded keypress”, “index” + fetch action
 - ⚡ **Receive key presses from the hub**: Sofabaton Virtual Remote, "Wifi Commands" see [`docs/wifi_commands.md`](docs/wifi_commands.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
@@ -151,7 +151,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ---
 
-## 🕹️ Dashboard card (Sofabaton Virtual Remote)
+## 🕹️ Dashboard card - Sofabaton Virtual Remote
 
 This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 
@@ -162,6 +162,18 @@ This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 > The card is also available as a separate HACS frontend plugin. It's recommended you install it that way, so it can be updated separately from this integration.
 > This integration automatically stops deploying the card as soon as it detects that the card is installed through HACS (a reboot of Home Assistant is required).
 
+## ⚙️ Dashboard card - Sofabaton Control Panel
+
+This integration adds the **Sofabaton Control Panel** Lovelace card to your Home Assistant.
+Find it in the Cards selection menu, or add it manually using the follow YAML:
+
+```
+type: custom:sofabaton-control-panel
+```
+
+With this card **persistent cache** can be enabled, meaning that any data retrieved from the hub is cached and survives a restart of Home Assistant.
+With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable at certain tasks.  
+Use this card to navigate your cache and refresh it whenever required.
 
 ---
 
