@@ -180,6 +180,20 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             hub_listen_base = user_input["hub_listen_base"]
             roku_listen_port = user_input.get(CONF_ROKU_LISTEN_PORT, current_roku_listen_port)
 
+            # sync shared port settings back to all existing entries
+            shared_options = {
+                "proxy_udp_port": proxy_udp_port,
+                "hub_listen_base": hub_listen_base,
+                CONF_ROKU_LISTEN_PORT: roku_listen_port,
+            }
+            for existing_entry in self._async_current_entries():
+                merged = {**existing_entry.options, **shared_options}
+                if merged != existing_entry.options:
+                    self.hass.config_entries.async_update_entry(
+                        existing_entry,
+                        options=merged,
+                    )
+
             # finish
             hub_info = self._chosen_hub
 
