@@ -1,4 +1,6 @@
 const TOOLS_TYPE = "sofabaton-control-panel";
+const TOOLS_VERSION = "0.0.1";
+const TOOLS_LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
 
 // Mirrors ButtonName from lib/protocol_const.py — same .title() label transform.
 const BUTTON_NAMES = {
@@ -12,6 +14,22 @@ const BUTTON_NAMES = {
   0xBE: "Red",      0xBF: "Green",    0xC0: "Yellow",   0xC1: "Blue",
   0xC6: "Power On", 0xC7: "Power Off",
 };
+
+function logOnce() {
+  if (window[TOOLS_LOG_ONCE_KEY]) return;
+  window[TOOLS_LOG_ONCE_KEY] = true;
+  const pill =
+    "padding:2px 10px;" +
+    "border-radius:999px;" +
+    "font-weight:600;" +
+    "font-size:12px;" +
+    "line-height:18px;" +
+    "background:#334155;color:#94a3b8;";
+  console.log(`%cSofabaton Control Panel  ${TOOLS_VERSION}`, pill);
+}
+
+// Call at module load (top-level)
+logOnce();
 
 class SofabatonControlPanelCard extends HTMLElement {
   // ─── Lifecycle ───────────────────────────────────────────────────────────────
@@ -224,15 +242,6 @@ class SofabatonControlPanelCard extends HTMLElement {
     body.scrollTo({ top: body.scrollTop + (entityTop - bodyTop), behavior: "smooth" });
   }
 
-  _showToast(msg) {
-    const el = this._root?.getElementById("toast");
-    if (!el) return;
-    el.textContent = msg;
-    el.classList.add("visible");
-    clearTimeout(this._toastTimer);
-    this._toastTimer = setTimeout(() => el?.classList.remove("visible"), 2400);
-  }
-
   // ─── Actions ──────────────────────────────────────────────────────────────────
 
   async _togglePersistent(enabled) {
@@ -240,7 +249,6 @@ class SofabatonControlPanelCard extends HTMLElement {
       await this._ws({ type: "sofabaton_x1s/persistent_cache/set", enabled: !!enabled });
       await this._loadState();
     } catch (err) {
-      this._showToast(`Error: ${this._formatError(err)}`);
       this._render();
     }
   }
@@ -270,7 +278,7 @@ class SofabatonControlPanelCard extends HTMLElement {
       await this._ws(this._refreshPayload(kind, hubEntryId, targetId));
       await this._loadState();
     } catch (err) {
-      this._showToast(`Refresh failed: ${this._formatError(err)}`);
+      // intentionally silent
     } finally {
       this._refreshBusy = false;
       this._activeRefreshLabel = null;
@@ -295,7 +303,7 @@ class SofabatonControlPanelCard extends HTMLElement {
       });
       await this._loadState();
     } catch (err) {
-      this._showToast(`Refresh failed: ${this._formatError(err)}`);
+      // intentionally silent
     } finally {
       this._refreshBusy = false;
       this._activeRefreshLabel = null;
@@ -634,26 +642,6 @@ class SofabatonControlPanelCard extends HTMLElement {
         color: var(--secondary-text-color);
       }
 
-      /* ── Toast ── */
-      .toast {
-        position: fixed;
-        bottom: 24px;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 8px 16px;
-        border-radius: 20px;
-        font-size: 12px;
-        font-weight: 500;
-        color: white;
-        background: #333;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-        opacity: 0;
-        transition: opacity 200ms;
-        pointer-events: none;
-        white-space: nowrap;
-        z-index: 100;
-      }
-      .toast.visible { opacity: 1; }
     </style>`;
   }
 
@@ -919,7 +907,6 @@ class SofabatonControlPanelCard extends HTMLElement {
              </dialog>`
           : ""
       }
-      <div class="toast" id="toast"></div>
     `;
 
     this._wireUp(hub);
