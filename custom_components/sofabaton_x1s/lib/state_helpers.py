@@ -63,14 +63,41 @@ class ActivityCache:
             if len(payload) < needed:
                 self.keymap_remainders[act_lo] = remainder + payload
                 return
-            record = remainder + payload[:needed]
-            favorites_allowed = not bool(self.buttons[act_lo])
-            favorites_allowed, parsed = self._parse_keymap_record(
-                act_lo, record, favorites_allowed=favorites_allowed
-            )
-            payload = payload[needed:]
-            if not parsed:
-                return
+            # Validate the stitch: act_lo must appear in the new payload at
+            # exactly `needed` bytes in.  If it appears earlier or later the
+            # new frame has a preamble (or no records at all) that would be
+            # incorrectly spliced into the stitched record — discard the stale
+            # remainder and let normal start_index processing handle this frame.
+            _probe_limit = min(len(payload) - RECORD_SIZE + 1, 20)
+            _stitch_ok = True
+            for _j in range(max(_probe_limit, 0)):
+                if payload[_j] == act_lo:
+                    _stitch_ok = (_j == needed)
+                    break
+            if _stitch_ok:
+                record = remainder + payload[:needed]
+                favorites_allowed = not bool(self.buttons[act_lo])
+                favorites_allowed, parsed = self._parse_keymap_record(
+                    act_lo, record, favorites_allowed=favorites_allowed
+                )
+                payload = payload[needed:]
+                if not parsed:
+                    return
+            else:
+                # Stitch is invalid — the new frame has a preamble that doesn't
+                # align.  Attempt to salvage the partial remainder using the
+                # WiFi-device encoding invariant: when record[7]==0x4E the byte
+                # at record[8] encodes cmd_id as (0x20 + cmd_id), so record[9]
+                # can be inferred without the continuation bytes.
+                if (
+                    len(remainder) >= 9
+                    and remainder[7] == 0x4E
+                    and remainder[8] > 0x20
+                ):
+                    cmd_id = remainder[8] - 0x20
+                    padded = remainder + bytes([cmd_id]) + b"\x00" * (RECORD_SIZE - len(remainder) - 1)
+                    _salvage_favorites_allowed = not bool(self.buttons[act_lo])
+                    self._parse_keymap_record(act_lo, padded, favorites_allowed=_salvage_favorites_allowed)
             i, n = 0, len(payload)
 
         start_index = -1

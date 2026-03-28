@@ -570,12 +570,19 @@ class SofabatonControlPanelCard extends HTMLElement {
       .entity-block.open .entity-body { display: block; }
 
       .inner-section-label {
-        padding: 7px 12px 3px;
+        padding: 5px 12px 4px;
         font-size: 10px;
         font-weight: 700;
         letter-spacing: 0.05em;
         text-transform: uppercase;
         color: var(--secondary-text-color);
+        background: var(--primary-background-color, rgba(0,0,0,0.04));
+        border-top: 1px solid var(--divider-color);
+        margin-top: 2px;
+      }
+      .inner-section-label:first-child {
+        border-top: none;
+        margin-top: 0;
       }
       .inner-row {
         display: flex;
