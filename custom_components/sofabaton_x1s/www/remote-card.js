@@ -4459,7 +4459,6 @@ class SofabatonRemoteCard extends HTMLElement {
       // When hub is idle/off it may expose no attributes; request activities once
       if (activities.length === 0 && loadState !== "loading") {
         this._hubRequestBasicData();
-		console.log("WE'RE DOING IT!!!!!");
       }
 
       // X2 baseline behavior: on each confirmed current_activity_id change,
