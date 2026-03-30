@@ -88,6 +88,8 @@ from .transport_bridge import TransportBridge
 # ============================================================================
 log = logging.getLogger("x1proxy")
 
+ACTIVITY_INCOMPLETE_RETRY_DELAY_S = 0.75
+
 def _sum8(b: bytes) -> int: return sum(b) & 0xFF
 def _hexdump(data: bytes) -> str: return data.hex(" ")
 
@@ -282,6 +284,16 @@ class X1Proxy:
         self._pending_activity_map_requests: set[int] = set()
         self._activity_map_complete: set[int] = set()
         self._activity_row_payloads: dict[int, bytes] = {}
+        self._activity_request_serial = 0
+        self._activity_request_inflight: int | None = None
+        self._activity_retry_count = 0
+        self._activity_retry_due_at: float | None = None
+        self._activity_retry_send_pending = False
+        self._activity_pending_generation: int | None = None
+        self._activity_pending_expected_rows: int | None = None
+        self._activity_pending_rows: dict[int, dict[str, Any]] = {}
+        self._activity_pending_payloads: dict[int, bytes] = {}
+        self._activity_pending_hint: int | None = None
         self._favorite_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._keybinding_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._activity_listeners: list[callable] = []
@@ -334,6 +346,7 @@ class X1Proxy:
         self._burst.on_burst_end("commands", self._on_commands_burst_end)
         self._burst.on_burst_end("macros", self._on_macros_burst_end)
         self._burst.on_burst_end("activity_map", self._on_activity_map_burst_end)
+        self._burst.on_burst_end("activities", self._on_activities_burst_end)
         self.on_burst_end("activities", self.handle_active_state)
 
         self._hub_connected: bool = False
@@ -531,7 +544,12 @@ class X1Proxy:
 
     # High-level helpers
     def request_devices(self) -> bool:    return self.enqueue_cmd(OP_REQ_DEVICES, expects_burst=True, burst_kind="devices")
-    def request_activities(self) -> bool: return self.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+    def request_activities(self, *, is_retry: bool = False) -> bool:
+        self._activity_retry_send_pending = is_retry
+        ok = self.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+        if not ok:
+            self._activity_retry_send_pending = False
+        return ok
 
     def request_buttons_for_entity(self, ent_id: int) -> bool:
         if not self.can_issue_commands():
@@ -639,7 +657,7 @@ class X1Proxy:
     def get_activities(self, *, force_refresh: bool = True) -> tuple[dict[int, dict], bool]:
         if force_refresh:
             if self.can_issue_commands():
-                self.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+                self.request_activities()
             return ({}, False)
 
         if self.state.activities:
@@ -935,6 +953,172 @@ class X1Proxy:
             self.state.activity_keybinding_labels.pop(ent_lo, None)
             self.state.activity_command_refs.pop(ent_lo, None)
             self._macros_complete.discard(ent_lo)
+
+    def get_known_device_ids(self) -> set[int]:
+        """Return the set of device IDs currently known from the catalog."""
+        return set(self.state.devices.keys()) | set(self.state.ip_devices.keys())
+
+    def get_known_activity_ids(self) -> set[int]:
+        """Return the set of activity IDs currently known from the catalog."""
+        return set(self.state.activities.keys())
+
+    def clear_devices_catalog(self) -> None:
+        """Clear only the device name catalog before a fresh device list fetch.
+
+        Deliberately does NOT clear per-device commands or ip_buttons — those are
+        preserved for devices that still exist and pruned separately (via
+        clear_persistent_cache_for) for devices that were removed.
+        """
+        self.state.devices.clear()
+        self.state.ip_devices.clear()
+
+    def clear_activities_catalog(self) -> None:
+        """Clear only the activity name catalog before a fresh activity list fetch.
+
+        Deliberately does NOT clear per-activity keymaps, favorites, keybindings,
+        or macros — those are not returned by OP_REQ_ACTIVITIES and would not be
+        repopulated by the burst.  Per-activity detail data for removed activities
+        is pruned separately via clear_persistent_cache_for.
+        """
+        self.state.activities.clear()
+        self._activity_row_payloads.clear()
+        self.state.set_hint(None)
+
+    def _reset_pending_activity_snapshot(self, generation: int | None = None) -> None:
+        self._activity_pending_generation = generation
+        self._activity_pending_expected_rows = None
+        self._activity_pending_rows = {}
+        self._activity_pending_payloads = {}
+        self._activity_pending_hint = None
+
+    def _begin_activity_request(self, *, is_retry: bool = False) -> None:
+        self._activity_request_serial += 1
+        self._activity_request_inflight = self._activity_request_serial
+        self._activity_retry_due_at = None
+        if not is_retry:
+            self._activity_retry_count = 0
+        self._reset_pending_activity_snapshot()
+
+    def _schedule_activity_retry(self, *, now: float | None = None) -> None:
+        if self.hub_version != HUB_VERSION_X2:
+            return
+        if self._activity_retry_count >= 1:
+            return
+        base = time.monotonic() if now is None else now
+        self._activity_retry_due_at = base + ACTIVITY_INCOMPLETE_RETRY_DELAY_S
+        self._activity_retry_count += 1
+        log.warning(
+            "[ACT] incomplete activities snapshot on X2; retrying in %.2fs",
+            ACTIVITY_INCOMPLETE_RETRY_DELAY_S,
+        )
+
+    def _activity_snapshot_complete(self) -> bool:
+        expected = self._activity_pending_expected_rows
+        if expected is None or expected <= 0:
+            return False
+        seen = set(self._activity_pending_rows.keys())
+        return seen == set(range(1, expected + 1))
+
+    def ingest_activity_row(
+        self,
+        *,
+        row_idx: int | None,
+        expected_rows: int | None,
+        act_id: int | None,
+        activity: dict[str, Any] | None,
+        payload: bytes | None = None,
+    ) -> bool:
+        generation = self._activity_request_inflight
+        if generation is None:
+            log.warning(
+                "[ACT] ignoring ghost activity row idx=%s act_id=%s: no request in flight",
+                row_idx,
+                act_id,
+            )
+            return False
+
+        if row_idx is None or row_idx <= 0 or act_id is None or activity is None:
+            return False
+
+        if row_idx == 1:
+            self._reset_pending_activity_snapshot(generation)
+        elif self._activity_pending_generation != generation:
+            log.warning(
+                "[ACT] ignoring activity row idx=%s act_id=%s before row #1 for request=%s",
+                row_idx,
+                act_id,
+                generation,
+            )
+            return False
+
+        if expected_rows is not None and expected_rows > 0:
+            if self._activity_pending_expected_rows is None:
+                self._activity_pending_expected_rows = expected_rows
+            elif self._activity_pending_expected_rows != expected_rows:
+                log.warning(
+                    "[ACT] row-count mismatch in pending snapshot: had=%s got=%s idx=%s",
+                    self._activity_pending_expected_rows,
+                    expected_rows,
+                    row_idx,
+                )
+                self._reset_pending_activity_snapshot(generation)
+                self._activity_pending_expected_rows = expected_rows
+                if row_idx != 1:
+                    log.warning(
+                        "[ACT] ignoring activity row idx=%s after row-count mismatch until row #1 restarts snapshot",
+                        row_idx,
+                    )
+                    return False
+
+        self._activity_pending_rows[row_idx] = dict(activity)
+        if payload is not None:
+            self._activity_pending_payloads[act_id & 0xFF] = bytes(payload)
+
+        if bool(activity.get("active", False)):
+            self._activity_pending_hint = act_id
+
+        return True
+
+    def _commit_pending_activity_snapshot(self) -> None:
+        ordered_rows = sorted(self._activity_pending_rows.items())
+        committed: dict[int, dict[str, Any]] = {}
+        for _row_idx, row in ordered_rows:
+            act_id = int(row["id"]) & 0xFF
+            committed[act_id] = {
+                "name": row["name"],
+                "active": bool(row["active"]),
+                "needs_confirm": bool(row["needs_confirm"]),
+            }
+
+        self.state.activities = committed
+        self._activity_row_payloads = dict(self._activity_pending_payloads)
+        self.state.set_hint(self._activity_pending_hint)
+
+    def _on_activities_burst_end(self, key: str) -> None:
+        generation = self._activity_request_inflight
+        complete = generation is not None and self._activity_pending_generation == generation and self._activity_snapshot_complete()
+
+        if complete:
+            self._commit_pending_activity_snapshot()
+            log.info(
+                "[ACT] committed complete activities snapshot rows=%d request=%s",
+                len(self._activity_pending_rows),
+                generation,
+            )
+        self._activity_request_inflight = None
+
+        if not complete:
+            expected = self._activity_pending_expected_rows
+            seen = sorted(self._activity_pending_rows.keys())
+            if generation is not None:
+                log.warning(
+                    "[ACT] discarding incomplete activities snapshot request=%s expected=%s seen=%s",
+                    generation,
+                    expected,
+                    seen,
+                )
+            self._schedule_activity_retry()
+        self._reset_pending_activity_snapshot()
 
     def get_macros_for_activity(self, act_id: int, *, fetch_if_missing: bool = True) -> tuple[list[dict[str, int | str]], bool]:
         act_lo = act_id & 0xFF
@@ -3225,6 +3409,14 @@ class X1Proxy:
 
     def _handle_idle(self, now: float) -> None:
         self._burst.tick(now, can_issue=self.can_issue_commands, sender=self._send_cmd_frame)
+        if (
+            self._activity_retry_due_at is not None
+            and now >= self._activity_retry_due_at
+            and not self._burst.active
+            and self.can_issue_commands()
+        ):
+            self._activity_retry_due_at = None
+            self.request_activities(is_retry=True)
         self._maybe_retry_app_devices(now)
 
     def _maybe_retry_app_devices(self, now: float) -> None:
@@ -3240,6 +3432,10 @@ class X1Proxy:
 
     def _send_cmd_frame(self, opcode: int, payload: bytes) -> None:
         frame = self._build_frame(opcode, payload)
+        if opcode == OP_REQ_ACTIVITIES:
+            is_retry = self._activity_retry_send_pending
+            self._activity_retry_send_pending = False
+            self._begin_activity_request(is_retry=is_retry)
         log.info(
             "[SEND] hub %s (0x%04X) %dB",
             OPNAMES.get(opcode, f"OP_{opcode:04X}"),

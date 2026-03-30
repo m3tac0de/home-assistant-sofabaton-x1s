@@ -97,6 +97,12 @@ def _build_payload_context(proxy: X1Proxy, opcode: int, payload: bytes, name: st
     )
 
 
+def _start_activity_request(proxy: X1Proxy, *, allow_noninitial_rows: bool = False) -> None:
+    proxy._begin_activity_request()
+    if allow_noninitial_rows:
+        proxy._activity_pending_generation = proxy._activity_request_inflight
+
+
 def _build_macro_raw(op_hi: int, frag_index: int, total_frags: int, act: int, payload: bytes) -> str:
     header = bytes(
         [0xA5, 0x5A, op_hi, 0x13, frag_index, 0x00, 0x01, total_frags, 0x00, 0x01, act]
@@ -766,6 +772,7 @@ def test_x1_activity_row_updates_state_and_hint() -> None:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = X1CatalogActivityHandler()
+    _start_activity_request(proxy)
 
     frame = _build_context(
         proxy,
@@ -776,8 +783,13 @@ def test_x1_activity_row_updates_state_and_hint() -> None:
 
     handler.handle(frame)
 
-    assert proxy.state.activities[0x65] == {"name": "Jellyfin", "active": False, "needs_confirm": False}
-    assert proxy.state.current_activity_hint is None
+    assert proxy._activity_pending_rows[0x01] == {
+        "id": 0x65,
+        "name": "Jellyfin",
+        "active": False,
+        "needs_confirm": False,
+    }
+    assert proxy._activity_pending_hint is None
     assert proxy._burst.kind == "activities"
 
 
@@ -786,6 +798,7 @@ def test_x1_activity_active_flag_uses_correct_offset() -> None:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = X1CatalogActivityHandler()
+    _start_activity_request(proxy)
 
     frame = _build_context(
         proxy,
@@ -796,8 +809,13 @@ def test_x1_activity_active_flag_uses_correct_offset() -> None:
 
     handler.handle(frame)
 
-    assert proxy.state.activities[0x66] == {"name": "Room Control", "active": True, "needs_confirm": False}
-    assert proxy.state.current_activity_hint == 0x66
+    assert proxy._activity_pending_rows[0x01] == {
+        "id": 0x66,
+        "name": "Room Control",
+        "active": True,
+        "needs_confirm": False,
+    }
+    assert proxy._activity_pending_hint == 0x66
 
 
 def test_x1_activity_row_sets_needs_confirm_flag() -> None:
@@ -805,6 +823,7 @@ def test_x1_activity_row_sets_needs_confirm_flag() -> None:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = X1CatalogActivityHandler()
+    _start_activity_request(proxy, allow_noninitial_rows=True)
 
     frame = _build_context(
         proxy,
@@ -815,7 +834,12 @@ def test_x1_activity_row_sets_needs_confirm_flag() -> None:
 
     handler.handle(frame)
 
-    assert proxy.state.activities[0x66] == {"name": "heyo", "active": False, "needs_confirm": True}
+    assert proxy._activity_pending_rows[0x02] == {
+        "id": 0x66,
+        "name": "heyo",
+        "active": False,
+        "needs_confirm": True,
+    }
 
 
 
@@ -825,9 +849,11 @@ def test_catalog_activity_handler_sets_needs_confirm_from_tail_marker() -> None:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = CatalogActivityHandler()
+    _start_activity_request(proxy)
 
     payload = bytearray(214)
     payload[0] = 1
+    payload[3] = 1
     payload[6:8] = (0x0065).to_bytes(2, "big")
     payload[32] = 0x01
     payload[33] = 0x00
@@ -835,6 +861,7 @@ def test_catalog_activity_handler_sets_needs_confirm_from_tail_marker() -> None:
 
     frame = _build_payload_context(proxy, OP_CATALOG_ROW_ACTIVITY, bytes(payload), "CATALOG_ROW_ACTIVITY")
     handler.handle(frame)
+    proxy._on_activities_burst_end("activities")
 
     assert proxy.state.activities[0x65]["needs_confirm"] is True
     assert len(proxy._activity_row_payloads[0x65]) == 214
@@ -845,6 +872,7 @@ def test_catalog_activity_handler_clears_needs_confirm_when_tail_marker_unset() 
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = CatalogActivityHandler()
+    _start_activity_request(proxy, allow_noninitial_rows=True)
 
     payload = bytearray(214)
     payload[0] = 2
@@ -854,14 +882,15 @@ def test_catalog_activity_handler_clears_needs_confirm_when_tail_marker_unset() 
     frame = _build_payload_context(proxy, OP_CATALOG_ROW_ACTIVITY, bytes(payload), "CATALOG_ROW_ACTIVITY")
     handler.handle(frame)
 
-    assert proxy.state.activities[0x66]["needs_confirm"] is False
-    assert len(proxy._activity_row_payloads[0x66]) == 214
+    assert proxy._activity_pending_rows[0x02]["needs_confirm"] is False
+    assert len(proxy._activity_pending_payloads[0x66]) == 214
 
 def test_catalog_activity_handler_decodes_utf16_labels() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = CatalogActivityHandler()
+    _start_activity_request(proxy)
 
     samples = [
         (
@@ -906,11 +935,23 @@ def test_catalog_activity_handler_decodes_utf16_labels() -> None:
         ),
     ]
 
+    latest_by_id: dict[int, str] = {}
     for raw_hex, act_id, expected_label in samples:
+        row_idx = bytes.fromhex(raw_hex)[4]
+        if row_idx == 1 and latest_by_id:
+            latest_by_id = {}
+            _start_activity_request(proxy)
+        elif row_idx != 1 and proxy._activity_pending_generation != proxy._activity_request_inflight:
+            proxy._activity_pending_generation = proxy._activity_request_inflight
+
         handler.handle(
             _build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "CATALOG_ROW_ACTIVITY")
         )
-        assert proxy.state.activities[act_id & 0xFF]["name"] == expected_label
+        latest_by_id[act_id & 0xFF] = expected_label
+        row = next(
+            value for value in proxy._activity_pending_rows.values() if int(value["id"]) == (act_id & 0xFF)
+        )
+        assert row["name"] == expected_label
 
 
 def test_activity_map_ignores_control_tuples_from_x1_tail() -> None:
@@ -1061,4 +1102,4 @@ def test_ack_ready_prefetches_when_cache_missing() -> None:
     opcodes = [row[0] for row in captured]
     assert OP_REQ_ACTIVITIES in opcodes
     assert OP_REQ_BUTTONS in opcodes
-    assert OP_REQ_COMMANDS in opcodes
+    assert OP_REQ_COMMANDS not in opcodes

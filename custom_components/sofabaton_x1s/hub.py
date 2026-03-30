@@ -643,6 +643,14 @@ class SofabatonHub:
                     }
                 )
 
+            # Apply hub-defined display order if available.
+            # activity_favorites_order stores [(fav_id, slot), ...] where fav_id
+            # matches button_id and slot is the 1-based display position.
+            order = self._proxy.state.activity_favorites_order.get(act_lo)
+            if order:
+                slot_by_fav: dict[int, int] = {fav_id: slot for fav_id, slot in order}
+                rows.sort(key=lambda r: slot_by_fav.get(r["button_id"], 0xFFFF))
+
             favorites_by_activity[str(act_lo)] = rows
 
         return favorites_by_activity
@@ -1419,17 +1427,37 @@ class SofabatonHub:
         return dict(self.devices)
 
     async def async_request_catalog(self, kind: str, timeout_seconds: float = 30.0) -> None:
-        """Send REQ_ACTIVITIES or REQ_DEVICES to the hub and wait for the burst to complete."""
+        """Send REQ_ACTIVITIES or REQ_DEVICES to the hub and wait for the burst to complete.
+
+        Uses a snapshot-clear-fetch-prune strategy: the name catalog is cleared before
+        the request so deleted entries don't persist, and per-entity detail data
+        (commands, macros) is preserved for entities that still exist and pruned only
+        for entities that were removed from the catalog.
+        """
         if kind == "activities":
+            old_ids = await self.hass.async_add_executor_job(self._proxy.get_known_activity_ids)
+            await self.hass.async_add_executor_job(self._proxy.clear_activities_catalog)
             previous_generation = self._activities_generation
             await self.hass.async_add_executor_job(self._proxy.request_activities)
             deadline = monotonic() + timeout_seconds
             while monotonic() < deadline:
                 if self._activities_generation > previous_generation:
-                    return
+                    break
                 await asyncio.sleep(0.1)
+            new_ids = await self.hass.async_add_executor_job(self._proxy.get_known_activity_ids)
+            for act_id in old_ids - new_ids:
+                await self.hass.async_add_executor_job(
+                    partial(self._proxy.clear_persistent_cache_for, act_id, kind="activity")
+                )
         elif kind == "devices":
+            old_ids = await self.hass.async_add_executor_job(self._proxy.get_known_device_ids)
+            await self.hass.async_add_executor_job(self._proxy.clear_devices_catalog)
             await self._async_refresh_devices_snapshot(timeout_seconds=timeout_seconds)
+            new_ids = await self.hass.async_add_executor_job(self._proxy.get_known_device_ids)
+            for dev_id in old_ids - new_ids:
+                await self.hass.async_add_executor_job(
+                    partial(self._proxy.clear_persistent_cache_for, dev_id, kind="device")
+                )
         else:
             raise ValueError(f"Unknown catalog kind: {kind!r}")
 

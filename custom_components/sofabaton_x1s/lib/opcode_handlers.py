@@ -619,19 +619,6 @@ class AckReadyHandler(BaseFrameHandler):
                 )
                 if not buttons_ready:
                     proxy.request_buttons_for_entity(ent_lo)
-
-                if proxy.hub_version != HUB_VERSION_X1:
-                    _, commands_ready = proxy.get_commands_for_entity(
-                        ent_lo,
-                        fetch_if_missing=False,
-                    )
-                    if not commands_ready:
-                        proxy.enqueue_cmd(
-                            OP_REQ_COMMANDS,
-                            bytes([ent_lo, 0xFF]),
-                            expects_burst=True,
-                            burst_kind=f"commands:{ent_lo}",
-                        )
         else:
             log.info("[HINT] proxy client connected; skipping auto-requests")
             new_id, old_id = proxy.state.update_activity_state()
@@ -769,16 +756,12 @@ class CatalogActivityHandler(BaseFrameHandler):
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
-        proxy._burst.start("activities", now=time.monotonic())
+        now = time.monotonic()
 
         payload = frame.payload
         raw = frame.raw
         row_idx = payload[0] if len(payload) >= 1 else None
         # Start of a fresh activities list → reset 'active'
-        if row_idx == 1 and proxy.state.current_activity_hint is not None:
-            log.info("[ACT] reset active (start of new activities list)")
-            proxy.state.set_hint(None)
-
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         label_bytes_raw = raw[36:128]
         activity_label = _decode_x1s_activity_label(label_bytes_raw)
@@ -788,23 +771,32 @@ class CatalogActivityHandler(BaseFrameHandler):
         needs_confirm = _decode_x1s_needs_confirm_flag(payload)
 
         if act_id is not None:
-            proxy.state.activities[act_id & 0xFF] = {
-                "name": activity_label,
-                "active": is_active,
-                "needs_confirm": needs_confirm,
-            }
-            proxy._activity_row_payloads[act_id & 0xFF] = bytes(payload)
-            if is_active:
-                proxy.state.set_hint(act_id)
-            proxy._notify_activity_list_update()
+            accepted = proxy.ingest_activity_row(
+                row_idx=row_idx,
+                expected_rows=payload[3] if len(payload) >= 4 and payload[3] > 0 else None,
+                act_id=act_id,
+                activity={
+                    "id": act_id,
+                    "name": activity_label,
+                    "active": is_active,
+                    "needs_confirm": needs_confirm,
+                },
+                payload=payload,
+            )
+            if not accepted:
+                return
+            proxy._burst.start("activities", now=now)
+            if row_idx == 1:
+                log.info("[ACT] reset active (start of new activities list)")
         elif activity_label:
             log.info("[ACT] name='%s'", activity_label)
 
         state = "ACTIVE" if is_active else "idle"
         if row_idx is not None and act_id is not None:
             log.info(
-                "[ACT] #%d name='%s' act_id=0x%04X (%d) state=%s",
+                "[ACT] #%d/%s name='%s' act_id=0x%04X (%d) state=%s",
                 row_idx,
+                payload[3] if len(payload) >= 4 and payload[3] > 0 else "?",
                 activity_label,
                 act_id,
                 act_id,
@@ -829,13 +821,9 @@ class X1CatalogActivityHandler(BaseFrameHandler):
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         now = time.monotonic()
-        proxy._burst.start("activities", now=now)
 
         payload = frame.payload
         row_idx = payload[0] if payload else None
-        if row_idx == 1 and proxy.state.current_activity_hint is not None:
-            log.info("[ACT] reset active (start of new activities list)")
-            proxy.state.set_hint(None)
 
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         active_flag = frame.raw[35] if len(frame.raw) > 35 else 0
@@ -845,22 +833,32 @@ class X1CatalogActivityHandler(BaseFrameHandler):
         needs_confirm = needs_confirm_flag == 1
 
         if act_id is not None:
-            proxy.state.activities[act_id & 0xFF] = {
-                "name": activity_label,
-                "active": is_active,
-                "needs_confirm": needs_confirm,
-            }
-            if is_active:
-                proxy.state.set_hint(act_id)
-            proxy._notify_activity_list_update()
+            accepted = proxy.ingest_activity_row(
+                row_idx=row_idx,
+                expected_rows=payload[3] if len(payload) >= 4 and payload[3] > 0 else None,
+                act_id=act_id,
+                activity={
+                    "id": act_id,
+                    "name": activity_label,
+                    "active": is_active,
+                    "needs_confirm": needs_confirm,
+                },
+                payload=payload,
+            )
+            if not accepted:
+                return
+            proxy._burst.start("activities", now=now)
+            if row_idx == 1:
+                log.info("[ACT] reset active (start of new activities list)")
         elif activity_label:
             log.info("[ACT] name='%s'", activity_label)
 
         state = "ACTIVE" if is_active else "idle"
         if row_idx is not None and act_id is not None:
             log.info(
-                "[ACT] #%d name='%s' act_id=0x%04X (%d) state=%s",
+                "[ACT] #%d/%s name='%s' act_id=0x%04X (%d) state=%s",
                 row_idx,
+                payload[3] if len(payload) >= 4 and payload[3] > 0 else "?",
                 activity_label,
                 act_id,
                 act_id,

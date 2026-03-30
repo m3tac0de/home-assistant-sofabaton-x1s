@@ -24,6 +24,109 @@ from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 
+def test_incomplete_activity_snapshot_preserves_committed_state() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    proxy.state.activities = {0x65: {"name": "Watch TV", "active": True, "needs_confirm": False}}
+    proxy.state.set_hint(0x65)
+
+    proxy._begin_activity_request()
+    accepted = proxy.ingest_activity_row(
+        row_idx=1,
+        expected_rows=5,
+        act_id=0x66,
+        activity={"id": 0x66, "name": "Play Xbox", "active": False, "needs_confirm": False},
+        payload=b"\x01\x00\x01\x05",
+    )
+
+    assert accepted is True
+    assert proxy.state.current_activity_hint == 0x65
+
+    proxy._on_activities_burst_end("activities")
+
+    assert proxy.state.activities == {0x65: {"name": "Watch TV", "active": True, "needs_confirm": False}}
+    assert proxy.state.current_activity_hint == 0x65
+
+
+def test_complete_activity_snapshot_commits_after_row1_then_out_of_order_rows() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._begin_activity_request()
+    assert proxy.ingest_activity_row(
+        row_idx=1,
+        expected_rows=3,
+        act_id=0x65,
+        activity={"id": 0x65, "name": "Watch TV", "active": False, "needs_confirm": False},
+    )
+    assert proxy.ingest_activity_row(
+        row_idx=3,
+        expected_rows=3,
+        act_id=0x67,
+        activity={"id": 0x67, "name": "Play Switch 2", "active": False, "needs_confirm": False},
+    )
+    assert proxy.ingest_activity_row(
+        row_idx=2,
+        expected_rows=3,
+        act_id=0x66,
+        activity={"id": 0x66, "name": "Play Xbox", "active": True, "needs_confirm": False},
+    )
+
+    proxy._on_activities_burst_end("activities")
+
+    assert proxy.state.activities == {
+        0x65: {"name": "Watch TV", "active": False, "needs_confirm": False},
+        0x66: {"name": "Play Xbox", "active": True, "needs_confirm": False},
+        0x67: {"name": "Play Switch 2", "active": False, "needs_confirm": False},
+    }
+    assert proxy.state.current_activity_hint == 0x66
+
+
+def test_ghost_activity_row_is_ignored_without_request_in_flight() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    accepted = proxy.ingest_activity_row(
+        row_idx=1,
+        expected_rows=2,
+        act_id=0x65,
+        activity={"id": 0x65, "name": "Watch TV", "active": True, "needs_confirm": False},
+    )
+
+    assert accepted is False
+    assert proxy.state.activities == {}
+
+
+def test_incomplete_x2_activity_snapshot_retries_once_after_delay(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X2,
+    )
+
+    proxy._begin_activity_request()
+    proxy.ingest_activity_row(
+        row_idx=1,
+        expected_rows=5,
+        act_id=0x65,
+        activity={"id": 0x65, "name": "Watch TV", "active": False, "needs_confirm": False},
+    )
+
+    proxy._on_activities_burst_end("activities")
+
+    assert proxy._activity_retry_due_at is not None
+    assert proxy._activity_retry_count == 1
+
+    retries: list[bool] = []
+    monkeypatch.setattr(proxy, "request_activities", lambda *, is_retry=False: retries.append(is_retry) or True)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    proxy._burst.active = False
+
+    proxy._handle_idle(proxy._activity_retry_due_at)
+
+    assert retries == [True]
+    assert proxy._activity_retry_due_at is None
+
+
 def test_ensure_commands_for_activity_groups_favorites(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
