@@ -1,9 +1,7 @@
 const TOOLS_TYPE = "sofabaton-control-panel";
 const TOOLS_VERSION = "0.0.1";
 const TOOLS_LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
-const AUTO_RELOAD_BUFFER_MS = 5000;
 
-// Mirrors ButtonName from lib/protocol_const.py — same .title() label transform.
 const BUTTON_NAMES = {
   0x97: "C",        0x98: "B",        0x99: "A",        0x9A: "Exit",
   0x9B: "Dvr",      0x9C: "Play",     0x9D: "Guide",
@@ -29,7 +27,6 @@ function logOnce() {
   console.log(`%cSofabaton Control Panel  ${TOOLS_VERSION}`, pill);
 }
 
-// Call at module load (top-level)
 logOnce();
 
 class SofabatonControlPanelCard extends HTMLElement {
@@ -39,21 +36,14 @@ class SofabatonControlPanelCard extends HTMLElement {
     this._render();
     if (!this._state && !this._loadingStatePromise) {
       this._loadState();
-      return;
     }
-    this._flushAutoReload();
   }
 
   disconnectedCallback() {
     this._isCardConnected = false;
-    if (this._autoReloadTimer != null) {
-      window.clearTimeout(this._autoReloadTimer);
-      this._autoReloadTimer = null;
-    }
     const pickerDialog = this._root?.getElementById("hub-picker-dialog");
     if (pickerDialog?.open) pickerDialog.close();
   }
-  // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
   static getConfigElement() {
     return document.createElement(`${TOOLS_TYPE}-editor`);
@@ -72,10 +62,12 @@ class SofabatonControlPanelCard extends HTMLElement {
       this._root = this.attachShadow({ mode: "open" });
       this._openSection = "activities";
       this._openEntity = null;
-      this._autoReloadTimer = null;
+      this._selectedTab = "hub";
       this._isCardConnected = this.isConnected;
-      this._pendingAutoReload = false;
-      this._suppressAutoReload = false;
+      this._staleData = false;
+      this._refreshGraceUntil = 0;
+      this._pendingSettingKey = null;
+      this._pendingActionKey = null;
       this._lastObservedGenerations = generationSnapshot;
       this._lastHassFingerprint = fingerprint;
       if (this._isCardConnected) {
@@ -88,22 +80,29 @@ class SofabatonControlPanelCard extends HTMLElement {
     if (fingerprint !== this._lastHassFingerprint) {
       if (
         this._isCardConnected &&
-        !this._suppressAutoReload &&
+        !this._refreshBusy &&
+        !this._loading &&
+        Date.now() > this._refreshGraceUntil &&
         this._didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)
       ) {
-        this._scheduleAutoReload();
+        this._staleData = true;
       }
       this._lastObservedGenerations = generationSnapshot;
       this._lastHassFingerprint = fingerprint;
-      if (this._isCardConnected) this._render();
+      if (this._isCardConnected) {
+        if (this._selectedTab === "settings") {
+          this._syncTabButtonsUi();
+          this._syncSettingsTabUi();
+        } else {
+          this._render();
+        }
+      }
     }
   }
 
   getCardSize() {
     return 8;
   }
-
-  // ─── WebSocket helpers ────────────────────────────────────────────────────────
 
   async _ws(msg) {
     return this._hass.callWS(msg);
@@ -119,7 +118,7 @@ class SofabatonControlPanelCard extends HTMLElement {
     this._loadingStatePromise = (async () => {
       try {
         const [state, contents] = await Promise.all([
-          this._ws({ type: "sofabaton_x1s/persistent_cache/get" }),
+          this._ws({ type: "sofabaton_x1s/control_panel/state" }),
           this._ws({ type: "sofabaton_x1s/persistent_cache/contents" }),
         ]);
         this._state = state;
@@ -130,15 +129,21 @@ class SofabatonControlPanelCard extends HTMLElement {
       } finally {
         this._loading = false;
         this._loadingStatePromise = null;
+        this._staleData = false;
+        this._refreshGraceUntil = Date.now() + 10000;
         this._render();
-        this._flushAutoReload();
       }
     })();
 
     return this._loadingStatePromise;
   }
 
-  // ─── Entity finders ───────────────────────────────────────────────────────────
+  async _loadControlPanelState() {
+    const state = await this._ws({ type: "sofabaton_x1s/control_panel/state" });
+    this._state = state;
+    this._syncSelection();
+    return state;
+  }
 
   _remoteEntities() {
     return Object.keys(this._hass?.states || {}).filter((id) => id.startsWith("remote."));
@@ -152,10 +157,29 @@ class SofabatonControlPanelCard extends HTMLElement {
     );
   }
 
-  _proxyClientConnected(hub) {
+  _remoteAttrsForHub(hub) {
+    if (!hub) return {};
+    const entityId = this._entityForHub(hub);
+    return this._hass?.states?.[entityId]?.attributes || {};
+  }
+
+  _remoteAvailableForHub(hub) {
     if (!hub) return false;
     const entityId = this._entityForHub(hub);
-    return !!(this._hass?.states[entityId]?.attributes?.proxy_client_connected);
+    const stateObj = entityId ? this._hass?.states?.[entityId] : null;
+    const state = String(stateObj?.state || "").toLowerCase();
+    return !!state && state !== "unavailable" && state !== "unknown";
+  }
+
+  _proxyClientConnected(hub) {
+    if (!hub) return false;
+    const attrs = this._remoteAttrsForHub(hub);
+    if (typeof attrs.proxy_client_connected === "boolean") return attrs.proxy_client_connected;
+    return !!hub.proxy_client_connected;
+  }
+
+  _canRunHubActions(hub) {
+    return this._remoteAvailableForHub(hub);
   }
 
   _cacheGenerationSnapshot() {
@@ -179,56 +203,21 @@ class SofabatonControlPanelCard extends HTMLElement {
     );
   }
 
-  _scheduleAutoReload() {
-    if (!this._isCardConnected) {
-      this._pendingAutoReload = true;
-      return;
-    }
-    if (this._refreshBusy || this._loading) {
-      this._pendingAutoReload = true;
-      return;
-    }
-    this._pendingAutoReload = true;
-    if (this._autoReloadTimer != null) {
-      window.clearTimeout(this._autoReloadTimer);
-    }
-
-    this._autoReloadTimer = window.setTimeout(() => {
-      this._autoReloadTimer = null;
-      if (this._refreshBusy || this._loading) {
-        this._flushAutoReload();
-        return;
-      }
-      this._pendingAutoReload = false;
-      this._loadState();
-    }, AUTO_RELOAD_BUFFER_MS);
-  }
-
-  _flushAutoReload() {
-    if (!this._pendingAutoReload) return;
-    if (!this._isCardConnected) return;
-    if (this._refreshBusy || this._loading || this._autoReloadTimer != null) return;
-    this._scheduleAutoReload();
-  }
-
-  // ─── Fingerprint ──────────────────────────────────────────────────────────────
-
   _hassFingerprint() {
     if (!this._hass?.states) return "";
 
     return this._remoteEntities()
       .sort()
       .map((id) => {
+        const state = String(this._hass.states[id]?.state || "");
         const attrs = this._hass.states[id]?.attributes || {};
-        return `${id};${attrs.entry_id || ""};${attrs.proxy_client_connected ? "1" : "0"};${Number(attrs.cache_generation || 0)}`;
+        return `${id};${attrs.entry_id || ""};${state};${attrs.proxy_client_connected ? "1" : "0"};${Number(attrs.cache_generation || 0)}`;
       })
       .join("||");
   }
 
-  // ─── Cache data helpers ───────────────────────────────────────────────────────
-
   _syncSelection() {
-    const hubs = Array.isArray(this._contents?.hubs) ? this._contents.hubs : [];
+    const hubs = Array.isArray(this._state?.hubs) ? this._state.hubs : [];
     if (!hubs.length) {
       this._selectedHubEntryId = null;
       return;
@@ -236,11 +225,23 @@ class SofabatonControlPanelCard extends HTMLElement {
     if (!hubs.some((h) => h.entry_id === this._selectedHubEntryId)) {
       this._selectedHubEntryId = hubs[0].entry_id;
     }
+    if (this._selectedTab === "cache" && !this._persistentCacheEnabled()) {
+      this._selectedTab = "settings";
+    }
   }
 
   _selectedHub() {
+    const hubs = Array.isArray(this._state?.hubs) ? this._state.hubs : [];
+    return hubs.find((h) => h.entry_id === this._selectedHubEntryId) || hubs[0] || null;
+  }
+
+  _selectedHubCache() {
     const hubs = Array.isArray(this._contents?.hubs) ? this._contents.hubs : [];
     return hubs.find((h) => h.entry_id === this._selectedHubEntryId) || hubs[0] || null;
+  }
+
+  _persistentCacheEnabled() {
+    return !!this._state?.persistent_cache_enabled;
   }
 
   _hubActivities(hub) {
@@ -258,7 +259,6 @@ class SofabatonControlPanelCard extends HTMLElement {
   }
 
   _activityButtons(hub, activityId) {
-    // hub.buttons[actId] = array of physical button IDs assigned to this activity
     const ids = hub?.buttons?.[String(activityId)];
     return Array.isArray(ids) ? ids.map(Number) : [];
   }
@@ -281,8 +281,6 @@ class SofabatonControlPanelCard extends HTMLElement {
       .sort((a, b) => a.label.localeCompare(b.label));
   }
 
-  // ─── Sorting ──────────────────────────────────────────────────────────────────
-
   _sortByName(items) {
     return [...(items || [])].sort((a, b) =>
       String(a?.name || a?.label || "").localeCompare(String(b?.name || b?.label || ""))
@@ -294,8 +292,6 @@ class SofabatonControlPanelCard extends HTMLElement {
       (a, b) => Number(a?.id || a?.button_id || 0) - Number(b?.id || b?.button_id || 0)
     );
   }
-
-  // ─── Utilities ────────────────────────────────────────────────────────────────
 
   _escape(v) {
     return String(v ?? "")
@@ -336,24 +332,147 @@ class SofabatonControlPanelCard extends HTMLElement {
     const body = entity.closest(".acc-body");
     if (!body) return;
     const entityTop = entity.getBoundingClientRect().top;
-    const bodyTop   = body.getBoundingClientRect().top;
+    const bodyTop = body.getBoundingClientRect().top;
     body.scrollTo({ top: body.scrollTop + (entityTop - bodyTop), behavior: "smooth" });
   }
 
-  // ─── Actions ──────────────────────────────────────────────────────────────────
+  _applyOptimisticSetting(setting, enabled) {
+    if (!this._state) return;
+    const hub = this._selectedHub();
+    if (!hub) return;
 
-  async _togglePersistent(enabled) {
+    if (setting === "persistent_cache") {
+      this._state = {
+        ...this._state,
+        persistent_cache_enabled: !!enabled,
+        hubs: (this._state.hubs || []).map((item) => ({
+          ...item,
+          persistent_cache_enabled: !!enabled,
+        })),
+      };
+      return;
+    }
+
+    hub.settings = {
+      ...(hub.settings || {}),
+      [setting]: !!enabled,
+    };
+  }
+
+  _syncTabButtonsUi() {
+    if (!this._root) return;
+    const cacheTab = this._root.querySelector('[data-tab="cache"]');
+    if (!cacheTab) return;
+    const disabled = !this._persistentCacheEnabled();
+    cacheTab.classList.toggle("tab-disabled", disabled);
+    if (disabled) cacheTab.setAttribute("aria-disabled", "true");
+    else cacheTab.removeAttribute("aria-disabled");
+  }
+
+  _syncSettingsTabUi() {
+    if (!this._root || this._selectedTab !== "settings") return;
+    const hub = this._selectedHub();
+    if (!hub) return;
+
+    const settingKeys = [
+      "persistent_cache",
+      "hex_logging_enabled",
+      "proxy_enabled",
+      "wifi_device_enabled",
+    ];
+
+    for (const settingKey of settingKeys) {
+      const tile = this._root.querySelector(`[data-setting-tile="${settingKey}"]`);
+      const sw = this._root.getElementById(`setting-${settingKey}`);
+      if (!tile || !sw) continue;
+
+      let checked = false;
+      if (settingKey === "persistent_cache") checked = this._persistentCacheEnabled();
+      else checked = !!hub?.settings?.[settingKey];
+
+      if (sw.checked !== checked) sw.checked = checked;
+      if (sw.disabled) sw.disabled = false;
+      tile.classList.remove("disabled");
+    }
+
+    const actionBusy = !!this._pendingActionKey;
+    const canFind = this._canRunHubActions(hub) && !actionBusy;
+    const canSync = this._canRunHubActions(hub) && !actionBusy;
+    const findTile = this._root.querySelector('[data-action-tile="find_remote"]');
+    const syncTile = this._root.querySelector('[data-action-tile="sync_remote"]');
+    if (findTile) findTile.classList.toggle("disabled", !canFind);
+    if (syncTile) syncTile.classList.toggle("disabled", !canSync);
+  }
+
+  async _setSetting(setting, enabled) {
+    const hub = this._selectedHub();
+    if (!hub || this._pendingSettingKey || this._pendingActionKey) return;
+
+    const previousPersistentCacheEnabled = this._persistentCacheEnabled();
+    this._pendingSettingKey = setting;
+    this._applyOptimisticSetting(setting, enabled);
+    this._syncTabButtonsUi();
+    this._syncSettingsTabUi();
     try {
-      await this._ws({ type: "sofabaton_x1s/persistent_cache/set", enabled: !!enabled });
-      await this._loadState();
-    } catch (err) {
-      this._render();
+      await this._ws({
+        type: "sofabaton_x1s/control_panel/set_setting",
+        entry_id: hub.entry_id,
+        setting,
+        enabled: !!enabled,
+      });
+      if (setting === "persistent_cache") {
+        if (!enabled && this._selectedTab === "cache") {
+          this._selectedTab = "settings";
+          await this._loadState();
+          return;
+        }
+        await this._loadControlPanelState();
+      } else {
+        await this._loadControlPanelState();
+      }
+      if (this._selectedTab === "cache" && !this._persistentCacheEnabled()) {
+        this._selectedTab = "settings";
+      }
+      this._syncTabButtonsUi();
+      this._syncSettingsTabUi();
+    } catch (_err) {
+      this._applyOptimisticSetting(
+        setting,
+        setting === "persistent_cache" ? previousPersistentCacheEnabled : !enabled
+      );
+      this._syncTabButtonsUi();
+      this._syncSettingsTabUi();
+    } finally {
+      this._pendingSettingKey = null;
+      this._syncTabButtonsUi();
+      this._syncSettingsTabUi();
+    }
+  }
+
+  async _runHubAction(action) {
+    const hub = this._selectedHub();
+    if (!hub || this._pendingSettingKey || this._pendingActionKey) return;
+
+    this._pendingActionKey = action;
+    this._syncSettingsTabUi();
+    try {
+      await this._ws({
+        type: "sofabaton_x1s/control_panel/run_action",
+        entry_id: hub.entry_id,
+        action,
+      });
+      await this._loadControlPanelState();
+      this._syncSettingsTabUi();
+    } catch (_err) {
+      this._syncSettingsTabUi();
+    } finally {
+      this._pendingActionKey = null;
+      this._syncSettingsTabUi();
     }
   }
 
   _refreshPayload(kind, hubEntryId, targetId) {
-    const hubs = Array.isArray(this._contents?.hubs) ? this._contents.hubs : [];
-    const hub = hubs.find((h) => h.entry_id === hubEntryId);
+    const hub = this._selectedHub();
     const entityId = hub ? this._entityForHub(hub) : null;
     const payload = {
       type: "sofabaton_x1s/persistent_cache/refresh",
@@ -370,21 +489,18 @@ class SofabatonControlPanelCard extends HTMLElement {
 
     this._refreshBusy = true;
     this._activeRefreshLabel = key;
-    this._suppressAutoReload = true;
-    this._pendingAutoReload = false;
     this._render();
 
     try {
       await this._ws(this._refreshPayload(kind, hubEntryId, targetId));
       await this._loadState();
-    } catch (err) {
+    } catch (_err) {
       // intentionally silent
     } finally {
       this._refreshBusy = false;
-      this._suppressAutoReload = false;
       this._activeRefreshLabel = null;
+      this._staleData = false;
       this._render();
-      this._flushAutoReload();
       requestAnimationFrame(() => this._scrollEntityToTop(key));
     }
   }
@@ -395,57 +511,49 @@ class SofabatonControlPanelCard extends HTMLElement {
     if (!hub) return;
 
     this._refreshBusy = true;
-    this._suppressAutoReload = true;
-    this._pendingAutoReload = false;
     this._render();
 
     try {
       await this._ws({
         type: "sofabaton_x1s/catalog/refresh",
         entry_id: hub.entry_id,
-        kind: sectionId,  // "activities" or "devices"
+        kind: sectionId,
       });
       await this._loadState();
-    } catch (err) {
+    } catch (_err) {
       // intentionally silent
     } finally {
       this._refreshBusy = false;
-      this._suppressAutoReload = false;
       this._activeRefreshLabel = null;
+      this._staleData = false;
       this._render();
-      this._flushAutoReload();
     }
   }
-
-  // ─── Styles ───────────────────────────────────────────────────────────────────
 
   _styles() {
     return `<style>
       :host { display: block; }
       *, *::before, *::after { box-sizing: border-box; }
 
-      /* Fixed-height flex column inside ha-card — border-radius + overflow clips content to card corners */
       .card-inner {
-        height: var(--tools-card-height, 480px);
+        height: var(--tools-card-height, 600px);
         display: flex;
         flex-direction: column;
         overflow: hidden;
         border-radius: var(--ha-card-border-radius, 12px);
       }
 
-      /* ── Header ── */
       .card-header {
         flex-shrink: 0;
-        height: 52px;
+        min-height: 52px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: 0 16px;
-        border-bottom: 1px solid var(--divider-color);
+        padding: 12px 16px 8px;
       }
-      .card-title { font-size: 16px; font-weight: 600; }
-      /* ── Hub picker (custom dropdown — no native select) ── */
+      .card-title { font-size: 16px; font-weight: 700; }
+
       .hub-picker-btn {
         display: inline-flex;
         align-items: center;
@@ -476,7 +584,6 @@ class SofabatonControlPanelCard extends HTMLElement {
       }
       .hub-picker-btn .chip-arrow { font-size: 10px; color: var(--secondary-text-color); }
 
-      /* Dialog sits in the top layer — not clipped by card overflow */
       .hub-picker-dialog {
         position: fixed;
         margin: 0;
@@ -499,7 +606,35 @@ class SofabatonControlPanelCard extends HTMLElement {
       .hub-option:hover { background: var(--secondary-background-color, var(--primary-background-color)); }
       .hub-option.selected { font-weight: 600; color: var(--primary-color); }
 
-      /* ── Main body: fills remaining height after header ── */
+      .tabs {
+        flex-shrink: 0;
+        display: flex;
+        gap: 2px;
+        padding: 0 16px;
+        border-bottom: 1px solid var(--divider-color);
+      }
+      .tab-btn {
+        position: relative;
+        border: none;
+        border-bottom: 3px solid transparent;
+        background: transparent;
+        color: var(--secondary-text-color);
+        font: inherit;
+        font-size: 14px;
+        font-weight: 700;
+        padding: 12px 16px 11px;
+        cursor: pointer;
+      }
+      .tab-btn.active {
+        color: var(--primary-color);
+        border-bottom-color: var(--primary-color);
+      }
+      .tab-btn.tab-disabled {
+        color: var(--disabled-text-color, var(--secondary-text-color));
+        opacity: 0.45;
+        cursor: default;
+      }
+
       .card-body {
         flex: 1;
         min-height: 0;
@@ -507,12 +642,119 @@ class SofabatonControlPanelCard extends HTMLElement {
         flex-direction: column;
       }
 
-      /* ── Cache panel: accordion ── */
+      .tab-panel {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        gap: 14px;
+      }
+      .tab-panel.scrollable {
+        overflow-y: auto;
+      }
+
+      .overview-grid,
+      .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .overview-tile,
+      .setting-tile {
+        border: 1px solid var(--divider-color);
+        border-radius: calc(var(--ha-card-border-radius, 12px) + 2px);
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--card-background-color, #fff) 92%, white),
+          var(--card-background-color, #fff)
+        );
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02);
+      }
+      .overview-tile {
+        min-height: 92px;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 6px;
+      }
+      .overview-label {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+      }
+      .overview-value {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--primary-text-color);
+        line-height: 1.25;
+        word-break: break-word;
+      }
+      .setting-tile {
+        min-height: 132px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .setting-tile.toggle,
+      .setting-tile.action {
+        cursor: pointer;
+        transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+      }
+      .setting-tile.toggle:hover,
+      .setting-tile.action:hover {
+        border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+        transform: translateY(-1px);
+      }
+      .setting-tile.toggle:active,
+      .setting-tile.action:active,
+      .setting-tile.pressed {
+        border-color: color-mix(in srgb, var(--primary-color) 70%, var(--divider-color));
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 25%, transparent);
+        transform: translateY(0);
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--card-background-color, #fff) 84%, var(--primary-color)),
+          color-mix(in srgb, var(--card-background-color, #fff) 92%, var(--primary-color))
+        );
+      }
+      .setting-tile.disabled {
+        opacity: 0.55;
+        cursor: default;
+        box-shadow: none;
+        transform: none;
+      }
+      .setting-tile-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .setting-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--primary-text-color);
+      }
+      .setting-description {
+        font-size: 13px;
+        line-height: 1.45;
+        color: var(--secondary-text-color);
+      }
+      .setting-icon {
+        font-size: 22px;
+        line-height: 1;
+      }
       .cache-panel {
         flex: 1;
         min-height: 0;
         display: flex;
         flex-direction: column;
+        margin: -16px;
       }
       .accordion-section {
         display: flex;
@@ -522,7 +764,6 @@ class SofabatonControlPanelCard extends HTMLElement {
       }
       .accordion-section:first-child { border-top: none; }
       .accordion-section.open { flex: 1; }
-
       .acc-header {
         flex-shrink: 0;
         height: 44px;
@@ -550,7 +791,6 @@ class SofabatonControlPanelCard extends HTMLElement {
         padding: 1px 7px;
       }
       .flex-spacer { flex: 1; }
-
       .icon-btn {
         width: 26px;
         height: 26px;
@@ -586,7 +826,12 @@ class SofabatonControlPanelCard extends HTMLElement {
         pointer-events: none;
       }
       @keyframes spin { to { transform: rotate(360deg); } }
-
+      .refresh-list-label {
+        font-size: 11px;
+        color: var(--secondary-text-color);
+        margin-right: 2px;
+        user-select: none;
+      }
       .chevron {
         font-size: 10px;
         color: var(--secondary-text-color);
@@ -594,8 +839,6 @@ class SofabatonControlPanelCard extends HTMLElement {
         flex-shrink: 0;
       }
       .accordion-section.open .chevron { transform: rotate(180deg); }
-
-      /* Scrollable body — only present when section is open */
       .acc-body {
         flex: 1;
         min-height: 0;
@@ -605,8 +848,6 @@ class SofabatonControlPanelCard extends HTMLElement {
         gap: 6px;
         align-content: start;
       }
-
-      /* ── Entity blocks ── */
       .entity-block {
         border: 1px solid var(--divider-color);
         border-radius: var(--ha-card-border-radius, 12px);
@@ -660,21 +901,16 @@ class SofabatonControlPanelCard extends HTMLElement {
         flex-shrink: 0;
       }
       .entity-block.open .entity-chevron { transform: rotate(180deg); }
-
-      /* Sticky header while open entity scrolls within acc-body */
       .entity-block.open > .entity-summary {
         position: sticky;
         top: 0;
         z-index: 2;
         background: var(--secondary-background-color, var(--ha-card-background));
         border-bottom: 1px solid var(--divider-color);
-        /* Keep top corners rounded whether or not the entity-block top is in view */
         border-radius: var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px) 0 0;
       }
-
       .entity-body { display: none; }
       .entity-block.open .entity-body { display: block; }
-
       .inner-section-label {
         padding: 5px 12px 4px;
         font-size: 10px;
@@ -719,8 +955,6 @@ class SofabatonControlPanelCard extends HTMLElement {
         color: var(--secondary-text-color);
         font-style: italic;
       }
-
-      /* ── Cache panel states ── */
       .cache-state {
         flex: 1;
         display: flex;
@@ -735,49 +969,136 @@ class SofabatonControlPanelCard extends HTMLElement {
         color: var(--secondary-text-color);
       }
       .cache-state.error { color: var(--error-color, #db4437); }
-      .cache-state-icon  { font-size: 32px; line-height: 1; margin-bottom: 4px; }
+      .cache-state-icon { font-size: 32px; line-height: 1; margin-bottom: 4px; }
       .cache-state-title { font-size: 14px; font-weight: 600; color: var(--primary-text-color); }
-      .cache-state-sub   { font-size: 12px; line-height: 1.5; max-width: 220px; }
-
-      /* ── Cache footer (always visible — cache on/off toggle) ── */
-      .cache-footer {
-        flex-shrink: 0;
-        height: 44px;
+      .cache-state-sub { font-size: 12px; line-height: 1.5; max-width: 260px; }
+      .stale-banner {
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 12px; margin: 0 0 8px;
+        border-radius: 8px;
+        background: color-mix(in srgb, var(--warning-color, #ff9800) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--warning-color, #ff9800) 30%, transparent);
+        font-size: 12px; color: var(--primary-text-color);
+      }
+      .stale-banner-text { flex: 1; }
+      .stale-banner-btn {
+        background: none; border: 1px solid var(--divider-color); border-radius: 6px;
+        padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer;
+        color: var(--primary-text-color); white-space: nowrap;
+      }
+      .stale-banner-btn:hover { background: var(--secondary-background-color); }
+      /* ── Hub tab overview ── */
+      .hub-ident {
+        padding: 8px 0 4px;
+      }
+      .hub-ident-name {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--primary-text-color);
+        line-height: 1.2;
+      }
+      .hub-ident-meta {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        margin-top: 4px;
+        letter-spacing: 0.01em;
+      }
+      .hub-badges {
         display: flex;
-        align-items: center;
         gap: 8px;
-        padding: 0 16px;
+        flex-wrap: wrap;
+        padding: 12px 0 4px;
+      }
+      .hub-conn-badge,
+      .hub-proxy-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+        border: 1px solid transparent;
+      }
+      .hub-conn-badge::before,
+      .hub-proxy-badge::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+        flex-shrink: 0;
+      }
+      .hub-conn-badge--on {
+        background: color-mix(in srgb, #4caf50 13%, transparent);
+        color: #4caf50;
+        border-color: color-mix(in srgb, #4caf50 28%, transparent);
+      }
+      .hub-conn-badge--off {
+        background: color-mix(in srgb, var(--error-color, #db4437) 11%, transparent);
+        color: var(--error-color, #db4437);
+        border-color: color-mix(in srgb, var(--error-color, #db4437) 22%, transparent);
+      }
+      .hub-proxy-badge--on {
+        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+        color: var(--primary-color);
+        border-color: color-mix(in srgb, var(--primary-color) 25%, transparent);
+      }
+      .hub-proxy-badge--off {
+        background: transparent;
+        color: var(--secondary-text-color);
+        border-color: var(--divider-color);
+      }
+      .hub-info-list {
+        margin-top: 16px;
         border-top: 1px solid var(--divider-color);
       }
-      .cache-footer-label {
+      .hub-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 11px 0;
+        border-bottom: 1px solid var(--divider-color);
+        gap: 12px;
+      }
+      .hub-row-label {
         font-size: 13px;
-        font-weight: 500;
         color: var(--secondary-text-color);
       }
+      .hub-row-value {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--primary-text-color);
+        text-align: right;
+      }
 
+      @media (max-width: 640px) {
+        .overview-grid,
+        .settings-grid {
+          grid-template-columns: 1fr;
+        }
+      }
     </style>`;
   }
-
-  // ─── Render: Activity entity block ────────────────────────────────────────────
 
   _renderActivity(hub, activity) {
     const id = Number(activity.id);
     const key = `act-${id}`;
     const isOpen = this._openEntity === key;
-    const proxyLocked = this._proxyClientConnected(hub);
+    const proxyLocked = this._proxyClientConnected(this._selectedHub());
     const locked = this._refreshBusy || proxyLocked;
     const isSpinning = this._refreshBusy && this._activeRefreshLabel === key;
 
     const favCount = Number(activity.favorite_count ?? 0);
     const macCount = Number(activity.macro_count ?? 0);
-    // Use hub.buttons[actId] for the authoritative assigned-button count
-    const btnIds   = this._activityButtons(hub, id);
+    const btnIds = this._activityButtons(hub, id);
     const btnCount = btnIds.length;
 
     let bodyHtml = "";
     if (isOpen) {
       const favorites = this._activityFavorites(hub, id);
-      const macros    = this._activityMacros(hub, id);
+      const macros = this._activityMacros(hub, id);
 
       const favHtml = favorites.length
         ? `<div class="inner-section-label">Favorites</div>` +
@@ -811,7 +1132,6 @@ class SofabatonControlPanelCard extends HTMLElement {
             )
             .join("")
         : "";
-
       const btnHtml = (() => {
         if (!btnIds.length) return "";
         const half = Math.ceil(btnIds.length / 2);
@@ -864,13 +1184,11 @@ class SofabatonControlPanelCard extends HTMLElement {
       </div>`;
   }
 
-  // ─── Render: Device entity block ──────────────────────────────────────────────
-
   _renderDevice(hub, device) {
     const id = Number(device.id);
     const key = `dev-${id}`;
     const isOpen = this._openEntity === key;
-    const proxyLocked = this._proxyClientConnected(hub);
+    const proxyLocked = this._proxyClientConnected(this._selectedHub());
     const locked = this._refreshBusy || proxyLocked;
     const isSpinning = this._refreshBusy && this._activeRefreshLabel === key;
 
@@ -910,8 +1228,6 @@ class SofabatonControlPanelCard extends HTMLElement {
       </div>`;
   }
 
-  // ─── Render: Accordion section ────────────────────────────────────────────────
-
   _renderAccordionSection(sectionId, title, count, itemsHtml) {
     const isOpen = this._openSection === sectionId;
     const proxyLocked = this._proxyClientConnected(this._selectedHub());
@@ -923,9 +1239,10 @@ class SofabatonControlPanelCard extends HTMLElement {
           <span class="acc-title">${title}</span>
           <span class="badge">${count}</span>
           <span class="flex-spacer"></span>
+          <span class="refresh-list-label">Refresh list</span>
           <button class="icon-btn${this._refreshBusy ? " spinning" : ""}"
             id="refresh-${sectionId}"
-            title="${proxyLocked ? "Unavailable while proxy client is connected" : `Refresh ${title.toLowerCase()}`}"
+            title="${proxyLocked ? "Unavailable while proxy client is connected" : `Refresh ${title.toLowerCase()} list`}"
             ${locked ? "disabled" : ""}>↻</button>
           <span class="chevron">▼</span>
         </div>
@@ -933,21 +1250,139 @@ class SofabatonControlPanelCard extends HTMLElement {
       </div>`;
   }
 
-  // ─── Render: Cache panel ──────────────────────────────────────────────────────
-
-  _renderCache(hub) {
+  _renderHubTab(hub) {
     if (this._loading) {
       return `<div class="cache-state">Loading…</div>`;
     }
     if (this._loadError) {
       return `<div class="cache-state error">${this._escape(this._loadError)}</div>`;
     }
-    if (!this._state?.enabled) {
+    if (!hub) {
+      return `<div class="cache-state">No hubs found.</div>`;
+    }
+
+    const connected = !!hub.hub_connected;
+    const proxyOn   = this._proxyClientConnected(hub);
+    const meta = [hub.ip_address, hub.version].filter(Boolean).join("  ·  ");
+
+    const row = (label, value) => `
+      <div class="hub-row">
+        <span class="hub-row-label">${label}</span>
+        <span class="hub-row-value">${value}</span>
+      </div>`;
+
+    return `
+      <div class="tab-panel scrollable">
+        <div class="hub-ident">
+          <div class="hub-ident-name">${this._escape(hub.name || "Unknown")}</div>
+          ${meta ? `<div class="hub-ident-meta">${this._escape(meta)}</div>` : ""}
+        </div>
+        <div class="hub-badges">
+          <span class="hub-conn-badge ${connected ? "hub-conn-badge--on" : "hub-conn-badge--off"}">
+            ${connected ? "Hub connected" : "Hub disconnected"}
+          </span>
+          <span class="hub-proxy-badge ${proxyOn ? "hub-proxy-badge--on" : "hub-proxy-badge--off"}">
+            ${proxyOn ? "App connected" : "App disconnected"}
+          </span>
+        </div>
+        <div class="hub-info-list">
+          ${row("Activities", Number(hub.activity_count || 0))}
+          ${row("Devices", Number(hub.device_count || 0))}
+          ${hub.ip_address ? row("IP Address", this._escape(hub.ip_address)) : ""}
+          ${hub.version    ? row("Version",    this._escape(hub.version))    : ""}
+        </div>
+      </div>`;
+  }
+
+  _renderSettingTile({ title, description, controlHtml, classes = "", attrs = "" }) {
+    return `
+      <div class="setting-tile ${classes}" ${attrs}>
+        <div class="setting-tile-header">
+          <div class="setting-title">${title}</div>
+          ${controlHtml || ""}
+        </div>
+        <div class="setting-description">${description}</div>
+      </div>`;
+  }
+
+  _renderSettingsTab(hub) {
+    if (this._loading) {
+      return `<div class="cache-state">Loading…</div>`;
+    }
+    if (this._loadError) {
+      return `<div class="cache-state error">${this._escape(this._loadError)}</div>`;
+    }
+    if (!hub) {
+      return `<div class="cache-state">No hubs found.</div>`;
+    }
+
+    const settings = hub.settings || {};
+    const busy = !!(this._pendingSettingKey || this._pendingActionKey);
+    const canFind = this._canRunHubActions(hub) && !busy;
+    const canSync = this._canRunHubActions(hub) && !busy;
+    return `
+      <div class="tab-panel scrollable">
+        <div class="acc-title">Configuration</div>
+        <div class="settings-grid">
+          ${this._renderSettingTile({
+            title: "Persistent Cache",
+            description: "Store activity and device data locally for faster access.",
+            controlHtml: `<ha-switch id="setting-persistent_cache"></ha-switch>`,
+            classes: `toggle${this._pendingSettingKey || this._pendingActionKey ? " disabled" : ""}`,
+            attrs: `data-setting-tile="persistent_cache"`,
+          })}
+          ${this._renderSettingTile({
+            title: "Hex Logging",
+            description: "Write raw IR hex codes to the HA log for debugging.",
+            controlHtml: `<ha-switch id="setting-hex_logging_enabled"></ha-switch>`,
+            classes: `toggle${this._pendingSettingKey || this._pendingActionKey ? " disabled" : ""}`,
+            attrs: `data-setting-tile="hex_logging_enabled"`,
+          })}
+          ${this._renderSettingTile({
+            title: "Proxy",
+            description: "Let the official Sofabaton app share the hub connection with HA simultaneously.",
+            controlHtml: `<ha-switch id="setting-proxy_enabled"></ha-switch>`,
+            classes: `toggle${this._pendingSettingKey || this._pendingActionKey ? " disabled" : ""}`,
+            attrs: `data-setting-tile="proxy_enabled"`,
+          })}
+          ${this._renderSettingTile({
+            title: "WiFi Device",
+            description: "Enable the HTTP listener that captures remote button presses and routes them to HA actions.",
+            controlHtml: `<ha-switch id="setting-wifi_device_enabled"></ha-switch>`,
+            classes: `toggle${this._pendingSettingKey || this._pendingActionKey ? " disabled" : ""}`,
+            attrs: `data-setting-tile="wifi_device_enabled"`,
+          })}
+          ${this._renderSettingTile({
+            title: "Find Remote",
+            description: "Make the remote beep so you can locate it.",
+            controlHtml: `<span class="setting-icon">🔔</span>`,
+            classes: `action${canFind ? "" : " disabled"}`,
+            attrs: `data-action-tile="find_remote"`,
+          })}
+          ${this._renderSettingTile({
+            title: "Sync Remote",
+            description: "Pull the latest config from the hub.",
+            controlHtml: `<span class="setting-icon">🔄</span>`,
+            classes: `action${canSync ? "" : " disabled"}`,
+            attrs: `data-action-tile="sync_remote"`,
+          })}
+        </div>
+      </div>`;
+  }
+
+  _renderCacheTab(hub) {
+    if (this._loading) {
+      return `<div class="cache-state">Loading…</div>`;
+    }
+    if (this._loadError) {
+      return `<div class="cache-state error">${this._escape(this._loadError)}</div>`;
+    }
+    if (!this._persistentCacheEnabled()) {
       return `
         <div class="cache-state">
           <div class="cache-state-icon">💾</div>
           <div class="cache-state-title">Persistent cache is off</div>
-          <div class="cache-state-sub">Enable it using the toggle below to browse cached activities and devices</div>
+          <div class="cache-state-sub">Enable it from the Settings tab to browse cached activities and devices.</div>
         </div>`;
     }
     if (!hub) {
@@ -957,35 +1392,68 @@ class SofabatonControlPanelCard extends HTMLElement {
     const activities = this._hubActivities(hub);
     const devices = this._devicesForHub(hub);
 
+    const staleBanner = this._staleData
+      ? `<div class="stale-banner">
+           <span class="stale-banner-text">Cache was updated externally. Refresh to see latest data.</span>
+           <button class="stale-banner-btn" data-action="refresh-stale">Refresh</button>
+         </div>`
+      : "";
+
     return `
-      <div class="cache-panel">
-        ${this._renderAccordionSection(
-          "activities",
-          "Activities",
-          activities.length,
-          activities.map((a) => this._renderActivity(hub, a)).join("")
-        )}
-        ${this._renderAccordionSection(
-          "devices",
-          "Devices",
-          devices.length,
-          devices.map((d) => this._renderDevice(hub, d)).join("")
-        )}
+      <div class="tab-panel">
+        ${staleBanner}
+        <div class="cache-panel">
+          ${this._renderAccordionSection(
+            "activities",
+            "Activities",
+            activities.length,
+            activities.map((a) => this._renderActivity(hub, a)).join("")
+          )}
+          ${this._renderAccordionSection(
+            "devices",
+            "Devices",
+            devices.length,
+            devices.map((d) => this._renderDevice(hub, d)).join("")
+          )}
+        </div>
       </div>`;
   }
 
-  // ─── Render: Main ─────────────────────────────────────────────────────────────
+  _renderTabButtons() {
+    const tabs = [
+      { id: "hub", label: "Hub", disabled: false },
+      { id: "settings", label: "Settings", disabled: false },
+      { id: "cache", label: "Cache", disabled: !this._persistentCacheEnabled() },
+    ];
+    return tabs
+      .map(
+        (tab) => `
+          <button
+            class="tab-btn${this._selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
+            data-tab="${tab.id}"
+            ${tab.disabled ? 'aria-disabled="true"' : ""}
+          >${tab.label}</button>`
+      )
+      .join("");
+  }
+
+  _renderActiveTab(hub, hubCache) {
+    if (this._selectedTab === "settings") return this._renderSettingsTab(hub);
+    if (this._selectedTab === "cache") return this._renderCacheTab(hubCache);
+    return this._renderHubTab(hub);
+  }
 
   _render() {
     if (!this._hass || !this._root || !this._isCardConnected) return;
 
     const hub = this._selectedHub();
-    const hubs = Array.isArray(this._contents?.hubs) ? this._contents.hubs : [];
+    const hubCache = this._selectedHubCache();
+    const hubs = Array.isArray(this._state?.hubs) ? this._state.hubs : [];
 
     this._root.innerHTML = `
       ${this._styles()}
       <ha-card>
-        <div class="card-inner" style="height:${this._config?.card_height ?? 480}px">
+        <div class="card-inner" style="height:${this._config?.card_height ?? 600}px">
           <div class="card-header">
             <span class="card-title">Sofabaton Control Panel</span>
             ${
@@ -998,13 +1466,9 @@ class SofabatonControlPanelCard extends HTMLElement {
                 : ""
             }
           </div>
+          <div class="tabs">${this._renderTabButtons()}</div>
           <div class="card-body">
-            ${this._renderCache(hub)}
-          </div>
-          <div class="cache-footer">
-            <span class="cache-footer-label">Persistent cache</span>
-            <div class="flex-spacer"></div>
-            <ha-switch id="sw-cache"></ha-switch>
+            ${this._renderActiveTab(hub, hubCache)}
           </div>
         </div>
       </ha-card>
@@ -1025,23 +1489,18 @@ class SofabatonControlPanelCard extends HTMLElement {
     this._wireUp(hub);
   }
 
-  // ─── Event wiring ─────────────────────────────────────────────────────────────
-
   _wireUp(hub) {
     const root = this._root;
-    const entryId = hub?.entry_id || null;
 
-    // ── Hub picker (custom dropdown via <dialog>) ──
-    const pickerBtn    = root.getElementById("hub-picker-btn");
+    const pickerBtn = root.getElementById("hub-picker-btn");
     const pickerDialog = root.getElementById("hub-picker-dialog");
     if (pickerBtn && pickerDialog) {
       pickerBtn.addEventListener("click", () => {
         const rect = pickerBtn.getBoundingClientRect();
-        pickerDialog.style.top  = (rect.bottom + 4) + "px";
-        pickerDialog.style.left = Math.max(8, rect.right - (pickerDialog.offsetWidth || 160)) + "px";
+        pickerDialog.style.top = `${rect.bottom + 4}px`;
+        pickerDialog.style.left = `${Math.max(8, rect.right - (pickerDialog.offsetWidth || 160))}px`;
         pickerDialog.showModal();
-        // Re-align now that browser has laid out the dialog
-        pickerDialog.style.left = Math.max(8, rect.right - pickerDialog.offsetWidth) + "px";
+        pickerDialog.style.left = `${Math.max(8, rect.right - pickerDialog.offsetWidth)}px`;
       });
       pickerDialog.addEventListener("click", (e) => {
         const opt = e.target.closest(".hub-option");
@@ -1050,21 +1509,79 @@ class SofabatonControlPanelCard extends HTMLElement {
           this._openEntity = null;
           pickerDialog.close();
           this._render();
+          this._loadControlPanelState().then(() => this._render());
         } else {
           pickerDialog.close();
         }
       });
     }
 
-    // ── Cache footer toggle (always present) ──
-    const swCache = root.getElementById("sw-cache");
-    if (swCache) {
-      swCache.checked  = !!this._state?.enabled;
-      swCache.disabled = !!this._loading;
-      swCache.addEventListener("change", (ev) => this._togglePersistent(!!ev.target?.checked));
-    }
+    root.querySelectorAll("[data-tab]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tabId = btn.getAttribute("data-tab");
+        if (btn.classList.contains("tab-disabled")) return;
+        this._selectedTab = tabId;
+        this._render();
+      });
+    });
 
-    // ── Cache accordion ──
+    ["persistent_cache", "hex_logging_enabled", "proxy_enabled", "wifi_device_enabled"].forEach((settingKey) => {
+      const sw = root.getElementById(`setting-${settingKey}`);
+      if (!sw) return;
+
+      let checked = false;
+      if (settingKey === "persistent_cache") checked = this._persistentCacheEnabled();
+      else checked = !!hub?.settings?.[settingKey];
+
+      sw.checked = checked;
+      sw.disabled = !!(this._pendingSettingKey || this._pendingActionKey);
+      sw.addEventListener("change", (ev) => this._setSetting(settingKey, !!ev.target?.checked));
+    });
+
+    root.querySelectorAll("[data-setting-tile]").forEach((tile) => {
+      const clearPressed = () => tile.classList.remove("pressed");
+      tile.addEventListener("pointerdown", () => {
+        if (tile.classList.contains("disabled")) return;
+        tile.classList.add("pressed");
+      });
+      tile.addEventListener("pointerup", clearPressed);
+      tile.addEventListener("pointercancel", clearPressed);
+      tile.addEventListener("pointerleave", clearPressed);
+      tile.addEventListener("click", (ev) => {
+        if (tile.classList.contains("disabled")) return;
+        if (ev.target.closest("ha-switch")) return;
+        const settingKey = tile.getAttribute("data-setting-tile");
+        if (!settingKey) return;
+
+        const currentHub = this._selectedHub();
+        let enabled = false;
+        if (settingKey === "persistent_cache") enabled = !this._persistentCacheEnabled();
+        else enabled = !currentHub?.settings?.[settingKey];
+
+        this._setSetting(settingKey, enabled);
+      });
+    });
+
+    root.querySelectorAll("[data-action-tile]").forEach((tile) => {
+      const clearPressed = () => tile.classList.remove("pressed");
+      tile.addEventListener("pointerdown", () => {
+        if (tile.classList.contains("disabled")) return;
+        tile.classList.add("pressed");
+      });
+      tile.addEventListener("pointerup", clearPressed);
+      tile.addEventListener("pointercancel", clearPressed);
+      tile.addEventListener("pointerleave", clearPressed);
+      tile.addEventListener("click", () => {
+        if (tile.classList.contains("disabled")) return;
+        this._runHubAction(tile.getAttribute("data-action-tile"));
+      });
+    });
+
+    root.querySelector('[data-action="refresh-stale"]')?.addEventListener("click", () => {
+      this._staleData = false;
+      this._loadState();
+    });
+
     root.querySelectorAll("[data-section]").forEach((header) => {
       header.addEventListener("click", (e) => {
         if (e.target.closest(".icon-btn")) return;
@@ -1075,7 +1592,6 @@ class SofabatonControlPanelCard extends HTMLElement {
       });
     });
 
-    // Section refresh buttons — refresh all entities in the section sequentially
     ["activities", "devices"].forEach((sectionId) => {
       root.getElementById(`refresh-${sectionId}`)?.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1083,7 +1599,6 @@ class SofabatonControlPanelCard extends HTMLElement {
       });
     });
 
-    // Entity expand / collapse (single-open)
     root.querySelectorAll("[data-entity-key]").forEach((summary) => {
       summary.addEventListener("click", (e) => {
         if (e.target.closest(".icon-btn")) return;
@@ -1095,7 +1610,6 @@ class SofabatonControlPanelCard extends HTMLElement {
       });
     });
 
-    // Per-entity refresh
     root.querySelectorAll("[data-refresh-kind]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1116,7 +1630,7 @@ class SofabatonControlPanelEditor extends HTMLElement {
   }
 
   _render() {
-    const height = this._config?.card_height ?? 480;
+    const height = this._config?.card_height ?? 600;
     this.innerHTML = `
       <style>
         .editor-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
@@ -1135,7 +1649,7 @@ class SofabatonControlPanelEditor extends HTMLElement {
         <label>Card height (px)</label>
         <input type="number" id="card-height" min="200" max="1200" step="10" value="${height}">
       </div>
-      <div class="editor-hint">Controls how much of the activity/device lists is visible. Default: 480 px.</div>
+      <div class="editor-hint">Controls how much of the activity/device lists is visible. Default: 600 px.</div>
     `;
     this.querySelector("#card-height").addEventListener("change", (ev) => {
       const value = parseInt(ev.target.value, 10);

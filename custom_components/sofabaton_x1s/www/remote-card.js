@@ -347,6 +347,9 @@ class SofabatonRemoteCard extends HTMLElement {
       this._hubQueue = null;
       this._hubQueueBusy = false;
       this._hubActivitiesCache = null;
+      this._hubAssignedKeysCache = null;
+      this._hubMacrosCache = null;
+      this._hubFavoritesCache = null;
       this._x2LastFetchedActivityId = null;
     }
 
@@ -776,10 +779,6 @@ class SofabatonRemoteCard extends HTMLElement {
 
   async _hubRequestAssignedKeys(activityId) {
     if (activityId == null) return;
-    console.debug("[SofabatonRemoteCard][X2] request assigned_keys", {
-      entity_id: this._config?.entity,
-      activity_id: Number(activityId),
-    });
     // For the official sofabaton_hub path, activity revisits must re-fetch.
     // Do not use request de-dupe here.
     this._hubEnqueueCommand(
@@ -790,10 +789,6 @@ class SofabatonRemoteCard extends HTMLElement {
 
   async _hubRequestFavoriteKeys(activityId) {
     if (activityId == null) return;
-    console.debug("[SofabatonRemoteCard][X2] request favorite_keys", {
-      entity_id: this._config?.entity,
-      activity_id: Number(activityId),
-    });
     // For the official sofabaton_hub path, activity revisits must re-fetch.
     // Do not use request de-dupe here.
     this._hubEnqueueCommand(
@@ -804,10 +799,6 @@ class SofabatonRemoteCard extends HTMLElement {
 
   async _hubRequestMacroKeys(activityId) {
     if (activityId == null) return;
-    console.debug("[SofabatonRemoteCard][X2] request macro_keys", {
-      entity_id: this._config?.entity,
-      activity_id: Number(activityId),
-    });
     // For the official sofabaton_hub path, activity revisits must re-fetch.
     // Do not use request de-dupe here.
     this._hubEnqueueCommand(
@@ -2182,15 +2173,6 @@ class SofabatonRemoteCard extends HTMLElement {
     if (this._isHubIntegration()) {
       if (this._isPoweredOffLabel(selected)) {
         const currentId = this._currentActivityId();
-        console.debug("[SofabatonRemoteCard][X2] user selected activity", {
-          entity_id: this._config?.entity,
-          selected_label: selected,
-          selected_activity_id: null,
-          current_activity_id: currentId,
-          current_activity_label: current,
-          pending_activity: this._pendingActivity,
-          action: "stop_activity",
-        });
         if (currentId != null) {
           await this._hubStopActivity(currentId);
         }
@@ -2199,20 +2181,6 @@ class SofabatonRemoteCard extends HTMLElement {
 
       const match = this._activities().find((a) => a.name === selected);
       const activityId = match?.id;
-      console.debug("[SofabatonRemoteCard][X2] user selected activity", {
-        entity_id: this._config?.entity,
-        selected_label: selected,
-        selected_activity_id: activityId ?? null,
-        current_activity_id: this._currentActivityId(),
-        current_activity_label: current,
-        pending_activity: this._pendingActivity,
-        available_activities: this._activities().map((a) => ({
-          id: a.id,
-          name: a.name,
-          state: a.state,
-        })),
-        action: "start_activity",
-      });
       if (activityId == null) return;
 
       await this._hubStartActivity(activityId);
@@ -4346,6 +4314,13 @@ class SofabatonRemoteCard extends HTMLElement {
     const assignedKeys = remote?.attributes?.assigned_keys;
     const macroKeys = remote?.attributes?.macro_keys;
     const favoriteKeys = remote?.attributes?.favorite_keys;
+    // For the official sofabaton_hub integration, entity attrs can temporarily
+    // omit per-activity data during activity transitions. Cache last-known
+    // values client-side for display fallback, but never use cache to suppress
+    // fresh requests on confirmed activity changes.
+    this._hubAssignedKeysCache = this._hubAssignedKeysCache || {};
+    this._hubMacrosCache = this._hubMacrosCache || {};
+    this._hubFavoritesCache = this._hubFavoritesCache || {};
 
     const actKey = activityId != null ? String(activityId) : null;
 
@@ -4356,11 +4331,40 @@ class SofabatonRemoteCard extends HTMLElement {
     const _favMap =
       favoriteKeys && typeof favoriteKeys === "object" ? favoriteKeys : null;
 
+    // Update cache only when the entity payload explicitly includes the active
+    // activity entry, even if that entry is an empty array.
+    if (this._isHubIntegration() && actKey != null) {
+      if (
+        _assignedMap &&
+        (this._hasOwn(_assignedMap, actKey) ||
+          this._hasOwn(_assignedMap, activityId))
+      ) {
+        const v = _assignedMap[actKey] ?? _assignedMap[activityId];
+        this._hubAssignedKeysCache[actKey] = Array.isArray(v) ? v : [];
+      }
+      if (
+        _macroMap &&
+        (this._hasOwn(_macroMap, actKey) || this._hasOwn(_macroMap, activityId))
+      ) {
+        const v = _macroMap[actKey] ?? _macroMap[activityId];
+        this._hubMacrosCache[actKey] = Array.isArray(v) ? v : [];
+      }
+      if (
+        _favMap &&
+        (this._hasOwn(_favMap, actKey) || this._hasOwn(_favMap, activityId))
+      ) {
+        const v = _favMap[actKey] ?? _favMap[activityId];
+        this._hubFavoritesCache[actKey] = Array.isArray(v) ? v : [];
+      }
+    }
+
     const macros =
       _macroMap &&
       actKey != null &&
       (this._hasOwn(_macroMap, actKey) || this._hasOwn(_macroMap, activityId))
         ? (_macroMap[actKey] ?? _macroMap[activityId] ?? [])
+        : this._isHubIntegration() && actKey != null
+          ? (this._hubMacrosCache[actKey] ?? [])
         : [];
 
     const favorites =
@@ -4368,6 +4372,8 @@ class SofabatonRemoteCard extends HTMLElement {
       actKey != null &&
       (this._hasOwn(_favMap, actKey) || this._hasOwn(_favMap, activityId))
         ? (_favMap[actKey] ?? _favMap[activityId] ?? [])
+        : this._isHubIntegration() && actKey != null
+          ? (this._hubFavoritesCache[actKey] ?? [])
         : [];
 
     const customFavorites = this._customFavorites();
@@ -4378,81 +4384,9 @@ class SofabatonRemoteCard extends HTMLElement {
       (this._hasOwn(_assignedMap, actKey) ||
         this._hasOwn(_assignedMap, activityId))
         ? (_assignedMap[actKey] ?? _assignedMap[activityId] ?? null)
+        : this._isHubIntegration() && actKey != null
+          ? (this._hubAssignedKeysCache[actKey] ?? null)
         : null;
-
-    if (this._isHubIntegration()) {
-      const activitySnapshot = activities.map((activity) => ({
-        id: activity.id,
-        name: activity.name,
-        state: activity.state,
-      }));
-      const updateSig = JSON.stringify({
-        current_activity_id: activityId ?? null,
-        current_activity_label: this._currentActivityLabel() || "",
-        pending_activity: this._pendingActivity || null,
-        pending_age_ms: this._pendingActivityAt
-          ? Date.now() - this._pendingActivityAt
-          : null,
-        load_state: loadState ?? null,
-        activities: activitySnapshot,
-        has_assigned_attr:
-          actKey != null &&
-          !!(
-            _assignedMap &&
-            (this._hasOwn(_assignedMap, actKey) ||
-              this._hasOwn(_assignedMap, activityId))
-          ),
-        has_macro_attr:
-          actKey != null &&
-          !!(
-            _macroMap &&
-            (this._hasOwn(_macroMap, actKey) ||
-              this._hasOwn(_macroMap, activityId))
-          ),
-        has_favorite_attr:
-          actKey != null &&
-          !!(
-            _favMap &&
-            (this._hasOwn(_favMap, actKey) ||
-              this._hasOwn(_favMap, activityId))
-          ),
-      });
-      if (this._x2LastUpdateLogSig !== updateSig) {
-        this._x2LastUpdateLogSig = updateSig;
-        console.debug("[SofabatonRemoteCard][X2] update snapshot", {
-          entity_id: this._config?.entity,
-          current_activity_id: activityId ?? null,
-          current_activity_label: this._currentActivityLabel() || "",
-          pending_activity: this._pendingActivity || null,
-          pending_age_ms: this._pendingActivityAt
-            ? Date.now() - this._pendingActivityAt
-            : null,
-          load_state: loadState ?? null,
-          activities: activitySnapshot,
-          has_assigned_attr:
-            actKey != null &&
-            !!(
-              _assignedMap &&
-              (this._hasOwn(_assignedMap, actKey) ||
-                this._hasOwn(_assignedMap, activityId))
-            ),
-          has_macro_attr:
-            actKey != null &&
-            !!(
-              _macroMap &&
-              (this._hasOwn(_macroMap, actKey) ||
-                this._hasOwn(_macroMap, activityId))
-            ),
-          has_favorite_attr:
-            actKey != null &&
-            !!(
-              _favMap &&
-              (this._hasOwn(_favMap, actKey) ||
-                this._hasOwn(_favMap, activityId))
-            ),
-        });
-      }
-    }
 
     // Hub integration: fetch activities / keys on-demand
     if (this._isHubIntegration() && !isUnavailable) {
@@ -4485,14 +4419,6 @@ class SofabatonRemoteCard extends HTMLElement {
         const confirmedActivityId = Number(activityId);
 
         if (this._x2LastFetchedActivityId !== confirmedActivityId) {
-          console.debug("[SofabatonRemoteCard][X2] confirmed activity change", {
-            entity_id: this._config?.entity,
-            previous_activity_id: this._x2LastFetchedActivityId,
-            current_activity_id: confirmedActivityId,
-            has_assigned_attr: Boolean(hasAssignedAttr),
-            has_macro_attr: Boolean(hasMacroAttr),
-            has_favorite_attr: Boolean(hasFavAttr),
-          });
           this._x2LastFetchedActivityId = confirmedActivityId;
           this._hubRequestAssignedKeys(confirmedActivityId);
           this._hubRequestMacroKeys(confirmedActivityId);

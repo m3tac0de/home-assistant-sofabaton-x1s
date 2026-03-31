@@ -26,7 +26,6 @@ def test_x2_requests_are_tied_to_confirmed_current_activity_changes() -> None:
         encoding="utf-8",
     )
 
-    assert 'console.debug("[SofabatonRemoteCard][X2] confirmed activity change"' in source
     assert "if (activityId != null) {" in source
     assert "if (this._x2LastFetchedActivityId !== confirmedActivityId) {" in source
     assert "this._x2LastFetchedActivityId = confirmedActivityId;" in source
@@ -63,8 +62,25 @@ def test_x2_baseline_removes_frontend_cache_fallback_and_retry_logic() -> None:
         encoding="utf-8",
     )
 
-    assert "this._hubAssignedKeysCache" not in source
-    assert "this._hubMacrosCache" not in source
-    assert "this._hubFavoritesCache" not in source
+    assert "this._hubAssignedKeysCache = this._hubAssignedKeysCache || {};" in source
+    assert "this._hubMacrosCache = this._hubMacrosCache || {};" in source
+    assert "this._hubFavoritesCache = this._hubFavoritesCache || {};" in source
     assert "_hubRequestActivityData(activityId, missing = null)" not in source
     assert "_hubResetActivityRequests(activityId)" not in source
+
+
+def test_x2_display_cache_is_restored_without_reintroducing_request_gating() -> None:
+    source = Path("custom_components/sofabaton_x1s/www/remote-card.js").read_text(
+        encoding="utf-8",
+    )
+
+    assert "Cache last-known" in source
+    assert "this._hubAssignedKeysCache[actKey] = Array.isArray(v) ? v : [];" in source
+    assert "this._hubMacrosCache[actKey] = Array.isArray(v) ? v : [];" in source
+    assert "this._hubFavoritesCache[actKey] = Array.isArray(v) ? v : [];" in source
+    assert "? (this._hubMacrosCache[actKey] ?? [])" in source
+    assert "? (this._hubFavoritesCache[actKey] ?? [])" in source
+    assert "? (this._hubAssignedKeysCache[actKey] ?? null)" in source
+    assert "this._hubRequestAssignedKeys(confirmedActivityId);" in source
+    assert "this._hubRequestMacroKeys(confirmedActivityId);" in source
+    assert "this._hubRequestFavoriteKeys(confirmedActivityId);" in source

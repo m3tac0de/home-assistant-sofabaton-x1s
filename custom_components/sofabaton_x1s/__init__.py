@@ -42,7 +42,7 @@ from .diagnostics import (
     async_setup_diagnostics,
     async_teardown_diagnostics,
 )
-from .hub import SofabatonHub
+from .hub import SofabatonHub, get_hub_model
 from .command_config import CommandConfigStore, count_configured_command_slots
 from .cache_store import PersistentCacheStore
 from .roku_listener import async_get_roku_listener
@@ -93,6 +93,41 @@ async def _async_get_persistent_cache_store(hass: HomeAssistant) -> PersistentCa
     await store.async_load()
     domain_data["persistent_cache_store"] = store
     return store
+
+
+def _build_control_panel_hub_payload(
+    hass: HomeAssistant,
+    hub: SofabatonHub,
+    *,
+    persistent_cache_enabled: bool,
+) -> dict[str, Any]:
+    entry = hass.config_entries.async_get_entry(hub.entry_id)
+    version = get_hub_model(entry) if entry is not None else getattr(hub, "version", "")
+    can_run_hub_actions = bool(getattr(hub, "hub_connected", False)) and not bool(
+        getattr(hub, "client_connected", False)
+    )
+    activities = getattr(hub, "activities", {}) or {}
+    devices = getattr(hub, "devices", {}) or {}
+    return {
+        "entry_id": hub.entry_id,
+        "name": hub.name,
+        "version": version,
+        "ip_address": getattr(hub, "host", ""),
+        "device_count": len(devices),
+        "activity_count": len(activities),
+        "hub_connected": bool(getattr(hub, "hub_connected", False)),
+        "proxy_client_connected": bool(getattr(hub, "client_connected", False)),
+        "persistent_cache_enabled": persistent_cache_enabled,
+        "settings": {
+            "proxy_enabled": bool(getattr(hub, "proxy_enabled", False)),
+            "hex_logging_enabled": bool(getattr(hub, "hex_logging_enabled", False)),
+            "wifi_device_enabled": bool(getattr(hub, "roku_server_enabled", False)),
+        },
+        "actions": {
+            "can_find_remote": can_run_hub_actions,
+            "can_sync_remote": can_run_hub_actions,
+        },
+    }
 
 
 async def _async_persist_hub_cache(hass: HomeAssistant, hub: SofabatonHub) -> bool:
@@ -238,6 +273,105 @@ async def _ws_set_hub_version(hass: HomeAssistant, connection, msg: dict[str, An
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/control_panel/state",
+    }
+)
+@websocket_api.async_response
+async def _ws_get_control_panel_state(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    store = await _async_get_persistent_cache_store(hass)
+    payload = {
+        "persistent_cache_enabled": store.enabled,
+        "hubs": [
+            _build_control_panel_hub_payload(
+                hass,
+                hub,
+                persistent_cache_enabled=store.enabled,
+            )
+            for hub in _get_hubs(hass.data.get(DOMAIN, {}))
+        ],
+    }
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/control_panel/set_setting",
+        vol.Required("entry_id"): str,
+        vol.Required("setting"): vol.In(
+            ["persistent_cache", "proxy_enabled", "hex_logging_enabled", "wifi_device_enabled"]
+        ),
+        vol.Required("enabled"): cv.boolean,
+    }
+)
+@websocket_api.async_response
+async def _ws_control_panel_set_setting(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    setting = str(msg["setting"])
+    enabled = bool(msg["enabled"])
+
+    if setting == "persistent_cache":
+        store = await _async_get_persistent_cache_store(hass)
+        await store.async_set_enabled(enabled)
+        if not enabled:
+            await store.async_clear_all_hub_cache()
+        connection.send_result(msg["id"], {"ok": True, "enabled": enabled})
+        return
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    if setting == "proxy_enabled":
+        await hub.async_set_proxy_enabled(enabled)
+    elif setting == "hex_logging_enabled":
+        await hub.async_set_hex_logging_enabled(enabled)
+    else:
+        await hub.async_set_roku_server_enabled(enabled)
+
+    connection.send_result(msg["id"], {"ok": True, "enabled": enabled})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/control_panel/run_action",
+        vol.Required("entry_id"): str,
+        vol.Required("action"): vol.In(["find_remote", "sync_remote"]),
+    }
+)
+@websocket_api.async_response
+async def _ws_control_panel_run_action(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    can_run_hub_actions = bool(getattr(hub, "hub_connected", False)) and not bool(
+        getattr(hub, "client_connected", False)
+    )
+    if not can_run_hub_actions:
+        connection.send_error(
+            msg["id"],
+            "unavailable",
+            "Action unavailable while proxy client is connected or hub is offline",
+        )
+        return
+
+    if msg["action"] == "find_remote":
+        await hub.async_find_remote()
+    else:
+        await hub.async_resync_remote()
+
+    connection.send_result(msg["id"], {"ok": True})
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/persistent_cache/get",
     }
 )
@@ -369,6 +503,9 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_set_command_config)
     websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
     websocket_api.async_register_command(hass, _ws_set_hub_version)
+    websocket_api.async_register_command(hass, _ws_get_control_panel_state)
+    websocket_api.async_register_command(hass, _ws_control_panel_set_setting)
+    websocket_api.async_register_command(hass, _ws_control_panel_run_action)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache)
     websocket_api.async_register_command(hass, _ws_set_persistent_cache)
     websocket_api.async_register_command(hass, _ws_refresh_persistent_cache_entry)
