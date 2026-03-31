@@ -71,6 +71,13 @@ def test_activity_fetch_clears_inflight_after_favorite_labels(monkeypatch):
     hub._on_commands_burst(f"commands:{dev_id & 0xFF}")
     loop.run_until_complete(asyncio.sleep(0))
 
+    # Activity fetch should stay in-flight until macro burst completion is observed.
+    assert act_id in hub._commands_in_flight
+
+    hub._proxy._macros_complete.add(act_lo)
+    hub._on_macros_burst(f"macros:{act_lo}")
+    loop.run_until_complete(asyncio.sleep(0))
+
     assert act_id not in hub._commands_in_flight
     assert hub._commands_in_flight == set()
     assert hub._pending_button_fetch == set()
@@ -78,6 +85,329 @@ def test_activity_fetch_clears_inflight_after_favorite_labels(monkeypatch):
     hub.activities_ready = True
     hub.devices_ready = True
     assert hub.get_index_state() == "ready"
+
+    loop.close()
+
+
+def test_describe_favorites_order_includes_favorites_and_macros() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_lo = 0x65
+    hub._proxy.state.activity_favorite_slots[act_lo] = [
+        {"button_id": 0x01, "device_id": 0x04, "command_id": 0x06, "source": "activity_map"},
+    ]
+    hub._proxy.state.record_favorite_label(act_lo, 0x04, 0x06, "Command 6")
+    hub._proxy.state.replace_activity_macros(
+        act_lo,
+        [{"command_id": 0x09, "label": "Test Macro"}],
+    )
+
+    described = hub.describe_favorites_order(act_lo, [(0x09, 0x01), (0x01, 0x02)])
+
+    assert described == [
+        {
+            "fav_id": 0x09,
+            "button_id": 0x09,
+            "slot": 0x01,
+            "type": "macro",
+            "name": "Test Macro",
+            "command_id": 0x09,
+        },
+        {
+            "fav_id": 0x01,
+            "button_id": 0x01,
+            "activity_map_button_id": 0x01,
+            "slot": 0x02,
+            "type": "favorite",
+            "name": "Command 6",
+            "device_id": 0x04,
+            "command_id": 0x06,
+        },
+    ]
+
+    loop.close()
+
+
+def test_describe_favorites_order_appends_cached_entries_missing_from_hub_order() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_lo = 0x65
+    hub._proxy.state.activity_favorite_slots[act_lo] = [
+        {"button_id": 0x01, "device_id": 0x04, "command_id": 0x1A, "source": "keymap"},
+        {"button_id": 0x02, "device_id": 0x04, "command_id": 0x20, "source": "keymap"},
+        {"button_id": 0x03, "device_id": 0x08, "command_id": 0x01, "source": "keymap"},
+    ]
+    hub._proxy.state.record_favorite_label(act_lo, 0x04, 0x1A, "Ok")
+    hub._proxy.state.record_favorite_label(act_lo, 0x04, 0x20, "Yellow")
+    hub._proxy.state.record_favorite_label(act_lo, 0x08, 0x01, "Dim the lights")
+
+    described = hub.describe_favorites_order(act_lo, [(0x01, 0x01), (0x02, 0x02)])
+
+    assert described == [
+        {
+            "fav_id": 0x01,
+            "button_id": 0x01,
+            "activity_map_button_id": 0x01,
+            "slot": 0x01,
+            "type": "favorite",
+            "name": "Ok",
+            "device_id": 0x04,
+            "command_id": 0x1A,
+        },
+        {
+            "fav_id": 0x02,
+            "button_id": 0x02,
+            "activity_map_button_id": 0x02,
+            "slot": 0x02,
+            "type": "favorite",
+            "name": "Yellow",
+            "device_id": 0x04,
+            "command_id": 0x20,
+        },
+        {
+            "fav_id": 0x03,
+            "button_id": 0x03,
+            "activity_map_button_id": 0x03,
+            "slot": 0x03,
+            "type": "favorite",
+            "name": "Dim the lights",
+            "device_id": 0x08,
+            "command_id": 0x01,
+        },
+    ]
+
+    loop.close()
+
+
+def test_describe_favorites_order_matches_x1s_macro_and_favorite_ui_order() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_lo = 0x65
+    hub._proxy.state.activity_favorite_slots[act_lo] = [
+        {"button_id": 0x01, "device_id": 0x04, "command_id": 0x1A, "source": "keymap"},
+        {"button_id": 0x02, "device_id": 0x04, "command_id": 0x20, "source": "keymap"},
+        {"button_id": 0x03, "device_id": 0x08, "command_id": 0x01, "source": "keymap"},
+        {"button_id": 0x04, "device_id": 0x08, "command_id": 0x02, "source": "keymap"},
+        {"button_id": 0x05, "device_id": 0x08, "command_id": 0x03, "source": "keymap"},
+        {"button_id": 0x06, "device_id": 0x08, "command_id": 0x04, "source": "keymap"},
+        {"button_id": 0x07, "device_id": 0x08, "command_id": 0x05, "source": "keymap"},
+    ]
+    hub._proxy.state.record_favorite_label(act_lo, 0x04, 0x1A, "Ok")
+    hub._proxy.state.record_favorite_label(act_lo, 0x04, 0x20, "Yellow")
+    hub._proxy.state.record_favorite_label(act_lo, 0x08, 0x01, "Dim the lights")
+    hub._proxy.state.record_favorite_label(act_lo, 0x08, 0x02, "Close the curtains")
+    hub._proxy.state.record_favorite_label(act_lo, 0x08, 0x03, "Switch off the alarm")
+    hub._proxy.state.record_favorite_label(act_lo, 0x08, 0x04, "Eat bananas")
+    hub._proxy.state.record_favorite_label(act_lo, 0x08, 0x05, "Spend money")
+
+    described = hub.describe_favorites_order(
+        act_lo,
+        [(0x05, 0x01), (0x06, 0x02), (0x07, 0x03), (0x01, 0x04), (0x02, 0x05), (0x03, 0x06), (0x04, 0x07)],
+    )
+
+    assert [(entry["fav_id"], entry["name"], entry["slot"]) for entry in described] == [
+        (0x05, "Switch off the alarm", 0x01),
+        (0x06, "Eat bananas", 0x02),
+        (0x07, "Spend money", 0x03),
+        (0x01, "Ok", 0x04),
+        (0x02, "Yellow", 0x05),
+        (0x03, "Dim the lights", 0x06),
+        (0x04, "Close the curtains", 0x07),
+    ]
+
+    loop.close()
+
+
+def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_id = 0x65
+    dev_id = 0x04
+    keybinding_button_id = 0xB7
+
+    hub.activities[act_id] = {"name": "Movies", "active": True}
+    hub.devices[dev_id] = {"name": "Denon"}
+    hub._proxy.state.devices[dev_id] = {"name": "Denon"}
+    hub._proxy.state.commands[dev_id] = {0x06: "Power", 0x07: "Volume Up"}
+    hub._proxy.state.activity_favorite_slots[act_id] = [
+        {"button_id": 0x01, "device_id": dev_id, "command_id": 0x06, "source": "activity_map"}
+    ]
+    hub._proxy.state.record_favorite_label(act_id, dev_id, 0x06, "Power")
+    hub._proxy.state.activity_keybinding_slots[act_id] = [
+        {"button_id": keybinding_button_id, "device_id": dev_id, "command_id": 0x07, "source": "keymap"}
+    ]
+    hub._proxy.state.record_keybinding_label(act_id, dev_id, 0x07, "Volume Up")
+    hub._proxy.state.replace_activity_macros(act_id, [{"command_id": 0x09, "label": "Night Mode"}])
+
+    payload = loop.run_until_complete(hub.async_get_cache_contents())
+
+    assert payload["entry_id"] == "entry-id"
+    assert payload["name"] == "hub-name"
+    assert payload["cache_generation"] == 0
+    assert payload["activities"] == [
+        {
+            "id": act_id,
+            "name": "Movies",
+            "is_active": True,
+            "favorite_count": 1,
+            "keybinding_count": 1,
+            "macro_count": 1,
+        }
+    ]
+    assert payload["activity_favorites"] == {
+        "101": [
+            {
+                "button_id": 0x01,
+                "device_id": dev_id,
+                "device_name": "Denon",
+                "command_id": 0x06,
+                "label": "Power",
+                "source": "activity_map",
+            }
+        ]
+    }
+    assert payload["activity_keybindings"] == {
+        "101": [
+            {
+                "button_id": keybinding_button_id,
+                "button_name": "Ch Up",
+                "device_id": dev_id,
+                "device_name": "Denon",
+                "command_id": 0x07,
+                "label": "Volume Up",
+                "source": "keymap",
+            }
+        ]
+    }
+    assert payload["devices_list"] == [
+        {
+            "id": dev_id,
+            "name": "Denon",
+            "command_count": 2,
+            "has_commands": True,
+        }
+    ]
+
+    loop.close()
+
+
+def test_cache_generation_increments_for_cache_visible_updates(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    assert hub.cache_generation == 0
+
+    monkeypatch.setattr(hub._proxy, "get_devices", lambda: ({0x01: {"name": "TV"}}, True))
+    hub._on_devices_burst("devices")
+    loop.run_until_complete(asyncio.sleep(0))
+    assert hub.cache_generation == 1
+
+    hub._on_commands_burst("commands:1")
+    loop.run_until_complete(asyncio.sleep(0))
+    assert hub.cache_generation == 2
+
+    hub._on_macros_burst("macros:1")
+    loop.run_until_complete(asyncio.sleep(0))
+    assert hub.cache_generation == 3
+
+    loop.close()
+
+
+def test_async_restore_persistent_cache_bumps_cache_generation():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    loop.run_until_complete(hub.async_restore_persistent_cache({}))
+
+    assert hub.cache_generation == 1
 
     loop.close()
 
@@ -157,8 +487,189 @@ def test_roku_http_post_updates_last_ip_command_state():
     assert ip_command["entity_id"] == 7
     assert ip_command["command_label"] == "Lights On"
     assert ip_command["entity_name"] == "Living Room TV"
+    assert ip_command["press_type"] == "short"
 
     assert hub.get_app_activations() == []
+
+    loop.close()
+
+
+def test_roku_http_post_parses_long_press_suffix():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/7/Lights_On/Living_Room_TV/long",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    ip_command = hub.get_last_ip_command()
+    assert ip_command
+    assert ip_command["command_label"] == "Lights On"
+    assert ip_command["entity_name"] == "Living Room TV"
+    assert ip_command["press_type"] == "long"
+
+    loop.close()
+
+
+def test_roku_http_post_runs_configured_short_press_action():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+    service_calls: list[tuple[str, str, dict, dict | None, bool]] = []
+    async def _async_call(domain, service, data, target=None, blocking=False):
+        service_calls.append((domain, service, data, target, blocking))
+    async def _async_get_hub_config(_entry_id):
+        return {
+            "commands": [
+                {
+                    "name": "Lights On",
+                    "action": {
+                        "action": "perform-action",
+                        "perform_action": "light.turn_on",
+                        "target": {"entity_id": "light.living_room"},
+                    },
+                }
+            ]
+        }
+    hass.services = SimpleNamespace(
+        async_call=_async_call
+    )
+    hass.data = {
+        "sofabaton_x1s": {
+            "command_config_store": SimpleNamespace(
+                async_get_hub_config=_async_get_hub_config
+            )
+        }
+    }
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/7/Lights_On/Living_Room_TV",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    assert service_calls == [
+        (
+            "light",
+            "turn_on",
+            {},
+            {"entity_id": "light.living_room"},
+            True,
+        )
+    ]
+
+    loop.close()
+
+
+def test_roku_http_post_runs_configured_long_press_action():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+    service_calls: list[tuple[str, str, dict, dict | None, bool]] = []
+    async def _async_call(domain, service, data, target=None, blocking=False):
+        service_calls.append((domain, service, data, target, blocking))
+    async def _async_get_hub_config(_entry_id):
+        return {
+            "commands": [
+                {
+                    "name": "Lights On",
+                    "long_press_enabled": True,
+                    "action": {
+                        "action": "perform-action",
+                        "perform_action": "light.turn_off",
+                        "target": {"entity_id": "light.short_press_only"},
+                    },
+                    "long_press_action": {
+                        "action": "perform-action",
+                        "perform_action": "light.turn_on",
+                        "target": {"entity_id": "light.long_press_target"},
+                    },
+                }
+            ]
+        }
+    hass.services = SimpleNamespace(
+        async_call=_async_call
+    )
+    hass.data = {
+        "sofabaton_x1s": {
+            "command_config_store": SimpleNamespace(
+                async_get_hub_config=_async_get_hub_config
+            )
+        }
+    }
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/7/Lights_On/Living_Room_TV/long",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    assert service_calls == [
+        (
+            "light",
+            "turn_on",
+            {},
+            {"entity_id": "light.long_press_target"},
+            True,
+        )
+    ]
 
     loop.close()
 
@@ -232,10 +743,10 @@ def test_command_to_button_executor_job_uses_partial_not_kwargs():
         False,
     )
 
-    calls: list[tuple[int, int, int, int]] = []
+    calls: list[tuple] = []
 
-    def _command_to_button(activity_id, button_id, device_id, command_id):
-        calls.append((activity_id, button_id, device_id, command_id))
+    def _command_to_button(activity_id, button_id, device_id, command_id, **kwargs):
+        calls.append((activity_id, button_id, device_id, command_id, kwargs))
         return {"status": "success"}
 
     hub._proxy.command_to_button = _command_to_button  # type: ignore[method-assign]
@@ -250,10 +761,57 @@ def test_command_to_button_executor_job_uses_partial_not_kwargs():
     )
 
     assert result == {"status": "success"}
-    assert calls == [(101, 0xC1, 5, 2)]
+    assert calls[0][:4] == (101, 0xC1, 5, 2)
 
     loop.close()
 
+
+
+
+def test_clear_cache_for_executor_job_uses_partial_not_kwargs(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    class StrictHass(FakeHass):
+        async def async_add_executor_job(self, func, *args):  # no kwargs on purpose
+            return func(*args)
+
+    hass = StrictHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    cleared: list[tuple[int, str]] = []
+
+    def _clear_persistent_cache_for(ent_id, *, kind):
+        cleared.append((ent_id, kind))
+
+    hub._proxy.clear_persistent_cache_for = _clear_persistent_cache_for  # type: ignore[method-assign]
+    hub._proxy.get_devices = lambda: ({}, True)  # type: ignore[method-assign]
+
+    sent_signals: list[tuple[str, str]] = []
+
+    def _fake_dispatcher_send(_hass, signal):
+        sent_signals.append(("signal", signal))
+
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", _fake_dispatcher_send)
+
+    loop.run_until_complete(hub.async_clear_cache_for(kind="activity", ent_id=42))
+
+    assert cleared == [(42, "activity")]
+    assert sent_signals
+
+    loop.close()
 
 def test_on_activities_burst_syncs_current_activity_from_active_flag(monkeypatch):
     loop = asyncio.new_event_loop()
@@ -1075,5 +1633,189 @@ def test_async_set_hub_version_persists_hver_and_updates_proxy() -> None:
     assert update["data"]["mdns_txt"]["HVER"] == "2"
     assert update["data"]["mdns_version"] == "X1S"
     assert update["options"]["mdns_version"] == "X1S"
+
+    loop.close()
+
+def test_prime_buttons_skips_activity_map_when_cached(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_id = 0x0105
+    act_lo = act_id & 0xFF
+
+    hub._proxy.state.activity_favorite_slots[act_lo] = [
+        {"button_id": 1, "device_id": 2, "command_id": 3, "source": "cache"}
+    ]
+
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([1, 2], True))
+    monkeypatch.setattr(hub._proxy, "ensure_commands_for_activity", lambda *_args, **_kwargs: ({}, True))
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_args, **_kwargs: ([], True))
+
+    called = {"request_map": 0}
+
+    def _request_map(_act_id: int) -> bool:
+        called["request_map"] += 1
+        return True
+
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", _request_map)
+
+    loop.run_until_complete(hub._async_prime_buttons_for(act_id))
+
+    assert called["request_map"] == 0
+
+    loop.close()
+
+
+def test_prime_buttons_fetches_activity_map_when_not_cached(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_id = 0x0106
+
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([1, 2], True))
+    monkeypatch.setattr(hub._proxy, "ensure_commands_for_activity", lambda *_args, **_kwargs: ({}, True))
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_args, **_kwargs: ([], True))
+
+    called = {"request_map": 0}
+
+    def _request_map(_act_id: int) -> bool:
+        called["request_map"] += 1
+        hub._proxy._activity_map_complete.add(_act_id & 0xFF)
+        return True
+
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", _request_map)
+
+    loop.run_until_complete(hub._async_prime_buttons_for(act_id))
+
+    assert called["request_map"] == 1
+
+    loop.close()
+
+def test_restore_persistent_cache_primes_hub_trackers():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    payload = {
+        "devices": {"104": {"name": "Xbox", "brand": "Xbox"}},
+        "buttons": {"104": [174, 176]},
+        "commands": {"104": {"1": "Power"}},
+        "activity_favorite_slots": {"104": [{"button_id": 1, "device_id": 2, "command_id": 3, "source": "cache"}]},
+    }
+
+    loop.run_until_complete(hub.async_restore_persistent_cache(payload))
+
+    assert 104 in hub._buttons_ready_for
+    assert 104 in hub._command_entities
+    assert 104 in hub._proxy._activity_map_complete
+    assert hub.devices.get(104, {}).get("name") == "Xbox"
+
+    loop.close()
+
+
+def test_clear_cache_for_device_requests_fresh_devices(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    refreshed = {"called": False}
+
+    async def _fake_refresh_devices_snapshot(timeout_seconds: float = 15.0):
+        refreshed["called"] = True
+        return {}
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _fake_refresh_devices_snapshot)
+
+    hub._proxy.clear_persistent_cache_for = lambda ent_id, *, kind: None  # type: ignore[method-assign]
+    hub._proxy.get_devices = lambda: ({}, True)  # type: ignore[method-assign]
+
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
+
+    loop.run_until_complete(hub.async_clear_cache_for(kind="device", ent_id=9))
+
+    assert refreshed["called"] is True
+
+    loop.close()
+
+
+def test_commands_ready_for_activity_waits_for_macro_completion(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    act_id = 0x22
+    hub._proxy.state.activities[act_id] = {"name": "Watch TV"}
+
+    monkeypatch.setattr(hub._proxy, "ensure_commands_for_activity", lambda *_args, **_kwargs: ({1: "Power"}, True))
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_args, **_kwargs: ([], False))
+
+    assert hub._commands_ready_for(act_id) is False
 
     loop.close()

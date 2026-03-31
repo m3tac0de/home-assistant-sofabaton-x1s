@@ -39,6 +39,7 @@ if str(ROOT) not in sys.path:
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     ActivityMapHandler,
+    AckReadyHandler,
     CatalogActivityHandler,
     CatalogDeviceHandler,
     KeymapHandler,
@@ -57,6 +58,10 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_KEYMAP_TBL_F,
     OP_KEYMAP_TBL_G,
     OP_CATALOG_ROW_ACTIVITY,
+    OP_ACK_READY,
+    OP_REQ_ACTIVITIES,
+    OP_REQ_BUTTONS,
+    OP_REQ_COMMANDS,
     OP_MACROS_A1,
     OP_MACROS_B1,
     OP_X1_ACTIVITY,
@@ -90,6 +95,12 @@ def _build_payload_context(proxy: X1Proxy, opcode: int, payload: bytes, name: st
         raw=raw,
         name=name,
     )
+
+
+def _start_activity_request(proxy: X1Proxy, *, allow_noninitial_rows: bool = False) -> None:
+    proxy._begin_activity_request()
+    if allow_noninitial_rows:
+        proxy._activity_pending_generation = proxy._activity_request_inflight
 
 
 def _build_macro_raw(op_hi: int, frag_index: int, total_frags: int, act: int, payload: bytes) -> str:
@@ -713,6 +724,27 @@ def test_macro_handler_parses_sample_activity_69() -> None:
     assert any(entry["command_id"] == 0x05 and entry["label"] == "bla" for entry in macros)
 
 
+def test_macro_handler_marks_activity_complete_when_only_power_macros_exist() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = MacroHandler()
+
+    proxy._pending_macro_requests.add(0x65)
+
+    fragments = [
+        "a5 5a 78 13 01 00 01 02 00 01 65 c6 08 01 c6 00 00 00 00 00 00 01 ff 02 c6 00 00 00 00 00 00 01 ff 01 c5 00 00 00 00 00 00 1a ff 02 c5 00 00 00 00 00 00 00 ff 05 c6 00 00 00 00 00 00 00 ff 05 c5 00 00 00 00 00 00 00 ff 04 c6 00 00 00 00 00 00 00 ff 04 c5 00 00 00 00 00 00 00 ff 50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 02 00 00 00 00 00 2d 76 bb 03",
+        "a5 5a 50 13 02 00 01 02 00 01 65 c7 04 01 c7 00 00 00 00 00 00 01 ff 02 c7 00 00 00 00 00 00 01 ff 05 c7 00 00 00 00 00 00 00 ff 04 c7 00 00 00 00 00 00 00 ff 50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 1e a2",
+    ]
+
+    for raw_hex in fragments:
+        handler.handle(_build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "MACROS_SAMPLE"))
+
+    assert proxy.state.get_activity_macros(0x65) == []
+    assert 0x65 in proxy._macros_complete
+    assert 0x65 not in proxy._pending_macro_requests
+
+
 def test_x1_device_row_updates_state_and_burst() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
@@ -740,6 +772,7 @@ def test_x1_activity_row_updates_state_and_hint() -> None:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = X1CatalogActivityHandler()
+    _start_activity_request(proxy)
 
     frame = _build_context(
         proxy,
@@ -750,8 +783,13 @@ def test_x1_activity_row_updates_state_and_hint() -> None:
 
     handler.handle(frame)
 
-    assert proxy.state.activities[0x65] == {"name": "Jellyfin", "active": False, "needs_confirm": False}
-    assert proxy.state.current_activity_hint is None
+    assert proxy._activity_pending_rows[0x01] == {
+        "id": 0x65,
+        "name": "Jellyfin",
+        "active": False,
+        "needs_confirm": False,
+    }
+    assert proxy._activity_pending_hint is None
     assert proxy._burst.kind == "activities"
 
 
@@ -760,6 +798,7 @@ def test_x1_activity_active_flag_uses_correct_offset() -> None:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = X1CatalogActivityHandler()
+    _start_activity_request(proxy)
 
     frame = _build_context(
         proxy,
@@ -770,8 +809,13 @@ def test_x1_activity_active_flag_uses_correct_offset() -> None:
 
     handler.handle(frame)
 
-    assert proxy.state.activities[0x66] == {"name": "Room Control", "active": True, "needs_confirm": False}
-    assert proxy.state.current_activity_hint == 0x66
+    assert proxy._activity_pending_rows[0x01] == {
+        "id": 0x66,
+        "name": "Room Control",
+        "active": True,
+        "needs_confirm": False,
+    }
+    assert proxy._activity_pending_hint == 0x66
 
 
 def test_x1_activity_row_sets_needs_confirm_flag() -> None:
@@ -779,6 +823,7 @@ def test_x1_activity_row_sets_needs_confirm_flag() -> None:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = X1CatalogActivityHandler()
+    _start_activity_request(proxy, allow_noninitial_rows=True)
 
     frame = _build_context(
         proxy,
@@ -789,7 +834,12 @@ def test_x1_activity_row_sets_needs_confirm_flag() -> None:
 
     handler.handle(frame)
 
-    assert proxy.state.activities[0x66] == {"name": "heyo", "active": False, "needs_confirm": True}
+    assert proxy._activity_pending_rows[0x02] == {
+        "id": 0x66,
+        "name": "heyo",
+        "active": False,
+        "needs_confirm": True,
+    }
 
 
 
@@ -799,9 +849,11 @@ def test_catalog_activity_handler_sets_needs_confirm_from_tail_marker() -> None:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = CatalogActivityHandler()
+    _start_activity_request(proxy)
 
     payload = bytearray(214)
     payload[0] = 1
+    payload[3] = 1
     payload[6:8] = (0x0065).to_bytes(2, "big")
     payload[32] = 0x01
     payload[33] = 0x00
@@ -809,6 +861,7 @@ def test_catalog_activity_handler_sets_needs_confirm_from_tail_marker() -> None:
 
     frame = _build_payload_context(proxy, OP_CATALOG_ROW_ACTIVITY, bytes(payload), "CATALOG_ROW_ACTIVITY")
     handler.handle(frame)
+    proxy._on_activities_burst_end("activities")
 
     assert proxy.state.activities[0x65]["needs_confirm"] is True
     assert len(proxy._activity_row_payloads[0x65]) == 214
@@ -819,6 +872,7 @@ def test_catalog_activity_handler_clears_needs_confirm_when_tail_marker_unset() 
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = CatalogActivityHandler()
+    _start_activity_request(proxy, allow_noninitial_rows=True)
 
     payload = bytearray(214)
     payload[0] = 2
@@ -828,14 +882,15 @@ def test_catalog_activity_handler_clears_needs_confirm_when_tail_marker_unset() 
     frame = _build_payload_context(proxy, OP_CATALOG_ROW_ACTIVITY, bytes(payload), "CATALOG_ROW_ACTIVITY")
     handler.handle(frame)
 
-    assert proxy.state.activities[0x66]["needs_confirm"] is False
-    assert len(proxy._activity_row_payloads[0x66]) == 214
+    assert proxy._activity_pending_rows[0x02]["needs_confirm"] is False
+    assert len(proxy._activity_pending_payloads[0x66]) == 214
 
 def test_catalog_activity_handler_decodes_utf16_labels() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
     handler = CatalogActivityHandler()
+    _start_activity_request(proxy)
 
     samples = [
         (
@@ -880,11 +935,23 @@ def test_catalog_activity_handler_decodes_utf16_labels() -> None:
         ),
     ]
 
+    latest_by_id: dict[int, str] = {}
     for raw_hex, act_id, expected_label in samples:
+        row_idx = bytes.fromhex(raw_hex)[4]
+        if row_idx == 1 and latest_by_id:
+            latest_by_id = {}
+            _start_activity_request(proxy)
+        elif row_idx != 1 and proxy._activity_pending_generation != proxy._activity_request_inflight:
+            proxy._activity_pending_generation = proxy._activity_request_inflight
+
         handler.handle(
             _build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "CATALOG_ROW_ACTIVITY")
         )
-        assert proxy.state.activities[act_id & 0xFF]["name"] == expected_label
+        latest_by_id[act_id & 0xFF] = expected_label
+        row = next(
+            value for value in proxy._activity_pending_rows.values() if int(value["id"]) == (act_id & 0xFF)
+        )
+        assert row["name"] == expected_label
 
 
 def test_activity_map_ignores_control_tuples_from_x1_tail() -> None:
@@ -982,3 +1049,57 @@ def test_keymap_handler_parses_x2_followup_d73d_page_buttons() -> None:
         ButtonName.VOL_UP,
     }
     assert expected.issubset(proxy.state.buttons.get(0x65, set()))
+
+
+def test_ack_ready_skips_button_and_command_prefetch_when_cached() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = AckReadyHandler()
+
+    proxy.state.current_activity_hint = 0x68
+    proxy.hub_version = HUB_VERSION_X1S
+    proxy.state.buttons[0x68] = {174, 176}
+    proxy.state.commands[0x68] = {1: "Power"}
+    proxy._commands_complete.add(0x68)
+
+    captured: list[tuple[int, bytes, dict]] = []
+
+    def _enqueue(opcode: int, payload: bytes = b"", **kwargs):
+        captured.append((opcode, payload, kwargs))
+        return True
+
+    proxy.enqueue_cmd = _enqueue  # type: ignore[assignment]
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+
+    frame = _build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY")
+    handler.handle(frame)
+
+    assert [row[0] for row in captured] == [OP_REQ_ACTIVITIES]
+
+
+def test_ack_ready_prefetches_when_cache_missing() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = AckReadyHandler()
+
+    proxy.state.current_activity_hint = 0x68
+    proxy.hub_version = HUB_VERSION_X1S
+
+    captured: list[tuple[int, bytes, dict]] = []
+
+    def _enqueue(opcode: int, payload: bytes = b"", **kwargs):
+        captured.append((opcode, payload, kwargs))
+        return True
+
+    proxy.enqueue_cmd = _enqueue  # type: ignore[assignment]
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+
+    frame = _build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY")
+    handler.handle(frame)
+
+    opcodes = [row[0] for row in captured]
+    assert OP_REQ_ACTIVITIES in opcodes
+    assert OP_REQ_BUTTONS in opcodes
+    assert OP_REQ_COMMANDS not in opcodes

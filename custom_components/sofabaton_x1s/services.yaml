@@ -243,6 +243,24 @@ command_to_button:
           min: 1
           max: 255
           mode: box
+    long_press_device_id:
+      name: Long press device id
+      description: Device id for the long-press action. Must be used together with long_press_command_id.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    long_press_command_id:
+      name: Long press command id
+      description: Command id for the long-press action. Must be used together with long_press_device_id.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
 
 
 sync_command_config:
@@ -262,3 +280,75 @@ sync_command_config:
       default: Home Assistant
       selector:
         text:
+
+get_favorites:
+  name: Get activity favorites
+  description: Fetches the current ordered quick-access list from the hub for the given activity. The response may contain both favorites and macros, each with its shared hub-order id, display slot, type, and best-known label.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 101
+          max: 255
+          mode: box
+
+reorder_favorites:
+  name: Reorder activity favorites
+  description: Reorders the favorites of an activity on the hub. Provide the hub-order fav_ids in the desired new order.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 101
+          max: 255
+          mode: box
+    ordered_fav_ids:
+      name: Ordered favorite ids
+      description: List of hub-order fav_id values in the desired display order (use get_favorites to retrieve them).
+      required: true
+      selector:
+        object:
+
+delete_favorite:
+  name: Delete activity favorite
+  description: Deletes a single favorite from an activity on the hub.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    activity_id:
+      name: Activity id
+      required: true
+      selector:
+        number:
+          min: 101
+          max: 255
+          mode: box
+    fav_id:
+      name: Favorite id
+      description: The hub-order fav_id of the favorite to delete (use get_favorites to retrieve it).
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box

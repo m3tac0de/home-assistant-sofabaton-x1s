@@ -76,8 +76,13 @@ def _install_homeassistant_stubs() -> None:
     class ServiceCall:  # pragma: no cover - only used as stub
         pass
 
+    class SupportsResponse:  # pragma: no cover - only used as stub
+        OPTIONAL = "optional"
+        ONLY = "only"
+
     core.HomeAssistant = HomeAssistant
     core.ServiceCall = ServiceCall
+    core.SupportsResponse = SupportsResponse
     core.callback = lambda func: func  # type: ignore[assignment]
     sys.modules.setdefault("homeassistant.core", core)
 

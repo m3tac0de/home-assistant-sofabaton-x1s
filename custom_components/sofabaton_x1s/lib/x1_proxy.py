@@ -75,6 +75,8 @@ from .protocol_const import (
     OP_REQ_ACTIVITY_INPUTS,
     OP_REQ_VERSION,
     OP_WIFI_FW,
+    FAMILY_FAV_DELETE,
+    FAMILY_FAV_ORDER_REQ,
     SYNC0,
     SYNC1,
 )
@@ -85,6 +87,8 @@ from .transport_bridge import TransportBridge
 # Utilities
 # ============================================================================
 log = logging.getLogger("x1proxy")
+
+ACTIVITY_INCOMPLETE_RETRY_DELAY_S = 0.75
 
 def _sum8(b: bytes) -> int: return sum(b) & 0xFF
 def _hexdump(data: bytes) -> str: return data.hex(" ")
@@ -109,6 +113,16 @@ _ROKU_APP_SLOTS: list[tuple[int, int]] = [
     (0x1F, 0x4E28),
     (0x20, 0x4E29),
     (0x21, 0x4E2A),
+    (0x22, 0x4E2B),
+    (0x23, 0x4E2C),
+    (0x24, 0x4E2D),
+    (0x25, 0x4E2E),
+    (0x26, 0x4E2F),
+    (0x27, 0x4E30),
+    (0x28, 0x4E31),
+    (0x29, 0x4E32),
+    (0x2A, 0x4E33),
+    (0x2B, 0x4E34),
 ]
 
 
@@ -270,7 +284,18 @@ class X1Proxy:
         self._pending_activity_map_requests: set[int] = set()
         self._activity_map_complete: set[int] = set()
         self._activity_row_payloads: dict[int, bytes] = {}
+        self._activity_request_serial = 0
+        self._activity_request_inflight: int | None = None
+        self._activity_retry_count = 0
+        self._activity_retry_due_at: float | None = None
+        self._activity_retry_send_pending = False
+        self._activity_pending_generation: int | None = None
+        self._activity_pending_expected_rows: int | None = None
+        self._activity_pending_rows: dict[int, dict[str, Any]] = {}
+        self._activity_pending_payloads: dict[int, bytes] = {}
+        self._activity_pending_hint: int | None = None
         self._favorite_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
+        self._keybinding_label_requests: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._activity_listeners: list[callable] = []
         self._activity_list_update_listeners: list[Callable[[], None]] = []
         self._hub_state_listeners: list[callable] = []
@@ -321,6 +346,7 @@ class X1Proxy:
         self._burst.on_burst_end("commands", self._on_commands_burst_end)
         self._burst.on_burst_end("macros", self._on_macros_burst_end)
         self._burst.on_burst_end("activity_map", self._on_activity_map_burst_end)
+        self._burst.on_burst_end("activities", self._on_activities_burst_end)
         self.on_burst_end("activities", self.handle_active_state)
 
         self._hub_connected: bool = False
@@ -518,7 +544,12 @@ class X1Proxy:
 
     # High-level helpers
     def request_devices(self) -> bool:    return self.enqueue_cmd(OP_REQ_DEVICES, expects_burst=True, burst_kind="devices")
-    def request_activities(self) -> bool: return self.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+    def request_activities(self, *, is_retry: bool = False) -> bool:
+        self._activity_retry_send_pending = is_retry
+        ok = self.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+        if not ok:
+            self._activity_retry_send_pending = False
+        return ok
 
     def request_buttons_for_entity(self, ent_id: int) -> bool:
         if not self.can_issue_commands():
@@ -623,12 +654,15 @@ class X1Proxy:
 
         return ok
         
-    def get_activities(self) -> tuple[dict[int, dict], bool]:
+    def get_activities(self, *, force_refresh: bool = True) -> tuple[dict[int, dict], bool]:
+        if force_refresh:
+            if self.can_issue_commands():
+                self.request_activities()
+            return ({}, False)
+
         if self.state.activities:
             return ({k: v.copy() for k, v in self.state.activities.items()}, True)
-            
-        if self.can_issue_commands():
-            self.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
+
         return ({}, False)
 
     def get_devices(self) -> tuple[dict[int, dict], bool]:
@@ -680,6 +714,411 @@ class X1Proxy:
             return (dict(commands), complete)
 
         return ({}, False)
+
+    def export_cache_state(self) -> dict[str, Any]:
+        return {
+            "devices": {str(k): dict(v) for k, v in self.state.devices.items()},
+            "buttons": {str(k): sorted(v) for k, v in self.state.buttons.items()},
+            "commands": {
+                str(k): {str(cmd_id): label for cmd_id, label in commands.items()}
+                for k, commands in self.state.commands.items()
+            },
+            "ip_devices": {str(k): dict(v) for k, v in self.state.ip_devices.items()},
+            "ip_buttons": {
+                str(k): {str(btn_id): dict(meta) for btn_id, meta in buttons.items()}
+                for k, buttons in self.state.ip_buttons.items()
+            },
+            "activity_macros": {
+                str(k): list(macros) for k, macros in self.state.activity_macros.items()
+            },
+            "activity_command_refs": {
+                str(k): [[dev_id, command_id] for dev_id, command_id in sorted(refs)]
+                for k, refs in self.state.activity_command_refs.items()
+            },
+            "activity_favorite_slots": {
+                str(k): [dict(slot) for slot in slots]
+                for k, slots in self.state.activity_favorite_slots.items()
+            },
+            "activity_keybinding_slots": {
+                str(k): [dict(slot) for slot in slots]
+                for k, slots in self.state.activity_keybinding_slots.items()
+            },
+            "activity_members": {
+                str(k): sorted(members)
+                for k, members in self.state.activity_members.items()
+            },
+            "activity_favorite_labels": {
+                str(k): [
+                    {
+                        "device_id": dev_id,
+                        "command_id": command_id,
+                        "label": label,
+                    }
+                    for (dev_id, command_id), label in labels.items()
+                ]
+                for k, labels in self.state.activity_favorite_labels.items()
+            },
+            "activity_keybinding_labels": {
+                str(k): [
+                    {
+                        "device_id": dev_id,
+                        "command_id": command_id,
+                        "label": label,
+                    }
+                    for (dev_id, command_id), label in labels.items()
+                ]
+                for k, labels in self.state.activity_keybinding_labels.items()
+            },
+        }
+
+    def import_cache_state(self, payload: dict[str, Any]) -> None:
+        data = payload if isinstance(payload, dict) else {}
+
+        devices = data.get("devices", {})
+        self.state.devices = {
+            int(k) & 0xFF: dict(v) for k, v in devices.items() if isinstance(v, dict)
+        }
+
+        buttons = data.get("buttons", {})
+        self.state.buttons = {
+            int(k) & 0xFF: {int(btn) & 0xFF for btn in v}
+            for k, v in buttons.items()
+            if isinstance(v, list)
+        }
+
+        self.state.commands.clear()
+        commands = data.get("commands", {})
+        for key, entity_commands in commands.items():
+            if not isinstance(entity_commands, dict):
+                continue
+            ent_id = int(key) & 0xFF
+            self.state.commands[ent_id] = {
+                int(cmd_id) & 0xFF: str(label)
+                for cmd_id, label in entity_commands.items()
+            }
+
+        ip_devices = data.get("ip_devices", {})
+        self.state.ip_devices = {
+            int(k) & 0xFF: dict(v) for k, v in ip_devices.items() if isinstance(v, dict)
+        }
+
+        self.state.ip_buttons.clear()
+        ip_buttons = data.get("ip_buttons", {})
+        for key, button_map in ip_buttons.items():
+            if not isinstance(button_map, dict):
+                continue
+            ent_id = int(key) & 0xFF
+            self.state.ip_buttons[ent_id] = {
+                int(btn_id) & 0xFF: dict(meta)
+                for btn_id, meta in button_map.items()
+                if isinstance(meta, dict)
+            }
+
+        activity_macros = data.get("activity_macros", {})
+        self.state.activity_macros = {
+            int(k) & 0xFF: list(v)
+            for k, v in activity_macros.items()
+            if isinstance(v, list)
+        }
+
+        self.state.activity_command_refs.clear()
+        activity_command_refs = data.get("activity_command_refs", {})
+        for key, refs in activity_command_refs.items():
+            if not isinstance(refs, list):
+                continue
+            act_lo = int(key) & 0xFF
+            parsed_refs: set[tuple[int, int]] = set()
+            for item in refs:
+                if isinstance(item, (list, tuple)) and len(item) == 2:
+                    parsed_refs.add((int(item[0]) & 0xFF, int(item[1]) & 0xFF))
+            if parsed_refs:
+                self.state.activity_command_refs[act_lo] = parsed_refs
+
+        self.state.activity_favorite_slots.clear()
+        activity_favorite_slots = data.get("activity_favorite_slots", {})
+        for key, slots in activity_favorite_slots.items():
+            if not isinstance(slots, list):
+                continue
+            act_lo = int(key) & 0xFF
+            normalized_slots: list[dict[str, int]] = []
+            for slot in slots:
+                if not isinstance(slot, dict):
+                    continue
+                normalized_slots.append(
+                    {
+                        "button_id": int(slot.get("button_id", 0)) & 0xFF,
+                        "device_id": int(slot.get("device_id", 0)) & 0xFF,
+                        "command_id": int(slot.get("command_id", 0)) & 0xFF,
+                        "source": str(slot.get("source", "cache")),
+                    }
+                )
+            if normalized_slots:
+                self.state.activity_favorite_slots[act_lo] = normalized_slots
+
+        self.state.activity_keybinding_slots.clear()
+        activity_keybinding_slots = data.get("activity_keybinding_slots", {})
+        for key, slots in activity_keybinding_slots.items():
+            if not isinstance(slots, list):
+                continue
+            act_lo = int(key) & 0xFF
+            normalized_slots: list[dict[str, int]] = []
+            for slot in slots:
+                if not isinstance(slot, dict):
+                    continue
+                normalized_slots.append(
+                    {
+                        "button_id": int(slot.get("button_id", 0)) & 0xFF,
+                        "device_id": int(slot.get("device_id", 0)) & 0xFF,
+                        "command_id": int(slot.get("command_id", 0)) & 0xFF,
+                        "source": str(slot.get("source", "cache")),
+                    }
+                )
+            if normalized_slots:
+                self.state.activity_keybinding_slots[act_lo] = normalized_slots
+
+        self.state.activity_members.clear()
+        activity_members = data.get("activity_members", {})
+        for key, members in activity_members.items():
+            if isinstance(members, list):
+                self.state.activity_members[int(key) & 0xFF] = {int(member) & 0xFF for member in members}
+
+        self.state.activity_favorite_labels.clear()
+        activity_favorite_labels = data.get("activity_favorite_labels", {})
+        for key, labels in activity_favorite_labels.items():
+            if not isinstance(labels, list):
+                continue
+            act_lo = int(key) & 0xFF
+            parsed_labels: dict[tuple[int, int], str] = {}
+            for row in labels:
+                if not isinstance(row, dict):
+                    continue
+                dev_id = int(row.get("device_id", 0)) & 0xFF
+                command_id = int(row.get("command_id", 0)) & 0xFF
+                label = str(row.get("label", "")).strip()
+                if dev_id and command_id and label:
+                    parsed_labels[(dev_id, command_id)] = label
+            if parsed_labels:
+                self.state.activity_favorite_labels[act_lo] = parsed_labels
+
+        self.state.activity_keybinding_labels.clear()
+        activity_keybinding_labels = data.get("activity_keybinding_labels", {})
+        for key, labels in activity_keybinding_labels.items():
+            if not isinstance(labels, list):
+                continue
+            act_lo = int(key) & 0xFF
+            parsed_labels: dict[tuple[int, int], str] = {}
+            for row in labels:
+                if not isinstance(row, dict):
+                    continue
+                dev_id = int(row.get("device_id", 0)) & 0xFF
+                command_id = int(row.get("command_id", 0)) & 0xFF
+                label = str(row.get("label", "")).strip()
+                if dev_id and command_id and label:
+                    parsed_labels[(dev_id, command_id)] = label
+            if parsed_labels:
+                self.state.activity_keybinding_labels[act_lo] = parsed_labels
+
+        self._commands_complete = set(self.state.commands.keys())
+        self._macros_complete = set(self.state.activity_macros.keys())
+
+        self._activity_map_complete = {
+            act_lo
+            for act_lo in set(self.state.activity_favorite_slots.keys())
+            | set(self.state.activity_members.keys())
+            | set(self.state.activity_command_refs.keys())
+        }
+
+        self._pending_button_requests.clear()
+        self._pending_command_requests.clear()
+        self._pending_macro_requests.clear()
+        self._pending_activity_map_requests.clear()
+
+    def clear_persistent_cache_for(self, ent_id: int, *, kind: str) -> None:
+        ent_lo = ent_id & 0xFF
+        if kind == "device":
+            self.state.devices.pop(ent_lo, None)
+            self.state.buttons.pop(ent_lo, None)
+            self.state.commands.pop(ent_lo, None)
+            self.state.ip_devices.pop(ent_lo, None)
+            self.state.ip_buttons.pop(ent_lo, None)
+            self._commands_complete.discard(ent_lo)
+            return
+
+        if kind == "activity":
+            self.state.activity_macros.pop(ent_lo, None)
+            self.state.activity_members.pop(ent_lo, None)
+            self.state.activity_favorite_slots.pop(ent_lo, None)
+            self.state.activity_keybinding_slots.pop(ent_lo, None)
+            self.state.activity_favorite_labels.pop(ent_lo, None)
+            self.state.activity_keybinding_labels.pop(ent_lo, None)
+            self.state.activity_command_refs.pop(ent_lo, None)
+            self._macros_complete.discard(ent_lo)
+
+    def get_known_device_ids(self) -> set[int]:
+        """Return the set of device IDs currently known from the catalog."""
+        return set(self.state.devices.keys()) | set(self.state.ip_devices.keys())
+
+    def get_known_activity_ids(self) -> set[int]:
+        """Return the set of activity IDs currently known from the catalog."""
+        return set(self.state.activities.keys())
+
+    def clear_devices_catalog(self) -> None:
+        """Clear only the device name catalog before a fresh device list fetch.
+
+        Deliberately does NOT clear per-device commands or ip_buttons — those are
+        preserved for devices that still exist and pruned separately (via
+        clear_persistent_cache_for) for devices that were removed.
+        """
+        self.state.devices.clear()
+        self.state.ip_devices.clear()
+
+    def clear_activities_catalog(self) -> None:
+        """Clear only the activity name catalog before a fresh activity list fetch.
+
+        Deliberately does NOT clear per-activity keymaps, favorites, keybindings,
+        or macros — those are not returned by OP_REQ_ACTIVITIES and would not be
+        repopulated by the burst.  Per-activity detail data for removed activities
+        is pruned separately via clear_persistent_cache_for.
+        """
+        self.state.activities.clear()
+        self._activity_row_payloads.clear()
+        self.state.set_hint(None)
+
+    def _reset_pending_activity_snapshot(self, generation: int | None = None) -> None:
+        self._activity_pending_generation = generation
+        self._activity_pending_expected_rows = None
+        self._activity_pending_rows = {}
+        self._activity_pending_payloads = {}
+        self._activity_pending_hint = None
+
+    def _begin_activity_request(self, *, is_retry: bool = False) -> None:
+        self._activity_request_serial += 1
+        self._activity_request_inflight = self._activity_request_serial
+        self._activity_retry_due_at = None
+        if not is_retry:
+            self._activity_retry_count = 0
+        self._reset_pending_activity_snapshot()
+
+    def _schedule_activity_retry(self, *, now: float | None = None) -> None:
+        if self.hub_version != HUB_VERSION_X2:
+            return
+        if self._activity_retry_count >= 1:
+            return
+        base = time.monotonic() if now is None else now
+        self._activity_retry_due_at = base + ACTIVITY_INCOMPLETE_RETRY_DELAY_S
+        self._activity_retry_count += 1
+        log.warning(
+            "[ACT] incomplete activities snapshot on X2; retrying in %.2fs",
+            ACTIVITY_INCOMPLETE_RETRY_DELAY_S,
+        )
+
+    def _activity_snapshot_complete(self) -> bool:
+        expected = self._activity_pending_expected_rows
+        if expected is None or expected <= 0:
+            return False
+        seen = set(self._activity_pending_rows.keys())
+        return seen == set(range(1, expected + 1))
+
+    def ingest_activity_row(
+        self,
+        *,
+        row_idx: int | None,
+        expected_rows: int | None,
+        act_id: int | None,
+        activity: dict[str, Any] | None,
+        payload: bytes | None = None,
+    ) -> bool:
+        generation = self._activity_request_inflight
+        if generation is None:
+            log.warning(
+                "[ACT] ignoring ghost activity row idx=%s act_id=%s: no request in flight",
+                row_idx,
+                act_id,
+            )
+            return False
+
+        if row_idx is None or row_idx <= 0 or act_id is None or activity is None:
+            return False
+
+        if row_idx == 1:
+            self._reset_pending_activity_snapshot(generation)
+        elif self._activity_pending_generation != generation:
+            log.warning(
+                "[ACT] ignoring activity row idx=%s act_id=%s before row #1 for request=%s",
+                row_idx,
+                act_id,
+                generation,
+            )
+            return False
+
+        if expected_rows is not None and expected_rows > 0:
+            if self._activity_pending_expected_rows is None:
+                self._activity_pending_expected_rows = expected_rows
+            elif self._activity_pending_expected_rows != expected_rows:
+                log.warning(
+                    "[ACT] row-count mismatch in pending snapshot: had=%s got=%s idx=%s",
+                    self._activity_pending_expected_rows,
+                    expected_rows,
+                    row_idx,
+                )
+                self._reset_pending_activity_snapshot(generation)
+                self._activity_pending_expected_rows = expected_rows
+                if row_idx != 1:
+                    log.warning(
+                        "[ACT] ignoring activity row idx=%s after row-count mismatch until row #1 restarts snapshot",
+                        row_idx,
+                    )
+                    return False
+
+        self._activity_pending_rows[row_idx] = dict(activity)
+        if payload is not None:
+            self._activity_pending_payloads[act_id & 0xFF] = bytes(payload)
+
+        if bool(activity.get("active", False)):
+            self._activity_pending_hint = act_id
+
+        return True
+
+    def _commit_pending_activity_snapshot(self) -> None:
+        ordered_rows = sorted(self._activity_pending_rows.items())
+        committed: dict[int, dict[str, Any]] = {}
+        for _row_idx, row in ordered_rows:
+            act_id = int(row["id"]) & 0xFF
+            committed[act_id] = {
+                "name": row["name"],
+                "active": bool(row["active"]),
+                "needs_confirm": bool(row["needs_confirm"]),
+            }
+
+        self.state.activities = committed
+        self._activity_row_payloads = dict(self._activity_pending_payloads)
+        self.state.set_hint(self._activity_pending_hint)
+
+    def _on_activities_burst_end(self, key: str) -> None:
+        generation = self._activity_request_inflight
+        complete = generation is not None and self._activity_pending_generation == generation and self._activity_snapshot_complete()
+
+        if complete:
+            self._commit_pending_activity_snapshot()
+            log.info(
+                "[ACT] committed complete activities snapshot rows=%d request=%s",
+                len(self._activity_pending_rows),
+                generation,
+            )
+        self._activity_request_inflight = None
+
+        if not complete:
+            expected = self._activity_pending_expected_rows
+            seen = sorted(self._activity_pending_rows.keys())
+            if generation is not None:
+                log.warning(
+                    "[ACT] discarding incomplete activities snapshot request=%s expected=%s seen=%s",
+                    generation,
+                    expected,
+                    seen,
+                )
+            self._schedule_activity_retry()
+        self._reset_pending_activity_snapshot()
 
     def get_macros_for_activity(self, act_id: int, *, fetch_if_missing: bool = True) -> tuple[list[dict[str, int | str]], bool]:
         act_lo = act_id & 0xFF
@@ -780,31 +1219,50 @@ class X1Proxy:
 
         seen_pairs: set[tuple[int, int]] = set()
 
-        for dev_id, command_id in refs:
+        keybinding_pairs = {
+            (slot["device_id"], slot["command_id"])
+            for slot in self.state.get_activity_keybinding_slots(act_lo)
+        }
+
+        for dev_id, command_id in refs | keybinding_pairs:
             pair = (dev_id, command_id)
             if pair in seen_pairs:
                 continue
 
             seen_pairs.add(pair)
 
-            existing_label = self.state.get_favorite_label(act_lo, dev_id, command_id)
-            if existing_label:
-                self.state.record_favorite_label(act_lo, dev_id, command_id, existing_label)
+            favorite_label = self.state.get_favorite_label(act_lo, dev_id, command_id)
+            keybinding_label = self.state.get_keybinding_label(act_lo, dev_id, command_id)
+            if favorite_label and (pair not in keybinding_pairs or keybinding_label):
+                self.state.record_favorite_label(act_lo, dev_id, command_id, favorite_label)
+                if pair in keybinding_pairs and keybinding_label:
+                    self.state.record_keybinding_label(act_lo, dev_id, command_id, keybinding_label)
                 continue
 
             device_cmds = self.state.commands.get(dev_id & 0xFF)
             if device_cmds and command_id in device_cmds:
-                self.state.record_favorite_label(
-                    act_lo, dev_id, command_id, device_cmds[command_id]
-                )
+                label = device_cmds[command_id]
+                if pair in refs:
+                    self.state.record_favorite_label(act_lo, dev_id, command_id, label)
+                if pair in keybinding_pairs:
+                    self.state.record_keybinding_label(act_lo, dev_id, command_id, label)
                 continue
 
-            self._favorite_label_requests[pair].add(act_id)
+            pair_is_favorite = pair in refs
+            pair_is_keybinding = pair in keybinding_pairs
+
+            if pair_is_favorite:
+                self._favorite_label_requests[pair].add(act_id)
+            if pair_is_keybinding:
+                self._keybinding_label_requests[pair].add(act_id)
+
+            if not fetch_if_missing and not pair_is_favorite:
+                continue
 
             single_cmds, ready = self.get_single_command_for_entity(
                 dev_id, command_id, fetch_if_missing=fetch_if_missing
             )
-            if not ready:
+            if pair_is_favorite and not ready:
                 all_ready = False
 
             if single_cmds:
@@ -815,10 +1273,16 @@ class X1Proxy:
 
                 label = single_cmds.get(command_id)
                 if label:
-                    self.state.record_favorite_label(act_lo, dev_id, command_id, label)
+                    if pair_is_favorite:
+                        self.state.record_favorite_label(act_lo, dev_id, command_id, label)
+                    if pair_is_keybinding:
+                        self.state.record_keybinding_label(act_lo, dev_id, command_id, label)
 
             if ready:
-                self._favorite_label_requests.pop(pair, None)
+                if pair_is_favorite:
+                    self._favorite_label_requests.pop(pair, None)
+                if pair_is_keybinding:
+                    self._keybinding_label_requests.pop(pair, None)
 
         return (commands_by_device, all_ready)
 
@@ -839,14 +1303,18 @@ class X1Proxy:
 
         if clear_buttons:
             self.state.buttons.pop(ent_lo, None)
+            self.state.button_details.pop(ent_lo, None)
             self._pending_button_requests.discard(ent_lo)
 
         if clear_favorites:
             self.state.activity_command_refs.pop(ent_lo, None)
             self.state.activity_favorite_slots.pop(ent_lo, None)
+            self.state.activity_keybinding_slots.pop(ent_lo, None)
             self.state.activity_members.pop(ent_lo, None)
             self.state.activity_favorite_labels.pop(ent_lo, None)
+            self.state.activity_keybinding_labels.pop(ent_lo, None)
             self._clear_favorite_label_requests_for_activity(ent_lo)
+            self._clear_keybinding_label_requests_for_activity(ent_lo)
             self._pending_activity_map_requests.discard(ent_lo)
             self._activity_map_complete.discard(ent_lo)
 
@@ -865,6 +1333,17 @@ class X1Proxy:
 
         for pair in to_delete:
             self._favorite_label_requests.pop(pair, None)
+
+    def _clear_keybinding_label_requests_for_activity(self, act_lo: int) -> None:
+        to_delete: list[tuple[int, int]] = []
+
+        for pair, act_ids in self._keybinding_label_requests.items():
+            act_ids.discard(act_lo)
+            if not act_ids:
+                to_delete.append(pair)
+
+        for pair in to_delete:
+            self._keybinding_label_requests.pop(pair, None)
 
     def get_app_activations(self) -> list[dict[str, Any]]:
         return self.state.get_app_activations()
@@ -1552,7 +2031,9 @@ class X1Proxy:
         self.state.activity_members.pop(act_lo, None)
         self.state.activity_command_refs.pop(act_lo, None)
         self.state.activity_favorite_slots.pop(act_lo, None)
+        self.state.activity_keybinding_slots.pop(act_lo, None)
         self.state.activity_favorite_labels.pop(act_lo, None)
+        self.state.activity_keybinding_labels.pop(act_lo, None)
         self._clear_favorite_label_requests_for_activity(act_lo)
 
         if not self.request_activity_mapping(act_lo):
@@ -1770,6 +2251,252 @@ class X1Proxy:
 
         return bytes([0x00, 0x01, 0x01, 0x00, 0x01, act_lo, 0x01, 0x01, 0x6A])
 
+    def _build_favorites_reorder_payload(
+        self,
+        act_lo: int,
+        ordered_fav_ids: list[int],
+    ) -> bytes:
+        """Build the family-0x61 SET_FAVORITES_ORDER payload.
+
+        Frame structure (app→hub):
+            [01 00 01 01 00 01] [act_lo] [fav_id slot] × N [token]
+
+        The token is computed with the same formula used by
+        _build_favorite_stage_payload: ``(sum(payload_so_far) - 2) & 0xFF``.
+
+        Verified against 5 captured reorder frames (N=5..9).
+        """
+        act_lo = act_lo & 0xFF
+        payload = bytearray([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, act_lo])
+        for slot_index, fav_id in enumerate(ordered_fav_ids, start=1):
+            payload.append(fav_id & 0xFF)
+            payload.append(slot_index & 0xFF)
+        payload.append((sum(payload) - 2) & 0xFF)
+        return bytes(payload)
+
+    def request_favorites_order(self, activity_id: int) -> list[tuple[int, int]] | None:
+        """Request the current favorites ordering from the hub for *activity_id*.
+
+        Sends OP_FAV_ORDER_REQ (opcode 0x0162) and blocks until the hub replies
+        with a family-0x63 response (parsed by FavoritesOrderHandler).
+
+        Returns a list of ``(fav_id, slot)`` tuples sorted by slot (ascending),
+        or ``None`` on timeout.
+        """
+        act_lo = activity_id & 0xFF
+        self.start_roku_create()
+        self._send_family_frame(FAMILY_FAV_ORDER_REQ, bytes([act_lo]))
+        # FavoritesOrderHandler fires synthetic ack 0xFF63 with first byte = act_lo
+        result = self.wait_for_roku_ack_any([(0xFF63, act_lo)], timeout=5.0)
+        if result is None:
+            log.warning("[FAV_ORDER] timeout waiting for hub response act=0x%02X", act_lo)
+            return None
+        return self.state.activity_favorites_order.get(act_lo)
+
+    def _validate_favorite_fav_id(
+        self,
+        act_lo: int,
+        fav_id: int,
+        current_order: list[tuple[int, int]],
+    ) -> int | None:
+        """Validate that *fav_id* is a known quick-access identifier.
+
+        X1S hubs may return a partial 0x63 favorites-order response even when
+        the app's Macro & Favorite Keys UI exposes additional quick-access
+        entries discovered through the activity keymap and macro caches. Treat
+        the latest hub order as authoritative for ordering when present, but
+        also accept cached quick-access ``button_id`` / macro ids as writable
+        identifiers when they are visible for the activity.
+        """
+
+        fav_lo = fav_id & 0xFF
+        if any((known_fav_id & 0xFF) == fav_lo for known_fav_id, _slot in current_order):
+            return fav_lo
+        if any(
+            (int(slot.get("button_id", 0)) & 0xFF) == fav_lo
+            for slot in self.state.get_activity_favorite_slots(act_lo)
+        ):
+            return fav_lo
+        if any(
+            (int(macro.get("command_id", 0)) & 0xFF) == fav_lo
+            for macro in self.state.get_activity_macros(act_lo)
+        ):
+            return fav_lo
+        return None
+
+    def reorder_favorites(
+        self,
+        activity_id: int,
+        ordered_fav_ids: list[int],
+        *,
+        refresh_after_write: bool = True,
+    ) -> dict[str, Any] | None:
+        """Re-order favorites for *activity_id* to match *ordered_fav_ids*.
+
+        *ordered_fav_ids* is the list of quick-access ``fav_id`` values in the
+        desired display order (first element = position 1). On X1S, the latest
+        hub-order response may be partial; cached activity keymap/macros can
+        still expose additional valid ids that the official app reorders.
+
+        Protocol sequence (mirrors the Sofabaton app):
+            1. family 0x61 SET_FAVORITES_ORDER → ACK 0x0103
+            2. family 0x65 COMMIT              → ACK 0x0103
+        """
+        if not self.can_issue_commands():
+            log.info("[FAV_REORDER] ignored: proxy client is connected")
+            return None
+
+        act_lo = activity_id & 0xFF
+
+        # Fetch current ordering to validate the supplied fav_ids
+        current_order = self.request_favorites_order(act_lo)
+        if current_order is None:
+            log.warning("[FAV_REORDER] could not fetch current order act=0x%02X", act_lo)
+            return None
+
+        ordered_fav_ids_checked: list[int] = []
+        for fav_id in ordered_fav_ids:
+            validated_fav_id = self._validate_favorite_fav_id(
+                act_lo, fav_id, current_order
+            )
+            if validated_fav_id is None:
+                log.warning(
+                    "[FAV_REORDER] fav_id=0x%02X not present in hub order/cache for act=0x%02X, skipping",
+                    fav_id & 0xFF,
+                    act_lo,
+                )
+                continue
+            ordered_fav_ids_checked.append(validated_fav_id)
+
+        if not ordered_fav_ids_checked:
+            log.warning("[FAV_REORDER] no valid fav_ids for act=0x%02X", act_lo)
+            return None
+
+        self.start_roku_create()
+
+        if not self._send_roku_step(
+            step_name=f"fav-reorder-61[act=0x{act_lo:02X}]",
+            family=0x61,
+            payload=self._build_favorites_reorder_payload(act_lo, ordered_fav_ids_checked),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        if not self._send_roku_step(
+            step_name=f"fav-reorder-commit-65[act=0x{act_lo:02X}]",
+            family=0x65,
+            payload=bytes([act_lo]),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        self.clear_entity_cache(act_lo, clear_buttons=False, clear_favorites=True, clear_macros=False)
+        self.state.activity_favorites_order.pop(act_lo, None)
+        self._activity_map_complete.discard(act_lo)
+        if refresh_after_write:
+            self.request_activity_mapping(act_lo)
+
+        return {
+            "activity_id": act_lo,
+            "fav_ids": [f & 0xFF for f in ordered_fav_ids_checked],
+            "status": "success",
+        }
+
+    def delete_favorite(
+        self,
+        activity_id: int,
+        fav_id: int,
+        *,
+        refresh_after_write: bool = True,
+    ) -> dict[str, Any] | None:
+        """Delete the favorite identified by *fav_id* from *activity_id*.
+
+        *fav_id* must be a hub-order favorite identifier returned by
+        ``request_favorites_order`` / the Home Assistant ``get_favorites``
+        service.
+
+        The hub requires the remaining ordered list to be re-sent after the
+        deletion.  This method first fetches the current ordering from the hub,
+        removes the specified entry, then executes:
+
+            1. family 0x10 DELETE_FAV (act_lo, fav_id) → ACK 0x0103  (~5 s hub delay)
+            2. family 0x61 SET_FAVORITES_ORDER (remaining) → ACK 0x0103
+            3. family 0x65 COMMIT                          → ACK 0x0103
+        """
+        if not self.can_issue_commands():
+            log.info("[FAV_DELETE] ignored: proxy client is connected")
+            return None
+
+        act_lo = activity_id & 0xFF
+
+        # Fetch current ordering so we can build the post-delete list
+        current_order = self.request_favorites_order(act_lo)
+        if current_order is None:
+            log.warning("[FAV_DELETE] could not fetch current order act=0x%02X", act_lo)
+            return None
+
+        validated_fav_id = self._validate_favorite_fav_id(
+            act_lo, fav_id, current_order
+        )
+        if validated_fav_id is None:
+            log.warning(
+                "[FAV_DELETE] fav_id=0x%02X not present in current order for act=0x%02X",
+                fav_id & 0xFF,
+                act_lo,
+            )
+            return None
+
+        remaining_fav_ids = [fid for fid, _slot in current_order if fid != validated_fav_id]
+        log.info(
+            "[FAV_DELETE] act=0x%02X deleting fav_id=0x%02X; %d remaining",
+            act_lo,
+            validated_fav_id,
+            len(remaining_fav_ids),
+        )
+
+        self.start_roku_create()
+
+        # Step 1: signal deletion to hub (hub takes ~5 s to process)
+        if not self._send_roku_step(
+            step_name=f"fav-delete-10[act=0x{act_lo:02X} fav=0x{validated_fav_id:02X}]",
+            family=FAMILY_FAV_DELETE,
+            payload=bytes([act_lo, validated_fav_id]),
+            ack_opcode=0x0103,
+            timeout=7.5,
+        ):
+            return None
+
+        # Step 2: send the new (shorter) ordering
+        if not self._send_roku_step(
+            step_name=f"fav-delete-reorder-61[act=0x{act_lo:02X}]",
+            family=0x61,
+            payload=self._build_favorites_reorder_payload(act_lo, remaining_fav_ids),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        # Step 3: commit
+        if not self._send_roku_step(
+            step_name=f"fav-delete-commit-65[act=0x{act_lo:02X}]",
+            family=0x65,
+            payload=bytes([act_lo]),
+            ack_opcode=0x0103,
+        ):
+            return None
+
+        self.clear_entity_cache(act_lo, clear_buttons=False, clear_favorites=True, clear_macros=False)
+        self.state.activity_favorites_order.pop(act_lo, None)
+        self._activity_map_complete.discard(act_lo)
+        if refresh_after_write:
+            self.request_activity_mapping(act_lo)
+
+        return {
+            "activity_id": act_lo,
+            "deleted_fav_id": validated_fav_id,
+            "remaining": len(remaining_fav_ids),
+            "status": "success",
+        }
+
     def _build_command_to_button_payload(
         self,
         *,
@@ -1777,8 +2504,15 @@ class X1Proxy:
         button_id: int,
         device_id: int,
         command_id: int,
+        long_press_device_id: int | None = None,
+        long_press_command_id: int | None = None,
     ) -> bytes:
-        """Build the observed 0x193E command-to-button mapping payload."""
+        """Build the observed 0x193E command-to-button mapping payload.
+
+        Bytes 8-15 hold the short-press command slot.
+        Bytes 16-23 hold the optional long-press command slot (all zeros
+        when no long press is configured).
+        """
 
         act_lo = activity_id & 0xFF
         btn_lo = button_id & 0xFF
@@ -1803,7 +2537,12 @@ class X1Proxy:
             ]
         )
         payload.extend([0x4E, 0x20 + cmd_lo, cmd_lo])
-        payload.extend([0x00] * 8)
+        if long_press_device_id is not None and long_press_command_id is not None:
+            lp_dev = long_press_device_id & 0xFF
+            lp_cmd = long_press_command_id & 0xFF
+            payload.extend([lp_dev, 0x00, 0x00, 0x00, 0x00, 0x4E, 0x20 + lp_cmd, lp_cmd])
+        else:
+            payload.extend([0x00] * 8)
         payload.append((sum(payload) - 2) & 0xFF)
         return bytes(payload)
 
@@ -1883,9 +2622,16 @@ class X1Proxy:
         device_id: int,
         command_id: int,
         *,
+        long_press_device_id: int | None = None,
+        long_press_command_id: int | None = None,
         refresh_after_write: bool = True,
     ) -> dict[str, Any] | None:
-        """Map a device command to a physical activity button using 0x193E."""
+        """Map a device command to a physical activity button using 0x193E.
+
+        When *long_press_device_id* and *long_press_command_id* are both
+        provided the hub will also fire that command on a long-press of the
+        same physical button.
+        """
 
         if not self.can_issue_commands():
             log.info("[KEYMAP_WRITE] command_to_button ignored: proxy client is connected")
@@ -1901,14 +2647,28 @@ class X1Proxy:
             button_id=btn_lo,
             device_id=dev_lo,
             command_id=cmd_lo,
+            long_press_device_id=long_press_device_id,
+            long_press_command_id=long_press_command_id,
         )
-        log.info(
-            "[KEYMAP_WRITE] map act=0x%02X button=0x%02X dev=0x%02X cmd=0x%02X",
-            act_lo,
-            btn_lo,
-            dev_lo,
-            cmd_lo,
-        )
+        if long_press_device_id is not None and long_press_command_id is not None:
+            log.info(
+                "[KEYMAP_WRITE] map act=0x%02X button=0x%02X dev=0x%02X cmd=0x%02X"
+                " long_dev=0x%02X long_cmd=0x%02X",
+                act_lo,
+                btn_lo,
+                dev_lo,
+                cmd_lo,
+                long_press_device_id & 0xFF,
+                long_press_command_id & 0xFF,
+            )
+        else:
+            log.info(
+                "[KEYMAP_WRITE] map act=0x%02X button=0x%02X dev=0x%02X cmd=0x%02X",
+                act_lo,
+                btn_lo,
+                dev_lo,
+                cmd_lo,
+            )
         if self.diag_dump:
             log.info("[KEYMAP_WRITE] 193E payload %s", payload.hex(" "))
 
@@ -1941,13 +2701,17 @@ class X1Proxy:
             self.request_activity_mapping(act_lo)
             self.get_buttons_for_entity(act_lo, fetch_if_missing=True)
 
-        return {
+        result: dict[str, Any] = {
             "activity_id": act_lo,
             "button_id": btn_lo,
             "device_id": dev_lo,
             "command_id": cmd_lo,
             "status": "success",
         }
+        if long_press_device_id is not None and long_press_command_id is not None:
+            result["long_press_device_id"] = long_press_device_id & 0xFF
+            result["long_press_command_id"] = long_press_command_id & 0xFF
+        return result
 
 
     def _cache_created_wifi_device(self, *, device_id: int, device_name: str, brand_name: str) -> None:
@@ -1957,7 +2721,7 @@ class X1Proxy:
     def create_wifi_device(
         self,
         device_name: str = "Home Assistant",
-        commands: list[str] | None = None,
+        commands: list[Any] | None = None,
         request_port: int = 8060,
         brand_name: str = "m3tac0de",
     ) -> dict[str, Any] | None:
@@ -1996,12 +2760,29 @@ class X1Proxy:
         command_defs: list[tuple[int, int, str, str]] = []
 
         if commands:
-            for idx, command_name in enumerate(commands[: len(_ROKU_APP_SLOTS)]):
+            for idx, command_spec in enumerate(commands[: len(_ROKU_APP_SLOTS)]):
                 slot, code = _ROKU_APP_SLOTS[idx]
+                if isinstance(command_spec, dict):
+                    command_name = str(
+                        command_spec.get("display_name")
+                        or command_spec.get("name")
+                        or f"Command {idx + 1}"
+                    ).strip() or f"Command {idx + 1}"
+                    trigger_name = str(
+                        command_spec.get("trigger_name")
+                        or command_spec.get("name")
+                        or command_name
+                    ).strip() or command_name
+                    press_type = str(command_spec.get("press_type") or "short").strip().lower()
+                else:
+                    command_name = str(command_spec or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                    trigger_name = command_name
+                    press_type = "short"
                 action = self._build_launch_action_path(
                     device_id=device_id,
-                    command_name=command_name,
+                    command_name=trigger_name,
                     device_name=device_name,
+                    press_type=press_type,
                 )
                 command_defs.append((slot, code, command_name, action))
 
@@ -2090,10 +2871,11 @@ class X1Proxy:
             ):
                 return None
 
+        _7746_base = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 111)
         if not self._send_roku_step(
             step_name="sync-stage-7746",
             family=0x46,
-            payload=bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 112),
+            payload=_7746_base + bytes([(sum(_7746_base) - 2) & 0xFF]),
             ack_opcode=0x0103,
         ):
             return None
@@ -2142,7 +2924,7 @@ class X1Proxy:
         self,
         *,
         device_name: str,
-        commands: list[str] | None,
+        commands: list[Any] | None,
         ip_address: str,
         request_port: int,
         brand_name: str = "m3tac0de",
@@ -2164,8 +2946,24 @@ class X1Proxy:
             return None
 
         request_ip = ipaddress.IPv4Address(ip_address).packed
-        for idx, command_name in enumerate((commands or [])[:10]):
+        for idx, command_spec in enumerate((commands or [])[: len(_ROKU_APP_SLOTS)]):
             slot = (idx + 1) & 0xFF
+            if isinstance(command_spec, dict):
+                command_name = str(
+                    command_spec.get("display_name")
+                    or command_spec.get("name")
+                    or f"Command {idx + 1}"
+                ).strip() or f"Command {idx + 1}"
+                trigger_name = str(
+                    command_spec.get("trigger_name")
+                    or command_spec.get("name")
+                    or command_name
+                ).strip() or command_name
+                press_type = str(command_spec.get("press_type") or "short").strip().lower()
+            else:
+                command_name = str(command_spec or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                trigger_name = command_name
+                press_type = "short"
             # Observed X1S/X2 0x?E0E payloads encode command labels in a 59-byte field.
             # Using 59 keeps downstream request bytes aligned so method parses as POST (not xPOST).
             command_utf16 = command_name.encode("utf-16le")[:59].ljust(59, b"\x00")
@@ -2174,8 +2972,9 @@ class X1Proxy:
                 port=request_port,
                 path=self._build_launch_action_path(
                     device_id=device_id,
-                    command_name=command_name,
+                    command_name=trigger_name,
                     device_name=device_name,
+                    press_type=press_type,
                 ),
             )
             payload_base = (
@@ -2206,10 +3005,11 @@ class X1Proxy:
         ):
             return None
 
+        _7746_base = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 111)
         if not self._send_roku_step(
             step_name="sync-stage-7746",
             family=0x46,
-            payload=bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id]) + (b"\x00" * 112),
+            payload=_7746_base + bytes([(sum(_7746_base) - 2) & 0xFF]),
             ack_opcode=0x0103,
         ):
             return None
@@ -2247,11 +3047,22 @@ class X1Proxy:
         log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
 
-    def _build_launch_action_path(self, *, device_id: int, command_name: str, device_name: str) -> str:
+    def _build_launch_action_path(
+        self,
+        *,
+        device_id: int,
+        command_name: str,
+        device_name: str,
+        press_type: str = "short",
+    ) -> str:
         hub_action_id = self._stable_hub_action_id()
         normalized_command = command_name.replace(" ", "_")
         normalized_device = device_name.replace(" ", "_")
-        return f"launch/{hub_action_id}/{device_id}/{normalized_command}/{normalized_device}"
+        normalized_press_type = "long" if str(press_type).lower() == "long" else "short"
+        return (
+            f"launch/{hub_action_id}/{device_id}/{normalized_command}/"
+            f"{normalized_device}/{normalized_press_type}"
+        )
 
     def _build_virtual_ip_http_request(self, host: str, port: int, path: str) -> bytes:
         normalized_path = f"/{path.lstrip('/')}"
@@ -2598,6 +3409,14 @@ class X1Proxy:
 
     def _handle_idle(self, now: float) -> None:
         self._burst.tick(now, can_issue=self.can_issue_commands, sender=self._send_cmd_frame)
+        if (
+            self._activity_retry_due_at is not None
+            and now >= self._activity_retry_due_at
+            and not self._burst.active
+            and self.can_issue_commands()
+        ):
+            self._activity_retry_due_at = None
+            self.request_activities(is_retry=True)
         self._maybe_retry_app_devices(now)
 
     def _maybe_retry_app_devices(self, now: float) -> None:
@@ -2613,6 +3432,10 @@ class X1Proxy:
 
     def _send_cmd_frame(self, opcode: int, payload: bytes) -> None:
         frame = self._build_frame(opcode, payload)
+        if opcode == OP_REQ_ACTIVITIES:
+            is_retry = self._activity_retry_send_pending
+            self._activity_retry_send_pending = False
+            self._begin_activity_request(is_retry=is_retry)
         log.info(
             "[SEND] hub %s (0x%04X) %dB",
             OPNAMES.get(opcode, f"OP_{opcode:04X}"),

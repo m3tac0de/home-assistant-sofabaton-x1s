@@ -13,7 +13,7 @@ from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -29,6 +29,7 @@ from .const import (
     CONF_ROKU_SERVER_ENABLED,
     CONF_MDNS_VERSION,
     CONF_ENABLE_X2_DISCOVERY,
+    CONF_PERSISTENT_CACHE_ENABLED,
     CONF_ROKU_LISTEN_PORT,
     DEFAULT_ROKU_LISTEN_PORT,
     format_hub_entry_title,
@@ -41,12 +42,23 @@ from .diagnostics import (
     async_setup_diagnostics,
     async_teardown_diagnostics,
 )
-from .hub import SofabatonHub
+from .hub import SofabatonHub, get_hub_model
 from .command_config import CommandConfigStore, count_configured_command_slots
+from .cache_store import PersistentCacheStore
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
 _ALPHANUM_SPACE_RE = re.compile(r"^[A-Za-z0-9 ]+$")
+
+
+def _inspect_frontend_dir(frontend_dir: Path) -> tuple[str, bool, list[str]]:
+    """Resolve and inspect the packaged frontend directory."""
+
+    abs_path = str(frontend_dir.resolve())
+    if not frontend_dir.is_dir():
+        return abs_path, False, []
+
+    return abs_path, True, [entry.name for entry in frontend_dir.iterdir()]
 
 
 def _resolve_roku_listen_port(hass: HomeAssistant, entry_id: str) -> int:
@@ -71,6 +83,78 @@ async def _async_get_command_config_store(hass: HomeAssistant) -> CommandConfigS
     return store
 
 
+async def _async_get_persistent_cache_store(hass: HomeAssistant) -> PersistentCacheStore:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    store = domain_data.get("persistent_cache_store")
+    if isinstance(store, PersistentCacheStore):
+        return store
+
+    store = PersistentCacheStore(hass)
+    await store.async_load()
+    domain_data["persistent_cache_store"] = store
+    return store
+
+
+def _build_control_panel_hub_payload(
+    hass: HomeAssistant,
+    hub: SofabatonHub,
+    *,
+    persistent_cache_enabled: bool,
+) -> dict[str, Any]:
+    entry = hass.config_entries.async_get_entry(hub.entry_id)
+    version = get_hub_model(entry) if entry is not None else getattr(hub, "version", "")
+    can_run_hub_actions = bool(getattr(hub, "hub_connected", False)) and not bool(
+        getattr(hub, "client_connected", False)
+    )
+    activities = getattr(hub, "activities", {}) or {}
+    devices = getattr(hub, "devices", {}) or {}
+    return {
+        "entry_id": hub.entry_id,
+        "name": hub.name,
+        "version": version,
+        "ip_address": getattr(hub, "host", ""),
+        "device_count": len(devices),
+        "activity_count": len(activities),
+        "hub_connected": bool(getattr(hub, "hub_connected", False)),
+        "proxy_client_connected": bool(getattr(hub, "client_connected", False)),
+        "persistent_cache_enabled": persistent_cache_enabled,
+        "settings": {
+            "proxy_enabled": bool(getattr(hub, "proxy_enabled", False)),
+            "hex_logging_enabled": bool(getattr(hub, "hex_logging_enabled", False)),
+            "wifi_device_enabled": bool(getattr(hub, "roku_server_enabled", False)),
+        },
+        "actions": {
+            "can_find_remote": can_run_hub_actions,
+            "can_sync_remote": can_run_hub_actions,
+        },
+    }
+
+
+async def _async_persist_hub_cache(hass: HomeAssistant, hub: SofabatonHub) -> bool:
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        return False
+
+    await store.async_set_hub_cache(hub.entry_id, await hub.async_export_cache_state())
+    return True
+
+
+async def _async_persist_all_hub_cache(hass: HomeAssistant) -> int:
+    persisted = 0
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        return persisted
+
+    for hub in _get_hubs(hass.data.get(DOMAIN, {})):
+        try:
+            await store.async_set_hub_cache(hub.entry_id, await hub.async_export_cache_state())
+            persisted += 1
+        except Exception:
+            _LOGGER.exception("[%s] Failed to persist cache for hub %s during shutdown", DOMAIN, hub.entry_id)
+
+    return persisted
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/command_config/get",
@@ -79,7 +163,13 @@ async def _async_get_command_config_store(hass: HomeAssistant) -> CommandConfigS
 )
 @websocket_api.async_response
 async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    hub = await _async_resolve_hub_from_data(
+        hass,
+        {
+            "entity_id": msg.get("entity_id"),
+            "entry_id": msg.get("entry_id"),
+        },
+    )
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
@@ -181,6 +271,229 @@ async def _ws_set_hub_version(hass: HomeAssistant, connection, msg: dict[str, An
     connection.send_result(msg["id"], {"ok": True})
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/control_panel/state",
+    }
+)
+@websocket_api.async_response
+async def _ws_get_control_panel_state(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    store = await _async_get_persistent_cache_store(hass)
+    payload = {
+        "persistent_cache_enabled": store.enabled,
+        "hubs": [
+            _build_control_panel_hub_payload(
+                hass,
+                hub,
+                persistent_cache_enabled=store.enabled,
+            )
+            for hub in _get_hubs(hass.data.get(DOMAIN, {}))
+        ],
+    }
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/control_panel/set_setting",
+        vol.Required("entry_id"): str,
+        vol.Required("setting"): vol.In(
+            ["persistent_cache", "proxy_enabled", "hex_logging_enabled", "wifi_device_enabled"]
+        ),
+        vol.Required("enabled"): cv.boolean,
+    }
+)
+@websocket_api.async_response
+async def _ws_control_panel_set_setting(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    setting = str(msg["setting"])
+    enabled = bool(msg["enabled"])
+
+    if setting == "persistent_cache":
+        store = await _async_get_persistent_cache_store(hass)
+        await store.async_set_enabled(enabled)
+        if not enabled:
+            await store.async_clear_all_hub_cache()
+        connection.send_result(msg["id"], {"ok": True, "enabled": enabled})
+        return
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    if setting == "proxy_enabled":
+        await hub.async_set_proxy_enabled(enabled)
+    elif setting == "hex_logging_enabled":
+        await hub.async_set_hex_logging_enabled(enabled)
+    else:
+        await hub.async_set_roku_server_enabled(enabled)
+
+    connection.send_result(msg["id"], {"ok": True, "enabled": enabled})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/control_panel/run_action",
+        vol.Required("entry_id"): str,
+        vol.Required("action"): vol.In(["find_remote", "sync_remote"]),
+    }
+)
+@websocket_api.async_response
+async def _ws_control_panel_run_action(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    can_run_hub_actions = bool(getattr(hub, "hub_connected", False)) and not bool(
+        getattr(hub, "client_connected", False)
+    )
+    if not can_run_hub_actions:
+        connection.send_error(
+            msg["id"],
+            "unavailable",
+            "Action unavailable while proxy client is connected or hub is offline",
+        )
+        return
+
+    if msg["action"] == "find_remote":
+        await hub.async_find_remote()
+    else:
+        await hub.async_resync_remote()
+
+    connection.send_result(msg["id"], {"ok": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/persistent_cache/get",
+    }
+)
+@websocket_api.async_response
+async def _ws_get_persistent_cache(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    store = await _async_get_persistent_cache_store(hass)
+    hubs = _get_hubs(hass.data.get(DOMAIN, {}))
+    payload = {
+        "enabled": store.enabled,
+        "hubs": [
+            {
+                "entry_id": hub.entry_id,
+                "name": hub.name,
+                "cache_generation": hub.cache_generation,
+            }
+            for hub in hubs
+        ],
+    }
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/persistent_cache/set",
+        vol.Required("enabled"): cv.boolean,
+    }
+)
+@websocket_api.async_response
+async def _ws_set_persistent_cache(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    store = await _async_get_persistent_cache_store(hass)
+    enabled = bool(msg["enabled"])
+    await store.async_set_enabled(enabled)
+
+    if not enabled:
+        await store.async_clear_all_hub_cache()
+
+    connection.send_result(msg["id"], {"enabled": enabled})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/persistent_cache/refresh",
+        vol.Optional("entity_id"): cv.entity_id,
+        vol.Optional("entry_id"): str,
+        vol.Required("kind"): vol.In(["activity", "device"]),
+        vol.Required("target_id"): int,
+    }
+)
+@websocket_api.async_response
+async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(
+        hass,
+        {
+            "entity_id": msg.get("entity_id"),
+            "entry_id": msg.get("entry_id"),
+        },
+    )
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        connection.send_error(msg["id"], "disabled", "Persistent cache is disabled")
+        return
+
+    target_id = int(msg["target_id"])
+    if target_id < 1 or target_id > 255:
+        connection.send_error(msg["id"], "invalid_id", "target_id must be between 1 and 255")
+        return
+
+    await hub.async_clear_cache_for(kind=msg["kind"], ent_id=target_id)
+    await hub.async_fetch_device_commands(target_id, wait_timeout=30.0)
+    payload = await hub.async_export_cache_state()
+    await store.async_set_hub_cache(hub.entry_id, payload)
+    connection.send_result(msg["id"], {"ok": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/persistent_cache/contents",
+    }
+)
+@websocket_api.async_response
+async def _ws_get_persistent_cache_contents(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    store = await _async_get_persistent_cache_store(hass)
+    if not store.enabled:
+        connection.send_result(msg["id"], {"enabled": False, "hubs": []})
+        return
+
+    hub_payloads = []
+    for hub in _get_hubs(hass.data.get(DOMAIN, {})):
+        hub_payloads.append(await hub.async_get_cache_contents())
+
+    connection.send_result(msg["id"], {"enabled": True, "hubs": hub_payloads})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/catalog/refresh",
+        vol.Optional("entry_id"): str,
+        vol.Required("kind"): vol.In(["activities", "devices"]),
+    }
+)
+@websocket_api.async_response
+async def _ws_refresh_catalog(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(
+        hass,
+        {"entry_id": msg.get("entry_id")},
+    )
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    await hub.async_request_catalog(msg["kind"])
+    store = await _async_get_persistent_cache_store(hass)
+    if store.enabled:
+        payload = await hub.async_export_cache_state()
+        await store.async_set_hub_cache(hub.entry_id, payload)
+    connection.send_result(msg["id"], {"ok": True})
+
+
 def _register_websocket_commands(hass: HomeAssistant) -> None:
     domain_data = hass.data.setdefault(DOMAIN, {})
     if domain_data.get("ws_registered"):
@@ -190,6 +503,14 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_set_command_config)
     websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
     websocket_api.async_register_command(hass, _ws_set_hub_version)
+    websocket_api.async_register_command(hass, _ws_get_control_panel_state)
+    websocket_api.async_register_command(hass, _ws_control_panel_set_setting)
+    websocket_api.async_register_command(hass, _ws_control_panel_run_action)
+    websocket_api.async_register_command(hass, _ws_get_persistent_cache)
+    websocket_api.async_register_command(hass, _ws_set_persistent_cache)
+    websocket_api.async_register_command(hass, _ws_refresh_persistent_cache_entry)
+    websocket_api.async_register_command(hass, _ws_get_persistent_cache_contents)
+    websocket_api.async_register_command(hass, _ws_refresh_catalog)
     domain_data["ws_registered"] = True
 
 
@@ -210,11 +531,21 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].setdefault("config", {})
     hass.data[DOMAIN]["config"][CONF_ENABLE_X2_DISCOVERY] = enable_x2_discovery
+    hass.data[DOMAIN]["config"].setdefault(CONF_PERSISTENT_CACHE_ENABLED, False)
 
     # Ensure DOMAIN data is initialized
     hass.data.setdefault(DOMAIN, {})
 
     _register_websocket_commands(hass)
+
+    if not hass.data[DOMAIN].get("stop_listener_registered"):
+        async def _async_handle_hass_stop(_event: Any) -> None:
+            persisted = await _async_persist_all_hub_cache(hass)
+            if persisted:
+                _LOGGER.info("[%s] Persisted cache for %s hub(s) on Home Assistant stop", DOMAIN, persisted)
+
+        hass.bus.async_listen_once("homeassistant_stop", _async_handle_hass_stop)
+        hass.data[DOMAIN]["stop_listener_registered"] = True
 
     if not hass.data[DOMAIN].get("frontend_registered"):
         community_card_dir = Path(
@@ -223,24 +554,25 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         community_card_exists = await hass.async_add_executor_job(
             lambda: community_card_dir.exists() and community_card_dir.is_dir()
         )
+        inject_remote_card = not community_card_exists
         if community_card_exists:
             _LOGGER.info(
-                "[%s] Skipping frontend injection; community card found at %s",
+                "[%s] Community remote card found at %s; only injecting power tools card",
                 DOMAIN,
                 community_card_dir,
             )
-            return True
 
         frontend_dir = Path(__file__).parent / "www"
-        abs_path = str(frontend_dir.resolve())
-        
+        abs_path, frontend_dir_exists, contents = await hass.async_add_executor_job(
+            _inspect_frontend_dir, frontend_dir
+        )
+
         _LOGGER.info("[%s] Resolved static path: %s", DOMAIN, abs_path)
-        
-        if frontend_dir.exists() and frontend_dir.is_dir():
-            contents = list(frontend_dir.iterdir())
-            _LOGGER.info("[%s] Directory exists. Found %s files: %s", 
-                         DOMAIN, len(contents), [f.name for f in contents])
-            
+
+        if frontend_dir_exists:
+            _LOGGER.info("[%s] Directory exists. Found %s files: %s",
+                         DOMAIN, len(contents), contents)
+
             await hass.http.async_register_static_paths(
                 [
                     StaticPathConfig(
@@ -250,16 +582,18 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                     )
                 ]
             )
-            
+
             # 4. Inject JS URLs
             version_suffix = await _async_get_integration_version(hass)
             js_version = f"?v={version_suffix}" if version_suffix else ""
             js_files = [f"card-loader.js{js_version}"]
             for js_file in js_files:
-                url = f"/{DOMAIN}/www/{js_file}"
+                remote_flag = "1" if inject_remote_card else "0"
+                separator = "&" if "?" in js_file else "?"
+                url = f"/{DOMAIN}/www/{js_file}{separator}inject_remote={remote_flag}"
                 _LOGGER.info("[%s] Adding extra JS URL: %s", DOMAIN, url)
                 frontend.add_extra_js_url(hass, url)
-            
+
             hass.data[DOMAIN]["frontend_registered"] = True
         else:
             _LOGGER.error("[%s] FRONTEND DIR MISSING: Expected at %s", DOMAIN, abs_path)
@@ -369,6 +703,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     await hub.async_start()
 
+    cache_store = await _async_get_persistent_cache_store(hass)
+    hass.data[DOMAIN]["config"][CONF_PERSISTENT_CACHE_ENABLED] = cache_store.enabled
+    if cache_store.enabled:
+        cache_payload = await cache_store.async_get_hub_cache(entry.entry_id)
+        if cache_payload:
+            await hub.async_restore_persistent_cache(cache_payload)
+
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
     if not hass.services.has_service(DOMAIN, "create_wifi_device"):
@@ -379,13 +720,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "delete_device", _async_handle_delete_device)
     if not hass.services.has_service(DOMAIN, "command_to_favorite"):
         hass.services.async_register(DOMAIN, "command_to_favorite", _async_handle_command_to_favorite)
+    if not hass.services.has_service(DOMAIN, "get_favorites"):
+        hass.services.async_register(DOMAIN, "get_favorites", _async_handle_get_favorites, supports_response=SupportsResponse.OPTIONAL)
+    if not hass.services.has_service(DOMAIN, "reorder_favorites"):
+        hass.services.async_register(DOMAIN, "reorder_favorites", _async_handle_reorder_favorites)
+    if not hass.services.has_service(DOMAIN, "delete_favorite"):
+        hass.services.async_register(DOMAIN, "delete_favorite", _async_handle_delete_favorite)
     if not hass.services.has_service(DOMAIN, "command_to_button"):
         hass.services.async_register(DOMAIN, "command_to_button", _async_handle_command_to_button)
     if not hass.services.has_service(DOMAIN, "sync_command_config"):
         hass.services.async_register(DOMAIN, "sync_command_config", _async_handle_sync_command_config)
     #if not hass.services.has_service(DOMAIN, "create_ip_button"):
     #    hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
-        
+
     hass.data[DOMAIN][entry.entry_id] = hub
 
     roku_listener = await async_get_roku_listener(hass)
@@ -430,17 +777,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "device_to_activity")
             hass.services.async_remove(DOMAIN, "delete_device")
             hass.services.async_remove(DOMAIN, "command_to_favorite")
+            hass.services.async_remove(DOMAIN, "get_favorites")
+            hass.services.async_remove(DOMAIN, "reorder_favorites")
+            hass.services.async_remove(DOMAIN, "delete_favorite")
             hass.services.async_remove(DOMAIN, "command_to_button")
             hass.services.async_remove(DOMAIN, "sync_command_config")
             #hass.services.async_remove(DOMAIN, "create_ip_button")
             async_teardown_diagnostics(hass)
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
+            await _async_persist_hub_cache(hass, hub)
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()
     return unload_ok
-    
+
 
 
 def _raise_if_sync_in_progress(hub: SofabatonHub, operation: str) -> None:
@@ -566,6 +917,73 @@ async def _async_handle_command_to_favorite(call: ServiceCall):
     )
 
 
+async def _async_handle_get_favorites(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    activity_id = int(call.data["activity_id"])
+    if activity_id < 1 or activity_id > 255:
+        raise ValueError("activity_id must be between 1 and 255")
+
+    order = await hub.async_request_favorites_order(activity_id)
+    if order is None:
+        raise ValueError(f"Hub did not respond to favorites order request for activity {activity_id}")
+
+    return {"favorites": hub.describe_favorites_order(activity_id, order)}
+
+
+async def _async_handle_reorder_favorites(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_reorder_favorites")
+
+    activity_id = int(call.data["activity_id"])
+    raw_order = call.data.get("ordered_fav_ids", call.data.get("order"))
+    if raw_order is None:
+        raise ValueError("ordered_fav_ids is required")
+    ordered_fav_ids = [int(x) for x in raw_order]
+
+    if activity_id < 1 or activity_id > 255:
+        raise ValueError("activity_id must be between 1 and 255")
+    if not ordered_fav_ids:
+        raise ValueError("ordered_fav_ids must be a non-empty list of fav_ids")
+
+    return await hub.async_reorder_favorites(
+        activity_id=activity_id,
+        ordered_fav_ids=ordered_fav_ids,
+    )
+
+
+async def _async_handle_delete_favorite(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_delete_favorite")
+
+    activity_id = int(call.data["activity_id"])
+    raw_fav_id = call.data.get("fav_id", call.data.get("button_id"))
+    if raw_fav_id is None:
+        raise ValueError("fav_id is required")
+    fav_id = int(raw_fav_id)
+
+    if activity_id < 1 or activity_id > 255:
+        raise ValueError("activity_id must be between 1 and 255")
+    if fav_id < 1 or fav_id > 255:
+        raise ValueError("fav_id must be between 1 and 255")
+
+    return await hub.async_delete_favorite(
+        activity_id=activity_id,
+        fav_id=fav_id,
+    )
+
+
 async def _async_handle_command_to_button(call: ServiceCall):
     hass = call.hass
     hub = await _async_resolve_hub_from_call(hass, call)
@@ -588,11 +1006,24 @@ async def _async_handle_command_to_button(call: ServiceCall):
     if command_id < 1 or command_id > 255:
         raise ValueError("command_id must be between 1 and 255")
 
+    long_press_device_id = call.data.get("long_press_device_id")
+    long_press_command_id = call.data.get("long_press_command_id")
+    if long_press_device_id is not None:
+        long_press_device_id = int(long_press_device_id)
+        if long_press_device_id < 1 or long_press_device_id > 255:
+            raise ValueError("long_press_device_id must be between 1 and 255")
+    if long_press_command_id is not None:
+        long_press_command_id = int(long_press_command_id)
+        if long_press_command_id < 1 or long_press_command_id > 255:
+            raise ValueError("long_press_command_id must be between 1 and 255")
+
     return await hub.async_command_to_button(
         activity_id=activity_id,
         button_id=button_id,
         device_id=device_id,
         command_id=command_id,
+        long_press_device_id=long_press_device_id,
+        long_press_command_id=long_press_command_id,
     )
 
 
@@ -688,6 +1119,12 @@ async def _async_resolve_hub_from_data(hass: HomeAssistant, data: dict[str, Any]
             return domain_data[hub_key]
         for hub in hubs:
             if getattr(hub, "mac", None) == hub_key:
+                return hub
+
+    entry_id = data.get("entry_id")
+    if entry_id:
+        for hub in hubs:
+            if getattr(hub, "entry_id", None) == entry_id:
                 return hub
 
     entity_id = data.get("entity_id")

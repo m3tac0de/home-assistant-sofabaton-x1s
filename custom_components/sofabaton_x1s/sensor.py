@@ -399,15 +399,17 @@ class SofabatonIpCommandsSensor(SensorEntity):
 
     @callback
     def _handle_ip_command(self) -> None:
-        self._display_command = self._hub.get_last_ip_command()
-        self._schedule_reset()
-        self.async_write_ha_state()
-
-    def _schedule_reset(self) -> None:
         if self._reset_unsub:
             self._reset_unsub()
+            self._reset_unsub = None
 
+        if self._display_command is not None:
+            self._display_command = None
+            self.async_write_ha_state()
+
+        self._display_command = self._hub.get_last_ip_command()
         self._reset_unsub = async_call_later(self.hass, 0.3, self._reset_state)
+        self.async_write_ha_state()
 
     @callback
     def _reset_state(self, _now) -> None:
@@ -426,6 +428,9 @@ class SofabatonIpCommandsSensor(SensorEntity):
 
         device = self._display_command.get("entity_name") or "Unknown device"
         command = self._display_command.get("command_label") or "Unknown command"
+        press_type = self._display_command.get("press_type") or "short"
+        if press_type == "long":
+            return f"{device}/{command}/longpress"
         return f"{device}/{command}"
 
     @property
@@ -434,6 +439,7 @@ class SofabatonIpCommandsSensor(SensorEntity):
             return {
                 "received_command": self._DEFAULT_VALUE,
                 "from_device": self._DEFAULT_VALUE,
+                "press_type": "Unknown",
                 "timestamp": None,
                 "source_ip": None,
             }
@@ -443,8 +449,8 @@ class SofabatonIpCommandsSensor(SensorEntity):
             or "Unknown command",
             "from_device": self._display_command.get("entity_name")
             or "Unknown device",
+            "press_type": self._display_command.get("press_type") or "short",
             "timestamp": self._display_command.get("iso_time")
             or self._display_command.get("timestamp"),
             "source_ip": self._display_command.get("source_ip"),
         }
-

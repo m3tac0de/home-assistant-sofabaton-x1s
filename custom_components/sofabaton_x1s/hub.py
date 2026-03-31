@@ -49,6 +49,8 @@ from .command_config import COMMAND_BRAND_PREFIX, count_configured_command_slots
 _LOGGER = logging.getLogger(__name__)
 
 _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.DOWN, "left": ButtonName.LEFT, "right": ButtonName.RIGHT, "ok": ButtonName.OK, "back": ButtonName.BACK, "home": ButtonName.HOME, "menu": ButtonName.MENU, "volup": ButtonName.VOL_UP, "voldn": ButtonName.VOL_DOWN, "mute": ButtonName.MUTE, "chup": ButtonName.CH_UP, "chdn": ButtonName.CH_DOWN, "guide": ButtonName.GUIDE, "dvr": ButtonName.DVR, "play": ButtonName.PLAY, "exit": ButtonName.EXIT, "rew": ButtonName.REW, "pause": ButtonName.PAUSE, "fwd": ButtonName.FWD, "red": ButtonName.RED, "green": ButtonName.GREEN, "yellow": ButtonName.YELLOW, "blue": ButtonName.BLUE, "a": ButtonName.A, "b": ButtonName.B, "c": ButtonName.C}
+_WIFI_COMMAND_SLOT_COUNT = 10
+_WIFI_COMMAND_LONG_PRESS_OFFSET = 10
 
 
 def get_hub_model(entry: ConfigEntry) -> str:
@@ -102,6 +104,8 @@ class SofabatonHub:
         self.activities_ready: bool = False
         self.devices_ready: bool = False
         self._devices_generation: int = 0
+        self._activities_generation: int = 0
+        self._cache_generation: int = 0
         self.proxy_enabled: bool = proxy_enabled
         self.hex_logging_enabled: bool = hex_logging_enabled
         self.roku_server_enabled: bool = roku_server_enabled
@@ -130,6 +134,14 @@ class SofabatonHub:
 
         if self.hex_logging_enabled:
             async_enable_hex_logging_capture(self.hass, self.entry_id)
+
+    @property
+    def cache_generation(self) -> int:
+        return self._cache_generation
+
+    def _bump_cache_generation(self) -> int:
+        self._cache_generation += 1
+        return self._cache_generation
 
     def _create_proxy(self) -> X1Proxy:
         proxy = X1Proxy(
@@ -245,9 +257,16 @@ class SofabatonHub:
         if active_id != self.current_activity:
             self.current_activity = active_id
 
+
+    def _get_activities_cached(self) -> tuple[dict[int, dict[str, Any]], bool]:
+        try:
+            return self._proxy.get_activities(force_refresh=False)
+        except TypeError:
+            return self._proxy.get_activities()
+
     def _on_activities_burst(self, key: str) -> None:
         def _inner() -> None:
-            acts, ready = self._proxy.get_activities()
+            acts, ready = self._get_activities_cached()
             _LOGGER.debug(
                 "[%s] on_burst_end('activities'): ready=%s, count=%s",
                 self.entry_id,
@@ -257,15 +276,18 @@ class SofabatonHub:
             self.activities_ready = ready
             if ready:
                 self.activities = acts
+                self._activities_generation += 1
+                self._bump_cache_generation()
                 self._sync_current_activity_from_cache(clear_when_unknown=True)
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
 
     def _on_activity_list_update(self) -> None:
         def _inner() -> None:
-            acts, ready = self._proxy.get_activities()
+            acts, ready = self._get_activities_cached()
             if acts:
                 self.activities = acts
+                self._bump_cache_generation()
                 self._sync_current_activity_from_cache(clear_when_unknown=False)
             if ready:
                 self.activities_ready = True
@@ -293,6 +315,7 @@ class SofabatonHub:
                 for waiter in waiters:
                     if not waiter.done():
                         waiter.set_result(None)
+                self._bump_cache_generation()
 
             async_dispatcher_send(self.hass, signal_buttons(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
@@ -345,6 +368,7 @@ class SofabatonHub:
             if ready:
                 self.devices = devs
                 self._devices_generation += 1
+                self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -363,6 +387,7 @@ class SofabatonHub:
                 # remember that this entity now has commands cached in the proxy
                 self._command_entities.add(ent_id)
                 self._maybe_complete_command_fetch(ent_id)
+                self._bump_cache_generation()
 
             if self._commands_in_flight:
                 completed: list[int] = []
@@ -392,6 +417,13 @@ class SofabatonHub:
             if ent_id is not None:
                 self._maybe_complete_command_fetch(ent_id)
 
+                # Burst keys carry the low-byte entity id while in-flight tracking may
+                # hold full ids. Re-check any matching in-flight entries by low byte.
+                for inflight_ent_id in list(self._commands_in_flight):
+                    if (inflight_ent_id & 0xFF) == (ent_id & 0xFF):
+                        self._maybe_complete_command_fetch(inflight_ent_id)
+                self._bump_cache_generation()
+
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
             async_dispatcher_send(self.hass, signal_macros(self.entry_id))
 
@@ -408,7 +440,7 @@ class SofabatonHub:
     # async helpers
     # ------------------------------------------------------------------
     async def _async_initial_sync(self) -> None:
-        acts, acts_ready = await self.hass.async_add_executor_job(self._proxy.get_activities)
+        acts, acts_ready = await self.hass.async_add_executor_job(partial(self._proxy.get_activities, force_refresh=True))
         _LOGGER.debug(
             "[%s] initial_sync: got activities ready=%s count=%s",
             self.entry_id,
@@ -428,10 +460,12 @@ class SofabatonHub:
         if devs_ready:
             self.devices = devs
             self._devices_generation += 1
+            self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
 
         if acts_ready:
             self.activities = acts
+            self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
 
         if self.current_activity is not None:
@@ -441,6 +475,277 @@ class SofabatonHub:
                 self.current_activity,
             )
             await self._async_prime_buttons_for(self.current_activity)
+
+
+    async def async_restore_persistent_cache(self, payload: dict[str, Any]) -> None:
+        await self.hass.async_add_executor_job(self._proxy.import_cache_state, payload)
+
+        devs, devs_ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
+        self.devices_ready = devs_ready
+        if devs_ready:
+            self.devices = devs
+            self._devices_generation += 1
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+
+        # Prime hub-side readiness trackers from restored proxy cache.
+        self._buttons_ready_for = {int(ent_id) for ent_id in self._proxy.state.buttons.keys()}
+        self._command_entities = {int(ent_id) for ent_id in self._proxy.state.commands.keys()}
+
+        _LOGGER.debug(
+            "[%s] Restored persistent cache: devices=%s buttons=%s commands=%s macros=%s activities_map=%s",
+            self.entry_id,
+            len(self._proxy.state.devices),
+            len(self._proxy.state.buttons),
+            len(self._proxy.state.commands),
+            len(self._proxy.state.activity_macros),
+            len(self._proxy._activity_map_complete),
+        )
+
+        self._bump_cache_generation()
+        async_dispatcher_send(self.hass, signal_buttons(self.entry_id))
+        async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+        async_dispatcher_send(self.hass, signal_macros(self.entry_id))
+
+    async def async_export_cache_state(self) -> dict[str, Any]:
+        return await self.hass.async_add_executor_job(self._proxy.export_cache_state)
+
+    async def async_clear_cache_for(self, *, kind: str, ent_id: int) -> None:
+        await self.hass.async_add_executor_job(
+            partial(self._proxy.clear_persistent_cache_for, ent_id, kind=kind)
+        )
+        if kind == "device":
+            await self._async_refresh_devices_snapshot(timeout_seconds=5.0)
+            devs, ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
+            self.devices_ready = ready
+            if ready:
+                self.devices = devs
+                self._devices_generation += 1
+                self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+        else:
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+
+        async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+        async_dispatcher_send(self.hass, signal_macros(self.entry_id))
+
+    async def async_get_cache_contents(self) -> dict[str, Any]:
+        data = await self.async_export_cache_state()
+        data["entry_id"] = self.entry_id
+        data["name"] = self.name
+        data["cache_generation"] = self.cache_generation
+        data["activities"] = self._build_cache_activity_list(data)
+        data["activity_favorites"] = self._build_cache_activity_favorites()
+        data["activity_keybindings"] = self._build_cache_activity_keybindings()
+        data["devices_list"] = self._build_cache_devices_list(data)
+        return data
+
+    def _cache_activity_ids(self, data: dict[str, Any]) -> list[int]:
+        activity_ids: set[int] = set()
+        activity_ids.update(int(act_id) & 0xFF for act_id in self.activities.keys())
+
+        for key in (
+            "activity_macros",
+            "activity_favorite_slots",
+            "activity_keybinding_slots",
+            "activity_favorite_labels",
+            "activity_keybinding_labels",
+            "activity_members",
+        ):
+            rows = data.get(key, {})
+            if not isinstance(rows, dict):
+                continue
+            for act_id in rows:
+                try:
+                    activity_ids.add(int(act_id) & 0xFF)
+                except (TypeError, ValueError):
+                    continue
+
+        return sorted(activity_id for activity_id in activity_ids if 1 <= activity_id <= 255)
+
+    def _get_cached_activity_name(self, act_id: int) -> str | None:
+        act_lo = act_id & 0xFF
+        activity = self.activities.get(act_lo)
+        if isinstance(activity, dict):
+            name = str(activity.get("name") or "").strip()
+            if name:
+                return name
+
+        state_activities = getattr(self._proxy.state, "activities", {})
+        if isinstance(state_activities, dict):
+            cached_activity = state_activities.get(act_lo)
+            if isinstance(cached_activity, dict):
+                name = str(cached_activity.get("name") or "").strip()
+                if name:
+                    return name
+
+        return None
+
+    def _get_cached_device_name(self, device_id: int) -> str | None:
+        dev_lo = device_id & 0xFF
+        device = self.devices.get(dev_lo)
+        if isinstance(device, dict):
+            name = str(device.get("name") or "").strip()
+            if name:
+                return name
+
+        for source in (self._proxy.state.devices, self._proxy.state.ip_devices):
+            if not isinstance(source, dict):
+                continue
+            cached_device = source.get(dev_lo)
+            if isinstance(cached_device, dict):
+                name = str(
+                    cached_device.get("name")
+                    or cached_device.get("device_name")
+                    or cached_device.get("label")
+                    or ""
+                ).strip()
+                if name:
+                    return name
+
+        return None
+
+    def _build_cache_activity_list(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        favorites = self._build_cache_activity_favorites()
+        keybindings = self._build_cache_activity_keybindings()
+        macros_raw = data.get("activity_macros", {})
+        macros_by_activity = macros_raw if isinstance(macros_raw, dict) else {}
+
+        activities: list[dict[str, Any]] = []
+        for act_id in self._cache_activity_ids(data):
+            act_key = str(act_id)
+            macros = macros_by_activity.get(act_key, [])
+            activity = self.activities.get(act_id) or getattr(self._proxy.state, "activities", {}).get(act_id, {})
+            activities.append(
+                {
+                    "id": act_id,
+                    "name": self._get_cached_activity_name(act_id) or f"Activity {act_id}",
+                    "is_active": bool(activity.get("active", False)) if isinstance(activity, dict) else False,
+                    "favorite_count": len(favorites.get(act_key, [])),
+                    "keybinding_count": len(keybindings.get(act_key, [])),
+                    "macro_count": len(macros) if isinstance(macros, list) else 0,
+                }
+            )
+
+        return activities
+
+    def _build_cache_activity_favorites(self) -> dict[str, list[dict[str, Any]]]:
+        favorites_by_activity: dict[str, list[dict[str, Any]]] = {}
+        activity_ids = (
+            set(int(act_id) & 0xFF for act_id in self.activities.keys())
+            | set(int(act_id) & 0xFF for act_id in self._proxy.state.activity_favorite_slots.keys())
+        )
+
+        for act_id in sorted(activity_id for activity_id in activity_ids if 1 <= activity_id <= 255):
+            act_lo = act_id & 0xFF
+            slots = self._proxy.state.get_activity_favorite_slots(act_lo)
+            labels = {
+                (int(row.get("device_id", 0)) & 0xFF, int(row.get("command_id", 0)) & 0xFF): str(row.get("name") or "").strip()
+                for row in self._proxy.state.get_activity_favorite_labels(act_lo)
+                if isinstance(row, dict)
+            }
+            if not slots:
+                continue
+
+            rows: list[dict[str, Any]] = []
+            for slot in slots:
+                device_id = int(slot.get("device_id", 0)) & 0xFF
+                command_id = int(slot.get("command_id", 0)) & 0xFF
+                button_id = int(slot.get("button_id", 0)) & 0xFF
+                label = labels.get((device_id, command_id)) or self._proxy.state.commands.get(device_id, {}).get(command_id)
+                rows.append(
+                    {
+                        "button_id": button_id,
+                        "device_id": device_id,
+                        "device_name": self._get_cached_device_name(device_id) or f"Device {device_id}",
+                        "command_id": command_id,
+                        "label": str(label).strip() if label else f"Command {command_id}",
+                        "source": str(slot.get("source", "cache")),
+                    }
+                )
+
+            # Apply hub-defined display order if available.
+            # activity_favorites_order stores [(fav_id, slot), ...] where fav_id
+            # matches button_id and slot is the 1-based display position.
+            order = self._proxy.state.activity_favorites_order.get(act_lo)
+            if order:
+                slot_by_fav: dict[int, int] = {fav_id: slot for fav_id, slot in order}
+                rows.sort(key=lambda r: slot_by_fav.get(r["button_id"], 0xFFFF))
+
+            favorites_by_activity[str(act_lo)] = rows
+
+        return favorites_by_activity
+
+    def _build_cache_activity_keybindings(self) -> dict[str, list[dict[str, Any]]]:
+        keybindings_by_activity: dict[str, list[dict[str, Any]]] = {}
+        button_names = self.get_button_name_map()
+        activity_ids = (
+            set(int(act_id) & 0xFF for act_id in self.activities.keys())
+            | set(int(act_id) & 0xFF for act_id in self._proxy.state.activity_keybinding_slots.keys())
+        )
+
+        for act_id in sorted(activity_id for activity_id in activity_ids if 1 <= activity_id <= 255):
+            act_lo = act_id & 0xFF
+            slots = self._proxy.state.get_activity_keybinding_slots(act_lo)
+            labels = {
+                (int(row.get("device_id", 0)) & 0xFF, int(row.get("command_id", 0)) & 0xFF): str(row.get("name") or "").strip()
+                for row in self._proxy.state.get_activity_keybinding_labels(act_lo)
+                if isinstance(row, dict)
+            }
+            if not slots:
+                continue
+
+            rows: list[dict[str, Any]] = []
+            for slot in slots:
+                button_id = int(slot.get("button_id", 0)) & 0xFF
+                device_id = int(slot.get("device_id", 0)) & 0xFF
+                command_id = int(slot.get("command_id", 0)) & 0xFF
+                label = labels.get((device_id, command_id)) or self._proxy.state.commands.get(device_id, {}).get(command_id)
+                rows.append(
+                    {
+                        "button_id": button_id,
+                        "button_name": button_names.get(button_id, f"Button {button_id}"),
+                        "device_id": device_id,
+                        "device_name": self._get_cached_device_name(device_id) or f"Device {device_id}",
+                        "command_id": command_id,
+                        "label": str(label).strip() if label else f"Command {command_id}",
+                        "source": str(slot.get("source", "cache")),
+                    }
+                )
+
+            keybindings_by_activity[str(act_lo)] = rows
+
+        return keybindings_by_activity
+
+    def _build_cache_devices_list(self, data: dict[str, Any]) -> list[dict[str, Any]]:
+        devices_raw = data.get("devices", {})
+        ip_devices_raw = data.get("ip_devices", {})
+        commands_raw = data.get("commands", {})
+
+        device_ids: set[int] = set()
+        for raw_map in (devices_raw, ip_devices_raw, commands_raw):
+            if not isinstance(raw_map, dict):
+                continue
+            for device_id in raw_map:
+                try:
+                    device_ids.add(int(device_id) & 0xFF)
+                except (TypeError, ValueError):
+                    continue
+
+        devices_list: list[dict[str, Any]] = []
+        for device_id in sorted(dev_id for dev_id in device_ids if 1 <= dev_id <= 255):
+            commands = commands_raw.get(str(device_id), {})
+            devices_list.append(
+                {
+                    "id": device_id,
+                    "name": self._get_cached_device_name(device_id) or f"Device {device_id}",
+                    "command_count": len(commands) if isinstance(commands, dict) else 0,
+                    "has_commands": bool(commands) if isinstance(commands, dict) else False,
+                }
+            )
+
+        return devices_list
 
 
 
@@ -458,11 +763,9 @@ class SofabatonHub:
                 ent_id, fetch_if_missing=False
             )
             act_lo = ent_id & 0xFF
-            macros, macros_ready = self._proxy.get_macros_for_activity(
+            _, macros_ready = self._proxy.get_macros_for_activity(
                 ent_id, fetch_if_missing=False
             )
-            if not macros:
-                macros_ready = True
             return commands_ready and macros_ready
 
         _, ready = self._proxy.get_commands_for_entity(ent_id, fetch_if_missing=False)
@@ -476,7 +779,12 @@ class SofabatonHub:
             self._commands_in_flight.discard(ent_id)
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
-    async def async_fetch_device_commands(self, ent_id: int) -> None:
+    async def async_fetch_device_commands(
+        self,
+        ent_id: int,
+        *,
+        wait_timeout: float = 10.0,
+    ) -> None:
         """User asked to fetch commands for this device/activity."""
         self._commands_in_flight.add(ent_id)
         async_dispatcher_send(self.hass, signal_commands(self.entry_id))
@@ -486,12 +794,12 @@ class SofabatonHub:
         else:
             await self._async_fetch_device_commands(ent_id)
 
-        await self._async_wait_for_command_fetch_complete(ent_id)
+        await self._async_wait_for_command_fetch_complete(ent_id, timeout=wait_timeout)
 
     async def async_create_wifi_device(
         self,
         device_name: str = "Home Assistant",
-        commands: list[str] | None = None,
+        commands: list[Any] | None = None,
         request_port: int = 8060,
         brand_name: str = "m3tac0de",
     ) -> dict[str, Any] | None:
@@ -553,6 +861,163 @@ class SofabatonHub:
             )
         )
 
+    def get_favorites(self, activity_id: int) -> list[dict[str, Any]]:
+        """Return cached favorites for *activity_id* (no hub round-trip).
+
+        Each entry comes from the activity map/keymap cache and contains the
+        activity-map ``button_id`` plus ``device_id``, ``command_id``, and
+        ``source``.
+
+        On X1S, these cached quick-access ``button_id`` values share the same
+        identifier space used by the Macro & Favorite Keys UI. The hub's raw
+        0x63 favorites-order response can still be partial, so callers that
+        need the visible ordered list should prefer :meth:`async_request_favorites_order`
+        or the Home Assistant ``get_favorites`` service, which merges hub order
+        with cached keymap/macros metadata.
+        """
+        act_lo = activity_id & 0xFF
+        favorites: list[dict[str, Any]] = []
+        for slot in self._proxy.state.get_activity_favorite_slots(act_lo):
+            favorite = dict(slot)
+            favorite.setdefault("activity_map_button_id", favorite.get("button_id"))
+            favorites.append(favorite)
+        return favorites
+
+    async def async_request_favorites_order(
+        self,
+        activity_id: int,
+    ) -> list[tuple[int, int]] | None:
+        """Fetch the current favorites ordering for *activity_id* from the hub."""
+        return await self.hass.async_add_executor_job(
+            self._proxy.request_favorites_order,
+            activity_id,
+        )
+
+    def describe_favorites_order(
+        self,
+        activity_id: int,
+        order: list[tuple[int, int]],
+    ) -> list[dict[str, Any]]:
+        """Decorate hub-order entries with cached labels and entry types.
+
+        The hub order uses a shared identifier space for quick-access entries.
+        Favorite commands and macros can therefore appear interleaved in the
+        same ordered list. On X1S, the hub's 0x63 response may contain only a
+        partial ordering even though the activity keymap/macros caches expose
+        additional visible quick-access ids. This helper enriches the hub
+        entries with cached metadata and backfills any remaining visible ids so
+        the returned list better matches the app UI.
+        """
+
+        act_lo = activity_id & 0xFF
+
+        favorite_by_id: dict[int, dict[str, Any]] = {}
+        for slot in self._proxy.state.get_activity_favorite_slots(act_lo):
+            entry_id = int(slot.get("button_id", 0)) & 0xFF
+            if entry_id == 0:
+                continue
+            device_id = int(slot.get("device_id", 0)) & 0xFF
+            command_id = int(slot.get("command_id", 0)) & 0xFF
+            label = self._proxy.state.get_favorite_label(act_lo, device_id, command_id)
+            favorite_by_id[entry_id] = {
+                "fav_id": entry_id,
+                "button_id": entry_id,
+                "activity_map_button_id": entry_id,
+                "slot": None,
+                "type": "favorite",
+                "name": label,
+                "device_id": device_id,
+                "command_id": command_id,
+            }
+
+        macro_by_id: dict[int, dict[str, Any]] = {}
+        for macro in self._proxy.state.get_activity_macros(act_lo):
+            entry_id = int(macro.get("command_id", 0)) & 0xFF
+            if entry_id == 0:
+                continue
+            macro_by_id[entry_id] = {
+                "fav_id": entry_id,
+                "button_id": entry_id,
+                "slot": None,
+                "type": "macro",
+                "name": str(macro.get("label") or ""),
+                "command_id": entry_id,
+            }
+
+        described: list[dict[str, Any]] = []
+        seen_ids: set[int] = set()
+        for entry_id, slot in sorted(order, key=lambda pair: pair[1]):
+            entry_lo = entry_id & 0xFF
+            info = dict(
+                favorite_by_id.get(entry_lo)
+                or macro_by_id.get(entry_lo)
+                or {
+                    "fav_id": entry_lo,
+                    "button_id": entry_lo,
+                    "type": "unknown",
+                    "name": None,
+                }
+            )
+            info["slot"] = slot & 0xFF
+            described.append(info)
+            seen_ids.add(entry_lo)
+
+        next_slot = max((int(entry.get("slot", 0)) for entry in described), default=0) + 1
+        remaining_ids = sorted(
+            (set(favorite_by_id) | set(macro_by_id)) - seen_ids
+        )
+        for entry_id in remaining_ids:
+            info = dict(favorite_by_id.get(entry_id) or macro_by_id.get(entry_id) or {})
+            if not info:
+                continue
+            info["slot"] = next_slot & 0xFF
+            described.append(info)
+            next_slot += 1
+
+        return described
+
+    async def async_reorder_favorites(
+        self,
+        activity_id: int,
+        ordered_fav_ids: list[int],
+        *,
+        refresh_after_write: bool = True,
+    ) -> dict[str, Any] | None:
+        """Re-order favorites for *activity_id* to match *ordered_fav_ids*.
+
+        *ordered_fav_ids* must come from :meth:`async_request_favorites_order`
+        or the Home Assistant ``get_favorites`` service.
+        """
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.reorder_favorites,
+                activity_id,
+                ordered_fav_ids,
+                refresh_after_write=refresh_after_write,
+            )
+        )
+
+    async def async_delete_favorite(
+        self,
+        activity_id: int,
+        fav_id: int,
+        *,
+        refresh_after_write: bool = True,
+    ) -> dict[str, Any] | None:
+        """Delete the favorite identified by *fav_id* from *activity_id*.
+
+        Use :meth:`async_request_favorites_order` or the Home Assistant
+        ``get_favorites`` service to discover available ``fav_id`` values.
+        """
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.delete_favorite,
+                activity_id,
+                fav_id,
+                refresh_after_write=refresh_after_write,
+            )
+        )
+
     async def async_command_to_button(
         self,
         activity_id: int,
@@ -560,20 +1025,11 @@ class SofabatonHub:
         device_id: int,
         command_id: int,
         *,
+        long_press_device_id: int | None = None,
+        long_press_command_id: int | None = None,
         refresh_after_write: bool = True,
     ) -> dict[str, Any] | None:
         """Replay the button-mapping write sequence on the selected hub."""
-
-        if refresh_after_write:
-            return await self.hass.async_add_executor_job(
-                partial(
-                    self._proxy.command_to_button,
-                    activity_id,
-                    button_id,
-                    device_id,
-                    command_id,
-                )
-            )
 
         return await self.hass.async_add_executor_job(
             partial(
@@ -582,7 +1038,9 @@ class SofabatonHub:
                 button_id,
                 device_id,
                 command_id,
-                refresh_after_write=False,
+                long_press_device_id=long_press_device_id,
+                long_press_command_id=long_press_command_id,
+                refresh_after_write=refresh_after_write,
             )
         )
 
@@ -716,14 +1174,37 @@ class SofabatonHub:
         if clear_favorites:
             self._proxy.state.activity_command_refs.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_favorite_slots.pop(ent_id & 0xFF, None)
+            self._proxy.state.activity_keybinding_slots.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_members.pop(ent_id & 0xFF, None)
             self._proxy.state.activity_favorite_labels.pop(ent_id & 0xFF, None)
+            self._proxy.state.activity_keybinding_labels.pop(ent_id & 0xFF, None)
             self._proxy._clear_favorite_label_requests_for_activity(ent_id & 0xFF)
+            self._proxy._clear_keybinding_label_requests_for_activity(ent_id & 0xFF)
 
         if clear_macros:
             self._proxy.state.activity_macros.pop(ent_id & 0xFF, None)
             self._proxy._pending_macro_requests.discard(ent_id & 0xFF)
             self._proxy._macros_complete.discard(ent_id & 0xFF)
+
+    def _activity_map_cached(self, act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        if act_lo in self._proxy._activity_map_complete:
+            return True
+
+        # Restored persistent cache may not populate _activity_map_complete,
+        # but these structures indicate we already captured activity mapping data.
+        return bool(
+            self._proxy.state.activity_favorite_slots.get(act_lo)
+            or self._proxy.state.activity_members.get(act_lo)
+            or self._proxy.state.activity_command_refs.get(act_lo)
+        )
+
+    def _activity_favorites_ready(self, act_id: int) -> bool:
+        _, ready = self._proxy.ensure_commands_for_activity(
+            act_id,
+            fetch_if_missing=False,
+        )
+        return ready
 
     async def _async_prime_buttons_for(self, act_id: int) -> None:
         # dedupe here
@@ -759,15 +1240,30 @@ class SofabatonHub:
         else:
             await self._async_wait_for_buttons_ready(act_id)
 
-        await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
-        await self._async_wait_for_activity_map_ready(act_id)
+        map_cached = await self.hass.async_add_executor_job(self._activity_map_cached, act_id)
+        if not map_cached:
+            await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
+            await self._async_wait_for_activity_map_ready(act_id)
+            await self.hass.async_add_executor_job(
+                partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
+            )
+        else:
+            favorites_ready = await self.hass.async_add_executor_job(
+                self._activity_favorites_ready,
+                act_id,
+            )
+            if not favorites_ready:
+                await self.hass.async_add_executor_job(
+                    partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
+                )
 
-        await self.hass.async_add_executor_job(
-            partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
+        _, macros_ready = await self.hass.async_add_executor_job(
+            partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=False)
         )
-        await self.hass.async_add_executor_job(
-            partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
-        )
+        if not macros_ready:
+            await self.hass.async_add_executor_job(
+                partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
+            )
 
     # ------------------------------------------------------------------
     # helpers for entities
@@ -795,7 +1291,11 @@ class SofabatonHub:
             if ready and btns:
                 result[ent_id] = btns
         return result
-        
+
+    def get_all_cached_button_details(self) -> dict[int, dict[int, dict[str, int]]]:
+        """Return per-button mapping details (short + long press) from proxy cache."""
+        return dict(self._proxy.state.button_details)
+
     def get_all_cached_commands(self) -> dict[int, dict[int, str]]:
         """Build a view from the proxy's cache, without triggering new fetches."""
         result: dict[int, dict[int, str]] = {}
@@ -874,14 +1374,19 @@ class SofabatonHub:
         device_id = -1
         command_label = ""
         device_name = None
+        press_type = "short"
         if len(parts) >= 4 and parts[0] == "launch":
             try:
                 device_id = int(parts[2])
             except ValueError:
                 device_id = -1
             command_label = unquote(parts[3]).replace("_", " ")
-            if len(parts) >= 5:
-                device_name = unquote("/".join(parts[4:])).replace("_", " ")
+            trailing_parts = parts[4:]
+            if trailing_parts and trailing_parts[-1] in ("short", "long"):
+                press_type = trailing_parts[-1]
+                trailing_parts = trailing_parts[:-1]
+            if trailing_parts:
+                device_name = unquote("/".join(trailing_parts)).replace("_", " ")
 
         timestamp = datetime.now(timezone.utc)
         record = {
@@ -891,6 +1396,7 @@ class SofabatonHub:
             "command_id": command_label,
             "command_label": command_label,
             "button_label": command_label,
+            "press_type": press_type,
             "timestamp": timestamp.timestamp(),
             "iso_time": timestamp.isoformat(),
             "source_ip": source_ip,
@@ -900,7 +1406,7 @@ class SofabatonHub:
         }
         self._last_ip_command = record
         async_dispatcher_send(self.hass, signal_ip_commands(self.entry_id))
-        await self._async_maybe_run_configured_ip_action(command_label)
+        await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
 
     @property
     def is_sync_in_progress(self) -> bool:
@@ -941,6 +1447,50 @@ class SofabatonHub:
             await asyncio.sleep(0.1)
 
         return dict(self.devices)
+
+    async def async_request_catalog(self, kind: str, timeout_seconds: float = 30.0) -> None:
+        """Send REQ_ACTIVITIES or REQ_DEVICES to the hub and wait for the burst to complete.
+
+        Uses a snapshot-clear-fetch-prune strategy: the name catalog is cleared before
+        the request so deleted entries don't persist, and per-entity detail data
+        (commands, macros) is preserved for entities that still exist and pruned only
+        for entities that were removed from the catalog.
+        """
+        if kind == "activities":
+            old_ids = await self.hass.async_add_executor_job(self._proxy.get_known_activity_ids)
+            await self.hass.async_add_executor_job(self._proxy.clear_activities_catalog)
+            previous_generation = self._activities_generation
+            await self.hass.async_add_executor_job(self._proxy.request_activities)
+            deadline = monotonic() + timeout_seconds
+            while monotonic() < deadline:
+                if self._activities_generation > previous_generation:
+                    break
+                await asyncio.sleep(0.1)
+            new_ids = await self.hass.async_add_executor_job(self._proxy.get_known_activity_ids)
+            for act_id in old_ids - new_ids:
+                await self.hass.async_add_executor_job(
+                    partial(self._proxy.clear_persistent_cache_for, act_id, kind="activity")
+                )
+        elif kind == "devices":
+            old_ids = await self.hass.async_add_executor_job(self._proxy.get_known_device_ids)
+            await self.hass.async_add_executor_job(self._proxy.clear_devices_catalog)
+            await self._async_refresh_devices_snapshot(timeout_seconds=timeout_seconds)
+            new_ids = await self.hass.async_add_executor_job(self._proxy.get_known_device_ids)
+            for dev_id in old_ids - new_ids:
+                await self.hass.async_add_executor_job(
+                    partial(self._proxy.clear_persistent_cache_for, dev_id, kind="device")
+                )
+        else:
+            raise ValueError(f"Unknown catalog kind: {kind!r}")
+
+        self._bump_cache_generation()
+        if kind == "activities":
+            async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+            async_dispatcher_send(self.hass, signal_macros(self.entry_id))
+        else:
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
     def get_managed_command_hashes(self) -> list[str]:
         prefix = f"{COMMAND_BRAND_PREFIX}-"
@@ -983,7 +1533,12 @@ class SofabatonHub:
                 blocking=True,
             )
 
-    async def _async_maybe_run_configured_ip_action(self, command_label: str) -> None:
+    async def _async_maybe_run_configured_ip_action(
+        self,
+        command_label: str,
+        *,
+        press_type: str = "short",
+    ) -> None:
         hass_data = getattr(self.hass, "data", {})
         domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
         store = domain_data.get("command_config_store")
@@ -995,7 +1550,16 @@ class SofabatonHub:
         for slot in payload.get("commands", []):
             if normalize_command_name(slot.get("name")) != command_key:
                 continue
-            action = slot.get("action") if isinstance(slot.get("action"), dict) else {}
+            if press_type == "long":
+                if not bool(slot.get("long_press_enabled")):
+                    return
+                action = (
+                    slot.get("long_press_action")
+                    if isinstance(slot.get("long_press_action"), dict)
+                    else {}
+                )
+            else:
+                action = slot.get("action") if isinstance(slot.get("action"), dict) else {}
             try:
                 await self._async_execute_action_config(action)
             except Exception as err:  # pragma: no cover - service boundary
@@ -1096,10 +1660,25 @@ class SofabatonHub:
                     "deleted_managed_devices": len(managed),
                 }
 
-            slot_labels = [
-                str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
-                for idx, slot in enumerate(commands[:10])
-            ]
+            command_defs: list[dict[str, str]] = []
+            for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                command_defs.append(
+                    {
+                        "display_name": name,
+                        "trigger_name": name,
+                        "press_type": "short",
+                    }
+                )
+            for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                command_defs.append(
+                    {
+                        "display_name": f"{name} Long Press",
+                        "trigger_name": name,
+                        "press_type": "long",
+                    }
+                )
 
             self._set_command_sync_progress(
                 current_step=3,
@@ -1107,7 +1686,7 @@ class SofabatonHub:
             )
             created = await self.async_create_wifi_device(
                 device_name=device_name,
-                commands=slot_labels,
+                commands=command_defs,
                 request_port=request_port,
                 brand_name=brand_name,
             )
@@ -1150,7 +1729,7 @@ class SofabatonHub:
                 current_step=5,
                 message="Applying activity favorites",
             )
-            for slot_idx, slot in enumerate(commands[:10]):
+            for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
                 if not slot.get("add_as_favorite"):
                     continue
                 command_id = slot_idx + 1
@@ -1172,7 +1751,7 @@ class SofabatonHub:
                 current_step=6,
                 message="Applying activity button mappings",
             )
-            for slot_idx, slot in enumerate(commands[:10]):
+            for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
                 hard_button = str(slot.get("hard_button") or "").strip().lower()
                 if not hard_button:
                     continue
@@ -1180,6 +1759,12 @@ class SofabatonHub:
                 if not button_id:
                     continue
                 command_id = slot_idx + 1
+                long_press_enabled = bool(slot.get("long_press_enabled"))
+                long_press_command_id = (
+                    slot_idx + 1 + _WIFI_COMMAND_LONG_PRESS_OFFSET
+                    if long_press_enabled
+                    else None
+                )
                 for act in slot.get("activities", []):
                     try:
                         act_id = int(act)
@@ -1192,6 +1777,8 @@ class SofabatonHub:
                         button_id,
                         wifi_device_id,
                         command_id,
+                        long_press_device_id=wifi_device_id if long_press_enabled else None,
+                        long_press_command_id=long_press_command_id,
                         refresh_after_write=False,
                     )
 

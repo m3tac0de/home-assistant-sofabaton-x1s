@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 import time
 import unicodedata
-from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from ..const import HUB_VERSION_X1
@@ -15,6 +14,7 @@ from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
     FAMILY_DEVBTNS,
+    FAMILY_FAV_ORDER_RESP,
     FAMILY_MACROS,
     FAMILY_KEYMAP,
     OP_ACK_READY,
@@ -188,22 +188,22 @@ class MacroHandler(BaseFrameHandler):
         if not completed:
             return
 
-        grouped: dict[int, list[dict[str, int | str]]] = defaultdict(list)
-
         for activity_id, assembled, boundaries in completed:
+            act_lo = activity_id & 0xFF
+            macros: list[dict[str, int | str]] = []
             for act, command_id, label in decode_macro_records(assembled, activity_id, boundaries):
-                grouped[act & 0xFF].append({"command_id": command_id, "label": label})
+                macros.append({"command_id": command_id, "label": label})
 
-        for act_lo, macros in grouped.items():
             proxy.state.replace_activity_macros(act_lo, macros)
             proxy._macros_complete.add(act_lo)
             proxy._pending_macro_requests.discard(act_lo)
-            log.info(
-                "[MACRO] act=0x%02X macros{%d}: %s",
-                act_lo,
-                len(macros),
-                ", ".join(f"{m['command_id']}: {m['label']}" for m in macros),
-            )
+            if macros:
+                log.info(
+                    "[MACRO] act=0x%02X macros{%d}: %s",
+                    act_lo,
+                    len(macros),
+                    ", ".join(f"{m['command_id']}: {m['label']}" for m in macros),
+                )
 
 
 
@@ -612,14 +612,13 @@ class AckReadyHandler(BaseFrameHandler):
             proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
             if proxy.state.current_activity_hint is not None:
                 ent_lo = proxy.state.current_activity_hint & 0xFF
-                proxy.request_buttons_for_entity(ent_lo)
-                if proxy.hub_version != HUB_VERSION_X1:
-                    proxy.enqueue_cmd(
-                        OP_REQ_COMMANDS,
-                        bytes([ent_lo, 0xFF]),
-                        expects_burst=True,
-                        burst_kind=f"commands:{ent_lo}",
-                    )
+
+                _, buttons_ready = proxy.get_buttons_for_entity(
+                    ent_lo,
+                    fetch_if_missing=False,
+                )
+                if not buttons_ready:
+                    proxy.request_buttons_for_entity(ent_lo)
         else:
             log.info("[HINT] proxy client connected; skipping auto-requests")
             new_id, old_id = proxy.state.update_activity_state()
@@ -757,16 +756,12 @@ class CatalogActivityHandler(BaseFrameHandler):
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
-        proxy._burst.start("activities", now=time.monotonic())
+        now = time.monotonic()
 
         payload = frame.payload
         raw = frame.raw
         row_idx = payload[0] if len(payload) >= 1 else None
         # Start of a fresh activities list → reset 'active'
-        if row_idx == 1 and proxy.state.current_activity_hint is not None:
-            log.info("[ACT] reset active (start of new activities list)")
-            proxy.state.set_hint(None)
-
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         label_bytes_raw = raw[36:128]
         activity_label = _decode_x1s_activity_label(label_bytes_raw)
@@ -776,23 +771,32 @@ class CatalogActivityHandler(BaseFrameHandler):
         needs_confirm = _decode_x1s_needs_confirm_flag(payload)
 
         if act_id is not None:
-            proxy.state.activities[act_id & 0xFF] = {
-                "name": activity_label,
-                "active": is_active,
-                "needs_confirm": needs_confirm,
-            }
-            proxy._activity_row_payloads[act_id & 0xFF] = bytes(payload)
-            if is_active:
-                proxy.state.set_hint(act_id)
-            proxy._notify_activity_list_update()
+            accepted = proxy.ingest_activity_row(
+                row_idx=row_idx,
+                expected_rows=payload[3] if len(payload) >= 4 and payload[3] > 0 else None,
+                act_id=act_id,
+                activity={
+                    "id": act_id,
+                    "name": activity_label,
+                    "active": is_active,
+                    "needs_confirm": needs_confirm,
+                },
+                payload=payload,
+            )
+            if not accepted:
+                return
+            proxy._burst.start("activities", now=now)
+            if row_idx == 1:
+                log.info("[ACT] reset active (start of new activities list)")
         elif activity_label:
             log.info("[ACT] name='%s'", activity_label)
 
         state = "ACTIVE" if is_active else "idle"
         if row_idx is not None and act_id is not None:
             log.info(
-                "[ACT] #%d name='%s' act_id=0x%04X (%d) state=%s",
+                "[ACT] #%d/%s name='%s' act_id=0x%04X (%d) state=%s",
                 row_idx,
+                payload[3] if len(payload) >= 4 and payload[3] > 0 else "?",
                 activity_label,
                 act_id,
                 act_id,
@@ -817,13 +821,9 @@ class X1CatalogActivityHandler(BaseFrameHandler):
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         now = time.monotonic()
-        proxy._burst.start("activities", now=now)
 
         payload = frame.payload
         row_idx = payload[0] if payload else None
-        if row_idx == 1 and proxy.state.current_activity_hint is not None:
-            log.info("[ACT] reset active (start of new activities list)")
-            proxy.state.set_hint(None)
 
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         active_flag = frame.raw[35] if len(frame.raw) > 35 else 0
@@ -833,22 +833,32 @@ class X1CatalogActivityHandler(BaseFrameHandler):
         needs_confirm = needs_confirm_flag == 1
 
         if act_id is not None:
-            proxy.state.activities[act_id & 0xFF] = {
-                "name": activity_label,
-                "active": is_active,
-                "needs_confirm": needs_confirm,
-            }
-            if is_active:
-                proxy.state.set_hint(act_id)
-            proxy._notify_activity_list_update()
+            accepted = proxy.ingest_activity_row(
+                row_idx=row_idx,
+                expected_rows=payload[3] if len(payload) >= 4 and payload[3] > 0 else None,
+                act_id=act_id,
+                activity={
+                    "id": act_id,
+                    "name": activity_label,
+                    "active": is_active,
+                    "needs_confirm": needs_confirm,
+                },
+                payload=payload,
+            )
+            if not accepted:
+                return
+            proxy._burst.start("activities", now=now)
+            if row_idx == 1:
+                log.info("[ACT] reset active (start of new activities list)")
         elif activity_label:
             log.info("[ACT] name='%s'", activity_label)
 
         state = "ACTIVE" if is_active else "idle"
         if row_idx is not None and act_id is not None:
             log.info(
-                "[ACT] #%d name='%s' act_id=0x%04X (%d) state=%s",
+                "[ACT] #%d/%s name='%s' act_id=0x%04X (%d) state=%s",
                 row_idx,
+                payload[3] if len(payload) >= 4 and payload[3] > 0 else "?",
                 activity_label,
                 act_id,
                 act_id,
@@ -1168,15 +1178,19 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
                 for cmd_id, label in commands.items():
                     pair = (complete_dev_id, cmd_id)
                     awaiting = proxy._favorite_label_requests.get(pair)
-                    if awaiting:
-                        for act_id in awaiting:
+                    awaiting_keybindings = proxy._keybinding_label_requests.get(pair)
+                    if awaiting or awaiting_keybindings:
+                        for act_id in awaiting or set():
                             proxy.state.record_favorite_label(act_id, complete_dev_id, cmd_id, label)
+                        for act_id in awaiting_keybindings or set():
+                            proxy.state.record_keybinding_label(act_id, complete_dev_id, cmd_id, label)
                         proxy._favorite_label_requests.pop(pair, None)
+                        proxy._keybinding_label_requests.pop(pair, None)
                         continue
 
                     pending_for_device = [
                         candidate
-                        for candidate in proxy._favorite_label_requests
+                        for candidate in set(proxy._favorite_label_requests) | set(proxy._keybinding_label_requests)
                         if candidate[0] == complete_dev_id
                     ]
 
@@ -1187,7 +1201,12 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
                             proxy.state.record_favorite_label(
                                 act_id, complete_dev_id, pending_cmd_id, label
                             )
+                        for act_id in proxy._keybinding_label_requests.get(pending_pair, set()):
+                            proxy.state.record_keybinding_label(
+                                act_id, complete_dev_id, pending_cmd_id, label
+                            )
                         proxy._favorite_label_requests.pop(pending_pair, None)
+                        proxy._keybinding_label_requests.pop(pending_pair, None)
 
                         cmds = proxy.state.commands.setdefault(dev_key, {})
                         cmds[cmd_id] = label
@@ -1287,3 +1306,60 @@ class DeviceButtonFamilyHandler(BaseFrameHandler):
             return
 
         self._payload.handle(frame)
+
+
+@register_handler(opcode_families_low=(FAMILY_FAV_ORDER_RESP,), directions=("H→A",))
+class FavoritesOrderHandler(BaseFrameHandler):
+    """Parse hub response containing current favorites ordering for an activity.
+
+    Triggered by the app sending OP_FAV_ORDER_REQ (family 0x62 / opcode 0x0162).
+    The hub replies with a family-0x63 frame whose payload is:
+
+        [01 00 01 01 00 01] [act_lo] [fav_id slot] × N
+
+    Each (fav_id, slot) pair describes which hub-internal favorite identifier
+    occupies which display position (slot 1 = first shown).
+
+    After parsing the pairs are stored in ``proxy.state.activity_favorites_order``
+    and a synthetic ACK ``0xFF63`` is fired so that
+    ``wait_for_roku_ack_any([(0xFF63, act_lo)])`` can unblock.
+    """
+
+    # Synthetic opcode used to signal completion via notify_roku_ack
+    SYNTHETIC_ACK = 0xFF63
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy = frame.proxy
+        payload = frame.payload
+
+        # Minimum: 6-byte fixed header + 1 act_lo byte
+        if len(payload) < 7:
+            log.debug("[FAV_ORDER] payload too short (%dB), skipping", len(payload))
+            return
+
+        act_lo = payload[6] & 0xFF
+        pairs_data = payload[7:]
+
+        if len(pairs_data) % 2 != 0:
+            log.warning(
+                "[FAV_ORDER] act=0x%02X odd pairs length %d, truncating",
+                act_lo,
+                len(pairs_data),
+            )
+            pairs_data = pairs_data[: len(pairs_data) - 1]
+
+        pairs: list[tuple[int, int]] = [
+            (pairs_data[i], pairs_data[i + 1])
+            for i in range(0, len(pairs_data), 2)
+        ]
+
+        proxy.state.activity_favorites_order[act_lo] = pairs
+        log.info(
+            "[FAV_ORDER] act=0x%02X received %d favorite(s): %s",
+            act_lo,
+            len(pairs),
+            " ".join(f"fav{fav}→slot{slot}" for fav, slot in pairs),
+        )
+
+        # Signal any waiting request_favorites_order() call
+        proxy.notify_roku_ack(self.SYNTHETIC_ACK, bytes([act_lo]))

@@ -9,3 +9,13 @@ __pycache__/
 .idea/
 .mypy_cache/
 .pytest_cache/
+.pytest_tmp/
+.pytest_tmp*/
+pytest-cache-files-*/
+.codex-tmp/
+.venv/
+.venv-py313/
+.venv-py313-smoke/
+pytest.ini
+.python-version
+.claude/

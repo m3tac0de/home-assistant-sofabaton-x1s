@@ -70,11 +70,19 @@ def test_wifi_commands_sensor_defaults_to_waiting_state() -> None:
     assert entity.state == "Waiting for button press"
     assert entity.extra_state_attributes["from_device"] == "Waiting for button press"
     assert entity.extra_state_attributes["received_command"] == "Waiting for button press"
+    assert entity.extra_state_attributes["press_type"] == "Unknown"
 
 
 def test_wifi_commands_sensor_flashes_then_resets(monkeypatch) -> None:
     sensor_module = _build_sensor_module()
-    hub = _Hub({"entity_name": "Living Room TV", "command_label": "Home", "timestamp": 123})
+    hub = _Hub(
+        {
+            "entity_name": "Living Room TV",
+            "command_label": "Home",
+            "press_type": "long",
+            "timestamp": 123,
+        }
+    )
     entry = SimpleNamespace(data={"mac": "aa:bb", "name": "Hub"})
 
     callback_holder = {}
@@ -88,13 +96,18 @@ def test_wifi_commands_sensor_flashes_then_resets(monkeypatch) -> None:
 
     entity = sensor_module.SofabatonIpCommandsSensor(hub, entry)
     entity.hass = object()
-    entity.async_write_ha_state = lambda: None
 
+    state_log = []
+    entity.async_write_ha_state = lambda: state_log.append(entity.state)
+
+    # First press from "Waiting" — no pulse, just one write
     entity._handle_ip_command()
 
-    assert entity.state == "Living Room TV/Home"
+    assert state_log == ["Living Room TV/Home/longpress"]
+    assert entity.state == "Living Room TV/Home/longpress"
     assert entity.extra_state_attributes["from_device"] == "Living Room TV"
     assert entity.extra_state_attributes["received_command"] == "Home"
+    assert entity.extra_state_attributes["press_type"] == "long"
     assert callback_holder["delay"] == 0.3
 
     callback_holder["cb"](None)
@@ -102,6 +115,99 @@ def test_wifi_commands_sensor_flashes_then_resets(monkeypatch) -> None:
     assert entity.state == "Waiting for button press"
     assert entity.extra_state_attributes["from_device"] == "Waiting for button press"
     assert entity.extra_state_attributes["received_command"] == "Waiting for button press"
+
+
+def test_wifi_commands_sensor_pulses_on_repeated_command(monkeypatch) -> None:
+    sensor_module = _build_sensor_module()
+    hub = _Hub(
+        {
+            "entity_name": "TV",
+            "command_label": "VolumeUp",
+            "press_type": "short",
+            "timestamp": 1,
+        }
+    )
+    entry = SimpleNamespace(data={"mac": "aa:bb", "name": "Hub"})
+
+    callback_holder = {}
+    cancel_calls = {"count": 0}
+
+    def _fake_async_call_later(_hass, delay, cb):
+        callback_holder["delay"] = delay
+        callback_holder["cb"] = cb
+
+        def _cancel():
+            cancel_calls["count"] += 1
+
+        return _cancel
+
+    monkeypatch.setattr(sensor_module, "async_call_later", _fake_async_call_later)
+
+    entity = sensor_module.SofabatonIpCommandsSensor(hub, entry)
+    entity.hass = object()
+
+    state_log = []
+    entity.async_write_ha_state = lambda: state_log.append(entity.state)
+
+    # First press — from Waiting, no pulse
+    entity._handle_ip_command()
+    assert state_log == ["TV/VolumeUp"]
+
+    # Second press — should pulse: reset to Waiting, then command
+    entity._handle_ip_command()
+    assert state_log == ["TV/VolumeUp", "Waiting for button press", "TV/VolumeUp"]
+    assert cancel_calls["count"] == 1
+
+    # Third press — pulses again
+    entity._handle_ip_command()
+    assert state_log == [
+        "TV/VolumeUp",
+        "Waiting for button press",
+        "TV/VolumeUp",
+        "Waiting for button press",
+        "TV/VolumeUp",
+    ]
+    assert cancel_calls["count"] == 2
+
+    # Simulate button release: 0.3s timer fires
+    callback_holder["cb"](None)
+    assert state_log[-1] == "Waiting for button press"
+
+
+def test_wifi_commands_sensor_pulse_with_different_commands(monkeypatch) -> None:
+    sensor_module = _build_sensor_module()
+    cmd_a = {
+        "entity_name": "TV",
+        "command_label": "Home",
+        "press_type": "short",
+        "timestamp": 1,
+    }
+    cmd_b = {
+        "entity_name": "TV",
+        "command_label": "Back",
+        "press_type": "short",
+        "timestamp": 2,
+    }
+    hub = _Hub(cmd_a)
+    entry = SimpleNamespace(data={"mac": "aa:bb", "name": "Hub"})
+
+    def _fake_async_call_later(_hass, delay, cb):
+        return lambda: None
+
+    monkeypatch.setattr(sensor_module, "async_call_later", _fake_async_call_later)
+
+    entity = sensor_module.SofabatonIpCommandsSensor(hub, entry)
+    entity.hass = object()
+
+    state_log = []
+    entity.async_write_ha_state = lambda: state_log.append(entity.state)
+
+    entity._handle_ip_command()
+    assert state_log == ["TV/Home"]
+
+    hub._command = cmd_b
+    entity._handle_ip_command()
+    assert state_log == ["TV/Home", "Waiting for button press", "TV/Back"]
 
 
 def test_wifi_commands_sensor_force_update_enabled() -> None:
