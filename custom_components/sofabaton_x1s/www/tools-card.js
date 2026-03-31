@@ -1361,7 +1361,7 @@ class SofabatonControlPanelCard extends HTMLElement {
           })}
           ${this._renderSettingTile({
             title: "Sync Remote",
-            description: "Pull the latest config from the hub.",
+            description: "Push the latest configuration to the physical remote.",
             controlHtml: `<span class="setting-icon">🔄</span>`,
             classes: `action${canSync ? "" : " disabled"}`,
             attrs: `data-action-tile="sync_remote"`,
