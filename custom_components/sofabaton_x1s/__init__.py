@@ -251,6 +251,7 @@ async def _ws_get_persistent_cache(hass: HomeAssistant, connection, msg: dict[st
             {
                 "entry_id": hub.entry_id,
                 "name": hub.name,
+                "cache_generation": hub.cache_generation,
             }
             for hub in hubs
         ],

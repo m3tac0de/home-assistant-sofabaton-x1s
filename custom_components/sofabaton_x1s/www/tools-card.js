@@ -1,6 +1,7 @@
 const TOOLS_TYPE = "sofabaton-control-panel";
 const TOOLS_VERSION = "0.0.1";
 const TOOLS_LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
+const AUTO_RELOAD_BUFFER_MS = 5000;
 
 // Mirrors ButtonName from lib/protocol_const.py — same .title() label transform.
 const BUTTON_NAMES = {
@@ -45,11 +46,16 @@ class SofabatonControlPanelCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     const fingerprint = this._hassFingerprint();
+    const generationSnapshot = this._cacheGenerationSnapshot();
 
     if (!this._root) {
       this._root = this.attachShadow({ mode: "open" });
       this._openSection = "activities";
       this._openEntity = null;
+      this._autoReloadTimer = null;
+      this._pendingAutoReload = false;
+      this._suppressAutoReload = false;
+      this._lastObservedGenerations = generationSnapshot;
       this._lastHassFingerprint = fingerprint;
       this._loadState();
       this._render();
@@ -57,6 +63,13 @@ class SofabatonControlPanelCard extends HTMLElement {
     }
 
     if (fingerprint !== this._lastHassFingerprint) {
+      if (
+        !this._suppressAutoReload &&
+        this._didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)
+      ) {
+        this._scheduleAutoReload();
+      }
+      this._lastObservedGenerations = generationSnapshot;
       this._lastHassFingerprint = fingerprint;
       this._render();
     }
@@ -73,24 +86,32 @@ class SofabatonControlPanelCard extends HTMLElement {
   }
 
   async _loadState() {
+    if (this._loadingStatePromise) return this._loadingStatePromise;
+
     this._loading = true;
     this._loadError = null;
     this._render();
 
-    try {
-      const [state, contents] = await Promise.all([
-        this._ws({ type: "sofabaton_x1s/persistent_cache/get" }),
-        this._ws({ type: "sofabaton_x1s/persistent_cache/contents" }),
-      ]);
-      this._state = state;
-      this._contents = contents;
-      this._syncSelection();
-    } catch (err) {
-      this._loadError = this._formatError(err);
-    } finally {
-      this._loading = false;
-      this._render();
-    }
+    this._loadingStatePromise = (async () => {
+      try {
+        const [state, contents] = await Promise.all([
+          this._ws({ type: "sofabaton_x1s/persistent_cache/get" }),
+          this._ws({ type: "sofabaton_x1s/persistent_cache/contents" }),
+        ]);
+        this._state = state;
+        this._contents = contents;
+        this._syncSelection();
+      } catch (err) {
+        this._loadError = this._formatError(err);
+      } finally {
+        this._loading = false;
+        this._loadingStatePromise = null;
+        this._render();
+        this._flushAutoReload();
+      }
+    })();
+
+    return this._loadingStatePromise;
   }
 
   // ─── Entity finders ───────────────────────────────────────────────────────────
@@ -113,6 +134,54 @@ class SofabatonControlPanelCard extends HTMLElement {
     return !!(this._hass?.states[entityId]?.attributes?.proxy_client_connected);
   }
 
+  _cacheGenerationSnapshot() {
+    const snapshot = {};
+    for (const id of this._remoteEntities()) {
+      const attrs = this._hass?.states[id]?.attributes || {};
+      const entryId = String(attrs.entry_id || "").trim();
+      if (!entryId) continue;
+      snapshot[entryId] = Number(attrs.cache_generation || 0);
+    }
+    return snapshot;
+  }
+
+  _didHubGenerationChange(previous, next) {
+    const prev = previous || {};
+    const curr = next || {};
+    return Object.keys(curr).some(
+      (entryId) =>
+        Object.prototype.hasOwnProperty.call(prev, entryId) &&
+        Number(curr[entryId] || 0) !== Number(prev[entryId] || 0)
+    );
+  }
+
+  _scheduleAutoReload() {
+    if (this._refreshBusy || this._loading) {
+      this._pendingAutoReload = true;
+      return;
+    }
+    this._pendingAutoReload = true;
+    if (this._autoReloadTimer != null) {
+      window.clearTimeout(this._autoReloadTimer);
+    }
+
+    this._autoReloadTimer = window.setTimeout(() => {
+      this._autoReloadTimer = null;
+      if (this._refreshBusy || this._loading) {
+        this._flushAutoReload();
+        return;
+      }
+      this._pendingAutoReload = false;
+      this._loadState();
+    }, AUTO_RELOAD_BUFFER_MS);
+  }
+
+  _flushAutoReload() {
+    if (!this._pendingAutoReload) return;
+    if (this._refreshBusy || this._loading || this._autoReloadTimer != null) return;
+    this._scheduleAutoReload();
+  }
+
   // ─── Fingerprint ──────────────────────────────────────────────────────────────
 
   _hassFingerprint() {
@@ -122,7 +191,7 @@ class SofabatonControlPanelCard extends HTMLElement {
       .sort()
       .map((id) => {
         const attrs = this._hass.states[id]?.attributes || {};
-        return `${id};${attrs.entry_id || ""};${attrs.proxy_client_connected ? "1" : "0"}`;
+        return `${id};${attrs.entry_id || ""};${attrs.proxy_client_connected ? "1" : "0"};${Number(attrs.cache_generation || 0)}`;
       })
       .join("||");
   }
@@ -272,6 +341,8 @@ class SofabatonControlPanelCard extends HTMLElement {
 
     this._refreshBusy = true;
     this._activeRefreshLabel = key;
+    this._suppressAutoReload = true;
+    this._pendingAutoReload = false;
     this._render();
 
     try {
@@ -281,8 +352,10 @@ class SofabatonControlPanelCard extends HTMLElement {
       // intentionally silent
     } finally {
       this._refreshBusy = false;
+      this._suppressAutoReload = false;
       this._activeRefreshLabel = null;
       this._render();
+      this._flushAutoReload();
       requestAnimationFrame(() => this._scrollEntityToTop(key));
     }
   }
@@ -293,6 +366,8 @@ class SofabatonControlPanelCard extends HTMLElement {
     if (!hub) return;
 
     this._refreshBusy = true;
+    this._suppressAutoReload = true;
+    this._pendingAutoReload = false;
     this._render();
 
     try {
@@ -306,8 +381,10 @@ class SofabatonControlPanelCard extends HTMLElement {
       // intentionally silent
     } finally {
       this._refreshBusy = false;
+      this._suppressAutoReload = false;
       this._activeRefreshLabel = null;
       this._render();
+      this._flushAutoReload();
     }
   }
 

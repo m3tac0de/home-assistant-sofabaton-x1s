@@ -105,6 +105,7 @@ class SofabatonHub:
         self.devices_ready: bool = False
         self._devices_generation: int = 0
         self._activities_generation: int = 0
+        self._cache_generation: int = 0
         self.proxy_enabled: bool = proxy_enabled
         self.hex_logging_enabled: bool = hex_logging_enabled
         self.roku_server_enabled: bool = roku_server_enabled
@@ -133,6 +134,14 @@ class SofabatonHub:
 
         if self.hex_logging_enabled:
             async_enable_hex_logging_capture(self.hass, self.entry_id)
+
+    @property
+    def cache_generation(self) -> int:
+        return self._cache_generation
+
+    def _bump_cache_generation(self) -> int:
+        self._cache_generation += 1
+        return self._cache_generation
 
     def _create_proxy(self) -> X1Proxy:
         proxy = X1Proxy(
@@ -268,6 +277,7 @@ class SofabatonHub:
             if ready:
                 self.activities = acts
                 self._activities_generation += 1
+                self._bump_cache_generation()
                 self._sync_current_activity_from_cache(clear_when_unknown=True)
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
@@ -277,6 +287,7 @@ class SofabatonHub:
             acts, ready = self._get_activities_cached()
             if acts:
                 self.activities = acts
+                self._bump_cache_generation()
                 self._sync_current_activity_from_cache(clear_when_unknown=False)
             if ready:
                 self.activities_ready = True
@@ -304,6 +315,7 @@ class SofabatonHub:
                 for waiter in waiters:
                     if not waiter.done():
                         waiter.set_result(None)
+                self._bump_cache_generation()
 
             async_dispatcher_send(self.hass, signal_buttons(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
@@ -356,6 +368,7 @@ class SofabatonHub:
             if ready:
                 self.devices = devs
                 self._devices_generation += 1
+                self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -374,6 +387,7 @@ class SofabatonHub:
                 # remember that this entity now has commands cached in the proxy
                 self._command_entities.add(ent_id)
                 self._maybe_complete_command_fetch(ent_id)
+                self._bump_cache_generation()
 
             if self._commands_in_flight:
                 completed: list[int] = []
@@ -408,6 +422,7 @@ class SofabatonHub:
                 for inflight_ent_id in list(self._commands_in_flight):
                     if (inflight_ent_id & 0xFF) == (ent_id & 0xFF):
                         self._maybe_complete_command_fetch(inflight_ent_id)
+                self._bump_cache_generation()
 
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
             async_dispatcher_send(self.hass, signal_macros(self.entry_id))
@@ -445,10 +460,12 @@ class SofabatonHub:
         if devs_ready:
             self.devices = devs
             self._devices_generation += 1
+            self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
 
         if acts_ready:
             self.activities = acts
+            self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
 
         if self.current_activity is not None:
@@ -468,6 +485,7 @@ class SofabatonHub:
         if devs_ready:
             self.devices = devs
             self._devices_generation += 1
+            self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
 
         # Prime hub-side readiness trackers from restored proxy cache.
@@ -484,6 +502,7 @@ class SofabatonHub:
             len(self._proxy._activity_map_complete),
         )
 
+        self._bump_cache_generation()
         async_dispatcher_send(self.hass, signal_buttons(self.entry_id))
         async_dispatcher_send(self.hass, signal_commands(self.entry_id))
         async_dispatcher_send(self.hass, signal_macros(self.entry_id))
@@ -502,8 +521,10 @@ class SofabatonHub:
             if ready:
                 self.devices = devs
                 self._devices_generation += 1
+                self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
         else:
+            self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
 
         async_dispatcher_send(self.hass, signal_commands(self.entry_id))
@@ -513,6 +534,7 @@ class SofabatonHub:
         data = await self.async_export_cache_state()
         data["entry_id"] = self.entry_id
         data["name"] = self.name
+        data["cache_generation"] = self.cache_generation
         data["activities"] = self._build_cache_activity_list(data)
         data["activity_favorites"] = self._build_cache_activity_favorites()
         data["activity_keybindings"] = self._build_cache_activity_keybindings()
@@ -1460,6 +1482,15 @@ class SofabatonHub:
                 )
         else:
             raise ValueError(f"Unknown catalog kind: {kind!r}")
+
+        self._bump_cache_generation()
+        if kind == "activities":
+            async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+            async_dispatcher_send(self.hass, signal_macros(self.entry_id))
+        else:
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
     def get_managed_command_hashes(self) -> list[str]:
         prefix = f"{COMMAND_BRAND_PREFIX}-"

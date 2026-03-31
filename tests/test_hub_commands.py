@@ -303,6 +303,7 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
 
     assert payload["entry_id"] == "entry-id"
     assert payload["name"] == "hub-name"
+    assert payload["cache_generation"] == 0
     assert payload["activities"] == [
         {
             "id": act_id,
@@ -346,6 +347,67 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
             "has_commands": True,
         }
     ]
+
+    loop.close()
+
+
+def test_cache_generation_increments_for_cache_visible_updates(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    assert hub.cache_generation == 0
+
+    monkeypatch.setattr(hub._proxy, "get_devices", lambda: ({0x01: {"name": "TV"}}, True))
+    hub._on_devices_burst("devices")
+    loop.run_until_complete(asyncio.sleep(0))
+    assert hub.cache_generation == 1
+
+    hub._on_commands_burst("commands:1")
+    loop.run_until_complete(asyncio.sleep(0))
+    assert hub.cache_generation == 2
+
+    hub._on_macros_burst("macros:1")
+    loop.run_until_complete(asyncio.sleep(0))
+    assert hub.cache_generation == 3
+
+    loop.close()
+
+
+def test_async_restore_persistent_cache_bumps_cache_generation():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    loop.run_until_complete(hub.async_restore_persistent_cache({}))
+
+    assert hub.cache_generation == 1
 
     loop.close()
 

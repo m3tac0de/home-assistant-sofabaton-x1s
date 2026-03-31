@@ -38,6 +38,7 @@ class _Hub:
     def __init__(self):
         self.cleared = None
         self.fetched = None
+        self.cache_generation = 7
 
     async def async_clear_cache_for(self, *, kind, ent_id):
         self.cleared = (kind, ent_id)
@@ -52,6 +53,7 @@ class _Hub:
         return {
             "entry_id": self.entry_id,
             "name": self.name,
+            "cache_generation": self.cache_generation,
             "devices": {"1": {"name": "TV"}},
             "activities": [{"id": 101, "name": "Movies", "favorite_count": 1, "keybinding_count": 1, "macro_count": 0}],
             "activity_favorites": {"101": [{"button_id": 1, "device_id": 1, "device_name": "TV", "command_id": 2, "label": "Power", "source": "activity_map"}]},
@@ -176,11 +178,47 @@ def test_ws_get_persistent_cache_contents_returns_derived_activity_data(monkeypa
                 {
                     "entry_id": "entry-1",
                     "name": "Living Room",
+                    "cache_generation": 7,
                     "devices": {"1": {"name": "TV"}},
                     "activities": [{"id": 101, "name": "Movies", "favorite_count": 1, "keybinding_count": 1, "macro_count": 0}],
                     "activity_favorites": {"101": [{"button_id": 1, "device_id": 1, "device_name": "TV", "command_id": 2, "label": "Power", "source": "activity_map"}]},
                     "activity_keybindings": {"101": [{"button_id": 183, "button_name": "Ch Up", "device_id": 1, "device_name": "TV", "command_id": 3, "label": "Channel Up", "source": "keymap"}]},
                     "devices_list": [{"id": 1, "name": "TV", "command_count": 1, "has_commands": True}],
+                }
+            ],
+        },
+    )
+
+
+def test_ws_get_persistent_cache_includes_cache_generation(monkeypatch):
+    conn = _Conn()
+    store = _CacheStore(enabled=True)
+    hub = _Hub()
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_get_persistent_cache(SimpleNamespace(data={}), conn, {"id": 34})
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    assert conn.result == (
+        34,
+        {
+            "enabled": True,
+            "hubs": [
+                {
+                    "entry_id": "entry-1",
+                    "name": "Living Room",
+                    "cache_generation": 7,
                 }
             ],
         },

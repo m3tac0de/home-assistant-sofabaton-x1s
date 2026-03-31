@@ -117,6 +117,7 @@ class SofabatonRemote(RemoteEntity):
         )
         return {
             "proxy_client_connected": self._hub.client_connected,
+            "cache_generation": self._hub.cache_generation,
             "hub_version": get_hub_model(self._entry),
             "hub_version_confident": hub_version_confident,
             "hub_mac": hub_mac,
