@@ -33,6 +33,26 @@ function logOnce() {
 logOnce();
 
 class SofabatonControlPanelCard extends HTMLElement {
+  connectedCallback() {
+    this._isCardConnected = true;
+    if (!this._root) return;
+    this._render();
+    if (!this._state && !this._loadingStatePromise) {
+      this._loadState();
+      return;
+    }
+    this._flushAutoReload();
+  }
+
+  disconnectedCallback() {
+    this._isCardConnected = false;
+    if (this._autoReloadTimer != null) {
+      window.clearTimeout(this._autoReloadTimer);
+      this._autoReloadTimer = null;
+    }
+    const pickerDialog = this._root?.getElementById("hub-picker-dialog");
+    if (pickerDialog?.open) pickerDialog.close();
+  }
   // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
   static getConfigElement() {
@@ -53,17 +73,21 @@ class SofabatonControlPanelCard extends HTMLElement {
       this._openSection = "activities";
       this._openEntity = null;
       this._autoReloadTimer = null;
+      this._isCardConnected = this.isConnected;
       this._pendingAutoReload = false;
       this._suppressAutoReload = false;
       this._lastObservedGenerations = generationSnapshot;
       this._lastHassFingerprint = fingerprint;
-      this._loadState();
-      this._render();
+      if (this._isCardConnected) {
+        this._loadState();
+        this._render();
+      }
       return;
     }
 
     if (fingerprint !== this._lastHassFingerprint) {
       if (
+        this._isCardConnected &&
         !this._suppressAutoReload &&
         this._didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)
       ) {
@@ -71,7 +95,7 @@ class SofabatonControlPanelCard extends HTMLElement {
       }
       this._lastObservedGenerations = generationSnapshot;
       this._lastHassFingerprint = fingerprint;
-      this._render();
+      if (this._isCardConnected) this._render();
     }
   }
 
@@ -156,6 +180,10 @@ class SofabatonControlPanelCard extends HTMLElement {
   }
 
   _scheduleAutoReload() {
+    if (!this._isCardConnected) {
+      this._pendingAutoReload = true;
+      return;
+    }
     if (this._refreshBusy || this._loading) {
       this._pendingAutoReload = true;
       return;
@@ -178,6 +206,7 @@ class SofabatonControlPanelCard extends HTMLElement {
 
   _flushAutoReload() {
     if (!this._pendingAutoReload) return;
+    if (!this._isCardConnected) return;
     if (this._refreshBusy || this._loading || this._autoReloadTimer != null) return;
     this._scheduleAutoReload();
   }
@@ -948,7 +977,7 @@ class SofabatonControlPanelCard extends HTMLElement {
   // ─── Render: Main ─────────────────────────────────────────────────────────────
 
   _render() {
-    if (!this._hass || !this._root) return;
+    if (!this._hass || !this._root || !this._isCardConnected) return;
 
     const hub = this._selectedHub();
     const hubs = Array.isArray(this._contents?.hubs) ? this._contents.hubs : [];
