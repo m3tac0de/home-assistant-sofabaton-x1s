@@ -1,5 +1,5 @@
 const TOOLS_TYPE = "sofabaton-control-panel";
-const TOOLS_VERSION = "0.0.1";
+const TOOLS_VERSION = "0.0.2";
 const TOOLS_LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
 
 const BUTTON_NAMES = {
