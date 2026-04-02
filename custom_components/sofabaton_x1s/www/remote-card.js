@@ -1,5 +1,5 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.1.5";
+const CARD_VERSION = "0.1.4";
 const KEY_CAPTURE_HELP_URL =
   "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 const YAML_HELPER_INFO_URL =
