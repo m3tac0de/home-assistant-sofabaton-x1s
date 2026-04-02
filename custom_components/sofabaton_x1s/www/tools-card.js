@@ -108,12 +108,14 @@ class SofabatonControlPanelCard extends HTMLElement {
     return this._hass.callWS(msg);
   }
 
-  async _loadState() {
+  async _loadState(options = {}) {
     if (this._loadingStatePromise) return this._loadingStatePromise;
+
+    const silent = !!options?.silent;
 
     this._loading = true;
     this._loadError = null;
-    this._render();
+    if (!silent) this._render();
 
     this._loadingStatePromise = (async () => {
       try {
@@ -336,6 +338,33 @@ class SofabatonControlPanelCard extends HTMLElement {
     body.scrollTo({ top: body.scrollTop + (entityTop - bodyTop), behavior: "smooth" });
   }
 
+  _captureCacheScrollState() {
+    if (!this._root || this._selectedTab !== "cache") return null;
+    const state = {
+      section: this._openSection || null,
+      sectionTop: 0,
+      panelTop: 0,
+    };
+    const body = state.section ? this._root.getElementById(`acc-body-${state.section}`) : null;
+    const panel = this._root.querySelector(".tab-panel");
+    if (body) state.sectionTop = body.scrollTop || 0;
+    if (panel) state.panelTop = panel.scrollTop || 0;
+    return state;
+  }
+
+  _restoreCacheScrollState(snapshot) {
+    if (!snapshot || !this._root || this._selectedTab !== "cache") return;
+    requestAnimationFrame(() => {
+      const panel = this._root.querySelector(".tab-panel");
+      if (panel) panel.scrollTop = Number(snapshot.panelTop || 0);
+
+      const body = snapshot.section
+        ? this._root.getElementById(`acc-body-${snapshot.section}`)
+        : null;
+      if (body) body.scrollTop = Number(snapshot.sectionTop || 0);
+    });
+  }
+
   _applyOptimisticSetting(setting, enabled) {
     if (!this._state) return;
     const hub = this._selectedHub();
@@ -493,7 +522,7 @@ class SofabatonControlPanelCard extends HTMLElement {
 
     try {
       await this._ws(this._refreshPayload(kind, hubEntryId, targetId));
-      await this._loadState();
+      await this._loadState({ silent: true });
     } catch (_err) {
       // intentionally silent
     } finally {
@@ -501,7 +530,9 @@ class SofabatonControlPanelCard extends HTMLElement {
       this._activeRefreshLabel = null;
       this._staleData = false;
       this._render();
-      requestAnimationFrame(() => this._scrollEntityToTop(key));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => this._scrollEntityToTop(key));
+      });
     }
   }
 
@@ -519,7 +550,7 @@ class SofabatonControlPanelCard extends HTMLElement {
         entry_id: hub.entry_id,
         kind: sectionId,
       });
-      await this._loadState();
+      await this._loadState({ silent: true });
     } catch (_err) {
       // intentionally silent
     } finally {
@@ -1446,6 +1477,8 @@ class SofabatonControlPanelCard extends HTMLElement {
   _render() {
     if (!this._hass || !this._root || !this._isCardConnected) return;
 
+    const scrollSnapshot = this._captureCacheScrollState();
+
     const hub = this._selectedHub();
     const hubCache = this._selectedHubCache();
     const hubs = Array.isArray(this._state?.hubs) ? this._state.hubs : [];
@@ -1487,6 +1520,7 @@ class SofabatonControlPanelCard extends HTMLElement {
     `;
 
     this._wireUp(hub);
+    this._restoreCacheScrollState(scrollSnapshot);
   }
 
   _wireUp(hub) {

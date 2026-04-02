@@ -1,5 +1,5 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.1.3";
+const CARD_VERSION = "0.1.4";
 const KEY_CAPTURE_HELP_URL =
   "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 const YAML_HELPER_INFO_URL =
@@ -3108,6 +3108,14 @@ class SofabatonRemoteCard extends HTMLElement {
       }
       ha-select { width: 100%; }
 
+      /* HA 2026.04 introduced --ha-color-form-background (used by ha-combo-box-item
+         inside ha-select). Community themes predate this variable so it falls back
+         to the built-in light default (rgb(243,243,243)) even in dark themes.
+         Override it here with theme-aware fallbacks so the field matches the theme. */
+      .sb-activity-select {
+        --ha-color-form-background: var(--input-fill-color, var(--secondary-background-color, rgb(243, 243, 243)));
+      }
+
       .activityRow { 
         display: grid; 
         grid-template-columns: 1fr; 
@@ -3854,6 +3862,7 @@ class SofabatonRemoteCard extends HTMLElement {
 
     this._activitySelect = document.createElement("ha-select");
     this._activitySelect.label = "Activity";
+    this._activitySelect.classList.add("sb-activity-select");
 
     let lastSelectedActivityValue = null;
     let lastSelectedActivityAt = 0;
@@ -4513,6 +4522,9 @@ class SofabatonRemoteCard extends HTMLElement {
       ? Date.now() - this._pendingActivityAt
       : null;
     const pendingExpired = pendingAge != null && pendingAge > 15000;
+
+    // Propagate hass so ha-select can apply the current theme (HA 2026.04+)
+    this._activitySelect.hass = this._hass;
 
     if (isUnavailable) {
       this._activitySelect.disabled = true;
