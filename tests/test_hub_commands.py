@@ -387,6 +387,113 @@ def test_cache_generation_increments_for_cache_visible_updates(monkeypatch):
     loop.close()
 
 
+def test_identical_activity_refresh_does_not_bump_cache_generation(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub.activities = {101: {"name": "Watch TV", "active": False, "needs_confirm": False}}
+
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_activities",
+        lambda: ({101: {"name": "Watch TV", "active": False, "needs_confirm": False}}, True),
+    )
+
+    hub._on_activities_burst("activities")
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert hub.cache_generation == 0
+    assert hub.activities[101]["name"] == "Watch TV"
+
+    loop.close()
+
+
+def test_activity_active_flag_changes_without_bumping_cache_generation(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub.activities = {101: {"name": "Watch TV", "active": False, "needs_confirm": False}}
+    hub.current_activity = None
+
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_activities",
+        lambda: ({101: {"name": "Watch TV", "active": True, "needs_confirm": False}}, True),
+    )
+
+    hub._on_activities_burst("activities")
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert hub.cache_generation == 0
+    assert hub.current_activity == 101
+    assert hub.activities[101]["active"] is True
+
+    loop.close()
+
+
+def test_activity_catalog_name_change_bumps_cache_generation(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub.activities = {101: {"name": "Old Name", "active": False, "needs_confirm": False}}
+
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_activities",
+        lambda: ({101: {"name": "New Name", "active": False, "needs_confirm": False}}, True),
+    )
+
+    hub._on_activities_burst("activities")
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert hub.cache_generation == 1
+    assert hub.activities[101]["name"] == "New Name"
+
+    loop.close()
+
+
 def test_async_restore_persistent_cache_bumps_cache_generation():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

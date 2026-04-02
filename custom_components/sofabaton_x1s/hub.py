@@ -143,6 +143,23 @@ class SofabatonHub:
         self._cache_generation += 1
         return self._cache_generation
 
+    def _activity_catalog_signature(
+        self, activities: dict[int, dict[str, Any]] | None = None
+    ) -> tuple[tuple[int, str], ...]:
+        rows = activities if isinstance(activities, dict) else self.activities
+        signature: list[tuple[int, str]] = []
+        for act_id, activity in rows.items():
+            if not isinstance(activity, dict):
+                continue
+            signature.append((int(act_id) & 0xFF, str(activity.get("name") or "").strip()))
+        signature.sort()
+        return tuple(signature)
+
+    def _replace_activities(self, activities: dict[int, dict[str, Any]]) -> bool:
+        previous_signature = self._activity_catalog_signature()
+        self.activities = activities
+        return self._activity_catalog_signature(activities) != previous_signature
+
     def _create_proxy(self) -> X1Proxy:
         proxy = X1Proxy(
             real_hub_ip=self.host,
@@ -275,9 +292,10 @@ class SofabatonHub:
             )
             self.activities_ready = ready
             if ready:
-                self.activities = acts
+                activities_changed = self._replace_activities(acts)
                 self._activities_generation += 1
-                self._bump_cache_generation()
+                if activities_changed:
+                    self._bump_cache_generation()
                 self._sync_current_activity_from_cache(clear_when_unknown=True)
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
@@ -286,8 +304,8 @@ class SofabatonHub:
         def _inner() -> None:
             acts, ready = self._get_activities_cached()
             if acts:
-                self.activities = acts
-                self._bump_cache_generation()
+                if self._replace_activities(acts):
+                    self._bump_cache_generation()
                 self._sync_current_activity_from_cache(clear_when_unknown=False)
             if ready:
                 self.activities_ready = True
@@ -464,8 +482,8 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
 
         if acts_ready:
-            self.activities = acts
-            self._bump_cache_generation()
+            if self._replace_activities(acts):
+                self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
 
         if self.current_activity is not None:
