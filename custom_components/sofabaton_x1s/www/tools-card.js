@@ -180,6 +180,10 @@ class SofabatonControlPanelCard extends HTMLElement {
     return !!hub.proxy_client_connected;
   }
 
+  _hubConnected(hub) {
+    return this._remoteAvailableForHub(hub) || this._proxyClientConnected(hub);
+  }
+
   _canRunHubActions(hub) {
     return this._remoteAvailableForHub(hub);
   }
@@ -267,6 +271,27 @@ class SofabatonControlPanelCard extends HTMLElement {
 
   _buttonName(btnId) {
     return BUTTON_NAMES[btnId] || `Button ${btnId}`;
+  }
+
+  _hubIconSvg(kind, classes = "") {
+    const cls = classes ? ` class="${classes}"` : "";
+    const icons = {
+      hero: `
+        <svg${cls} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 421.04 173.01" aria-hidden="true" fill="currentColor">
+          <path d="M87.39,45.33c0,21.03,50.51,44.46,123,44.46s123-23.43,123-44.46S282.87.87,210.39.87s-123,23.43-123,44.46Z"></path>
+          <path d="M25.79,116h367c11.44,0,18.11-2.01,23.05-6.95,6.19-6.19,6.93-17.18,1.79-26.73l-28.97-54.94C375.65,4.75,344.58,0,320.79,0h-22.52c2.26.78,4.48,1.59,6.62,2.43,27.41,10.85,42.5,26.08,42.5,42.9s-15.09,32.05-42.5,42.9c-25.35,10.04-58.92,15.56-94.5,15.56s-69.15-5.53-94.5-15.56c-27.41-10.85-42.5-26.08-42.5-42.9S88.48,13.28,115.89,2.43c2.14-.85,4.36-1.65,6.62-2.43h-19.72c-23.82,0-54.95,4.77-67.92,27.47L1.18,85.93c-2.61,7.76-.85,15.91,4.88,22.46,5.4,6.3,13.71,7.61,19.73,7.61Z"></path>
+          <path d="M25.79,130c-7.42,0-14.04-1.44-19.67-4.22,5.85,12.19,14.63,22.79,26.26,31.66,9.25,7.11,24.67,15.57,45.76,15.57h264c14.9,0,28.65-4.5,42.02-13.76,12.95-9.01,22.84-19.89,29.61-32.48-6.92,2.72-14.25,3.23-20.98,3.23H25.79Z"></path>
+        </svg>`,
+      activities: `
+        <ha-icon${cls} icon="mdi:play-circle-outline"></ha-icon>`,
+      devices: `
+        <ha-icon${cls} icon="mdi:remote"></ha-icon>`,
+      ip: `
+        <ha-icon${cls} icon="mdi:router-wireless"></ha-icon>`,
+      version: `
+        <ha-icon${cls} icon="mdi:cog-outline"></ha-icon>`,
+    };
+    return icons[kind] || "";
   }
 
   _devicesForHub(hub) {
@@ -684,6 +709,136 @@ class SofabatonControlPanelCard extends HTMLElement {
       .tab-panel.scrollable {
         overflow-y: auto;
       }
+      .hub-hero {
+        display: grid;
+        gap: 10px;
+        padding: 2px 0 0;
+      }
+      .hub-connection-strip {
+        display: grid;
+        grid-template-columns: auto minmax(26px, 1fr) auto minmax(26px, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color));
+        border-radius: calc(var(--ha-card-border-radius, 12px) + 4px);
+        background:
+          radial-gradient(circle at top center, color-mix(in srgb, var(--primary-color) 8%, transparent), transparent 55%),
+          linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--card-background-color, #fff) 92%, transparent),
+            color-mix(in srgb, var(--card-background-color, #fff) 86%, transparent)
+          );
+        overflow: hidden;
+      }
+      .hub-connection-node {
+        position: relative;
+        width: 54px;
+        height: 54px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 18px;
+        border: 1px solid color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color));
+        background: color-mix(in srgb, var(--card-background-color, #fff) 94%, transparent);
+        color: color-mix(in srgb, var(--primary-text-color) 34%, var(--secondary-text-color));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        transition: color 180ms ease, border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background 180ms ease;
+      }
+      .hub-connection-node.is-active {
+        color: color-mix(in srgb, var(--primary-color) 72%, white 10%);
+        border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+        box-shadow:
+          0 0 0 1px color-mix(in srgb, var(--primary-color) 12%, transparent),
+          0 0 18px color-mix(in srgb, var(--primary-color) 14%, transparent);
+      }
+      .hub-connection-node.is-bridged {
+        color: color-mix(in srgb, #67b7ff 75%, white 10%);
+        border-color: color-mix(in srgb, #67b7ff 45%, var(--divider-color));
+        background: color-mix(in srgb, #67b7ff 11%, transparent);
+        box-shadow:
+          0 0 0 1px color-mix(in srgb, #67b7ff 12%, transparent),
+          0 0 18px color-mix(in srgb, #67b7ff 16%, transparent);
+      }
+      .hub-connection-node.is-active .hub-connection-node-icon {
+        animation: hubNodePulse 2.8s ease-in-out infinite;
+      }
+      .hub-connection-node-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .hub-connection-node-icon--hub {
+        width: 33px;
+        height: 33px;
+      }
+      .hub-connection-node-icon--mdi ha-icon {
+        --mdc-icon-size: 24px;
+      }
+      .hub-hero-icon {
+        width: 33px;
+        height: 33px;
+        display: block;
+      }
+      .hub-connection-link {
+        position: relative;
+        height: 12px;
+        display: flex;
+        align-items: center;
+      }
+      .hub-connection-link-line {
+        position: relative;
+        width: 100%;
+        height: 2px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color));
+        overflow: hidden;
+      }
+      .hub-connection-link-line::after {
+        content: "";
+        position: absolute;
+        inset: 0 auto 0 -35%;
+        width: 35%;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          color-mix(in srgb, var(--primary-color) 45%, white 10%),
+          transparent
+        );
+        opacity: 0;
+      }
+      .hub-connection-link.is-active .hub-connection-link-line {
+        background: color-mix(in srgb, var(--primary-color) 28%, var(--divider-color));
+        box-shadow: 0 0 8px color-mix(in srgb, var(--primary-color) 14%, transparent);
+      }
+      .hub-connection-link.is-active .hub-connection-link-line::after {
+        opacity: 0.9;
+        animation: hubSignalTravel 2.2s linear infinite;
+      }
+      @keyframes hubSignalTravel {
+        from { transform: translateX(0); }
+        to { transform: translateX(380%); }
+      }
+      @keyframes hubNodePulse {
+        0%, 100% { transform: scale(1); opacity: 0.96; }
+        50% { transform: scale(1.03); opacity: 1; }
+      }
+      .hub-ident {
+        min-width: 0;
+      }
+      .hub-ident--hero {
+        display: grid;
+        gap: 0;
+        padding: 0 2px;
+      }
+      .hub-ident-name {
+        font-size: 18px;
+        line-height: 1.1;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        color: var(--primary-text-color);
+      }
 
       .overview-grid,
       .settings-grid {
@@ -918,6 +1073,100 @@ class SofabatonControlPanelCard extends HTMLElement {
         justify-content: space-between;
       }
       .id-badge .id-type { color: var(--secondary-text-color); opacity: 0.75; }
+
+      .hub-badges {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 8px 0 12px;
+      }
+      .hub-conn-badge,
+      .hub-proxy-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        min-height: 38px;
+        padding: 0 14px 0 12px;
+        border-radius: 999px;
+        border: 1px solid var(--divider-color);
+        font-size: 13px;
+        font-weight: 700;
+        backdrop-filter: blur(4px);
+      }
+      .hub-conn-badge::before,
+      .hub-proxy-badge::before {
+        content: "";
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: currentColor;
+        flex-shrink: 0;
+      }
+      .hub-conn-badge--on {
+        color: #48b851;
+        border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
+        background: color-mix(in srgb, #48b851 14%, transparent);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, #48b851 14%, transparent);
+      }
+      .hub-conn-badge--off,
+      .hub-proxy-badge--off {
+        color: color-mix(in srgb, var(--primary-text-color) 82%, var(--secondary-text-color));
+        border-color: color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color));
+        background: color-mix(in srgb, var(--primary-text-color) 8%, transparent);
+      }
+      .hub-proxy-badge--on {
+        color: #67b7ff;
+        border-color: color-mix(in srgb, #67b7ff 42%, var(--divider-color));
+        background: color-mix(in srgb, #67b7ff 14%, transparent);
+      }
+      .hub-info-list {
+        border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color));
+        border-radius: calc(var(--ha-card-border-radius, 12px) + 4px);
+        background: linear-gradient(
+          180deg,
+          color-mix(in srgb, var(--card-background-color, #fff) 90%, transparent),
+          color-mix(in srgb, var(--card-background-color, #fff) 84%, transparent)
+        );
+        overflow: hidden;
+      }
+      .hub-row {
+        min-height: 58px;
+        display: grid;
+        grid-template-columns: 36px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px;
+        border-top: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color));
+      }
+      .hub-row:first-child {
+        border-top: none;
+      }
+      .hub-row-icon {
+        width: 24px;
+        height: 24px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: #6b8fbe;
+      }
+      .hub-row-icon-svg {
+        --mdc-icon-size: 22px;
+        width: 22px;
+        height: 22px;
+        display: block;
+      }
+      .hub-row-label {
+        font-size: 13px;
+        font-weight: 500;
+        color: color-mix(in srgb, var(--primary-text-color) 88%, var(--secondary-text-color));
+      }
+      .hub-row-value {
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--primary-text-color);
+        text-align: right;
+        word-break: break-word;
+      }
       .id-badge .id-value { color: var(--primary-text-color); text-align: right; }
       .entity-count {
         font-size: 11px;
@@ -1019,95 +1268,55 @@ class SofabatonControlPanelCard extends HTMLElement {
       }
       .stale-banner-btn:hover { background: var(--secondary-background-color); }
       /* ── Hub tab overview ── */
-      .hub-ident {
-        padding: 8px 0 4px;
-      }
-      .hub-ident-name {
-        font-size: 22px;
-        font-weight: 700;
-        color: var(--primary-text-color);
-        line-height: 1.2;
-      }
-      .hub-ident-meta {
-        font-size: 13px;
-        color: var(--secondary-text-color);
-        margin-top: 4px;
-        letter-spacing: 0.01em;
-      }
-      .hub-badges {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        padding: 12px 0 4px;
-      }
-      .hub-conn-badge,
-      .hub-proxy-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        border-radius: 999px;
-        font-size: 12px;
-        font-weight: 600;
-        white-space: nowrap;
-        border: 1px solid transparent;
-      }
-      .hub-conn-badge::before,
-      .hub-proxy-badge::before {
-        content: "";
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: currentColor;
-        flex-shrink: 0;
-      }
-      .hub-conn-badge--on {
-        background: color-mix(in srgb, #4caf50 13%, transparent);
-        color: #4caf50;
-        border-color: color-mix(in srgb, #4caf50 28%, transparent);
-      }
-      .hub-conn-badge--off {
-        background: color-mix(in srgb, var(--error-color, #db4437) 11%, transparent);
-        color: var(--error-color, #db4437);
-        border-color: color-mix(in srgb, var(--error-color, #db4437) 22%, transparent);
-      }
-      .hub-proxy-badge--on {
-        background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-        color: var(--primary-color);
-        border-color: color-mix(in srgb, var(--primary-color) 25%, transparent);
-      }
-      .hub-proxy-badge--off {
-        background: transparent;
-        color: var(--secondary-text-color);
-        border-color: var(--divider-color);
-      }
-      .hub-info-list {
-        margin-top: 16px;
-        border-top: 1px solid var(--divider-color);
-      }
-      .hub-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 11px 0;
-        border-bottom: 1px solid var(--divider-color);
-        gap: 12px;
-      }
-      .hub-row-label {
-        font-size: 13px;
-        color: var(--secondary-text-color);
-      }
-      .hub-row-value {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--primary-text-color);
-        text-align: right;
-      }
-
       @media (max-width: 640px) {
         .overview-grid,
         .settings-grid {
           grid-template-columns: 1fr;
+        }
+        .hub-hero {
+          gap: 8px;
+        }
+        .hub-connection-strip {
+          grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto;
+          gap: 6px;
+          padding: 8px 10px;
+        }
+        .hub-connection-node {
+          width: 42px;
+          height: 42px;
+          border-radius: 14px;
+        }
+        .hub-connection-node-icon--hub,
+        .hub-hero-icon {
+          width: 25px;
+          height: 25px;
+        }
+        .hub-connection-node-icon--mdi ha-icon {
+          --mdc-icon-size: 19px;
+        }
+        .hub-ident-name {
+          font-size: 15px;
+        }
+        .hub-conn-badge,
+        .hub-proxy-badge {
+          min-height: 34px;
+          font-size: 12px;
+          padding: 0 12px;
+        }
+        .hub-row {
+          min-height: 52px;
+          grid-template-columns: 24px minmax(0, 1fr) auto;
+          gap: 10px;
+          padding: 0 14px;
+        }
+        .hub-row-label {
+          font-size: 12px;
+        }
+        .hub-row-value {
+          grid-column: auto;
+          text-align: right;
+          font-size: 12px;
+          white-space: nowrap;
         }
       }
     </style>`;
@@ -1292,35 +1501,60 @@ class SofabatonControlPanelCard extends HTMLElement {
       return `<div class="cache-state">No hubs found.</div>`;
     }
 
-    const connected = !!hub.hub_connected;
+    const connected = this._hubConnected(hub);
     const proxyOn   = this._proxyClientConnected(hub);
-    const meta = [hub.ip_address, hub.version].filter(Boolean).join("  ·  ");
-
-    const row = (label, value) => `
+    const haActive = connected || proxyOn;
+    const haFullyActive = connected && proxyOn;
+    const row = (kind, label, value) => `
       <div class="hub-row">
+        <span class="hub-row-icon">${this._hubIconSvg(kind, "hub-row-icon-svg")}</span>
         <span class="hub-row-label">${label}</span>
         <span class="hub-row-value">${value}</span>
       </div>`;
 
     return `
       <div class="tab-panel scrollable">
-        <div class="hub-ident">
-          <div class="hub-ident-name">${this._escape(hub.name || "Unknown")}</div>
-          ${meta ? `<div class="hub-ident-meta">${this._escape(meta)}</div>` : ""}
+        <div class="hub-hero">
+          <div class="hub-ident hub-ident--hero">
+            <div class="hub-ident-name">${this._escape(hub.name || "Unknown")}</div>
+          </div>
+          <div class="hub-connection-strip" role="img" aria-label="Hub connection status">
+            <div class="hub-connection-node hub-connection-node--hub${connected ? " is-active" : ""}">
+              <span class="hub-connection-node-icon hub-connection-node-icon--hub">
+                ${this._hubIconSvg("hero", "hub-hero-icon")}
+              </span>
+            </div>
+            <div class="hub-connection-link${connected ? " is-active" : ""}">
+              <span class="hub-connection-link-line"></span>
+            </div>
+            <div class="hub-connection-node hub-connection-node--ha${haActive ? " is-active" : ""}${haFullyActive ? " is-bridged" : ""}">
+              <span class="hub-connection-node-icon hub-connection-node-icon--mdi">
+                <ha-icon icon="mdi:home-assistant"></ha-icon>
+              </span>
+            </div>
+            <div class="hub-connection-link${proxyOn ? " is-active" : ""}">
+              <span class="hub-connection-link-line"></span>
+            </div>
+            <div class="hub-connection-node hub-connection-node--app${proxyOn ? " is-active" : ""}">
+              <span class="hub-connection-node-icon hub-connection-node-icon--mdi">
+                <ha-icon icon="mdi:tablet-cellphone"></ha-icon>
+              </span>
+            </div>
+          </div>
         </div>
         <div class="hub-badges">
           <span class="hub-conn-badge ${connected ? "hub-conn-badge--on" : "hub-conn-badge--off"}">
-            ${connected ? "Hub connected" : "Hub disconnected"}
+            ${connected ? "Hub connected" : "Hub not connected"}
           </span>
           <span class="hub-proxy-badge ${proxyOn ? "hub-proxy-badge--on" : "hub-proxy-badge--off"}">
-            ${proxyOn ? "App connected" : "App disconnected"}
+            ${proxyOn ? "App connected" : "App not connected"}
           </span>
         </div>
         <div class="hub-info-list">
-          ${row("Activities", Number(hub.activity_count || 0))}
-          ${row("Devices", Number(hub.device_count || 0))}
-          ${hub.ip_address ? row("IP Address", this._escape(hub.ip_address)) : ""}
-          ${hub.version    ? row("Version",    this._escape(hub.version))    : ""}
+          ${row("activities", "Activities", Number(hub.activity_count || 0))}
+          ${row("devices", "Devices", Number(hub.device_count || 0))}
+          ${hub.ip_address ? row("ip", "IP Address", this._escape(hub.ip_address)) : ""}
+          ${hub.version    ? row("version", "Version", this._escape(hub.version))    : ""}
         </div>
       </div>`;
   }
