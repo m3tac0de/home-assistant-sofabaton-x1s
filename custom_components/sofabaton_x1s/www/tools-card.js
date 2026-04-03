@@ -831,6 +831,7 @@ class SofabatonControlPanelCard extends HTMLElement {
         display: grid;
         gap: 0;
         padding: 0 2px;
+        margin: 8px 0 12px;
       }
       .hub-ident-name {
         font-size: 18px;
@@ -1551,10 +1552,10 @@ class SofabatonControlPanelCard extends HTMLElement {
           </span>
         </div>
         <div class="hub-info-list">
+          ${hub.version    ? row("version", "Version", "Sofabaton " + this._escape(hub.version))    : ""}
+          ${hub.ip_address ? row("ip", "IP Address", this._escape(hub.ip_address)) : ""}
           ${row("activities", "Activities", Number(hub.activity_count || 0))}
           ${row("devices", "Devices", Number(hub.device_count || 0))}
-          ${hub.ip_address ? row("ip", "IP Address", this._escape(hub.ip_address)) : ""}
-          ${hub.version    ? row("version", "Version", this._escape(hub.version))    : ""}
         </div>
       </div>`;
   }
