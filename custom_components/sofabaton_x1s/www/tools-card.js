@@ -854,7 +854,7 @@ class SofabatonControlPanelCard extends HTMLElement {
       }
       .hub-connection-link.is-active .hub-connection-link-line::after {
         opacity: 0.9;
-        animation: hubSignalTravel 2.2s linear infinite;
+        animation: hubSignalTravel 2.4s ease-in-out infinite alternate;
       }
       @keyframes hubSignalTravel {
         from { transform: translateX(0); }
