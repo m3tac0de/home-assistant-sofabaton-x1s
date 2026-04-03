@@ -56,6 +56,7 @@ class SofabatonControlPanelCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     const fingerprint = this._hassFingerprint();
+    const connectionFingerprint = this._connectionFingerprint();
     const generationSnapshot = this._cacheGenerationSnapshot();
 
     if (!this._root) {
@@ -68,8 +69,10 @@ class SofabatonControlPanelCard extends HTMLElement {
       this._refreshGraceUntil = 0;
       this._pendingSettingKey = null;
       this._pendingActionKey = null;
+      this._pendingLiveStateRefresh = null;
       this._lastObservedGenerations = generationSnapshot;
       this._lastHassFingerprint = fingerprint;
+      this._lastConnectionFingerprint = connectionFingerprint;
       if (this._isCardConnected) {
         this._loadState();
         this._render();
@@ -78,6 +81,7 @@ class SofabatonControlPanelCard extends HTMLElement {
     }
 
     if (fingerprint !== this._lastHassFingerprint) {
+      const connectionChanged = connectionFingerprint !== this._lastConnectionFingerprint;
       if (
         this._isCardConnected &&
         !this._refreshBusy &&
@@ -89,7 +93,30 @@ class SofabatonControlPanelCard extends HTMLElement {
       }
       this._lastObservedGenerations = generationSnapshot;
       this._lastHassFingerprint = fingerprint;
+      this._lastConnectionFingerprint = connectionFingerprint;
       if (this._isCardConnected) {
+        if (
+          connectionChanged &&
+          !this._loading &&
+          !this._loadingStatePromise &&
+          !this._pendingLiveStateRefresh
+        ) {
+          this._pendingLiveStateRefresh = this._loadControlPanelState()
+            .catch(() => {
+              // best-effort live refresh only
+            })
+            .finally(() => {
+              this._pendingLiveStateRefresh = null;
+              if (!this._isCardConnected) return;
+              if (this._selectedTab === "settings") {
+                this._syncTabButtonsUi();
+                this._syncSettingsTabUi();
+              } else {
+                this._render();
+              }
+            });
+        }
+
         if (this._selectedTab === "settings") {
           this._syncTabButtonsUi();
           this._syncSettingsTabUi();
@@ -218,6 +245,19 @@ class SofabatonControlPanelCard extends HTMLElement {
         const state = String(this._hass.states[id]?.state || "");
         const attrs = this._hass.states[id]?.attributes || {};
         return `${id};${attrs.entry_id || ""};${state};${attrs.proxy_client_connected ? "1" : "0"};${Number(attrs.cache_generation || 0)}`;
+      })
+      .join("||");
+  }
+
+  _connectionFingerprint() {
+    if (!this._hass?.states) return "";
+
+    return this._remoteEntities()
+      .sort()
+      .map((id) => {
+        const state = String(this._hass.states[id]?.state || "");
+        const attrs = this._hass.states[id]?.attributes || {};
+        return `${id};${attrs.entry_id || ""};${state};${attrs.proxy_client_connected ? "1" : "0"}`;
       })
       .join("||");
   }
