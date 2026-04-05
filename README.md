@@ -194,7 +194,7 @@ More details are here: [`docs/wifi_commands.md`](docs/wifi_commands.md)
 > - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
 
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/79f2d841-e4ef-4252-9a62-e2c7ef577f88" />  
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/de132346-40ca-422e-a5e9-abb7efce6433" />  
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/d87210e9-2966-4d05-9d40-bbb89296e410" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/ead35c29-9a53-4906-a7af-c65009bba3fc" />  
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/7bdad456-f637-43c6-8c50-9c3ccaad6990" />  
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/45e2f748-44f2-48c6-bc70-abee75ad30cf" />
