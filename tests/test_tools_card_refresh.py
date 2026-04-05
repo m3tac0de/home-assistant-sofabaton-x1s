@@ -23,12 +23,10 @@ def test_tools_card_coalesces_generation_driven_reloads() -> None:
         encoding="utf-8",
     )
 
-    assert "const AUTO_RELOAD_BUFFER_MS =" in source
     assert "_didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)" in source
-    assert "this._scheduleAutoReload();" in source
-    assert "this._pendingAutoReload = true;" in source
-    assert "window.clearTimeout(this._autoReloadTimer);" in source
-    assert "}, AUTO_RELOAD_BUFFER_MS);" in source
+    assert "this._staleData = true;" in source
+    assert "this._lastObservedGenerations = generationSnapshot;" in source
+    assert "_cacheGenerationSnapshot()" in source
     assert "this._loadingStatePromise" in source
 
 
@@ -37,7 +35,7 @@ def test_tools_card_flushes_pending_reload_after_manual_refresh() -> None:
         encoding="utf-8",
     )
 
-    assert source.count("this._flushAutoReload();") >= 3
+    assert source.count("this._staleData = false;") >= 3
 
 
 def test_tools_card_manual_refresh_suppresses_generation_driven_follow_up_reload() -> None:
@@ -45,10 +43,8 @@ def test_tools_card_manual_refresh_suppresses_generation_driven_follow_up_reload
         encoding="utf-8",
     )
 
-    assert "this._suppressAutoReload = true;" in source
-    assert "this._suppressAutoReload = false;" in source
-    assert "this._pendingAutoReload = false;" in source
-    assert "!this._suppressAutoReload &&" in source
+    assert "this._refreshGraceUntil = Date.now() + 10000;" in source
+    assert "Date.now() > this._refreshGraceUntil &&" in source
 
 
 def test_tools_card_includes_three_tabs_and_no_cache_footer() -> None:
@@ -128,8 +124,9 @@ def test_tools_card_hub_overview_includes_connection_status_tiles() -> None:
         encoding="utf-8",
     )
 
-    assert "Hub Connected" in source
-    assert "Proxy Client Connected" in source
+    assert "Hub connected" in source
+    assert "Hub not connected" in source
+    assert "proxy client is connected" in source
 
 
 def test_tools_card_hub_and_settings_tabs_are_scrollable() -> None:

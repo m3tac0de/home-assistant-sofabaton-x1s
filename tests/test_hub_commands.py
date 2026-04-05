@@ -1633,6 +1633,105 @@ def test_sync_command_config_reports_wifi_listener_enable_failure(monkeypatch):
     loop.close()
 
 
+def test_sync_command_config_post_hoc_reorder_uses_tracked_fav_ids(monkeypatch):
+    """Post-hoc reorder uses fav_ids returned by command_to_favorite calls.
+
+    Validates the fix for the X1 fav_id-recycling bug: when the hub reuses
+    freed ids for newly-added favorites, a pre-existing-snapshot approach
+    mis-classifies recycled ids as "existing to preserve" and perpetuates a
+    scrambled order.  Tracking the actual fav_id from each add's return value
+    lets the reorder correctly place macros first and new WiFi commands after.
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    # Short-circuit the device-snapshot refresh so the test doesn't wait 15 s.
+    async def _refresh_devices(_timeout=15.0):
+        return {}  # no managed wifi devices
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices)
+
+    async def _create(*_args, **_kwargs):
+        return {"device_id": 9, "status": "success"}
+
+    async def _add_activity(*_args, **_kwargs):
+        return {"status": "success"}
+
+    # Simulate X1 hub recycling: after the prior managed device was deleted,
+    # fav_ids 1-5 were freed and will be reused for the new adds in add order.
+    # fav_id 6 is a pre-existing macro that must stay at the top.
+    recycled_ids = iter([1, 2, 3, 4, 5])
+
+    async def _favorite(activity_id, device_id, command_id, **kwargs):
+        return {"status": "success", "fav_id": next(recycled_ids)}
+
+    # Hub state after all five adds: macro at slot 6, new favs at slots 1-5
+    # but in a scrambled order inherited from the old WiFi-command ordering.
+    scrambled_order: list[tuple[int, int]] = [
+        (5, 1), (1, 2), (3, 3), (2, 4), (4, 5), (6, 6),
+    ]
+
+    async def _request_favorites_order(_act_id):
+        return list(scrambled_order)
+
+    reorder_calls: list[tuple[int, list[int]]] = []
+
+    async def _reorder(activity_id, fav_id_list, *, refresh_after_write=True):
+        reorder_calls.append((activity_id, list(fav_id_list)))
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_create_wifi_device", _create)
+    monkeypatch.setattr(hub, "async_add_device_to_activity", _add_activity)
+    monkeypatch.setattr(hub, "async_command_to_favorite", _favorite)
+    monkeypatch.setattr(hub, "async_request_favorites_order", _request_favorites_order)
+    monkeypatch.setattr(hub, "async_reorder_favorites", _reorder)
+    monkeypatch.setattr(hub, "async_resync_remote", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_a, **_k: ([], True))
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_a, **_k: None)
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_a, **_k: ([], True))
+
+    payload = {
+        "commands": [
+            {
+                "name": f"Command {i + 1}",
+                "add_as_favorite": True,
+                "hard_button": "",
+                "activities": ["101"],
+                "action": {},
+            }
+            for i in range(5)
+        ],
+        "commands_hash": "abc",
+    }
+
+    loop.run_until_complete(hub.async_sync_command_config(command_payload=payload, request_port=8060))
+
+    # new_fav_id_list = [1, 2, 3, 4, 5]  (tracked in add order)
+    # new_fav_id_set  = {1, 2, 3, 4, 5}
+    # pre_existing    = fav_ids from scrambled_order NOT in new_fav_id_set,
+    #                   sorted by their slot: [(5,1),(1,2),(3,3),(2,4),(4,5),(6,6)]
+    #                   → only fav_id 6 (slot 6) survives the filter
+    # final_order     = [6] + [1, 2, 3, 4, 5]
+    assert reorder_calls == [(101, [6, 1, 2, 3, 4, 5])]
+
+    loop.close()
+
+
 def test_hub_create_proxy_uses_explicit_hub_version() -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

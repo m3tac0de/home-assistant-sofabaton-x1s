@@ -1747,6 +1747,15 @@ class SofabatonHub:
                 current_step=5,
                 message="Applying activity favorites",
             )
+
+            # Track the hub-assigned fav_id for every successfully added favorite,
+            # keyed by activity and ordered by command slot (add order).  We use
+            # these tracked ids in the post-hoc reorder rather than a pre-existing
+            # snapshot so that fav_id recycling (the hub reusing freed ids) cannot
+            # cause old scrambled orders to be mistaken for "existing to preserve".
+            activities_new_fav_ids: dict[int, list[int]] = {}
+
+            activities_with_favorites: set[int] = set()
             for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
                 if not slot.get("add_as_favorite"):
                     continue
@@ -1758,12 +1767,50 @@ class SofabatonHub:
                         continue
                     if not add_results.get(act_id, False):
                         continue
-                    await self.async_command_to_favorite(
+                    result = await self.async_command_to_favorite(
                         act_id,
                         wifi_device_id,
                         command_id,
                         refresh_after_write=False,
                     )
+                    activities_with_favorites.add(act_id)
+                    if result and result.get("fav_id") is not None:
+                        activities_new_fav_ids.setdefault(act_id, []).append(
+                            result["fav_id"]
+                        )
+
+            # Explicitly reorder so that all favorites (including the 5th+) get
+            # a display slot on the physical remote.  Without this step the
+            # stage payload sent by command_to_favorite may leave favorites beyond
+            # the 4th without a slot assignment on X1S/X2, making them invisible
+            # on the remote's touch screen.
+            #
+            # Desired order: pre-existing entries (macros, other-device favorites)
+            # in their current slot order, followed by the newly-added wifi-command
+            # favorites in command-slot order (i.e. the order they were added).
+            #
+            # We identify "new" favorites by the fav_id returned from each
+            # command_to_favorite call.  This is robust against hub fav_id
+            # recycling: when the hub reuses an id that was freed by a prior
+            # managed-device deletion, the recycled id still lands in
+            # activities_new_fav_ids and is correctly treated as a new add.
+            for act_id in sorted(activities_with_favorites):
+                all_order = await self.async_request_favorites_order(act_id)
+                if not all_order:
+                    continue
+                new_fav_id_list = activities_new_fav_ids.get(act_id, [])
+                new_fav_id_set = set(new_fav_id_list)
+                # Pre-existing = everything in current slot order that is NOT
+                # one of the newly-added wifi-command favorites.
+                pre_existing = [
+                    fav_id
+                    for fav_id, _slot in sorted(all_order, key=lambda x: x[1])
+                    if fav_id not in new_fav_id_set
+                ]
+                final_order = pre_existing + new_fav_id_list
+                await self.async_reorder_favorites(
+                    act_id, final_order, refresh_after_write=False
+                )
 
             self._set_command_sync_progress(
                 current_step=6,

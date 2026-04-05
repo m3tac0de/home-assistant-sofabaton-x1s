@@ -174,6 +174,12 @@ class SofabatonControlPanelCard extends HTMLElement {
     return state;
   }
 
+  async _loadCacheContents() {
+    const contents = await this._ws({ type: "sofabaton_x1s/persistent_cache/contents" });
+    this._contents = contents;
+    return contents;
+  }
+
   _remoteEntities() {
     return Object.keys(this._hass?.states || {}).filter((id) => id.startsWith("remote."));
   }
@@ -520,7 +526,11 @@ class SofabatonControlPanelCard extends HTMLElement {
           await this._loadState();
           return;
         }
-        await this._loadControlPanelState();
+        if (enabled) {
+          await this._loadCacheContents();
+        } else {
+          await this._loadControlPanelState();
+        }
       } else {
         await this._loadControlPanelState();
       }
