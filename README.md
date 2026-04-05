@@ -173,7 +173,13 @@ type: custom:sofabaton-control-panel
 
 With this card **persistent cache** can be enabled, meaning that any data retrieved from the hub is cached and survives a restart of Home Assistant.
 With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable at certain tasks.  
-Use this card to navigate your cache and refresh it whenever required.
+Use the card to navigate your cache and refresh it whenever required.
+
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/24fc4e60-ee77-417a-ab1d-4fd004217c8d" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/222952bd-19c8-4d0a-bc71-4a45b9a21bef" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/a2622cdd-1df9-4075-88cc-49caf55057ef" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/96b1e008-3f14-4e21-ba60-62ad41d83a1b" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/81343a3a-8e14-4310-b52d-70967688e915" />
 
 ---
 
@@ -252,7 +258,7 @@ target:
 
 ### 1) Using Sofabaton Virtual Remote (recommended)
 
-The easiest way to retrieve the needed IDs is to add the **Virtual Remote card** to your dashboard, and enable its feature **Automation Assist > Key capture**.
+The easiest way to retrieve the needed IDs is to add the **Virtual Remote card** to your dashboard, and enable its feature **[Automation Assist > Key capture](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md)**.
 This will give you IDs and ready-to-use YAML as Notifications in your Home Assistant side bar.
 
 ### 2) Using Sofabaton Control Panel
