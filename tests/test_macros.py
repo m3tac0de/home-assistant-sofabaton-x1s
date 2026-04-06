@@ -179,6 +179,107 @@ def test_macrobursts_for_multiple_activities_interleaved() -> None:
     assert labels_b == ["B1", "B2"]
 
 
+def test_utf16_separator_byte_stripped_from_label() -> None:
+    """Labels preceded by an 0xFF 0x00 field-separator in UTF-16LE must not include the byte before it."""
+    # Frames 19-22 from a real capture.  Before the fix:
+    #   macro 13 → "Ltest macro 1"  (0x4C = 'L' was the byte before 0xFF 0x00)
+    #   macro 14 → "(test macro 2"  (0x28 = '(' was the byte before 0xFF 0x00)
+    assembler = MacroAssembler()
+
+    raw_hex = """
+    a5 5a 50 13 01 00 01 04 00 01 65 0d 01 04 05 00 00 00 00 00 4c 00 ff 00 74 00 65 00 73 00
+    74 00 20 00 6d 00 61 00 63 00 72 00 6f 00 20 00 31 00 00 00 00 00 00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 09 7c
+    a5 5a 50 13 02 00 01 04 00 01 65 0e 01 04 10 00 00 00 00 03 28 00 ff 00 74 00 65 00 73 00
+    74 00 20 00 6d 00 61 00 63 00 72 00 6f 00 20 00 32 00 00 00 00 00 00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 03 63
+    a5 5a 96 13 03 00 01 04 00 01 65 c6 08 01 c6 00 00 00 00 00 00 01 ff 03 c5 00 00 00 00 00
+    00 0a ff 04 c6 00 00 00 00 00 00 01 ff 01 c5 00 00 00 00 00 00 00 ff 04 c5 00 00 00 00 00
+    00 00 ff 03 c6 00 00 00 00 00 00 01 ff 02 c6 00 00 00 00 00 00 00 ff 02 c5 00 00 00 00 00
+    00 00 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e 00 00 00 00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 2c 6d 00 00 9c e7
+    a5 5a 6e 13 04 00 01 04 00 01 65 c7 04 01 c7 00 00 00 00 00 00 01 ff 03 c7 00 00 00 00 00
+    00 01 ff 04 c7 00 00 00 00 00 00 01 ff 02 c7 00 00 00 00 00 00 00 ff 00 50 00 4f 00 57 00
+    45 00 52 00 5f 00 4f 00 46 00 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 01 03 c6 00 00 00 00 e7 56
+    """
+
+    payload = bytes(int(v, 16) for v in raw_hex.split())
+
+    frames: list[bytes] = []
+    idx = 0
+    while idx < len(payload):
+        next_idx = payload.find(b"\xA5\x5A", idx + 2)
+        if next_idx == -1:
+            frames.append(payload[idx:])
+            break
+        frames.append(payload[idx:next_idx])
+        idx = next_idx
+
+    completed: list[tuple[int, bytes, list[int]]] = []
+    for frame in frames:
+        opcode = int.from_bytes(frame[2:4], "big")
+        frag_payload = frame[4:-1]
+        completed.extend(assembler.feed(opcode, frag_payload, frame))
+
+    assert len(completed) == 1
+    activity_id, blob, boundaries = completed[0]
+    assert activity_id == 0x65
+
+    decoded = decode_macro_records(blob, activity_id, boundaries)
+    assert decoded == [
+        (0x65, 0x0D, "test macro 1"),
+        (0x65, 0x0E, "test macro 2"),
+    ]
+
+
+def test_utf16_separator_byte_stripped_single_macro() -> None:
+    """Same separator fix for a single-macro activity (0x66, macro 7 → 'test macro 3')."""
+    # Frames 40-42 from the same capture.  Before the fix: "Gtest macro 3" (0x47 = 'G').
+    assembler = MacroAssembler()
+
+    raw_hex = """
+    a5 5a 5a 13 01 00 01 03 00 01 66 07 02 01 05 00 00 00 00 00 a6 00 ff 07 06 00 00 00 00 00
+    47 00 ff 00 74 00 65 00 73 00 74 00 20 00 6d 00 61 00 63 00 72 00 6f 00 20 00 33 00 00 00
+    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+    00 00 00 ba de
+    a5 5a 96 13 02 00 01 03 00 01 66 c6 08 01 c6 00 00 00 00 00 00 01 ff 03 c6 00 00 00 00 00
+    00 01 ff 07 c6 00 00 00 00 00 00 01 ff 01 c5 00 00 00 00 00 00 00 ff 03 c5 00 00 00 00 00
+    00 07 ff 07 c5 00 00 00 00 00 00 00 ff 08 c6 00 00 00 00 00 00 00 ff 08 c5 00 00 00 00 00
+    00 00 ff 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e 00 00 00 00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 27 78 35 00 00 e7 7b
+    a5 5a 6e 13 03 00 01 03 00 01 66 c7 04 01 c7 00 00 00 00 00 00 01 ff 03 c7 00 00 00 00 00
+    00 01 ff 07 c7 00 00 00 00 00 00 01 ff 08 c7 00 00 00 00 00 00 00 ff 00 50 00 4f 00 57 00
+    45 00 52 00 5f 00 4f 00 46 00 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+    00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff ff ff ff ff ff ff 01 22 ca
+    """
+
+    payload = bytes(int(v, 16) for v in raw_hex.split())
+
+    frames: list[bytes] = []
+    idx = 0
+    while idx < len(payload):
+        next_idx = payload.find(b"\xA5\x5A", idx + 2)
+        if next_idx == -1:
+            frames.append(payload[idx:])
+            break
+        frames.append(payload[idx:next_idx])
+        idx = next_idx
+
+    completed: list[tuple[int, bytes, list[int]]] = []
+    for frame in frames:
+        opcode = int.from_bytes(frame[2:4], "big")
+        frag_payload = frame[4:-1]
+        completed.extend(assembler.feed(opcode, frag_payload, frame))
+
+    assert len(completed) == 1
+    activity_id, blob, boundaries = completed[0]
+    assert activity_id == 0x66
+
+    decoded = decode_macro_records(blob, activity_id, boundaries)
+    assert decoded == [(0x66, 0x07, "test macro 3")]
+
+
 def test_ascii_labeled_macroburst_decodes() -> None:
     assembler = MacroAssembler()
 

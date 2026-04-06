@@ -1393,18 +1393,38 @@ class SofabatonHub:
         command_label = ""
         device_name = None
         press_type = "short"
+        resolved_slot: dict[str, Any] | None = None
+
         if len(parts) >= 4 and parts[0] == "launch":
             try:
                 device_id = int(parts[2])
             except ValueError:
                 device_id = -1
-            command_label = unquote(parts[3]).replace("_", " ")
-            trailing_parts = parts[4:]
-            if trailing_parts and trailing_parts[-1] in ("short", "long"):
-                press_type = trailing_parts[-1]
-                trailing_parts = trailing_parts[:-1]
-            if trailing_parts:
-                device_name = unquote("/".join(trailing_parts)).replace("_", " ")
+
+            if parts[3].isdigit():
+                # New format: launch/{hub_id}/{device_id}/{command_index}/{press_type}
+                # Resolve command from the deployed snapshot (independent of staged config).
+                command_index = int(parts[3])
+                if len(parts) >= 5 and parts[4] in ("short", "long"):
+                    press_type = parts[4]
+                hass_data = getattr(self.hass, "data", {})
+                domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+                store = domain_data.get("command_config_store")
+                if store is not None:
+                    deployed = store.get_deployed_wifi_commands(self.entry_id)
+                    if 0 <= command_index < len(deployed):
+                        resolved_slot = deployed[command_index]
+                        command_label = str(resolved_slot.get("name", ""))
+            else:
+                # Old format (backwards compat):
+                # launch/{hub_id}/{device_id}/{command_name}/{device_name}/{press_type}
+                command_label = unquote(parts[3]).replace("_", " ")
+                trailing_parts = parts[4:]
+                if trailing_parts and trailing_parts[-1] in ("short", "long"):
+                    press_type = trailing_parts[-1]
+                    trailing_parts = trailing_parts[:-1]
+                if trailing_parts:
+                    device_name = unquote("/".join(trailing_parts)).replace("_", " ")
 
         timestamp = datetime.now(timezone.utc)
         record = {
@@ -1424,7 +1444,10 @@ class SofabatonHub:
         }
         self._last_ip_command = record
         async_dispatcher_send(self.hass, signal_ip_commands(self.entry_id))
-        await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
+        if resolved_slot is not None:
+            await self._async_run_wifi_slot_action(resolved_slot, command_label, press_type=press_type)
+        else:
+            await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
 
     @property
     def is_sync_in_progress(self) -> bool:
@@ -1551,6 +1574,34 @@ class SofabatonHub:
                 blocking=True,
             )
 
+    async def _async_run_wifi_slot_action(
+        self,
+        slot: dict[str, Any],
+        command_label: str,
+        *,
+        press_type: str = "short",
+    ) -> None:
+        """Execute the configured action from a resolved command slot dict."""
+        if press_type == "long":
+            if not bool(slot.get("long_press_enabled")):
+                return
+            action = (
+                slot.get("long_press_action")
+                if isinstance(slot.get("long_press_action"), dict)
+                else {}
+            )
+        else:
+            action = slot.get("action") if isinstance(slot.get("action"), dict) else {}
+        try:
+            await self._async_execute_action_config(action)
+        except Exception as err:  # pragma: no cover - service boundary
+            _LOGGER.warning(
+                "[%s] Failed executing configured IP action for '%s': %s",
+                self.entry_id,
+                command_label,
+                err,
+            )
+
     async def _async_maybe_run_configured_ip_action(
         self,
         command_label: str,
@@ -1568,25 +1619,7 @@ class SofabatonHub:
         for slot in payload.get("commands", []):
             if normalize_command_name(slot.get("name")) != command_key:
                 continue
-            if press_type == "long":
-                if not bool(slot.get("long_press_enabled")):
-                    return
-                action = (
-                    slot.get("long_press_action")
-                    if isinstance(slot.get("long_press_action"), dict)
-                    else {}
-                )
-            else:
-                action = slot.get("action") if isinstance(slot.get("action"), dict) else {}
-            try:
-                await self._async_execute_action_config(action)
-            except Exception as err:  # pragma: no cover - service boundary
-                _LOGGER.warning(
-                    "[%s] Failed executing configured IP action for '%s': %s",
-                    self.entry_id,
-                    command_label,
-                    err,
-                )
+            await self._async_run_wifi_slot_action(slot, command_label, press_type=press_type)
             return
 
     async def async_sync_command_config(
@@ -1678,7 +1711,7 @@ class SofabatonHub:
                     "deleted_managed_devices": len(managed),
                 }
 
-            command_defs: list[dict[str, str]] = []
+            command_defs: list[dict[str, Any]] = []
             for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
                 name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
                 command_defs.append(
@@ -1686,6 +1719,7 @@ class SofabatonHub:
                         "display_name": name,
                         "trigger_name": name,
                         "press_type": "short",
+                        "command_index": idx,
                     }
                 )
             for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
@@ -1695,6 +1729,7 @@ class SofabatonHub:
                         "display_name": f"{name} Long Press",
                         "trigger_name": name,
                         "press_type": "long",
+                        "command_index": idx,
                     }
                 )
 
@@ -1874,6 +1909,18 @@ class SofabatonHub:
                 message="Resyncing physical remote",
             )
             await self.async_resync_remote()
+
+            # Persist the command list that was just synced to the hub.
+            # Callbacks will resolve command indices against this frozen snapshot,
+            # independently of any subsequent staged-config edits.
+            hass_data = getattr(self.hass, "data", {})
+            domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+            store = domain_data.get("command_config_store")
+            if store is not None:
+                await store.async_save_deployed_wifi_commands(
+                    self.entry_id,
+                    list(commands[:_WIFI_COMMAND_SLOT_COUNT]),
+                )
 
             self._set_command_sync_progress(
                 status="success",

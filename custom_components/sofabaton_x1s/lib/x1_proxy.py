@@ -2836,10 +2836,10 @@ class X1Proxy:
                     command_name = str(command_spec or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
                     trigger_name = command_name
                     press_type = "short"
+                command_index = int(command_spec.get("command_index", idx)) if isinstance(command_spec, dict) else idx
                 action = self._build_launch_action_path(
                     device_id=device_id,
-                    command_name=trigger_name,
-                    device_name=device_name,
+                    command_index=command_index,
                     press_type=press_type,
                 )
                 command_defs.append((slot, code, command_name, action))
@@ -3025,13 +3025,13 @@ class X1Proxy:
             # Observed X1S/X2 0x?E0E payloads encode command labels in a 59-byte field.
             # Using 59 keeps downstream request bytes aligned so method parses as POST (not xPOST).
             command_utf16 = command_name.encode("utf-16le")[:59].ljust(59, b"\x00")
+            command_index = int(command_spec.get("command_index", idx)) if isinstance(command_spec, dict) else idx
             request_blob = self._build_virtual_ip_http_request(
                 host=ip_address,
                 port=request_port,
                 path=self._build_launch_action_path(
                     device_id=device_id,
-                    command_name=trigger_name,
-                    device_name=device_name,
+                    command_index=command_index,
                     press_type=press_type,
                 ),
             )
@@ -3109,18 +3109,12 @@ class X1Proxy:
         self,
         *,
         device_id: int,
-        command_name: str,
-        device_name: str,
+        command_index: int,
         press_type: str = "short",
     ) -> str:
         hub_action_id = self._stable_hub_action_id()
-        normalized_command = command_name.replace(" ", "_")
-        normalized_device = device_name.replace(" ", "_")
         normalized_press_type = "long" if str(press_type).lower() == "long" else "short"
-        return (
-            f"launch/{hub_action_id}/{device_id}/{normalized_command}/"
-            f"{normalized_device}/{normalized_press_type}"
-        )
+        return f"launch/{hub_action_id}/{device_id}/{command_index}/{normalized_press_type}"
 
     def _build_virtual_ip_http_request(self, host: str, port: int, path: str) -> bytes:
         normalized_path = f"/{path.lstrip('/')}"

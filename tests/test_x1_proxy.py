@@ -689,8 +689,8 @@ def test_create_wifi_device_x1s_accepts_command_definitions_with_press_type(monk
     assert define_payloads[1][16:75].startswith("My Cmd Long Press".encode("utf-16le"))
     assert short_request.startswith(b"POST /launch/")
     assert long_request.startswith(b"POST /launch/")
-    assert b"/My_Cmd/Living_Room_Roku/short" in short_request
-    assert b"/My_Cmd/Living_Room_Roku/long" in long_request
+    assert b"/0/short" in short_request
+    assert b"/1/long" in long_request
 
 
 def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
@@ -735,8 +735,8 @@ def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
 
     assert custom_payloads[0x18][15:45].rstrip(b"\x00") == b"Lights On"
     assert custom_payloads[0x19][15:45].rstrip(b"\x00") == b"Lights Off"
-    assert action_1 == "launch/aabbccddeeff/7/Lights_On/Home_Assistant/short"
-    assert action_2 == "launch/aabbccddeeff/7/Lights_Off/Home_Assistant/short"
+    assert action_1 == "launch/aabbccddeeff/7/0/short"
+    assert action_2 == "launch/aabbccddeeff/7/1/short"
 
 
 def test_stable_hub_action_id_falls_back_to_proxy_id() -> None:

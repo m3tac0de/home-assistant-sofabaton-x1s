@@ -48,7 +48,7 @@ from .cache_store import PersistentCacheStore
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
-_ALPHANUM_SPACE_RE = re.compile(r"^[A-Za-z0-9 ]+$")
+_WIFI_NAME_RE = re.compile(r"^(?:[^\W_]| )+$", re.UNICODE)
 
 
 def _inspect_frontend_dir(frontend_dir: Path) -> tuple[str, bool, list[str]]:
@@ -817,8 +817,8 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
     _raise_if_sync_in_progress(hub, "_async_handle_create_wifi_device")
 
     device_name = str(call.data.get("device_name", "Home Assistant")).strip() or "Home Assistant"
-    if not _ALPHANUM_SPACE_RE.fullmatch(device_name):
-        raise ValueError("device_name must contain only letters, numbers, and spaces")
+    if not _WIFI_NAME_RE.fullmatch(device_name):
+        raise ValueError("device_name must contain only letters (including accented/umlaut), numbers, and spaces")
     raw_commands = call.data.get("commands")
     if not isinstance(raw_commands, list):
         raise ValueError("commands must be a list of strings")
@@ -832,8 +832,8 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
         command_name = str(command).strip()
         if not command_name:
             raise ValueError("commands entries must not be empty")
-        if not _ALPHANUM_SPACE_RE.fullmatch(command_name):
-            raise ValueError("commands entries must contain only letters, numbers, and spaces")
+        if not _WIFI_NAME_RE.fullmatch(command_name):
+            raise ValueError("commands entries must contain only letters (including accented/umlaut), numbers, and spaces")
         commands.append(command_name)
 
     request_port = _resolve_roku_listen_port(hass, hub.entry_id)
