@@ -2064,12 +2064,15 @@ class X1Proxy:
 
         self.start_roku_create()
 
-        for index, member in enumerate(ordered_members):
-            # Observed app traffic keeps 0x01 on the first two rows in the
-            # device-confirm batch and uses 0x00 for subsequent rows.
-            # Replaying this pattern prevents later adds from displacing the
-            # previously-added third device.
-            include_flag = 0x01 if index < 2 else 0x00
+        for member in ordered_members:
+            # Always send 0x00: the hub interprets this second byte as the
+            # device's current power state (0x01 = on, 0x00 = off). The earlier
+            # pattern of 0x01 for the first two rows was copied from a capture
+            # where those devices happened to be on, causing the hub to mark them
+            # as powered-on after every device-to-activity operation. Displacement
+            # prevention comes from replaying the full ordered member list, not
+            # from this flag value.
+            include_flag = 0x00
             payload = bytes([member & 0xFF, include_flag])
             log.info(
                 "[ACTIVITY_ASSIGN] confirm member dev=0x%02X include=0x%02X",
