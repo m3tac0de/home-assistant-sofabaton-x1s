@@ -2064,12 +2064,15 @@ class X1Proxy:
 
         self.start_roku_create()
 
-        for index, member in enumerate(ordered_members):
-            # Observed app traffic keeps 0x01 on the first two rows in the
-            # device-confirm batch and uses 0x00 for subsequent rows.
-            # Replaying this pattern prevents later adds from displacing the
-            # previously-added third device.
-            include_flag = 0x01 if index < 2 else 0x00
+        for member in ordered_members:
+            # Always send 0x00: the hub interprets this second byte as the
+            # device's current power state (0x01 = on, 0x00 = off). The earlier
+            # pattern of 0x01 for the first two rows was copied from a capture
+            # where those devices happened to be on, causing the hub to mark them
+            # as powered-on after every device-to-activity operation. Displacement
+            # prevention comes from replaying the full ordered member list, not
+            # from this flag value.
+            include_flag = 0x00
             payload = bytes([member & 0xFF, include_flag])
             log.info(
                 "[ACTIVITY_ASSIGN] confirm member dev=0x%02X include=0x%02X",
@@ -2222,30 +2225,28 @@ class X1Proxy:
         payload.append((sum(payload) - 2) & 0xFF)
         return bytes(payload)
 
-    def _build_favorite_stage_payload(self, activity_id: int) -> bytes:
-        """Build the observed 0x61 stage payload for favorite writes."""
+    def _build_favorite_stage_payload(self, activity_id: int, fav_count: int = 4) -> bytes:
+        """Build the 0x61 stage payload for favorite writes.
+
+        *fav_count* is the total number of favorites on the activity **after**
+        the new entry has been registered by the hub (i.e. the fav_id returned
+        in the 0x013E map ACK).  The payload encodes one ``(fav_id, slot)``
+        pair per favorite in sequential order:
+
+            01 01  02 02  03 03  …  [fav_count] [fav_count]
+
+        The official app builds this list dynamically — it grows by one entry
+        each time a favorite is added.  The previous hard-coded version stopped
+        at exactly 4 pairs, which left any 5th-or-later favorite without a
+        display slot, making it invisible on the physical remote's touch screen.
+        """
 
         act_lo = activity_id & 0xFF
         if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
-            payload = bytearray(
-                [
-                    0x01,
-                    0x00,
-                    0x01,
-                    0x01,
-                    0x00,
-                    0x01,
-                    act_lo,
-                    0x01,
-                    0x01,
-                    0x02,
-                    0x02,
-                    0x03,
-                    0x03,
-                    0x04,
-                    0x04,
-                ]
-            )
+            payload = bytearray([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, act_lo])
+            for i in range(1, max(1, fav_count) + 1):
+                payload.append(i & 0xFF)  # fav_id
+                payload.append(i & 0xFF)  # slot = fav_id (sequential 1-based)
             payload.append((sum(payload) - 2) & 0xFF)
             return bytes(payload)
 
@@ -2568,28 +2569,87 @@ class X1Proxy:
 
         self.start_roku_create()
 
-        if not self._send_roku_step(
-            step_name=f"favorite-map[act=0x{act_lo:02X} slot=0x{slot_lo:02X}]",
-            family=0x3E,
-            payload=self._build_favorite_map_payload(
-                activity_id=act_lo,
-                device_id=dev_lo,
-                command_id=cmd_lo,
-                slot_id=slot_lo,
-            ),
-            ack_opcode=0x013E,
-            ack_first_byte=None,
-            ack_fallback_opcodes=(0x0103,),
-            timeout=7.5,
-            retries=1,
-            retry_delay=0.15,
-        ):
+        # X1 only: query the current favorites order BEFORE the map step so we
+        # know which (fav_id, slot) pairs to preserve in the stage payload.
+        # On X1, macros share the same fav_id/slot namespace as command favorites
+        # and must be included in the stage payload with their actual slot numbers.
+        x1_existing_fav_ids: list[int] = []
+        if self.hub_version == HUB_VERSION_X1:
+            existing_order = self.request_favorites_order(act_lo) or []
+            x1_existing_fav_ids = [
+                fav_id
+                for fav_id, _slot in sorted(existing_order, key=lambda x: x[1])
+            ]
+            log.info(
+                "[WIFI][STEP] favorite-map[act=0x%02X] x1 pre-existing order: %s",
+                act_lo,
+                x1_existing_fav_ids,
+            )
+
+        # Step 1: Map — inlined so we can read the assigned fav_id from the
+        # 0x013E ACK payload.  That fav_id is used to build the stage payload.
+        map_step = f"favorite-map[act=0x{act_lo:02X} slot=0x{slot_lo:02X}]"
+        map_payload = self._build_favorite_map_payload(
+            activity_id=act_lo,
+            device_id=dev_lo,
+            command_id=cmd_lo,
+            slot_id=slot_lo,
+        )
+        map_ack: tuple[int, bytes] | None = None
+        for attempt in range(1, 3):  # retries=1 → 2 attempts total
+            log.info(
+                "[WIFI][STEP] %s tx family=0x3E expect_ack=0x013E attempt=%d/2",
+                map_step,
+                attempt,
+            )
+            self._send_family_frame(0x3E, map_payload)
+            map_ack = self.wait_for_roku_ack_any(
+                [(0x013E, None), (0x0103, None)], timeout=7.5
+            )
+            if map_ack is not None:
+                log.info("[WIFI][STEP] %s acked via 0x%04X", map_step, map_ack[0])
+                break
+            if attempt < 2:
+                log.warning("[WIFI][STEP] %s retrying after ack timeout", map_step)
+                time.sleep(0.15)
+        if map_ack is None:
+            log.warning("[WIFI][STEP] %s failed waiting ack=0x013E", map_step)
             return None
 
+        # The 0x013E ACK payload's first byte is the hub-assigned fav_id.
+        map_ack_opcode, map_ack_payload = map_ack
+        new_fav_id: int | None = None
+        if map_ack_opcode == 0x013E and map_ack_payload:
+            new_fav_id = map_ack_payload[0] or None
+
+        # Build the stage payload (Step 2) differently per hub version.
+        #
+        # X1: the stage payload must list ALL current entries (macros AND regular
+        #     favorites) in their current slot order, followed by the new fav_id
+        #     at the next slot.  The official app builds this by reading the
+        #     current order before the map step and appending the new entry.
+        #     Verified against captured traffic (log 04_x1_add_6_favorites).
+        #
+        # X1S/X2: sequential (i, i) pairs for i in 1..new_fav_id.  On these hubs
+        #     macros are in a separate namespace and are not included here.
+        #     Verified against captured traffic (log 02_x1s_add_6_favorites).
+        if self.hub_version == HUB_VERSION_X1:
+            ordered_ids = x1_existing_fav_ids + ([new_fav_id] if new_fav_id is not None else [])
+            if not ordered_ids:
+                ordered_ids = [1]  # last-resort fallback
+            stage_payload = self._build_favorites_reorder_payload(act_lo, ordered_ids)
+            stage_n = len(ordered_ids)
+        else:
+            fav_count: int = 4  # safe fallback matching previous hardcoded behaviour
+            if new_fav_id is not None:
+                fav_count = new_fav_id
+            stage_payload = self._build_favorite_stage_payload(act_lo, fav_count)
+            stage_n = fav_count
+
         if not self._send_roku_step(
-            step_name=f"favorite-stage-61[act=0x{act_lo:02X}]",
+            step_name=f"favorite-stage-61[act=0x{act_lo:02X} n={stage_n}]",
             family=0x61,
-            payload=self._build_favorite_stage_payload(act_lo),
+            payload=stage_payload,
             ack_opcode=0x0103,
         ):
             return None
@@ -2612,6 +2672,7 @@ class X1Proxy:
             "device_id": dev_lo,
             "command_id": cmd_lo,
             "slot_id": slot_lo,
+            "fav_id": new_fav_id,
             "status": "success",
         }
 
@@ -2778,10 +2839,10 @@ class X1Proxy:
                     command_name = str(command_spec or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
                     trigger_name = command_name
                     press_type = "short"
+                command_index = int(command_spec.get("command_index", idx)) if isinstance(command_spec, dict) else idx
                 action = self._build_launch_action_path(
                     device_id=device_id,
-                    command_name=trigger_name,
-                    device_name=device_name,
+                    command_index=command_index,
                     press_type=press_type,
                 )
                 command_defs.append((slot, code, command_name, action))
@@ -2967,13 +3028,13 @@ class X1Proxy:
             # Observed X1S/X2 0x?E0E payloads encode command labels in a 59-byte field.
             # Using 59 keeps downstream request bytes aligned so method parses as POST (not xPOST).
             command_utf16 = command_name.encode("utf-16le")[:59].ljust(59, b"\x00")
+            command_index = int(command_spec.get("command_index", idx)) if isinstance(command_spec, dict) else idx
             request_blob = self._build_virtual_ip_http_request(
                 host=ip_address,
                 port=request_port,
                 path=self._build_launch_action_path(
                     device_id=device_id,
-                    command_name=trigger_name,
-                    device_name=device_name,
+                    command_index=command_index,
                     press_type=press_type,
                 ),
             )
@@ -3051,18 +3112,12 @@ class X1Proxy:
         self,
         *,
         device_id: int,
-        command_name: str,
-        device_name: str,
+        command_index: int,
         press_type: str = "short",
     ) -> str:
         hub_action_id = self._stable_hub_action_id()
-        normalized_command = command_name.replace(" ", "_")
-        normalized_device = device_name.replace(" ", "_")
         normalized_press_type = "long" if str(press_type).lower() == "long" else "short"
-        return (
-            f"launch/{hub_action_id}/{device_id}/{normalized_command}/"
-            f"{normalized_device}/{normalized_press_type}"
-        )
+        return f"launch/{hub_action_id}/{device_id}/{command_index}/{normalized_press_type}"
 
     def _build_virtual_ip_http_request(self, host: str, port: int, path: str) -> bytes:
         normalized_path = f"/{path.lstrip('/')}"

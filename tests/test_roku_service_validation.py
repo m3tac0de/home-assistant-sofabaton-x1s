@@ -155,7 +155,7 @@ def test_create_wifi_device_validates_device_name(monkeypatch) -> None:
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
 
-    with pytest.raises(ValueError, match="device_name must contain only letters, numbers, and spaces"):
+    with pytest.raises(ValueError, match="device_name must contain only letters"):
         asyncio.run(
             integration._async_handle_create_wifi_device(
                 _FakeCall({"device_name": "Living-Room", "commands": ["Launch"]}, hass)
@@ -172,7 +172,7 @@ def test_create_wifi_device_validates_command_names(monkeypatch) -> None:
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
 
-    with pytest.raises(ValueError, match="commands entries must contain only letters, numbers, and spaces"):
+    with pytest.raises(ValueError, match="commands entries must contain only letters"):
         asyncio.run(
             integration._async_handle_create_wifi_device(
                 _FakeCall({"device_name": "Living Room", "commands": ["Do_Thing"]}, hass)

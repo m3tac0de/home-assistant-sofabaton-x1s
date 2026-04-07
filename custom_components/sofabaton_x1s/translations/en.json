@@ -25,7 +25,7 @@
         "data_description": {
           "hub_listen_base": "Base TCP port the real hub connects to. Each configured hub uses one port from a 32-port range starting here.",
           "proxy_udp_port": "Shared UDP listener for official app discovery and handshake. Keep 8102 unless another service already uses it. Changing this port will break discovery in the official iOS app (Android is fine) and prevent it from connecting to your virtual hub.",
-          "roku_listen_port": "Shared HTTP listener for WiFi device callbacks, so the Integration can receive button presses from the physical hub/remote. Changing this port has impact: 1. it will break X1 compatibility (X1S and X2 are fine). 2. If you have created Wifi Devices and commands already, changing this port now will cause those commands to stop working."
+          "roku_listen_port": "Shared HTTP listener for WiFi device callbacks, so the Integration can receive button presses from the physical hub/remote. Changing this port has impact: 1. it will break X1 compatibility (X1S and X2 are fine). 2. If you have created Wifi Devices and commands already, changing this port now will cause those commands to stop working. Resync the configuration to update the hub."
         }
       },
       "zeroconf_confirm": {
@@ -50,7 +50,7 @@
         "data_description": {
           "hub_listen_base": "Base TCP port the real hub connects to. Each configured hub uses one port from a 32-port range starting here.",
           "proxy_udp_port": "Shared UDP listener for official app discovery and handshake. Keep 8102 unless another service already uses it. Changing this port will break discovery in the official iOS app (Android is fine) and prevent it from connecting to your virtual hub.",
-          "roku_listen_port": "Shared HTTP listener for WiFi device callbacks, so the Integration can receive button presses from the physical hub/remote. Changing this port has impact: 1. it will break X1 compatibility (X1S and X2 are fine). 2. If you have created Wifi Devices and commands already, changing this port now will cause those commands to stop working."
+          "roku_listen_port": "Shared HTTP listener for WiFi device callbacks, so the Integration can receive button presses from the physical hub/remote. Changing this port has impact: 1. it will break X1 compatibility (X1S and X2 are fine). 2. If you have created Wifi Devices and commands already, changing this port now will cause those commands to stop working. Resync the configuration to update the hub."
         }
       }
     }

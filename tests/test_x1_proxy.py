@@ -689,8 +689,8 @@ def test_create_wifi_device_x1s_accepts_command_definitions_with_press_type(monk
     assert define_payloads[1][16:75].startswith("My Cmd Long Press".encode("utf-16le"))
     assert short_request.startswith(b"POST /launch/")
     assert long_request.startswith(b"POST /launch/")
-    assert b"/My_Cmd/Living_Room_Roku/short" in short_request
-    assert b"/My_Cmd/Living_Room_Roku/long" in long_request
+    assert b"/0/short" in short_request
+    assert b"/1/long" in long_request
 
 
 def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
@@ -735,8 +735,8 @@ def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
 
     assert custom_payloads[0x18][15:45].rstrip(b"\x00") == b"Lights On"
     assert custom_payloads[0x19][15:45].rstrip(b"\x00") == b"Lights Off"
-    assert action_1 == "launch/aabbccddeeff/7/Lights_On/Home_Assistant/short"
-    assert action_2 == "launch/aabbccddeeff/7/Lights_Off/Home_Assistant/short"
+    assert action_1 == "launch/aabbccddeeff/7/0/short"
+    assert action_2 == "launch/aabbccddeeff/7/1/short"
 
 
 def test_stable_hub_action_id_falls_back_to_proxy_id() -> None:
@@ -1922,18 +1922,26 @@ def test_command_to_favorite_replays_sequence(monkeypatch) -> None:
         "device_id": 0x06,
         "command_id": 0x04,
         "slot_id": 0x00,
+        "fav_id": None,
         "status": "success",
     }
-    assert [opcode & 0xFF for opcode, _payload in sent] == [0x3E, 0x61, 0x65]
-    assert sent[0][1] == bytes.fromhex(
+    # X1 sends a 0x62 favorites-order request before the map step so it can
+    # include the existing (fav_id, slot) pairs in the stage payload.
+    assert [opcode & 0xFF for opcode, _payload in sent] == [0x62, 0x3E, 0x61, 0x65]
+    assert sent[0][1] == bytes([0x66])   # fav-order request payload = act_lo
+    assert sent[1][1] == bytes.fromhex(
         "01 00 01 01 00 01 66 00 06 00 00 00 00 4e 24 04 00 00 00 00 00 00 00 00 e4"
     )
-    assert sent[1][1] == bytes([0x00, 0x01, 0x01, 0x00, 0x01, 0x66, 0x01, 0x01, 0x6A])
-    assert sent[2][1] == b"f"
+    # X1 stage uses _build_favorites_reorder_payload([1]) — no pre-existing entries,
+    # new_fav_id=None so fallback ordered_ids=[1]:
+    # [01 00 01 01 00 01 66 01 01] + checksum 6A
+    assert sent[2][1] == bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x66, 0x01, 0x01, 0x6A])
+    assert sent[3][1] == b"f"
     assert ack_calls == [
-        [(0x013E, None), (0x0103, None)],
-        [(0x0103, None)],
-        [(0x0103, None)],
+        [(0xFF63, 0x66)],                      # fav-order query for act=0x66
+        [(0x013E, None), (0x0103, None)],      # map
+        [(0x0103, None)],                      # stage
+        [(0x0103, None)],                      # commit
     ]
     assert cleared == [(0x66, False, True, False)]
     assert requested == [0x66]
@@ -1985,6 +1993,7 @@ def test_command_to_favorite_x1s_replays_sequence(monkeypatch) -> None:
         "device_id": 0x01,
         "command_id": 0x03,
         "slot_id": 0x00,
+        "fav_id": 4,
         "status": "success",
     }
     assert [opcode & 0xFF for opcode, _payload in sent] == [0x3E, 0x61, 0x65]
@@ -2198,7 +2207,9 @@ def test_command_to_favorite_x1_does_not_pin_ack_first_byte(monkeypatch) -> None
     result = proxy.command_to_favorite(0x65, 0x04, 0x02, slot_id=3)
 
     assert result is not None
-    assert ack_calls[0] == [(0x013E, None), (0x0103, None)]
+    # ack_calls[0] is the favorites-order pre-query (X1-specific); the map
+    # step is at index 1 — verify it uses (0x013E, None) not a pinned byte.
+    assert ack_calls[1] == [(0x013E, None), (0x0103, None)]
 
 
 def test_command_to_favorite_x1s_does_not_pin_ack_first_byte(monkeypatch) -> None:

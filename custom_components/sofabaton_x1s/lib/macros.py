@@ -169,6 +169,8 @@ def _find_label_in_region(payload: bytes, start: int, end: int) -> str:
     except Exception:
         return ""
 
+    if "\xff" in label:
+        label = label.split("\xff")[-1]
     if label:
         label = re.sub(r"[^\x20-\x7E]", "", label)
         label = label.lstrip("0123456789")
@@ -297,6 +299,8 @@ def decode_macro_records(payload: bytes, activity_id: int, record_boundaries: li
             except Exception:
                 label = ""
 
+            if "\xff" in label:
+                label = label.split("\xff")[-1]
             if label:
                 label = re.sub(r"[^\x20-\x7E]", "", label)
                 label = label.lstrip("0123456789")

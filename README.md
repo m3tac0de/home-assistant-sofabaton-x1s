@@ -11,7 +11,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 
 - 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard cards**: Sofabaton Virtual Remote & Sofabaton Control Panel
-- 🤖 **Send key presses to the hub**: `remote.send_command`, “recorded keypress”, “index” + fetch action
+- 🤖 **Send key presses to the hub**: `remote.send_command`, Sofabaton Virtual Remote, Sofabaton Control Panel, “recorded keypress”
 - ⚡ **Receive key presses from the hub**: Sofabaton Virtual Remote, "Wifi Commands" see [`docs/wifi_commands.md`](docs/wifi_commands.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
 - 🪵 **Useful logs & diagnostics**: see [`docs/logging.md`](docs/logging.md)
@@ -26,8 +26,8 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
    - Discovery via mDNS should show your hubs automatically.
    - If discovery fails (VLAN / mDNS), see networking docs or add manually.
 
-    To add manually:
-    Go to **Settings → Devices & Services → Add integration** → search **Sofabaton X1S** (listing name) and follow the flow.  
+   To add manually:
+   Go to **Settings → Devices & Services → Add integration** → search **Sofabaton X1S** (listing name) and follow the flow.
 
 ### X2 discovery (opt-in)
 
@@ -42,11 +42,11 @@ sofabaton_x1s:
 
 ## ⚙️ What this integration does
 
-This integration establises a direct and sustained connection with a Sofabaton hub, leveraging APIs intended for the Sofabaton app.
+This integration establishes a direct and sustained connection with a Sofabaton hub, leveraging APIs intended for the Sofabaton app.
 Sofabaton hubs allow **only one client connection at a time**. To enable this integration and using the app at the same time, this integration works by acting as a **local proxy**:
 
-1. connects to your *real* hub (physical device)
-2. exposes a *virtual* hub so the **official Sofabaton app** can still connect
+1. connects to your _real_ hub (physical device)
+2. exposes a _virtual_ hub so the **official Sofabaton app** can still connect
 3. lets Home Assistant send commands reliably via a single “writer” at a time
 
 When the official app is connected to the proxy, HA entities that can send commands become **unavailable** (intentional: prevents competing writes and weird app behavior).
@@ -54,7 +54,7 @@ When the official app is connected to the proxy, HA entities that can send comma
 <details>
 <summary><b>How the proxy works (conceptually)</b></summary>
 
-- The *real* hub is discovered via mDNS.
+- The _real_ hub is discovered via mDNS.
 - The integration starts a bundled Python proxy (`custom_components/sofabaton_x1s/lib/x1_proxy.py`).
 - The proxy connects to the real hub and **also** advertises a virtual `_x1hub._udp.local.`.
 - When the official app connects, it sends a **CALL_ME** packet to the proxy’s UDP listener. The proxy opens a TCP session back into the app (8100–8110 range).  
@@ -130,7 +130,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
   - `switch.<hub>_hex_logging`  
     Enables deep protocol logging for diagnostics (see logging docs).
   - `switch.<hub>_wifi_device`  
-    Enables/disables the listener for Wifi Commands. Disabled by default, enabled automically when deploying Wifi Commands to the hub.
+    Enables/disables the listener for Wifi Commands. Disabled by default, enabled automatically when deploying Wifi Commands to the hub.
 
 - **Sensors**
   - `binary_sensor.<hub>_hub_connected` (is the hub connected/disconnected to the integration)
@@ -165,7 +165,7 @@ This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 ## ⚙️ Dashboard card - Sofabaton Control Panel
 
 This integration adds the **Sofabaton Control Panel** Lovelace card to your Home Assistant.
-Find it in the Cards selection menu, or add it manually using the follow YAML:
+Find it in the Cards selection menu, or add it manually using the following YAML:
 
 ```
 type: custom:sofabaton-control-panel
@@ -173,7 +173,13 @@ type: custom:sofabaton-control-panel
 
 With this card **persistent cache** can be enabled, meaning that any data retrieved from the hub is cached and survives a restart of Home Assistant.
 With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable at certain tasks.  
-Use this card to navigate your cache and refresh it whenever required.
+Use the card to navigate your cache and refresh it whenever required.
+
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/24fc4e60-ee77-417a-ab1d-4fd004217c8d" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/222952bd-19c8-4d0a-bc71-4a45b9a21bef" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/a2622cdd-1df9-4075-88cc-49caf55057ef" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/96b1e008-3f14-4e21-ba60-62ad41d83a1b" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/81343a3a-8e14-4310-b52d-70967688e915" />
 
 ---
 
@@ -182,18 +188,19 @@ Use this card to navigate your cache and refresh it whenever required.
 ### Wifi Commands: Receive key presses from the hub and trigger an automation.
 
 In the Sofabaton Virtual Remote card's configuration editor, under **Automation Assist > Wifi Commands** 10 slots are available for custom commands.
+
 1. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
 2. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
-3. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.    
+3. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.
 
-  More details are here: [`docs/wifi_commands.md`](docs/wifi_commands.md)
+More details are here: [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
-  >    - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
-  >    - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
-  >    - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
+> - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
+> - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
+> - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
 
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/79f2d841-e4ef-4252-9a62-e2c7ef577f88" />  
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/de132346-40ca-422e-a5e9-abb7efce6433" />  
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/d87210e9-2966-4d05-9d40-bbb89296e410" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/ead35c29-9a53-4906-a7af-c65009bba3fc" />  
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/7bdad456-f637-43c6-8c50-9c3ccaad6990" />  
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/45e2f748-44f2-48c6-bc70-abee75ad30cf" />
@@ -227,7 +234,7 @@ data:
   device: 3
 ```
 
-### Start an Activity
+### Start or switch to an Activity
 
 ```yaml
 action: remote.turn_on
@@ -237,17 +244,28 @@ data:
   activity: Watch a movie
 ```
 
+### Power off
+
+```yaml
+action: remote.turn_off
+target:
+  entity_id: remote.<hub>_remote
+```
+
 ---
 
 ## 🧰 Finding IDs (recommended workflow)
 
 ### 1) Using Sofabaton Virtual Remote (recommended)
 
-The easiest way to retrieve the needed IDs is to add the **Virtual Remote card** to your dashboard, and enable its feature **Automation Assist > Key capture**.
+The easiest way to retrieve the needed IDs is to add the **Virtual Remote card** to your dashboard, and enable its feature **[Automation Assist > Key capture](https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md)**.
 This will give you IDs and ready-to-use YAML as Notifications in your Home Assistant side bar.
 
+### 2) Using Sofabaton Control Panel
 
-### 2) Recorded Keypress sensor
+Another good way to retrieve the IDs is to add the **Control Panel card** to your dashboard. When you enable **persistent cache** you can use a UI to navigate your Devices and Activities and see all relevant IDs.
+
+### 3) Recorded Keypress sensor
 
 Use the official Sofabaton app connected to the **virtual hub**, press a button in the app's virtual remote, then read:
 
@@ -266,26 +284,6 @@ data:
 target:
   entity_id: {{ command_data.target.entity_id }}
 ```
-
-### 3) Index sensor + fetch action (best for exploring full command lists)
-
-The hub can have a lot of commands; fetching everything on every startup is slow/noisy, so it’s on-demand.
-
-Check: `sensor.<hub>_index` (Settings → Developer Tools → States). You will see your devices and activities, along with their respective `end_id` values.
-
-Run the action **in UI mode at least once** (Settings → Developer Tools → Actions) so you can select the hub:
-
-In the fetch action, device is the Home Assistant Device for your hub (pick it from the UI dropdown). ent_id is the Sofabaton entity id (device/activity id on the hub).
-```yaml
-action: sofabaton_x1s.fetch_device_commands
-data:
-  device: 89c3874a93f1e9ee0f49e24a2710535e  # select hub in UI mode
-  ent_id: 5                                 # the ID of a device or activity
-```
-
-Then check: `sensor.<hub>_index` again for the populated mappings, and use those IDs with `remote.send_command`.
-
-For a full guide, see [`docs/fetch_command.md`](docs/fetch_command.md)
 
 ---
 

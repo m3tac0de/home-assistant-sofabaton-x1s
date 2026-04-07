@@ -190,6 +190,27 @@ class CommandConfigStore:
             ),
         }
 
+    async def async_save_deployed_wifi_commands(
+        self,
+        entry_id: str,
+        commands: list[dict[str, Any]],
+    ) -> None:
+        """Persist the command list that was last successfully synced to the hub.
+
+        The list is ordered and its indices correspond directly to the
+        ``command_index`` values embedded in callback URLs, so it must never be
+        mutated after being written here.
+        """
+        hub = self._data.setdefault("hubs", {}).setdefault(entry_id, {})
+        hub["deployed_wifi_commands"] = commands
+        await self._store.async_save(self._data)
+
+    def get_deployed_wifi_commands(self, entry_id: str) -> list[dict[str, Any]]:
+        """Return the deployed command snapshot for *entry_id*, or [] if none."""
+        hub = self._data.get("hubs", {}).get(entry_id, {})
+        result = hub.get("deployed_wifi_commands") if isinstance(hub, dict) else None
+        return result if isinstance(result, list) else []
+
     async def async_set_hub_commands(
         self,
         entry_id: str,

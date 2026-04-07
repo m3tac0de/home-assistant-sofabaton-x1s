@@ -143,6 +143,23 @@ class SofabatonHub:
         self._cache_generation += 1
         return self._cache_generation
 
+    def _activity_catalog_signature(
+        self, activities: dict[int, dict[str, Any]] | None = None
+    ) -> tuple[tuple[int, str], ...]:
+        rows = activities if isinstance(activities, dict) else self.activities
+        signature: list[tuple[int, str]] = []
+        for act_id, activity in rows.items():
+            if not isinstance(activity, dict):
+                continue
+            signature.append((int(act_id) & 0xFF, str(activity.get("name") or "").strip()))
+        signature.sort()
+        return tuple(signature)
+
+    def _replace_activities(self, activities: dict[int, dict[str, Any]]) -> bool:
+        previous_signature = self._activity_catalog_signature()
+        self.activities = activities
+        return self._activity_catalog_signature(activities) != previous_signature
+
     def _create_proxy(self) -> X1Proxy:
         proxy = X1Proxy(
             real_hub_ip=self.host,
@@ -275,9 +292,10 @@ class SofabatonHub:
             )
             self.activities_ready = ready
             if ready:
-                self.activities = acts
+                activities_changed = self._replace_activities(acts)
                 self._activities_generation += 1
-                self._bump_cache_generation()
+                if activities_changed:
+                    self._bump_cache_generation()
                 self._sync_current_activity_from_cache(clear_when_unknown=True)
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
@@ -286,8 +304,8 @@ class SofabatonHub:
         def _inner() -> None:
             acts, ready = self._get_activities_cached()
             if acts:
-                self.activities = acts
-                self._bump_cache_generation()
+                if self._replace_activities(acts):
+                    self._bump_cache_generation()
                 self._sync_current_activity_from_cache(clear_when_unknown=False)
             if ready:
                 self.activities_ready = True
@@ -464,8 +482,8 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
 
         if acts_ready:
-            self.activities = acts
-            self._bump_cache_generation()
+            if self._replace_activities(acts):
+                self._bump_cache_generation()
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
 
         if self.current_activity is not None:
@@ -1375,18 +1393,38 @@ class SofabatonHub:
         command_label = ""
         device_name = None
         press_type = "short"
+        resolved_slot: dict[str, Any] | None = None
+
         if len(parts) >= 4 and parts[0] == "launch":
             try:
                 device_id = int(parts[2])
             except ValueError:
                 device_id = -1
-            command_label = unquote(parts[3]).replace("_", " ")
-            trailing_parts = parts[4:]
-            if trailing_parts and trailing_parts[-1] in ("short", "long"):
-                press_type = trailing_parts[-1]
-                trailing_parts = trailing_parts[:-1]
-            if trailing_parts:
-                device_name = unquote("/".join(trailing_parts)).replace("_", " ")
+
+            if parts[3].isdigit():
+                # New format: launch/{hub_id}/{device_id}/{command_index}/{press_type}
+                # Resolve command from the deployed snapshot (independent of staged config).
+                command_index = int(parts[3])
+                if len(parts) >= 5 and parts[4] in ("short", "long"):
+                    press_type = parts[4]
+                hass_data = getattr(self.hass, "data", {})
+                domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+                store = domain_data.get("command_config_store")
+                if store is not None:
+                    deployed = store.get_deployed_wifi_commands(self.entry_id)
+                    if 0 <= command_index < len(deployed):
+                        resolved_slot = deployed[command_index]
+                        command_label = str(resolved_slot.get("name", ""))
+            else:
+                # Old format (backwards compat):
+                # launch/{hub_id}/{device_id}/{command_name}/{device_name}/{press_type}
+                command_label = unquote(parts[3]).replace("_", " ")
+                trailing_parts = parts[4:]
+                if trailing_parts and trailing_parts[-1] in ("short", "long"):
+                    press_type = trailing_parts[-1]
+                    trailing_parts = trailing_parts[:-1]
+                if trailing_parts:
+                    device_name = unquote("/".join(trailing_parts)).replace("_", " ")
 
         timestamp = datetime.now(timezone.utc)
         record = {
@@ -1406,7 +1444,10 @@ class SofabatonHub:
         }
         self._last_ip_command = record
         async_dispatcher_send(self.hass, signal_ip_commands(self.entry_id))
-        await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
+        if resolved_slot is not None:
+            await self._async_run_wifi_slot_action(resolved_slot, command_label, press_type=press_type)
+        else:
+            await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
 
     @property
     def is_sync_in_progress(self) -> bool:
@@ -1533,6 +1574,34 @@ class SofabatonHub:
                 blocking=True,
             )
 
+    async def _async_run_wifi_slot_action(
+        self,
+        slot: dict[str, Any],
+        command_label: str,
+        *,
+        press_type: str = "short",
+    ) -> None:
+        """Execute the configured action from a resolved command slot dict."""
+        if press_type == "long":
+            if not bool(slot.get("long_press_enabled")):
+                return
+            action = (
+                slot.get("long_press_action")
+                if isinstance(slot.get("long_press_action"), dict)
+                else {}
+            )
+        else:
+            action = slot.get("action") if isinstance(slot.get("action"), dict) else {}
+        try:
+            await self._async_execute_action_config(action)
+        except Exception as err:  # pragma: no cover - service boundary
+            _LOGGER.warning(
+                "[%s] Failed executing configured IP action for '%s': %s",
+                self.entry_id,
+                command_label,
+                err,
+            )
+
     async def _async_maybe_run_configured_ip_action(
         self,
         command_label: str,
@@ -1550,25 +1619,7 @@ class SofabatonHub:
         for slot in payload.get("commands", []):
             if normalize_command_name(slot.get("name")) != command_key:
                 continue
-            if press_type == "long":
-                if not bool(slot.get("long_press_enabled")):
-                    return
-                action = (
-                    slot.get("long_press_action")
-                    if isinstance(slot.get("long_press_action"), dict)
-                    else {}
-                )
-            else:
-                action = slot.get("action") if isinstance(slot.get("action"), dict) else {}
-            try:
-                await self._async_execute_action_config(action)
-            except Exception as err:  # pragma: no cover - service boundary
-                _LOGGER.warning(
-                    "[%s] Failed executing configured IP action for '%s': %s",
-                    self.entry_id,
-                    command_label,
-                    err,
-                )
+            await self._async_run_wifi_slot_action(slot, command_label, press_type=press_type)
             return
 
     async def async_sync_command_config(
@@ -1660,7 +1711,7 @@ class SofabatonHub:
                     "deleted_managed_devices": len(managed),
                 }
 
-            command_defs: list[dict[str, str]] = []
+            command_defs: list[dict[str, Any]] = []
             for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
                 name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
                 command_defs.append(
@@ -1668,6 +1719,7 @@ class SofabatonHub:
                         "display_name": name,
                         "trigger_name": name,
                         "press_type": "short",
+                        "command_index": idx,
                     }
                 )
             for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
@@ -1677,6 +1729,7 @@ class SofabatonHub:
                         "display_name": f"{name} Long Press",
                         "trigger_name": name,
                         "press_type": "long",
+                        "command_index": idx,
                     }
                 )
 
@@ -1729,6 +1782,15 @@ class SofabatonHub:
                 current_step=5,
                 message="Applying activity favorites",
             )
+
+            # Track the hub-assigned fav_id for every successfully added favorite,
+            # keyed by activity and ordered by command slot (add order).  We use
+            # these tracked ids in the post-hoc reorder rather than a pre-existing
+            # snapshot so that fav_id recycling (the hub reusing freed ids) cannot
+            # cause old scrambled orders to be mistaken for "existing to preserve".
+            activities_new_fav_ids: dict[int, list[int]] = {}
+
+            activities_with_favorites: set[int] = set()
             for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
                 if not slot.get("add_as_favorite"):
                     continue
@@ -1740,12 +1802,50 @@ class SofabatonHub:
                         continue
                     if not add_results.get(act_id, False):
                         continue
-                    await self.async_command_to_favorite(
+                    result = await self.async_command_to_favorite(
                         act_id,
                         wifi_device_id,
                         command_id,
                         refresh_after_write=False,
                     )
+                    activities_with_favorites.add(act_id)
+                    if result and result.get("fav_id") is not None:
+                        activities_new_fav_ids.setdefault(act_id, []).append(
+                            result["fav_id"]
+                        )
+
+            # Explicitly reorder so that all favorites (including the 5th+) get
+            # a display slot on the physical remote.  Without this step the
+            # stage payload sent by command_to_favorite may leave favorites beyond
+            # the 4th without a slot assignment on X1S/X2, making them invisible
+            # on the remote's touch screen.
+            #
+            # Desired order: pre-existing entries (macros, other-device favorites)
+            # in their current slot order, followed by the newly-added wifi-command
+            # favorites in command-slot order (i.e. the order they were added).
+            #
+            # We identify "new" favorites by the fav_id returned from each
+            # command_to_favorite call.  This is robust against hub fav_id
+            # recycling: when the hub reuses an id that was freed by a prior
+            # managed-device deletion, the recycled id still lands in
+            # activities_new_fav_ids and is correctly treated as a new add.
+            for act_id in sorted(activities_with_favorites):
+                all_order = await self.async_request_favorites_order(act_id)
+                if not all_order:
+                    continue
+                new_fav_id_list = activities_new_fav_ids.get(act_id, [])
+                new_fav_id_set = set(new_fav_id_list)
+                # Pre-existing = everything in current slot order that is NOT
+                # one of the newly-added wifi-command favorites.
+                pre_existing = [
+                    fav_id
+                    for fav_id, _slot in sorted(all_order, key=lambda x: x[1])
+                    if fav_id not in new_fav_id_set
+                ]
+                final_order = pre_existing + new_fav_id_list
+                await self.async_reorder_favorites(
+                    act_id, final_order, refresh_after_write=False
+                )
 
             self._set_command_sync_progress(
                 current_step=6,
@@ -1804,11 +1904,33 @@ class SofabatonHub:
                     partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
                 )
 
+            # Fetch device commands for the newly-created wifi device so that
+            # state.commands[wifi_device_id] is populated with the real labels
+            # (e.g. "Dim the lights").  Without this, _build_cache_activity_favorites
+            # falls back to "Command N" because command_to_favorite clears
+            # activity_favorite_labels and the activity-map refresh only returns
+            # slot/command IDs, not labels.
+            await self.hass.async_add_executor_job(
+                partial(self._proxy.get_commands_for_entity, wifi_device_id, fetch_if_missing=True)
+            )
+
             self._set_command_sync_progress(
                 current_step=8,
                 message="Resyncing physical remote",
             )
             await self.async_resync_remote()
+
+            # Persist the command list that was just synced to the hub.
+            # Callbacks will resolve command indices against this frozen snapshot,
+            # independently of any subsequent staged-config edits.
+            hass_data = getattr(self.hass, "data", {})
+            domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+            store = domain_data.get("command_config_store")
+            if store is not None:
+                await store.async_save_deployed_wifi_commands(
+                    self.entry_id,
+                    list(commands[:_WIFI_COMMAND_SLOT_COUNT]),
+                )
 
             self._set_command_sync_progress(
                 status="success",
