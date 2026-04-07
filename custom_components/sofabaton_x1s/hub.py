@@ -1904,6 +1904,16 @@ class SofabatonHub:
                     partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
                 )
 
+            # Fetch device commands for the newly-created wifi device so that
+            # state.commands[wifi_device_id] is populated with the real labels
+            # (e.g. "Dim the lights").  Without this, _build_cache_activity_favorites
+            # falls back to "Command N" because command_to_favorite clears
+            # activity_favorite_labels and the activity-map refresh only returns
+            # slot/command IDs, not labels.
+            await self.hass.async_add_executor_job(
+                partial(self._proxy.get_commands_for_entity, wifi_device_id, fetch_if_missing=True)
+            )
+
             self._set_command_sync_progress(
                 current_step=8,
                 message="Resyncing physical remote",

@@ -1,5 +1,5 @@
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.1.4";
+const CARD_VERSION = "0.1.5";
 const KEY_CAPTURE_HELP_URL =
   "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 const YAML_HELPER_INFO_URL =
@@ -6464,8 +6464,8 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     helperLink.href = KEY_CAPTURE_HELP_URL;
     helperLink.target = "_blank";
     helperLink.rel = "noopener noreferrer";
-    helperLink.title = "Learn more about Snippet Generator";
-    helperLink.setAttribute("aria-label", "Snippet Generator documentation");
+    helperLink.title = "Learn more about Key capture";
+    helperLink.setAttribute("aria-label", "Key capture documentation");
     helperLink.innerHTML = '<ha-icon icon="mdi:help-circle-outline"></ha-icon>';
     helperLink.addEventListener("click", (ev) => ev.stopPropagation());
 
