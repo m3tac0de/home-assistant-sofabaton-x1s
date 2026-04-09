@@ -591,6 +591,23 @@ class BurstScheduler:
             return
         self._drain(can_issue=can_issue, sender=sender, now=now)
 
+    def finish(
+        self,
+        key: str,
+        *,
+        can_issue: Callable[[], bool],
+        sender: Callable[[int, bytes], None],
+        now: Optional[float] = None,
+    ) -> bool:
+        if not self.active or self.kind != key:
+            return False
+        self._drain(
+            can_issue=can_issue,
+            sender=sender,
+            now=time.monotonic() if now is None else now,
+        )
+        return True
+
     def _drain(
         self,
         *,

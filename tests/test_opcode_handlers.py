@@ -50,6 +50,7 @@ from custom_components.sofabaton_x1s.lib.opcode_handlers import (
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
+    OP_ACTIVITY_MAP_PAGE,
     OP_KEYMAP_EXTRA,
     OP_KEYMAP_CONT,
     OP_KEYMAP_TBL_B,
@@ -64,6 +65,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_REQ_COMMANDS,
     OP_MACROS_A1,
     OP_MACROS_B1,
+    OP_MARKER,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
     OP_X2_REMOTE_LIST_ROW,
@@ -479,6 +481,56 @@ def test_keymap_handler_parses_additional_favorites_from_response() -> None:
     )
 
 
+def test_keymap_handler_finishes_burst_immediately_on_marker_final_frame() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = KeymapHandler()
+    proxy._burst.start("buttons:104", now=0.0)
+
+    first_raw = (
+        "a5 5a fa 3d 01 00 01 01 00 02 0e 68 97 02 00 00 00 00 00 00 03 02 00 00 00 00"
+        " 00 00 05 68 98 02 00 00 00 00 00 00 04 02 00 00 00 00 00 00 06 68 99 02 00"
+        " 00 00 00 00 00 01 02 00 00 00 00 00 00 02 68 ae 04 00 00 00 00 01 13 11 00"
+        " 00 00 00 00 00 00 00 68 af 04 00 00 00 00 03 28 0f 00 00 00 00 00 00 00 00"
+        " 68 b0 04 00 00 00 00 00 2a 16 00 00 00 00 00 00 00 00 68 b1 04 00 00 00 00"
+        " 03 29 10 00 00 00 00 00 00 00 00 68 b2 04 00 00 00 00 01 15 0e 00 00 00 00"
+        " 00 00 00 00 68 b3 04 00 00 00 00 00 74 12 00 00 00 00 00 00 00 00 68 b4 04"
+        " 00 00 00 00 07 c7 13 00 00 00 00 00 00 00 00 68 b5 04 00 00 00 00 00 2d 14"
+        " 00 00 00 00 00 00 00 00 68 b6 01 00 00 00 00 2e 77 7a 00 00 00 00 00 00 00"
+        " 00 68 b8 01 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 68 b9 01 00 00 00"
+        " 00 00 33 8c"
+    )
+    marker_raw = "a5 5a 0c 3d 01 00 02 79 00 00 00 00 00 00 00 00 c4"
+
+    handler.handle(_build_context(proxy, first_raw, OP_KEYMAP_TBL_B, "KEYMAP_TABLE_B"))
+    assert proxy._burst.active is True
+
+    handler.handle(_build_context(proxy, marker_raw, OP_MARKER, "KEYMAP_MARKER"))
+
+    assert proxy._burst.active is False
+
+
+def test_activity_map_handler_finishes_burst_immediately_on_last_page() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = ActivityMapHandler()
+    proxy._pending_activity_map_requests.add(0x65)
+    proxy._burst.start("activity_map:101", now=0.0)
+
+    payload = bytearray(96)
+    payload[0] = 1
+    payload[3] = 1
+    payload[6:8] = (0x0001).to_bytes(2, "big")
+    payload[92:96] = bytes([0x01, 0x02, 0x03, 0x00])
+
+    handler.handle(_build_payload_context(proxy, OP_ACTIVITY_MAP_PAGE, bytes(payload), "ACTIVITY_MAP_PAGE"))
+
+    assert proxy._burst.active is False
+    assert 0x65 in proxy._activity_map_complete
+
+
 def test_keymap_table_d_includes_pause() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
@@ -885,6 +937,49 @@ def test_catalog_activity_handler_clears_needs_confirm_when_tail_marker_unset() 
     assert proxy._activity_pending_rows[0x02]["needs_confirm"] is False
     assert len(proxy._activity_pending_payloads[0x66]) == 214
 
+
+def test_catalog_activity_handler_finishes_burst_immediately_on_final_row() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = CatalogActivityHandler()
+    _start_activity_request(proxy)
+
+    first = (
+        "a5 5a d5 3b 01 00 01 02 00 01 00 65 01 01 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 57 00 61 00 74 00 63 00 68 00 20 "
+        "00 54 00 56 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 57 00 61 00 74 00 63 00 68 00 20 00 54 00 56 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 fc 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 58"
+    )
+    second = (
+        "a5 5a d5 3b 02 00 01 02 00 01 00 66 0d 02 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 01 00 50 00 6c 00 61 00 79 00 20 00 58 "
+        "00 62 00 6f 00 78 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 50 00 6c 00 61 00 79 00 20 00 58 00 62 00 6f 00 78 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 fc 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 2e"
+    )
+
+    handler.handle(_build_context(proxy, first, OP_CATALOG_ROW_ACTIVITY, "CATALOG_ROW_ACTIVITY"))
+    assert proxy._burst.active is True
+
+    handler.handle(_build_context(proxy, second, OP_CATALOG_ROW_ACTIVITY, "CATALOG_ROW_ACTIVITY"))
+
+    assert proxy._burst.active is False
+    assert proxy.state.activities == {
+        0x65: {"name": "Watch TV", "active": False, "needs_confirm": False},
+        0x66: {"name": "Play Xbox", "active": True, "needs_confirm": False},
+    }
+    assert proxy.state.current_activity_hint == 0x66
+
 def test_catalog_activity_handler_decodes_utf16_labels() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
@@ -948,10 +1043,15 @@ def test_catalog_activity_handler_decodes_utf16_labels() -> None:
             _build_context(proxy, raw_hex, _opcode_from_raw(raw_hex), "CATALOG_ROW_ACTIVITY")
         )
         latest_by_id[act_id & 0xFF] = expected_label
-        row = next(
-            value for value in proxy._activity_pending_rows.values() if int(value["id"]) == (act_id & 0xFF)
-        )
-        assert row["name"] == expected_label
+        if proxy._activity_request_inflight is None:
+            assert proxy.state.activities[act_id & 0xFF]["name"] == expected_label
+        else:
+            row = next(
+                value
+                for value in proxy._activity_pending_rows.values()
+                if int(value["id"]) == (act_id & 0xFF)
+            )
+            assert row["name"] == expected_label
 
 
 def test_activity_map_ignores_control_tuples_from_x1_tail() -> None:

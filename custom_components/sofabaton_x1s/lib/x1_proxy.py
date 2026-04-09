@@ -13,6 +13,7 @@ from collections import defaultdict, deque
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
+from ..logging_utils import get_hub_logger
 from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import DeviceCommandAssembler
 from .macros import MacroAssembler
@@ -262,6 +263,7 @@ class X1Proxy:
         self.mdns_host = mdns_host or (self.mdns_instance + ".local")
         self.mdns_txt = mdns_txt or {}
         self.proxy_id = proxy_id or self.mdns_instance
+        self._log = get_hub_logger(log, self.proxy_id)
         self.diag_dump = bool(diag_dump)
         self.diag_parse = bool(diag_parse)
         self.hub_version = hub_version or classify_hub_version(self.mdns_txt)
@@ -275,6 +277,7 @@ class X1Proxy:
         self._macro_assembler = MacroAssembler()
         self._burst = BurstScheduler()
         self._pending_button_requests: set[int] = set()
+        self._button_burst_expected_frames: dict[int, int] = {}
         # Track pending command fetches per device, so multiple targeted
         # lookups for the same device (different commands) can be queued.
         self._pending_command_requests: dict[int, set[int]] = {}
@@ -396,7 +399,7 @@ class X1Proxy:
     
     def set_diag_dump(self, enable: bool) -> None:
         self.diag_dump = bool(enable)
-        log.info("[PROXY] hex logging %s", "enabled" if enable else "disabled")
+        self._log.info("[PROXY] hex logging %s", "enabled" if enable else "disabled")
 
     def can_issue_commands(self) -> bool:
         return self.transport.can_issue_commands()
@@ -408,7 +411,7 @@ class X1Proxy:
 
     def _send_family_frame(self, family: int, payload: bytes) -> None:
         opcode = ((len(payload) & 0xFF) << 8) | (family & 0xFF)
-        log.info(
+        self._log.info(
             "[WIFI] send family=0x%02X opcode=0x%04X payload=%dB",
             family,
             opcode,
@@ -434,7 +437,7 @@ class X1Proxy:
 
         total_attempts = max(1, int(retries) + 1)
         for attempt in range(1, total_attempts + 1):
-            log.info(
+            self._log.info(
                 "[WIFI][STEP] %s tx family=0x%02X expect_ack=0x%04X first_byte=%s attempt=%d/%d",
                 step_name,
                 family,
@@ -449,17 +452,17 @@ class X1Proxy:
             if matched is not None:
                 matched_opcode, _matched_payload = matched
                 if matched_opcode != ack_opcode:
-                    log.warning(
+                    self._log.warning(
                         "[WIFI][STEP] %s matched fallback ack=0x%04X (expected=0x%04X)",
                         step_name,
                         matched_opcode,
                         ack_opcode,
                     )
-                log.info("[WIFI][STEP] %s acked via 0x%04X", step_name, matched_opcode)
+                self._log.info("[WIFI][STEP] %s acked via 0x%04X", step_name, matched_opcode)
                 return True
 
             if attempt < total_attempts:
-                log.warning(
+                self._log.warning(
                     "[WIFI][STEP] %s retrying after ack timeout (attempt %d/%d)",
                     step_name,
                     attempt,
@@ -468,7 +471,7 @@ class X1Proxy:
                 if retry_delay > 0:
                     time.sleep(retry_delay)
 
-        log.warning(
+        self._log.warning(
             "[WIFI][STEP] %s failed waiting ack=0x%04X first_byte=%s",
             step_name,
             ack_opcode,
@@ -506,11 +509,11 @@ class X1Proxy:
             sender=self._send_cmd_frame,
         )
         if sent:
-            log.info("[CMD] queued %s (0x%04X) %dB", OPNAMES.get(opcode, f"OP_{opcode:04X}"), opcode, len(payload))
+            self._log.info("[CMD] queued %s (0x%04X) %dB", OPNAMES.get(opcode, f"OP_{opcode:04X}"), opcode, len(payload))
             if frame is not None:
-                log.info("[DUMP] queued %s", _hexdump(frame))
+                self._log.info("[DUMP] queued %s", _hexdump(frame))
         else:
-            log.info(
+            self._log.info(
                 "[CMD] ignoring %s: proxy client is connected",
                 OPNAMES.get(opcode, f"OP_{opcode:04X}"),
             )
@@ -553,11 +556,11 @@ class X1Proxy:
 
     def request_buttons_for_entity(self, ent_id: int) -> bool:
         if not self.can_issue_commands():
-            log.info("[CMD] request_buttons_for_entity ignored: proxy client is connected"); return False
+            self._log.info("[CMD] request_buttons_for_entity ignored: proxy client is connected"); return False
 
         ent_lo = ent_id & 0xFF
         if ent_lo in self._pending_button_requests:
-            log.debug(
+            self._log.debug(
                 "[CMD] request_buttons_for_entity ignored: burst already pending for 0x%02X",
                 ent_lo,
             )
@@ -573,10 +576,10 @@ class X1Proxy:
 
     def request_commands_for_entity(self, ent_id: int) -> bool:
         if not self.can_issue_commands():
-            log.info("[CMD] request_commands_for_entity ignored: proxy client is connected"); return False
+            self._log.info("[CMD] request_commands_for_entity ignored: proxy client is connected"); return False
         ent_lo = ent_id & 0xFF
         if 0xFF in self._pending_command_requests.get(ent_lo, set()):
-            log.debug(
+            self._log.debug(
                 "[CMD] request_commands_for_entity ignored: burst already pending for 0x%02X",
                 ent_lo,
             )
@@ -588,18 +591,18 @@ class X1Proxy:
 
     def request_activity_mapping(self, act_id: int) -> bool:
         if not self.can_issue_commands():
-            log.info("[CMD] request_activity_mapping ignored: proxy client is connected"); return False
+            self._log.info("[CMD] request_activity_mapping ignored: proxy client is connected"); return False
 
         act_lo = act_id & 0xFF
         if act_lo in self._pending_activity_map_requests:
-            log.debug(
+            self._log.debug(
                 "[CMD] request_activity_mapping ignored: burst already pending for 0x%02X",
                 act_lo,
             )
             return False
 
         self._pending_activity_map_requests.add(act_lo)
-        log.info("[ACTMAP] local request act=0x%02X (%d)", act_lo, act_lo)
+        self._log.info("[ACTMAP] local request act=0x%02X (%d)", act_lo, act_lo)
         return self.enqueue_cmd(
             OP_REQ_ACTIVITY_MAP,
             bytes([act_lo]),
@@ -609,11 +612,11 @@ class X1Proxy:
 
     def request_macros_for_activity(self, act_id: int) -> bool:
         if not self.can_issue_commands():
-            log.info("[CMD] request_macros_for_activity ignored: proxy client is connected"); return False
+            self._log.info("[CMD] request_macros_for_activity ignored: proxy client is connected"); return False
 
         act_lo = act_id & 0xFF
         if act_lo in self._pending_macro_requests:
-            log.debug(
+            self._log.debug(
                 "[CMD] request_macros_for_activity ignored: burst already pending for 0x%02X",
                 act_lo,
             )
@@ -631,7 +634,7 @@ class X1Proxy:
         """Fetch IP command definitions for an existing device."""
 
         if not self.can_issue_commands():
-            log.info("[CMD] request_ip_commands_for_device ignored: proxy client is connected"); return False
+            self._log.info("[CMD] request_ip_commands_for_device ignored: proxy client is connected"); return False
 
         dev_lo = dev_id & 0xFF
         event = threading.Event() if wait else None
@@ -1007,7 +1010,7 @@ class X1Proxy:
         base = time.monotonic() if now is None else now
         self._activity_retry_due_at = base + ACTIVITY_INCOMPLETE_RETRY_DELAY_S
         self._activity_retry_count += 1
-        log.warning(
+        self._log.warning(
             "[ACT] incomplete activities snapshot on X2; retrying in %.2fs",
             ACTIVITY_INCOMPLETE_RETRY_DELAY_S,
         )
@@ -1018,6 +1021,46 @@ class X1Proxy:
             return False
         seen = set(self._activity_pending_rows.keys())
         return seen == set(range(1, expected + 1))
+
+    def try_finish_activities_burst(self) -> bool:
+        generation = self._activity_request_inflight
+        if generation is None or self._activity_pending_generation != generation:
+            return False
+        if not self._activity_snapshot_complete():
+            return False
+        return self._burst.finish(
+            "activities",
+            can_issue=self.can_issue_commands,
+            sender=self._send_cmd_frame,
+        )
+
+    def note_buttons_frame(self, act_lo: int, *, frame_no: int | None, total_frames: int | None) -> None:
+        if frame_no != 1:
+            return
+        if total_frames is None or total_frames <= 0:
+            return
+        self._button_burst_expected_frames[act_lo & 0xFF] = total_frames
+
+    def try_finish_buttons_burst(self, act_lo: int, *, frame_no: int | None) -> bool:
+        ent_lo = act_lo & 0xFF
+        expected = self._button_burst_expected_frames.get(ent_lo)
+        if expected is None or frame_no is None or frame_no < expected:
+            return False
+        return self._burst.finish(
+            f"buttons:{ent_lo}",
+            can_issue=self.can_issue_commands,
+            sender=self._send_cmd_frame,
+        )
+
+    def try_finish_activity_map_burst(self, act_lo: int) -> bool:
+        ent_lo = act_lo & 0xFF
+        if ent_lo not in self._activity_map_complete:
+            return False
+        return self._burst.finish(
+            f"activity_map:{ent_lo}",
+            can_issue=self.can_issue_commands,
+            sender=self._send_cmd_frame,
+        )
 
     def ingest_activity_row(
         self,
@@ -1030,7 +1073,7 @@ class X1Proxy:
     ) -> bool:
         generation = self._activity_request_inflight
         if generation is None:
-            log.warning(
+            self._log.warning(
                 "[ACT] ignoring ghost activity row idx=%s act_id=%s: no request in flight",
                 row_idx,
                 act_id,
@@ -1043,7 +1086,7 @@ class X1Proxy:
         if row_idx == 1:
             self._reset_pending_activity_snapshot(generation)
         elif self._activity_pending_generation != generation:
-            log.warning(
+            self._log.warning(
                 "[ACT] ignoring activity row idx=%s act_id=%s before row #1 for request=%s",
                 row_idx,
                 act_id,
@@ -1055,7 +1098,7 @@ class X1Proxy:
             if self._activity_pending_expected_rows is None:
                 self._activity_pending_expected_rows = expected_rows
             elif self._activity_pending_expected_rows != expected_rows:
-                log.warning(
+                self._log.warning(
                     "[ACT] row-count mismatch in pending snapshot: had=%s got=%s idx=%s",
                     self._activity_pending_expected_rows,
                     expected_rows,
@@ -1064,7 +1107,7 @@ class X1Proxy:
                 self._reset_pending_activity_snapshot(generation)
                 self._activity_pending_expected_rows = expected_rows
                 if row_idx != 1:
-                    log.warning(
+                    self._log.warning(
                         "[ACT] ignoring activity row idx=%s after row-count mismatch until row #1 restarts snapshot",
                         row_idx,
                     )
@@ -1100,7 +1143,7 @@ class X1Proxy:
 
         if complete:
             self._commit_pending_activity_snapshot()
-            log.info(
+            self._log.info(
                 "[ACT] committed complete activities snapshot rows=%d request=%s",
                 len(self._activity_pending_rows),
                 generation,
@@ -1111,7 +1154,7 @@ class X1Proxy:
             expected = self._activity_pending_expected_rows
             seen = sorted(self._activity_pending_rows.keys())
             if generation is not None:
-                log.warning(
+                self._log.warning(
                     "[ACT] discarding incomplete activities snapshot request=%s expected=%s seen=%s",
                     generation,
                     expected,
@@ -1353,7 +1396,7 @@ class X1Proxy:
     
     def send_command(self, ent_id: int, key_code: int) -> bool:
         if not self.can_issue_commands():
-            log.info("[CMD] send_command ignored: proxy client is connected"); return False
+            self._log.info("[CMD] send_command ignored: proxy client is connected"); return False
 
         if key_code == ButtonName.POWER_ON:
             self.state.set_hint(ent_id)
@@ -1419,7 +1462,7 @@ class X1Proxy:
 
             remote_id = self.wait_for_x2_remote_sync_id(timeout=2.0)
             if remote_id is None:
-                log.warning("[REMOTE_SYNC] timed out waiting for X2 remote list response")
+                self._log.warning("[REMOTE_SYNC] timed out waiting for X2 remote list response")
                 return False
 
             return self.enqueue_cmd(OP_X2_REMOTE_SYNC, remote_id + b"\x01")
@@ -1536,7 +1579,7 @@ class X1Proxy:
                     self._roku_ack_events.remove((ack_opcode, ack_payload))
                     if not self._roku_ack_events:
                         self._roku_ack_event.clear()
-                    log.info(
+                    self._log.info(
                         "[ACK] opcode=0x%04X payload=%s",
                         ack_opcode,
                         ack_payload.hex(" "),
@@ -1546,7 +1589,7 @@ class X1Proxy:
 
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                log.warning(
+                self._log.warning(
                     "[ACK] timeout waiting opcode=0x%04X first_byte=%s",
                     opcode,
                     f"0x{first_byte:02X}" if first_byte is not None else "*",
@@ -1572,7 +1615,7 @@ class X1Proxy:
                         self._roku_ack_events.remove((ack_opcode, ack_payload))
                         if not self._roku_ack_events:
                             self._roku_ack_event.clear()
-                        log.info(
+                        self._log.info(
                             "[ACK] opcode=0x%04X payload=%s",
                             ack_opcode,
                             ack_payload.hex(" "),
@@ -1585,7 +1628,7 @@ class X1Proxy:
                 wanted = ", ".join(
                     f"0x{op:04X}/{('*' if first is None else f'0x{first:02X}') }" for op, first in candidates
                 )
-                log.warning("[ACK] timeout waiting any in [%s]", wanted)
+                self._log.warning("[ACK] timeout waiting any in [%s]", wanted)
                 return None
             self._roku_ack_event.wait(min(remaining, 0.2))
 
@@ -1886,7 +1929,7 @@ class X1Proxy:
             if act_lo in self._activity_map_complete:
                 return True
             time.sleep(0.05)
-        log.warning("[ACTMAP] timeout waiting for activity map burst act=0x%02X", act_lo)
+        self._log.warning("[ACTMAP] timeout waiting for activity map burst act=0x%02X", act_lo)
         return False
 
     def _activities_requiring_confirmation(self) -> list[int]:
@@ -1945,7 +1988,7 @@ class X1Proxy:
 
     def delete_device(self, device_id: int) -> dict[str, Any] | None:
         if not self.can_issue_commands():
-            log.info("[DELETE] delete_device ignored: proxy client is connected")
+            self._log.info("[DELETE] delete_device ignored: proxy client is connected")
             return None
 
         dev_lo = device_id & 0xFF
@@ -1961,7 +2004,7 @@ class X1Proxy:
             return None
 
         if not self.request_activities():
-            log.warning("[DELETE] failed to refresh activities after deleting dev=0x%02X", dev_lo)
+            self._log.warning("[DELETE] failed to refresh activities after deleting dev=0x%02X", dev_lo)
             return None
 
         deadline = time.monotonic() + 15.0
@@ -1974,14 +2017,14 @@ class X1Proxy:
                 break
             time.sleep(0.01)
         if self._burst.active:
-            log.warning("[DELETE] timeout waiting for activities burst after deleting dev=0x%02X", dev_lo)
+            self._log.warning("[DELETE] timeout waiting for activities burst after deleting dev=0x%02X", dev_lo)
             return None
 
         confirmed_activities: list[int] = []
         for act_lo in self._activities_requiring_confirmation():
             confirm_payload = self._build_activity_confirm_payload(act_lo)
             if confirm_payload is None:
-                log.warning("[DELETE] missing cached activity row for confirm act=0x%02X", act_lo)
+                self._log.warning("[DELETE] missing cached activity row for confirm act=0x%02X", act_lo)
                 return None
 
             confirm_opcode = (
@@ -1989,10 +2032,10 @@ class X1Proxy:
                 if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2)
                 else OP_ACTIVITY_CONFIRM
             )
-            log.info("[DELETE] confirming updated activity act=0x%02X", act_lo)
+            self._log.info("[DELETE] confirming updated activity act=0x%02X", act_lo)
             self._send_cmd_frame(confirm_opcode, confirm_payload)
             if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0) is None:
-                log.warning("[DELETE] missing ACK after activity confirm act=0x%02X", act_lo)
+                self._log.warning("[DELETE] missing ACK after activity confirm act=0x%02X", act_lo)
                 return None
 
             activity = self.state.activities.get(act_lo)
@@ -2017,13 +2060,13 @@ class X1Proxy:
         """Add ``device_id`` to ``activity_id`` and replay POWER_ON/OFF macro updates."""
 
         if not self.can_issue_commands():
-            log.info("[ACTIVITY_ASSIGN] add_device_to_activity ignored: proxy client is connected")
+            self._log.info("[ACTIVITY_ASSIGN] add_device_to_activity ignored: proxy client is connected")
             return None
 
         act_lo = activity_id & 0xFF
         dev_lo = device_id & 0xFF
 
-        log.info("[ACTIVITY_ASSIGN] start act=0x%02X (%d) add dev=0x%02X (%d)", act_lo, act_lo, dev_lo, dev_lo)
+        self._log.info("[ACTIVITY_ASSIGN] start act=0x%02X (%d) add dev=0x%02X (%d)", act_lo, act_lo, dev_lo, dev_lo)
 
         self._activity_map_complete.discard(act_lo)
         # Refresh mapping-derived members/slots to avoid carrying stale entries
@@ -2037,7 +2080,7 @@ class X1Proxy:
         self._clear_favorite_label_requests_for_activity(act_lo)
 
         if not self.request_activity_mapping(act_lo):
-            log.warning("[ACTIVITY_ASSIGN] failed to request activity map for act=0x%02X", act_lo)
+            self._log.warning("[ACTIVITY_ASSIGN] failed to request activity map for act=0x%02X", act_lo)
             return None
         if not self._wait_for_activity_map_burst(act_lo, timeout=5.0):
             return None
@@ -2053,14 +2096,14 @@ class X1Proxy:
                 }
             )
         if not current_members:
-            log.warning("[ACTIVITY_ASSIGN] no existing members discovered for act=0x%02X", act_lo)
+            self._log.warning("[ACTIVITY_ASSIGN] no existing members discovered for act=0x%02X", act_lo)
 
         ordered_members: list[int] = []
         for member in current_members + [dev_lo]:
             if member not in ordered_members:
                 ordered_members.append(member)
 
-        log.info("[ACTIVITY_ASSIGN] members before=%s target=%s", current_members, ordered_members)
+        self._log.info("[ACTIVITY_ASSIGN] members before=%s target=%s", current_members, ordered_members)
 
         self.start_roku_create()
 
@@ -2074,14 +2117,14 @@ class X1Proxy:
             # from this flag value.
             include_flag = 0x00
             payload = bytes([member & 0xFF, include_flag])
-            log.info(
+            self._log.info(
                 "[ACTIVITY_ASSIGN] confirm member dev=0x%02X include=0x%02X",
                 member & 0xFF,
                 include_flag,
             )
             self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
             if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0) is None:
-                log.warning(
+                self._log.warning(
                     "[ACTIVITY_ASSIGN] missing ACK after 0x024F dev=0x%02X include=0x%02X",
                     member & 0xFF,
                     include_flag,
@@ -2091,12 +2134,12 @@ class X1Proxy:
         macro_updates: list[int] = []
         for macro_button in (ButtonName.POWER_ON, ButtonName.POWER_OFF):
             macro_name = BUTTONNAME_BY_CODE.get(macro_button, f"0x{macro_button:02X}")
-            log.info("[ACTIVITY_ASSIGN] fetch macro act=0x%02X button=%s", act_lo, macro_name)
+            self._log.info("[ACTIVITY_ASSIGN] fetch macro act=0x%02X button=%s", act_lo, macro_name)
             self._send_cmd_frame(OP_REQ_MACRO_LABELS, bytes([act_lo, macro_button]))
 
             source_payload = self.wait_for_macro_payload(act_lo, macro_button, timeout=5.0)
             if source_payload is None:
-                log.warning(
+                self._log.warning(
                     "[ACTIVITY_ASSIGN] missing macro payload act=0x%02X button=0x%02X",
                     act_lo,
                     macro_button,
@@ -2110,7 +2153,7 @@ class X1Proxy:
                 allowed_device_ids=set(ordered_members),
             )
             if updated_payload is None:
-                log.warning(
+                self._log.warning(
                     "[ACTIVITY_ASSIGN] unable to build macro save payload act=0x%02X button=0x%02X",
                     act_lo,
                     macro_button,
@@ -2119,7 +2162,7 @@ class X1Proxy:
 
             save_opcode = ((len(updated_payload) & 0xFF) << 8) | 0x12
             row_count = updated_payload[8] if len(updated_payload) >= 9 else 0
-            log.info(
+            self._log.info(
                 "[ACTIVITY_ASSIGN] save macro act=0x%02X button=0x%02X opcode=0x%04X payload=%dB rows=%d",
                 act_lo,
                 macro_button,
@@ -2128,7 +2171,7 @@ class X1Proxy:
                 row_count,
             )
             if self.diag_dump:
-                log.info("[ACTIVITY_ASSIGN] save macro payload %s", updated_payload.hex(" "))
+                self._log.info("[ACTIVITY_ASSIGN] save macro payload %s", updated_payload.hex(" "))
 
             self._send_family_frame(0x12, updated_payload)
             macro_ack = self.wait_for_roku_ack_any(
@@ -2137,7 +2180,7 @@ class X1Proxy:
             )
 
             if macro_ack is None:
-                log.warning(
+                self._log.warning(
                     "[ACTIVITY_ASSIGN] missing ACK after macro save act=0x%02X button=0x%02X",
                     act_lo,
                     macro_button,
@@ -2146,7 +2189,7 @@ class X1Proxy:
 
             ack_opcode, ack_payload = macro_ack
             if ack_opcode == 0x0112 and ack_payload and ack_payload[0] != (macro_button & 0xFF):
-                log.info(
+                self._log.info(
                     "[ACTIVITY_ASSIGN] macro save ack fallback act=0x%02X button=0x%02X ack=0x%02X",
                     act_lo,
                     macro_button,
@@ -2156,10 +2199,10 @@ class X1Proxy:
 
         if self.hub_version == HUB_VERSION_X2:
             commit_payload = bytes([act_lo, 0x01])
-            log.info("[ACTIVITY_ASSIGN] commit assignment act=0x%02X payload=%s", act_lo, commit_payload.hex(" "))
+            self._log.info("[ACTIVITY_ASSIGN] commit assignment act=0x%02X payload=%s", act_lo, commit_payload.hex(" "))
             self._send_cmd_frame(OP_ACTIVITY_ASSIGN_COMMIT, commit_payload)
             if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0) is None:
-                log.warning("[ACTIVITY_ASSIGN] missing ACK after 0x0265 commit act=0x%02X", act_lo)
+                self._log.warning("[ACTIVITY_ASSIGN] missing ACK after 0x0265 commit act=0x%02X", act_lo)
                 return None
 
         self.clear_entity_cache(
@@ -2169,7 +2212,7 @@ class X1Proxy:
             clear_macros=True,
         )
 
-        log.info("[ACTIVITY_ASSIGN] completed act=0x%02X add dev=0x%02X with macro updates", act_lo, dev_lo)
+        self._log.info("[ACTIVITY_ASSIGN] completed act=0x%02X add dev=0x%02X with macro updates", act_lo, dev_lo)
         return {
             "activity_id": act_lo,
             "device_id": dev_lo,
@@ -2290,7 +2333,7 @@ class X1Proxy:
         # FavoritesOrderHandler fires synthetic ack 0xFF63 with first byte = act_lo
         result = self.wait_for_roku_ack_any([(0xFF63, act_lo)], timeout=5.0)
         if result is None:
-            log.warning("[FAV_ORDER] timeout waiting for hub response act=0x%02X", act_lo)
+            self._log.warning("[FAV_ORDER] timeout waiting for hub response act=0x%02X", act_lo)
             return None
         return self.state.activity_favorites_order.get(act_lo)
 
@@ -2344,7 +2387,7 @@ class X1Proxy:
             2. family 0x65 COMMIT              → ACK 0x0103
         """
         if not self.can_issue_commands():
-            log.info("[FAV_REORDER] ignored: proxy client is connected")
+            self._log.info("[FAV_REORDER] ignored: proxy client is connected")
             return None
 
         act_lo = activity_id & 0xFF
@@ -2352,7 +2395,7 @@ class X1Proxy:
         # Fetch current ordering to validate the supplied fav_ids
         current_order = self.request_favorites_order(act_lo)
         if current_order is None:
-            log.warning("[FAV_REORDER] could not fetch current order act=0x%02X", act_lo)
+            self._log.warning("[FAV_REORDER] could not fetch current order act=0x%02X", act_lo)
             return None
 
         ordered_fav_ids_checked: list[int] = []
@@ -2361,7 +2404,7 @@ class X1Proxy:
                 act_lo, fav_id, current_order
             )
             if validated_fav_id is None:
-                log.warning(
+                self._log.warning(
                     "[FAV_REORDER] fav_id=0x%02X not present in hub order/cache for act=0x%02X, skipping",
                     fav_id & 0xFF,
                     act_lo,
@@ -2370,7 +2413,7 @@ class X1Proxy:
             ordered_fav_ids_checked.append(validated_fav_id)
 
         if not ordered_fav_ids_checked:
-            log.warning("[FAV_REORDER] no valid fav_ids for act=0x%02X", act_lo)
+            self._log.warning("[FAV_REORDER] no valid fav_ids for act=0x%02X", act_lo)
             return None
 
         self.start_roku_create()
@@ -2425,7 +2468,7 @@ class X1Proxy:
             3. family 0x65 COMMIT                          → ACK 0x0103
         """
         if not self.can_issue_commands():
-            log.info("[FAV_DELETE] ignored: proxy client is connected")
+            self._log.info("[FAV_DELETE] ignored: proxy client is connected")
             return None
 
         act_lo = activity_id & 0xFF
@@ -2433,14 +2476,14 @@ class X1Proxy:
         # Fetch current ordering so we can build the post-delete list
         current_order = self.request_favorites_order(act_lo)
         if current_order is None:
-            log.warning("[FAV_DELETE] could not fetch current order act=0x%02X", act_lo)
+            self._log.warning("[FAV_DELETE] could not fetch current order act=0x%02X", act_lo)
             return None
 
         validated_fav_id = self._validate_favorite_fav_id(
             act_lo, fav_id, current_order
         )
         if validated_fav_id is None:
-            log.warning(
+            self._log.warning(
                 "[FAV_DELETE] fav_id=0x%02X not present in current order for act=0x%02X",
                 fav_id & 0xFF,
                 act_lo,
@@ -2448,7 +2491,7 @@ class X1Proxy:
             return None
 
         remaining_fav_ids = [fid for fid, _slot in current_order if fid != validated_fav_id]
-        log.info(
+        self._log.info(
             "[FAV_DELETE] act=0x%02X deleting fav_id=0x%02X; %d remaining",
             act_lo,
             validated_fav_id,
@@ -2559,7 +2602,7 @@ class X1Proxy:
         """Add a command favorite to an arbitrary activity."""
 
         if not self.can_issue_commands():
-            log.info("[FAVORITE] command_to_favorite ignored: proxy client is connected")
+            self._log.info("[FAVORITE] command_to_favorite ignored: proxy client is connected")
             return None
 
         act_lo = activity_id & 0xFF
@@ -2695,7 +2738,7 @@ class X1Proxy:
         """
 
         if not self.can_issue_commands():
-            log.info("[KEYMAP_WRITE] command_to_button ignored: proxy client is connected")
+            self._log.info("[KEYMAP_WRITE] command_to_button ignored: proxy client is connected")
             return None
 
         act_lo = activity_id & 0xFF
@@ -2712,7 +2755,7 @@ class X1Proxy:
             long_press_command_id=long_press_command_id,
         )
         if long_press_device_id is not None and long_press_command_id is not None:
-            log.info(
+            self._log.info(
                 "[KEYMAP_WRITE] map act=0x%02X button=0x%02X dev=0x%02X cmd=0x%02X"
                 " long_dev=0x%02X long_cmd=0x%02X",
                 act_lo,
@@ -2723,7 +2766,7 @@ class X1Proxy:
                 long_press_command_id & 0xFF,
             )
         else:
-            log.info(
+            self._log.info(
                 "[KEYMAP_WRITE] map act=0x%02X button=0x%02X dev=0x%02X cmd=0x%02X",
                 act_lo,
                 btn_lo,
@@ -2731,7 +2774,7 @@ class X1Proxy:
                 cmd_lo,
             )
         if self.diag_dump:
-            log.info("[KEYMAP_WRITE] 193E payload %s", payload.hex(" "))
+            self._log.info("[KEYMAP_WRITE] 193E payload %s", payload.hex(" "))
 
         self.start_roku_create()
 
@@ -2787,7 +2830,7 @@ class X1Proxy:
         brand_name: str = "m3tac0de",
     ) -> dict[str, Any] | None:
         if not self.can_issue_commands():
-            log.info("[WIFI] create_wifi_device ignored: proxy client is connected")
+            self._log.info("[WIFI] create_wifi_device ignored: proxy client is connected")
             return None
 
         ip_address = self.get_routed_local_ip()
@@ -2802,7 +2845,7 @@ class X1Proxy:
             )
 
         self.start_roku_create()
-        log.info("[WIFI] starting exact Wifi Device create replay sequence")
+        self._log.info("[WIFI] starting exact Wifi Device create replay sequence")
 
         if not self._send_roku_step(
             step_name="create-device",
@@ -2814,9 +2857,9 @@ class X1Proxy:
 
         device_id = self.wait_for_roku_device_id(timeout=5.0)
         if device_id is None:
-            log.warning("[WIFI] hub did not provide device id after create request")
+            self._log.warning("[WIFI] hub did not provide device id after create request")
             return None
-        log.info("[WIFI] hub assigned device id=0x%02X", device_id)
+        self._log.info("[WIFI] hub assigned device id=0x%02X", device_id)
 
         command_defs: list[tuple[int, int, str, str]] = []
 
@@ -2978,7 +3021,7 @@ class X1Proxy:
             brand_name=brand_name,
         )
 
-        log.info("[WIFI] replayed Wifi Device create sequence for dev=0x%02X", device_id)
+        self._log.info("[WIFI] replayed Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
 
     def _create_virtual_ip_wifi_device(
@@ -2991,7 +3034,7 @@ class X1Proxy:
         brand_name: str = "m3tac0de",
     ) -> dict[str, Any] | None:
         self.start_roku_create()
-        log.info("[WIFI] starting virtual IP Wifi Device create replay sequence")
+        self._log.info("[WIFI] starting virtual IP Wifi Device create replay sequence")
 
         if not self._send_roku_step(
             step_name="create-device",
@@ -3003,7 +3046,7 @@ class X1Proxy:
 
         device_id = self.wait_for_roku_device_id(timeout=5.0)
         if device_id is None:
-            log.warning("[WIFI] hub did not provide device id after create request")
+            self._log.warning("[WIFI] hub did not provide device id after create request")
             return None
 
         request_ip = ipaddress.IPv4Address(ip_address).packed
@@ -3105,7 +3148,7 @@ class X1Proxy:
             brand_name=brand_name,
         )
 
-        log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
+        self._log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
 
     def _build_launch_action_path(
@@ -3218,7 +3261,7 @@ class X1Proxy:
         headers: dict[str, str],
     ) -> dict[str, Any] | None:
         if not self.can_issue_commands():
-            log.info("[CREATE] create_ip_button ignored: proxy client is connected")
+            self._log.info("[CREATE] create_ip_button ignored: proxy client is connected")
             return None
 
         frames = self._build_virtual_device_frames(
@@ -3243,7 +3286,7 @@ class X1Proxy:
 
         result = self.wait_for_virtual_device(timeout=3.0)
         if result and result.get("device_id") is not None:
-            log.info(
+            self._log.info(
                 "[CREATE] virtual dev=0x%04X btn=%s method=%s url=%s",
                 result.get("device_id", 0),
                 result.get("button_id"),
@@ -3264,7 +3307,7 @@ class X1Proxy:
         """Add an IP-backed command to an existing device."""
 
         if not self.can_issue_commands():
-            log.info("[CREATE] add_ip_button_to_device ignored: proxy client is connected")
+            self._log.info("[CREATE] add_ip_button_to_device ignored: proxy client is connected")
             return None
 
         self.request_ip_commands_for_device(device_id, wait=True)
@@ -3330,13 +3373,13 @@ class X1Proxy:
         try:
             zc.register_service(info)
         except BadTypeInNameException:
-            log.exception(
+            self._log.exception(
                 "[mDNS] service type %s was rejected; advertisement will not be started",
                 service_type,
             )
             return
         self._mdns_infos.append(info)
-        log.info(
+        self._log.info(
             "[mDNS] registered %s on %s:%d (HVER=%s)",
             info.name,
             socket.inet_ntoa(ip_bytes),
@@ -3345,7 +3388,7 @@ class X1Proxy:
         )
 
         self._adv_started = True
-        log.info("[mDNS] registration complete; verify via Zeroconf browser if available")
+        self._log.info("[mDNS] registration complete; verify via Zeroconf browser if available")
 
     # ---------------------------------------------------------------------
     # Parsing helpers
@@ -3359,7 +3402,7 @@ class X1Proxy:
             try:
                 cb(connected)
             except Exception:
-                log.exception("hub state listener failed")
+                self._log.exception("hub state listener failed")
 
     def _notify_client_state(self, connected: bool) -> None:
         self._client_connected = connected
@@ -3367,7 +3410,7 @@ class X1Proxy:
             try:
                 cb(connected)
             except Exception:
-                log.exception("client state listener failed")
+                self._log.exception("client state listener failed")
         if not connected:
             self._clear_app_device_retry()
 
@@ -3380,14 +3423,14 @@ class X1Proxy:
             try:
                 cb(new_id, old_id, name)
             except Exception:
-                log.exception("activity listener failed")
+                self._log.exception("activity listener failed")
 
     def _notify_app_activation(self, record: dict[str, Any]) -> None:
         for cb in self._activation_listeners:
             try:
                 cb(record)
             except Exception:
-                log.exception("app activation listener failed")
+                self._log.exception("app activation listener failed")
 
     def _on_commands_burst_end(self, key: str) -> None:
         parts = key.split(":")
@@ -3454,12 +3497,15 @@ class X1Proxy:
             try:
                 ent_lo = int(key.split(":", 1)[1])
                 self._pending_button_requests.discard(ent_lo)
+                self._button_burst_expected_frames.pop(ent_lo, None)
                 self.state.clear_keymap_remainders(ent_lo)
             except ValueError:
                 self._pending_button_requests.clear()
+                self._button_burst_expected_frames.clear()
                 self.state.clear_keymap_remainders()
         else:
             self._pending_button_requests.clear()
+            self._button_burst_expected_frames.clear()
             self.state.clear_keymap_remainders()
 
     def _handle_idle(self, now: float) -> None:
@@ -3480,7 +3526,7 @@ class X1Proxy:
 
         if now >= self._app_devices_deadline:
             if not self._app_devices_retry_sent:
-                #log.info("[CMD] retrying app-sourced REQ_DEVICES after timeout")
+                #self._log.info("[CMD] retrying app-sourced REQ_DEVICES after timeout")
                 #self._send_cmd_frame(OP_REQ_DEVICES, b"")
                 self._app_devices_retry_sent = True
             self._app_devices_deadline = None
@@ -3491,7 +3537,7 @@ class X1Proxy:
             is_retry = self._activity_retry_send_pending
             self._activity_retry_send_pending = False
             self._begin_activity_request(is_retry=is_retry)
-        log.info(
+        self._log.info(
             "[SEND] hub %s (0x%04X) %dB",
             OPNAMES.get(opcode, f"OP_{opcode:04X}"),
             opcode,
@@ -3501,7 +3547,7 @@ class X1Proxy:
 
     def _handle_hub_frame(self, data: bytes, cid: int) -> None:
         if self.diag_dump:
-            log.info("[DUMP #%d] H→A %s", cid, _hexdump(data))
+            self._log.info("[DUMP #%d] H→A %s", cid, _hexdump(data))
         frames = self._df_h2a.feed(data, cid)
         if frames:
             self._handle_hub_frames(frames)
@@ -3510,7 +3556,7 @@ class X1Proxy:
 
     def _handle_app_frame(self, data: bytes, cid: int) -> None:
         if self.diag_dump:
-            log.info("[DUMP #%d] A→H %s", cid, _hexdump(data))
+            self._log.info("[DUMP #%d] A→H %s", cid, _hexdump(data))
         frames = self._df_a2h.feed(data, cid)
         if frames:
             self._handle_app_frames(frames)
@@ -3547,10 +3593,10 @@ class X1Proxy:
             hi = opcode_hi(op)
             fam = opcode_family(op)
             note = f"#{scid}→#{ecid}" if scid != ecid else f"#{ecid}"
-            log.info("[FRAME %s] %s %s (0x%04X) len=%d", note, direction, name, op, len(raw))
+            self._log.info("[FRAME %s] %s %s (0x%04X) len=%d", note, direction, name, op, len(raw))
 
             if op not in OPNAMES:
-                log.debug(
+                self._log.debug(
                     "[FRAME %s] unknown opcode 0x%04X hi=0x%02X family(lo)=0x%02X",
                     direction,
                     op,
@@ -3571,7 +3617,7 @@ class X1Proxy:
                 try:
                     handler.handle(context)
                 except Exception:
-                    log.debug("[PARSE] error while decoding op 0x%04X via %s", op, handler.__class__.__name__, exc_info=True)
+                    self._log.debug("[PARSE] error while decoding op 0x%04X via %s", op, handler.__class__.__name__, exc_info=True)
 
     # ---------------------------------------------------------------------
     # Lifecycle
@@ -3594,9 +3640,9 @@ class X1Proxy:
                 for info in self._mdns_infos:
                     try:
                         self._zc.unregister_service(info)
-                        log.info("[mDNS] unregistered %s", info.name)
+                        self._log.info("[mDNS] unregistered %s", info.name)
                     except Exception:
-                        log.exception("[mDNS] failed to unregister service %s", info.name)
+                        self._log.exception("[mDNS] failed to unregister service %s", info.name)
             finally:
                 if self._zc_owned:
                     self._zc.close()
@@ -3613,7 +3659,8 @@ class X1Proxy:
     def stop(self) -> None:
         self._stop_discovery()
         self.transport.stop()
-        log.info("[STOP] proxy stopped")
+        self._log.info("[STOP] proxy stopped")
 
 
 from . import opcode_handlers  # noqa: F401  # register frame handlers
+

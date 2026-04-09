@@ -80,6 +80,58 @@ def test_complete_activity_snapshot_commits_after_row1_then_out_of_order_rows() 
     assert proxy.state.current_activity_hint == 0x66
 
 
+def test_try_finish_activities_burst_ends_burst_once_snapshot_is_complete() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._begin_activity_request()
+    assert proxy.ingest_activity_row(
+        row_idx=1,
+        expected_rows=2,
+        act_id=0x65,
+        activity={"id": 0x65, "name": "Watch TV", "active": False, "needs_confirm": False},
+    )
+    assert proxy.ingest_activity_row(
+        row_idx=2,
+        expected_rows=2,
+        act_id=0x66,
+        activity={"id": 0x66, "name": "Play Xbox", "active": True, "needs_confirm": False},
+    )
+    proxy._burst.start("activities", now=0.0)
+
+    finished = proxy.try_finish_activities_burst()
+
+    assert finished is True
+    assert proxy._burst.active is False
+    assert proxy.state.activities == {
+        0x65: {"name": "Watch TV", "active": False, "needs_confirm": False},
+        0x66: {"name": "Play Xbox", "active": True, "needs_confirm": False},
+    }
+    assert proxy.state.current_activity_hint == 0x66
+
+
+def test_try_finish_activity_map_burst_ends_matching_burst() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._activity_map_complete.add(0x65)
+    proxy._burst.start("activity_map:101", now=0.0)
+
+    finished = proxy.try_finish_activity_map_burst(0x65)
+
+    assert finished is True
+    assert proxy._burst.active is False
+
+
+def test_try_finish_buttons_burst_requires_expected_final_frame() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._burst.start("buttons:101", now=0.0)
+    proxy.note_buttons_frame(0x65, frame_no=1, total_frames=2)
+
+    assert proxy.try_finish_buttons_burst(0x65, frame_no=1) is False
+    assert proxy.try_finish_buttons_burst(0x65, frame_no=2) is True
+    assert proxy._burst.active is False
+
+
 def test_ghost_activity_row_is_ignored_without_request_in_flight() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -1381,8 +1433,8 @@ def test_add_device_to_activity_discards_stale_members_before_refresh(monkeypatc
     assert result is not None
     # Confirm sequence should use fresh map data (dev 1) + new device only.
     assert sent[:2] == [
-        (0x024F, bytes([0x01, 0x01])),
-        (0x024F, bytes([0x09, 0x01])),
+        (0x024F, bytes([0x01, 0x00])),
+        (0x024F, bytes([0x09, 0x00])),
     ]
 
 
@@ -1452,8 +1504,8 @@ def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> N
     assert result["members_before"] == [1, 2, 6]
     assert result["members_confirmed"] == [1, 2, 6, 5]
     assert sent[:4] == [
-        (0x024F, bytes([0x01, 0x01])),
-        (0x024F, bytes([0x02, 0x01])),
+        (0x024F, bytes([0x01, 0x00])),
+        (0x024F, bytes([0x02, 0x00])),
         (0x024F, bytes([0x06, 0x00])),
         (0x024F, bytes([0x05, 0x00])),
     ]
@@ -1532,8 +1584,8 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
 
     assert result is None
     assert sent == [
-        (0x024F, bytes([0x01, 0x01])),
-        (0x024F, bytes([0x06, 0x01])),
+        (0x024F, bytes([0x01, 0x00])),
+        (0x024F, bytes([0x06, 0x00])),
     ]
 
 

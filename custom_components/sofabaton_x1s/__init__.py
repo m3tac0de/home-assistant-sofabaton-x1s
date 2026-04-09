@@ -13,7 +13,7 @@ from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -39,6 +39,8 @@ from .const import (
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
+    async_get_hub_log_lines,
+    async_subscribe_hub_log_lines,
     async_setup_diagnostics,
     async_teardown_diagnostics,
 )
@@ -372,6 +374,57 @@ async def _ws_control_panel_run_action(
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/logs/get",
+        vol.Required("entry_id"): str,
+        vol.Optional("limit", default=250): vol.All(int, vol.Range(min=1, max=1000)),
+    }
+)
+@websocket_api.async_response
+async def _ws_get_hub_logs(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    entry = hass.config_entries.async_get_entry(hub.entry_id)
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton config entry")
+        return
+
+    lines = await async_get_hub_log_lines(hass, entry, limit=int(msg["limit"]))
+    connection.send_result(msg["id"], {"lines": lines})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/logs/subscribe",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_subscribe_hub_logs(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    entry = hass.config_entries.async_get_entry(hub.entry_id)
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton config entry")
+        return
+
+    @callback
+    def _forward(payload: dict[str, Any]) -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], payload))
+
+    connection.subscriptions[msg["id"]] = async_subscribe_hub_log_lines(hass, entry, _forward)
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/persistent_cache/get",
     }
 )
@@ -506,6 +559,8 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_get_control_panel_state)
     websocket_api.async_register_command(hass, _ws_control_panel_set_setting)
     websocket_api.async_register_command(hass, _ws_control_panel_run_action)
+    websocket_api.async_register_command(hass, _ws_get_hub_logs)
+    websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache)
     websocket_api.async_register_command(hass, _ws_set_persistent_cache)
     websocket_api.async_register_command(hass, _ws_refresh_persistent_cache_entry)

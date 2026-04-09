@@ -56,6 +56,7 @@ from .protocol_const import (
     OP_IPCMD_ROW_C,
     OP_IPCMD_ROW_D,
     ACK_SUCCESS,
+    OP_MARKER,
     OP_REQ_ACTIVATE,
     OP_REQ_ACTIVITY_MAP,
     OP_REQ_BUTTONS,
@@ -69,8 +70,6 @@ from .protocol_const import (
     OP_KEYMAP_EXTRA,
     opcode_family,
 )
-from .x1_proxy import log
-
 if TYPE_CHECKING:
     from .x1_proxy import X1Proxy
 
@@ -198,7 +197,7 @@ class MacroHandler(BaseFrameHandler):
             proxy._macros_complete.add(act_lo)
             proxy._pending_macro_requests.discard(act_lo)
             if macros:
-                log.info(
+                proxy._log.info(
                     "[MACRO] act=0x%02X macros{%d}: %s",
                     act_lo,
                     len(macros),
@@ -371,7 +370,7 @@ class CreateVirtualDeviceHandler(BaseFrameHandler):
         payload = frame.payload
         device_name = _decode_utf16le_segment(payload, start=0, length=64) or _decode_utf16le_segment(payload)
         proxy.start_virtual_device(device_name=device_name)
-        log.info("[CREATE] device name='%s' (%dB payload)", device_name, len(payload))
+        proxy._log.info("[CREATE] device name='%s' (%dB payload)", device_name, len(payload))
 
 
 @register_handler(opcodes=(OP_DEFINE_IP_CMD,), directions=("A→H",))
@@ -384,7 +383,7 @@ class DefineIpCommandHandler(BaseFrameHandler):
         button_name = _decode_utf16le_segment(payload, start=0, length=64) or _decode_utf16le_segment(payload)
         method, url, headers = _parse_ip_command_fields(payload[64:])
         proxy.update_virtual_device(button_name=button_name, method=method, url=url, headers=headers)
-        log.info(
+        proxy._log.info(
             "[CREATE] button='%s' method=%s url='%s' headers=%s",
             button_name,
             method or "?",
@@ -403,7 +402,7 @@ class DefineExistingIpCommandHandler(BaseFrameHandler):
         button_name = _decode_utf16le_segment(payload, start=16, length=64) or _decode_utf16le_segment(payload, start=16)
         method, url, headers = _parse_ip_command_fields(payload[64:])
         proxy.update_virtual_device(button_name=button_name, method=method, url=url, headers=headers)
-        log.info(
+        proxy._log.info(
             "[CREATE] existing dev button='%s' method=%s url='%s' headers=%s",
             button_name,
             method or "?",
@@ -445,7 +444,7 @@ class IpCommandSyncRowHandler(BaseFrameHandler):
             button_name=button_name,
         )
 
-        log.info(
+        proxy._log.info(
             "[CREATE] sync dev=0x%04X btn=0x%02X name='%s' method=%s url='%s'",
             device_id,
             button_id or 0,
@@ -460,7 +459,8 @@ class PrepareSaveHandler(BaseFrameHandler):
     """Track the start of a save transaction for IP buttons."""
 
     def handle(self, frame: FrameContext) -> None:
-        log.info("[CREATE] prepare/save transaction len=%d", len(frame.payload))
+        proxy: X1Proxy = frame.proxy
+        proxy._log.info("[CREATE] prepare/save transaction len=%d", len(frame.payload))
 
 
 @register_handler(opcodes=(OP_DEVICE_SAVE_HEAD,), directions=("H→A",))
@@ -473,7 +473,7 @@ class DeviceSaveHeadHandler(BaseFrameHandler):
         device_id = int.from_bytes(payload[:2], "big") if len(payload) >= 2 else None
         button_id = payload[2] if len(payload) > 2 else None
         proxy.update_virtual_device(device_id=device_id, button_id=button_id)
-        log.info(
+        proxy._log.info(
             "[CREATE] hub assigned dev=0x%04X btn=0x%02X", device_id or 0, button_id or 0
         )
 
@@ -489,9 +489,9 @@ class FinalizeDeviceHandler(BaseFrameHandler):
             device_id = int.from_bytes(payload[:2], "big")
             button_id = payload[2]
             proxy.update_virtual_device(device_id=device_id, button_id=button_id)
-            log.info("[CREATE] finalize dev=0x%04X btn=0x%02X", device_id, button_id)
+            proxy._log.info("[CREATE] finalize dev=0x%04X btn=0x%02X", device_id, button_id)
         else:
-            log.info("[CREATE] finalize len=%d", len(payload))
+            proxy._log.info("[CREATE] finalize len=%d", len(payload))
 
 
 @register_handler(opcodes=(OP_SAVE_COMMIT, ACK_SUCCESS), directions=("H→A",))
@@ -503,7 +503,7 @@ class SaveCommitHandler(BaseFrameHandler):
         if getattr(proxy, "_pending_virtual", None) is None:
             return
         proxy.update_virtual_device(status="success")
-        log.info("[CREATE] save commit/ack success")
+        proxy._log.info("[CREATE] save commit/ack success")
 
 
 @register_handler(opcodes=(OP_CREATE_DEVICE_ACK,), directions=("H→A",))
@@ -517,7 +517,7 @@ class RokuCreateDeviceAckHandler(BaseFrameHandler):
         proxy: X1Proxy = frame.proxy
         proxy.update_roku_device_id(payload[0])
         proxy.notify_roku_ack(frame.opcode, payload)
-        log.info("[WIFI] create ack device_id=0x%02X", payload[0])
+        proxy._log.info("[WIFI] create ack device_id=0x%02X", payload[0])
 
 
 @register_handler(opcodes=(0x0103, 0x013E, 0x0112), directions=("H→A",))
@@ -527,7 +527,7 @@ class RokuAckHandler(BaseFrameHandler):
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         proxy.notify_roku_ack(frame.opcode, frame.payload)
-        log.info("[ACK] opcode=0x%04X payload=%s", frame.opcode, frame.payload.hex(" "))
+        proxy._log.info("[ACK] opcode=0x%04X payload=%s", frame.opcode, frame.payload.hex(" "))
 
 
 
@@ -545,7 +545,7 @@ class X2RemoteListRowHandler(BaseFrameHandler):
         remote_id = payload[1:4]
         proxy: X1Proxy = frame.proxy
         proxy.update_x2_remote_sync_id(remote_id)
-        log.info("[REMOTE_SYNC] X2 remote id=%s", remote_id.hex(" "))
+        proxy._log.info("[REMOTE_SYNC] X2 remote id=%s", remote_id.hex(" "))
 
 @register_handler(opcodes=(OP_REQ_ACTIVATE,), directions=("A→H",))
 class ActivateRequestHandler(BaseFrameHandler):
@@ -578,7 +578,7 @@ class ActivateRequestHandler(BaseFrameHandler):
         btn = BUTTONNAME_BY_CODE.get(code) if cmd is None else None
         extra = f" cmd='{cmd}'" if cmd else (f" btn='{btn}'" if btn else "")
 
-        log.info(
+        proxy._log.info(
             "[KEY] %s %s=0x%02X (%d) name='%s' key=0x%02X%s",
             frame.direction,
             kind,
@@ -606,9 +606,9 @@ class AckReadyHandler(BaseFrameHandler):
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
-        log.info("[HINT] ACK_READY from hub")
+        proxy._log.info("[HINT] ACK_READY from hub")
         if proxy.can_issue_commands():
-            log.info("[HINT] no proxy client; auto-REQ_ACTIVITIES")
+            proxy._log.info("[HINT] no proxy client; auto-REQ_ACTIVITIES")
             proxy.enqueue_cmd(OP_REQ_ACTIVITIES, expects_burst=True, burst_kind="activities")
             if proxy.state.current_activity_hint is not None:
                 ent_lo = proxy.state.current_activity_hint & 0xFF
@@ -620,10 +620,10 @@ class AckReadyHandler(BaseFrameHandler):
                 if not buttons_ready:
                     proxy.request_buttons_for_entity(ent_lo)
         else:
-            log.info("[HINT] proxy client connected; skipping auto-requests")
+            proxy._log.info("[HINT] proxy client connected; skipping auto-requests")
             new_id, old_id = proxy.state.update_activity_state()
             if new_id != old_id:
-                log.info("[HINT] current activity differs from hint; notifying listeners")
+                proxy._log.info("[HINT] current activity differs from hint; notifying listeners")
                 proxy._notify_activity_change(
                     new_id & 0xFF if new_id is not None else None,
                     old_id & 0xFF if old_id is not None else None,
@@ -650,7 +650,7 @@ class CatalogDeviceHandler(BaseFrameHandler):
 
         if dev_id is not None:
             proxy.state.devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
-            log.info(
+            proxy._log.info(
                 "[DEV] #%s id=0x%04X (%d) brand='%s' name='%s'",
                 row_idx,
                 dev_id,
@@ -659,7 +659,7 @@ class CatalogDeviceHandler(BaseFrameHandler):
                 device_label,
             )
         elif device_label:
-            log.info("[DEV] name='%s'", device_label)
+            proxy._log.info("[DEV] name='%s'", device_label)
 
 
 @register_handler(opcodes=(OP_X1_DEVICE,), directions=("H→A",))
@@ -683,7 +683,7 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
 
         if dev_id is not None:
             proxy.state.devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
-            log.info(
+            proxy._log.info(
                 "[DEV] #%s id=0x%04X (%d) brand='%s' name='%s'",
                 row_idx,
                 dev_id,
@@ -692,7 +692,7 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
                 device_label,
             )
         elif device_label:
-            log.info("[DEV] name='%s'", device_label)
+            proxy._log.info("[DEV] name='%s'", device_label)
 
 
 
@@ -787,13 +787,13 @@ class CatalogActivityHandler(BaseFrameHandler):
                 return
             proxy._burst.start("activities", now=now)
             if row_idx == 1:
-                log.info("[ACT] reset active (start of new activities list)")
+                proxy._log.info("[ACT] reset active (start of new activities list)")
         elif activity_label:
-            log.info("[ACT] name='%s'", activity_label)
+            proxy._log.info("[ACT] name='%s'", activity_label)
 
         state = "ACTIVE" if is_active else "idle"
         if row_idx is not None and act_id is not None:
-            log.info(
+            proxy._log.info(
                 "[ACT] #%d/%s name='%s' act_id=0x%04X (%d) state=%s",
                 row_idx,
                 payload[3] if len(payload) >= 4 and payload[3] > 0 else "?",
@@ -803,7 +803,7 @@ class CatalogActivityHandler(BaseFrameHandler):
                 state,
             )
         elif act_id is not None:
-            log.info(
+            proxy._log.info(
                 "[ACT] name='%s' act_id=0x%04X (%d) state=%s",
                 activity_label,
                 act_id,
@@ -811,7 +811,9 @@ class CatalogActivityHandler(BaseFrameHandler):
                 state,
             )
         else:
-            log.info("[ACT] name='%s' state=%s", activity_label, state)
+            proxy._log.info("[ACT] name='%s' state=%s", activity_label, state)
+
+        proxy.try_finish_activities_burst()
 
 
 @register_handler(opcodes=(OP_X1_ACTIVITY,), directions=("H→A",))
@@ -849,13 +851,13 @@ class X1CatalogActivityHandler(BaseFrameHandler):
                 return
             proxy._burst.start("activities", now=now)
             if row_idx == 1:
-                log.info("[ACT] reset active (start of new activities list)")
+                proxy._log.info("[ACT] reset active (start of new activities list)")
         elif activity_label:
-            log.info("[ACT] name='%s'", activity_label)
+            proxy._log.info("[ACT] name='%s'", activity_label)
 
         state = "ACTIVE" if is_active else "idle"
         if row_idx is not None and act_id is not None:
-            log.info(
+            proxy._log.info(
                 "[ACT] #%d/%s name='%s' act_id=0x%04X (%d) state=%s",
                 row_idx,
                 payload[3] if len(payload) >= 4 and payload[3] > 0 else "?",
@@ -865,7 +867,7 @@ class X1CatalogActivityHandler(BaseFrameHandler):
                 state,
             )
         elif act_id is not None:
-            log.info(
+            proxy._log.info(
                 "[ACT] name='%s' act_id=0x%04X (%d) state=%s",
                 activity_label,
                 act_id,
@@ -873,7 +875,9 @@ class X1CatalogActivityHandler(BaseFrameHandler):
                 state,
             )
         else:
-            log.info("[ACT] name='%s' state=%s", activity_label, state)
+            proxy._log.info("[ACT] name='%s' state=%s", activity_label, state)
+
+        proxy.try_finish_activities_burst()
 
 
 @register_handler(opcodes=(OP_REQ_ACTIVITY_MAP,), directions=("A→H",))
@@ -881,10 +885,11 @@ class RequestActivityMapHandler(BaseFrameHandler):
     """Log activity mapping requests from the app."""
 
     def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
         payload = frame.payload
         act_id = payload[0] if payload else 0
-        log.info("[ACTMAP] A→H requesting mapping act=0x%02X (%d)", act_id, act_id)
-        log.info("[ACTMAP] A→H request %s", frame.raw.hex(" "))
+        proxy._log.info("[ACTMAP] A→H requesting mapping act=0x%02X (%d)", act_id, act_id)
+        proxy._log.info("[ACTMAP] A→H request %s", frame.raw.hex(" "))
 
 
 @register_handler(opcodes=(OP_ACTIVITY_MAP_PAGE, OP_ACTIVITY_MAP_PAGE_X1S), directions=("H→A",))
@@ -897,7 +902,7 @@ class ActivityMapHandler(BaseFrameHandler):
 
         if len(payload) < 8:
             return
-        log.info("[ACTMAP] H→A response %s", frame.raw.hex(" "))
+        proxy._log.info("[ACTMAP] H→A response %s", frame.raw.hex(" "))
 
         act_lo = self._burst_activity(proxy)
         if act_lo is None:
@@ -926,7 +931,7 @@ class ActivityMapHandler(BaseFrameHandler):
                     act_lo, dev_lo, command_id, button_id=slot_id
                 )
 
-            log.info(
+            proxy._log.info(
                 "[ACTMAP] act=0x%02X dev=0x%02X mapped{%d}",
                 act_lo,
                 dev_lo,
@@ -936,6 +941,7 @@ class ActivityMapHandler(BaseFrameHandler):
         if self._is_last_page(payload):
             proxy._pending_activity_map_requests.discard(act_lo)
             proxy._activity_map_complete.add(act_lo)
+            proxy.try_finish_activity_map_burst(act_lo)
 
     def _burst_activity(self, proxy: "X1Proxy") -> int | None:
         burst_kind = getattr(proxy._burst, "kind", None)
@@ -1005,8 +1011,11 @@ class KeymapHandler(BaseFrameHandler):
         raw = frame.raw
         payload = frame.payload
         now = time.monotonic()
+        frame_no = payload[2] if len(payload) >= 3 else None
+        total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
 
         keymap_opcodes = {
+            OP_MARKER,
             OP_KEYMAP_CONT,
             OP_KEYMAP_TBL_A,
             OP_KEYMAP_TBL_B,
@@ -1056,17 +1065,26 @@ class KeymapHandler(BaseFrameHandler):
         else:
             proxy._burst.start(burst_key, now=now)
 
+        proxy.note_buttons_frame(
+            activity_id_decimal,
+            frame_no=frame_no,
+            total_frames=total_frames,
+        )
+
         proxy._accumulate_keymap(activity_id_decimal, payload)
         keys = [
             f"{BUTTONNAME_BY_CODE.get(c, f'0x{c:02X}')}(0x{c:02X})"
             for c in sorted(proxy.state.buttons.get(activity_id_decimal, set()))
         ]
-        log.info(
+        proxy._log.info(
             "[KEYMAP] act=0x%02X mapped{%d}: %s",
             activity_id_decimal,
             len(keys),
             ", ".join(keys),
         )
+        if frame.opcode == OP_MARKER and frame_no is not None:
+            proxy.note_buttons_frame(activity_id_decimal, frame_no=frame_no, total_frames=frame_no)
+        proxy.try_finish_buttons_burst(activity_id_decimal, frame_no=frame_no)
 
     def _burst_activity(self, proxy: "X1Proxy") -> int | None:
         burst_kind = getattr(proxy._burst, "kind", None)
@@ -1112,9 +1130,10 @@ class RequestCommandsHandler(BaseFrameHandler):
     """Log command list requests from the app."""
 
     def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
         payload = frame.payload
         dev_id = payload[0] if payload else 0
-        log.info("[DEVCTL] A→H requesting commands dev=0x%02X (%d)", dev_id, dev_id)
+        proxy._log.info("[DEVCTL] A→H requesting commands dev=0x%02X (%d)", dev_id, dev_id)
 
 
 class DeviceButtonSingleHandler(BaseFrameHandler):
@@ -1216,7 +1235,7 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
                     proxy.state.commands.setdefault(dev_key, {})[cmd_id] = label
 
                 if dev_key in proxy.state.commands:
-                    log.info(
+                    proxy._log.info(
                         " ".join(
                             f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[dev_key].items()
                         )
@@ -1245,7 +1264,7 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
                 dev_key = complete_dev_id & 0xFF
                 existing = proxy.state.commands.setdefault(dev_key, {})
                 existing.update(commands)
-                log.info(
+                proxy._log.info(
                     " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in existing.items())
                 )
 
@@ -1279,7 +1298,7 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
                 dev_key = complete_dev_id & 0xFF
                 existing = proxy.state.commands.setdefault(dev_key, {})
                 existing.update(commands)
-                log.info(
+                proxy._log.info(
                     " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in existing.items())
                 )
 
@@ -1334,14 +1353,14 @@ class FavoritesOrderHandler(BaseFrameHandler):
 
         # Minimum: 6-byte fixed header + 1 act_lo byte
         if len(payload) < 7:
-            log.debug("[FAV_ORDER] payload too short (%dB), skipping", len(payload))
+            proxy._log.debug("[FAV_ORDER] payload too short (%dB), skipping", len(payload))
             return
 
         act_lo = payload[6] & 0xFF
         pairs_data = payload[7:]
 
         if len(pairs_data) % 2 != 0:
-            log.warning(
+            proxy._log.warning(
                 "[FAV_ORDER] act=0x%02X odd pairs length %d, truncating",
                 act_lo,
                 len(pairs_data),
@@ -1354,7 +1373,7 @@ class FavoritesOrderHandler(BaseFrameHandler):
         ]
 
         proxy.state.activity_favorites_order[act_lo] = pairs
-        log.info(
+        proxy._log.info(
             "[FAV_ORDER] act=0x%02X received %d favorite(s): %s",
             act_lo,
             len(pairs),
@@ -1363,3 +1382,4 @@ class FavoritesOrderHandler(BaseFrameHandler):
 
         # Signal any waiting request_favorites_order() call
         proxy.notify_roku_ack(self.SYNTHETIC_ACK, bytes([act_lo]))
+

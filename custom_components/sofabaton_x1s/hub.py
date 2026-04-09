@@ -42,6 +42,7 @@ from .const import (
     signal_command_sync,
 )
 from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
+from .logging_utils import get_hub_logger
 from .lib.protocol_const import ButtonName
 from .lib.x1_proxy import X1Proxy
 from .command_config import COMMAND_BRAND_PREFIX, count_configured_command_slots, normalize_command_name
@@ -122,8 +123,9 @@ class SofabatonHub:
         self._button_waiters: dict[int, list] = {}
         self._command_sync_lock = asyncio.Lock()
         self._command_sync_progress: dict[str, Any] = {"status": "idle", "current_step": 0, "total_steps": 0, "message": "Idle"}
+        self._log = get_hub_logger(_LOGGER, self.entry_id)
 
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] Creating X1Proxy for hub %s (%s:%s)",
             self.entry_id,
             name,
@@ -188,13 +190,13 @@ class SofabatonHub:
         return proxy
 
     async def async_start(self) -> None:
-        _LOGGER.debug("[%s] Starting proxy threads", self.entry_id)
+        self._log.debug("[%s] Starting proxy threads", self.entry_id)
         zc = await async_get_instance(self.hass)
         self._proxy.set_zeroconf(zc)
         await self.hass.async_add_executor_job(self._proxy.start)
 
     async def async_stop(self) -> None:
-        _LOGGER.debug("[%s] Stopping proxy", self.entry_id)
+        self._log.debug("[%s] Stopping proxy", self.entry_id)
         await self.hass.async_add_executor_job(self._proxy.stop)
 
     async def async_apply_new_settings(
@@ -219,7 +221,7 @@ class SofabatonHub:
         if not changed:
             return
 
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] Updating hub settings to %s:%s (proxy_udp_port=%s, hub_listen_base=%s)",
             self.entry_id,
             self.host,
@@ -245,7 +247,7 @@ class SofabatonHub:
     # ------------------------------------------------------------------
     def _on_activity_change(self, new_id: Optional[int], old_id: Optional[int], name: Optional[str]) -> None:
         def _inner() -> None:
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] Activity changed: %s → %s (%s)",
                 self.entry_id,
                 old_id,
@@ -284,7 +286,7 @@ class SofabatonHub:
     def _on_activities_burst(self, key: str) -> None:
         def _inner() -> None:
             acts, ready = self._get_activities_cached()
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] on_burst_end('activities'): ready=%s, count=%s",
                 self.entry_id,
                 ready,
@@ -340,7 +342,7 @@ class SofabatonHub:
 
     def _on_client_state_change(self, connected: bool) -> None:
         def _inner() -> None:
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] Proxy client state changed: connected=%s",
                 self.entry_id,
                 connected,
@@ -349,7 +351,7 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_client(self.entry_id))
 
             if not connected and self.current_activity is not None:
-                _LOGGER.debug(
+                self._log.debug(
                     "[%s] Client disconnected, re-priming buttons for activity %s",
                     self.entry_id,
                     self.current_activity,
@@ -361,7 +363,7 @@ class SofabatonHub:
 
     def _on_hub_state_change(self, connected: bool) -> None:
         def _inner() -> None:
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] Hub connection state changed: connected=%s",
                 self.entry_id,
                 connected,
@@ -375,7 +377,7 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_hub(self.entry_id))
 
             if connected:
-                _LOGGER.debug("[%s] Hub connected, doing initial sync", self.entry_id)
+                self._log.debug("[%s] Hub connected, doing initial sync", self.entry_id)
                 self.hass.async_create_task(self._async_initial_sync())
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -459,7 +461,7 @@ class SofabatonHub:
     # ------------------------------------------------------------------
     async def _async_initial_sync(self) -> None:
         acts, acts_ready = await self.hass.async_add_executor_job(partial(self._proxy.get_activities, force_refresh=True))
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] initial_sync: got activities ready=%s count=%s",
             self.entry_id,
             acts_ready,
@@ -468,7 +470,7 @@ class SofabatonHub:
         self.activities_ready = acts_ready
 
         devs, devs_ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] initial_sync: got devices ready=%s count=%s",
             self.entry_id,
             devs_ready,
@@ -487,7 +489,7 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
 
         if self.current_activity is not None:
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] initial_sync: priming buttons for current activity %s",
                 self.entry_id,
                 self.current_activity,
@@ -510,7 +512,7 @@ class SofabatonHub:
         self._buttons_ready_for = {int(ent_id) for ent_id in self._proxy.state.buttons.keys()}
         self._command_entities = {int(ent_id) for ent_id in self._proxy.state.commands.keys()}
 
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] Restored persistent cache: devices=%s buttons=%s commands=%s macros=%s activities_map=%s",
             self.entry_id,
             len(self._proxy.state.devices),
@@ -1134,7 +1136,7 @@ class SofabatonHub:
                 return
             await asyncio.sleep(0.05)
 
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] timed out waiting for activity map for 0x%02X",
             self.entry_id,
             act_lo,
@@ -1168,7 +1170,7 @@ class SofabatonHub:
                 return
             await asyncio.sleep(0.05)
 
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] timed out waiting for commands for 0x%02X",
             self.entry_id,
             ent_id & 0xFF,
@@ -1227,7 +1229,7 @@ class SofabatonHub:
     async def _async_prime_buttons_for(self, act_id: int) -> None:
         # dedupe here
         if act_id in self._pending_button_fetch:
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] prime_buttons_for(%s): already pending, skipping",
                 self.entry_id,
                 act_id,
@@ -1235,7 +1237,7 @@ class SofabatonHub:
             return
 
         self._pending_button_fetch.add(act_id)
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] prime_buttons_for(%s): calling proxy.get_buttons_for_entity()",
             self.entry_id,
             act_id,
@@ -1244,7 +1246,7 @@ class SofabatonHub:
             self._proxy.get_buttons_for_entity,
             act_id,
         )
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] prime_buttons_for(%s): ready=%s count=%s",
             self.entry_id,
             act_id,
@@ -1595,7 +1597,7 @@ class SofabatonHub:
         try:
             await self._async_execute_action_config(action)
         except Exception as err:  # pragma: no cover - service boundary
-            _LOGGER.warning(
+            self._log.warning(
                 "[%s] Failed executing configured IP action for '%s': %s",
                 self.entry_id,
                 command_label,
@@ -1979,7 +1981,7 @@ class SofabatonHub:
         return "ready"
 
     async def async_activate_activity(self, act_id: int) -> None:
-        _LOGGER.debug("[%s] Activating activity %s", self.entry_id, act_id)
+        self._log.debug("[%s] Activating activity %s", self.entry_id, act_id)
         await self.hass.async_add_executor_job(
             self._proxy.send_command,
             int(act_id),
@@ -1989,7 +1991,7 @@ class SofabatonHub:
     async def async_power_off_current(self) -> None:
         if self.current_activity is None:
             return
-        _LOGGER.debug("[%s] Powering off current activity %s", self.entry_id, self.current_activity)
+        self._log.debug("[%s] Powering off current activity %s", self.entry_id, self.current_activity)
         await self.hass.async_add_executor_job(
             self._proxy.send_command,
             int(self.current_activity),
@@ -1997,11 +1999,11 @@ class SofabatonHub:
         )
 
     async def async_find_remote(self) -> None:
-        _LOGGER.debug("[%s] Triggering find-remote signal", self.entry_id)
+        self._log.debug("[%s] Triggering find-remote signal", self.entry_id)
         await self.hass.async_add_executor_job(self._proxy.find_remote, self.version)
 
     async def async_resync_remote(self) -> None:
-        _LOGGER.debug("[%s] Triggering remote resync", self.entry_id)
+        self._log.debug("[%s] Triggering remote resync", self.entry_id)
         await self.hass.async_add_executor_job(self._proxy.resync_remote, self.version)
 
     def _async_update_options(self, key: str, value: Any) -> None:
@@ -2046,7 +2048,7 @@ class SofabatonHub:
         async_dispatcher_send(self.hass, signal_hub(self.entry_id))
 
     async def async_set_proxy_enabled(self, enable: bool) -> None:
-        _LOGGER.debug("[%s] Setting proxy enabled=%s", self.entry_id, enable)
+        self._log.debug("[%s] Setting proxy enabled=%s", self.entry_id, enable)
         if enable:
             await self.hass.async_add_executor_job(self._proxy.enable_proxy)
         else:
@@ -2058,7 +2060,7 @@ class SofabatonHub:
 
 
     async def async_set_roku_server_enabled(self, enable: bool) -> None:
-        _LOGGER.debug("[%s] Setting WiFi device enabled=%s", self.entry_id, enable)
+        self._log.debug("[%s] Setting WiFi device enabled=%s", self.entry_id, enable)
         self.roku_server_enabled = enable
         self.hass.loop.call_soon_threadsafe(
             self._async_update_options, CONF_ROKU_SERVER_ENABLED, enable
@@ -2070,7 +2072,7 @@ class SofabatonHub:
         await listener.async_set_hub_enabled(self.entry_id, enable)
 
     async def async_set_hex_logging_enabled(self, enable: bool) -> None:
-        _LOGGER.debug("[%s] Setting hex logging enabled=%s", self.entry_id, enable)
+        self._log.debug("[%s] Setting hex logging enabled=%s", self.entry_id, enable)
         await self.hass.async_add_executor_job(self._proxy.set_diag_dump, enable)
         self.hex_logging_enabled = enable
         if enable:
@@ -2089,9 +2091,9 @@ class SofabatonHub:
 
     async def async_send_button(self, btn_code: int) -> None:
         if self.current_activity is None:
-            _LOGGER.debug("[%s] Tried to send button %s but no activity is active", self.entry_id, btn_code)
+            self._log.debug("[%s] Tried to send button %s but no activity is active", self.entry_id, btn_code)
             return
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] Sending button %s for activity %s",
             self.entry_id,
             btn_code,
@@ -2111,7 +2113,7 @@ class SofabatonHub:
           So "VOL_UP", "VOL_DOWN", "MUTE", etc.
         """
         
-        _LOGGER.debug("[DEBUG] Trying to send command %s to device %s", key, device)
+        self._log.debug("Trying to send command %s to device %s", key, device)
 
         # advanced path: user specified the target entity
         if device is not None:
@@ -2152,3 +2154,4 @@ class SofabatonHub:
             int(ent_id),
             int(key_code),
         )
+

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Callable, Dict, Optional
 
 from ..const import HUB_VERSION_X1, HUB_VERSION_X2, classify_hub_version
+from ..logging_utils import get_hub_logger
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
 log = logging.getLogger("x1proxy.notify")
@@ -95,9 +96,8 @@ class NotifyDemuxer:
         )
         with self._lock:
             self._registrations[proxy_id] = reg
-            log.info(
-                "[DEMUX] registered proxy %s for hub %s (CALL_ME -> %s:%d)",
-                proxy_id,
+            get_hub_logger(log, proxy_id).info(
+                "[DEMUX] registered proxy for hub %s (CALL_ME -> %s:%d)",
                 real_hub_ip,
                 _route_local_ip(real_hub_ip),
                 reg.call_me_port,
@@ -108,7 +108,7 @@ class NotifyDemuxer:
         with self._lock:
             if proxy_id in self._registrations:
                 self._registrations.pop(proxy_id, None)
-                log.info("[DEMUX] unregistered proxy %s", proxy_id)
+                get_hub_logger(log, proxy_id).info("[DEMUX] unregistered proxy")
             self._stop_if_idle_locked()
 
     def shutdown(self) -> None:
@@ -216,9 +216,8 @@ class NotifyDemuxer:
                 + b"\xBE"
             )
 
-        log.info(
-            "[DEMUX][REPLY] proxy=%s mac=%s name=%s",
-            reg.proxy_id,
+        get_hub_logger(log, reg.proxy_id).info(
+            "[DEMUX][REPLY] mac=%s name=%s",
             reg.mac_bytes.hex(":"),
             name.decode("utf-8", "ignore"),
         )
@@ -243,18 +242,17 @@ class NotifyDemuxer:
 
             self._last_reply[key] = now
             dest_ip = _broadcast_ip(src_ip)
-            log.info(
-                "[DEMUX] NOTIFY_ME from %s:%d -> proxy=%s CALL_ME=%d broadcast=%s",
+            get_hub_logger(log, reg.proxy_id).info(
+                "[DEMUX] NOTIFY_ME from %s:%d -> CALL_ME=%d broadcast=%s",
                 src_ip,
                 src_port,
-                reg.proxy_id,
                 reg.call_me_port,
                 dest_ip,
             )
             try:
                 sock.sendto(reply, (dest_ip, BROADCAST_LISTEN_PORT))
             except OSError:
-                log.exception("[DEMUX] failed to send NOTIFY_ME reply for %s", reg.proxy_id)
+                get_hub_logger(log, reg.proxy_id).exception("[DEMUX] failed to send NOTIFY_ME reply")
 
     def _handle_call_me(self, pkt: bytes, src_ip: str, src_port: int) -> None:
         try:
@@ -277,18 +275,17 @@ class NotifyDemuxer:
             )
             return
 
-        log.info(
-            "[DEMUX] CALL_ME from %s:%d -> proxy=%s app tcp %s:%d",
+        get_hub_logger(log, reg.proxy_id).info(
+            "[DEMUX] CALL_ME from %s:%d -> app tcp %s:%d",
             src_ip,
             src_port,
-            reg.proxy_id,
             app_ip,
             app_port,
         )
         try:
             reg.call_me_cb(src_ip, src_port, app_ip, app_port)
         except Exception:
-            log.exception("[DEMUX] proxy callback failed for %s", reg.proxy_id)
+            get_hub_logger(log, reg.proxy_id).exception("[DEMUX] proxy callback failed")
 
     def _select_registration(
         self, mac_hint: bytes, registrations: list[NotifyRegistration]

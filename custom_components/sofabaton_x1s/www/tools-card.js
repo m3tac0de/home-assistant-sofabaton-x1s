@@ -41,6 +41,7 @@ class SofabatonControlPanelCard extends HTMLElement {
 
   disconnectedCallback() {
     this._isCardConnected = false;
+    this._unsubscribeLogs();
     const pickerDialog = this._root?.getElementById("hub-picker-dialog");
     if (pickerDialog?.open) pickerDialog.close();
   }
@@ -70,6 +71,15 @@ class SofabatonControlPanelCard extends HTMLElement {
       this._pendingSettingKey = null;
       this._pendingActionKey = null;
       this._pendingLiveStateRefresh = null;
+      this._logsLines = [];
+      this._logsError = null;
+      this._logsLoading = false;
+      this._logsLoadedEntryId = null;
+      this._logsSubscribedEntryId = null;
+      this._logsUnsub = null;
+      this._logsStickToBottom = true;
+      this._logsScrollBehavior = "auto";
+      this._logsLoadSeq = 0;
       this._lastObservedGenerations = generationSnapshot;
       this._lastHassFingerprint = fingerprint;
       this._lastConnectionFingerprint = connectionFingerprint;
@@ -399,6 +409,85 @@ class SofabatonControlPanelCard extends HTMLElement {
     return "Unknown error (check Home Assistant logs)";
   }
 
+  _formatLogEntry(entry) {
+    const rawLine = String(entry?.line || "");
+    const fallbackLevel = String(entry?.level || "").trim();
+    const match = rawLine.match(
+      /^(\d{4}-\d{2}-\d{2}\s+)?(?<time>\d{2}:\d{2}:\d{2},\d{3})\s+(?<logger>\S+)\s+(?<level>[A-Z]+):\s*(?<message>.*)$/s
+    );
+
+    let time = "";
+    let message = rawLine;
+    let level = fallbackLevel;
+
+    if (match?.groups) {
+      time = String(match.groups.time || "");
+      message = String(match.groups.message || "");
+      level = String(match.groups.level || fallbackLevel || "");
+    }
+
+    const entryId = String(entry?.entry_id || "").trim();
+    if (entryId) {
+      const escapedEntryId = entryId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      message = message.replace(new RegExp(`^\\[${escapedEntryId}\\]\\s*`), "");
+    }
+
+    message = message.replace(/^(?:DEBUG|INFO|WARNING|ERROR|CRITICAL):\s*/i, "");
+    message = message.trim();
+
+    return {
+      time,
+      level: level.toLowerCase(),
+      message,
+    };
+  }
+
+  _renderLogLineMarkup(entry) {
+    const formatted = this._formatLogEntry(entry);
+    return `
+      <div class="log-line">
+        <span class="log-line-ts">${this._escape(formatted.time || "")}</span>
+        <span class="log-line-level log-line-level--${this._escape(formatted.level || "log")}">${this._escape((formatted.level || "log").toUpperCase())}</span>
+        <span class="log-line-msg">${this._escape(formatted.message || "")}</span>
+      </div>`;
+  }
+
+  _renderLogsBodyMarkup(lines) {
+    if (this._logsLoading && !lines.length) {
+      return `<div class="logs-empty">Loading log stream…</div>`;
+    }
+    if (this._logsError && !lines.length) {
+      return `<div class="logs-empty error">${this._escape(this._logsError)}</div>`;
+    }
+    if (!lines.length) {
+      return `<div class="logs-empty">No log lines captured for this hub yet.</div>`;
+    }
+    return lines.map((entry) => this._renderLogLineMarkup(entry)).join("");
+  }
+
+  _appendLogLineToDom(line) {
+    const consoleEl = this._root?.getElementById("logs-console");
+    if (!consoleEl || this._selectedTab !== "logs") return false;
+
+    const maxScrollTop = Math.max(0, consoleEl.scrollHeight - consoleEl.clientHeight);
+    const wasAtBottom = maxScrollTop - consoleEl.scrollTop <= 8;
+    const emptyState = consoleEl.querySelector(".logs-empty");
+    if (emptyState) consoleEl.innerHTML = "";
+
+    consoleEl.insertAdjacentHTML("beforeend", this._renderLogLineMarkup(line));
+
+    while (consoleEl.querySelectorAll(".log-line").length > 400) {
+      const firstLine = consoleEl.querySelector(".log-line");
+      if (!firstLine) break;
+      firstLine.remove();
+    }
+
+    if (wasAtBottom || this._logsStickToBottom !== false) {
+      consoleEl.scrollTop = Math.max(0, consoleEl.scrollHeight - consoleEl.clientHeight);
+    }
+    return true;
+  }
+
   _scrollEntityToTop(key) {
     const entity = this._root.getElementById(`entity-${key}`);
     if (!entity) return;
@@ -434,6 +523,169 @@ class SofabatonControlPanelCard extends HTMLElement {
         : null;
       if (body) body.scrollTop = Number(snapshot.sectionTop || 0);
     });
+  }
+
+  _captureLogsScrollState() {
+    if (!this._root || this._selectedTab !== "logs") return null;
+    const consoleEl = this._root.getElementById("logs-console");
+    if (!consoleEl) return null;
+    const maxScrollTop = Math.max(0, consoleEl.scrollHeight - consoleEl.clientHeight);
+    const atBottom = maxScrollTop - consoleEl.scrollTop <= 8;
+    return {
+      top: consoleEl.scrollTop || 0,
+      stickToBottom: this._logsStickToBottom !== false && atBottom,
+      behavior: this._logsScrollBehavior || "auto",
+    };
+  }
+
+  _restoreLogsScrollState(snapshot) {
+    if (!snapshot || !this._root || this._selectedTab !== "logs") return;
+    requestAnimationFrame(() => {
+      const consoleEl = this._root.getElementById("logs-console");
+      if (!consoleEl) return;
+      if (!snapshot.stickToBottom) {
+        consoleEl.scrollTop = Number(snapshot.top || 0);
+        this._logsScrollBehavior = "auto";
+        return;
+      }
+
+      const previousTop = Number(snapshot.top || 0);
+      const targetTop = Math.max(0, consoleEl.scrollHeight - consoleEl.clientHeight);
+
+      if ((snapshot.behavior || "auto") === "smooth" && targetTop > previousTop) {
+        consoleEl.scrollTop = previousTop;
+        requestAnimationFrame(() => {
+          const currentConsoleEl = this._root?.getElementById("logs-console");
+          if (!currentConsoleEl || this._selectedTab !== "logs") return;
+          currentConsoleEl.scrollTo({
+            top: Math.max(0, currentConsoleEl.scrollHeight - currentConsoleEl.clientHeight),
+            behavior: "smooth",
+          });
+        });
+      } else {
+        consoleEl.scrollTop = targetTop;
+      }
+      this._logsScrollBehavior = "auto";
+    });
+  }
+
+  _updateLogsStickinessFromDom() {
+    const consoleEl = this._root?.getElementById("logs-console");
+    if (!consoleEl) return;
+    const maxScrollTop = Math.max(0, consoleEl.scrollHeight - consoleEl.clientHeight);
+    this._logsStickToBottom = maxScrollTop - consoleEl.scrollTop <= 8;
+  }
+
+  _safeUnsubscribe(unsubscribe) {
+    if (typeof unsubscribe !== "function") return;
+    try {
+      const maybePromise = unsubscribe();
+      if (maybePromise && typeof maybePromise.catch === "function") {
+        maybePromise.catch(() => {});
+      }
+    } catch (_err) {
+      // no-op
+    }
+  }
+
+  _unsubscribeLogs() {
+    const unsubscribe = this._logsUnsub;
+    this._logsUnsub = null;
+    this._logsSubscribedEntryId = null;
+    this._safeUnsubscribe(unsubscribe);
+  }
+
+  async _loadHubLogs(entryId, { preserveLines = false } = {}) {
+    if (!entryId) return;
+    const seq = ++this._logsLoadSeq;
+    this._logsLoading = true;
+    this._logsError = null;
+    this._logsScrollBehavior = "auto";
+    if (!preserveLines) this._logsLines = [];
+    if (this._selectedTab === "logs") this._render();
+
+    try {
+      const result = await this._ws({
+        type: "sofabaton_x1s/logs/get",
+        entry_id: entryId,
+        limit: 250,
+      });
+      if (seq !== this._logsLoadSeq) return;
+      this._logsLines = Array.isArray(result?.lines) ? result.lines : [];
+      this._logsLoadedEntryId = entryId;
+    } catch (err) {
+      if (seq !== this._logsLoadSeq) return;
+      this._logsError = this._formatError(err);
+      this._logsLoadedEntryId = entryId;
+    } finally {
+      if (seq !== this._logsLoadSeq) return;
+      this._logsLoading = false;
+      if (this._selectedTab === "logs" && this._isCardConnected) this._render();
+    }
+  }
+
+  _handleHubLogMessage(entryId, payload) {
+    if (!this._isCardConnected || this._selectedTab !== "logs") return;
+    if (entryId !== this._selectedHubEntryId && entryId !== this._selectedHub()?.entry_id) return;
+    const line =
+      payload?.event && typeof payload.event === "object"
+        ? payload.event
+        : payload && typeof payload === "object"
+          ? payload
+          : {};
+    if (!line || typeof line.line !== "string" || !line.line.trim()) return;
+
+    this._logsError = null;
+    this._logsLoadedEntryId = entryId;
+    this._logsLines = [...(this._logsLines || []), line].slice(-400);
+    if (!this._appendLogLineToDom(line)) {
+      this._render();
+    }
+  }
+
+  _syncLogsFeed(hub) {
+    if (!this._isCardConnected || this._selectedTab !== "logs" || !hub) {
+      this._unsubscribeLogs();
+      return;
+    }
+
+    const entryId = hub.entry_id;
+    if (!entryId) {
+      this._unsubscribeLogs();
+      return;
+    }
+
+    if (this._logsLoadedEntryId !== entryId && !this._logsLoading) {
+      this._logsStickToBottom = true;
+      this._loadHubLogs(entryId);
+    }
+
+    if (this._logsSubscribedEntryId === entryId) return;
+    this._unsubscribeLogs();
+
+    if (!this._hass?.connection?.subscribeMessage) return;
+
+    this._logsSubscribedEntryId = entryId;
+    this._hass.connection
+      .subscribeMessage(
+        (payload) => this._handleHubLogMessage(entryId, payload),
+        { type: "sofabaton_x1s/logs/subscribe", entry_id: entryId }
+      )
+      .then((unsubscribe) => {
+        if (this._logsSubscribedEntryId !== entryId) {
+          this._safeUnsubscribe(unsubscribe);
+          return;
+        }
+        this._logsUnsub = unsubscribe;
+        this._loadHubLogs(entryId, { preserveLines: true });
+      })
+      .catch((err) => {
+        if (this._logsSubscribedEntryId !== entryId) return;
+        this._logsError = this._formatError(err);
+        this._logsUnsub = null;
+        this._logsSubscribedEntryId = null;
+        if (this._selectedTab === "logs" && this._isCardConnected) this._render();
+      });
   }
 
   _applyOptimisticSetting(setting, enabled) {
@@ -731,6 +983,9 @@ class SofabatonControlPanelCard extends HTMLElement {
         padding: 12px 16px 11px;
         cursor: pointer;
       }
+      .tab-btn.tab-btn--push-right {
+        margin-left: auto;
+      }
       .tab-btn.active {
         color: var(--primary-color);
         border-bottom-color: var(--primary-color);
@@ -758,6 +1013,80 @@ class SofabatonControlPanelCard extends HTMLElement {
       }
       .tab-panel.scrollable {
         overflow-y: auto;
+      }
+      .logs-panel {
+        gap: 10px;
+      }
+      .logs-header {
+        display: grid;
+        gap: 4px;
+      }
+      .logs-subtitle {
+        font-size: 13px;
+        color: var(--secondary-text-color);
+      }
+      .logs-console {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color));
+        border-radius: calc(var(--ha-card-border-radius, 12px) + 2px);
+        background:
+          radial-gradient(circle at top, color-mix(in srgb, var(--primary-color) 6%, transparent), transparent 45%),
+          color-mix(in srgb, #05070b 92%, var(--card-background-color, #fff));
+        font-family: "SF Mono", "Fira Code", Consolas, monospace;
+        padding: 10px 0;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+        user-select: text;
+        -webkit-user-select: text;
+      }
+      .logs-empty {
+        padding: 12px 14px;
+        font-size: 12px;
+        color: color-mix(in srgb, var(--secondary-text-color) 82%, #9ca8bb);
+      }
+      .logs-empty.error {
+        color: var(--error-color);
+      }
+      .log-line {
+        display: flex;
+        gap: 12px;
+        align-items: start;
+        padding: 3px 14px;
+        font-size: 11px;
+        line-height: 1.55;
+        color: color-mix(in srgb, var(--primary-text-color) 94%, white);
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        user-select: text;
+        -webkit-user-select: text;
+      }
+      .log-line:hover {
+        background: color-mix(in srgb, var(--primary-color) 7%, transparent);
+      }
+      .log-line-ts {
+        flex: 0 0 auto;
+        color: #8d9bb0;
+        white-space: nowrap;
+        font-weight: 600;
+      }
+      .log-line-level {
+        flex: 0 0 auto;
+        min-width: 0;
+        font-weight: 700;
+        text-transform: uppercase;
+        white-space: nowrap;
+        letter-spacing: 0.04em;
+      }
+      .log-line-level--debug { color: #8ebcff; }
+      .log-line-level--info { color: #72d7a1; }
+      .log-line-level--warning { color: #ffcf70; }
+      .log-line-level--error,
+      .log-line-level--critical { color: #ff8d8d; }
+      .log-line-msg {
+        flex: 1 1 auto;
+        min-width: 0;
+        color: #e7edf6;
       }
       .hub-hero {
         display: grid;
@@ -1332,6 +1661,17 @@ class SofabatonControlPanelCard extends HTMLElement {
           gap: 6px;
           padding: 8px 10px;
         }
+        .log-line {
+          grid-template-columns: 1fr;
+          gap: 2px;
+        }
+        .log-line-ts,
+        .log-line-level {
+          white-space: normal;
+        }
+        .log-line {
+          gap: 6px;
+        }
         .hub-connection-node {
           width: 42px;
           height: 42px;
@@ -1735,17 +2075,57 @@ class SofabatonControlPanelCard extends HTMLElement {
       </div>`;
   }
 
+  _renderLogsTab(hub) {
+    if (!hub) {
+      return `<div class="cache-state">No hubs found.</div>`;
+    }
+
+    const lines = Array.isArray(this._logsLines) ? this._logsLines : [];
+    const body = (() => {
+      if (this._logsLoading && !lines.length) {
+        return `<div class="logs-empty">Loading log stream…</div>`;
+      }
+      if (this._logsError && !lines.length) {
+        return `<div class="logs-empty error">${this._escape(this._logsError)}</div>`;
+      }
+      if (!lines.length) {
+        return `<div class="logs-empty">No log lines captured for this hub yet.</div>`;
+      }
+      return lines
+        .map((entry) => {
+          const formatted = this._formatLogEntry(entry);
+          return `
+            <div class="log-line">
+              <span class="log-line-ts">${this._escape(formatted.time || "")}</span>
+              <span class="log-line-level log-line-level--${this._escape(formatted.level || "log")}">${this._escape((formatted.level || "log").toUpperCase())}</span>
+              <span class="log-line-msg">${this._escape(formatted.message || "")}</span>
+            </div>`;
+        })
+        .join("");
+    })();
+
+    return `
+      <div class="tab-panel logs-panel">
+        <div class="logs-header">
+          <div class="acc-title">Live Console</div>
+          <div class="logs-subtitle">${this._escape(hub.name || hub.entry_id || "")}</div>
+        </div>
+        <div class="logs-console" id="logs-console">${body}</div>
+      </div>`;
+  }
+
   _renderTabButtons() {
     const tabs = [
       { id: "hub", label: "Hub", disabled: false },
       { id: "settings", label: "Settings", disabled: false },
       { id: "cache", label: "Cache", disabled: !this._persistentCacheEnabled() },
+      { id: "logs", label: "Logs", disabled: false },
     ];
     return tabs
       .map(
         (tab) => `
           <button
-            class="tab-btn${this._selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
+            class="tab-btn${tab.id === "logs" ? " tab-btn--push-right" : ""}${this._selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
             data-tab="${tab.id}"
             ${tab.disabled ? 'aria-disabled="true"' : ""}
           >${tab.label}</button>`
@@ -1755,6 +2135,7 @@ class SofabatonControlPanelCard extends HTMLElement {
 
   _renderActiveTab(hub, hubCache) {
     if (this._selectedTab === "settings") return this._renderSettingsTab(hub);
+    if (this._selectedTab === "logs") return this._renderLogsTab(hub);
     if (this._selectedTab === "cache") return this._renderCacheTab(hubCache);
     return this._renderHubTab(hub);
   }
@@ -1763,6 +2144,7 @@ class SofabatonControlPanelCard extends HTMLElement {
     if (!this._hass || !this._root || !this._isCardConnected) return;
 
     const scrollSnapshot = this._captureCacheScrollState();
+    const logsScrollSnapshot = this._captureLogsScrollState();
 
     const hub = this._selectedHub();
     const hubCache = this._selectedHubCache();
@@ -1806,6 +2188,13 @@ class SofabatonControlPanelCard extends HTMLElement {
 
     this._wireUp(hub);
     this._restoreCacheScrollState(scrollSnapshot);
+    this._restoreLogsScrollState(
+      logsScrollSnapshot ||
+        (this._selectedTab === "logs"
+          ? { top: 0, stickToBottom: true, behavior: this._logsScrollBehavior || "auto" }
+          : null)
+    );
+    this._syncLogsFeed(hub);
   }
 
   _wireUp(hub) {
@@ -1826,6 +2215,11 @@ class SofabatonControlPanelCard extends HTMLElement {
         if (opt) {
           this._selectedHubEntryId = opt.dataset.entryId;
           this._openEntity = null;
+          this._logsLoadedEntryId = null;
+          this._logsLines = [];
+          this._logsError = null;
+          this._logsStickToBottom = true;
+          this._unsubscribeLogs();
           pickerDialog.close();
           this._render();
           this._loadControlPanelState().then(() => this._render());
@@ -1840,6 +2234,11 @@ class SofabatonControlPanelCard extends HTMLElement {
         const tabId = btn.getAttribute("data-tab");
         if (btn.classList.contains("tab-disabled")) return;
         this._selectedTab = tabId;
+        if (tabId === "logs") {
+          this._logsStickToBottom = true;
+          this._logsScrollBehavior = "auto";
+        }
+        else this._unsubscribeLogs();
         this._render();
       });
     });
@@ -1938,6 +2337,10 @@ class SofabatonControlPanelCard extends HTMLElement {
         const key = `${kind === "activity" ? "act" : "dev"}-${targetId}`;
         this._refreshForHub(kind, hub.entry_id, targetId, key);
       });
+    });
+
+    root.getElementById("logs-console")?.addEventListener("scroll", () => {
+      this._updateLogsStickinessFromDom();
     });
   }
 }
