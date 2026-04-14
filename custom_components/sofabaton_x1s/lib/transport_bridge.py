@@ -170,6 +170,7 @@ class TransportBridge:
         self._app_sock: Optional[socket.socket] = None
         self._hub_lock = threading.Lock()
         self._app_lock = threading.Lock()
+        self._wake_lock = threading.Lock()
 
         self._claim_thr: Optional[threading.Thread] = None
         self._bridge_thr: Optional[threading.Thread] = None
@@ -177,6 +178,8 @@ class TransportBridge:
 
         self._hub_listen_port: Optional[int] = None
         self._local_to_hub = bytearray()
+        self._wake_reader: Optional[socket.socket] = None
+        self._wake_writer: Optional[socket.socket] = None
 
         # callbacks
         self._hub_frame_cbs: list[Callable[[bytes, int], None]] = []
@@ -239,12 +242,14 @@ class TransportBridge:
 
     def send_local(self, payload: bytes) -> None:
         self._local_to_hub.extend(payload)
+        self._signal_wake()
 
     # ------------------------------------------------------------------
     # Networking lifecycle
     # ------------------------------------------------------------------
     def start(self, *, udp_port: Optional[int] = None) -> None:
         self._stop.clear()
+        self._init_wake_channel()
         if udp_port is not None:
             self.proxy_udp_port = udp_port
         demuxer = get_notify_demuxer(self.proxy_udp_port)
@@ -264,6 +269,7 @@ class TransportBridge:
 
     def stop(self) -> None:
         self._stop.set()
+        self._signal_wake()
         self._stop_notify_listener()
 
         with self._hub_lock:
@@ -292,6 +298,7 @@ class TransportBridge:
                 self._app_sock = None
                 self._notify_client_state(False)
 
+        self._close_wake_channel()
         self._log.info("[STOP] transport stopped")
 
     # ------------------------------------------------------------------
@@ -467,12 +474,16 @@ class TransportBridge:
                 hub = self._hub_sock
             with self._app_lock:
                 app = self._app_sock
+            with self._wake_lock:
+                wake_reader = self._wake_reader
 
             rlist: List[socket.socket] = []
             if hub is not None:
                 rlist.append(hub)
             if app is not None:
                 rlist.append(app)
+            if wake_reader is not None:
+                rlist.append(wake_reader)
 
             wlist: List[socket.socket] = []
             if hub is not None and (app_to_hub or self._local_to_hub):
@@ -489,6 +500,9 @@ class TransportBridge:
             except (OSError, ValueError):
                 time.sleep(0.05)
                 continue
+
+            if wake_reader is not None and wake_reader in r:
+                self._drain_wake_socket(wake_reader)
 
             if hub is not None and hub in r:
                 try:
@@ -687,6 +701,55 @@ class TransportBridge:
                 with self._hub_lock:
                     if self._hub_sock is None:
                         self._local_to_hub.clear()
+
+        self._close_wake_channel()
+
+    def _init_wake_channel(self) -> None:
+        self._close_wake_channel()
+        wake_reader, wake_writer = socket.socketpair()
+        wake_reader.setblocking(False)
+        wake_writer.setblocking(False)
+        with self._wake_lock:
+            self._wake_reader = wake_reader
+            self._wake_writer = wake_writer
+
+    def _signal_wake(self) -> None:
+        with self._wake_lock:
+            wake_writer = self._wake_writer
+        if wake_writer is None:
+            return
+        try:
+            wake_writer.send(b"\x00")
+        except (BlockingIOError, InterruptedError):
+            pass
+        except OSError:
+            pass
+
+    def _drain_wake_socket(self, wake_reader: socket.socket) -> None:
+        while True:
+            try:
+                chunk = wake_reader.recv(1024)
+            except (BlockingIOError, InterruptedError):
+                return
+            except OSError:
+                return
+            if not chunk:
+                return
+
+    def _close_wake_channel(self) -> None:
+        with self._wake_lock:
+            wake_reader = self._wake_reader
+            wake_writer = self._wake_writer
+            self._wake_reader = None
+            self._wake_writer = None
+
+        for sock in (wake_reader, wake_writer):
+            if sock is None:
+                continue
+            try:
+                sock.close()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Notifications
