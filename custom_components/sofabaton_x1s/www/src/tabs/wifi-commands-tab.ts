@@ -1,0 +1,1430 @@
+import { LitElement, css, html, nothing } from "lit";
+import { keyed } from "lit/directives/keyed.js";
+import type { ControlPanelHubState, HassLike } from "../shared/ha-context";
+import { entityForHub, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
+
+const WIFI_COMMANDS_DOCS_URL =
+  "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md";
+const SLOT_COUNT = 10;
+
+const ID = {
+  UP: 174,
+  DOWN: 178,
+  LEFT: 175,
+  RIGHT: 177,
+  OK: 176,
+  BACK: 179,
+  HOME: 180,
+  MENU: 181,
+  VOL_UP: 182,
+  VOL_DOWN: 185,
+  MUTE: 184,
+  CH_UP: 183,
+  CH_DOWN: 186,
+  GUIDE: 157,
+  DVR: 155,
+  PLAY: 156,
+  EXIT: 154,
+  A: 153,
+  B: 152,
+  C: 151,
+  REW: 187,
+  PAUSE: 188,
+  FWD: 189,
+  RED: 190,
+  GREEN: 191,
+  YELLOW: 192,
+  BLUE: 193,
+} as const;
+
+const HARD_BUTTON_ICONS: Record<string, string> = {
+  up: "mdi:arrow-up-bold",
+  down: "mdi:arrow-down-bold",
+  left: "mdi:arrow-left-bold",
+  right: "mdi:arrow-right-bold",
+  ok: "mdi:check-circle-outline",
+  back: "mdi:arrow-u-left-top",
+  home: "mdi:home-outline",
+  menu: "mdi:menu",
+  volup: "mdi:volume-plus",
+  voldn: "mdi:volume-minus",
+  mute: "mdi:volume-mute",
+  chup: "mdi:chevron-up-circle-outline",
+  chdn: "mdi:chevron-down-circle-outline",
+  guide: "mdi:television-guide",
+  dvr: "mdi:record-rec",
+  play: "mdi:play-circle-outline",
+  exit: "mdi:close-circle-outline",
+  rew: "mdi:rewind",
+  pause: "mdi:pause-circle-outline",
+  fwd: "mdi:fast-forward",
+  red: "mdi:circle",
+  green: "mdi:circle",
+  yellow: "mdi:circle",
+  blue: "mdi:circle",
+  a: "mdi:alpha-a-circle-outline",
+  b: "mdi:alpha-b-circle-outline",
+  c: "mdi:alpha-c-circle-outline",
+};
+
+const DEFAULT_KEY_LABELS: Record<string, string> = {
+  up: "Up",
+  down: "Down",
+  left: "Left",
+  right: "Right",
+  ok: "OK",
+  back: "Back",
+  home: "Home",
+  menu: "Menu",
+  volup: "Vol +",
+  voldn: "Vol -",
+  mute: "Mute",
+  chup: "Ch +",
+  chdn: "Ch -",
+  guide: "Guide",
+  dvr: "DVR",
+  play: "Play",
+  exit: "Exit",
+  rew: "Rewind",
+  pause: "Pause",
+  fwd: "Fast Forward",
+  red: "Red",
+  green: "Green",
+  yellow: "Yellow",
+  blue: "Blue",
+  a: "A",
+  b: "B",
+  c: "C",
+};
+
+const HARD_BUTTON_ID_MAP: Record<string, number> = {
+  up: ID.UP,
+  down: ID.DOWN,
+  left: ID.LEFT,
+  right: ID.RIGHT,
+  ok: ID.OK,
+  back: ID.BACK,
+  home: ID.HOME,
+  menu: ID.MENU,
+  volup: ID.VOL_UP,
+  voldn: ID.VOL_DOWN,
+  mute: ID.MUTE,
+  chup: ID.CH_UP,
+  chdn: ID.CH_DOWN,
+  guide: ID.GUIDE,
+  dvr: ID.DVR,
+  play: ID.PLAY,
+  exit: ID.EXIT,
+  rew: ID.REW,
+  pause: ID.PAUSE,
+  fwd: ID.FWD,
+  red: ID.RED,
+  green: ID.GREEN,
+  yellow: ID.YELLOW,
+  blue: ID.BLUE,
+  a: ID.A,
+  b: ID.B,
+  c: ID.C,
+};
+
+const X2_ONLY_HARD_BUTTON_IDS = new Set([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
+const DEFAULT_ACTION = { action: "perform-action" };
+
+type PressType = "short" | "long";
+type ActiveModal = "details" | "action" | null;
+
+interface WifiCommandAction {
+  action: string;
+  perform_action?: string;
+  service?: string;
+  target?: Record<string, unknown>;
+  entity_id?: string | string[];
+  device_id?: string | string[];
+  area_id?: string | string[];
+  data?: Record<string, unknown>;
+  service_data?: Record<string, unknown>;
+  navigation_path?: string;
+  url_path?: string;
+}
+
+interface WifiCommandSlot {
+  name: string;
+  add_as_favorite: boolean;
+  hard_button: string;
+  long_press_enabled: boolean;
+  activities: string[];
+  action: WifiCommandAction;
+  long_press_action: WifiCommandAction;
+}
+
+interface SyncState {
+  status: string;
+  current_step: number;
+  total_steps: number;
+  message: string;
+  commands_hash: string;
+  managed_command_hashes: string[];
+  sync_needed: boolean;
+}
+
+class SofabatonWifiCommandsTab extends LitElement {
+  static properties = {
+    hass: { attribute: false },
+    hub: { attribute: false },
+    loading: { type: Boolean },
+    error: { type: String },
+    _commandsData: { state: true },
+    _configLoadedForEntryId: { state: true },
+    _commandConfigLoading: { state: true },
+    _syncState: { state: true },
+    _commandSyncLoading: { state: true },
+    _commandSyncRunning: { state: true },
+    _activeCommandSlot: { state: true },
+    _activeCommandModal: { state: true },
+    _confirmClearSlot: { state: true },
+    _commandSaveError: { state: true },
+    _activeCommandActionTab: { state: true },
+    _syncWarningOpen: { state: true },
+    _syncWarningOptOut: { state: true },
+    _hubVersionModalOpen: { state: true },
+    _hubVersionModalSelectedVersion: { state: true },
+    _commandEditorDrafts: { state: true },
+    _shortSelectorVersion: { state: true },
+    _longSelectorVersion: { state: true },
+  };
+
+  static styles = css`
+    :host { display: flex; flex: 1; min-height: 0; }
+    .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
+    .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
+    .state.error { color: var(--error-color, #db4437); }
+    .section-title-wrap { display: flex; align-items: center; gap: 8px; }
+    .section-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
+    .section-help { color: var(--secondary-text-color); display: inline-flex; }
+    .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .sync-warning-text, .empty-hint { color: var(--secondary-text-color); }
+    .section-subtitle { font-size: 13px; line-height: 1.5; }
+    .hub-version-warn-btn { width: 100%; border: 1px solid color-mix(in srgb, var(--warning-color, #ff9800) 45%, var(--divider-color)); border-radius: 12px; padding: 10px 12px; background: color-mix(in srgb, var(--warning-color, #ff9800) 10%, transparent); color: var(--primary-text-color); text-align: left; font: inherit; font-weight: 600; cursor: pointer; }
+    .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: 14px; background: var(--secondary-background-color, var(--ha-card-background)); }
+    .sync-row.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); }
+    .sync-row.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); }
+    .sync-row.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); }
+    .sync-message-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .sync-message { font-size: 13px; line-height: 1.4; }
+    .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
+    .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
+    .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .version-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .sync-btn-primary, .dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    .sync-static { opacity: 0.65; cursor: default; }
+    .command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: left; display: flex; flex-direction: column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
+    .slot-btn:hover { border-color: var(--primary-color); }
+    .slot-btn.slot-empty .slot-main { gap: 12px; align-items: center; justify-content: center; flex-direction: column; min-height: 100%; width: 100%; padding: 0; text-align: center; }
+    .slot-btn.slot-confirming {
+      justify-content: center;
+      padding: 0px 12px;
+      gap: 6px;
+      min-height: 0;
+      height: 100%;
+    }
+    .slot-main { position: relative; display: flex; align-items: flex-start; gap: 8px; padding: 14px 12px 10px; min-width: 0; width: 100%; border: 0; background: transparent; cursor: pointer; text-align: left; }
+    .slot-name, .dialog-title, .slot-confirm-title { color: var(--primary-text-color); font-weight: 700; }
+    .slot-name { font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }
+    .slot-text-wrap { min-width: 0; flex: 1; text-align: left; }
+    .slot-meta { margin-top: 3px; font-size: 12px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 4px; }
+    .slot-favorite { color: var(--error-color); display: inline-flex; }
+    .slot-favorite ha-icon { --mdc-icon-size: 14px; }
+    .slot-meta-icon { color: var(--state-icon-color); display: inline-flex; }
+    .slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
+    .slot-clear { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
+    .slot-clear:hover { opacity: 1; border-color: var(--primary-color); }
+    .slot-clear ha-icon { --mdc-icon-size: 16px; }
+    .slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+    .slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
+    .slot-action-btn:active { transform: translateY(1px); }
+    .slot-confirm-title { font-size: 15px; line-height: 1.2; margin: 0; }
+    .slot-confirm-sub { font-size: 12px; line-height: 1.3; margin: 0; }
+    .slot-confirm-actions { display: flex; gap: 8px; margin-top: 2px; }
+    .slot-btn.slot-confirming .dialog-btn {
+      min-height: 40px;
+      min-width: 72px;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+    .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: 16px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog.small { width: min(500px, calc(100vw - 36px)); }
+    .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .dialog-header { border-bottom: 1px solid var(--divider-color); }
+    .dialog-title { font-size: 16px; flex: 1; }
+    .dialog-close,
+    .icon-btn {
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--divider-color);
+      border-radius: 10px;
+      background: var(--ha-card-background, var(--card-background-color));
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease;
+    }
+    .dialog-close:hover,
+    .icon-btn:hover {
+      border-color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
+      color: var(--primary-text-color);
+    }
+    .dialog-close:active,
+    .icon-btn:active {
+      transform: translateY(1px);
+    }
+    .dialog-close:focus-visible,
+    .icon-btn:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent);
+    }
+    .dialog-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+      /* Match the remote card's HA form theming fix. HA frontend controls can
+         fall back to a light default when --ha-color-form-background is absent. */
+      --ha-color-form-background: var(
+        --input-fill-color,
+        var(
+          --secondary-background-color,
+          color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)
+        )
+      );
+      --ha-color-form-background-hover: var(--ha-color-form-background);
+    }
+    .dialog-note {
+      border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color));
+      border-radius: 12px;
+      padding: 12px;
+      background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color)));
+      color: var(--primary-text-color);
+      font-size: 13px;
+      line-height: 1.45;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .dialog-note::before {
+      content: "";
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--info-color, var(--primary-color)) 22%, transparent);
+      flex: 0 0 18px;
+      margin-top: 1px;
+    }
+    .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; }
+    .dialog-footer-actions { display: flex; gap: 8px; }
+    .dialog-footer-note { min-height: 18px; font-size: 13px; color: var(--error-color, #db4437); }
+    .config-block { display: grid; gap: 14px; }
+    .checkbox-row { width: 100%; border: 0; background: transparent; padding: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; cursor: pointer; color: inherit; }
+    .checkbox-row[disabled] { cursor: default; opacity: 0.6; }
+    .checkbox-row.active .checkbox-icon { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
+    .checkbox-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: color-mix(in srgb, var(--ha-card-background, transparent) 88%, #000); display: flex; align-items: center; justify-content: center; transition: background-color 120ms ease, border-color 120ms ease; }
+    .checkbox-icon ha-icon { --mdc-icon-size: 16px; }
+    .activities-label, .warning-label, .action-helper { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+    .activity-chip-row, .version-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .activity-chip, .version-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; font: inherit; }
+    .activity-chip.active, .version-chip.active, .action-tab.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); color: var(--primary-color); }
+    .action-tabs { display: flex; gap: 8px; }
+    .action-tab { border: 1px solid var(--divider-color); border-radius: 999px; padding: 7px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
+    .action-selector-wrap[hidden] { display: none; }
+    .dialog-text { font-size: 14px; line-height: 1.55; color: var(--primary-text-color); }
+    .warning-optout { display: flex; align-items: center; gap: 10px; }
+    .dialog-body ha-textfield,
+    .dialog-body ha-selector {
+      width: 100%;
+      --input-fill-color: var(--ha-color-form-background);
+      --mdc-theme-surface: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black);
+      --mdc-text-field-fill-color: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black);
+      --mdc-text-field-hover-fill-color: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black);
+      --mdc-text-field-disabled-fill-color: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 88%, black);
+      --mdc-text-field-idle-line-color: var(--divider-color);
+      --mdc-text-field-hover-line-color: var(--primary-color);
+      --mdc-text-field-focused-line-color: var(--primary-color);
+      --mdc-text-field-label-ink-color: var(--secondary-text-color);
+      --mdc-text-field-ink-color: var(--primary-text-color);
+      --mdc-text-field-input-text-color: var(--primary-text-color);
+      --text-field-hover-color: var(--primary-text-color);
+      --mdc-select-fill-color: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black);
+      --mdc-select-hover-fill-color: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black);
+      --mdc-select-idle-line-color: var(--divider-color);
+      --mdc-select-hover-line-color: var(--primary-color);
+      --mdc-select-focused-line-color: var(--primary-color);
+      --mdc-select-label-ink-color: var(--secondary-text-color);
+      --mdc-select-ink-color: var(--primary-text-color);
+      --mdc-theme-on-surface: var(--primary-text-color);
+      --mdc-theme-text-primary-on-background: var(--primary-text-color);
+      --mdc-theme-primary: var(--primary-color);
+    }
+    @media (max-width: 640px) {
+      .command-grid { grid-template-columns: 1fr; }
+      .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+      .dialog, .dialog.small { width: 100%; max-height: 100%; border-radius: 0 0 16px 16px; }
+      .dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
+      .sync-row { align-items: flex-start; flex-direction: column; }
+    }
+  `;
+
+  declare hass: HassLike | null;
+  declare hub: ControlPanelHubState | null;
+  declare loading: boolean;
+  declare error: string | null;
+
+  private _commandsData: WifiCommandSlot[] = this._normalizeCommandsForStorage([]);
+  private _configLoadedForEntryId: string | null = null;
+  private _commandConfigLoading = false;
+  private _syncState: SyncState = this._defaultSyncState();
+  private _commandSyncLoading = false;
+  private _commandSyncRunning = false;
+  private _commandSyncPollTimer: number | null = null;
+  private _activeCommandSlot: number | null = null;
+  private _activeCommandModal: ActiveModal = null;
+  private _confirmClearSlot: number | null = null;
+  private _commandSaveError = "";
+  private _activeCommandActionTab: PressType = "short";
+  private _syncWarningOpen = false;
+  private _syncWarningOptOut = false;
+  private _hubVersionModalOpen = false;
+  private _hubVersionModalSelectedVersion = "X1";
+  private _commandEditorDrafts: Record<number, WifiCommandSlot> = {};
+  private _shortSelectorVersion = 0;
+  private _longSelectorVersion = 0;
+
+  connectedCallback() {
+    super.connectedCallback();
+    void this._ensureLoadedForCurrentHub();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._clearPollTimer();
+  }
+
+  protected updated(changed: Map<string, unknown>) {
+    if (changed.has("hub") || changed.has("hass")) void this._ensureLoadedForCurrentHub();
+    this._scheduleSyncPoll();
+    this.renderRoot
+      .querySelectorAll<HTMLElement>("ha-selector[data-hide-action-type='1']")
+      .forEach((element) => this._hideUiActionTypeSelector(element));
+  }
+
+  protected render() {
+    if (this.loading) return html`<div class="state">Loading…</div>`;
+    if (this.error) return html`<div class="state error">${this.error}</div>`;
+    if (!this.hub) return html`<div class="state">No hubs found.</div>`;
+
+    const remoteUnavailable = this._remoteUnavailable();
+    const syncTone = remoteUnavailable ? "sync-error" : this._syncStatusTone(this._syncState.status);
+    const syncRunning = this._syncState.status === "running";
+    const syncMessage = this._syncMessage(remoteUnavailable);
+
+    return html`
+      <div class="tab-panel">
+        <div class="section-title-wrap">
+          <div class="section-title">Wifi Commands</div>
+          <a class="section-help" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noopener noreferrer" title="Learn more about Wifi Commands" aria-label="Wifi Commands documentation">
+            <ha-icon icon="mdi:help-circle-outline"></ha-icon>
+          </a>
+        </div>
+        <div class="section-subtitle">
+          Receive button presses from the hub: assign Home Assistant actions to physical buttons or favorites and deploy the configuration to your hub.
+        </div>
+        ${this._hubVersionConfident() ? nothing : html`
+          <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
+            ⚠️ Your hub may be miss-versioned! Click here to fix it.
+          </button>
+        `}
+        <div class="sync-row ${syncTone}">
+          <div class="sync-message-wrap">
+            <ha-icon icon=${this._syncStatusIcon(remoteUnavailable)}></ha-icon>
+            <div class="sync-message">${syncMessage}</div>
+          </div>
+          ${remoteUnavailable ? nothing : syncRunning ? html`<div class="sync-static">Syncing…</div>` : this._syncState.sync_needed ? html`
+            <button class="sync-btn sync-btn-primary" ?disabled=${this._commandSyncRunning} @click=${this._runCommandConfigSync}>Sync to Hub</button>
+          ` : nothing}
+        </div>
+        ${remoteUnavailable ? nothing : html`
+          <div class="command-grid">
+            ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
+          </div>
+        `}
+        ${this._renderDetailsModal()}
+        ${this._renderActionModal()}
+        ${this._renderSyncWarningModal()}
+        ${this._renderHubVersionModal()}
+      </div>
+    `;
+  }
+
+  private _renderSlot(command: WifiCommandSlot, idx: number) {
+    const isConfirming = this._confirmClearSlot === idx;
+    const configured = this._isCommandConfigured(command, idx);
+    if (isConfirming) {
+      return html`
+        <div class="slot-btn slot-confirming">
+          <div class="slot-confirm-title">Clear command slot?</div>
+          <div class="slot-confirm-sub">Resets configuration.</div>
+          <div class="slot-confirm-actions">
+            <button class="dialog-btn" @click=${() => { this._confirmClearSlot = null; }}>No</button>
+            <button class="dialog-btn dialog-btn-primary" @click=${() => this._clearSlot(idx)}>Yes</button>
+          </div>
+        </div>
+      `;
+    }
+
+    if (!configured) {
+      return html`
+        <button class="slot-btn slot-empty" @click=${() => this._openCommandEditor(idx)}>
+          <div class="slot-main">
+            <div style="font-size:28px;color:var(--secondary-text-color)">+</div>
+            <div class="slot-name">Make Command</div>
+          </div>
+        </button>
+      `;
+    }
+
+    const details = this._commandSlotSummaryDetails(command);
+    const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
+    const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
+
+    return html`
+      <div class="slot-btn">
+        <button class="slot-clear" @click=${(event: Event) => { event.stopPropagation(); this._confirmClearSlot = idx; }}><ha-icon icon="mdi:close"></ha-icon></button>
+        <button class="slot-main" @click=${() => this._openCommandEditor(idx)}>
+          <span class="slot-text-wrap">
+            <span class="slot-name">${String(command.name || "").trim() || `Command ${idx + 1}`}</span>
+            <span class="slot-meta">
+              ${command.add_as_favorite ? html`<span class="slot-favorite"><ha-icon icon="mdi:heart"></ha-icon></span>` : nothing}
+              ${command.hard_button ? html`<span class="slot-meta-icon"><ha-icon icon=${this._commandSlotIcon(command.hard_button)} style=${this._commandSlotIconColor(command.hard_button) ? `color:${this._commandSlotIconColor(command.hard_button)}` : ""}></ha-icon></span>` : nothing}
+              ${command.long_press_enabled ? html`<span class="slot-meta-icon"><ha-icon icon="mdi:timer-sand-full"></ha-icon></span>` : nothing}
+              <span>in ${activityCount} ${activitiesLabel}</span>
+            </span>
+          </span>
+        </button>
+        <button class="slot-action-btn" @click=${(event: Event) => { event.stopPropagation(); this._openCommandActionEditor(idx); }}>
+          ${details.commandSummary === "No Action configured" ? "No Action configured" : `> ${details.service}`}
+        </button>
+      </div>
+    `;
+  }
+
+  private _renderDetailsModal() {
+    if (this._activeCommandModal !== "details" || !Number.isInteger(this._activeCommandSlot)) return nothing;
+    const draft = this._activeCommandDraft();
+    if (!draft) return nothing;
+    const slotIndex = Number(this._activeCommandSlot);
+    const activities = this._editorActivities();
+    const selectedActivities = new Set((draft.activities || []).map((id) => String(id)));
+    const hasMappedButton = Boolean(String(draft.hard_button || "").trim());
+
+    return html`
+      <div class="modal-backdrop" @click=${this._closeOnBackdrop}>
+        <div class="dialog" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">Command Slot ${slotIndex + 1}</div>
+            <button class="dialog-close" @click=${this._closeCommandEditor}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="dialog-note">
+              Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote’s display, in the mobile app, and as the Wifi Command's sensor status.
+            </div>
+            <div class="config-block">
+              <ha-textfield
+                .label=${"Command Display Name"}
+                .maxLength=${20}
+                .value=${draft.name}
+                @input=${(event: Event) => {
+                  const input = event.currentTarget as HTMLInputElement;
+                  const value = this._sanitizeCommandName(input.value);
+                  if (input.value !== value) input.value = value;
+                }}
+                @change=${(event: Event) => {
+                  const input = event.currentTarget as HTMLInputElement;
+                  const value = this._sanitizeCommandName(input.value);
+                  input.value = value;
+                  this._updateActiveCommandDraft({ name: value });
+                  this._commandSaveError = "";
+                }}
+              ></ha-textfield>
+              <button class="checkbox-row ${draft.add_as_favorite ? "active" : ""}" @click=${() => {
+                this._toggleFavoriteRow();
+              }}>
+                <span class="checkbox-left">
+                  <span class="checkbox-icon"><ha-icon icon="mdi:heart"></ha-icon></span>
+                  <span>Make as Favorite</span>
+                </span>
+                <ha-switch
+                  .checked=${draft.add_as_favorite}
+                  @click=${(event: Event) => event.stopPropagation()}
+                  @change=${(event: Event) => this._handleFavoriteSwitchChange(event)}
+                ></ha-switch>
+              </button>
+              <ha-selector
+                .hass=${this.hass}
+                .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "None" }, ...this._editorAvailableHardButtonOptions().map((option) => ({ value: option.value, label: option.label }))] } }}
+                .label=${"Physical Button Assignment"}
+                .value=${this._selectorValueForButton(draft)}
+                @value-changed=${(event: CustomEvent) => this._handleHardButtonChanged(event)}
+              ></ha-selector>
+              <button class="checkbox-row ${hasMappedButton && draft.long_press_enabled ? "active" : ""}" ?disabled=${!hasMappedButton} @click=${() => {
+                this._toggleLongPressRow();
+              }}>
+                <span class="checkbox-left">
+                  <span class="checkbox-icon"><ha-icon icon="mdi:timer-sand-full"></ha-icon></span>
+                  <span>Enable longpress</span>
+                </span>
+                <ha-switch
+                  .checked=${hasMappedButton && draft.long_press_enabled}
+                  .disabled=${!hasMappedButton}
+                  @click=${(event: Event) => event.stopPropagation()}
+                  @change=${(event: Event) => this._handleLongPressSwitchChange(event)}
+                ></ha-switch>
+              </button>
+              <div class="activities-label">Apply to these Activities</div>
+              <div class="activity-chip-row">
+                ${activities.length ? activities.map((activity) => html`
+                  <button class="activity-chip ${selectedActivities.has(String(activity.id)) ? "active" : ""}" @click=${(event: Event) => this._toggleActivity(activity.id, event)}>
+                    ${activity.name}
+                  </button>
+                `) : html`<div class="empty-hint">No activities available for this hub.</div>`}
+              </div>
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._commandSaveError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeCommandEditor}>Cancel</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._saveActiveCommandModal}>Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderActionModal() {
+    if (this._activeCommandModal !== "action" || !Number.isInteger(this._activeCommandSlot)) return nothing;
+    const draft = this._activeCommandDraft();
+    if (!draft) return nothing;
+    const activeTab = this._activeCommandActionTabKey();
+    return html`
+      <div class="modal-backdrop" @click=${this._closeOnBackdrop}>
+        <div class="dialog" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">Command Slot ${Number(this._activeCommandSlot) + 1} Action</div>
+            <button class="dialog-close" @click=${this._closeCommandActionEditor}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="dialog-note">
+              Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.
+            </div>
+            <div class="config-block">
+              ${draft.long_press_enabled ? html`
+                <div class="action-tabs">
+                  <button class="action-tab ${activeTab === "short" ? "active" : ""}" @click=${() => this._setActiveCommandActionTab("short")}>Short press</button>
+                  <button class="action-tab ${activeTab === "long" ? "active" : ""}" @click=${() => this._setActiveCommandActionTab("long")}>Long press</button>
+                </div>
+              ` : nothing}
+              <div class="action-helper">${activeTab === "long" ? "Select Long-Press Action" : "Select Triggered Action"}</div>
+              <div class="action-selector-wrap" ?hidden=${activeTab !== "short"}>
+                ${keyed(this._shortSelectorVersion, html`
+                  <ha-selector
+                    data-hide-action-type="1"
+                    .hass=${this.hass}
+                    .selector=${{ ui_action: {} }}
+                    .label=${"Action"}
+                    .value=${this._commandActionForPress(draft, "short")}
+                    @value-changed=${(event: CustomEvent) => this._handleActionChanged("short", event.detail?.value)}
+                  ></ha-selector>
+                `)}
+              </div>
+              <div class="action-selector-wrap" ?hidden=${!draft.long_press_enabled || activeTab !== "long"}>
+                ${keyed(this._longSelectorVersion, html`
+                  <ha-selector
+                    data-hide-action-type="1"
+                    .hass=${this.hass}
+                    .selector=${{ ui_action: {} }}
+                    .label=${"Action"}
+                    .value=${this._commandActionForPress(draft, "long")}
+                    @value-changed=${(event: CustomEvent) => this._handleActionChanged("long", event.detail?.value)}
+                  ></ha-selector>
+                `)}
+              </div>
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._commandSaveError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeCommandActionEditor}>Cancel</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._saveActiveCommandModal}>Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderSyncWarningModal() {
+    if (!this._syncWarningOpen) return nothing;
+    return html`
+      <div class="modal-backdrop" @click=${() => { this._syncWarningOpen = false; }}>
+        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">Sync commands to hub?</div>
+            <button class="dialog-close" @click=${() => { this._syncWarningOpen = false; }}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="dialog-text sync-warning-text">
+              This sync can run for several minutes. During this process, other interactions with the hub are blocked.<br /><br />
+              At the end of deployment, the physical remote will be force-resynced. It is recommended to finish your full Wifi Commands setup first, then sync once.
+            </div>
+            <label class="warning-optout">
+              <input type="checkbox" .checked=${this._syncWarningOptOut} @change=${(event: Event) => { this._syncWarningOptOut = (event.currentTarget as HTMLInputElement).checked; }} />
+              <span>Don’t show this warning again for this remote.</span>
+            </label>
+          </div>
+          <div class="dialog-footer">
+            <div></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${() => { this._syncWarningOpen = false; }}>Cancel</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._confirmSyncWarning}>Start sync</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderHubVersionModal() {
+    if (!this._hubVersionModalOpen) return nothing;
+    return html`
+      <div class="modal-backdrop" @click=${() => { this._hubVersionModalOpen = false; }}>
+        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">Unknown hub version</div>
+            <button class="dialog-close" @click=${() => { this._hubVersionModalOpen = false; }}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="dialog-text">
+              We couldn’t automatically detect your hub model. Select the correct version below — the change takes effect immediately, no restart needed.
+            </div>
+            <div class="version-chip-row">
+              ${["X1", "X1S", "X2"].map((version) => html`
+                <button class="version-chip ${this._hubVersionModalSelectedVersion === version ? "active" : ""}" @click=${() => { this._hubVersionModalSelectedVersion = version; }}>
+                  ${version}
+                </button>
+              `)}
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <div></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${() => { this._hubVersionModalOpen = false; }}>Cancel</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._submitHubVersionModal}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private async _ensureLoadedForCurrentHub() {
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (!entryId || !this.hass?.callWS) return;
+    if (this._configLoadedForEntryId === entryId && !this._commandConfigLoading && !this._commandSyncLoading) return;
+    await this._loadCommandConfigFromBackend(true);
+    await this._loadCommandSyncProgress(true);
+  }
+
+  private _entityId() {
+    return entityForHub(this.hass, this.hub);
+  }
+
+  private _remoteAttrs() {
+    return remoteAttrsForHub(this.hass, this.hub);
+  }
+
+  private _remoteUnavailable() {
+    const entityId = this._entityId();
+    return !!entityId && this.hass?.states?.[entityId]?.state === "unavailable";
+  }
+
+  private _hubVersion() {
+    return String(this._remoteAttrs()?.hub_version || this.hub?.version || "").toUpperCase();
+  }
+
+  private _hubVersionConfident() {
+    return this._remoteAttrs()?.hub_version_confident !== false;
+  }
+
+  private _supportsUnicodeCommandNames() {
+    const version = this._hubVersion();
+    return version.includes("X2") || version.includes("X1S");
+  }
+
+  private _sanitizeCommandName(value: unknown) {
+    const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N} ]+/gu : /[^A-Za-z0-9 ]+/g;
+    return String(value ?? "").replace(pattern, "").slice(0, 20);
+  }
+
+  private _defaultSyncState(): SyncState {
+    return {
+      status: "idle",
+      current_step: 0,
+      total_steps: 0,
+      message: "Idle",
+      commands_hash: "",
+      managed_command_hashes: [],
+      sync_needed: false,
+    };
+  }
+
+  private _normalizeCommandAction(action: unknown): WifiCommandAction {
+    if (Array.isArray(action)) {
+      const first = action.find((item) => item && typeof item === "object");
+      const normalized = first || DEFAULT_ACTION;
+      if (normalized && typeof normalized === "object" && "action" in normalized) return { ...(normalized as WifiCommandAction) };
+      return { ...(normalized as Record<string, unknown>), ...DEFAULT_ACTION } as WifiCommandAction;
+    }
+    if (action && typeof action === "object") {
+      const normalized = action as WifiCommandAction;
+      return normalized.action ? { ...normalized } : { ...normalized, ...DEFAULT_ACTION };
+    }
+    return { ...DEFAULT_ACTION };
+  }
+
+  private _commandSlotDefault(idx: number): WifiCommandSlot {
+    return {
+      name: `Command ${idx + 1}`,
+      add_as_favorite: true,
+      hard_button: "",
+      long_press_enabled: false,
+      activities: [],
+      action: { ...DEFAULT_ACTION },
+      long_press_action: { ...DEFAULT_ACTION },
+    };
+  }
+
+  private _normalizeCommandsForStorage(nextCommands: unknown): WifiCommandSlot[] {
+    return Array.from({ length: SLOT_COUNT }, (_, idx) => {
+      const item = Array.isArray(nextCommands) ? nextCommands[idx] ?? {} : {};
+      const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      return {
+        ...this._commandSlotDefault(idx),
+        name: this._sanitizeCommandName(record.name ?? `Command ${idx + 1}`),
+        add_as_favorite:
+          record.add_as_favorite === undefined ? this._commandSlotDefault(idx).add_as_favorite : Boolean(record.add_as_favorite),
+        hard_button: String(record.hard_button ?? ""),
+        long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),
+        activities: Array.isArray(record.activities) ? record.activities.map((id) => String(id)).filter((id) => id !== "") : [],
+        action: this._normalizeCommandAction(record.action),
+        long_press_action: this._normalizeCommandAction(record.long_press_action),
+      };
+    });
+  }
+
+  private _commandsList() {
+    return this._commandsData.map((slot, idx) => ({
+      ...this._commandSlotDefault(idx),
+      ...slot,
+      action: this._normalizeCommandAction(slot.action),
+      long_press_action: this._normalizeCommandAction(slot.long_press_action),
+    }));
+  }
+
+  private _cloneCommandSlot(slot: Partial<WifiCommandSlot> | null | undefined): WifiCommandSlot {
+    return {
+      name: this._sanitizeCommandName(slot?.name ?? ""),
+      add_as_favorite: Boolean(slot?.add_as_favorite),
+      hard_button: String(slot?.hard_button ?? ""),
+      long_press_enabled: Boolean(slot?.long_press_enabled) && Boolean(String(slot?.hard_button ?? "").trim()),
+      activities: Array.isArray(slot?.activities) ? slot.activities.map((id) => String(id)).filter((id) => id !== "") : [],
+      action: this._normalizeCommandAction(slot?.action),
+      long_press_action: this._normalizeCommandAction(slot?.long_press_action),
+    };
+  }
+
+  private async _loadCommandConfigFromBackend(force = false) {
+    const entityId = String(this._entityId() || "").trim();
+    const entryId = String(this.hub?.entry_id || "").trim();
+    if (!entityId || !entryId || !this.hass?.callWS) return;
+    if (this._commandConfigLoading && !force) return;
+    if (this._configLoadedForEntryId === entryId && !force) return;
+    this._commandConfigLoading = true;
+    try {
+      const result = await this.hass.callWS<{ commands?: unknown[] }>({
+        type: "sofabaton_x1s/command_config/get",
+        entity_id: entityId,
+      });
+      this._commandsData = this._normalizeCommandsForStorage(result?.commands || []);
+      this._configLoadedForEntryId = entryId;
+    } catch (_error) {
+      this._commandsData = this._normalizeCommandsForStorage([]);
+      this._configLoadedForEntryId = entryId;
+    } finally {
+      this._commandConfigLoading = false;
+    }
+  }
+
+  private async _loadCommandSyncProgress(force = false) {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS) return;
+    if (this._commandSyncLoading && !force) return;
+    this._commandSyncLoading = true;
+    try {
+      const result = await this.hass.callWS<Partial<SyncState>>({
+        type: "sofabaton_x1s/command_sync/progress",
+        entity_id: entityId,
+      });
+      this._syncState = {
+        status: String(result?.status || "idle"),
+        current_step: Number(result?.current_step || 0),
+        total_steps: Number(result?.total_steps || 0),
+        message: String(result?.message || "Idle"),
+        commands_hash: String(result?.commands_hash || ""),
+        managed_command_hashes: Array.isArray(result?.managed_command_hashes)
+          ? result.managed_command_hashes.map((item) => String(item || "")).filter(Boolean)
+          : [],
+        sync_needed: Boolean(result?.sync_needed),
+      };
+    } catch (_error) {
+      this._syncState = {
+        ...this._defaultSyncState(),
+        message: "Unable to load sync status",
+      };
+    } finally {
+      this._commandSyncLoading = false;
+    }
+  }
+
+  private async _setCommands(nextCommands: WifiCommandSlot[]) {
+    const normalized = this._normalizeCommandsForStorage(nextCommands);
+    this._commandsData = normalized;
+    const entityId = String(this._entityId() || "").trim();
+    if (entityId && this.hass?.callWS) {
+      try {
+        await this.hass.callWS({
+          type: "sofabaton_x1s/command_config/set",
+          entity_id: entityId,
+          commands: normalized,
+        });
+      } catch (_error) {
+        // Keep the local staged state even if backend persistence fails temporarily.
+      }
+      await this._loadCommandSyncProgress(true);
+    }
+  }
+
+  private _ensureCommandDraft(slotIdx: number | null) {
+    if (!Number.isInteger(slotIdx)) return null;
+    const idx = Number(slotIdx);
+    if (!this._commandEditorDrafts[idx]) {
+      this._commandEditorDrafts[idx] = this._cloneCommandSlot(this._commandsList()[idx] || this._commandSlotDefault(idx));
+    }
+    return this._commandEditorDrafts[idx];
+  }
+
+  private _activeCommandDraft() {
+    return this._ensureCommandDraft(this._activeCommandSlot);
+  }
+
+  private _updateActiveCommandDraft(patch: Partial<WifiCommandSlot>) {
+    if (!Number.isInteger(this._activeCommandSlot)) return null;
+    const idx = Number(this._activeCommandSlot);
+    const current = this._ensureCommandDraft(idx);
+    if (!current) return null;
+    const next = { ...current, ...patch };
+    this._commandEditorDrafts = { ...this._commandEditorDrafts, [idx]: this._cloneCommandSlot(next) };
+    return this._commandEditorDrafts[idx];
+  }
+
+  private _activeCommandActionTabKey(): PressType {
+    const draft = this._activeCommandDraft();
+    if (!draft?.long_press_enabled) return "short";
+    return this._activeCommandActionTab === "long" ? "long" : "short";
+  }
+
+  private _setActiveCommandActionTab(tab: PressType) {
+    this._activeCommandActionTab = tab === "long" ? "long" : "short";
+  }
+
+  private _commandActionForPress(slot: Partial<WifiCommandSlot> | null | undefined, pressType: PressType = "short") {
+    return this._normalizeCommandAction(pressType === "long" ? slot?.long_press_action : slot?.action);
+  }
+
+  private _commandActionDetails(action: unknown) {
+    const normalized = this._normalizeCommandAction(action);
+    const explicitService = String(normalized.perform_action || normalized.service || "").trim();
+    const service = explicitService || "perform-action";
+    const entityIds = normalized.target?.entity_id;
+    const ids = Array.isArray(entityIds) ? entityIds.filter(Boolean) : entityIds ? [entityIds] : [];
+    const suffix = (value: unknown) => {
+      const text = String(value || "").trim();
+      if (!text) return "";
+      const parts = text.split(".");
+      return (parts[parts.length - 1] || text).trim();
+    };
+    const actionSuffix = suffix(service);
+    const entitySuffix = ids.length ? suffix(ids[0]) : "";
+    return {
+      service,
+      entities: ids.length ? ids.join(", ") : "No target entity",
+      commandSummary:
+        explicitService && actionSuffix && entitySuffix
+          ? `${actionSuffix} ${entitySuffix}`
+          : explicitService && actionSuffix
+            ? actionSuffix
+            : "No Action configured",
+    };
+  }
+
+  private _commandHasCustomAction(action: unknown) {
+    const details = this._commandActionDetails(action);
+    return details.service !== "perform-action" || details.entities !== "No target entity";
+  }
+
+  private _commandSlotSummaryDetails(command: WifiCommandSlot) {
+    const shortDetails = this._commandActionDetails(command.action);
+    if (shortDetails.commandSummary !== "No Action configured") return shortDetails;
+    if (!command.long_press_enabled) return shortDetails;
+    const longDetails = this._commandActionDetails(command.long_press_action);
+    return longDetails.commandSummary !== "No Action configured" ? longDetails : shortDetails;
+  }
+
+  private _commandSaveValidationMessage(slot: WifiCommandSlot | null = null) {
+    const draft = slot || this._activeCommandDraft();
+    if (!draft) return "";
+    if (!String(draft.name ?? "").length || String(draft.name).startsWith(" ")) {
+      return "Command name must start with a non-space character.";
+    }
+    if (!draft.add_as_favorite && !String(draft.hard_button || "").trim()) {
+      return "Add as Favorite or Map to button before saving.";
+    }
+    return "";
+  }
+
+  private _saveActiveCommandModal = async () => {
+    if (!Number.isInteger(this._activeCommandSlot)) return;
+    const idx = Number(this._activeCommandSlot);
+    const draft = this._activeCommandDraft();
+    if (!draft) return;
+    const validationMessage = this._commandSaveValidationMessage(draft);
+    if (validationMessage) {
+      this._commandSaveError = validationMessage;
+      return;
+    }
+    const next = this._commandsList().slice();
+    next[idx] = this._cloneCommandSlot(draft);
+    this._commandSaveError = "";
+    delete this._commandEditorDrafts[idx];
+    this._commandEditorDrafts = { ...this._commandEditorDrafts };
+    this._activeCommandModal = null;
+    this._activeCommandSlot = null;
+    await this._setCommands(next);
+  };
+
+  private _commandActionRefreshKey(action: unknown) {
+    const normalized = this._normalizeCommandAction(action);
+    const normalizeIdValue = (value: unknown) =>
+      Array.isArray(value) ? value.map((item) => String(item || "")).filter(Boolean).sort() : value ? [String(value)] : [];
+    const target = normalized.target || {};
+    try {
+      return JSON.stringify({
+        action: String(normalized.action || "").trim(),
+        service: String(normalized.perform_action || normalized.service || "").trim(),
+        target_entity_id: normalizeIdValue(target.entity_id || normalized.entity_id || normalized.data?.entity_id || normalized.service_data?.entity_id),
+        target_device_id: normalizeIdValue(target.device_id || normalized.device_id || normalized.data?.device_id || normalized.service_data?.device_id),
+        target_area_id: normalizeIdValue(target.area_id || normalized.area_id || normalized.data?.area_id || normalized.service_data?.area_id),
+        navigation_path: String(normalized.navigation_path || "").trim(),
+        url_path: String(normalized.url_path || "").trim(),
+      });
+    } catch (_error) {
+      return "";
+    }
+  }
+
+  private _handleActionChanged(pressType: PressType, nextValue: unknown) {
+    const previousValue = this._commandActionForPress(this._activeCommandDraft(), pressType);
+    const normalized = this._normalizeCommandAction(nextValue);
+    this._updateActiveCommandDraft(pressType === "long" ? { long_press_action: normalized } : { action: normalized });
+    this._commandSaveError = "";
+    if (this._commandActionRefreshKey(previousValue) !== this._commandActionRefreshKey(normalized)) {
+      if (pressType === "long") this._longSelectorVersion += 1;
+      else this._shortSelectorVersion += 1;
+    }
+  }
+
+  private _editorHardButtonOptions() {
+    const group = (keys: string[], title: string) =>
+      keys.filter((key) => DEFAULT_KEY_LABELS[key]).map((key) => ({
+        value: key,
+        label: `${title} • ${DEFAULT_KEY_LABELS[key]}`,
+      }));
+    return [
+      ...group(["up", "down", "left", "right", "ok", "back", "home", "menu"], "Navigation"),
+      ...group(["volup", "voldn", "mute", "chup", "chdn"], "Transport"),
+      ...group(["play", "pause", "rew", "fwd", "guide", "dvr", "exit"], "Media"),
+      ...group(["a", "b", "c"], "ABC"),
+      ...group(["red", "green", "yellow", "blue"], "Color"),
+    ];
+  }
+
+  private _editorAvailableHardButtonOptions() {
+    const showX2Keys = this._hubVersion().includes("X2");
+    return this._editorHardButtonOptions().filter((option) => {
+      const id = HARD_BUTTON_ID_MAP[String(option.value || "")];
+      if (!Number.isFinite(id)) return false;
+      if (X2_ONLY_HARD_BUTTON_IDS.has(id) && !showX2Keys) return false;
+      return true;
+    });
+  }
+
+  private _selectorValueForButton(draft: WifiCommandSlot) {
+    return draft.hard_button ? String(draft.hard_button) : "__none__";
+  }
+
+  private _toggleFavoriteRow() {
+    const draft = this._activeCommandDraft();
+    if (!draft) return;
+    this._updateActiveCommandDraft({ add_as_favorite: !draft.add_as_favorite });
+    this._commandSaveError = "";
+  }
+
+  private _handleFavoriteSwitchChange(event: Event) {
+    const checked = Boolean((event.currentTarget as HTMLInputElement).checked);
+    this._updateActiveCommandDraft({ add_as_favorite: checked });
+    this._commandSaveError = "";
+  }
+
+  private _toggleLongPressRow() {
+    const draft = this._activeCommandDraft();
+    const hasMappedButton = Boolean(String(draft?.hard_button || "").trim());
+    if (!draft || !hasMappedButton) return;
+    const nextEnabled = !draft.long_press_enabled;
+    this._updateActiveCommandDraft({ long_press_enabled: nextEnabled });
+    if (!nextEnabled) this._activeCommandActionTab = "short";
+    this._commandSaveError = "";
+  }
+
+  private _handleLongPressSwitchChange(event: Event) {
+    const checked = Boolean((event.currentTarget as HTMLInputElement).checked);
+    this._updateActiveCommandDraft({ long_press_enabled: checked });
+    if (!checked) this._activeCommandActionTab = "short";
+    this._commandSaveError = "";
+  }
+
+  private _handleHardButtonChanged(event: CustomEvent) {
+    const rawValue = event.detail?.value ?? (event.currentTarget as { value?: unknown })?.value ?? "";
+    const mapped = String(rawValue ?? "");
+    const hasButton = mapped !== "__none__" && mapped !== "None";
+    const nextMapped = hasButton ? mapped : "";
+    this._updateActiveCommandDraft({
+      hard_button: nextMapped,
+      long_press_enabled: hasButton ? Boolean(this._activeCommandDraft()?.long_press_enabled) : false,
+      long_press_action: hasButton ? this._commandActionForPress(this._activeCommandDraft(), "long") : this._normalizeCommandAction(null),
+    });
+    if (!hasButton) this._activeCommandActionTab = "short";
+    this._commandSaveError = "";
+    const selector = event.currentTarget as { value?: unknown };
+    if (selector) {
+      requestAnimationFrame(() => {
+        const slotIndex = Number.isInteger(this._activeCommandSlot) ? Number(this._activeCommandSlot) : 0;
+        selector.value = this._selectorValueForButton(this._activeCommandDraft() || this._commandSlotDefault(slotIndex));
+      });
+    }
+  }
+
+  private _commandSlotIcon(hardButton: string) {
+    return hardButton ? HARD_BUTTON_ICONS[String(hardButton)] || "mdi:gesture-tap-button" : "mdi:gesture-tap-button";
+  }
+
+  private _commandSlotIconColor(hardButton: string) {
+    const key = String(hardButton || "");
+    if (key === "red") return "#ef4444";
+    if (key === "green") return "#22c55e";
+    if (key === "yellow") return "#facc15";
+    if (key === "blue") return "#3b82f6";
+    return "";
+  }
+
+  private _editorActivities() {
+    const list = this._remoteAttrs()?.activities;
+    if (!Array.isArray(list)) return [];
+    return list
+      .map((activity) => ({
+        id: Number((activity as { id?: unknown }).id),
+        name: String((activity as { name?: unknown }).name ?? ""),
+      }))
+      .filter((activity) => Number.isFinite(activity.id) && activity.name);
+  }
+
+  private _isCommandConfigured(command: WifiCommandSlot, idx: number) {
+    const defaults = this._commandSlotDefault(idx);
+    return (
+      String(command.name || "").trim() !== String(defaults.name) ||
+      Boolean(command.add_as_favorite) !== Boolean(defaults.add_as_favorite) ||
+      Boolean(command.hard_button) ||
+      Boolean(command.long_press_enabled) ||
+      (Array.isArray(command.activities) && command.activities.length > 0) ||
+      this._commandHasCustomAction(command.action) ||
+      (Boolean(command.long_press_enabled) && this._commandHasCustomAction(command.long_press_action))
+    );
+  }
+
+  private _openCommandEditor(slotIndex: number) {
+    this._confirmClearSlot = null;
+    this._activeCommandModal = "details";
+    this._activeCommandSlot = Number(slotIndex);
+    this._activeCommandActionTab = "short";
+    this._commandSaveError = "";
+    const draft = this._ensureCommandDraft(slotIndex);
+    const activities = this._editorActivities();
+    const fallbackActivity = activities[0] ? String(activities[0].id) : null;
+    const selectedActivities = new Set((draft?.activities || []).map((id) => String(id)));
+    if (selectedActivities.size === 0 && fallbackActivity) {
+      selectedActivities.add(fallbackActivity);
+      this._updateActiveCommandDraft({ activities: Array.from(selectedActivities) });
+    }
+  }
+
+  private _openCommandActionEditor(slotIndex: number) {
+    this._confirmClearSlot = null;
+    this._activeCommandModal = "action";
+    this._activeCommandSlot = Number(slotIndex);
+    this._activeCommandActionTab = "short";
+    this._commandSaveError = "";
+    this._shortSelectorVersion += 1;
+    this._longSelectorVersion += 1;
+    this._ensureCommandDraft(slotIndex);
+  }
+
+  private _closeCommandEditor = () => {
+    if (Number.isInteger(this._activeCommandSlot)) {
+      delete this._commandEditorDrafts[Number(this._activeCommandSlot)];
+      this._commandEditorDrafts = { ...this._commandEditorDrafts };
+    }
+    this._commandSaveError = "";
+    this._activeCommandModal = null;
+    this._activeCommandSlot = null;
+  };
+
+  private _closeCommandActionEditor = () => {
+    if (Number.isInteger(this._activeCommandSlot)) {
+      delete this._commandEditorDrafts[Number(this._activeCommandSlot)];
+      this._commandEditorDrafts = { ...this._commandEditorDrafts };
+    }
+    this._commandSaveError = "";
+    this._activeCommandModal = null;
+    this._activeCommandSlot = null;
+  };
+
+  private _closeOnBackdrop = () => {
+    if (this._activeCommandModal === "action") this._closeCommandActionEditor();
+    else this._closeCommandEditor();
+  };
+
+  private _toggleActivity(activityId: number, event?: Event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    const current = new Set((this._activeCommandDraft()?.activities || []).map((id) => String(id)));
+    const idKey = String(activityId);
+    if (current.has(idKey) && current.size > 1) current.delete(idKey);
+    else current.add(idKey);
+    this._updateActiveCommandDraft({ activities: Array.from(current) });
+    this._commandSaveError = "";
+  }
+
+  private async _clearSlot(idx: number) {
+    const next = this._commandsList();
+    next[idx] = this._commandSlotDefault(idx);
+    this._confirmClearSlot = null;
+    await this._setCommands(next);
+  }
+
+  private _syncStatusTone(status: string) {
+    if (status === "failed") return "sync-error";
+    if (status === "success") return "sync-ok";
+    if (status === "running") return "sync-running";
+    return "";
+  }
+
+  private _syncStatusIcon(remoteUnavailable: boolean) {
+    if (remoteUnavailable || this._syncState.status === "failed") return "mdi:alert-circle-outline";
+    if (this._syncState.status === "running") return "mdi:progress-clock";
+    return "mdi:information-outline";
+  }
+
+  private _syncMessage(remoteUnavailable: boolean) {
+    if (remoteUnavailable) return "Remote entity unavailable. Is the app connected?";
+    if (this._syncState.status === "running") {
+      const total = Number(this._syncState.total_steps || 0);
+      const current = Number(this._syncState.current_step || 0);
+      const progress = total > 0 ? ` (${Math.min(current, total)}/${total})` : "";
+      return `${String(this._syncState.message || "Sync in progress")}${progress}`;
+    }
+    if (this._syncState.status === "failed") return String(this._syncState.message || "Last sync failed.");
+    if (this._syncState.sync_needed) return "Command config changes need to be synced to the hub.";
+    if (this._syncState.status === "success") return "Hub command configuration is up to date.";
+    return "No sync needed.";
+  }
+
+  private _commandSyncWarningStorageKey(entityId: string) {
+    return `sofabaton_x1s:sync_warning_optout:${String(entityId || "").trim()}`;
+  }
+
+  private _commandSyncWarningOptedOut(entityId: string) {
+    try {
+      return window.localStorage?.getItem(this._commandSyncWarningStorageKey(entityId)) === "1";
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  private _setCommandSyncWarningOptOut(entityId: string, optedOut: boolean) {
+    try {
+      if (optedOut) window.localStorage?.setItem(this._commandSyncWarningStorageKey(entityId), "1");
+      else window.localStorage?.removeItem(this._commandSyncWarningStorageKey(entityId));
+    } catch (_error) {
+      // Ignore storage failures.
+    }
+  }
+
+  private _confirmSyncWarning = async () => {
+    const entityId = String(this._entityId() || "").trim();
+    if (entityId && this._syncWarningOptOut) this._setCommandSyncWarningOptOut(entityId, true);
+    this._syncWarningOpen = false;
+    await this._startCommandConfigSync();
+  };
+
+  private _runCommandConfigSync = async () => {
+    if (this._commandSyncRunning) return;
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId) return;
+    if (this._commandSyncWarningOptedOut(entityId)) {
+      await this._startCommandConfigSync();
+      return;
+    }
+    this._syncWarningOptOut = false;
+    this._syncWarningOpen = true;
+  };
+
+  private async _startCommandConfigSync() {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callService) return;
+    this._syncState = {
+      ...this._syncState,
+      status: "running",
+      current_step: 0,
+      total_steps: Number(this._syncState.total_steps || 0),
+      message: "Starting sync",
+      sync_needed: true,
+    };
+    this._commandSyncRunning = true;
+    try {
+      await this.hass.callService("sofabaton_x1s", "sync_command_config", { entity_id: entityId });
+    } catch (error) {
+      this._syncState = {
+        ...this._syncState,
+        status: "failed",
+        message: String((error as Error)?.message || "Sync failed to start"),
+      };
+    } finally {
+      this._commandSyncRunning = false;
+      await this._loadCommandSyncProgress(true);
+    }
+  }
+
+  private _scheduleSyncPoll() {
+    if (this._syncState.status !== "running" || this._remoteUnavailable()) {
+      this._clearPollTimer();
+      return;
+    }
+    if (this._commandSyncPollTimer != null) return;
+    this._commandSyncPollTimer = window.setTimeout(async () => {
+      this._commandSyncPollTimer = null;
+      await this._loadCommandSyncProgress(true);
+    }, 1000);
+  }
+
+  private _clearPollTimer() {
+    if (this._commandSyncPollTimer != null) {
+      window.clearTimeout(this._commandSyncPollTimer);
+      this._commandSyncPollTimer = null;
+    }
+  }
+
+  private _openHubVersionModal = () => {
+    this._hubVersionModalSelectedVersion = this._hubVersion() || "X1";
+    this._hubVersionModalOpen = true;
+  };
+
+  private _submitHubVersionModal = async () => {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS) return;
+    await this.hass.callWS({
+      type: "sofabaton_x1s/hub/set_version",
+      entity_id: entityId,
+      version: this._hubVersionModalSelectedVersion,
+    });
+    this._hubVersionModalOpen = false;
+  };
+
+  private _hideUiActionTypeSelector(actionSelector: HTMLElement) {
+    const hideInNode = (node: ParentNode | null | undefined) => {
+      if (!node || typeof node.querySelectorAll !== "function") return;
+      node.querySelectorAll(".dropdown").forEach((dropdown) => {
+        const element = dropdown as HTMLElement;
+        element.style.display = "none";
+        element.setAttribute("aria-hidden", "true");
+      });
+      node.querySelectorAll("ha-selector-select, ha-control-select, ha-formfield").forEach((element) => {
+        const htmlElement = element as HTMLElement;
+        if (htmlElement.textContent?.includes("Perform action")) {
+          htmlElement.style.display = "none";
+          htmlElement.setAttribute("aria-hidden", "true");
+        }
+      });
+    };
+
+    const tryHide = () => {
+      [actionSelector, actionSelector.shadowRoot].forEach((node) => {
+        hideInNode(node);
+        const uiAction = node?.querySelector?.("ha-selector-ui_action");
+        if (uiAction) {
+          hideInNode(uiAction);
+          hideInNode((uiAction as HTMLElement).shadowRoot);
+          const editorInLight = uiAction.querySelector?.("hui-action-editor");
+          if (editorInLight) {
+            hideInNode(editorInLight);
+            hideInNode((editorInLight as HTMLElement).shadowRoot);
+          }
+          const editorInShadow = (uiAction as HTMLElement).shadowRoot?.querySelector?.("hui-action-editor");
+          if (editorInShadow) {
+            hideInNode(editorInShadow);
+            hideInNode((editorInShadow as HTMLElement).shadowRoot);
+          }
+        }
+      });
+    };
+
+    [0, 50, 150, 350, 700].forEach((delay) => {
+      window.setTimeout(() => tryHide(), delay);
+    });
+  }
+}
+
+if (!customElements.get("sofabaton-wifi-commands-tab")) {
+  customElements.define("sofabaton-wifi-commands-tab", SofabatonWifiCommandsTab);
+}

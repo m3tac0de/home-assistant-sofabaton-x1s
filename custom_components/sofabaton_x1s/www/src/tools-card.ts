@@ -9,6 +9,7 @@ import { renderHubTab } from "./tabs/hub-tab";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
+import "./tabs/wifi-commands-tab";
 
 const TOOLS_TYPE = "sofabaton-control-panel";
 const TOOLS_VERSION = "0.1.0";
@@ -213,6 +214,15 @@ class SofabatonControlPanelCard extends LitElement {
         loading: this._snapshot.logsLoading,
         error: this._snapshot.logsError,
       });
+    } else if (this._snapshot.selectedTab === "wifi_commands") {
+      activeTab = html`
+        <sofabaton-wifi-commands-tab
+          .loading=${this._snapshot.loading}
+          .error=${this._snapshot.loadError}
+          .hub=${hub}
+          .hass=${this._snapshot.hass}
+        ></sofabaton-wifi-commands-tab>
+      `;
     } else if (this._snapshot.selectedTab === "cache") {
       activeTab = renderCacheTab({
         loading: this._snapshot.loading,

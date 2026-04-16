@@ -9,6 +9,7 @@ export function renderTabBar(params: {
   const tabs: Array<{ id: TabId; label: string; disabled: boolean; pushRight?: boolean }> = [
     { id: "hub", label: "Hub", disabled: false },
     { id: "settings", label: "Settings", disabled: false },
+    { id: "wifi_commands", label: "Wifi Commands", disabled: false },
     { id: "cache", label: "Cache", disabled: !params.persistentCacheEnabled },
     { id: "logs", label: "Logs", disabled: false, pushRight: true },
   ];

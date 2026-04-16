@@ -1241,7 +1241,7 @@ function formatLogEntry(entry) {
   const formattedMatch = rawLine.match(
     /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:,\d+|\.\d+)?)\s+(\S+)\s+([A-Z]+):\s*([\s\S]*)$/
   );
-  const rawTime = String(entry.time ?? entry.ts ?? formattedMatch?.[1] ?? "").trim();
+  const rawTime = String(formattedMatch?.[1] ?? entry.timestamp ?? entry.time ?? entry.ts ?? "").trim();
   let message = formattedMatch?.[4] ?? String(entry.message ?? entry.msg ?? rawLine);
   const entryId = String(entry.entry_id ?? "").trim();
   if (entryId) {
@@ -1643,8 +1643,13 @@ var ControlPanelStore = class {
     const line = {
       ts: String(message.ts ?? ""),
       time: String(message.time ?? ""),
+      timestamp: String(message.timestamp ?? ""),
       level: String(message.level ?? "log"),
-      message: String(message.message ?? message.msg ?? message.line ?? "")
+      message: String(message.message ?? message.msg ?? ""),
+      msg: String(message.msg ?? ""),
+      line: String(message.line ?? message.message ?? message.msg ?? ""),
+      logger: String(message.logger ?? ""),
+      entry_id: String(message.entry_id ?? "")
     };
     const _formatted = formatLogEntry(line);
     this._snapshot = {
