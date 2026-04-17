@@ -567,8 +567,13 @@ class SofabatonHub:
         return data
 
     def _cache_activity_ids(self, data: dict[str, Any]) -> list[int]:
-        activity_ids: set[int] = set()
-        activity_ids.update(int(act_id) & 0xFF for act_id in self.activities.keys())
+        catalog_ids: set[int] = set()
+        catalog_ids.update(int(act_id) & 0xFF for act_id in self.activities.keys())
+        state_activities = getattr(self._proxy.state, "activities", {})
+        if isinstance(state_activities, dict):
+            catalog_ids.update(int(act_id) & 0xFF for act_id in state_activities.keys())
+
+        activity_ids: set[int] = set(catalog_ids)
 
         for key in (
             "activity_macros",
@@ -587,7 +592,8 @@ class SofabatonHub:
                 except (TypeError, ValueError):
                     continue
 
-        return sorted(activity_id for activity_id in activity_ids if 1 <= activity_id <= 255)
+        visible_ids = catalog_ids if catalog_ids else activity_ids
+        return sorted(activity_id for activity_id in visible_ids if 1 <= activity_id <= 255)
 
     def _get_cached_activity_name(self, act_id: int) -> str | None:
         act_lo = act_id & 0xFF
@@ -1521,7 +1527,10 @@ class SofabatonHub:
                     break
                 await asyncio.sleep(0.1)
             new_ids = await self.hass.async_add_executor_job(self._proxy.get_known_activity_ids)
-            for act_id in old_ids - new_ids:
+            cached_detail_ids = await self.hass.async_add_executor_job(
+                self._proxy.get_cached_activity_detail_ids
+            )
+            for act_id in (old_ids | cached_detail_ids) - new_ids:
                 await self.hass.async_add_executor_job(
                     partial(self._proxy.clear_persistent_cache_for, act_id, kind="activity")
                 )

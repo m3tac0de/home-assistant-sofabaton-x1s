@@ -965,6 +965,19 @@ class X1Proxy:
         """Return the set of activity IDs currently known from the catalog."""
         return set(self.state.activities.keys())
 
+    def get_cached_activity_detail_ids(self) -> set[int]:
+        """Return activity IDs referenced by per-activity cached detail tables."""
+
+        return (
+            set(self.state.activity_macros.keys())
+            | set(self.state.activity_members.keys())
+            | set(self.state.activity_favorite_slots.keys())
+            | set(self.state.activity_keybinding_slots.keys())
+            | set(self.state.activity_favorite_labels.keys())
+            | set(self.state.activity_keybinding_labels.keys())
+            | set(self.state.activity_command_refs.keys())
+        )
+
     def clear_devices_catalog(self) -> None:
         """Clear only the device name catalog before a fresh device list fetch.
 

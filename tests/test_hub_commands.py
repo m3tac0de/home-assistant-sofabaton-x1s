@@ -2052,3 +2052,111 @@ def test_commands_ready_for_activity_waits_for_macro_completion(monkeypatch):
     assert hub._commands_ready_for(act_id) is False
 
     loop.close()
+
+
+def test_cache_activity_ids_hide_auxiliary_only_phantom_ids_when_catalog_exists():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub.activities = {
+        101: {"name": "test"},
+        102: {"name": "heyo"},
+    }
+    hub._proxy.state.activity_members[5].add(1)
+    hub._proxy.state.activity_members[6].add(2)
+
+    ids = hub._cache_activity_ids({"activity_members": {"5": [1], "6": [2]}})
+
+    assert ids == [101, 102]
+
+    loop.close()
+
+
+def test_cache_activity_ids_can_fall_back_to_auxiliary_ids_without_catalog():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    ids = hub._cache_activity_ids({"activity_members": {"5": [1], "6": [2]}})
+
+    assert ids == [5, 6]
+
+    loop.close()
+
+
+def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub._activities_generation = 2
+    hub._proxy.get_known_activity_ids = lambda: {101, 102}  # type: ignore[method-assign]
+    hub._proxy.get_cached_activity_detail_ids = lambda: {5, 6, 101, 102}  # type: ignore[method-assign]
+    hub._proxy.clear_activities_catalog = lambda: None  # type: ignore[method-assign]
+    hub._proxy.request_activities = lambda: None  # type: ignore[method-assign]
+
+    cleared: list[tuple[int, str]] = []
+
+    def _clear_persistent_cache_for(ent_id, *, kind):
+        cleared.append((ent_id, kind))
+
+    hub._proxy.clear_persistent_cache_for = _clear_persistent_cache_for  # type: ignore[method-assign]
+
+    def _fake_get_known_activity_ids():
+        if hub._activities_generation == 2:
+            return {101, 102}
+        return {101, 102}
+
+    hub._proxy.get_known_activity_ids = _fake_get_known_activity_ids  # type: ignore[method-assign]
+
+    async def _fake_sleep(_delay):
+        hub._activities_generation = 3
+
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.asyncio.sleep", _fake_sleep)
+    monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
+
+    loop.run_until_complete(hub.async_request_catalog("activities", timeout_seconds=0.2))
+
+    assert set(cleared) == {(5, "activity"), (6, "activity")}
+
+    loop.close()
