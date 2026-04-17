@@ -45,7 +45,12 @@ from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_log
 from .logging_utils import get_hub_logger
 from .lib.protocol_const import ButtonName
 from .lib.x1_proxy import X1Proxy
-from .command_config import COMMAND_BRAND_PREFIX, count_configured_command_slots, normalize_command_name
+from .command_config import (
+    COMMAND_BRAND_PREFIX,
+    count_configured_command_slots,
+    normalize_command_name,
+    normalize_power_command_id,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -822,15 +827,21 @@ class SofabatonHub:
         commands: list[Any] | None = None,
         request_port: int = 8060,
         brand_name: str = "m3tac0de",
+        power_on_command_id: int | None = None,
+        power_off_command_id: int | None = None,
     ) -> dict[str, Any] | None:
         """Replay the WiFi virtual-device creation sequence on the selected hub."""
 
         return await self.hass.async_add_executor_job(
-            self._proxy.create_wifi_device,
-            device_name,
-            commands,
-            request_port,
-            brand_name,
+            partial(
+                self._proxy.create_wifi_device,
+                device_name=device_name,
+                commands=commands,
+                request_port=request_port,
+                brand_name=brand_name,
+                power_on_command_id=power_on_command_id,
+                power_off_command_id=power_off_command_id,
+            ),
         )
 
     async def async_add_device_to_activity(
@@ -1714,6 +1725,25 @@ class SofabatonHub:
                 }
 
             command_defs: list[dict[str, Any]] = []
+            max_power_command_id = min(len(commands), _WIFI_COMMAND_SLOT_COUNT)
+            raw_power_on_command_id = command_payload.get("power_on_command_id")
+            raw_power_off_command_id = command_payload.get("power_off_command_id")
+            power_on_command_id = normalize_power_command_id(
+                raw_power_on_command_id,
+                max_command_id=max_power_command_id,
+            )
+            power_off_command_id = normalize_power_command_id(
+                raw_power_off_command_id,
+                max_command_id=max_power_command_id,
+            )
+            if raw_power_on_command_id is not None and power_on_command_id is None:
+                raise HomeAssistantError(
+                    f"power_on_command_id must be between 1 and {max_power_command_id}"
+                )
+            if raw_power_off_command_id is not None and power_off_command_id is None:
+                raise HomeAssistantError(
+                    f"power_off_command_id must be between 1 and {max_power_command_id}"
+                )
             for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
                 name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
                 command_defs.append(
@@ -1744,6 +1774,8 @@ class SofabatonHub:
                 commands=command_defs,
                 request_port=request_port,
                 brand_name=brand_name,
+                power_on_command_id=power_on_command_id,
+                power_off_command_id=power_off_command_id,
             )
             if not created or not created.get("device_id"):
                 self._set_command_sync_progress(

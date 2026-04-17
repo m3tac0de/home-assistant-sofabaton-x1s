@@ -70,6 +70,8 @@ def test_command_store_get_set_roundtrip() -> None:
 
     default_payload = _run(store.async_get_hub_config("hub-1"))
     assert len(default_payload["commands"]) == 10
+    assert default_payload["power_on_command_id"] is None
+    assert default_payload["power_off_command_id"] is None
     assert default_payload["hash_version"] == COMMAND_HASH_VERSION
 
     updated = _run(
@@ -84,13 +86,19 @@ def test_command_store_get_set_roundtrip() -> None:
                     "action": {"action": "perform-action", "perform_action": "script.test"},
                 }
             ],
+            power_on_command_id=1,
+            power_off_command_id=2,
         )
     )
     assert updated["commands"][0]["name"] == "Launch Netflix"
+    assert updated["power_on_command_id"] == 1
+    assert updated["power_off_command_id"] == 2
     assert len(updated["commands_hash"]) == 15
 
     loaded = _run(store.async_get_hub_config("hub-1"))
     assert loaded["commands"] == updated["commands"]
+    assert loaded["power_on_command_id"] == updated["power_on_command_id"]
+    assert loaded["power_off_command_id"] == updated["power_off_command_id"]
     assert loaded["commands_hash"] == updated["commands_hash"]
 
 
@@ -134,6 +142,20 @@ def test_compute_commands_hash_changes_when_long_press_toggle_changes() -> None:
     with_long_press = [{**commands[0], "long_press_enabled": True}]
 
     assert compute_commands_hash(commands) != compute_commands_hash(with_long_press)
+
+
+def test_compute_commands_hash_changes_when_power_command_changes() -> None:
+    commands = [
+        {
+            "name": "Lights",
+            "add_as_favorite": True,
+            "hard_button": "182",
+            "activities": ["102", "101"],
+            "action": {"action": "perform-action", "service": "x"},
+        }
+    ]
+
+    assert compute_commands_hash(commands) != compute_commands_hash(commands, power_on_command_id=1)
 
 
 def test_count_configured_command_slots_counts_non_default_slots() -> None:

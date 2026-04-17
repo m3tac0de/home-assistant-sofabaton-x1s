@@ -45,7 +45,11 @@ from .diagnostics import (
     async_teardown_diagnostics,
 )
 from .hub import SofabatonHub, get_hub_model
-from .command_config import CommandConfigStore, count_configured_command_slots
+from .command_config import (
+    CommandConfigStore,
+    count_configured_command_slots,
+    normalize_power_command_id,
+)
 from .cache_store import PersistentCacheStore
 from .roku_listener import async_get_roku_listener
 
@@ -187,6 +191,8 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
         vol.Required("type"): f"{DOMAIN}/command_config/set",
         vol.Required("entity_id"): cv.entity_id,
         vol.Required("commands"): list,
+        vol.Optional("power_on_command_id"): int,
+        vol.Optional("power_off_command_id"): int,
     }
 )
 @websocket_api.async_response
@@ -202,6 +208,8 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
         hub.entry_id,
         msg["commands"],
         roku_listen_port=roku_listen_port,
+        power_on_command_id=msg.get("power_on_command_id"),
+        power_off_command_id=msg.get("power_off_command_id"),
     )
     connection.send_result(msg["id"], payload)
 
@@ -891,12 +899,30 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
             raise ValueError("commands entries must contain only letters (including accented/umlaut), numbers, and spaces")
         commands.append(command_name)
 
+    max_command_id = len(commands)
+    raw_power_on_command_id = call.data.get("power_on_command_id")
+    raw_power_off_command_id = call.data.get("power_off_command_id")
+    power_on_command_id = normalize_power_command_id(
+        raw_power_on_command_id,
+        max_command_id=max_command_id,
+    )
+    power_off_command_id = normalize_power_command_id(
+        raw_power_off_command_id,
+        max_command_id=max_command_id,
+    )
+    if raw_power_on_command_id is not None and power_on_command_id is None:
+        raise ValueError(f"power_on_command_id must be between 1 and {max_command_id}")
+    if raw_power_off_command_id is not None and power_off_command_id is None:
+        raise ValueError(f"power_off_command_id must be between 1 and {max_command_id}")
+
     request_port = _resolve_roku_listen_port(hass, hub.entry_id)
 
     return await hub.async_create_wifi_device(
         device_name=device_name,
         commands=commands,
         request_port=request_port,
+        power_on_command_id=power_on_command_id,
+        power_off_command_id=power_off_command_id,
     )
 
 

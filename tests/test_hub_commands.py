@@ -1102,7 +1102,10 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     monkeypatch.setattr(hub._proxy, "clear_entity_cache", _clear_entity_cache)
     monkeypatch.setattr(hub._proxy, "get_macros_for_activity", _get_macros_for_activity)
 
+    create_calls: list[dict[str, object]] = []
+
     async def _create(*_args, **_kwargs):
+        create_calls.append(dict(_kwargs))
         return {"device_id": 9, "status": "success"}
 
     async def _add_activity(*_args, **_kwargs):
@@ -1143,11 +1146,35 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
                 "action": {"action": "perform-action"},
             }
         ],
+        "power_on_command_id": 1,
         "commands_hash": "abc",
     }
 
     loop.run_until_complete(hub.async_sync_command_config(command_payload=payload, request_port=8060))
 
+    assert create_calls == [
+        {
+            "device_name": "Home Assistant",
+            "commands": [
+                {
+                    "display_name": "Command 1",
+                    "trigger_name": "Command 1",
+                    "press_type": "short",
+                    "command_index": 0,
+                },
+                {
+                    "display_name": "Command 1 Long Press",
+                    "trigger_name": "Command 1",
+                    "press_type": "long",
+                    "command_index": 0,
+                },
+            ],
+            "request_port": 8060,
+            "brand_name": "m3tac0de-abc",
+            "power_on_command_id": 1,
+            "power_off_command_id": None,
+        }
+    ]
     assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
     assert macro_refresh_calls == [("clear", 101), ("fetch", 101)]
     assert resync_calls == [True]

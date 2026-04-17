@@ -1848,6 +1848,7 @@ class X1Proxy:
         device_class_byte: int = 0x01,
         ip_device: bool = False,
         brand_name: str = "m3tac0de",
+        wifi_power_state: tuple[int, int, int] | None = None,
     ) -> bytes:
         if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
             payload = bytearray(_ROKU_X1S_CREATE_BASE)
@@ -1896,8 +1897,13 @@ class X1Proxy:
                 state_marker = b"\xfc\x02\x00\x02\x00\xfc\x00\xfc\x00"
                 state_idx = payload.find(state_marker)
                 if state_idx >= 0:
-                    payload[state_idx + 2] = state_byte & 0xFF
-                    payload[state_idx + 8] = state_byte & 0xFF
+                    if wifi_power_state is None:
+                        payload[state_idx + 2] = state_byte & 0xFF
+                        payload[state_idx + 8] = state_byte & 0xFF
+                    else:
+                        payload[state_idx + 2] = wifi_power_state[0] & 0xFF
+                        payload[state_idx + 3] = wifi_power_state[1] & 0xFF
+                        payload[state_idx + 8] = wifi_power_state[2] & 0xFF
             return bytes(payload)
 
         payload = bytearray(
@@ -1913,7 +1919,14 @@ class X1Proxy:
         payload[32:62] = _ascii_padded(device_name, length=30)
         payload[62:92] = _ascii_padded(brand_name, length=30)
         payload[94:98] = ipaddress.IPv4Address(ip_address).packed
-        payload[103] = state_byte & 0xFF
+        state_marker = b"\xfc\x02\x00\x02\x00\xfc\x00\xfc\x01"
+        state_idx = payload.find(state_marker)
+        if state_idx >= 0 and wifi_power_state is not None:
+            payload[state_idx + 2] = wifi_power_state[0] & 0xFF
+            payload[state_idx + 3] = wifi_power_state[1] & 0xFF
+            payload[state_idx + 8] = wifi_power_state[2] & 0xFF
+        else:
+            payload[103] = state_byte & 0xFF
         return bytes(payload)
 
     def get_routed_local_ip(self) -> str:
@@ -2822,12 +2835,198 @@ class X1Proxy:
         dev_lo = device_id & 0xFF
         self.state.devices[dev_lo] = {"brand": brand_name, "name": device_name}
 
+    def _build_wifi_power_config_payload(
+        self,
+        *,
+        device_id: int,
+        button_id: int,
+        command_id: int | None,
+    ) -> bytes:
+        label_ascii = b"POWER_ON" if button_id == ButtonName.POWER_ON else b"POWER_OFF"
+        label_blob = label_ascii.ljust(30, b"\x00")
+
+        if command_id is None:
+            payload_base = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id, button_id, 0x00]) + label_blob
+            return payload_base + bytes([(sum(payload_base) - 0x02) & 0xFF])
+
+        if command_id < 1 or command_id > len(_ROKU_APP_SLOTS):
+            raise ValueError(f"Unsupported power command_id {command_id}")
+
+        _slot_id, command_code = _ROKU_APP_SLOTS[command_id - 1]
+        payload_base = (
+            bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id, button_id, 0x01, device_id, command_id, 0x00, 0x00, 0x00, 0x00])
+            + command_code.to_bytes(2, "big")
+            + b"\x00\xff"
+            + label_blob
+        )
+        return payload_base + bytes([(sum(payload_base) - 0x02) & 0xFF])
+
+    def _build_virtual_ip_wifi_power_config_payload(
+        self,
+        *,
+        device_id: int,
+        button_id: int,
+        command_id: int,
+    ) -> bytes:
+        if command_id < 1 or command_id > len(_ROKU_APP_SLOTS):
+            raise ValueError(f"Unsupported power command_id {command_id}")
+
+        label_ascii = b"POWER_ON" if button_id == ButtonName.POWER_ON else b"POWER_OFF"
+        label_blob = label_ascii.decode("ascii").encode("utf-16le").ljust(60, b"\x00")
+        payload_base = (
+            bytes(
+                [
+                    0x01,
+                    0x00,
+                    0x01,
+                    0x01,
+                    0x00,
+                    0x01,
+                    device_id,
+                    button_id,
+                    0x01,
+                    device_id,
+                    command_id,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0x00,
+                    0xFF,
+                ]
+            )
+            + label_blob
+        )
+        return payload_base + bytes([(sum(payload_base) - 0x02) & 0xFF])
+
+    def _apply_wifi_power_configuration(
+        self,
+        *,
+        device_id: int,
+        device_name: str,
+        ip_address: str,
+        brand_name: str,
+        power_on_command_id: int | None,
+        power_off_command_id: int | None,
+    ) -> bool:
+        if power_on_command_id is None and power_off_command_id is None:
+            return True
+
+        payload_7b08 = self._build_roku_device_payload(
+            device_name=device_name,
+            ip_address=ip_address,
+            state_byte=0x01,
+            device_id=device_id,
+            brand_name=brand_name,
+            wifi_power_state=(0x01, 0x03, 0x01),
+        )
+        if not self._send_roku_step(
+            step_name="power-config-7b08",
+            family=0x08,
+            payload=payload_7b08,
+            ack_opcode=0x0103,
+        ):
+            return False
+
+        if not self._send_roku_step(
+            step_name="power-config-enable",
+            family=0x41,
+            payload=bytes([device_id, 0x01]),
+            ack_opcode=0x0103,
+        ):
+            return False
+
+        for button_id, command_id, name in (
+            (ButtonName.POWER_ON, power_on_command_id, "POWER_ON"),
+            (ButtonName.POWER_OFF, power_off_command_id, "POWER_OFF"),
+        ):
+            payload = self._build_wifi_power_config_payload(
+                device_id=device_id,
+                button_id=button_id,
+                command_id=command_id,
+            )
+            if not self._send_roku_step(
+                step_name=f"power-config[{name}]",
+                family=0x12,
+                payload=payload,
+                ack_opcode=0x0112,
+                ack_first_byte=button_id,
+                ack_fallback_opcodes=(0x0103,),
+            ):
+                return False
+
+        return True
+
+    def _apply_virtual_ip_wifi_power_configuration(
+        self,
+        *,
+        device_id: int,
+        device_name: str,
+        ip_address: str,
+        brand_name: str,
+        power_on_command_id: int | None,
+        power_off_command_id: int | None,
+    ) -> bool:
+        if power_on_command_id is None and power_off_command_id is None:
+            return True
+
+        payload_d508 = self._build_roku_device_payload(
+            device_name=device_name,
+            ip_address=ip_address,
+            state_byte=0x01,
+            device_id=device_id,
+            ip_device=True,
+            brand_name=brand_name,
+        )
+        if not self._send_roku_step(
+            step_name="power-config-d508",
+            family=0x08,
+            payload=payload_d508,
+            ack_opcode=0x0103,
+        ):
+            return False
+
+        if not self._send_roku_step(
+            step_name="power-config-enable",
+            family=0x41,
+            payload=bytes([device_id, 0x01]),
+            ack_opcode=0x0103,
+        ):
+            return False
+
+        for button_id, command_id, name in (
+            (ButtonName.POWER_ON, power_on_command_id, "POWER_ON"),
+            (ButtonName.POWER_OFF, power_off_command_id, "POWER_OFF"),
+        ):
+            if command_id is None:
+                continue
+            payload = self._build_virtual_ip_wifi_power_config_payload(
+                device_id=device_id,
+                button_id=button_id,
+                command_id=command_id,
+            )
+            if not self._send_roku_step(
+                step_name=f"power-config[{name}]",
+                family=0x12,
+                payload=payload,
+                ack_opcode=0x0112,
+                ack_first_byte=button_id,
+                ack_fallback_opcodes=(0x0103,),
+            ):
+                return False
+
+        return True
+
     def create_wifi_device(
         self,
         device_name: str = "Home Assistant",
         commands: list[Any] | None = None,
         request_port: int = 8060,
         brand_name: str = "m3tac0de",
+        power_on_command_id: int | None = None,
+        power_off_command_id: int | None = None,
     ) -> dict[str, Any] | None:
         if not self.can_issue_commands():
             self._log.info("[WIFI] create_wifi_device ignored: proxy client is connected")
@@ -2842,6 +3041,8 @@ class X1Proxy:
                 ip_address=ip_address,
                 request_port=request_port,
                 brand_name=brand_name,
+                power_on_command_id=power_on_command_id,
+                power_off_command_id=power_off_command_id,
             )
 
         self.start_roku_create()
@@ -2955,18 +3156,17 @@ class X1Proxy:
         ):
             return None
 
-        for button_id, code, name in ((0xC6, 0x1713, "POWER_ON"), (0xC7, 0x1718, "POWER_OFF")):
-            name_blob = name.encode("ascii", errors="ignore")[:30].ljust(30, b"\x00")
-            payload_base = (
-                bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id, button_id, 0x01, device_id, 0x00, 0x00, 0x00, 0x00, 0x00])
-                + code.to_bytes(2, "big")
-                + b"\x00\xff"
-                + name_blob
+        for button_id, name in (
+            (ButtonName.POWER_ON, "POWER_ON"),
+            (ButtonName.POWER_OFF, "POWER_OFF"),
+        ):
+            payload = self._build_wifi_power_config_payload(
+                device_id=device_id,
+                button_id=button_id,
+                command_id=None,
             )
-            payload_token = (sum(payload_base) - 0x02) & 0xFF
-            payload = payload_base + bytes([payload_token])
             if not self._send_roku_step(
-                step_name=f"define-power[{name}]",
+                step_name=f"configure-power[{name}]",
                 family=0x12,
                 payload=payload,
                 ack_opcode=0x0112,
@@ -3021,6 +3221,16 @@ class X1Proxy:
             brand_name=brand_name,
         )
 
+        if not self._apply_wifi_power_configuration(
+            device_id=device_id,
+            device_name=device_name,
+            ip_address=ip_address,
+            brand_name=brand_name,
+            power_on_command_id=power_on_command_id,
+            power_off_command_id=power_off_command_id,
+        ):
+            return None
+
         self._log.info("[WIFI] replayed Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
 
@@ -3032,6 +3242,8 @@ class X1Proxy:
         ip_address: str,
         request_port: int,
         brand_name: str = "m3tac0de",
+        power_on_command_id: int | None = None,
+        power_off_command_id: int | None = None,
     ) -> dict[str, Any] | None:
         self.start_roku_create()
         self._log.info("[WIFI] starting virtual IP Wifi Device create replay sequence")
@@ -3147,6 +3359,16 @@ class X1Proxy:
             device_name=device_name,
             brand_name=brand_name,
         )
+
+        if not self._apply_virtual_ip_wifi_power_configuration(
+            device_id=device_id,
+            device_name=device_name,
+            ip_address=ip_address,
+            brand_name=brand_name,
+            power_on_command_id=power_on_command_id,
+            power_off_command_id=power_off_command_id,
+        ):
+            return None
 
         self._log.info("[WIFI] replayed virtual IP Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}

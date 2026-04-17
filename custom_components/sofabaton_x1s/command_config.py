@@ -16,6 +16,8 @@ COMMAND_CONFIG_STORE_MINOR_VERSION = 2
 COMMAND_HASH_VERSION = "v3"
 COMMAND_BRAND_PREFIX = "m3tac0de"
 COMMAND_SLOT_COUNT = 10
+POWER_COMMAND_MIN = 1
+POWER_COMMAND_MAX = 10
 
 DEFAULT_COMMAND_ACTION = {"action": "perform-action"}
 
@@ -36,6 +38,18 @@ def _default_slot(idx: int) -> dict[str, Any]:
 
 def default_commands() -> list[dict[str, Any]]:
     return [_default_slot(idx) for idx in range(COMMAND_SLOT_COUNT)]
+
+
+def normalize_power_command_id(value: Any, *, max_command_id: int = POWER_COMMAND_MAX) -> int | None:
+    try:
+        command_id = int(value)
+    except (TypeError, ValueError):
+        return None
+
+    if command_id < POWER_COMMAND_MIN or command_id > int(max_command_id):
+        return None
+
+    return command_id
 
 
 def _normalize_slot(slot: Any, idx: int) -> dict[str, Any]:
@@ -129,10 +143,14 @@ def compute_commands_hash(
     commands: list[dict[str, Any]],
     *,
     roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    power_on_command_id: int | None = None,
+    power_off_command_id: int | None = None,
 ) -> str:
     payload = {
         "commands": _hash_payload(normalize_commands(commands)),
         "roku_listen_port": int(roku_listen_port),
+        "power_on_command_id": normalize_power_command_id(power_on_command_id),
+        "power_off_command_id": normalize_power_command_id(power_off_command_id),
     }
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -173,6 +191,8 @@ class CommandConfigStore:
             commands = default_commands()
             return {
                 "commands": commands,
+                "power_on_command_id": None,
+                "power_off_command_id": None,
                 "hash_version": COMMAND_HASH_VERSION,
                 "commands_hash": compute_commands_hash(
                     commands,
@@ -181,12 +201,18 @@ class CommandConfigStore:
             }
 
         commands = normalize_commands(hub.get("commands"))
+        power_on_command_id = normalize_power_command_id(hub.get("power_on_command_id"))
+        power_off_command_id = normalize_power_command_id(hub.get("power_off_command_id"))
         return {
             "commands": commands,
+            "power_on_command_id": power_on_command_id,
+            "power_off_command_id": power_off_command_id,
             "hash_version": COMMAND_HASH_VERSION,
             "commands_hash": compute_commands_hash(
                 commands,
                 roku_listen_port=roku_listen_port,
+                power_on_command_id=power_on_command_id,
+                power_off_command_id=power_off_command_id,
             ),
         }
 
@@ -217,14 +243,22 @@ class CommandConfigStore:
         commands: Any,
         *,
         roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+        power_on_command_id: Any = None,
+        power_off_command_id: Any = None,
     ) -> dict[str, Any]:
         normalized = normalize_commands(commands)
+        normalized_power_on = normalize_power_command_id(power_on_command_id)
+        normalized_power_off = normalize_power_command_id(power_off_command_id)
         payload = {
             "commands": normalized,
+            "power_on_command_id": normalized_power_on,
+            "power_off_command_id": normalized_power_off,
             "hash_version": COMMAND_HASH_VERSION,
             "commands_hash": compute_commands_hash(
                 normalized,
                 roku_listen_port=roku_listen_port,
+                power_on_command_id=normalized_power_on,
+                power_off_command_id=normalized_power_off,
             ),
         }
         hubs = self._data.setdefault("hubs", {})
