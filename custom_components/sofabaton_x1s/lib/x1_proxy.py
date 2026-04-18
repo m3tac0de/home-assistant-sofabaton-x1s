@@ -151,6 +151,17 @@ _ROKU_X1S_CREATE_BASE = _hex_to_bytes(
     "00 00 00 00 00 00"
 )
 
+_ROKU_X1S_INPUT_FINALIZE_HEADER = _hex_to_bytes(
+    "01 00 01 01 00 01 00 0b 01 0b 1c 10 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+)
+
+_ROKU_X1S_INPUT_FINALIZE_TAIL = _hex_to_bytes(
+    "fc 00 01 fc 01 01 01 00 fc 01 fc 01 "
+    "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+    "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+    "00"
+)
+
 def _normalize_mdns_instance(name: str) -> str:
     """Return an mDNS-friendly instance name without whitespace."""
 
@@ -2934,9 +2945,6 @@ class X1Proxy:
         commands: list[Any],
         input_command_ids: list[int],
     ) -> bytes:
-        if len(input_command_ids) > 6:
-            raise ValueError("X1 input configuration supports at most 6 input_command_ids")
-
         payload = bytearray(
             [
                 0x01,
@@ -2955,17 +2963,84 @@ class X1Proxy:
 
         for command_id in input_command_ids:
             label = _wifi_command_label(commands[command_id - 1], command_id - 1)
+            _slot_id, command_code = _ROKU_APP_SLOTS[command_id - 1]
             payload.extend(
                 bytes([command_id & 0xFF, 0x00, 0x00, 0x00, 0x00])
-                + _ascii_padded(label, length=30)
+                + command_code.to_bytes(2, "big")
+                + _ascii_padded(label, length=20)
             )
 
-        for _ in range(6 - len(input_command_ids)):
-            payload.extend(b"\x00" * 35)
+        for _ in range(4):
+            payload.extend(b"\x00" * 27)
+
+        payload[-1] = (sum(payload[:-1]) - 0x02) & 0xFF
+        return bytes(payload)
+
+    def _build_virtual_ip_wifi_input_config_payload(
+        self,
+        *,
+        device_id: int,
+        commands: list[Any],
+        input_command_ids: list[int],
+    ) -> bytes:
+        payload = bytearray([0x01, 0x00, 0x01, 0x01, 0x00, 0x02, device_id & 0xFF, 0x01, len(input_command_ids) & 0xFF, 0x00])
+
+        for ordinal, command_id in enumerate(input_command_ids, start=1):
+            label = _wifi_command_label(commands[command_id - 1], command_id - 1)
+            row = (
+                bytes([0x00, command_id & 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ordinal & 0xFF, 0x00])
+                + label.encode("utf-16le")[:37].ljust(37, b"\x00")
+            )
+            payload.extend(row)
+
+        for _ in range(5 - len(input_command_ids)):
+            payload.extend(b"\x00" * 47)
 
         payload.extend(b"\x00" * 5)
-        payload.append((sum(payload) - 0x02) & 0xFF)
+        payload[-1] = (sum(payload[:-1]) - 0x02) & 0xFF
         return bytes(payload)
+
+    def _build_virtual_ip_wifi_input_commit_payload(self) -> bytes:
+        return bytes.fromhex("01 00 02 00 00 00 00 00 00 00 00 00 00 00 00 8e")
+
+    def _build_virtual_ip_wifi_input_finalize_payload(
+        self,
+        *,
+        device_id: int,
+        device_name: str,
+        brand_name: str,
+    ) -> bytes:
+        payload = bytearray()
+        payload.extend(_ROKU_X1S_INPUT_FINALIZE_HEADER)
+        payload[7] = device_id & 0xFF
+        payload[9] = device_id & 0xFF
+        payload.extend(b"\x4d\x00")
+        payload.extend(b"\x00" + device_name.encode("utf-16le")[:59].ljust(59, b"\x00"))
+        payload.extend(b"\x00" + brand_name.encode("utf-16le")[:59].ljust(59, b"\x00"))
+        payload.extend(_ROKU_X1S_INPUT_FINALIZE_TAIL)
+        payload[-1] = (sum(payload[:-1]) - 0x02) & 0xFF
+        return bytes(payload)
+
+    def _wait_for_wifi_input_refresh(
+        self,
+        *,
+        device_id: int,
+        command_id: int,
+        timeout: float = 5.0,
+    ) -> bool:
+        dev_lo = device_id & 0xFF
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            device_commands = self.state.commands.get(dev_lo, {})
+            if command_id in device_commands:
+                return True
+            time.sleep(0.05)
+        self._log.warning(
+            "[WIFI] timeout waiting for input refresh dev=0x%02X slot=%d",
+            dev_lo,
+            command_id,
+        )
+        return False
 
     def _apply_wifi_input_configuration(
         self,
@@ -2980,7 +3055,49 @@ class X1Proxy:
         if not input_command_ids:
             return True
 
-        if self.hub_version != HUB_VERSION_X1:
+        if self.hub_version == HUB_VERSION_X1:
+            self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
+            if not self.wait_for_activity_inputs_burst(timeout=5.0):
+                self._log.warning(
+                    "[WIFI] missing activity-input candidates before input config dev=0x%02X",
+                    device_id & 0xFF,
+                )
+                return False
+
+            payload = self._build_wifi_input_config_payload(
+                device_id=device_id,
+                commands=commands,
+                input_command_ids=input_command_ids,
+            )
+            if not self._send_roku_step(
+                step_name="input-config-save",
+                family=0x46,
+                payload=payload,
+                ack_opcode=0x0103,
+            ):
+                return False
+        elif self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
+            payload = self._build_virtual_ip_wifi_input_config_payload(
+                device_id=device_id,
+                commands=commands,
+                input_command_ids=input_command_ids,
+            )
+            if not self._send_roku_step(
+                step_name="input-config-save",
+                family=0x46,
+                payload=payload,
+                ack_opcode=0x0103,
+            ):
+                return False
+
+            if not self._send_roku_step(
+                step_name="input-config-commit",
+                family=0x46,
+                payload=self._build_virtual_ip_wifi_input_commit_payload(),
+                ack_opcode=0x0103,
+            ):
+                return False
+        else:
             self._log.info(
                 "[WIFI] input configuration is not yet implemented for hub version %s; skipping ids=%s",
                 self.hub_version,
@@ -2988,41 +3105,61 @@ class X1Proxy:
             )
             return True
 
-        payload = self._build_wifi_input_config_payload(
-            device_id=device_id,
-            commands=commands,
-            input_command_ids=input_command_ids,
-        )
-        if not self._send_roku_step(
-            step_name="input-config-save",
-            family=0x46,
-            payload=payload,
-            ack_opcode=0x0103,
-        ):
-            return False
-
         for command_id in input_command_ids:
+            dev_commands = self.state.commands.get(device_id & 0xFF)
+            if isinstance(dev_commands, dict):
+                dev_commands.pop(command_id, None)
             self._log.info(
                 "[WIFI] refresh input-config entry dev=0x%02X slot=%d",
                 device_id & 0xFF,
                 command_id,
             )
             self._send_cmd_frame(0x020C, bytes([device_id & 0xFF, command_id & 0xFF]))
+            if not self._wait_for_wifi_input_refresh(
+                device_id=device_id,
+                command_id=command_id,
+                timeout=5.0,
+            ):
+                return False
 
-        payload_7b08 = self._build_roku_device_payload(
-            device_name=device_name,
-            ip_address=ip_address,
-            state_byte=0x01,
-            device_id=device_id,
-            brand_name=brand_name,
-        )
-        if not self._send_roku_step(
-            step_name="input-config-finalize",
-            family=0x08,
-            payload=payload_7b08,
-            ack_opcode=0x0103,
-        ):
-            return False
+        if self.hub_version == HUB_VERSION_X1:
+            finalize_payload = self._build_roku_device_payload(
+                device_name=device_name,
+                ip_address=ip_address,
+                state_byte=0x01,
+                device_id=device_id,
+                brand_name=brand_name,
+            )
+            finalize_opcode = None
+        else:
+            finalize_payload = self._build_virtual_ip_wifi_input_finalize_payload(
+                device_id=device_id,
+                device_name=device_name,
+                brand_name=brand_name,
+            )
+            finalize_opcode = 0xD508
+
+        if finalize_opcode is None:
+            if not self._send_roku_step(
+                step_name="input-config-finalize",
+                family=0x08,
+                payload=finalize_payload,
+                ack_opcode=0x0103,
+            ):
+                return False
+        else:
+            self._log.info(
+                "[WIFI][STEP] input-config-finalize tx opcode=0x%04X expect_ack=0x0103 first_byte=* attempt=1/1",
+                finalize_opcode,
+            )
+            self._send_cmd_frame(finalize_opcode, finalize_payload)
+            ack = self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0)
+            if ack is None:
+                self._log.warning(
+                    "[WIFI][STEP] input-config-finalize failed waiting ack=0x0103 first_byte=*"
+                )
+                return False
+            self._log.info("[WIFI][STEP] input-config-finalize acked via 0x%04X", ack[0])
 
         return True
 
@@ -3512,6 +3649,16 @@ class X1Proxy:
             brand_name=brand_name,
             power_on_command_id=power_on_command_id,
             power_off_command_id=power_off_command_id,
+        ):
+            return None
+
+        if not self._apply_wifi_input_configuration(
+            device_id=device_id,
+            device_name=device_name,
+            ip_address=ip_address,
+            brand_name=brand_name,
+            commands=list(commands or []),
+            input_command_ids=input_command_ids,
         ):
             return None
 

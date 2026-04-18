@@ -19,7 +19,8 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_ACTIVITY_ASSIGN_FINALIZE,
     OP_ACTIVITY_ASSIGN_COMMIT,
 )
-from custom_components.sofabaton_x1s.lib.opcode_handlers import ActivityMapHandler
+from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
+from custom_components.sofabaton_x1s.lib.opcode_handlers import ActivityMapHandler, DeviceButtonFamilyHandler
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -935,37 +936,42 @@ def test_create_wifi_device_x1_can_assign_input_commands(monkeypatch) -> None:
         lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
     )
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.2.77")
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
 
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
     result = proxy.create_wifi_device(
         commands=[f"Command {idx}" for idx in range(1, 11)],
-        input_command_ids=[2, 5, 7, 9],
+        input_command_ids=[2, 4, 6],
     )
 
     assert result == {"device_id": 0x04, "status": "success"}
 
-    input_payload = next(payload for opcode, payload in sent if opcode == 0xE346)
-    assert input_payload[:11] == bytes.fromhex("01 00 01 01 00 01 04 01 04 00 00")
-    assert input_payload[11:46] == bytes([0x02, 0x00, 0x00, 0x00, 0x00]) + b"Command 2".ljust(30, b"\x00")
-    assert input_payload[46:81] == bytes([0x05, 0x00, 0x00, 0x00, 0x00]) + b"Command 5".ljust(30, b"\x00")
-    assert input_payload[81:116] == bytes([0x07, 0x00, 0x00, 0x00, 0x00]) + b"Command 7".ljust(30, b"\x00")
-    assert input_payload[116:151] == bytes([0x09, 0x00, 0x00, 0x00, 0x00]) + b"Command 9".ljust(30, b"\x00")
+    assert any(opcode == 0x0148 and payload == bytes([0x04]) for opcode, payload in sent)
+
+    input_payload = next(payload for opcode, payload in sent if opcode == 0xC846)
+    assert len(input_payload) == 200
+    assert input_payload[:11] == bytes.fromhex("01 00 01 01 00 01 04 01 03 00 00")
+    assert input_payload[11:38] == bytes.fromhex("02 00 00 00 00 4e 22") + b"Command 2".ljust(20, b"\x00")
+    assert input_payload[38:65] == bytes.fromhex("04 00 00 00 00 4e 24") + b"Command 4".ljust(20, b"\x00")
+    assert input_payload[65:92] == bytes.fromhex("06 00 00 00 00 4e 26") + b"Command 6".ljust(20, b"\x00")
+    assert input_payload[92:199] == b"\x00" * 107
+    assert input_payload[-1] == (sum(input_payload[:-1]) - 0x02) & 0xFF
 
     refresh_requests = [(opcode, payload) for opcode, payload in sent if opcode == 0x020C]
     assert refresh_requests == [
         (0x020C, bytes([0x04, 0x02])),
-        (0x020C, bytes([0x04, 0x05])),
-        (0x020C, bytes([0x04, 0x07])),
-        (0x020C, bytes([0x04, 0x09])),
+        (0x020C, bytes([0x04, 0x04])),
+        (0x020C, bytes([0x04, 0x06])),
     ]
 
     payload_08 = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x08]
     assert len(payload_08) == 2
 
 
-def test_create_wifi_device_x1s_ignores_input_commands_for_now(monkeypatch) -> None:
+def test_create_wifi_device_x1s_can_assign_input_commands(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
         proxy_enabled=False,
@@ -986,16 +992,73 @@ def test_create_wifi_device_x1s_ignores_input_commands_for_now(monkeypatch) -> N
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
+    monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
+
     result = proxy.create_wifi_device(
         device_name="Living Room Roku",
-        commands=["My Cmd"],
-        request_port=8765,
-        input_command_ids=[1],
+        commands=[f"TEST {idx}" for idx in range(1, 7)],
+        request_port=8060,
+        input_command_ids=[1, 3, 5],
     )
 
     assert result == {"device_id": 0x09, "status": "success"}
-    assert all(opcode != 0xE346 for opcode, _ in sent)
-    assert all(opcode != 0x020C for opcode, _ in sent)
+    family_46_payloads = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
+    input_opcode, input_payload = family_46_payloads[-2]
+    commit_opcode, commit_payload = family_46_payloads[-1]
+    assert len(input_payload) == 250
+    assert len(commit_payload) == 16
+    assert input_payload[:10] == bytes.fromhex("01 00 01 01 00 02 09 01 03 00")
+    assert input_payload[10:57].startswith(bytes.fromhex("00 01 00 00 00 00 00 00 01 00"))
+    assert "TEST 1".encode("utf-16le") in input_payload
+    assert "TEST 3".encode("utf-16le") in input_payload
+    assert "TEST 5".encode("utf-16le") in input_payload
+
+    assert input_opcode == 0xFA46
+    assert commit_opcode == 0x1046
+    assert commit_payload == bytes.fromhex("01 00 02 00 00 00 00 00 00 00 00 00 00 00 00 8e")
+
+    refresh_requests = [(opcode, payload) for opcode, payload in sent if opcode == 0x020C]
+    assert refresh_requests == [
+        (0x020C, bytes([0x09, 0x01])),
+        (0x020C, bytes([0x09, 0x03])),
+        (0x020C, bytes([0x09, 0x05])),
+    ]
+
+    finalize_payload = next(payload for opcode, payload in sent if opcode == 0xD508)
+    assert len(finalize_payload) == 213
+    assert finalize_payload[7] == 0x09
+    assert finalize_payload[9] == 0x09
+    assert finalize_payload[10:12] == bytes.fromhex("1c 10")
+    assert finalize_payload[30] == 0x4D
+    assert finalize_payload[32:92].decode("utf-16be").rstrip("\x00") == "Living Room Roku"
+    assert finalize_payload[92:152].decode("utf-16be").rstrip("\x00") == "m3tac0de"
+    assert finalize_payload[152:164] == bytes.fromhex("fc 00 01 fc 01 01 01 00 fc 01 fc 01")
+
+
+def test_x1s_input_refresh_frame_updates_command_cache() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    handler = DeviceButtonFamilyHandler()
+    payload = bytes.fromhex(
+        "01 00 01 01 00 01 0A 03 1C 00 00 00 00 00 00 00 "
+        "54 00 45 00 53 00 54 00 20 00 31 00 "
+        + "00 " * 48 +
+        "C0 A8 02 4D 1F 7C 00 79 "
+        + "50 4F 53 54 20 2F 6C 61 75 6E 63 68 2F 65 32 36 61 34 34 38 36 31 62 34 35 2F 31 30 2F 32 2F 73 68 6F 72 74 20 48 54 54 50 2F 31 2E 31 0D 0A 48 6F 73 74 3A 31 39 32 2E 31 36 38 2E 32 2E 37 37 3A 38 30 36 30 0D 0A 43 6F 6E 74 65 6E 74 2D 54 79 70 65 3A 61 70 70 6C 69 63 61 74 69 6F 6E 2F 78 2D 77 77 77 2D 66 6F 72 6D 2D 75 72 6C 65 6E 63 6F 64 65 64 0D 0A 0D 0A B9"
+    )
+    raw = bytes.fromhex("a5 5a cd 0d") + payload + bytes.fromhex("4e")
+
+    handler.handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=0xCD0D,
+            direction="H→A",
+            payload=payload,
+            raw=raw,
+            name="OP_CD0D",
+        )
+    )
+
+    assert proxy.state.commands[0x0A][0x03] == "TEST 1"
 
 
 def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
@@ -1251,6 +1314,30 @@ def test_get_single_command_allows_multiple_pending_commands(monkeypatch) -> Non
         (OP_REQ_COMMANDS, b"\x05\x01", True, "commands:5:1"),
         (OP_REQ_COMMANDS, b"\x05\x02", True, "commands:5:2"),
     ]
+
+
+def test_x1_input_refresh_frame_updates_command_cache() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    handler = DeviceButtonFamilyHandler()
+    payload = bytes.fromhex(
+        "01 00 01 01 00 01 08 02 0a 00 00 00 00 4e 22 "
+        "54 45 53 54 20 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "1d 6c 61 75 6e 63 68 2f 63 62 33 38 33 35 33 39 36 38 34 62 2f 38 2f 31 2f 73 68 6f 72 74 2b"
+    )
+    raw = bytes.fromhex("a5 5a 4c 0d") + payload + bytes.fromhex("92")
+
+    handler.handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=0x4C0D,
+            direction="H→A",
+            payload=payload,
+            raw=raw,
+            name="OP_4C0D",
+        )
+    )
+
+    assert proxy.state.commands[0x08][0x02] == "TEST 2"
 
 
 def test_build_frame_for_single_command_payloads() -> None:

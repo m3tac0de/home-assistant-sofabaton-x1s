@@ -1143,14 +1143,31 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
         proxy: X1Proxy = frame.proxy
         payload = frame.payload
         raw = frame.raw
+        family = opcode_family(frame.opcode)
 
         effective_opcode = (
             OP_DEVBTN_SINGLE
-            if opcode_family(frame.opcode) == FAMILY_DEVBTNS
+            if family in (FAMILY_DEVBTNS, 0x0D)
             else frame.opcode
         )
 
         if len(payload) < 4:
+            return
+
+        if (
+            family == 0x0D
+            and len(payload) >= 16
+            and payload[:6] == b"\x01\x00\x01\x01\x00\x01"
+        ):
+            dev_id = payload[6]
+            command_id = payload[7]
+            if len(payload) >= 76 and payload[8] == 0x1C:
+                label = payload[16:76].decode("utf-16le", errors="ignore").split("\x00", 1)[0].strip()
+            else:
+                label_bytes = payload[15:45]
+                label = label_bytes.split(b"\x00", 1)[0].decode("ascii", errors="ignore").strip()
+            if label:
+                proxy.state.commands.setdefault(dev_id & 0xFF, {})[command_id & 0xFF] = label
             return
 
         dev_id = _extract_dev_id(raw, payload, effective_opcode)
@@ -1303,7 +1320,7 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
                 )
 
 
-@register_handler(opcode_families_low=(FAMILY_DEVBTNS,), directions=("H→A",))
+@register_handler(opcode_families_low=(FAMILY_DEVBTNS, 0x0D), directions=("H→A",))
 class DeviceButtonFamilyHandler(BaseFrameHandler):
     """Route all device-button family responses using heuristics."""
 
