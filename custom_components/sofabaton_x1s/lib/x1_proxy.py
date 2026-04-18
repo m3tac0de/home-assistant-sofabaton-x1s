@@ -103,6 +103,19 @@ def _ascii_padded(value: str, *, length: int) -> bytes:
     return value.encode("ascii", errors="ignore")[:length].ljust(length, b"\x00")
 
 
+def _wifi_command_label(command_spec: Any, idx: int) -> str:
+    if isinstance(command_spec, dict):
+        return (
+            str(
+                command_spec.get("display_name")
+                or command_spec.get("name")
+                or f"Command {idx + 1}"
+            ).strip()
+            or f"Command {idx + 1}"
+        )
+    return str(command_spec or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+
+
 _ROKU_APP_SLOTS: list[tuple[int, int]] = [
     (0x18, 0x4E21),
     (0x19, 0x4E22),
@@ -2914,6 +2927,105 @@ class X1Proxy:
         )
         return payload_base + bytes([(sum(payload_base) - 0x02) & 0xFF])
 
+    def _build_wifi_input_config_payload(
+        self,
+        *,
+        device_id: int,
+        commands: list[Any],
+        input_command_ids: list[int],
+    ) -> bytes:
+        if len(input_command_ids) > 6:
+            raise ValueError("X1 input configuration supports at most 6 input_command_ids")
+
+        payload = bytearray(
+            [
+                0x01,
+                0x00,
+                0x01,
+                0x01,
+                0x00,
+                0x01,
+                device_id & 0xFF,
+                0x01,
+                len(input_command_ids) & 0xFF,
+                0x00,
+                0x00,
+            ]
+        )
+
+        for command_id in input_command_ids:
+            label = _wifi_command_label(commands[command_id - 1], command_id - 1)
+            payload.extend(
+                bytes([command_id & 0xFF, 0x00, 0x00, 0x00, 0x00])
+                + _ascii_padded(label, length=30)
+            )
+
+        for _ in range(6 - len(input_command_ids)):
+            payload.extend(b"\x00" * 35)
+
+        payload.extend(b"\x00" * 5)
+        payload.append((sum(payload) - 0x02) & 0xFF)
+        return bytes(payload)
+
+    def _apply_wifi_input_configuration(
+        self,
+        *,
+        device_id: int,
+        device_name: str,
+        ip_address: str,
+        brand_name: str,
+        commands: list[Any],
+        input_command_ids: list[int] | None,
+    ) -> bool:
+        if not input_command_ids:
+            return True
+
+        if self.hub_version != HUB_VERSION_X1:
+            self._log.info(
+                "[WIFI] input configuration is not yet implemented for hub version %s; skipping ids=%s",
+                self.hub_version,
+                input_command_ids,
+            )
+            return True
+
+        payload = self._build_wifi_input_config_payload(
+            device_id=device_id,
+            commands=commands,
+            input_command_ids=input_command_ids,
+        )
+        if not self._send_roku_step(
+            step_name="input-config-save",
+            family=0x46,
+            payload=payload,
+            ack_opcode=0x0103,
+        ):
+            return False
+
+        for command_id in input_command_ids:
+            self._log.info(
+                "[WIFI] refresh input-config entry dev=0x%02X slot=%d",
+                device_id & 0xFF,
+                command_id,
+            )
+            self._send_cmd_frame(0x020C, bytes([device_id & 0xFF, command_id & 0xFF]))
+
+        payload_7b08 = self._build_roku_device_payload(
+            device_name=device_name,
+            ip_address=ip_address,
+            state_byte=0x01,
+            device_id=device_id,
+            brand_name=brand_name,
+        )
+        if not self._send_roku_step(
+            step_name="input-config-finalize",
+            family=0x08,
+            payload=payload_7b08,
+            ack_opcode=0x0103,
+        ):
+            return False
+
+        return True
+
     def _apply_wifi_power_configuration(
         self,
         *,
@@ -3040,22 +3152,39 @@ class X1Proxy:
         brand_name: str = "m3tac0de",
         power_on_command_id: int | None = None,
         power_off_command_id: int | None = None,
+        input_command_ids: list[int] | None = None,
     ) -> dict[str, Any] | None:
         if not self.can_issue_commands():
             self._log.info("[WIFI] create_wifi_device ignored: proxy client is connected")
             return None
 
         ip_address = self.get_routed_local_ip()
+        normalized_commands = list(commands or [])
+        max_input_command_id = len(normalized_commands)
+        normalized_input_command_ids: list[int] | None = None
+        if input_command_ids is not None:
+            normalized_input_command_ids = []
+            for command_id in input_command_ids:
+                normalized_command_id = int(command_id)
+                if (
+                    normalized_command_id < 1
+                    or normalized_command_id > max_input_command_id
+                ):
+                    raise ValueError(
+                        f"Unsupported input command_id {normalized_command_id}; expected 1..{max_input_command_id}"
+                    )
+                normalized_input_command_ids.append(normalized_command_id)
 
         if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
             return self._create_virtual_ip_wifi_device(
                 device_name=device_name,
-                commands=commands,
+                commands=normalized_commands,
                 ip_address=ip_address,
                 request_port=request_port,
                 brand_name=brand_name,
                 power_on_command_id=power_on_command_id,
                 power_off_command_id=power_off_command_id,
+                input_command_ids=normalized_input_command_ids,
             )
 
         self.start_roku_create()
@@ -3077,15 +3206,11 @@ class X1Proxy:
 
         command_defs: list[tuple[int, int, str, str]] = []
 
-        if commands:
-            for idx, command_spec in enumerate(commands[: len(_ROKU_APP_SLOTS)]):
+        if normalized_commands:
+            for idx, command_spec in enumerate(normalized_commands[: len(_ROKU_APP_SLOTS)]):
                 slot, code = _ROKU_APP_SLOTS[idx]
                 if isinstance(command_spec, dict):
-                    command_name = str(
-                        command_spec.get("display_name")
-                        or command_spec.get("name")
-                        or f"Command {idx + 1}"
-                    ).strip() or f"Command {idx + 1}"
+                    command_name = _wifi_command_label(command_spec, idx)
                     trigger_name = str(
                         command_spec.get("trigger_name")
                         or command_spec.get("name")
@@ -3093,7 +3218,7 @@ class X1Proxy:
                     ).strip() or command_name
                     press_type = str(command_spec.get("press_type") or "short").strip().lower()
                 else:
-                    command_name = str(command_spec or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                    command_name = _wifi_command_label(command_spec, idx)
                     trigger_name = command_name
                     press_type = "short"
                 command_index = int(command_spec.get("command_index", idx)) if isinstance(command_spec, dict) else idx
@@ -3244,6 +3369,16 @@ class X1Proxy:
         ):
             return None
 
+        if not self._apply_wifi_input_configuration(
+            device_id=device_id,
+            device_name=device_name,
+            ip_address=ip_address,
+            brand_name=brand_name,
+            commands=normalized_commands,
+            input_command_ids=normalized_input_command_ids,
+        ):
+            return None
+
         self._log.info("[WIFI] replayed Wifi Device create sequence for dev=0x%02X", device_id)
         return {"device_id": device_id, "status": "success"}
 
@@ -3257,6 +3392,7 @@ class X1Proxy:
         brand_name: str = "m3tac0de",
         power_on_command_id: int | None = None,
         power_off_command_id: int | None = None,
+        input_command_ids: list[int] | None = None,
     ) -> dict[str, Any] | None:
         self.start_roku_create()
         self._log.info("[WIFI] starting virtual IP Wifi Device create replay sequence")
@@ -3278,11 +3414,7 @@ class X1Proxy:
         for idx, command_spec in enumerate((commands or [])[: len(_ROKU_APP_SLOTS)]):
             slot = (idx + 1) & 0xFF
             if isinstance(command_spec, dict):
-                command_name = str(
-                    command_spec.get("display_name")
-                    or command_spec.get("name")
-                    or f"Command {idx + 1}"
-                ).strip() or f"Command {idx + 1}"
+                command_name = _wifi_command_label(command_spec, idx)
                 trigger_name = str(
                     command_spec.get("trigger_name")
                     or command_spec.get("name")
@@ -3290,7 +3422,7 @@ class X1Proxy:
                 ).strip() or command_name
                 press_type = str(command_spec.get("press_type") or "short").strip().lower()
             else:
-                command_name = str(command_spec or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                command_name = _wifi_command_label(command_spec, idx)
                 trigger_name = command_name
                 press_type = "short"
             # Observed X1S/X2 0x?E0E payloads encode command labels in a 59-byte field.

@@ -36,12 +36,27 @@ class _FakeHub:
         self.favorite_order_result: list[tuple[int, int]] | None = None
         self.favorite_descriptions: list[dict] | None = None
 
-    async def async_create_wifi_device(self, *, device_name: str, commands: list[str], request_port: int):
+    async def async_create_wifi_device(
+        self,
+        *,
+        device_name: str,
+        commands: list[str],
+        request_port: int,
+        power_on_command_id: int | None = None,
+        power_off_command_id: int | None = None,
+        input_command_ids: list[int] | None = None,
+    ):
         payload = {
             "device_name": device_name,
             "commands": commands,
             "request_port": request_port,
         }
+        if power_on_command_id is not None:
+            payload["power_on_command_id"] = power_on_command_id
+        if power_off_command_id is not None:
+            payload["power_off_command_id"] = power_off_command_id
+        if input_command_ids is not None:
+            payload["input_command_ids"] = input_command_ids
         self.calls.append(payload)
         return payload
 
@@ -220,6 +235,57 @@ def test_create_wifi_device_uses_configured_roku_listener_port(monkeypatch) -> N
     )
 
     assert result["request_port"] == 8765
+
+
+def test_create_wifi_device_accepts_input_command_ids(monkeypatch) -> None:
+    hub = _FakeHub()
+    entry = SimpleNamespace(entry_id="entry-1", options={"roku_listen_port": 8060})
+    hass = _FakeHass(entry)
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    result = asyncio.run(
+        integration._async_handle_create_wifi_device(
+            _FakeCall(
+                {
+                    "device_name": "Living Room",
+                    "commands": ["Lights On", "Lights Off", "Input HDMI 1"],
+                    "input_command_ids": [3, 1],
+                },
+                hass,
+            )
+        )
+    )
+
+    assert result["input_command_ids"] == [3, 1]
+
+
+def test_create_wifi_device_rejects_out_of_range_input_command_ids(monkeypatch) -> None:
+    hub = _FakeHub()
+    entry = SimpleNamespace(entry_id="entry-1", options={"roku_listen_port": 8060})
+    hass = _FakeHass(entry)
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    with pytest.raises(ValueError, match="input_command_ids entries must each be between 1 and 2"):
+        asyncio.run(
+            integration._async_handle_create_wifi_device(
+                _FakeCall(
+                    {
+                        "device_name": "Living Room",
+                        "commands": ["Lights On", "Lights Off"],
+                        "input_command_ids": [3],
+                    },
+                    hass,
+                )
+            )
+        )
 
 
 def test_device_to_activity_validates_activity_id(monkeypatch) -> None:

@@ -1895,6 +1895,16 @@ var SofabatonWifiCommandsTab = class extends i4 {
       }
       const next = this._commandsList().slice();
       next[idx] = this._cloneCommandSlot(draft);
+      if (next[idx].is_power_on) {
+        next.forEach((slot, slotIdx) => {
+          if (slotIdx !== idx && slot.is_power_on) next[slotIdx] = this._cloneCommandSlot({ ...slot, is_power_on: false });
+        });
+      }
+      if (next[idx].is_power_off) {
+        next.forEach((slot, slotIdx) => {
+          if (slotIdx !== idx && slot.is_power_off) next[slotIdx] = this._cloneCommandSlot({ ...slot, is_power_off: false });
+        });
+      }
       this._commandSaveError = "";
       delete this._commandEditorDrafts[idx];
       this._commandEditorDrafts = { ...this._commandEditorDrafts };
@@ -2042,14 +2052,16 @@ var SofabatonWifiCommandsTab = class extends i4 {
       `;
     }
     const details = this._commandSlotSummaryDetails(command);
-    const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
-    const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
+    const metaLabel = this._commandSlotMetaLabel(command);
     return b2`
       <div class="slot-btn">
-        <button class="slot-clear" @click=${(event) => {
+        <div class="slot-actions">
+          ${command.is_power_on && command.is_power_off ? b2`<span class="slot-flag power-both" title="Power ON and OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : command.is_power_on ? b2`<span class="slot-flag power-on" title="Power ON command"><ha-icon icon="mdi:power"></ha-icon></span>` : command.is_power_off ? b2`<span class="slot-flag power-off" title="Power OFF command"><ha-icon icon="mdi:power"></ha-icon></span>` : A}
+          <button class="slot-clear" @click=${(event) => {
       event.stopPropagation();
       this._confirmClearSlot = idx;
     }}><ha-icon icon="mdi:close"></ha-icon></button>
+        </div>
         <button class="slot-main" @click=${() => this._openCommandEditor(idx)}>
           <span class="slot-text-wrap">
             <span class="slot-name">${String(command.name || "").trim() || `Command ${idx + 1}`}</span>
@@ -2057,7 +2069,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
               ${command.add_as_favorite ? b2`<span class="slot-favorite"><ha-icon icon="mdi:heart"></ha-icon></span>` : A}
               ${command.hard_button ? b2`<span class="slot-meta-icon"><ha-icon icon=${this._commandSlotIcon(command.hard_button)} style=${this._commandSlotIconColor(command.hard_button) ? `color:${this._commandSlotIconColor(command.hard_button)}` : ""}></ha-icon></span>` : A}
               ${command.long_press_enabled ? b2`<span class="slot-meta-icon"><ha-icon icon="mdi:timer-sand-full"></ha-icon></span>` : A}
-              <span>in ${activityCount} ${activitiesLabel}</span>
+              <span>${metaLabel}</span>
             </span>
           </span>
         </button>
@@ -2078,6 +2090,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
     const activities = this._editorActivities();
     const selectedActivities = new Set((draft.activities || []).map((id) => String(id)));
     const hasMappedButton = Boolean(String(draft.hard_button || "").trim());
+    const activitySelectionEnabled = this._activitySelectionEnabled(draft);
     return b2`
       <div class="modal-backdrop" @click=${this._closeOnBackdrop}>
         <div class="dialog" @click=${(event) => event.stopPropagation()}>
@@ -2090,64 +2103,104 @@ var SofabatonWifiCommandsTab = class extends i4 {
               Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote’s display, in the mobile app, and as the Wifi Command's sensor status.
             </div>
             <div class="config-block">
-              <ha-textfield
-                .label=${"Command Display Name"}
-                .maxLength=${20}
-                .value=${draft.name}
-                @input=${(event) => {
+              <div class="config-group">
+                <ha-textfield
+                  .label=${"Command Display Name"}
+                  .maxLength=${20}
+                  .value=${draft.name}
+                  @input=${(event) => {
       const input = event.currentTarget;
       const value = this._sanitizeCommandName(input.value);
       if (input.value !== value) input.value = value;
     }}
-                @change=${(event) => {
+                  @change=${(event) => {
       const input = event.currentTarget;
       const value = this._sanitizeCommandName(input.value);
       input.value = value;
       this._updateActiveCommandDraft({ name: value });
       this._commandSaveError = "";
     }}
-              ></ha-textfield>
-              <button class="checkbox-row ${draft.add_as_favorite ? "active" : ""}" @click=${() => {
-      this._toggleFavoriteRow();
+                ></ha-textfield>
+                <button class="checkbox-row ${draft.is_power_on ? "active" : ""}" @click=${() => {
+      this._togglePowerCommandRow("on");
     }}>
-                <span class="checkbox-left">
-                  <span class="checkbox-icon"><ha-icon icon="mdi:heart"></ha-icon></span>
-                  <span>Make as Favorite</span>
-                </span>
-                <ha-switch
-                  .checked=${draft.add_as_favorite}
-                  @click=${(event) => event.stopPropagation()}
-                  @change=${(event) => this._handleFavoriteSwitchChange(event)}
-                ></ha-switch>
-              </button>
-              <ha-selector
-                .hass=${this.hass}
-                .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "None" }, ...this._editorAvailableHardButtonOptions().map((option) => ({ value: option.value, label: option.label }))] } }}
-                .label=${"Physical Button Assignment"}
-                .value=${this._selectorValueForButton(draft)}
-                @value-changed=${(event) => this._handleHardButtonChanged(event)}
-              ></ha-selector>
-              <button class="checkbox-row ${hasMappedButton && draft.long_press_enabled ? "active" : ""}" ?disabled=${!hasMappedButton} @click=${() => {
+                  <span class="checkbox-left">
+                    <span class="checkbox-icon power-on"><ha-icon icon="mdi:power"></ha-icon></span>
+                    <span class="checkbox-copy">
+                      <span>Is the Power ON command</span>
+                      <span class="checkbox-subtext">${this._powerReplacementLabel("on")}</span>
+                    </span>
+                  </span>
+                  <ha-switch
+                    .checked=${draft.is_power_on}
+                    @click=${(event) => event.stopPropagation()}
+                    @change=${(event) => this._handlePowerCommandSwitchChange("on", event)}
+                  ></ha-switch>
+                </button>
+                <button class="checkbox-row ${draft.is_power_off ? "active" : ""}" @click=${() => {
+      this._togglePowerCommandRow("off");
+    }}>
+                  <span class="checkbox-left">
+                    <span class="checkbox-icon power-off"><ha-icon icon="mdi:power"></ha-icon></span>
+                    <span class="checkbox-copy">
+                      <span>Is the Power OFF command</span>
+                      <span class="checkbox-subtext">${this._powerReplacementLabel("off")}</span>
+                    </span>
+                  </span>
+                  <ha-switch
+                    .checked=${draft.is_power_off}
+                    @click=${(event) => event.stopPropagation()}
+                    @change=${(event) => this._handlePowerCommandSwitchChange("off", event)}
+                  ></ha-switch>
+                </button>
+              </div>
+              <div class="config-group">
+                <ha-selector
+                  .hass=${this.hass}
+                  .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "None" }, ...this._editorAvailableHardButtonOptions().map((option) => ({ value: option.value, label: option.label }))] } }}
+                  .label=${"Physical Button Assignment"}
+                  .value=${this._selectorValueForButton(draft)}
+                  @value-changed=${(event) => this._handleHardButtonChanged(event)}
+                ></ha-selector>
+                <button class="checkbox-row ${hasMappedButton && draft.long_press_enabled ? "active" : ""}" ?disabled=${!hasMappedButton} @click=${() => {
       this._toggleLongPressRow();
     }}>
-                <span class="checkbox-left">
-                  <span class="checkbox-icon"><ha-icon icon="mdi:timer-sand-full"></ha-icon></span>
-                  <span>Enable longpress</span>
-                </span>
-                <ha-switch
-                  .checked=${hasMappedButton && draft.long_press_enabled}
-                  .disabled=${!hasMappedButton}
-                  @click=${(event) => event.stopPropagation()}
-                  @change=${(event) => this._handleLongPressSwitchChange(event)}
-                ></ha-switch>
-              </button>
-              <div class="activities-label">Apply to these Activities</div>
-              <div class="activity-chip-row">
-                ${activities.length ? activities.map((activity) => b2`
-                  <button class="activity-chip ${selectedActivities.has(String(activity.id)) ? "active" : ""}" @click=${(event) => this._toggleActivity(activity.id, event)}>
-                    ${activity.name}
-                  </button>
-                `) : b2`<div class="empty-hint">No activities available for this hub.</div>`}
+                  <span class="checkbox-left">
+                    <span class="checkbox-icon"><ha-icon icon="mdi:timer-sand-full"></ha-icon></span>
+                    <span>Enable longpress</span>
+                  </span>
+                  <ha-switch
+                    .checked=${hasMappedButton && draft.long_press_enabled}
+                    .disabled=${!hasMappedButton}
+                    @click=${(event) => event.stopPropagation()}
+                    @change=${(event) => this._handleLongPressSwitchChange(event)}
+                  ></ha-switch>
+                </button>
+                <button class="checkbox-row ${draft.add_as_favorite ? "active" : ""}" @click=${() => {
+      this._toggleFavoriteRow();
+    }}>
+                  <span class="checkbox-left">
+                    <span class="checkbox-icon"><ha-icon icon="mdi:heart"></ha-icon></span>
+                    <span>Is a favorite</span>
+                  </span>
+                  <ha-switch
+                    .checked=${draft.add_as_favorite}
+                    @click=${(event) => event.stopPropagation()}
+                    @change=${(event) => this._handleFavoriteSwitchChange(event)}
+                  ></ha-switch>
+                </button>
+                <div class="activities-label ${activitySelectionEnabled ? "" : "disabled"}">Apply to these Activities</div>
+                <div class="activity-chip-row">
+                  ${activities.length ? activities.map((activity) => b2`
+                    <button
+                      class="activity-chip ${selectedActivities.has(String(activity.id)) ? "active" : ""} ${activitySelectionEnabled ? "" : "disabled"}"
+                      ?disabled=${!activitySelectionEnabled}
+                      @click=${(event) => this._toggleActivity(activity.id, event)}
+                    >
+                      ${activity.name}
+                    </button>
+                  `) : b2`<div class="empty-hint">No activities available for this hub.</div>`}
+                </div>
               </div>
             </div>
           </div>
@@ -2362,12 +2415,33 @@ var SofabatonWifiCommandsTab = class extends i4 {
       add_as_favorite: true,
       hard_button: "",
       long_press_enabled: false,
+      is_power_on: false,
+      is_power_off: false,
       activities: [],
       action: { ...DEFAULT_ACTION },
       long_press_action: { ...DEFAULT_ACTION }
     };
   }
-  _normalizeCommandsForStorage(nextCommands) {
+  _normalizePowerCommandId(value) {
+    const num = Number(value);
+    if (!Number.isInteger(num) || num < 1 || num > SLOT_COUNT) return null;
+    return num;
+  }
+  _derivePowerCommandIds(nextCommands) {
+    let powerOnCommandId = null;
+    let powerOffCommandId = null;
+    if (Array.isArray(nextCommands)) {
+      nextCommands.forEach((item, idx) => {
+        const record = item && typeof item === "object" ? item : {};
+        if (Boolean(record.is_power_on)) powerOnCommandId = idx + 1;
+        if (Boolean(record.is_power_off)) powerOffCommandId = idx + 1;
+      });
+    }
+    return { powerOnCommandId, powerOffCommandId };
+  }
+  _normalizeCommandsForStorage(nextCommands, powerOnCommandId = null, powerOffCommandId = null) {
+    const normalizedPowerOnId = this._normalizePowerCommandId(powerOnCommandId);
+    const normalizedPowerOffId = this._normalizePowerCommandId(powerOffCommandId);
     return Array.from({ length: SLOT_COUNT }, (_2, idx) => {
       const item = Array.isArray(nextCommands) ? nextCommands[idx] ?? {} : {};
       const record = item && typeof item === "object" ? item : {};
@@ -2377,6 +2451,8 @@ var SofabatonWifiCommandsTab = class extends i4 {
         add_as_favorite: record.add_as_favorite === void 0 ? this._commandSlotDefault(idx).add_as_favorite : Boolean(record.add_as_favorite),
         hard_button: String(record.hard_button ?? ""),
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),
+        is_power_on: normalizedPowerOnId === idx + 1,
+        is_power_off: normalizedPowerOffId === idx + 1,
         activities: Array.isArray(record.activities) ? record.activities.map((id) => String(id)).filter((id) => id !== "") : [],
         action: this._normalizeCommandAction(record.action),
         long_press_action: this._normalizeCommandAction(record.long_press_action)
@@ -2397,6 +2473,8 @@ var SofabatonWifiCommandsTab = class extends i4 {
       add_as_favorite: Boolean(slot?.add_as_favorite),
       hard_button: String(slot?.hard_button ?? ""),
       long_press_enabled: Boolean(slot?.long_press_enabled) && Boolean(String(slot?.hard_button ?? "").trim()),
+      is_power_on: Boolean(slot?.is_power_on),
+      is_power_off: Boolean(slot?.is_power_off),
       activities: Array.isArray(slot?.activities) ? slot.activities.map((id) => String(id)).filter((id) => id !== "") : [],
       action: this._normalizeCommandAction(slot?.action),
       long_press_action: this._normalizeCommandAction(slot?.long_press_action)
@@ -2414,7 +2492,11 @@ var SofabatonWifiCommandsTab = class extends i4 {
         type: "sofabaton_x1s/command_config/get",
         entity_id: entityId
       });
-      this._commandsData = this._normalizeCommandsForStorage(result?.commands || []);
+      this._commandsData = this._normalizeCommandsForStorage(
+        result?.commands || [],
+        result?.power_on_command_id,
+        result?.power_off_command_id
+      );
       this._configLoadedForEntryId = entryId;
     } catch (_error) {
       this._commandsData = this._normalizeCommandsForStorage([]);
@@ -2452,7 +2534,8 @@ var SofabatonWifiCommandsTab = class extends i4 {
     }
   }
   async _setCommands(nextCommands) {
-    const normalized = this._normalizeCommandsForStorage(nextCommands);
+    const { powerOnCommandId, powerOffCommandId } = this._derivePowerCommandIds(nextCommands);
+    const normalized = this._normalizeCommandsForStorage(nextCommands, powerOnCommandId, powerOffCommandId);
     this._commandsData = normalized;
     const entityId = String(this._entityId() || "").trim();
     if (entityId && this.hass?.callWS) {
@@ -2460,7 +2543,9 @@ var SofabatonWifiCommandsTab = class extends i4 {
         await this.hass.callWS({
           type: "sofabaton_x1s/command_config/set",
           entity_id: entityId,
-          commands: normalized
+          commands: normalized,
+          power_on_command_id: powerOnCommandId ?? void 0,
+          power_off_command_id: powerOffCommandId ?? void 0
         });
       } catch (_error) {
       }
@@ -2535,8 +2620,8 @@ var SofabatonWifiCommandsTab = class extends i4 {
     if (!String(draft.name ?? "").length || String(draft.name).startsWith(" ")) {
       return "Command name must start with a non-space character.";
     }
-    if (!draft.add_as_favorite && !String(draft.hard_button || "").trim()) {
-      return "Add as Favorite or Map to button before saving.";
+    if (!draft.add_as_favorite && !String(draft.hard_button || "").trim() && !draft.is_power_on && !draft.is_power_off) {
+      return "Set a power command, add as favorite, or map to button before saving.";
     }
     return "";
   }
@@ -2593,6 +2678,18 @@ var SofabatonWifiCommandsTab = class extends i4 {
   _selectorValueForButton(draft) {
     return draft.hard_button ? String(draft.hard_button) : "__none__";
   }
+  _activitySelectionEnabled(slot) {
+    return Boolean(slot?.add_as_favorite) || Boolean(String(slot?.hard_button || "").trim());
+  }
+  _commandSlotMetaLabel(command) {
+    const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
+    const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
+    const assignmentEnabled = this._activitySelectionEnabled(command);
+    if (!assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
+    if (!assignmentEnabled && command.is_power_on) return "Power ON command";
+    if (!assignmentEnabled && command.is_power_off) return "Power OFF command";
+    return `in ${activityCount} ${activitiesLabel}`;
+  }
   _toggleFavoriteRow() {
     const draft = this._activeCommandDraft();
     if (!draft) return;
@@ -2603,6 +2700,50 @@ var SofabatonWifiCommandsTab = class extends i4 {
     const checked = Boolean(event.currentTarget.checked);
     this._updateActiveCommandDraft({ add_as_favorite: checked });
     this._commandSaveError = "";
+  }
+  _powerReplacementSlot(kind) {
+    if (!Number.isInteger(this._activeCommandSlot)) return null;
+    const activeIdx = Number(this._activeCommandSlot);
+    const commands = this._commandsList();
+    for (let idx = 0; idx < commands.length; idx += 1) {
+      if (idx === activeIdx) continue;
+      const isMatch = kind === "on" ? Boolean(commands[idx].is_power_on) : Boolean(commands[idx].is_power_off);
+      if (isMatch) return { index: idx, slot: commands[idx] };
+    }
+    return null;
+  }
+  _powerReplacementLabel(kind) {
+    const replacement = this._powerReplacementSlot(kind);
+    if (!replacement) return `No current ${kind} command set`;
+    const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
+    return `Replaces "${name}" as the ${kind} command`;
+  }
+  _setPowerCommandFlag(kind, enabled) {
+    if (!Number.isInteger(this._activeCommandSlot)) return;
+    const key = kind === "on" ? "is_power_on" : "is_power_off";
+    const idx = Number(this._activeCommandSlot);
+    const nextDrafts = { ...this._commandEditorDrafts };
+    if (enabled) {
+      Object.entries(nextDrafts).forEach(([draftIdx, draft]) => {
+        if (Number(draftIdx) !== idx && draft) {
+          nextDrafts[Number(draftIdx)] = this._cloneCommandSlot({ ...draft, [key]: false });
+        }
+      });
+    }
+    const current = this._ensureCommandDraft(idx);
+    if (!current) return;
+    nextDrafts[idx] = this._cloneCommandSlot({ ...current, [key]: enabled });
+    this._commandEditorDrafts = nextDrafts;
+    this._commandSaveError = "";
+  }
+  _togglePowerCommandRow(kind) {
+    const draft = this._activeCommandDraft();
+    if (!draft) return;
+    this._setPowerCommandFlag(kind, !Boolean(kind === "on" ? draft.is_power_on : draft.is_power_off));
+  }
+  _handlePowerCommandSwitchChange(kind, event) {
+    const checked = Boolean(event.currentTarget.checked);
+    this._setPowerCommandFlag(kind, checked);
   }
   _toggleLongPressRow() {
     const draft = this._activeCommandDraft();
@@ -2660,7 +2801,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
   }
   _isCommandConfigured(command, idx) {
     const defaults = this._commandSlotDefault(idx);
-    return String(command.name || "").trim() !== String(defaults.name) || Boolean(command.add_as_favorite) !== Boolean(defaults.add_as_favorite) || Boolean(command.hard_button) || Boolean(command.long_press_enabled) || Array.isArray(command.activities) && command.activities.length > 0 || this._commandHasCustomAction(command.action) || Boolean(command.long_press_enabled) && this._commandHasCustomAction(command.long_press_action);
+    return String(command.name || "").trim() !== String(defaults.name) || Boolean(command.add_as_favorite) !== Boolean(defaults.add_as_favorite) || Boolean(command.hard_button) || Boolean(command.long_press_enabled) || Boolean(command.is_power_on) || Boolean(command.is_power_off) || Array.isArray(command.activities) && command.activities.length > 0 || this._commandHasCustomAction(command.action) || Boolean(command.long_press_enabled) && this._commandHasCustomAction(command.long_press_action);
   }
   _openCommandEditor(slotIndex) {
     this._confirmClearSlot = null;
@@ -2690,6 +2831,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
   _toggleActivity(activityId, event) {
     event?.preventDefault();
     event?.stopPropagation();
+    if (!this._activitySelectionEnabled(this._activeCommandDraft())) return;
     const current = new Set((this._activeCommandDraft()?.activities || []).map((id) => String(id)));
     const idKey = String(activityId);
     if (current.has(idKey) && current.size > 1) current.delete(idKey);
@@ -2893,9 +3035,17 @@ SofabatonWifiCommandsTab.styles = i`
     .slot-favorite ha-icon { --mdc-icon-size: 14px; }
     .slot-meta-icon { color: var(--state-icon-color); display: inline-flex; }
     .slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
-    .slot-clear { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; z-index: 1; opacity: 0.9; }
+    .slot-actions { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 6px; z-index: 1; }
+    .slot-flag,
+    .slot-clear { width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display: inline-flex; align-items: center; justify-content: center; padding: 0; opacity: 0.9; }
+    .slot-flag { cursor: default; }
+    .slot-flag.power-on { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 35%, var(--divider-color)); }
+    .slot-flag.power-off { color: #c62828; border-color: color-mix(in srgb, #c62828 35%, var(--divider-color)); }
+    .slot-flag.power-both { color: #f59e0b; border-color: color-mix(in srgb, #f59e0b 35%, var(--divider-color)); }
     .slot-clear:hover { opacity: 1; border-color: var(--primary-color); }
     .slot-clear ha-icon { --mdc-icon-size: 16px; }
+    .slot-flag ha-icon { --mdc-icon-size: 14px; }
+    .slot-clear { cursor: pointer; }
     .slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
     .slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
     .slot-action-btn:active { transform: translateY(1px); }
@@ -2985,16 +3135,43 @@ SofabatonWifiCommandsTab.styles = i`
     .dialog-footer-actions { display: flex; gap: 8px; }
     .dialog-footer-note { min-height: 18px; font-size: 13px; color: var(--error-color, #db4437); }
     .config-block { display: grid; gap: 14px; }
-    .checkbox-row { width: 100%; border: 0; background: transparent; padding: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; cursor: pointer; color: inherit; }
+    .config-group { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--divider-color); border-radius: 14px; background: color-mix(in srgb, var(--ha-card-background, transparent) 92%, #000); }
+    .checkbox-row { width: 100%; border: 0; background: transparent; padding: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 2px; font-size: 13px; cursor: pointer; color: inherit; text-align: left; }
     .checkbox-row[disabled] { cursor: default; opacity: 0.6; }
     .checkbox-row.active .checkbox-icon { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
-    .checkbox-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .checkbox-left { display: contents; }
+    .checkbox-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; text-align: left; }
     .checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: color-mix(in srgb, var(--ha-card-background, transparent) 88%, #000); display: flex; align-items: center; justify-content: center; transition: background-color 120ms ease, border-color 120ms ease; }
     .checkbox-icon ha-icon { --mdc-icon-size: 16px; }
+    .checkbox-icon.power-on { color: #2e7d32; background: color-mix(in srgb, #2e7d32 18%, var(--ha-card-background, transparent)); }
+    .checkbox-icon.power-off { color: #c62828; background: color-mix(in srgb, #c62828 18%, var(--ha-card-background, transparent)); }
+    .checkbox-copy > span:first-child { font-size: 14px; line-height: 1.35; }
+    .checkbox-subtext { min-height: 1.35em; font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); white-space: normal; }
+    .checkbox-row ha-switch { align-self: center; }
     .activities-label, .warning-label, .action-helper { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
+    .activities-label.disabled { opacity: 0.55; }
     .activity-chip-row, .version-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
     .activity-chip, .version-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; font: inherit; }
     .activity-chip.active, .version-chip.active, .action-tab.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); color: var(--primary-color); }
+    .activity-chip.disabled,
+    .activity-chip:disabled,
+    .activity-chip.disabled.active,
+    .activity-chip:disabled.active {
+      opacity: 0.45;
+      cursor: default;
+      border-color: var(--divider-color);
+      background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000);
+      color: inherit;
+      pointer-events: none;
+    }
+    .activity-chip.disabled:hover,
+    .activity-chip:disabled:hover,
+    .activity-chip.disabled.active:hover,
+    .activity-chip:disabled.active:hover {
+      border-color: var(--divider-color);
+      background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000);
+      color: inherit;
+    }
     .action-tabs { display: flex; gap: 8px; }
     .action-tab { border: 1px solid var(--divider-color); border-radius: 999px; padding: 7px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .action-selector-wrap[hidden] { display: none; }

@@ -22,6 +22,8 @@ class _Store:
     async def async_get_hub_config(self, entry_id, **kwargs):
         return {
             "commands_hash": "abc123",
+            "power_on_command_id": 1,
+            "power_off_command_id": 2,
             "commands": [
                 {
                     "name": "Launch Netflix",
@@ -145,6 +147,35 @@ def test_ws_command_sync_progress_uses_success_hash_to_clear_sync_needed(monkeyp
 class _EmptyStore:
     async def async_get_hub_config(self, entry_id, **kwargs):
         return {"commands_hash": "abc123", "commands": []}
+
+
+def test_ws_get_command_config_returns_power_assignments(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return _Store()
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_get_command_config(
+                SimpleNamespace(), conn, {"id": 12, "entity_id": "remote.living_room"}
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    payload = conn.result[1]
+    assert payload["power_on_command_id"] == 1
+    assert payload["power_off_command_id"] == 2
 
 
 def test_ws_command_sync_progress_zero_config_and_no_managed_not_needed(monkeypatch):

@@ -835,6 +835,7 @@ class SofabatonHub:
         brand_name: str = "m3tac0de",
         power_on_command_id: int | None = None,
         power_off_command_id: int | None = None,
+        input_command_ids: list[int] | None = None,
     ) -> dict[str, Any] | None:
         """Replay the WiFi virtual-device creation sequence on the selected hub."""
 
@@ -847,6 +848,7 @@ class SofabatonHub:
                 brand_name=brand_name,
                 power_on_command_id=power_on_command_id,
                 power_off_command_id=power_off_command_id,
+                input_command_ids=input_command_ids,
             ),
         )
 

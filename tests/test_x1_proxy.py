@@ -918,6 +918,86 @@ def test_create_wifi_device_x1s_without_power_commands_skips_power_edit_flow(mon
     assert [payload for opcode, payload in sent if (opcode & 0xFF) == 0x41] == [bytes([0x09, 0x04])]
 
 
+def test_create_wifi_device_x1_can_assign_input_commands(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x04)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.2.77")
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(
+        commands=[f"Command {idx}" for idx in range(1, 11)],
+        input_command_ids=[2, 5, 7, 9],
+    )
+
+    assert result == {"device_id": 0x04, "status": "success"}
+
+    input_payload = next(payload for opcode, payload in sent if opcode == 0xE346)
+    assert input_payload[:11] == bytes.fromhex("01 00 01 01 00 01 04 01 04 00 00")
+    assert input_payload[11:46] == bytes([0x02, 0x00, 0x00, 0x00, 0x00]) + b"Command 2".ljust(30, b"\x00")
+    assert input_payload[46:81] == bytes([0x05, 0x00, 0x00, 0x00, 0x00]) + b"Command 5".ljust(30, b"\x00")
+    assert input_payload[81:116] == bytes([0x07, 0x00, 0x00, 0x00, 0x00]) + b"Command 7".ljust(30, b"\x00")
+    assert input_payload[116:151] == bytes([0x09, 0x00, 0x00, 0x00, 0x00]) + b"Command 9".ljust(30, b"\x00")
+
+    refresh_requests = [(opcode, payload) for opcode, payload in sent if opcode == 0x020C]
+    assert refresh_requests == [
+        (0x020C, bytes([0x04, 0x02])),
+        (0x020C, bytes([0x04, 0x05])),
+        (0x020C, bytes([0x04, 0x07])),
+        (0x020C, bytes([0x04, 0x09])),
+    ]
+
+    payload_08 = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x08]
+    assert len(payload_08) == 2
+
+
+def test_create_wifi_device_x1s_ignores_input_commands_for_now(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x09)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(
+        device_name="Living Room Roku",
+        commands=["My Cmd"],
+        request_port=8765,
+        input_command_ids=[1],
+    )
+
+    assert result == {"device_id": 0x09, "status": "success"}
+    assert all(opcode != 0xE346 for opcode, _ in sent)
+    assert all(opcode != 0x020C for opcode, _ in sent)
+
+
 def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",

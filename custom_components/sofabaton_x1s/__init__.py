@@ -48,6 +48,7 @@ from .hub import SofabatonHub, get_hub_model
 from .command_config import (
     CommandConfigStore,
     count_configured_command_slots,
+    normalize_command_id_list,
     normalize_power_command_id,
 )
 from .cache_store import PersistentCacheStore
@@ -902,6 +903,7 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
     max_command_id = len(commands)
     raw_power_on_command_id = call.data.get("power_on_command_id")
     raw_power_off_command_id = call.data.get("power_off_command_id")
+    raw_input_command_ids = call.data.get("input_command_ids")
     power_on_command_id = normalize_power_command_id(
         raw_power_on_command_id,
         max_command_id=max_command_id,
@@ -914,6 +916,12 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
         raise ValueError(f"power_on_command_id must be between 1 and {max_command_id}")
     if raw_power_off_command_id is not None and power_off_command_id is None:
         raise ValueError(f"power_off_command_id must be between 1 and {max_command_id}")
+    input_command_ids = normalize_command_id_list(
+        raw_input_command_ids,
+        max_command_id=max_command_id,
+    )
+    if raw_input_command_ids is not None and input_command_ids is None:
+        raise ValueError(f"input_command_ids entries must each be between 1 and {max_command_id}")
 
     request_port = _resolve_roku_listen_port(hass, hub.entry_id)
 
@@ -923,6 +931,7 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
         request_port=request_port,
         power_on_command_id=power_on_command_id,
         power_off_command_id=power_off_command_id,
+        input_command_ids=input_command_ids,
     )
 
 

@@ -52,6 +52,27 @@ def normalize_power_command_id(value: Any, *, max_command_id: int = POWER_COMMAN
     return command_id
 
 
+def normalize_command_id_list(
+    values: Any,
+    *,
+    max_command_id: int = POWER_COMMAND_MAX,
+) -> list[int] | None:
+    if values is None:
+        return None
+
+    if not isinstance(values, list):
+        return None
+
+    normalized: list[int] = []
+    for value in values:
+        command_id = normalize_power_command_id(value, max_command_id=max_command_id)
+        if command_id is None:
+            return None
+        normalized.append(command_id)
+
+    return normalized
+
+
 def _normalize_slot(slot: Any, idx: int) -> dict[str, Any]:
     if not isinstance(slot, dict):
         return _default_slot(idx)

@@ -58,6 +58,12 @@ create_wifi_device:
           min: 1
           max: 10
           mode: box
+    input_command_ids:
+      name: Input command ids
+      description: Optional ordered list of command positions from `commands` to register as device input switchers on X1 hubs. These are command-list positions, not discovered hub command ids.
+      required: false
+      selector:
+        object:
 create_ip_button:
   name: Create virtual IP button
   description: Create a virtual HTTP device/button on the hub based on an IP command definition.
