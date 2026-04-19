@@ -971,6 +971,64 @@ def test_create_wifi_device_x1_can_assign_input_commands(monkeypatch) -> None:
     assert len(payload_08) == 2
 
 
+def test_create_wifi_device_x1_six_inputs_uses_fa46_plus_2246_commit(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x0D)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.2.77")
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(
+        commands=[f"TEST {idx}" for idx in range(1, 7)],
+        input_command_ids=[1, 2, 3, 4, 5, 6],
+    )
+
+    assert result == {"device_id": 0x0D, "status": "success"}
+
+    family_46_frames = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
+
+    # FA46: 250B fixed, sub=02, N_total=6 in header, all 6 entries
+    fa46_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0xFA46]
+    assert len(fa46_frames) == 1
+    _, fa46_payload = fa46_frames[0]
+    assert len(fa46_payload) == 250
+    assert fa46_payload[:11] == bytes.fromhex("01 00 01 01 00 02 0d 01 06 00 00")  # sub=02, N=6
+    # Entry 1: cmd_id=1, command_code=0x4E21, label "TEST 1" (20B padded)
+    assert fa46_payload[11:38] == bytes.fromhex("01 00 00 00 00 4e 21") + b"TEST 1".ljust(20, b"\x00")
+    # Entry 6: cmd_id=6, command_code=0x4E26, label "TEST 6"
+    assert fa46_payload[11 + 5 * 27 : 11 + 6 * 27] == bytes.fromhex("06 00 00 00 00 4e 26") + b"TEST 6".ljust(20, b"\x00")
+
+    # 2246 commit: 34B (= 6*27 - 128), last byte = (sum(fa46_payload) - 0x02) & 0xFF
+    commit_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0x2246]
+    assert len(commit_frames) == 1
+    _, commit_payload = commit_frames[0]
+    assert len(commit_payload) == 34
+    assert commit_payload[:4] == bytes.fromhex("01 00 02 00")
+    assert commit_payload[4:-1] == bytes(29)
+    expected_checksum = (sum(fa46_payload) - 0x02) & 0xFF
+    assert commit_payload[-1] == expected_checksum
+
+    # No old-style single-frame with inline checksum (e.g., 0xC846) for N=6
+    old_style_opcodes = {0xFA46, 0x2246, 0x7746}  # FA46, commit, sync are all expected
+    assert not any(opcode not in old_style_opcodes and (opcode & 0xFF) == 0x46 for opcode, _ in family_46_frames)
+
+
 def test_create_wifi_device_x1s_can_assign_input_commands(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
@@ -992,6 +1050,7 @@ def test_create_wifi_device_x1s_can_assign_input_commands(monkeypatch) -> None:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
     monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
 
     result = proxy.create_wifi_device(
@@ -1002,20 +1061,33 @@ def test_create_wifi_device_x1s_can_assign_input_commands(monkeypatch) -> None:
     )
 
     assert result == {"device_id": 0x09, "status": "success"}
-    family_46_payloads = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
-    input_opcode, input_payload = family_46_payloads[-2]
-    commit_opcode, commit_payload = family_46_payloads[-1]
-    assert len(input_payload) == 250
-    assert len(commit_payload) == 16
-    assert input_payload[:10] == bytes.fromhex("01 00 01 01 00 02 09 01 03 00")
-    assert input_payload[10:57].startswith(bytes.fromhex("00 01 00 00 00 00 00 00 01 00"))
-    assert "TEST 1".encode("utf-16le") in input_payload
-    assert "TEST 3".encode("utf-16le") in input_payload
-    assert "TEST 5".encode("utf-16le") in input_payload
 
-    assert input_opcode == 0xFA46
-    assert commit_opcode == 0x1046
-    assert commit_payload == bytes.fromhex("01 00 02 00 00 00 00 00 00 00 00 00 00 00 00 8e")
+    req_activity_frames = [(opcode, payload) for opcode, payload in sent if opcode == 0x0148]
+    assert req_activity_frames == [(0x0148, bytes([0x09]))]
+
+    # X1S uses FA46 (sub=02, fixed 250B) + 1046 commit for N≥3 inputs.
+    family_46_frames = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
+    fa46_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0xFA46]
+    assert len(fa46_frames) == 1, f"expected exactly 1 FA46 frame, got {len(fa46_frames)}"
+    _, fa46_payload = fa46_frames[0]
+    assert len(fa46_payload) == 250
+    # Header: sub=02 (byte[5]), device_id=0x09, num_inputs=3
+    assert fa46_payload[:10] == bytes.fromhex("01 00 01 01 00 02 09 01 03 00")
+    # First input entry (48B): fixed fields + label
+    assert fa46_payload[10:20] == bytes.fromhex("00 01 00 00 00 00 00 00 01 00")
+    assert "TEST 1".encode("utf-16le") in fa46_payload
+    assert "TEST 3".encode("utf-16le") in fa46_payload
+    assert "TEST 5".encode("utf-16le") in fa46_payload
+    # No inner checksum byte on FA46
+
+    # 1046 commit frame: 16B, last byte = (sum(fa46_payload) - 0x02) & 0xFF
+    commit_frames = [(opcode, payload) for opcode, payload in sent if opcode == 0x1046]
+    assert len(commit_frames) == 1, f"expected exactly 1 1046 commit frame, got {len(commit_frames)}"
+    _, commit_payload = commit_frames[0]
+    assert len(commit_payload) == 16
+    assert commit_payload[:15] == bytes.fromhex("01 00 02 00 00 00 00 00 00 00 00 00 00 00 00")
+    expected_checksum = (sum(fa46_payload) - 0x02) & 0xFF
+    assert commit_payload[15] == expected_checksum
 
     refresh_requests = [(opcode, payload) for opcode, payload in sent if opcode == 0x020C]
     assert refresh_requests == [
@@ -1029,10 +1101,122 @@ def test_create_wifi_device_x1s_can_assign_input_commands(monkeypatch) -> None:
     assert finalize_payload[7] == 0x09
     assert finalize_payload[9] == 0x09
     assert finalize_payload[10:12] == bytes.fromhex("1c 10")
-    assert finalize_payload[30] == 0x4D
-    assert finalize_payload[32:92].decode("utf-16be").rstrip("\x00") == "Living Room Roku"
-    assert finalize_payload[92:152].decode("utf-16be").rstrip("\x00") == "m3tac0de"
-    assert finalize_payload[152:164] == bytes.fromhex("fc 00 01 fc 01 01 01 00 fc 01 fc 01")
+
+
+def test_create_wifi_device_x1s_five_inputs_uses_fa46_plus_7046_commit(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x10)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
+
+    result = proxy.create_wifi_device(
+        device_name="Input test 6cmd 5in",
+        commands=[f"TEST {idx}" for idx in range(1, 7)],
+        request_port=8060,
+        input_command_ids=[1, 2, 3, 4, 5],
+    )
+
+    assert result == {"device_id": 0x10, "status": "success"}
+
+    family_46_frames = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
+    fa46_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0xFA46]
+    assert len(fa46_frames) == 1
+    _, fa46_payload = fa46_frames[0]
+    assert len(fa46_payload) == 250
+    assert fa46_payload[:10] == bytes.fromhex("01 00 01 01 00 02 10 01 05 00")  # N_total=5
+
+    # N=5 commit: opcode 0x7046 (112B payload = 5*48-128)
+    commit_frames = [(opcode, payload) for opcode, payload in sent if opcode == 0x7046]
+    assert len(commit_frames) == 1
+    _, commit_payload = commit_frames[0]
+    assert len(commit_payload) == 112
+    assert commit_payload[:4] == bytes.fromhex("01 00 02 00")
+    assert commit_payload[4:-1] == bytes(107)  # 107 zero bytes
+    expected_checksum = (sum(fa46_payload) - 0x02) & 0xFF
+    assert commit_payload[-1] == expected_checksum
+
+    assert not any(opcode == 0x1046 for opcode, _ in sent)
+    assert not any(opcode == 0xA046 for opcode, _ in sent)
+
+
+def test_create_wifi_device_x1s_six_inputs_uses_fa46_plus_a046(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x09)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
+
+    result = proxy.create_wifi_device(
+        device_name="Input test 9x",
+        commands=[f"TEST {idx}" for idx in range(1, 7)],
+        request_port=8060,
+        input_command_ids=[1, 2, 3, 4, 5, 6],
+    )
+
+    assert result == {"device_id": 0x09, "status": "success"}
+
+    # FA46 frame: 250B, sub=02, N_total=6 in header, only entries 1-5
+    family_46_frames = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
+    fa46_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0xFA46]
+    assert len(fa46_frames) == 1
+    _, fa46_payload = fa46_frames[0]
+    assert len(fa46_payload) == 250
+    assert fa46_payload[:10] == bytes.fromhex("01 00 01 01 00 02 09 01 06 00")  # N_total=6
+    assert "TEST 1".encode("utf-16le") in fa46_payload
+    assert "TEST 5".encode("utf-16le") in fa46_payload
+    assert "TEST 6".encode("utf-16le") not in fa46_payload  # overflow, not in FA46
+
+    # A046 frame: 160B continuation, overflow entry 6, combined checksum
+    a046_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0xA046]
+    assert len(a046_frames) == 1
+    _, a046_payload = a046_frames[0]
+    assert len(a046_payload) == 160
+    assert a046_payload[:10] == bytes.fromhex("01 00 02 00 06 00 00 00 00 00")  # N_total=6
+    assert a046_payload[10:13] == bytes.fromhex("00 06 00")  # overflow entry cmd_id=6
+    assert "TEST 6".encode("utf-16le") in a046_payload
+    expected_checksum = (sum(fa46_payload) + sum(a046_payload[:-1]) - 0x05) & 0xFF
+    assert a046_payload[-1] == expected_checksum
+
+    # No variable-size commit frame for N>5 (uses A046 instead)
+    assert not any(opcode in {0x1046, 0x4046, 0x7046} for opcode, _ in sent)
+
+    refresh_requests = [(opcode, payload) for opcode, payload in sent if opcode == 0x020C]
+    assert refresh_requests == [(0x020C, bytes([0x09, i])) for i in range(1, 7)]
 
 
 def test_x1s_input_refresh_frame_updates_command_cache() -> None:

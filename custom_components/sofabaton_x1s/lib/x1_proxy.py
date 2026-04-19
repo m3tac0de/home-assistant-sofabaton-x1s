@@ -2976,32 +2976,130 @@ class X1Proxy:
         payload[-1] = (sum(payload[:-1]) - 0x02) & 0xFF
         return bytes(payload)
 
-    def _build_virtual_ip_wifi_input_config_payload(
+    def _build_wifi_input_config_fa46_payload(
         self,
         *,
         device_id: int,
         commands: list[Any],
         input_command_ids: list[int],
     ) -> bytes:
-        payload = bytearray([0x01, 0x00, 0x01, 0x01, 0x00, 0x02, device_id & 0xFF, 0x01, len(input_command_ids) & 0xFF, 0x00])
+        """Build the fixed 250B FA46 payload for X1 when N≥6 inputs (no inline checksum).
 
-        for ordinal, command_id in enumerate(input_command_ids, start=1):
+        Header uses sub-type 0x02, entries are 27B each, zero-padded to 250B.
+        A separate commit frame carries the checksum.
+        """
+        N = len(input_command_ids)
+        payload = bytearray(
+            [0x01, 0x00, 0x01, 0x01, 0x00, 0x02, device_id & 0xFF, 0x01, N & 0xFF, 0x00, 0x00]
+        )
+        for command_id in input_command_ids:
             label = _wifi_command_label(commands[command_id - 1], command_id - 1)
-            row = (
-                bytes([0x00, command_id & 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ordinal & 0xFF, 0x00])
-                + label.encode("utf-16le")[:37].ljust(37, b"\x00")
+            _slot_id, command_code = _ROKU_APP_SLOTS[command_id - 1]
+            payload.extend(
+                bytes([command_id & 0xFF, 0x00, 0x00, 0x00, 0x00])
+                + command_code.to_bytes(2, "big")
+                + _ascii_padded(label, length=20)
             )
-            payload.extend(row)
-
-        for _ in range(5 - len(input_command_ids)):
-            payload.extend(b"\x00" * 47)
-
-        payload.extend(b"\x00" * 5)
-        payload[-1] = (sum(payload[:-1]) - 0x02) & 0xFF
+        payload.extend(b"\x00" * (250 - len(payload)))
         return bytes(payload)
 
-    def _build_virtual_ip_wifi_input_commit_payload(self) -> bytes:
-        return bytes.fromhex("01 00 02 00 00 00 00 00 00 00 00 00 00 00 00 8e")
+    def _build_virtual_ip_wifi_input_a746_payload(
+        self,
+        *,
+        device_id: int,
+        commands: list[Any],
+        input_command_ids: list[int],
+    ) -> bytes:
+        """Build the family-0x46 sub=01 input-config save payload for X1S/X2 (N=1 or N=2).
+
+        Structure: 10B header + N×48B entries + 108B trailing zeros + 1B checksum.
+        Total: 167B for N=1 (opcode 0xA746), 215B for N=2 (opcode 0xD746).
+        Only call this for N≤2; use FA46 path for N≥3.
+        """
+        N = len(input_command_ids)
+        payload = bytearray([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, device_id & 0xFF, 0x01, N & 0xFF, 0x00])
+        for ordinal, command_id in enumerate(input_command_ids, start=1):
+            label = _wifi_command_label(commands[command_id - 1], command_id - 1)
+            entry = (
+                bytes([0x00, command_id & 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ordinal & 0xFF, 0x00])
+                + label.encode("utf-16le")[:38].ljust(38, b"\x00")
+            )
+            payload.extend(entry)
+        payload.extend(b"\x00" * 108)
+        payload.append((sum(payload) - 0x02) & 0xFF)
+        return bytes(payload)
+
+    def _build_virtual_ip_wifi_input_fa46_payload(
+        self,
+        *,
+        device_id: int,
+        commands: list[Any],
+        input_command_ids: list[int],
+    ) -> bytes:
+        """Build the family-0x46 sub=02 input-config save payload for X1S/X2 (N≥3).
+
+        Fixed 250B payload: 10B header (N_total in byte[8]) + up to 5 entries × 48B +
+        zero-padding to 250B.  No inner checksum byte.
+        For N≤5: all entries fit; followed by a 1046 commit frame.
+        For N>5: first 5 entries only; remaining entries go in an A046 continuation frame.
+        """
+        N = len(input_command_ids)
+        entries_in_frame = min(N, 5)
+        payload = bytearray([0x01, 0x00, 0x01, 0x01, 0x00, 0x02, device_id & 0xFF, 0x01, N & 0xFF, 0x00])
+        for i in range(entries_in_frame):
+            command_id = input_command_ids[i]
+            ordinal = i + 1
+            label = _wifi_command_label(commands[command_id - 1], command_id - 1)
+            entry = (
+                bytes([0x00, command_id & 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ordinal & 0xFF, 0x00])
+                + label.encode("utf-16le")[:38].ljust(38, b"\x00")
+            )
+            payload.extend(entry)
+        payload.extend(b"\x00" * (250 - len(payload)))
+        return bytes(payload)
+
+    def _build_virtual_ip_wifi_input_fa46_commit_payload(
+        self, fa46_payload: bytes, commit_size: int
+    ) -> bytes:
+        """Build the variable-size commit frame payload that follows an FA46 save.
+
+        commit_size = N * entry_size - 128, where entry_size is 48B (X1S) or 27B (X1).
+        X1S: 16B for N=3, 64B for N=4, 112B for N=5.
+        X1:  34B for N=6.
+        Last byte = (sum(fa46_payload) - 0x02) & 0xFF.
+        """
+        checksum = (sum(fa46_payload) - 0x02) & 0xFF
+        payload = bytearray([0x01, 0x00, 0x02, 0x00])
+        payload.extend(b"\x00" * (commit_size - 5))
+        payload.append(checksum)
+        return bytes(payload)
+
+    def _build_virtual_ip_wifi_input_a046_payload(
+        self,
+        *,
+        total_n: int,
+        commands: list[Any],
+        overflow_command_ids: list[int],
+        fa46_payload: bytes,
+    ) -> bytes:
+        """Build the A046 continuation frame for N>5 inputs.
+
+        Structure: 10B header + N_overflow × 41B entries + 108B zeros + 1B checksum.
+        Each overflow entry: 3B (00 cmd_id 00) + 38B label — no ordinal field.
+        Checksum = (sum(fa46_payload) - 0x02 + sum(this_payload[:-1]) - 0x02) & 0xFF.
+        """
+        payload = bytearray([0x01, 0x00, 0x02, 0x00, total_n & 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00])
+        for command_id in overflow_command_ids:
+            label = _wifi_command_label(commands[command_id - 1], command_id - 1)
+            entry = (
+                bytes([0x00, command_id & 0xFF, 0x00])
+                + label.encode("utf-16le")[:38].ljust(38, b"\x00")
+            )
+            payload.extend(entry)
+        payload.extend(b"\x00" * 108)
+        checksum = (sum(fa46_payload) + sum(payload) - 0x05) & 0xFF
+        payload.append(checksum)
+        return bytes(payload)
 
     def _build_virtual_ip_wifi_input_finalize_payload(
         self,
@@ -3064,39 +3162,103 @@ class X1Proxy:
                 )
                 return False
 
-            payload = self._build_wifi_input_config_payload(
-                device_id=device_id,
-                commands=commands,
-                input_command_ids=input_command_ids,
-            )
-            if not self._send_roku_step(
-                step_name="input-config-save",
-                family=0x46,
-                payload=payload,
-                ack_opcode=0x0103,
-            ):
-                return False
+            if len(input_command_ids) >= 6:
+                fa46_payload = self._build_wifi_input_config_fa46_payload(
+                    device_id=device_id,
+                    commands=commands,
+                    input_command_ids=input_command_ids,
+                )
+                if not self._send_roku_step(
+                    step_name="input-config-save-fa46",
+                    family=0x46,
+                    payload=fa46_payload,
+                    ack_opcode=0x0103,
+                ):
+                    return False
+                commit_payload = self._build_virtual_ip_wifi_input_fa46_commit_payload(
+                    fa46_payload, commit_size=len(input_command_ids) * 27 - 128
+                )
+                if not self._send_roku_step(
+                    step_name="input-config-save-commit",
+                    family=0x46,
+                    payload=commit_payload,
+                    ack_opcode=0x0103,
+                ):
+                    return False
+            else:
+                payload = self._build_wifi_input_config_payload(
+                    device_id=device_id,
+                    commands=commands,
+                    input_command_ids=input_command_ids,
+                )
+                if not self._send_roku_step(
+                    step_name="input-config-save",
+                    family=0x46,
+                    payload=payload,
+                    ack_opcode=0x0103,
+                ):
+                    return False
         elif self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
-            payload = self._build_virtual_ip_wifi_input_config_payload(
-                device_id=device_id,
-                commands=commands,
-                input_command_ids=input_command_ids,
-            )
-            if not self._send_roku_step(
-                step_name="input-config-save",
-                family=0x46,
-                payload=payload,
-                ack_opcode=0x0103,
-            ):
+            self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
+            if not self.wait_for_activity_inputs_burst(timeout=5.0):
+                self._log.warning(
+                    "[WIFI] missing activity-input candidates before input config dev=0x%02X",
+                    device_id & 0xFF,
+                )
                 return False
 
-            if not self._send_roku_step(
-                step_name="input-config-commit",
-                family=0x46,
-                payload=self._build_virtual_ip_wifi_input_commit_payload(),
-                ack_opcode=0x0103,
-            ):
-                return False
+            if len(input_command_ids) >= 3:
+                fa46_payload = self._build_virtual_ip_wifi_input_fa46_payload(
+                    device_id=device_id,
+                    commands=commands,
+                    input_command_ids=input_command_ids,
+                )
+                if not self._send_roku_step(
+                    step_name="input-config-save-fa46",
+                    family=0x46,
+                    payload=fa46_payload,
+                    ack_opcode=0x0103,
+                ):
+                    return False
+                if len(input_command_ids) > 5:
+                    a046_payload = self._build_virtual_ip_wifi_input_a046_payload(
+                        total_n=len(input_command_ids),
+                        commands=commands,
+                        overflow_command_ids=input_command_ids[5:],
+                        fa46_payload=fa46_payload,
+                    )
+                    if not self._send_roku_step(
+                        step_name="input-config-save-a046",
+                        family=0x46,
+                        payload=a046_payload,
+                        ack_opcode=0x0103,
+                    ):
+                        return False
+                else:
+                    n_entries = min(len(input_command_ids), 5)
+                    commit_payload = self._build_virtual_ip_wifi_input_fa46_commit_payload(
+                        fa46_payload, commit_size=n_entries * 48 - 128
+                    )
+                    if not self._send_roku_step(
+                        step_name="input-config-save-commit",
+                        family=0x46,
+                        payload=commit_payload,
+                        ack_opcode=0x0103,
+                    ):
+                        return False
+            else:
+                payload = self._build_virtual_ip_wifi_input_a746_payload(
+                    device_id=device_id,
+                    commands=commands,
+                    input_command_ids=input_command_ids,
+                )
+                if not self._send_roku_step(
+                    step_name="input-config-save",
+                    family=0x46,
+                    payload=payload,
+                    ack_opcode=0x0103,
+                ):
+                    return False
         else:
             self._log.info(
                 "[WIFI] input configuration is not yet implemented for hub version %s; skipping ids=%s",
@@ -4058,6 +4220,8 @@ class X1Proxy:
             len(payload),
         )
         self.transport.send_local(frame)
+        if self.diag_dump:
+            self._log.info("[DUMP] →hub %s", _hexdump(frame))
 
     def _handle_hub_frame(self, data: bytes, cid: int) -> None:
         if self.diag_dump:
