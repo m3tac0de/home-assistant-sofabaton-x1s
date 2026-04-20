@@ -213,7 +213,7 @@ class ActivityInputsHandler(BaseFrameHandler):
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
-        proxy.notify_activity_inputs_frame()
+        proxy.notify_activity_inputs_frame(frame.payload)
 
 def _parse_header_lines(lines: list[str]) -> dict[str, str]:
     headers: dict[str, str] = {}

@@ -159,6 +159,15 @@ device_to_activity:
           min: 1
           max: 99
           mode: box
+    input_command_id:
+      name: Input command id
+      description: Optional command id to set as the device input when it powers on (X1 hubs only). Use the same command id as defined in create_wifi_device or discovered via the diagnostic sensor.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
 
 delete_device:
   name: Delete device

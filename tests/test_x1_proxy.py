@@ -1943,7 +1943,7 @@ def test_add_device_to_activity_discards_stale_members_before_refresh(monkeypatc
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
-        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None, input_index=0: source_payload,
     )
     monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
     monkeypatch.setattr(
@@ -2013,7 +2013,7 @@ def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> N
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
-        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None, input_index=0: source_payload,
     )
     monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
     monkeypatch.setattr(
@@ -2084,7 +2084,7 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
-        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None, input_index=0: source_payload,
     )
 
     monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
@@ -2162,7 +2162,7 @@ def test_add_device_to_activity_x2_sends_commit_stage(monkeypatch) -> None:
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
-        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None, input_index=0: source_payload,
     )
 
     ack_calls: list[list[tuple[int, int | None]]] = []
@@ -2268,7 +2268,7 @@ def test_add_device_to_activity_x1_does_not_send_finalize_stage(monkeypatch) -> 
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
-        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None, input_index=0: source_payload,
     )
     monkeypatch.setattr(
         proxy,
@@ -3016,3 +3016,322 @@ def test_command_to_button_requires_all_acks(monkeypatch) -> None:
 
     assert proxy.command_to_button(0x65, 0xC1, 0x05, 0x02) is None
     assert requested_map == []
+
+
+# ---------------------------------------------------------------------------
+# _parse_activity_inputs_payloads
+# ---------------------------------------------------------------------------
+
+def _make_activity_inputs_entry(slot_id: int, cmd_id: int, name: str = "") -> bytes:
+    """Build a 27-byte ACTIVITY_INPUTS entry."""
+    name_bytes = name.encode("ascii", errors="replace")[:20].ljust(20, b"\x00")
+    return bytes([slot_id, 0, 0, 0, 0, (cmd_id >> 8) & 0xFF, cmd_id & 0xFF]) + name_bytes
+
+
+def test_parse_activity_inputs_payloads_single_page() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = b"\x00" * 11
+    entry3 = _make_activity_inputs_entry(3, 3, "CMD 3")
+    entry4 = _make_activity_inputs_entry(4, 4, "CMD 4")
+    entry6 = _make_activity_inputs_entry(6, 6, "CMD 6")
+    payload = header + entry3 + entry4 + entry6
+
+    entries = proxy._parse_activity_inputs_payloads([payload])
+
+    assert entries == [(3, 3), (4, 4), (6, 6)]
+
+
+def test_parse_activity_inputs_payloads_multi_page_spanning_entry() -> None:
+    """An entry that straddles the page-1/page-2 boundary must be reassembled correctly."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    entry_a = _make_activity_inputs_entry(0x31, 0x31, "Input A")
+    entry_b = _make_activity_inputs_entry(0x45, 0x45, "Input B")
+
+    # Split entry_b across two pages: first 10 bytes in page 1, rest in page 2
+    header1 = b"\x00" * 11
+    header2 = bytes([0x01, 0x00, 0x02])
+
+    page1 = header1 + entry_a + entry_b[:10]
+    page2 = header2 + entry_b[10:] + _make_activity_inputs_entry(0x46, 0x46, "Input C")
+
+    entries = proxy._parse_activity_inputs_payloads([page1, page2])
+
+    assert entries == [(0x31, 0x31), (0x45, 0x45), (0x46, 0x46)]
+
+
+def test_parse_activity_inputs_payloads_stops_at_null_slot() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = b"\x00" * 11
+    entry = _make_activity_inputs_entry(5, 5, "CMD 5")
+    terminator = b"\x00" * 27
+
+    entries = proxy._parse_activity_inputs_payloads([header + entry + terminator])
+
+    assert entries == [(5, 5)]
+
+
+# ---------------------------------------------------------------------------
+# query_device_input_index
+# ---------------------------------------------------------------------------
+
+def test_query_device_input_index_returns_ordinal(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    header = b"\x00" * 11
+    # slot_ids 3, 4, 5, 6 — cmd 5 is at ordinal 3
+    entries_bytes = (
+        _make_activity_inputs_entry(3, 3)
+        + _make_activity_inputs_entry(4, 4)
+        + _make_activity_inputs_entry(5, 5)
+        + _make_activity_inputs_entry(6, 6)
+    )
+    payload = header + entries_bytes
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: sent.append((opcode, data)))
+
+    def _fake_burst(timeout=5.0):
+        proxy._activity_inputs_payloads.clear()
+        proxy._activity_inputs_payloads.append(payload)
+        return True
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
+
+    result = proxy.query_device_input_index(0x05, 5)
+
+    assert result == 3
+    from custom_components.sofabaton_x1s.lib.protocol_const import OP_REQ_ACTIVITY_INPUTS
+    assert sent == [(OP_REQ_ACTIVITY_INPUTS, bytes([0x05]))]
+
+
+def test_query_device_input_index_returns_none_on_timeout(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: False)
+
+    assert proxy.query_device_input_index(0x05, 5) is None
+
+
+def test_query_device_input_index_returns_none_when_not_found(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = b"\x00" * 11
+    payload = header + _make_activity_inputs_entry(3, 3)
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+
+    def _fake_burst(timeout=5.0):
+        proxy._activity_inputs_payloads.clear()
+        proxy._activity_inputs_payloads.append(payload)
+        return True
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
+
+    assert proxy.query_device_input_index(0x05, 99) is None
+
+
+# ---------------------------------------------------------------------------
+# add_device_to_activity with input_cmd_id
+# ---------------------------------------------------------------------------
+
+def _make_add_device_to_activity_mocks(proxy, monkeypatch, *, members=(1,)):
+    """Set up minimal mocks for add_device_to_activity integration tests."""
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        for m in members:
+            proxy.state.record_activity_member(act_lo, m)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
+
+    sent_cmd: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent_cmd.append((opcode, payload)))
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (
+            candidates[0][0],
+            bytes([candidates[0][1] if candidates[0][1] is not None else 0x00]),
+        ),
+    )
+    return sent_cmd
+
+
+def test_add_device_to_activity_with_input_cmd_id_sets_c5_byte(monkeypatch) -> None:
+    """input_cmd_id resolves to ordinal 3 and that value is written to byte[8] of the 0xC5 record."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    sent_cmd = _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
+
+    # Header must be exactly 9 bytes; byte[8] = row count.
+    power_on_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 01 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "01 00 00 00 00 00 2d 76 00"
+    )
+    power_off_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c7 01 "
+        "01 c7 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 ff ff"
+    )
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_macro_payload",
+        lambda act, button, timeout=5.0: (
+            power_on_source if button == 0xC6 else power_off_source
+        ),
+    )
+
+    # query_device_input_index mock: cmd_id 5 is ordinal 3
+    monkeypatch.setattr(proxy, "query_device_input_index", lambda dev_id, cmd_id, **kw: 3)
+
+    saved_payloads: list[bytes] = []
+    monkeypatch.setattr(
+        proxy,
+        "_send_family_frame",
+        lambda family, payload: saved_payloads.append(payload),
+    )
+
+    result = proxy.add_device_to_activity(101, 2, input_cmd_id=5)
+
+    assert result is not None
+
+    # POWER_ON macro (first saved payload) must contain a 0xC5 record with byte[8]=3
+    on_payload = saved_payloads[0]
+    c5_idx = on_payload.find(bytes([0x02, 0xC5]))
+    assert c5_idx != -1, "0xC5 record for device 0x02 not found in POWER_ON payload"
+    assert on_payload[c5_idx + 8] == 3, f"Expected input_index=3, got {on_payload[c5_idx + 8]}"
+
+
+def test_add_device_to_activity_input_cmd_id_ignored_for_non_x1(monkeypatch) -> None:
+    """On X1S/X2 hubs, input_cmd_id is silently ignored and query_device_input_index is never called."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
+
+    power_on_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 01 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "01 00 00 00 00 00 2d 76 00"
+    )
+    power_off_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c7 01 "
+        "01 c7 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 ff ff"
+    )
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_macro_payload",
+        lambda act, button, timeout=5.0: (
+            power_on_source if button == 0xC6 else power_off_source
+        ),
+    )
+
+    query_called = {"count": 0}
+    monkeypatch.setattr(
+        proxy,
+        "query_device_input_index",
+        lambda dev_id, cmd_id, **kw: query_called.update({"count": query_called["count"] + 1}) or 1,
+    )
+
+    saved_payloads: list[bytes] = []
+    monkeypatch.setattr(
+        proxy,
+        "_send_family_frame",
+        lambda family, payload: saved_payloads.append(payload),
+    )
+
+    result = proxy.add_device_to_activity(101, 2, input_cmd_id=5)
+
+    assert result is not None
+    assert query_called["count"] == 0
+
+    # 0xC5 record must have byte[8]=0 (no input set, since X1S ignores input_cmd_id)
+    on_payload = saved_payloads[0]
+    c5_idx = on_payload.find(bytes([0x02, 0xC5]))
+    assert c5_idx != -1
+    assert on_payload[c5_idx + 8] == 0
+
+
+def test_add_device_to_activity_input_cmd_id_updates_existing_c5_record(monkeypatch) -> None:
+    """When a 0xC5 record already exists in the macro, its byte[8] is updated to the new input_index."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
+
+    # POWER_ON source already contains a 0xC5 record for device 1 with old input_index=0x1A (26)
+    power_on_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 02 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 1a ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "02 00 00 00 00 00 2d 76 00"
+    )
+    power_off_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c7 01 "
+        "01 c7 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 ff ff"
+    )
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_macro_payload",
+        lambda act, button, timeout=5.0: (
+            power_on_source if button == 0xC6 else power_off_source
+        ),
+    )
+
+    # query returns ordinal 4 (new input)
+    monkeypatch.setattr(proxy, "query_device_input_index", lambda dev_id, cmd_id, **kw: 4)
+
+    saved_payloads: list[bytes] = []
+    monkeypatch.setattr(
+        proxy,
+        "_send_family_frame",
+        lambda family, payload: saved_payloads.append(payload),
+    )
+
+    result = proxy.add_device_to_activity(101, 1, input_cmd_id=5)
+
+    assert result is not None
+
+    on_payload = saved_payloads[0]
+    c5_idx = on_payload.find(bytes([0x01, 0xC5]))
+    assert c5_idx != -1
+    assert on_payload[c5_idx + 8] == 4, f"Expected updated input_index=4, got {on_payload[c5_idx + 8]}"

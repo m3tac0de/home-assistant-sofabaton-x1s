@@ -856,13 +856,16 @@ class SofabatonHub:
         self,
         activity_id: int,
         device_id: int,
+        input_cmd_id: int | None = None,
     ) -> dict[str, Any] | None:
         """Replay the activity-device confirmation sequence on the selected hub."""
 
         return await self.hass.async_add_executor_job(
-            self._proxy.add_device_to_activity,
-            activity_id,
-            device_id,
+            lambda: self._proxy.add_device_to_activity(
+                activity_id,
+                device_id,
+                input_cmd_id=input_cmd_id,
+            )
         )
 
     async def async_delete_device(self, device_id: int) -> dict[str, Any] | None:

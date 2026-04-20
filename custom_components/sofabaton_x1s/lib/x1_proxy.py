@@ -349,6 +349,7 @@ class X1Proxy:
         self._activity_inputs_seen = 0
         self._activity_inputs_last_ts = 0.0
         self._activity_inputs_event = threading.Event()
+        self._activity_inputs_payloads: list[bytes] = []
 
         self.transport = TransportBridge(
             real_hub_ip,
@@ -1692,8 +1693,9 @@ class X1Proxy:
                 return None
             self._macro_payload_event.wait(min(remaining, 0.2))
 
-    def notify_activity_inputs_frame(self) -> None:
+    def notify_activity_inputs_frame(self, payload: bytes = b"") -> None:
         with self._activity_inputs_lock:
+            self._activity_inputs_payloads.append(bytes(payload))
             self._activity_inputs_seen += 1
             self._activity_inputs_last_ts = time.monotonic()
             self._activity_inputs_event.set()
@@ -1725,8 +1727,64 @@ class X1Proxy:
                 return False
             self._activity_inputs_event.wait(min(remaining, 0.2))
 
-    def _build_macro_record_chunk(self, *, device_id: int, command_id: int) -> bytes:
-        return bytes([device_id & 0xFF, command_id & 0xFF]) + (b"\x00" * 7) + b"\xff"
+    def _parse_activity_inputs_payloads(self, payloads: list[bytes]) -> list[tuple[int, int]]:
+        """Strip per-page headers from accumulated 0x47 frames and return ordered (slot_id, cmd_id) pairs.
+
+        Page 1 carries an 11-byte header; subsequent pages carry a 3-byte header.
+        Entries are 27 bytes: [slot_id(1)] [pad(4)] [cmd_hi(1)] [cmd_lo(1)] [name(20)].
+        """
+        raw_body = bytearray()
+        for i, payload in enumerate(payloads):
+            if i == 0:
+                raw_body.extend(payload[11:] if len(payload) > 11 else b"")
+            else:
+                raw_body.extend(payload[3:] if len(payload) > 3 else b"")
+
+        entries: list[tuple[int, int]] = []
+        entry_size = 27
+        for offset in range(0, len(raw_body), entry_size):
+            chunk = raw_body[offset : offset + entry_size]
+            if len(chunk) < entry_size:
+                break
+            slot_id = chunk[0]
+            if slot_id == 0x00:
+                break
+            cmd_id = (chunk[5] << 8) | chunk[6]
+            entries.append((slot_id, cmd_id))
+        return entries
+
+    def query_device_input_index(self, device_id: int, cmd_id: int, *, timeout: float = 5.0) -> int | None:
+        """Return the 1-based ordinal of cmd_id in the device's ACTIVITY_INPUTS list, or None if not found."""
+        with self._activity_inputs_lock:
+            self._activity_inputs_payloads.clear()
+
+        self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
+        if not self.wait_for_activity_inputs_burst(timeout=timeout):
+            self._log.warning(
+                "[INPUT_QUERY] timeout waiting for inputs dev=0x%02X cmd=0x%02X",
+                device_id & 0xFF,
+                cmd_id & 0xFF,
+            )
+            return None
+
+        with self._activity_inputs_lock:
+            payloads = list(self._activity_inputs_payloads)
+
+        entries = self._parse_activity_inputs_payloads(payloads)
+        for ordinal, (slot_id, _) in enumerate(entries, start=1):
+            if slot_id == (cmd_id & 0xFF):
+                return ordinal
+
+        self._log.warning(
+            "[INPUT_QUERY] cmd_id=0x%02X not found in %d entries for dev=0x%02X",
+            cmd_id & 0xFF,
+            len(entries),
+            device_id & 0xFF,
+        )
+        return None
+
+    def _build_macro_record_chunk(self, *, device_id: int, command_id: int, input_index: int = 0) -> bytes:
+        return bytes([device_id & 0xFF, command_id & 0xFF, 0, 0, 0, 0, 0, 0, input_index & 0xFF, 0xFF])
 
     def _build_macro_save_payload(
         self,
@@ -1735,6 +1793,7 @@ class X1Proxy:
         device_id: int,
         button_id: int,
         allowed_device_ids: set[int] | None = None,
+        input_index: int = 0,
     ) -> bytes | None:
         """Convert fetched macro payload into the compact save format used by family ``0x12``."""
 
@@ -1862,9 +1921,18 @@ class X1Proxy:
             required_pairs = [(device_id & 0xFF, ButtonName.POWER_OFF)]
 
         for pair in required_pairs:
+            chunk_input_index = input_index if pair[1] == 0xC5 else 0
+            new_chunk = self._build_macro_record_chunk(
+                device_id=pair[0], command_id=pair[1], input_index=chunk_input_index
+            )
             if pair in existing_pairs:
+                if chunk_input_index:
+                    for i, row in enumerate(compact_records):
+                        if row[0] == pair[0] and row[1] == pair[1]:
+                            compact_records[i] = new_chunk
+                            break
                 continue
-            compact_records.append(self._build_macro_record_chunk(device_id=pair[0], command_id=pair[1]))
+            compact_records.append(new_chunk)
             existing_pairs.add(pair)
 
         head[8] = len(compact_records) & 0xFF
@@ -2106,7 +2174,13 @@ class X1Proxy:
             "status": "success",
         }
 
-    def add_device_to_activity(self, activity_id: int, device_id: int) -> dict[str, Any] | None:
+    def add_device_to_activity(
+        self,
+        activity_id: int,
+        device_id: int,
+        *,
+        input_cmd_id: int | None = None,
+    ) -> dict[str, Any] | None:
         """Add ``device_id`` to ``activity_id`` and replay POWER_ON/OFF macro updates."""
 
         if not self.can_issue_commands():
@@ -2181,6 +2255,24 @@ class X1Proxy:
                 )
                 return None
 
+        input_index = 0
+        if input_cmd_id is not None:
+            if self.hub_version == HUB_VERSION_X1:
+                resolved = self.query_device_input_index(dev_lo, input_cmd_id & 0xFF)
+                if resolved is not None:
+                    input_index = resolved
+                else:
+                    self._log.warning(
+                        "[ACTIVITY_ASSIGN] input_cmd_id=0x%02X not found for dev=0x%02X; proceeding without input",
+                        input_cmd_id & 0xFF,
+                        dev_lo,
+                    )
+            else:
+                self._log.info(
+                    "[ACTIVITY_ASSIGN] input_cmd_id ignored for hub version %s (X1 only for now)",
+                    self.hub_version,
+                )
+
         macro_updates: list[int] = []
         for macro_button in (ButtonName.POWER_ON, ButtonName.POWER_OFF):
             macro_name = BUTTONNAME_BY_CODE.get(macro_button, f"0x{macro_button:02X}")
@@ -2201,6 +2293,7 @@ class X1Proxy:
                 device_id=dev_lo,
                 button_id=macro_button,
                 allowed_device_ids=set(ordered_members),
+                input_index=input_index,
             )
             if updated_payload is None:
                 self._log.warning(

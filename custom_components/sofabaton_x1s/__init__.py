@@ -945,6 +945,9 @@ async def _async_handle_device_to_activity(call: ServiceCall):
 
     activity_id = int(call.data["activity_id"])
     device_id = int(call.data["device_id"])
+    input_command_id: int | None = call.data.get("input_command_id")
+    if input_command_id is not None:
+        input_command_id = int(input_command_id)
 
     if activity_id < 1 or activity_id > 255:
         raise ValueError("activity_id must be between 1 and 255")
@@ -954,6 +957,7 @@ async def _async_handle_device_to_activity(call: ServiceCall):
     return await hub.async_add_device_to_activity(
         activity_id=activity_id,
         device_id=device_id,
+        input_cmd_id=input_command_id,
     )
 
 
