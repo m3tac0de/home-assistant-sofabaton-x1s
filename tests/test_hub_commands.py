@@ -1759,6 +1759,98 @@ def test_sync_command_config_post_hoc_reorder_uses_tracked_fav_ids(monkeypatch):
     loop.close()
 
 
+def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    async def _refresh_devices(_timeout=15.0):
+        return {}
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices)
+
+    create_calls: list[dict[str, object]] = []
+    add_calls: list[tuple[int, int, int | None]] = []
+
+    async def _create(*_args, **kwargs):
+        create_calls.append(dict(kwargs))
+        return {"device_id": 9, "status": "success"}
+
+    async def _add_activity(activity_id, device_id, input_cmd_id=None, **_kwargs):
+        add_calls.append((activity_id, device_id, input_cmd_id))
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_create_wifi_device", _create)
+    monkeypatch.setattr(hub, "async_add_device_to_activity", _add_activity)
+    monkeypatch.setattr(hub, "async_command_to_favorite", lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}))
+    monkeypatch.setattr(hub, "async_resync_remote", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_a, **_k: ([], True))
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_a, **_k: None)
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_a, **_k: ([], True))
+    monkeypatch.setattr(hub._proxy, "get_commands_for_entity", lambda *_a, **_k: ([], True))
+
+    payload = {
+        "commands": [
+            {
+                "name": "HDMI 1",
+                "add_as_favorite": False,
+                "hard_button": "",
+                "input_activity_id": "101",
+                "activities": [],
+                "action": {"action": "perform-action"},
+            },
+            {
+                "name": "Favorite Command",
+                "add_as_favorite": True,
+                "hard_button": "",
+                "activities": ["102"],
+                "action": {"action": "perform-action"},
+            },
+        ],
+        "commands_hash": "abc",
+    }
+
+    loop.run_until_complete(hub.async_sync_command_config(command_payload=payload, request_port=8060))
+
+    assert create_calls == [
+        {
+            "device_name": "Home Assistant",
+            "commands": [
+                {"display_name": "HDMI 1", "trigger_name": "HDMI 1", "press_type": "short", "command_index": 0},
+                {"display_name": "Favorite Command", "trigger_name": "Favorite Command", "press_type": "short", "command_index": 1},
+                {"display_name": "HDMI 1 Long Press", "trigger_name": "HDMI 1", "press_type": "long", "command_index": 0},
+                {"display_name": "Favorite Command Long Press", "trigger_name": "Favorite Command", "press_type": "long", "command_index": 1},
+            ],
+            "request_port": 8060,
+            "brand_name": "m3tac0de-abc",
+            "power_on_command_id": None,
+            "power_off_command_id": None,
+            "input_command_ids": [1],
+        }
+    ]
+    assert add_calls == [
+        (101, 9, 1),
+        (102, 9, None),
+    ]
+
+    loop.close()
+
+
 def test_hub_create_proxy_uses_explicit_hub_version() -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

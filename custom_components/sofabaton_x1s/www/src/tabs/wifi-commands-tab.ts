@@ -6,6 +6,7 @@ import { entityForHub, remoteAttrsForHub } from "../shared/utils/control-panel-s
 const WIFI_COMMANDS_DOCS_URL =
   "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md";
 const SLOT_COUNT = 10;
+const INPUT_ICON = "mdi:video-input-hdmi";
 
 const ID = {
   UP: 174,
@@ -154,6 +155,7 @@ interface WifiCommandSlot {
   long_press_enabled: boolean;
   is_power_on: boolean;
   is_power_off: boolean;
+  input_activity_id: string;
   activities: string[];
   action: WifiCommandAction;
   long_press_action: WifiCommandAction;
@@ -347,11 +349,13 @@ class SofabatonWifiCommandsTab extends LitElement {
     .checkbox-icon ha-icon { --mdc-icon-size: 16px; }
     .checkbox-icon.power-on { color: #2e7d32; background: color-mix(in srgb, #2e7d32 18%, var(--ha-card-background, transparent)); }
     .checkbox-icon.power-off { color: #c62828; background: color-mix(in srgb, #c62828 18%, var(--ha-card-background, transparent)); }
+    .checkbox-icon.input { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--ha-card-background, transparent)); }
     .checkbox-copy > span:first-child { font-size: 14px; line-height: 1.35; }
     .checkbox-subtext { min-height: 1.35em; font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); white-space: normal; }
     .checkbox-row ha-switch { align-self: center; }
     .activities-label, .warning-label, .action-helper { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
     .activities-label.disabled { opacity: 0.55; }
+    .input-selector-wrap[disabled] { opacity: 0.6; pointer-events: none; }
     .activity-chip-row, .version-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
     .activity-chip, .version-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; font: inherit; }
     .activity-chip.active, .version-chip.active, .action-tab.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); color: var(--primary-color); }
@@ -545,6 +549,9 @@ class SofabatonWifiCommandsTab extends LitElement {
               : command.is_power_off
                 ? html`<span class="slot-flag power-off" title="Power OFF command"><ha-icon icon="mdi:power"></ha-icon></span>`
                 : nothing}
+          ${this._hasInputActivity(command)
+            ? html`<span class="slot-flag" title=${this._inputFlagTitle(command)}><ha-icon icon=${INPUT_ICON}></ha-icon></span>`
+            : nothing}
           <button class="slot-clear" @click=${(event: Event) => { event.stopPropagation(); this._confirmClearSlot = idx; }}><ha-icon icon="mdi:close"></ha-icon></button>
         </div>
         <button class="slot-main" @click=${() => this._openCommandEditor(idx)}>
@@ -574,6 +581,9 @@ class SofabatonWifiCommandsTab extends LitElement {
     const selectedActivities = new Set((draft.activities || []).map((id) => String(id)));
     const hasMappedButton = Boolean(String(draft.hard_button || "").trim());
     const activitySelectionEnabled = this._activitySelectionEnabled(draft);
+    const inputSelectionEnabled = this._hasInputActivity(draft);
+    const inputActivityValue = this._selectorValueForInputActivity(draft);
+    const hasActivities = activities.length > 0;
 
     return html`
       <div class="modal-backdrop" @click=${this._closeOnBackdrop}>
@@ -637,6 +647,33 @@ class SofabatonWifiCommandsTab extends LitElement {
                     @change=${(event: Event) => this._handlePowerCommandSwitchChange("off", event)}
                   ></ha-switch>
                 </button>
+                <button class="checkbox-row ${inputSelectionEnabled ? "active" : ""}" ?disabled=${!hasActivities} @click=${() => {
+                  this._toggleInputActivityRow();
+                }}>
+                  <span class="checkbox-left">
+                    <span class="checkbox-icon input"><ha-icon icon=${INPUT_ICON}></ha-icon></span>
+                    <span class="checkbox-copy">
+                      <span>Is the Wifi Device's input for Activity:</span>
+                      <span class="checkbox-subtext">${hasActivities ? "Sets this command as the selected Activity's power-on input." : "No activities available for this hub."}</span>
+                    </span>
+                  </span>
+                  <ha-switch
+                    .checked=${inputSelectionEnabled}
+                    .disabled=${!hasActivities}
+                    @click=${(event: Event) => event.stopPropagation()}
+                    @change=${(event: Event) => this._handleInputActivitySwitchChange(event)}
+                  ></ha-switch>
+                </button>
+                <div class="input-selector-wrap" ?disabled=${!inputSelectionEnabled}>
+                  <ha-selector
+                    .hass=${this.hass}
+                    .selector=${{ select: { mode: "dropdown", options: activities.map((activity) => ({ value: String(activity.id), label: activity.name })) } }}
+                    .label=${"Activity"}
+                    .value=${inputActivityValue}
+                    .disabled=${!inputSelectionEnabled || !hasActivities}
+                    @value-changed=${(event: CustomEvent) => this._handleInputActivityChanged(event)}
+                  ></ha-selector>
+                </div>
               </div>
               <div class="config-group">
                 <ha-selector
@@ -899,6 +936,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       long_press_enabled: false,
       is_power_on: false,
       is_power_off: false,
+      input_activity_id: "",
       activities: [],
       action: { ...DEFAULT_ACTION },
       long_press_action: { ...DEFAULT_ACTION },
@@ -943,6 +981,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),
         is_power_on: normalizedPowerOnId === idx + 1,
         is_power_off: normalizedPowerOffId === idx + 1,
+        input_activity_id: String(record.input_activity_id ?? ""),
         activities: Array.isArray(record.activities) ? record.activities.map((id) => String(id)).filter((id) => id !== "") : [],
         action: this._normalizeCommandAction(record.action),
         long_press_action: this._normalizeCommandAction(record.long_press_action),
@@ -967,6 +1006,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       long_press_enabled: Boolean(slot?.long_press_enabled) && Boolean(String(slot?.hard_button ?? "").trim()),
       is_power_on: Boolean(slot?.is_power_on),
       is_power_off: Boolean(slot?.is_power_off),
+      input_activity_id: String(slot?.input_activity_id ?? ""),
       activities: Array.isArray(slot?.activities) ? slot.activities.map((id) => String(id)).filter((id) => id !== "") : [],
       action: this._normalizeCommandAction(slot?.action),
       long_press_action: this._normalizeCommandAction(slot?.long_press_action),
@@ -1133,8 +1173,14 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (!String(draft.name ?? "").length || String(draft.name).startsWith(" ")) {
       return "Command name must start with a non-space character.";
     }
-    if (!draft.add_as_favorite && !String(draft.hard_button || "").trim() && !draft.is_power_on && !draft.is_power_off) {
-      return "Set a power command, add as favorite, or map to button before saving.";
+    if (
+      !draft.add_as_favorite &&
+      !String(draft.hard_button || "").trim() &&
+      !draft.is_power_on &&
+      !draft.is_power_off &&
+      !this._hasInputActivity(draft)
+    ) {
+      return "Set a power command, input activity, add as favorite, or map to button before saving.";
     }
     return "";
   }
@@ -1233,10 +1279,42 @@ class SofabatonWifiCommandsTab extends LitElement {
     return Boolean(slot?.add_as_favorite) || Boolean(String(slot?.hard_button || "").trim());
   }
 
+  private _hasInputActivity(slot: WifiCommandSlot | null | undefined) {
+    return Boolean(String(slot?.input_activity_id || "").trim());
+  }
+
+  private _defaultEditorActivityId() {
+    const firstActivity = this._editorActivities()[0];
+    return firstActivity ? String(firstActivity.id) : "";
+  }
+
+  private _ensureDefaultAssignedActivity() {
+    const draft = this._activeCommandDraft();
+    if (!draft || !this._activitySelectionEnabled(draft) || draft.activities.length > 0) return;
+    const fallbackActivity = this._defaultEditorActivityId();
+    if (!fallbackActivity) return;
+    this._updateActiveCommandDraft({ activities: [fallbackActivity] });
+  }
+
+  private _selectorValueForInputActivity(draft: WifiCommandSlot) {
+    return this._hasInputActivity(draft) ? String(draft.input_activity_id) : this._defaultEditorActivityId();
+  }
+
+  private _activityName(activityId: string) {
+    const match = this._editorActivities().find((activity) => String(activity.id) === String(activityId));
+    return match?.name || `Activity ${activityId}`;
+  }
+
+  private _inputFlagTitle(command: WifiCommandSlot) {
+    const activityId = String(command.input_activity_id || "").trim();
+    return activityId ? `Input for ${this._activityName(activityId)}` : "Input command";
+  }
+
   private _commandSlotMetaLabel(command: WifiCommandSlot) {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
     const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
     const assignmentEnabled = this._activitySelectionEnabled(command);
+    if (this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
     if (!assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
     if (!assignmentEnabled && command.is_power_on) return "Power ON command";
     if (!assignmentEnabled && command.is_power_off) return "Power OFF command";
@@ -1247,12 +1325,14 @@ class SofabatonWifiCommandsTab extends LitElement {
     const draft = this._activeCommandDraft();
     if (!draft) return;
     this._updateActiveCommandDraft({ add_as_favorite: !draft.add_as_favorite });
+    if (!draft.add_as_favorite) this._ensureDefaultAssignedActivity();
     this._commandSaveError = "";
   }
 
   private _handleFavoriteSwitchChange(event: Event) {
     const checked = Boolean((event.currentTarget as HTMLInputElement).checked);
     this._updateActiveCommandDraft({ add_as_favorite: checked });
+    if (checked) this._ensureDefaultAssignedActivity();
     this._commandSaveError = "";
   }
 
@@ -1289,7 +1369,11 @@ class SofabatonWifiCommandsTab extends LitElement {
     }
     const current = this._ensureCommandDraft(idx);
     if (!current) return;
-    nextDrafts[idx] = this._cloneCommandSlot({ ...current, [key]: enabled });
+    nextDrafts[idx] = this._cloneCommandSlot({
+      ...current,
+      [key]: enabled,
+      input_activity_id: enabled ? "" : current.input_activity_id,
+    });
     this._commandEditorDrafts = nextDrafts;
     this._commandSaveError = "";
   }
@@ -1332,6 +1416,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       long_press_enabled: hasButton ? Boolean(this._activeCommandDraft()?.long_press_enabled) : false,
       long_press_action: hasButton ? this._commandActionForPress(this._activeCommandDraft(), "long") : this._normalizeCommandAction(null),
     });
+    if (hasButton) this._ensureDefaultAssignedActivity();
     if (!hasButton) this._activeCommandActionTab = "short";
     this._commandSaveError = "";
     const selector = event.currentTarget as { value?: unknown };
@@ -1376,6 +1461,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       Boolean(command.long_press_enabled) ||
       Boolean(command.is_power_on) ||
       Boolean(command.is_power_off) ||
+      Boolean(String(command.input_activity_id || "").trim()) ||
       (Array.isArray(command.activities) && command.activities.length > 0) ||
       this._commandHasCustomAction(command.action) ||
       (Boolean(command.long_press_enabled) && this._commandHasCustomAction(command.long_press_action))
@@ -1389,13 +1475,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     this._activeCommandActionTab = "short";
     this._commandSaveError = "";
     const draft = this._ensureCommandDraft(slotIndex);
-    const activities = this._editorActivities();
-    const fallbackActivity = activities[0] ? String(activities[0].id) : null;
-    const selectedActivities = new Set((draft?.activities || []).map((id) => String(id)));
-    if (selectedActivities.size === 0 && fallbackActivity) {
-      selectedActivities.add(fallbackActivity);
-      this._updateActiveCommandDraft({ activities: Array.from(selectedActivities) });
-    }
+    if (draft && this._activitySelectionEnabled(draft) && draft.activities.length === 0) this._ensureDefaultAssignedActivity();
   }
 
   private _openCommandActionEditor(slotIndex: number) {
@@ -1443,6 +1523,36 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (current.has(idKey) && current.size > 1) current.delete(idKey);
     else current.add(idKey);
     this._updateActiveCommandDraft({ activities: Array.from(current) });
+    this._commandSaveError = "";
+  }
+
+  private _setInputActivityEnabled(enabled: boolean) {
+    const draft = this._activeCommandDraft();
+    if (!draft) return;
+    const fallbackActivity = this._defaultEditorActivityId();
+    this._updateActiveCommandDraft({
+      input_activity_id: enabled ? (String(draft.input_activity_id || "").trim() || fallbackActivity) : "",
+      is_power_on: enabled ? false : draft.is_power_on,
+      is_power_off: enabled ? false : draft.is_power_off,
+    });
+    this._commandSaveError = "";
+  }
+
+  private _toggleInputActivityRow() {
+    const draft = this._activeCommandDraft();
+    if (!draft || !this._editorActivities().length) return;
+    this._setInputActivityEnabled(!this._hasInputActivity(draft));
+  }
+
+  private _handleInputActivitySwitchChange(event: Event) {
+    const checked = Boolean((event.currentTarget as HTMLInputElement).checked);
+    if (!this._editorActivities().length) return;
+    this._setInputActivityEnabled(checked);
+  }
+
+  private _handleInputActivityChanged(event: CustomEvent) {
+    const rawValue = event.detail?.value ?? (event.currentTarget as { value?: unknown })?.value ?? "";
+    this._updateActiveCommandDraft({ input_activity_id: String(rawValue ?? "") });
     this._commandSaveError = "";
   }
 

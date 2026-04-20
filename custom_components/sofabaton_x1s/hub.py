@@ -1739,6 +1739,8 @@ class SofabatonHub:
                 }
 
             command_defs: list[dict[str, Any]] = []
+            input_command_ids: list[int] = []
+            activity_input_command_ids: dict[int, int] = {}
             max_power_command_id = min(len(commands), _WIFI_COMMAND_SLOT_COUNT)
             raw_power_on_command_id = command_payload.get("power_on_command_id")
             raw_power_off_command_id = command_payload.get("power_off_command_id")
@@ -1758,6 +1760,17 @@ class SofabatonHub:
                 raise HomeAssistantError(
                     f"power_off_command_id must be between 1 and {max_power_command_id}"
                 )
+            for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
+                if not raw_input_activity_id:
+                    continue
+                try:
+                    input_activity_id = int(raw_input_activity_id)
+                except (TypeError, ValueError):
+                    continue
+                command_id = idx + 1
+                input_command_ids.append(command_id)
+                activity_input_command_ids.setdefault(input_activity_id, command_id)
             for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
                 name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
                 command_defs.append(
@@ -1790,6 +1803,7 @@ class SofabatonHub:
                 brand_name=brand_name,
                 power_on_command_id=power_on_command_id,
                 power_off_command_id=power_off_command_id,
+                input_command_ids=input_command_ids or None,
             )
             if not created or not created.get("device_id"):
                 self._set_command_sync_progress(
@@ -1807,6 +1821,12 @@ class SofabatonHub:
                         activity_ids.add(int(act))
                     except (TypeError, ValueError):
                         continue
+                raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
+                if raw_input_activity_id:
+                    try:
+                        activity_ids.add(int(raw_input_activity_id))
+                    except (TypeError, ValueError):
+                        pass
 
             add_results: dict[int, bool] = {}
             self._set_command_sync_progress(
@@ -1814,7 +1834,11 @@ class SofabatonHub:
                 message="Adding Wifi Device to Activities",
             )
             for act_id in sorted(activity_ids):
-                result = await self.async_add_device_to_activity(act_id, wifi_device_id)
+                result = await self.async_add_device_to_activity(
+                    act_id,
+                    wifi_device_id,
+                    input_cmd_id=activity_input_command_ids.get(act_id),
+                )
                 add_results[act_id] = bool(result)
 
             if activity_ids and not all(add_results.values()):

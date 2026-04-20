@@ -82,6 +82,7 @@ def test_command_store_get_set_roundtrip() -> None:
                     "name": "Launch Netflix",
                     "add_as_favorite": True,
                     "hard_button": "194",
+                    "input_activity_id": "101",
                     "activities": ["101"],
                     "action": {"action": "perform-action", "perform_action": "script.test"},
                 }
@@ -91,6 +92,7 @@ def test_command_store_get_set_roundtrip() -> None:
         )
     )
     assert updated["commands"][0]["name"] == "Launch Netflix"
+    assert updated["commands"][0]["input_activity_id"] == "101"
     assert updated["power_on_command_id"] == 1
     assert updated["power_off_command_id"] == 2
     assert len(updated["commands_hash"]) == 15
@@ -156,6 +158,23 @@ def test_compute_commands_hash_changes_when_power_command_changes() -> None:
     ]
 
     assert compute_commands_hash(commands) != compute_commands_hash(commands, power_on_command_id=1)
+
+
+def test_compute_commands_hash_changes_when_input_activity_changes() -> None:
+    commands = [
+        {
+            "name": "Lights",
+            "add_as_favorite": False,
+            "hard_button": "",
+            "input_activity_id": "101",
+            "activities": [],
+            "action": {"action": "perform-action", "service": "x"},
+        }
+    ]
+
+    with_other_activity = [{**commands[0], "input_activity_id": "102"}]
+
+    assert compute_commands_hash(commands) != compute_commands_hash(with_other_activity)
 
 
 def test_count_configured_command_slots_counts_non_default_slots() -> None:
