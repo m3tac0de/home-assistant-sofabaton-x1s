@@ -3074,6 +3074,136 @@ def test_parse_activity_inputs_payloads_stops_at_null_slot() -> None:
 
 
 # ---------------------------------------------------------------------------
+# _parse_activity_inputs_x1s
+# ---------------------------------------------------------------------------
+
+def _make_x1s_wifi_entry(slot_id: int, ordinal: int, name: str = "") -> bytes:
+    """Build a 48-byte X1S WiFi/custom-device ACTIVITY_INPUTS entry (sub_type=0x02)."""
+    name_utf16 = name.encode("utf-16-le")[:38]
+    name_padded = name_utf16.ljust(38, b"\x00")
+    return bytes([0x00, slot_id, 0, 0, 0, 0, 0, 0, ordinal, 0]) + name_padded
+
+
+def _make_x1s_ir_entry(slot_id: int, cmd_code: int, ordinal: int, name: str = "") -> bytes:
+    """Build a 36-byte X1S IR/RF-device ACTIVITY_INPUTS entry (sub_type=0x03)."""
+    name_utf16 = name.encode("utf-16-le")[:27]
+    name_padded = name_utf16.ljust(27, b"\x00")
+    return bytes([slot_id, 0, 0, 0, 0, (cmd_code >> 8) & 0xFF, cmd_code & 0xFF, ordinal, 0]) + name_padded
+
+
+def _make_x1s_wifi_page1_header(device_id: int, num_inputs: int) -> bytes:
+    """Build the 10-byte page-1 header for X1S WiFi device (sub_type=0x02)."""
+    return bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x02, device_id & 0xFF, 0x01, num_inputs & 0xFF, 0x00])
+
+
+def _make_x1s_ir_page1_header(device_id: int, num_inputs: int) -> bytes:
+    """Build the 11-byte page-1 header for X1S IR device (sub_type=0x03)."""
+    return bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x03, device_id & 0xFF, 0x01, num_inputs & 0xFF, 0x00, 0x00])
+
+
+def test_parse_activity_inputs_x1s_wifi_single_page() -> None:
+    """WiFi device (sub_type=02, entry_size=48): parse 4 entries from one FA47 page."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=4)
+    e1 = _make_x1s_wifi_entry(3, 1, "TEST 3")
+    e2 = _make_x1s_wifi_entry(4, 2, "TEST 4")
+    e3 = _make_x1s_wifi_entry(5, 3, "TEST 5")
+    e4 = _make_x1s_wifi_entry(6, 4, "TEST 6")
+    payload = header + e1 + e2 + e3 + e4 + bytes(250 - 10 - 4 * 48)
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(3, 1), (4, 2), (5, 3), (6, 4)]
+
+
+def test_parse_activity_inputs_x1s_wifi_stops_at_null_slot() -> None:
+    """Parsing halts when slot_id is 0x00 (end-of-list sentinel)."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = _make_x1s_wifi_page1_header(device_id=0x0A, num_inputs=2)
+    e1 = _make_x1s_wifi_entry(3, 1, "TEST 3")
+    e2 = _make_x1s_wifi_entry(4, 2, "TEST 4")
+    terminator = bytes(48)  # slot_id=0 -> stop
+    payload = header + e1 + e2 + terminator
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(3, 1), (4, 2)]
+
+
+def test_parse_activity_inputs_x1s_wifi_matches_real_capture() -> None:
+    """Regression: captured X1S WiFi FA47 payload parses into all 4 entries."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    payload = bytes.fromhex(
+        "01 00 01 01 00 02 09 01 04 00 00 03 00 00 00 00 00 00 01 00 "
+        "54 00 45 00 53 00 54 00 20 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 04 00 00 00 00 00 00 02 00 54 00 45 00 53 00 54 00 20 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 05 00 00 00 00 00 00 03 00 54 00 45 00 53 00 54 00 20 00 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 06 00 00 00 00 00 00 04 00 54 00 45 00 53 00 54 00 20 00 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    )
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(3, 1), (4, 2), (5, 3), (6, 4)]
+
+
+def test_parse_activity_inputs_x1s_ir_single_page() -> None:
+    """IR device (sub_type=03, entry_size=36): parse entries correctly."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = _make_x1s_ir_page1_header(device_id=0x03, num_inputs=3)
+    e1 = _make_x1s_ir_entry(0x33, 0x3310, 1, "Input aux1")
+    e2 = _make_x1s_ir_entry(0x34, 0x3311, 2, "Input aux2")
+    e3 = _make_x1s_ir_entry(0x35, 0x3667, 3, "Input bk")
+    payload = header + e1 + e2 + e3 + bytes(250 - 11 - 3 * 36)
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(0x33, 1), (0x34, 2), (0x35, 3)]
+
+
+def test_parse_activity_inputs_x1s_multi_page_uses_4byte_header() -> None:
+    """Subsequent FA47 pages for X1S carry a 4-byte header (not 3-byte like X1)."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header1 = _make_x1s_ir_page1_header(device_id=0x03, num_inputs=7)
+    entries_p1 = b"".join(_make_x1s_ir_entry(0x30 + i, 0x3300 + i, i + 1, f"Input {i+1}") for i in range(5))
+    page1 = header1 + entries_p1 + bytes(250 - 11 - 5 * 36)
+
+    # X1S subsequent page: 4-byte header
+    header2 = bytes([0x01, 0x00, 0x02, 0x00])
+    entries_p2 = (
+        _make_x1s_ir_entry(0x35, 0x3305, 6, "Input 6")
+        + _make_x1s_ir_entry(0x36, 0x3306, 7, "Input 7")
+    )
+    page2 = header2 + entries_p2 + bytes(100)
+
+    entries = proxy._parse_activity_inputs_x1s([page1, page2])
+
+    assert len(entries) == 7
+    assert entries[0] == (0x30, 1)
+    assert entries[5] == (0x35, 6)
+    assert entries[6] == (0x36, 7)
+
+
+def test_parse_activity_inputs_x1s_unknown_subtype_falls_back_to_36() -> None:
+    """An unknown sub_type defaults to entry_size=36 and logs a warning."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    unknown_header = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0xFF, 0x05, 0x01, 0x02, 0x00, 0x00])
+    e1 = _make_x1s_ir_entry(0x10, 0x1011, 1, "Inp1")
+    e2 = _make_x1s_ir_entry(0x11, 0x1012, 2, "Inp2")
+    payload = unknown_header + e1 + e2
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(0x10, 1), (0x11, 2)]
+
+
+# ---------------------------------------------------------------------------
 # query_device_input_index
 # ---------------------------------------------------------------------------
 
@@ -3138,6 +3268,102 @@ def test_query_device_input_index_returns_none_when_not_found(monkeypatch) -> No
     monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
 
     assert proxy.query_device_input_index(0x05, 99) is None
+
+
+def test_query_device_input_index_x1s_returns_embedded_ordinal(monkeypatch) -> None:
+    """On X1S, the ordinal is read from chunk[7] rather than computed by list position."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    # Device 9 has inputs TEST 3 (cmd=3, ord=1), TEST 4 (cmd=4, ord=2), TEST 5 (cmd=5, ord=3)
+    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=3)
+    page1 = (
+        header
+        + _make_x1s_wifi_entry(3, 1, "TEST 3")
+        + _make_x1s_wifi_entry(4, 2, "TEST 4")
+        + _make_x1s_wifi_entry(5, 3, "TEST 5")
+        + bytes(250 - 10 - 3 * 48)
+    )
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: sent.append((opcode, data)))
+
+    def _fake_burst(timeout=5.0):
+        proxy._activity_inputs_payloads.clear()
+        proxy._activity_inputs_payloads.append(page1)
+        return True
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
+
+    # cmd_id=4 (TEST 4) should return ordinal=2
+    result = proxy.query_device_input_index(0x09, 4)
+    assert result == 2
+
+    from custom_components.sofabaton_x1s.lib.protocol_const import OP_REQ_ACTIVITY_INPUTS
+    assert sent == [(OP_REQ_ACTIVITY_INPUTS, bytes([0x09]))]
+
+
+def test_query_device_input_index_autodetects_x1s_payload_shape_when_hub_version_is_x1(monkeypatch) -> None:
+    """X1S/X2 payload layout should win even if the stored hub_version is stale."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=4)
+    page1 = (
+        header
+        + _make_x1s_wifi_entry(3, 1, "TEST 3")
+        + _make_x1s_wifi_entry(4, 2, "TEST 4")
+        + _make_x1s_wifi_entry(5, 3, "TEST 5")
+        + _make_x1s_wifi_entry(6, 4, "TEST 6")
+        + bytes(250 - 10 - 4 * 48)
+    )
+    page2 = bytes([0x01, 0x00, 0x02, 0x00]) + bytes(65)
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+
+    def _fake_burst(timeout=5.0):
+        proxy._activity_inputs_payloads.clear()
+        proxy._activity_inputs_payloads.extend([page1, page2])
+        return True
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
+
+    assert proxy.query_device_input_index(0x09, 4) == 2
+
+
+def test_query_device_input_index_x1s_returns_none_when_not_found(monkeypatch) -> None:
+    """X1S: return None and log warning when cmd_id is absent from the inputs list."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=1)
+    page1 = header + _make_x1s_wifi_entry(3, 1, "TEST 3") + bytes(200)
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+
+    def _fake_burst(timeout=5.0):
+        proxy._activity_inputs_payloads.clear()
+        proxy._activity_inputs_payloads.append(page1)
+        return True
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
+
+    assert proxy.query_device_input_index(0x09, 99) is None
 
 
 # ---------------------------------------------------------------------------
@@ -3225,8 +3451,8 @@ def test_add_device_to_activity_with_input_cmd_id_sets_c5_byte(monkeypatch) -> N
     assert on_payload[c5_idx + 8] == 3, f"Expected input_index=3, got {on_payload[c5_idx + 8]}"
 
 
-def test_add_device_to_activity_input_cmd_id_ignored_for_non_x1(monkeypatch) -> None:
-    """On X1S/X2 hubs, input_cmd_id is silently ignored and query_device_input_index is never called."""
+def test_add_device_to_activity_x1s_with_input_cmd_id_sets_input_index(monkeypatch) -> None:
+    """On X1S hubs, input_cmd_id resolves via query_device_input_index and writes the ordinal to byte[8]."""
     proxy = X1Proxy(
         "127.0.0.1",
         proxy_enabled=False,
@@ -3257,12 +3483,8 @@ def test_add_device_to_activity_input_cmd_id_ignored_for_non_x1(monkeypatch) -> 
         ),
     )
 
-    query_called = {"count": 0}
-    monkeypatch.setattr(
-        proxy,
-        "query_device_input_index",
-        lambda dev_id, cmd_id, **kw: query_called.update({"count": query_called["count"] + 1}) or 1,
-    )
+    # cmd_id 5 is at ordinal 2 in the X1S device's input list
+    monkeypatch.setattr(proxy, "query_device_input_index", lambda dev_id, cmd_id, **kw: 2)
 
     saved_payloads: list[bytes] = []
     monkeypatch.setattr(
@@ -3274,13 +3496,12 @@ def test_add_device_to_activity_input_cmd_id_ignored_for_non_x1(monkeypatch) -> 
     result = proxy.add_device_to_activity(101, 2, input_cmd_id=5)
 
     assert result is not None
-    assert query_called["count"] == 0
 
-    # 0xC5 record must have byte[8]=0 (no input set, since X1S ignores input_cmd_id)
+    # POWER_ON macro must contain a 0xC5 record for device 0x02 with byte[8]=2
     on_payload = saved_payloads[0]
     c5_idx = on_payload.find(bytes([0x02, 0xC5]))
-    assert c5_idx != -1
-    assert on_payload[c5_idx + 8] == 0
+    assert c5_idx != -1, "0xC5 record for device 0x02 not found in POWER_ON payload"
+    assert on_payload[c5_idx + 8] == 2, f"Expected input_index=2, got {on_payload[c5_idx + 8]}"
 
 
 def test_add_device_to_activity_input_cmd_id_updates_existing_c5_record(monkeypatch) -> None:

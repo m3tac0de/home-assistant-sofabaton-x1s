@@ -192,7 +192,7 @@ The Sofabaton hub then calls back into the integration's HTTP listener whenever 
 
 | `power_on_command_id` | int |    –     | Optional 1-based position in `commands` to use as the device power-on command. This is not a final hub command id. |
 | `power_off_command_id` | int |    –     | Optional 1-based position in `commands` to use as the device power-off command. This is not a final hub command id. |
-| `input_command_ids` | list of int |    –     | Optional ordered list of 1-based positions in `commands` to register as device input switchers. Currently applied on X1 hubs only. |
+| `input_command_ids` | list of int |    –     | Optional ordered list of 1-based positions in `commands` to register as device input switchers on X1/X1S hubs. |
 
 ```yaml
 action: sofabaton_x1s.create_wifi_device
@@ -243,6 +243,7 @@ Adds a device to an activity on the hub, so the activity can use that device's c
 | `device`      | HA Device     |    ✓     | Your Sofabaton hub. |
 | `activity_id` | int (101–200) |    ✓     | Activity id (101+). |
 | `device_id`   | int (1–99)    |    ✓     | Device id (1–99).   |
+| `input_command_id` | int (1–255) |    –     | Optional device command id to set as the POWER_ON input on X1/X1S hubs. |
 
 ```yaml
 action: sofabaton_x1s.device_to_activity
@@ -250,6 +251,7 @@ data:
   device: 89c3874a93f1e9ee0f49e24a2710535e
   activity_id: 103
   device_id: 2
+  input_command_id: 4
 ```
 
 ---

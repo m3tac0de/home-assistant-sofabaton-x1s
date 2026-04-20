@@ -60,7 +60,7 @@ create_wifi_device:
           mode: box
     input_command_ids:
       name: Input command ids
-      description: Optional ordered list of command positions from `commands` to register as device input switchers on X1 hubs. These are command-list positions, not discovered hub command ids.
+      description: Optional ordered list of command positions from `commands` to register as device input switchers on X1/X1S hubs. These are command-list positions, not discovered hub command ids.
       required: false
       selector:
         object:
@@ -161,7 +161,7 @@ device_to_activity:
           mode: box
     input_command_id:
       name: Input command id
-      description: Optional command id to set as the device input when it powers on (X1 hubs only). Use the same command id as defined in create_wifi_device or discovered via the diagnostic sensor.
+      description: Optional command id to set as the device input when it powers on (X1/X1S hubs). Use the same command id as defined in create_wifi_device or discovered via the diagnostic sensor.
       required: false
       selector:
         number:

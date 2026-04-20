@@ -1753,10 +1753,87 @@ class X1Proxy:
             entries.append((slot_id, cmd_id))
         return entries
 
+    def _parse_activity_inputs_x1s(self, payloads: list[bytes]) -> list[tuple[int, int]]:
+        """Parse X1S/X2 0x47 frame payloads; return (slot_id, ordinal) pairs.
+
+        Page 1 carries an 11-byte header; subsequent pages carry a 4-byte header.
+        Entry size depends on sub-type byte (header[5]):
+          0x02 → 41 bytes (WiFi/custom device)
+          0x03 → 36 bytes (IR/RF device)
+        The 1-based ordinal for each input is embedded at chunk[7].
+        """
+        if not payloads:
+            return []
+
+        page1 = payloads[0]
+        if len(page1) < 10:
+            return []
+
+        sub_type = page1[5] & 0xFF
+        if sub_type == 0x02:
+            first_header_size = 10
+            next_header_size = 4
+            entry_size = 48
+        elif sub_type == 0x03:
+            first_header_size = 11
+            next_header_size = 4
+            entry_size = 36
+        else:
+            self._log.warning(
+                "[INPUT_QUERY] X1S unknown sub_type=0x%02X in activity-inputs page1; using entry_size=36",
+                sub_type,
+            )
+            first_header_size = 11
+            next_header_size = 4
+            entry_size = 36
+
+        entries: list[tuple[int, int]] = []
+        for i, payload in enumerate(payloads):
+            body = payload[first_header_size:] if i == 0 else payload[next_header_size:]
+            for offset in range(0, len(body), entry_size):
+                chunk = body[offset : offset + entry_size]
+                if len(chunk) < entry_size:
+                    break
+                if sub_type == 0x02:
+                    slot_id = chunk[1]
+                    ordinal = chunk[8]
+                else:
+                    slot_id = chunk[0]
+                    ordinal = chunk[7]
+                if slot_id == 0x00:
+                    break
+                entries.append((slot_id, ordinal))
+        return entries
+
+    def _payloads_look_like_x1s_activity_inputs(self, payloads: list[bytes]) -> bool:
+        """Return True when the first 0x47 payload matches the observed X1S/X2 layout."""
+        if not payloads:
+            return False
+
+        page1 = payloads[0]
+        if len(page1) < 10:
+            return False
+
+        # X1S/X2 page-1 headers observed so far look like:
+        #   01 00 01 01 00 <sub_type> <device_id> 01 <count> 00 00
+        # where sub_type 0x02 = WiFi/custom and 0x03 = IR/RF.
+        return (
+            page1[0] == 0x01
+            and page1[1] == 0x00
+            and page1[2] == 0x01
+            and page1[3] == 0x01
+            and page1[4] == 0x00
+            and page1[5] in (0x02, 0x03)
+            and page1[7] == 0x01
+        )
+
     def query_device_input_index(self, device_id: int, cmd_id: int, *, timeout: float = 5.0) -> int | None:
         """Return the 1-based ordinal of cmd_id in the device's ACTIVITY_INPUTS list, or None if not found."""
         with self._activity_inputs_lock:
             self._activity_inputs_payloads.clear()
+            self._activity_inputs_seen = 0
+            self._activity_inputs_last_ts = 0.0
+            self._activity_inputs_event.clear()
 
         self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
         if not self.wait_for_activity_inputs_burst(timeout=timeout):
@@ -1770,10 +1847,18 @@ class X1Proxy:
         with self._activity_inputs_lock:
             payloads = list(self._activity_inputs_payloads)
 
-        entries = self._parse_activity_inputs_payloads(payloads)
-        for ordinal, (slot_id, _) in enumerate(entries, start=1):
-            if slot_id == (cmd_id & 0xFF):
-                return ordinal
+        looks_like_x1s = self._payloads_look_like_x1s_activity_inputs(payloads)
+        use_x1s_parser = self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2) or looks_like_x1s
+        if use_x1s_parser:
+            entries = self._parse_activity_inputs_x1s(payloads)
+            for slot_id, ordinal in entries:
+                if slot_id == (cmd_id & 0xFF):
+                    return ordinal
+        else:
+            entries = self._parse_activity_inputs_payloads(payloads)
+            for ordinal, (slot_id, _) in enumerate(entries, start=1):
+                if slot_id == (cmd_id & 0xFF):
+                    return ordinal
 
         self._log.warning(
             "[INPUT_QUERY] cmd_id=0x%02X not found in %d entries for dev=0x%02X",
@@ -2257,20 +2342,14 @@ class X1Proxy:
 
         input_index = 0
         if input_cmd_id is not None:
-            if self.hub_version == HUB_VERSION_X1:
-                resolved = self.query_device_input_index(dev_lo, input_cmd_id & 0xFF)
-                if resolved is not None:
-                    input_index = resolved
-                else:
-                    self._log.warning(
-                        "[ACTIVITY_ASSIGN] input_cmd_id=0x%02X not found for dev=0x%02X; proceeding without input",
-                        input_cmd_id & 0xFF,
-                        dev_lo,
-                    )
+            resolved = self.query_device_input_index(dev_lo, input_cmd_id & 0xFF)
+            if resolved is not None:
+                input_index = resolved
             else:
-                self._log.info(
-                    "[ACTIVITY_ASSIGN] input_cmd_id ignored for hub version %s (X1 only for now)",
-                    self.hub_version,
+                self._log.warning(
+                    "[ACTIVITY_ASSIGN] input_cmd_id=0x%02X not found for dev=0x%02X; proceeding without input",
+                    input_cmd_id & 0xFF,
+                    dev_lo,
                 )
 
         macro_updates: list[int] = []
