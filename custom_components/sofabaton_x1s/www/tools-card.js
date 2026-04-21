@@ -1881,6 +1881,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
     this._syncWarningOptOut = false;
     this._hubVersionModalOpen = false;
     this._hubVersionModalSelectedVersion = "X1";
+    this._advancedOptionsOpen = false;
     this._commandEditorDrafts = {};
     this._shortSelectorVersion = 0;
     this._longSelectorVersion = 0;
@@ -1919,6 +1920,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
         this._commandEditorDrafts = { ...this._commandEditorDrafts };
       }
       this._commandSaveError = "";
+      this._advancedOptionsOpen = false;
       this._activeCommandModal = null;
       this._activeCommandSlot = null;
     };
@@ -2054,6 +2056,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
     }
     const details = this._commandSlotSummaryDetails(command);
     const metaLabel = this._commandSlotMetaLabel(command);
+    const unconfiguredCommand = this._isUnconfiguredCommand(command);
     return b2`
       <div class="slot-btn">
         <div class="slot-actions">
@@ -2071,6 +2074,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
               ${command.add_as_favorite ? b2`<span class="slot-favorite"><ha-icon icon="mdi:heart"></ha-icon></span>` : A}
               ${command.hard_button ? b2`<span class="slot-meta-icon"><ha-icon icon=${this._commandSlotIcon(command.hard_button)} style=${this._commandSlotIconColor(command.hard_button) ? `color:${this._commandSlotIconColor(command.hard_button)}` : ""}></ha-icon></span>` : A}
               ${command.long_press_enabled ? b2`<span class="slot-meta-icon"><ha-icon icon="mdi:timer-sand-full"></ha-icon></span>` : A}
+              ${unconfiguredCommand ? b2`<span class="slot-meta-icon warning"><ha-icon icon="mdi:alert-circle"></ha-icon></span>` : A}
               <span>${metaLabel}</span>
             </span>
           </span>
@@ -2126,67 +2130,96 @@ var SofabatonWifiCommandsTab = class extends i4 {
       this._commandSaveError = "";
     }}
                 ></ha-textfield>
-                <button class="checkbox-row ${draft.is_power_on ? "active" : ""}" @click=${() => {
+                <button
+                  class="advanced-toggle ${this._advancedOptionsOpen ? "expanded" : ""}"
+                  @click=${() => {
+      this._advancedOptionsOpen = !this._advancedOptionsOpen;
+    }}
+                  aria-expanded=${String(this._advancedOptionsOpen)}
+                >
+                  <span class="advanced-toggle-copy">
+                    <span>Advanced</span>
+                  </span>
+                  <ha-icon icon="mdi:chevron-down"></ha-icon>
+                </button>
+                ${this._advancedOptionsOpen ? b2`
+                  <div class="advanced-panel">
+                    <button class="checkbox-row ${draft.is_power_on ? "active" : ""}" @click=${() => {
       this._togglePowerCommandRow("on");
     }}>
-                  <span class="checkbox-left">
-                    <span class="checkbox-icon power-on"><ha-icon icon="mdi:power"></ha-icon></span>
-                    <span class="checkbox-copy">
-                      <span>Is the Power ON command</span>
-                      <span class="checkbox-subtext">${this._powerReplacementLabel("on")}</span>
-                    </span>
-                  </span>
-                  <ha-switch
-                    .checked=${draft.is_power_on}
-                    @click=${(event) => event.stopPropagation()}
-                    @change=${(event) => this._handlePowerCommandSwitchChange("on", event)}
-                  ></ha-switch>
-                </button>
-                <button class="checkbox-row ${draft.is_power_off ? "active" : ""}" @click=${() => {
+                      <span class="checkbox-left">
+                        <span class="checkbox-icon power-on"><ha-icon icon="mdi:power"></ha-icon></span>
+                        <span class="checkbox-copy">
+                          <span>Set as Power ON command</span>
+                          <span class="checkbox-subtext">${this._powerReplacementLabel("on")}</span>
+                        </span>
+                      </span>
+                      <ha-switch
+                        .checked=${draft.is_power_on}
+                        @click=${(event) => event.stopPropagation()}
+                        @change=${(event) => this._handlePowerCommandSwitchChange("on", event)}
+                      ></ha-switch>
+                    </button>
+                    <button class="checkbox-row ${draft.is_power_off ? "active" : ""}" @click=${() => {
       this._togglePowerCommandRow("off");
     }}>
-                  <span class="checkbox-left">
-                    <span class="checkbox-icon power-off"><ha-icon icon="mdi:power"></ha-icon></span>
-                    <span class="checkbox-copy">
-                      <span>Is the Power OFF command</span>
-                      <span class="checkbox-subtext">${this._powerReplacementLabel("off")}</span>
-                    </span>
-                  </span>
-                  <ha-switch
-                    .checked=${draft.is_power_off}
-                    @click=${(event) => event.stopPropagation()}
-                    @change=${(event) => this._handlePowerCommandSwitchChange("off", event)}
-                  ></ha-switch>
-                </button>
-                <button class="checkbox-row ${inputSelectionEnabled ? "active" : ""}" ?disabled=${!hasActivities} @click=${() => {
+                      <span class="checkbox-left">
+                        <span class="checkbox-icon power-off"><ha-icon icon="mdi:power"></ha-icon></span>
+                        <span class="checkbox-copy">
+                          <span>Set as Power OFF command</span>
+                          <span class="checkbox-subtext">${this._powerReplacementLabel("off")}</span>
+                        </span>
+                      </span>
+                      <ha-switch
+                        .checked=${draft.is_power_off}
+                        @click=${(event) => event.stopPropagation()}
+                        @change=${(event) => this._handlePowerCommandSwitchChange("off", event)}
+                      ></ha-switch>
+                    </button>
+                    <button class="checkbox-row ${inputSelectionEnabled ? "active" : ""}" ?disabled=${!hasActivities} @click=${() => {
       this._toggleInputActivityRow();
     }}>
-                  <span class="checkbox-left">
-                    <span class="checkbox-icon input"><ha-icon icon=${INPUT_ICON}></ha-icon></span>
-                    <span class="checkbox-copy">
-                      <span>Is the Wifi Device's input for Activity:</span>
-                      <span class="checkbox-subtext">${hasActivities ? "Sets this command as the selected Activity's power-on input." : "No activities available for this hub."}</span>
-                    </span>
-                  </span>
-                  <ha-switch
-                    .checked=${inputSelectionEnabled}
-                    .disabled=${!hasActivities}
-                    @click=${(event) => event.stopPropagation()}
-                    @change=${(event) => this._handleInputActivitySwitchChange(event)}
-                  ></ha-switch>
-                </button>
-                <div class="input-selector-wrap" ?disabled=${!inputSelectionEnabled}>
-                  <ha-selector
-                    .hass=${this.hass}
-                    .selector=${{ select: { mode: "dropdown", options: activities.map((activity) => ({ value: String(activity.id), label: activity.name })) } }}
-                    .label=${"Activity"}
-                    .value=${inputActivityValue}
-                    .disabled=${!inputSelectionEnabled || !hasActivities}
-                    @value-changed=${(event) => this._handleInputActivityChanged(event)}
-                  ></ha-selector>
-                </div>
+                      <span class="checkbox-left">
+                        <span class="checkbox-icon input"><ha-icon icon=${INPUT_ICON}></ha-icon></span>
+                        <span class="checkbox-copy">
+                          <span>Set as Activity input</span>
+                          <span class="checkbox-subtext">${hasActivities ? "Command called as part of Activity startup sequence" : "No activities available for this hub."}</span>
+                        </span>
+                      </span>
+                      <ha-switch
+                        .checked=${inputSelectionEnabled}
+                        .disabled=${!hasActivities}
+                        @click=${(event) => event.stopPropagation()}
+                        @change=${(event) => this._handleInputActivitySwitchChange(event)}
+                      ></ha-switch>
+                    </button>
+                    <div class="input-selector-wrap nested-control" ?disabled=${!inputSelectionEnabled}>
+                      <ha-selector
+                        .hass=${this.hass}
+                        .selector=${{ select: { mode: "dropdown", options: activities.map((activity) => ({ value: String(activity.id), label: activity.name })) } }}
+                        .label=${"Activity to apply the input to"}
+                        .value=${inputActivityValue}
+                        .disabled=${!inputSelectionEnabled || !hasActivities}
+                        @value-changed=${(event) => this._handleInputActivityChanged(event)}
+                      ></ha-selector>
+                    </div>
+                  </div>
+                ` : A}
               </div>
               <div class="config-group">
+                <button class="checkbox-row ${draft.add_as_favorite ? "active" : ""}" @click=${() => {
+      this._toggleFavoriteRow();
+    }}>
+                  <span class="checkbox-left">
+                    <span class="checkbox-icon"><ha-icon icon="mdi:heart"></ha-icon></span>
+                    <span>Set as Favorite</span>
+                  </span>
+                  <ha-switch
+                    .checked=${draft.add_as_favorite}
+                    @click=${(event) => event.stopPropagation()}
+                    @change=${(event) => this._handleFavoriteSwitchChange(event)}
+                  ></ha-switch>
+                </button>
                 <ha-selector
                   .hass=${this.hass}
                   .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "None" }, ...this._editorAvailableHardButtonOptions().map((option) => ({ value: option.value, label: option.label }))] } }}
@@ -2194,31 +2227,18 @@ var SofabatonWifiCommandsTab = class extends i4 {
                   .value=${this._selectorValueForButton(draft)}
                   @value-changed=${(event) => this._handleHardButtonChanged(event)}
                 ></ha-selector>
-                <button class="checkbox-row ${hasMappedButton && draft.long_press_enabled ? "active" : ""}" ?disabled=${!hasMappedButton} @click=${() => {
+                <button class="checkbox-row nested-control ${hasMappedButton && draft.long_press_enabled ? "active" : ""}" ?disabled=${!hasMappedButton} @click=${() => {
       this._toggleLongPressRow();
     }}>
                   <span class="checkbox-left">
                     <span class="checkbox-icon"><ha-icon icon="mdi:timer-sand-full"></ha-icon></span>
-                    <span>Enable longpress</span>
+                    <span>Enable long-press</span>
                   </span>
                   <ha-switch
                     .checked=${hasMappedButton && draft.long_press_enabled}
                     .disabled=${!hasMappedButton}
                     @click=${(event) => event.stopPropagation()}
                     @change=${(event) => this._handleLongPressSwitchChange(event)}
-                  ></ha-switch>
-                </button>
-                <button class="checkbox-row ${draft.add_as_favorite ? "active" : ""}" @click=${() => {
-      this._toggleFavoriteRow();
-    }}>
-                  <span class="checkbox-left">
-                    <span class="checkbox-icon"><ha-icon icon="mdi:heart"></ha-icon></span>
-                    <span>Is a favorite</span>
-                  </span>
-                  <ha-switch
-                    .checked=${draft.add_as_favorite}
-                    @click=${(event) => event.stopPropagation()}
-                    @change=${(event) => this._handleFavoriteSwitchChange(event)}
                   ></ha-switch>
                 </button>
                 <div class="activities-label ${activitySelectionEnabled ? "" : "disabled"}">Apply to these Activities</div>
@@ -2741,14 +2761,18 @@ var SofabatonWifiCommandsTab = class extends i4 {
     const activityId = String(command.input_activity_id || "").trim();
     return activityId ? `Input for ${this._activityName(activityId)}` : "Input command";
   }
+  _isUnconfiguredCommand(command) {
+    return !this._activitySelectionEnabled(command) && !command.is_power_on && !command.is_power_off && !this._hasInputActivity(command);
+  }
   _commandSlotMetaLabel(command) {
     const activityCount = Array.isArray(command.activities) ? command.activities.length : 0;
     const activitiesLabel = activityCount === 1 ? "Activity" : "Activities";
     const assignmentEnabled = this._activitySelectionEnabled(command);
-    if (this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
+    if (this._isUnconfiguredCommand(command)) return "Unconfigured command";
     if (!assignmentEnabled && command.is_power_on && command.is_power_off) return "Power ON and OFF command";
     if (!assignmentEnabled && command.is_power_on) return "Power ON command";
     if (!assignmentEnabled && command.is_power_off) return "Power OFF command";
+    if (!assignmentEnabled && this._hasInputActivity(command)) return `Input for ${this._activityName(command.input_activity_id)}`;
     return `in ${activityCount} ${activitiesLabel}`;
   }
   _toggleFavoriteRow() {
@@ -2776,6 +2800,9 @@ var SofabatonWifiCommandsTab = class extends i4 {
     return null;
   }
   _powerReplacementLabel(kind) {
+    const draft = this._activeCommandDraft();
+    if (kind === "on" && draft?.is_power_on) return "Command called as part of device power on sequence";
+    if (kind === "off" && draft?.is_power_off) return "Command called as part of device power off sequence";
     const replacement = this._powerReplacementSlot(kind);
     if (!replacement) return `No current ${kind} command set`;
     const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
@@ -2876,6 +2903,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
     this._activeCommandModal = "details";
     this._activeCommandSlot = Number(slotIndex);
     this._activeCommandActionTab = "short";
+    this._advancedOptionsOpen = false;
     this._commandSaveError = "";
     const draft = this._ensureCommandDraft(slotIndex);
     if (draft && this._activitySelectionEnabled(draft) && draft.activities.length === 0) this._ensureDefaultAssignedActivity();
@@ -3077,6 +3105,7 @@ SofabatonWifiCommandsTab.properties = {
   _syncWarningOptOut: { state: true },
   _hubVersionModalOpen: { state: true },
   _hubVersionModalSelectedVersion: { state: true },
+  _advancedOptionsOpen: { state: true },
   _commandEditorDrafts: { state: true },
   _shortSelectorVersion: { state: true },
   _longSelectorVersion: { state: true }
@@ -3122,6 +3151,7 @@ SofabatonWifiCommandsTab.styles = i`
     .slot-favorite { color: var(--error-color); display: inline-flex; }
     .slot-favorite ha-icon { --mdc-icon-size: 14px; }
     .slot-meta-icon { color: var(--state-icon-color); display: inline-flex; }
+    .slot-meta-icon.warning { color: var(--error-color, #db4437); }
     .slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
     .slot-actions { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 6px; z-index: 1; }
     .slot-flag,
@@ -3224,7 +3254,13 @@ SofabatonWifiCommandsTab.styles = i`
     .dialog-footer-note { min-height: 18px; font-size: 13px; color: var(--error-color, #db4437); }
     .config-block { display: grid; gap: 14px; }
     .config-group { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--divider-color); border-radius: 14px; background: color-mix(in srgb, var(--ha-card-background, transparent) 92%, #000); }
-    .checkbox-row { width: 100%; border: 0; background: transparent; padding: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 2px; font-size: 13px; cursor: pointer; color: inherit; text-align: left; }
+    .advanced-toggle { width: fit-content; border: 0; background: transparent; color: var(--secondary-text-color); padding: 0; display: inline-flex; align-items: center; gap: 6px; text-align: left; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+    .advanced-toggle:hover { color: var(--primary-text-color); }
+    .advanced-toggle-copy { display: block; }
+    .advanced-toggle ha-icon { --mdc-icon-size: 18px; transition: transform 120ms ease; }
+    .advanced-toggle.expanded ha-icon { transform: rotate(180deg); }
+    .advanced-panel { display: grid; gap: 14px; padding-top: 2px; }
+    .checkbox-row { width: 100%; box-sizing: border-box; border: 0; background: transparent; padding: 0; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: 10px; row-gap: 2px; font-size: 13px; cursor: pointer; color: inherit; text-align: left; }
     .checkbox-row[disabled] { cursor: default; opacity: 0.6; }
     .checkbox-row.active .checkbox-icon { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
     .checkbox-left { display: contents; }
@@ -3237,6 +3273,8 @@ SofabatonWifiCommandsTab.styles = i`
     .checkbox-copy > span:first-child { font-size: 14px; line-height: 1.35; }
     .checkbox-subtext { min-height: 1.35em; font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); white-space: normal; }
     .checkbox-row ha-switch { align-self: center; }
+    .checkbox-row.nested-control { padding-left: 36px; }
+    .input-selector-wrap.nested-control { box-sizing: border-box; padding-left: 36px; }
     .activities-label, .warning-label, .action-helper { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
     .activities-label.disabled { opacity: 0.55; }
     .input-selector-wrap[disabled] { opacity: 0.6; pointer-events: none; }
