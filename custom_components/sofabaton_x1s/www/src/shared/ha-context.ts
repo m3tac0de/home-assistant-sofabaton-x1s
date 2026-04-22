@@ -105,6 +105,8 @@ export interface ControlPanelSnapshot {
   staleData: boolean;
   refreshBusy: boolean;
   activeRefreshLabel: string | null;
+  externalHubCommandBusy: boolean;
+  externalHubCommandLabel: string | null;
   pendingSettingKey: SettingKey | null;
   pendingActionKey: HubAction | null;
   logsLines: ControlPanelLogLine[];

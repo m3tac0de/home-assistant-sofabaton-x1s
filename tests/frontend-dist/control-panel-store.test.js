@@ -1312,6 +1312,8 @@ var INITIAL_SNAPSHOT = {
   staleData: false,
   refreshBusy: false,
   activeRefreshLabel: null,
+  externalHubCommandBusy: false,
+  externalHubCommandLabel: null,
   pendingSettingKey: null,
   pendingActionKey: null,
   logsLines: [],
@@ -1351,6 +1353,11 @@ var ControlPanelStore = class {
   }
   disconnected() {
     this._isConnected = false;
+    this._snapshot = {
+      ...this._snapshot,
+      externalHubCommandBusy: false,
+      externalHubCommandLabel: null
+    };
     this.unsubscribeLogs();
   }
   setHass(hass) {
@@ -1368,7 +1375,7 @@ var ControlPanelStore = class {
     }
     if (fingerprint !== this._lastHassFingerprint) {
       const connectionChanged = nextConnectionFingerprint !== this._lastConnectionFingerprint;
-      if (this._isConnected && !this._snapshot.refreshBusy && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
+      if (this._isConnected && !this._isHubCommandBusy() && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
         this._snapshot = { ...this._snapshot, staleData: true };
       }
       this._lastObservedGenerations = generationSnapshot;
@@ -1392,7 +1399,9 @@ var ControlPanelStore = class {
       logsLines: [],
       logsError: null,
       logsStickToBottom: true,
-      logsScrollBehavior: "auto"
+      logsScrollBehavior: "auto",
+      externalHubCommandBusy: false,
+      externalHubCommandLabel: null
     };
     this.unsubscribeLogs();
     this.emit();
@@ -1432,6 +1441,14 @@ var ControlPanelStore = class {
   clearPendingScrollEntityKey() {
     if (!this._snapshot.pendingScrollEntityKey) return;
     this._snapshot = { ...this._snapshot, pendingScrollEntityKey: null };
+  }
+  setExternalHubCommandBusy(busy, label = null) {
+    this._snapshot = {
+      ...this._snapshot,
+      externalHubCommandBusy: busy,
+      externalHubCommandLabel: busy ? String(label || "").trim() || "Hub command in progress\u2026" : null
+    };
+    this.emit();
   }
   async loadState(options = {}) {
     if (this._loadingStatePromise) return this._loadingStatePromise;
@@ -1519,7 +1536,7 @@ var ControlPanelStore = class {
     await this.loadState();
   }
   async refreshSection(sectionId) {
-    if (this._snapshot.refreshBusy) return;
+    if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
     this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: null };
@@ -1538,7 +1555,7 @@ var ControlPanelStore = class {
     }
   }
   async refreshForHub(kind, targetId, key) {
-    if (this._snapshot.refreshBusy) return;
+    if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
     this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: key };
@@ -1717,6 +1734,11 @@ var ControlPanelStore = class {
   api() {
     if (!this._snapshot.hass) throw new Error("Home Assistant context is unavailable");
     return new ControlPanelApi(this._snapshot.hass);
+  }
+  _isHubCommandBusy() {
+    return Boolean(
+      this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey
+    );
   }
   emit() {
     this.onChange(this._snapshot);

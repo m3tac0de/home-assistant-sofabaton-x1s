@@ -957,6 +957,8 @@ var INITIAL_SNAPSHOT = {
   staleData: false,
   refreshBusy: false,
   activeRefreshLabel: null,
+  externalHubCommandBusy: false,
+  externalHubCommandLabel: null,
   pendingSettingKey: null,
   pendingActionKey: null,
   logsLines: [],
@@ -996,6 +998,11 @@ var ControlPanelStore = class {
   }
   disconnected() {
     this._isConnected = false;
+    this._snapshot = {
+      ...this._snapshot,
+      externalHubCommandBusy: false,
+      externalHubCommandLabel: null
+    };
     this.unsubscribeLogs();
   }
   setHass(hass) {
@@ -1013,7 +1020,7 @@ var ControlPanelStore = class {
     }
     if (fingerprint !== this._lastHassFingerprint) {
       const connectionChanged = nextConnectionFingerprint !== this._lastConnectionFingerprint;
-      if (this._isConnected && !this._snapshot.refreshBusy && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
+      if (this._isConnected && !this._isHubCommandBusy() && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
         this._snapshot = { ...this._snapshot, staleData: true };
       }
       this._lastObservedGenerations = generationSnapshot;
@@ -1037,7 +1044,9 @@ var ControlPanelStore = class {
       logsLines: [],
       logsError: null,
       logsStickToBottom: true,
-      logsScrollBehavior: "auto"
+      logsScrollBehavior: "auto",
+      externalHubCommandBusy: false,
+      externalHubCommandLabel: null
     };
     this.unsubscribeLogs();
     this.emit();
@@ -1077,6 +1086,14 @@ var ControlPanelStore = class {
   clearPendingScrollEntityKey() {
     if (!this._snapshot.pendingScrollEntityKey) return;
     this._snapshot = { ...this._snapshot, pendingScrollEntityKey: null };
+  }
+  setExternalHubCommandBusy(busy, label = null) {
+    this._snapshot = {
+      ...this._snapshot,
+      externalHubCommandBusy: busy,
+      externalHubCommandLabel: busy ? String(label || "").trim() || "Hub command in progress\u2026" : null
+    };
+    this.emit();
   }
   async loadState(options = {}) {
     if (this._loadingStatePromise) return this._loadingStatePromise;
@@ -1164,7 +1181,7 @@ var ControlPanelStore = class {
     await this.loadState();
   }
   async refreshSection(sectionId) {
-    if (this._snapshot.refreshBusy) return;
+    if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
     this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: null };
@@ -1183,7 +1200,7 @@ var ControlPanelStore = class {
     }
   }
   async refreshForHub(kind, targetId, key) {
-    if (this._snapshot.refreshBusy) return;
+    if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
     this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: key };
@@ -1363,6 +1380,11 @@ var ControlPanelStore = class {
     if (!this._snapshot.hass) throw new Error("Home Assistant context is unavailable");
     return new ControlPanelApi(this._snapshot.hass);
   }
+  _isHubCommandBusy() {
+    return Boolean(
+      this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey
+    );
+  }
   emit() {
     this.onChange(this._snapshot);
   }
@@ -1509,7 +1531,7 @@ function renderSettingsTab(params) {
   if (params.loading) return b2`<div class="cache-state">Loading…</div>`;
   if (params.error) return b2`<div class="cache-state error">${params.error}</div>`;
   if (!params.hub) return b2`<div class="cache-state">No hubs found.</div>`;
-  const busy = !!(params.pendingSettingKey || params.pendingActionKey);
+  const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
   const settingValue = (key) => !!params.hub?.settings?.[key];
   return b2`
@@ -1610,7 +1632,7 @@ function renderCacheTab(params) {
     const id = Number(activity.id);
     const key = `act-${id}`;
     const isOpen = params.openEntity === key;
-    const locked = params.refreshBusy || params.selectedHubProxyConnected;
+    const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
     const favorites = activityFavorites(params.hub, id);
     const macros = activityMacros(params.hub, id);
@@ -1642,7 +1664,7 @@ function renderCacheTab(params) {
     const id = Number(device.id);
     const key = `dev-${id}`;
     const isOpen = params.openEntity === key;
-    const locked = params.refreshBusy || params.selectedHubProxyConnected;
+    const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
     const commands = deviceCommands(params.hub, id);
     return b2`
@@ -1669,8 +1691,8 @@ function renderCacheTab(params) {
     <div class="tab-panel">
       ${params.staleData ? b2`<div class="stale-banner"><span class="stale-banner-text">Cache was updated externally. Refresh to see latest data.</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>Refresh</button></div>` : null}
       <div class="cache-panel">
-        ${renderAccordionSection({ sectionId: "activities", title: "Activities", count: activities.length, isOpen: params.openSection === "activities", disabled: params.refreshBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("activities"), onRefresh: () => params.onRefreshSection("activities"), body: activities.map(renderActivity) })}
-        ${renderAccordionSection({ sectionId: "devices", title: "Devices", count: devices.length, isOpen: params.openSection === "devices", disabled: params.refreshBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("devices"), onRefresh: () => params.onRefreshSection("devices"), body: devices.map(renderDevice) })}
+        ${renderAccordionSection({ sectionId: "activities", title: "Activities", count: activities.length, isOpen: params.openSection === "activities", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("activities"), onRefresh: () => params.onRefreshSection("activities"), body: activities.map(renderActivity) })}
+        ${renderAccordionSection({ sectionId: "devices", title: "Devices", count: devices.length, isOpen: params.openSection === "devices", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("devices"), onRefresh: () => params.onRefreshSection("devices"), body: devices.map(renderDevice) })}
       </div>
     </div>
   `;
@@ -1865,9 +1887,14 @@ var DEFAULT_ACTION = { action: "perform-action" };
 var SofabatonWifiCommandsTab = class extends i4 {
   constructor() {
     super(...arguments);
+    this.hubCommandBusy = false;
+    this.hubCommandBusyLabel = null;
     this._commandsData = this._normalizeCommandsForStorage([]);
+    this._wifiDevices = [];
+    this._selectedDeviceKey = null;
     this._configLoadedForEntryId = null;
     this._commandConfigLoading = false;
+    this._deviceListLoading = false;
     this._syncState = this._defaultSyncState();
     this._commandSyncLoading = false;
     this._commandSyncRunning = false;
@@ -1885,6 +1912,13 @@ var SofabatonWifiCommandsTab = class extends i4 {
     this._commandEditorDrafts = {};
     this._shortSelectorVersion = 0;
     this._longSelectorVersion = 0;
+    this._createDeviceModalOpen = false;
+    this._newDeviceName = "";
+    this._deviceMutationError = "";
+    this._deleteDeviceKey = null;
+    this._deletingDeviceKey = null;
+    this._creatingDevice = false;
+    this._maxWifiDevices = 5;
     this._saveActiveCommandModal = async () => {
       if (!Number.isInteger(this._activeCommandSlot)) return;
       const idx = Number(this._activeCommandSlot);
@@ -1937,6 +1971,49 @@ var SofabatonWifiCommandsTab = class extends i4 {
       if (this._activeCommandModal === "action") this._closeCommandActionEditor();
       else this._closeCommandEditor();
     };
+    this._goBackToDeviceList = () => {
+      this._selectedDeviceKey = null;
+      this._commandsData = this._normalizeCommandsForStorage([]);
+      this._syncState = this._defaultSyncState();
+    };
+    this._openCreateDeviceModal = () => {
+      if (this._hubCommandLocked()) return;
+      this._newDeviceName = "";
+      this._deviceMutationError = "";
+      this._createDeviceModalOpen = true;
+    };
+    this._closeCreateDeviceModal = () => {
+      this._createDeviceModalOpen = false;
+      this._deviceMutationError = "";
+    };
+    this._closeDeleteDeviceModal = () => {
+      this._deleteDeviceKey = null;
+      this._deviceMutationError = "";
+    };
+    this._deleteWifiDevice = async () => {
+      const entityId = String(this._entityId() || "").trim();
+      const deviceKey = String(this._deleteDeviceKey || "").trim();
+      if (!entityId || !deviceKey || !this.hass?.callWS) return;
+      if (this._hubCommandLocked()) return;
+      this._closeDeleteDeviceModal();
+      this._deletingDeviceKey = deviceKey;
+      this._setSharedHubCommandBusy(true, "Deleting Wifi Device\u2026");
+      try {
+        await this.hass.callWS({
+          type: "sofabaton_x1s/command_device/delete",
+          entity_id: entityId,
+          device_key: deviceKey
+        });
+        if (this._selectedDeviceKey === deviceKey) this._goBackToDeviceList();
+        await this._loadWifiDevices(true);
+      } catch (error) {
+        this._deviceMutationError = String(error?.message || "Unable to delete Wifi Device");
+        this._deleteDeviceKey = deviceKey;
+      } finally {
+        this._deletingDeviceKey = null;
+        this._setSharedHubCommandBusy(false);
+      }
+    };
     this._confirmSyncWarning = async () => {
       const entityId = String(this._entityId() || "").trim();
       if (entityId && this._syncWarningOptOut) this._setCommandSyncWarningOptOut(entityId, true);
@@ -1944,9 +2021,11 @@ var SofabatonWifiCommandsTab = class extends i4 {
       await this._startCommandConfigSync();
     };
     this._runCommandConfigSync = async () => {
-      if (this._commandSyncRunning) return;
+      if (this._commandSyncRunning || this._hubCommandLocked()) return;
       const entityId = String(this._entityId() || "").trim();
+      const deviceKey = String(this._selectedDeviceKey || "").trim();
       if (!entityId) return;
+      if (!deviceKey) return;
       if (this._commandSyncWarningOptedOut(entityId)) {
         await this._startCommandConfigSync();
         return;
@@ -1986,21 +2065,46 @@ var SofabatonWifiCommandsTab = class extends i4 {
     if (this.loading) return b2`<div class="state">Loading…</div>`;
     if (this.error) return b2`<div class="state error">${this.error}</div>`;
     if (!this.hub) return b2`<div class="state">No hubs found.</div>`;
+    const selectedDevice = this._selectedWifiDevice();
+    if (!selectedDevice) {
+      return b2`
+        <div class="tab-panel">
+          ${this._renderDeviceListView()}
+          ${this._renderDetailsModal()}
+          ${this._renderActionModal()}
+          ${this._renderSyncWarningModal()}
+          ${this._renderHubVersionModal()}
+          ${this._renderCreateDeviceModal()}
+          ${this._renderDeleteDeviceModal()}
+        </div>
+      `;
+    }
     const remoteUnavailable = this._remoteUnavailable();
-    const syncTone = remoteUnavailable ? "sync-error" : this._syncStatusTone(this._syncState.status);
     const syncRunning = this._syncState.status === "running";
     const syncMessage = this._syncMessage(remoteUnavailable);
+    return this._renderSelectedDeviceView({
+      selectedDevice,
+      remoteUnavailable,
+      syncRunning,
+      syncMessage
+    });
     return b2`
       <div class="tab-panel">
-        <div class="section-title-wrap">
-          <div class="section-title">Wifi Commands</div>
-          <a class="section-help" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noopener noreferrer" title="Learn more about Wifi Commands" aria-label="Wifi Commands documentation">
-            <ha-icon icon="mdi:help-circle-outline"></ha-icon>
-          </a>
-        </div>
-        <div class="section-subtitle">
-          Receive button presses from the hub: assign Home Assistant actions to physical buttons or favorites and deploy the configuration to your hub.
-        </div>
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <button class="back-btn" @click=${this._goBackToDeviceList}>
+                <ha-icon icon="mdi:arrow-left"></ha-icon>
+              </button>
+              <div class="detail-title">${selectedDevice.device_name}</div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            ${this._hubVersionConfident() ? A : b2`
+              <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
+                Your hub may be miss-versioned. Click here to fix it.
+              </button>
+            `}
         ${this._hubVersionConfident() ? A : b2`
           <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
             ⚠️ Your hub may be miss-versioned! Click here to fix it.
@@ -2008,7 +2112,10 @@ var SofabatonWifiCommandsTab = class extends i4 {
         `}
         <div class="sync-row ${syncTone}">
           <div class="sync-message-wrap">
-            <ha-icon icon=${this._syncStatusIcon(remoteUnavailable)}></ha-icon>
+            <span class="status-pill ${syncTone}">
+              <ha-icon icon=${this._syncStatusIcon(remoteUnavailable)}></ha-icon>
+              <span>${this._syncMessageShort(remoteUnavailable)}</span>
+            </span>
             <div class="sync-message">${syncMessage}</div>
           </div>
           ${remoteUnavailable ? A : syncRunning ? b2`<div class="sync-static">Syncing…</div>` : this._syncState.sync_needed ? b2`
@@ -2020,10 +2127,256 @@ var SofabatonWifiCommandsTab = class extends i4 {
             ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
           </div>
         `}
+          </div>
+        </div>
         ${this._renderDetailsModal()}
         ${this._renderActionModal()}
         ${this._renderSyncWarningModal()}
         ${this._renderHubVersionModal()}
+        ${this._renderCreateDeviceModal()}
+        ${this._renderDeleteDeviceModal()}
+      </div>
+    `;
+  }
+  _renderSelectedDeviceView({
+    selectedDevice,
+    remoteUnavailable,
+    syncRunning,
+    syncMessage
+  }) {
+    const externallyLocked = this._hubCommandLocked() && !this._commandSyncRunning;
+    const syncDockInteractive = !remoteUnavailable && !syncRunning && !externallyLocked && this._syncState.sync_needed;
+    const syncDockClass = syncDockInteractive ? "interactive" : syncRunning || externallyLocked ? "static-syncing" : "static-ok";
+    const syncDockMessage = externallyLocked ? this._effectiveHubCommandLabel() : syncMessage;
+    return b2`
+      <div class="tab-panel">
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <button class="back-btn" @click=${this._goBackToDeviceList}>
+                <ha-icon icon="mdi:arrow-left"></ha-icon>
+              </button>
+              <div class="detail-title">${selectedDevice.device_name}</div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            ${this._hubVersionConfident() ? A : b2`
+              <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
+                Your hub may be miss-versioned. Click here to fix it.
+              </button>
+            `}
+            ${remoteUnavailable ? A : b2`
+              <div class="command-grid">
+                ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
+              </div>
+            `}
+          </div>
+          <div class="sticky-footer">
+            <button
+              class="bottom-dock-trigger ${syncDockClass}"
+              aria-disabled=${String(!syncDockInteractive)}
+              @click=${syncDockInteractive ? this._runCommandConfigSync : null}
+            >
+              ${syncDockMessage}
+            </button>
+          </div>
+        </div>
+        ${this._renderDetailsModal()}
+        ${this._renderActionModal()}
+        ${this._renderSyncWarningModal()}
+        ${this._renderHubVersionModal()}
+        ${this._renderCreateDeviceModal()}
+        ${this._renderDeleteDeviceModal()}
+      </div>
+    `;
+    return b2`
+      <div class="tab-panel">
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <button class="back-btn" @click=${this._goBackToDeviceList}>
+                <ha-icon icon="mdi:arrow-left"></ha-icon>
+              </button>
+              <div class="detail-title">${selectedDevice.device_name}</div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            ${this._hubVersionConfident() ? A : b2`
+              <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
+                Your hub may be miss-versioned. Click here to fix it.
+              </button>
+            `}
+            ${remoteUnavailable ? A : b2`
+              <div class="command-grid">
+                ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
+              </div>
+            `}
+          </div>
+          <div class="sticky-footer">
+            <button
+              class="bottom-dock-trigger ${!remoteUnavailable && !syncRunning && this._syncState.sync_needed ? "interactive" : ""}"
+              ?disabled=${remoteUnavailable || syncRunning || !this._syncState.sync_needed}
+              @click=${!remoteUnavailable && !syncRunning && this._syncState.sync_needed ? this._runCommandConfigSync : null}
+            >
+            <div class="bottom-dock">
+              <div class="bottom-dock-main">
+                <div class="bottom-dock-copy">${syncMessage}</div>
+              </div>
+              <div class="bottom-dock-actions">
+                ${remoteUnavailable ? A : syncRunning ? b2`<div class="sync-static">Syncingâ€¦</div>` : this._syncState.sync_needed ? b2`
+                  <button class="sync-btn sync-btn-primary" ?disabled=${this._commandSyncRunning} @click=${this._runCommandConfigSync}>Sync to Hub</button>
+                ` : b2`
+                  <span class="status-pill ${syncTone}">
+                    <ha-icon icon=${this._syncStatusIcon(remoteUnavailable)}></ha-icon>
+                    <span>${shortSyncMessage}</span>
+                  </span>
+                `}
+              </div>
+            </div>
+          </div>
+        </div>
+        ${this._renderDetailsModal()}
+        ${this._renderActionModal()}
+        ${this._renderSyncWarningModal()}
+        ${this._renderHubVersionModal()}
+        ${this._renderCreateDeviceModal()}
+        ${this._renderDeleteDeviceModal()}
+      </div>
+    `;
+  }
+  _renderDeviceListView() {
+    const canAdd = this._wifiDevices.length < this._maxWifiDevices;
+    const dockInteractive = canAdd && !this._hubCommandLocked() && !this._creatingDevice;
+    const dockClass = dockInteractive ? "interactive" : this._creatingDevice || this._hubCommandLocked() ? "static-syncing" : "static-ok";
+    return b2`
+      <div class="list-view">
+        <div class="list-scroll">
+          <div class="list-header-row">
+            <div>
+              <div class="section-title-wrap">
+                <div class="section-title">Wifi Commands</div>
+                <a class="section-help" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noopener noreferrer" title="Learn more about Wifi Commands" aria-label="Wifi Commands documentation">
+                  <ha-icon icon="mdi:help-circle-outline"></ha-icon>
+                </a>
+              </div>
+              <div class="section-subtitle">Choose a Wifi Device to edit its command slots, or add a new one.</div>
+            </div>
+          </div>
+          ${this._wifiDevices.length ? b2`
+            <div class="device-list">
+              ${this._wifiDevices.map((device) => b2`
+                <div
+                  class="device-card ${device.device_key === this._deletingDeviceKey ? "pending-delete" : ""}"
+                  role="button"
+                  tabindex=${this._deletingDeviceKey === device.device_key ? -1 : 0}
+                  aria-disabled=${String(device.device_key === this._deletingDeviceKey)}
+                  @click=${device.device_key === this._deletingDeviceKey ? null : () => this._selectWifiDevice(device.device_key)}
+                  @keydown=${device.device_key === this._deletingDeviceKey ? null : ((event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        this._selectWifiDevice(device.device_key);
+      }
+    })}
+                >
+                  <div class="device-card-main">
+                    <span class="device-card-lead"><ha-icon icon="mdi:wifi"></ha-icon></span>
+                    <div class="device-card-name">${device.device_name}</div>
+                    <div class="device-card-meta">
+                      <span class="status-pill ${this._deviceStatusTone(device)}">
+                        <ha-icon icon=${this._deviceStatusIcon(device)}></ha-icon>
+                        <span>${this._deviceStatusLabel(device)}</span>
+                      </span>
+                      <span class="device-card-count"><span class="device-card-count-strong">${Number(device.configured_slot_count || 0)}</span> slot${Number(device.configured_slot_count || 0) === 1 ? "" : "s"} (configured)</span>
+                    </div>
+                  </div>
+                  <div class="device-card-actions">
+                    <button class="device-delete-btn" title="Delete Wifi Device" ?disabled=${this._hubCommandLocked() || device.device_key === this._deletingDeviceKey} @click=${(event) => this._promptDeleteDevice(device.device_key, event)}>
+                      <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                    </button>
+                    <span class="device-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+                  </div>
+                </div>
+              `)}
+            </div>
+          ` : b2`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
+          ${canAdd ? A : b2`<div class="empty-hint">Maximum of ${this._maxWifiDevices} Wifi Devices reached.</div>`}
+        </div>
+        <div class="sticky-footer">
+          <button class="bottom-dock-trigger ${dockClass}" aria-disabled=${String(!dockInteractive)} @click=${dockInteractive ? this._openCreateDeviceModal : null}>
+            ${this._listDockLabel(canAdd)}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  _renderCreateDeviceModal() {
+    if (!this._createDeviceModalOpen) return A;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeCreateDeviceModal}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">Add Wifi Device</div>
+            <button class="dialog-close" @click=${this._closeCreateDeviceModal}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <ha-textfield
+              .label=${"Device name"}
+              .maxLength=${20}
+              .value=${this._newDeviceName}
+              @input=${(event) => {
+      const input = event.currentTarget;
+      const value = this._sanitizeWifiDeviceName(input.value);
+      input.value = value;
+      this._newDeviceName = value;
+      this._deviceMutationError = "";
+    }}
+              @change=${(event) => {
+      const input = event.currentTarget;
+      const value = this._sanitizeWifiDeviceName(input.value);
+      input.value = value;
+      this._newDeviceName = value;
+      this._deviceMutationError = "";
+    }}
+              @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void this._createWifiDevice();
+      }
+    }}
+            ></ha-textfield>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._deviceMutationError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" ?disabled=${this._creatingDevice} @click=${this._closeCreateDeviceModal}>Cancel</button>
+              <button class="dialog-btn dialog-btn-primary" ?disabled=${this._creatingDevice} @click=${this._createWifiDevice}>Create</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderDeleteDeviceModal() {
+    const device = this._wifiDevices.find((item) => item.device_key === this._deleteDeviceKey);
+    if (!device) return A;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeDeleteDeviceModal}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">Delete Wifi Device?</div>
+            <button class="dialog-close" @click=${this._closeDeleteDeviceModal}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="dialog-text">Delete "${device.device_name}" from the hub and remove its saved command-slot configuration?</div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._deviceMutationError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeDeleteDeviceModal}>Cancel</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._deleteWifiDevice}>Delete</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -2409,9 +2762,20 @@ var SofabatonWifiCommandsTab = class extends i4 {
   async _ensureLoadedForCurrentHub() {
     const entryId = String(this.hub?.entry_id || "").trim();
     if (!entryId || !this.hass?.callWS) return;
-    if (this._configLoadedForEntryId === entryId && !this._commandConfigLoading && !this._commandSyncLoading) return;
-    await this._loadCommandConfigFromBackend(true);
-    await this._loadCommandSyncProgress(true);
+    if (this._configLoadedForEntryId !== entryId) {
+      this._configLoadedForEntryId = null;
+      this._selectedDeviceKey = null;
+      this._wifiDevices = [];
+      this._commandsData = this._normalizeCommandsForStorage([]);
+      this._syncState = this._defaultSyncState();
+    }
+    if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
+    await this._loadWifiDevices(true);
+    if (this._selectedDeviceKey) {
+      await this._loadCommandConfigFromBackend(true);
+      await this._loadCommandSyncProgress(true);
+    }
+    this._configLoadedForEntryId = entryId;
   }
   _entityId() {
     return entityForHub(this.hass, this.hub);
@@ -2437,6 +2801,23 @@ var SofabatonWifiCommandsTab = class extends i4 {
     const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N} ]+/gu : /[^A-Za-z0-9 ]+/g;
     return String(value ?? "").replace(pattern, "").slice(0, 20);
   }
+  _sanitizeWifiDeviceName(value) {
+    return this._sanitizeCommandName(value);
+  }
+  _setSharedHubCommandBusy(busy, label = null) {
+    this.setHubCommandBusy?.(busy, label);
+    this.dispatchEvent(new CustomEvent("sofabaton-hub-command-busy-changed", {
+      detail: { busy, label },
+      bubbles: true,
+      composed: true
+    }));
+  }
+  _hubCommandLocked() {
+    return Boolean(this.hubCommandBusy);
+  }
+  _effectiveHubCommandLabel() {
+    return String(this.hubCommandBusyLabel || "").trim() || "Hub command in progress\u2026";
+  }
   _defaultSyncState() {
     return {
       status: "idle",
@@ -2447,6 +2828,9 @@ var SofabatonWifiCommandsTab = class extends i4 {
       managed_command_hashes: [],
       sync_needed: false
     };
+  }
+  _selectedWifiDevice() {
+    return this._wifiDevices.find((device) => device.device_key === this._selectedDeviceKey) || null;
   }
   _normalizeCommandAction(action) {
     if (Array.isArray(action)) {
@@ -2538,14 +2922,16 @@ var SofabatonWifiCommandsTab = class extends i4 {
   async _loadCommandConfigFromBackend(force = false) {
     const entityId = String(this._entityId() || "").trim();
     const entryId = String(this.hub?.entry_id || "").trim();
+    const deviceKey = String(this._selectedDeviceKey || "").trim();
     if (!entityId || !entryId || !this.hass?.callWS) return;
     if (this._commandConfigLoading && !force) return;
-    if (this._configLoadedForEntryId === entryId && !force) return;
+    if (!deviceKey) return;
     this._commandConfigLoading = true;
     try {
       const result = await this.hass.callWS({
         type: "sofabaton_x1s/command_config/get",
-        entity_id: entityId
+        entity_id: entityId,
+        device_key: deviceKey
       });
       this._commandsData = this._normalizeCommandsForStorage(
         result?.commands || [],
@@ -2555,20 +2941,22 @@ var SofabatonWifiCommandsTab = class extends i4 {
       this._configLoadedForEntryId = entryId;
     } catch (_error) {
       this._commandsData = this._normalizeCommandsForStorage([]);
-      this._configLoadedForEntryId = entryId;
     } finally {
       this._commandConfigLoading = false;
     }
   }
   async _loadCommandSyncProgress(force = false) {
     const entityId = String(this._entityId() || "").trim();
+    const deviceKey = String(this._selectedDeviceKey || "").trim();
     if (!entityId || !this.hass?.callWS) return;
+    if (!deviceKey) return;
     if (this._commandSyncLoading && !force) return;
     this._commandSyncLoading = true;
     try {
       const result = await this.hass.callWS({
         type: "sofabaton_x1s/command_sync/progress",
-        entity_id: entityId
+        entity_id: entityId,
+        device_key: deviceKey
       });
       this._syncState = {
         status: String(result?.status || "idle"),
@@ -2579,6 +2967,14 @@ var SofabatonWifiCommandsTab = class extends i4 {
         managed_command_hashes: Array.isArray(result?.managed_command_hashes) ? result.managed_command_hashes.map((item) => String(item || "")).filter(Boolean) : [],
         sync_needed: Boolean(result?.sync_needed)
       };
+      if (deviceKey) {
+        this._wifiDevices = this._wifiDevices.map(
+          (device) => device.device_key === deviceKey ? {
+            ...device,
+            ...this._syncState
+          } : device
+        );
+      }
     } catch (_error) {
       this._syncState = {
         ...this._defaultSyncState(),
@@ -2588,22 +2984,54 @@ var SofabatonWifiCommandsTab = class extends i4 {
       this._commandSyncLoading = false;
     }
   }
+  async _loadWifiDevices(force = false) {
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId || !this.hass?.callWS) return;
+    if (this._deviceListLoading && !force) return;
+    this._deviceListLoading = true;
+    try {
+      const result = await this.hass.callWS({
+        type: "sofabaton_x1s/command_devices/list",
+        entity_id: entityId
+      });
+      this._wifiDevices = Array.isArray(result?.devices) ? result.devices : [];
+      if (this._selectedDeviceKey && this._syncState.status !== "idle") {
+        this._wifiDevices = this._wifiDevices.map(
+          (device) => device.device_key === this._selectedDeviceKey ? {
+            ...device,
+            ...this._syncState
+          } : device
+        );
+      }
+      this._maxWifiDevices = Number(result?.max_devices || 5);
+      if (this._selectedDeviceKey && !this._wifiDevices.some((device) => device.device_key === this._selectedDeviceKey)) {
+        this._selectedDeviceKey = null;
+        this._commandsData = this._normalizeCommandsForStorage([]);
+        this._syncState = this._defaultSyncState();
+      }
+    } finally {
+      this._deviceListLoading = false;
+    }
+  }
   async _setCommands(nextCommands) {
     const { powerOnCommandId, powerOffCommandId } = this._derivePowerCommandIds(nextCommands);
     const normalized = this._normalizeCommandsForStorage(nextCommands, powerOnCommandId, powerOffCommandId);
     this._commandsData = normalized;
     const entityId = String(this._entityId() || "").trim();
+    const deviceKey = String(this._selectedDeviceKey || "").trim();
     if (entityId && this.hass?.callWS) {
       try {
         await this.hass.callWS({
           type: "sofabaton_x1s/command_config/set",
           entity_id: entityId,
+          device_key: deviceKey,
           commands: normalized,
           power_on_command_id: powerOnCommandId ?? void 0,
           power_off_command_id: powerOffCommandId ?? void 0
         });
       } catch (_error) {
       }
+      await this._loadWifiDevices(true);
       await this._loadCommandSyncProgress(true);
     }
   }
@@ -2965,6 +3393,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
     if (status === "failed") return "sync-error";
     if (status === "success") return "sync-ok";
     if (status === "running") return "sync-running";
+    if (status === "pending") return "sync-pending";
     return "";
   }
   _syncStatusIcon(remoteUnavailable) {
@@ -2985,6 +3414,78 @@ var SofabatonWifiCommandsTab = class extends i4 {
     if (this._syncState.status === "success") return "Hub command configuration is up to date.";
     return "No sync needed.";
   }
+  _syncMessageShort(remoteUnavailable) {
+    if (remoteUnavailable) return "Unavailable";
+    if (this._syncState.status === "running") return "Syncing";
+    if (this._syncState.status === "failed") return "Sync failed";
+    if (this._syncState.sync_needed) return "Sync needed";
+    if (this._syncState.status === "success") return "Up to date";
+    return "Idle";
+  }
+  _deviceStatusLabel(device) {
+    if (device.device_key === this._deletingDeviceKey) return "Deleting\u2026";
+    if (device.status === "running") return "Syncing";
+    if (device.status === "failed") return "Sync failed";
+    if (device.sync_needed) return "Sync needed";
+    if (device.status === "success") return "Synced";
+    return "Synced";
+  }
+  _deviceStatusIcon(device) {
+    if (device.device_key === this._deletingDeviceKey) return "mdi:progress-clock";
+    if (device.status === "failed") return "mdi:alert-circle-outline";
+    if (device.status === "running") return "mdi:progress-clock";
+    if (device.sync_needed) return "mdi:sync-alert";
+    return "mdi:check-circle-outline";
+  }
+  _deviceStatusTone(device) {
+    if (device.device_key === this._deletingDeviceKey) return "sync-pending";
+    return this._syncStatusTone(device.status);
+  }
+  _listDockLabel(canAdd) {
+    if (this._creatingDevice) return "Creating Wifi Device\u2026";
+    if (this._hubCommandLocked()) return this._effectiveHubCommandLabel();
+    if (!canAdd) return `Maximum of ${this._maxWifiDevices} Wifi Devices reached`;
+    return "Add Wifi Device";
+  }
+  _selectWifiDevice(deviceKey) {
+    this._selectedDeviceKey = String(deviceKey || "").trim();
+    void this._loadCommandConfigFromBackend(true);
+    void this._loadCommandSyncProgress(true);
+  }
+  async _createWifiDevice() {
+    const entityId = String(this._entityId() || "").trim();
+    const deviceName = this._sanitizeWifiDeviceName(this._newDeviceName);
+    if (!entityId || !this.hass?.callWS) return;
+    if (this._hubCommandLocked()) return;
+    if (!deviceName) {
+      this._deviceMutationError = "Device name is required.";
+      return;
+    }
+    this._creatingDevice = true;
+    this._setSharedHubCommandBusy(true, "Creating Wifi Device\u2026");
+    try {
+      const payload = await this.hass.callWS({
+        type: "sofabaton_x1s/command_device/create",
+        entity_id: entityId,
+        device_name: deviceName
+      });
+      this._closeCreateDeviceModal();
+      await this._loadWifiDevices(true);
+      this._selectWifiDevice(String(payload?.device_key || ""));
+    } catch (error) {
+      this._deviceMutationError = String(error?.message || "Unable to create Wifi Device");
+    } finally {
+      this._creatingDevice = false;
+      this._setSharedHubCommandBusy(false);
+    }
+  }
+  _promptDeleteDevice(deviceKey, event) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (this._hubCommandLocked()) return;
+    this._deviceMutationError = "";
+    this._deleteDeviceKey = deviceKey;
+  }
   _commandSyncWarningStorageKey(entityId) {
     return `sofabaton_x1s:sync_warning_optout:${String(entityId || "").trim()}`;
   }
@@ -3004,6 +3505,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
   }
   async _startCommandConfigSync() {
     const entityId = String(this._entityId() || "").trim();
+    const deviceKey = String(this._selectedDeviceKey || "").trim();
     if (!entityId || !this.hass?.callService) return;
     this._syncState = {
       ...this._syncState,
@@ -3014,17 +3516,33 @@ var SofabatonWifiCommandsTab = class extends i4 {
       sync_needed: true
     };
     this._commandSyncRunning = true;
+    this._wifiDevices = this._wifiDevices.map(
+      (device) => device.device_key === deviceKey ? {
+        ...device,
+        ...this._syncState,
+        status: "running"
+      } : device
+    );
+    this._setSharedHubCommandBusy(true, "Syncing Wifi Device\u2026");
     try {
-      await this.hass.callService("sofabaton_x1s", "sync_command_config", { entity_id: entityId });
+      await this.hass.callService("sofabaton_x1s", "sync_command_config", { entity_id: entityId, device_key: deviceKey });
     } catch (error) {
       this._syncState = {
         ...this._syncState,
         status: "failed",
         message: String(error?.message || "Sync failed to start")
       };
+      this._wifiDevices = this._wifiDevices.map(
+        (device) => device.device_key === deviceKey ? {
+          ...device,
+          ...this._syncState
+        } : device
+      );
     } finally {
       this._commandSyncRunning = false;
+      await this._loadWifiDevices(true);
       await this._loadCommandSyncProgress(true);
+      this._setSharedHubCommandBusy(false);
     }
   }
   _scheduleSyncPoll() {
@@ -3088,11 +3606,17 @@ var SofabatonWifiCommandsTab = class extends i4 {
 SofabatonWifiCommandsTab.properties = {
   hass: { attribute: false },
   hub: { attribute: false },
+  setHubCommandBusy: { attribute: false },
+  hubCommandBusy: { type: Boolean },
+  hubCommandBusyLabel: { type: String },
   loading: { type: Boolean },
   error: { type: String },
   _commandsData: { state: true },
+  _wifiDevices: { state: true },
+  _selectedDeviceKey: { state: true },
   _configLoadedForEntryId: { state: true },
   _commandConfigLoading: { state: true },
+  _deviceListLoading: { state: true },
   _syncState: { state: true },
   _commandSyncLoading: { state: true },
   _commandSyncRunning: { state: true },
@@ -3108,11 +3632,102 @@ SofabatonWifiCommandsTab.properties = {
   _advancedOptionsOpen: { state: true },
   _commandEditorDrafts: { state: true },
   _shortSelectorVersion: { state: true },
-  _longSelectorVersion: { state: true }
+  _longSelectorVersion: { state: true },
+  _createDeviceModalOpen: { state: true },
+  _newDeviceName: { state: true },
+  _deviceMutationError: { state: true },
+  _deleteDeviceKey: { state: true },
+  _deletingDeviceKey: { state: true },
+  _creatingDevice: { state: true },
+  _maxWifiDevices: { state: true }
 };
 SofabatonWifiCommandsTab.styles = i`
     :host { display: flex; flex: 1; min-height: 0; }
-    .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
+    .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow: hidden; }
+    .list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; margin: -16px; }
+    .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 16px 16px; }
+    .detail-view { min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; margin: -16px; }
+    .sticky-header, .sticky-footer { position: sticky; z-index: 2; background: var(--ha-card-background, var(--card-background-color)); }
+    .sticky-header { padding: 12px 16px; }
+    .sticky-header { top: 0; border-bottom: 1px solid var(--divider-color); }
+    .sticky-footer { bottom: 0; border-top: 1px solid var(--divider-color); padding: 0; }
+    .detail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+    .detail-title-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .detail-title { font-size: 18px; font-weight: 700; color: var(--primary-text-color); overflow-wrap: anywhere; }
+    .back-btn, .list-action-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: 10px; background: transparent; color: var(--primary-text-color); font: inherit; }
+    .back-btn, .list-action-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
+    .back-btn { display: inline-flex; align-items: center; gap: 8px; }
+    .list-header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .device-list { display: grid; gap: 10px; }
+    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: 18px; padding: 10px 14px; background: var(--ha-card-background, var(--card-background-color)); text-align: left; display: flex; align-items: center; gap: 14px; cursor: pointer; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
+    .device-card.pending-delete { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 45%, var(--divider-color)); }
+    .device-card:hover, .back-btn:hover, .list-action-btn:hover, .device-delete-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 16px; }
+    .device-card-lead { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
+    .device-card-lead ha-icon { --mdc-icon-size: 20px; }
+    .device-card-name { font-size: 14px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .device-card-meta { font-size: 12px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; margin-left: auto; }
+    .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; }
+    .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: #2e7d32; }
+    .status-pill.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); color: var(--error-color, #db4437); }
+    .status-pill.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); color: var(--primary-color); }
+    .status-pill.sync-pending { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 40%, var(--divider-color)); color: var(--warning-color, #f59e0b); }
+    .status-pill.sync-ok { background: color-mix(in srgb, #48b851 16%, var(--ha-card-background, var(--card-background-color))); }
+    .device-card-count { white-space: nowrap; font-size: 13px; color: var(--primary-text-color); }
+    .device-card-count-strong { font-weight: 700; }
+    .device-card-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: 4px; }
+    .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--secondary-text-color); flex: 0 0 auto; }
+    .device-delete-btn:disabled {
+      cursor: default;
+      opacity: 0.42;
+      color: var(--disabled-text-color, var(--secondary-text-color));
+      border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
+      background: transparent;
+    }
+    .device-delete-btn:disabled:hover {
+      border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
+    }
+    .device-chevron { color: var(--secondary-text-color); display: inline-flex; opacity: 0.85; }
+    .device-chevron ha-icon { --mdc-icon-size: 22px; }
+    .empty-state-card { border: 1px dashed var(--divider-color); border-radius: 14px; padding: 18px; color: var(--secondary-text-color); line-height: 1.5; }
+    .bottom-dock-trigger {
+      width: 100%;
+      min-height: 0;
+      box-sizing: border-box;
+      display: block;
+      border: 0;
+      border-radius: 0;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent);
+      padding: 10px 16px;
+      color: var(--secondary-text-color);
+      font: inherit;
+      font-size: 14px;
+      line-height: 1.35;
+      text-align: center;
+      cursor: default;
+      transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease, transform 80ms ease, box-shadow 120ms ease;
+    }
+    .bottom-dock-trigger:focus-visible { outline: none; }
+    .bottom-dock-trigger.static-ok {
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent);
+      color: var(--secondary-text-color);
+    }
+    .bottom-dock-trigger.static-syncing {
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 70%, var(--primary-color) 12%);
+      color: var(--primary-text-color);
+    }
+    .bottom-dock-trigger.interactive {
+      cursor: pointer;
+      background: color-mix(in srgb, var(--warning-color, #ff9800) 18%, var(--secondary-background-color, var(--ha-card-background)));
+      color: var(--primary-text-color);
+      font-weight: 600;
+    }
+    .bottom-dock-trigger.interactive:hover,
+    .bottom-dock-trigger.interactive:focus-visible {
+      background: color-mix(in srgb, var(--warning-color, #ff9800) 26%, var(--secondary-background-color, var(--ha-card-background)));
+    }
+    .bottom-dock-trigger.interactive:active { transform: translateY(1px); }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
     .state.error { color: var(--error-color, #db4437); }
     .section-title-wrap { display: flex; align-items: center; gap: 8px; }
@@ -3121,11 +3736,11 @@ SofabatonWifiCommandsTab.styles = i`
     .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .sync-warning-text, .empty-hint { color: var(--secondary-text-color); }
     .section-subtitle { font-size: 13px; line-height: 1.5; }
     .hub-version-warn-btn { width: 100%; border: 1px solid color-mix(in srgb, var(--warning-color, #ff9800) 45%, var(--divider-color)); border-radius: 12px; padding: 10px 12px; background: color-mix(in srgb, var(--warning-color, #ff9800) 10%, transparent); color: var(--primary-text-color); text-align: left; font: inherit; font-weight: 600; cursor: pointer; }
-    .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: 14px; background: var(--secondary-background-color, var(--ha-card-background)); }
+    .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: 18px; background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }
     .sync-row.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); }
     .sync-row.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); }
     .sync-row.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); }
-    .sync-message-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .sync-message-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
     .sync-message { font-size: 13px; line-height: 1.4; }
     .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
@@ -3336,6 +3951,10 @@ SofabatonWifiCommandsTab.styles = i`
       .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
       .dialog, .dialog.small { width: 100%; max-height: 100%; border-radius: 0 0 16px 16px; }
       .dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
+      .list-action-btn { width: 100%; justify-content: center; }
+      .device-card { align-items: flex-start; }
+      .device-card-main { align-items: flex-start; flex-direction: column; gap: 8px; }
+      .device-card-meta { width: 100%; margin-left: 0; flex-wrap: wrap; }
       .sync-row { align-items: flex-start; flex-direction: column; }
     }
   `;
@@ -3482,6 +4101,10 @@ var SofabatonControlPanelCard = class extends i4 {
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
     const height = Number(this._config.card_height ?? 600);
+    const sharedHubCommandBusy = Boolean(
+      this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey
+    );
+    const sharedHubCommandLabel = this._snapshot.externalHubCommandLabel || (this._snapshot.refreshBusy ? "Refreshing cache\u2026" : null) || (this._snapshot.pendingActionKey ? "Hub command in progress\u2026" : null);
     let activeTab = renderHubTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
@@ -3495,6 +4118,7 @@ var SofabatonControlPanelCard = class extends i4 {
         hub,
         hass: this._snapshot.hass,
         persistentCacheEnabled: cacheEnabled,
+        hubCommandBusy: sharedHubCommandBusy,
         pendingSettingKey: this._snapshot.pendingSettingKey,
         pendingActionKey: this._snapshot.pendingActionKey,
         onToggleSetting: (setting, enabled) => this.handleSettingToggle(setting, enabled),
@@ -3513,6 +4137,9 @@ var SofabatonControlPanelCard = class extends i4 {
           .error=${this._snapshot.loadError}
           .hub=${hub}
           .hass=${this._snapshot.hass}
+          .hubCommandBusy=${sharedHubCommandBusy}
+          .hubCommandBusyLabel=${sharedHubCommandLabel}
+          .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
         ></sofabaton-wifi-commands-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {
@@ -3523,6 +4150,7 @@ var SofabatonControlPanelCard = class extends i4 {
         persistentCacheEnabled: cacheEnabled,
         staleData: this._snapshot.staleData,
         refreshBusy: this._snapshot.refreshBusy,
+        hubCommandBusy: sharedHubCommandBusy,
         activeRefreshLabel: this._snapshot.activeRefreshLabel,
         openSection: this._snapshot.openSection,
         openEntity: this._snapshot.openEntity,

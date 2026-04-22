@@ -189,6 +189,14 @@ class SofabatonControlPanelCard extends LitElement {
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
     const height = Number(this._config.card_height ?? 600);
+    const sharedHubCommandBusy = Boolean(
+      this._snapshot.refreshBusy ||
+      this._snapshot.externalHubCommandBusy ||
+      this._snapshot.pendingActionKey,
+    );
+    const sharedHubCommandLabel = this._snapshot.externalHubCommandLabel
+      || (this._snapshot.refreshBusy ? "Refreshing cache…" : null)
+      || (this._snapshot.pendingActionKey ? "Hub command in progress…" : null);
     let activeTab = renderHubTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
@@ -203,6 +211,7 @@ class SofabatonControlPanelCard extends LitElement {
         hub,
         hass: this._snapshot.hass,
         persistentCacheEnabled: cacheEnabled,
+        hubCommandBusy: sharedHubCommandBusy,
         pendingSettingKey: this._snapshot.pendingSettingKey,
         pendingActionKey: this._snapshot.pendingActionKey,
         onToggleSetting: (setting, enabled) => this.handleSettingToggle(setting, enabled),
@@ -221,6 +230,9 @@ class SofabatonControlPanelCard extends LitElement {
           .error=${this._snapshot.loadError}
           .hub=${hub}
           .hass=${this._snapshot.hass}
+          .hubCommandBusy=${sharedHubCommandBusy}
+          .hubCommandBusyLabel=${sharedHubCommandLabel}
+          .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
         ></sofabaton-wifi-commands-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {
@@ -231,6 +243,7 @@ class SofabatonControlPanelCard extends LitElement {
         persistentCacheEnabled: cacheEnabled,
         staleData: this._snapshot.staleData,
         refreshBusy: this._snapshot.refreshBusy,
+        hubCommandBusy: sharedHubCommandBusy,
         activeRefreshLabel: this._snapshot.activeRefreshLabel,
         openSection: this._snapshot.openSection,
         openEntity: this._snapshot.openEntity,

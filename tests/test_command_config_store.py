@@ -177,6 +177,23 @@ def test_compute_commands_hash_changes_when_input_activity_changes() -> None:
     assert compute_commands_hash(commands) != compute_commands_hash(with_other_activity)
 
 
+def test_compute_commands_hash_changes_when_device_name_changes() -> None:
+    commands = [
+        {
+            "name": "Lights",
+            "add_as_favorite": True,
+            "hard_button": "182",
+            "activities": ["102", "101"],
+            "action": {"action": "perform-action", "service": "x"},
+        }
+    ]
+
+    assert compute_commands_hash(commands, device_name="Home Assistant") != compute_commands_hash(
+        commands,
+        device_name="Bedroom TV",
+    )
+
+
 def test_count_configured_command_slots_counts_non_default_slots() -> None:
     assert count_configured_command_slots([]) == 0
 

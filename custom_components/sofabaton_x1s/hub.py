@@ -47,6 +47,7 @@ from .lib.protocol_const import ButtonName
 from .lib.x1_proxy import X1Proxy
 from .command_config import (
     COMMAND_BRAND_PREFIX,
+    DEFAULT_WIFI_DEVICE_KEY,
     count_configured_command_slots,
     normalize_command_name,
     normalize_power_command_id,
@@ -57,6 +58,21 @@ _LOGGER = logging.getLogger(__name__)
 _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.DOWN, "left": ButtonName.LEFT, "right": ButtonName.RIGHT, "ok": ButtonName.OK, "back": ButtonName.BACK, "home": ButtonName.HOME, "menu": ButtonName.MENU, "volup": ButtonName.VOL_UP, "voldn": ButtonName.VOL_DOWN, "mute": ButtonName.MUTE, "chup": ButtonName.CH_UP, "chdn": ButtonName.CH_DOWN, "guide": ButtonName.GUIDE, "dvr": ButtonName.DVR, "play": ButtonName.PLAY, "exit": ButtonName.EXIT, "rew": ButtonName.REW, "pause": ButtonName.PAUSE, "fwd": ButtonName.FWD, "red": ButtonName.RED, "green": ButtonName.GREEN, "yellow": ButtonName.YELLOW, "blue": ButtonName.BLUE, "a": ButtonName.A, "b": ButtonName.B, "c": ButtonName.C}
 _WIFI_COMMAND_SLOT_COUNT = 10
 _WIFI_COMMAND_LONG_PRESS_OFFSET = 10
+
+
+def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
+    text = str(brand or "").strip()
+    prefix = f"{COMMAND_BRAND_PREFIX}-"
+    if not text.startswith(prefix):
+        return None, None
+    suffix = text[len(prefix):].strip()
+    if not suffix:
+        return None, None
+    if "-" not in suffix:
+        return DEFAULT_WIFI_DEVICE_KEY, suffix
+    device_key, command_hash = suffix.split("-", 1)
+    device_key = "".join(ch for ch in str(device_key).lower() if ch.isalnum())
+    return (device_key or DEFAULT_WIFI_DEVICE_KEY), command_hash.strip()
 
 
 def get_hub_model(entry: ConfigEntry) -> str:
@@ -127,7 +143,7 @@ class SofabatonHub:
         self._last_ip_command: dict[str, Any] | None = None
         self._button_waiters: dict[int, list] = {}
         self._command_sync_lock = asyncio.Lock()
-        self._command_sync_progress: dict[str, Any] = {"status": "idle", "current_step": 0, "total_steps": 0, "message": "Idle"}
+        self._command_sync_progress: dict[str, dict[str, Any]] = {}
         self._log = get_hub_logger(_LOGGER, self.entry_id)
 
         self._log.debug(
@@ -1435,7 +1451,7 @@ class SofabatonHub:
                 domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
                 store = domain_data.get("command_config_store")
                 if store is not None:
-                    deployed = store.get_deployed_wifi_commands(self.entry_id)
+                    deployed = store.get_deployed_wifi_commands(self.entry_id, hub_device_id=device_id)
                     if 0 <= command_index < len(deployed):
                         resolved_slot = deployed[command_index]
                         command_label = str(resolved_slot.get("name", ""))
@@ -1477,24 +1493,29 @@ class SofabatonHub:
     def is_sync_in_progress(self) -> bool:
         return self._command_sync_lock.locked()
 
-    def get_command_sync_progress(self) -> dict[str, Any]:
-        return dict(self._command_sync_progress)
+    def get_command_sync_progress(self, device_key: str | None = None) -> dict[str, Any]:
+        normalized_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
+        progress = self._command_sync_progress.get(normalized_key)
+        if isinstance(progress, dict):
+            return dict(progress)
+        return {"status": "idle", "current_step": 0, "total_steps": 0, "message": "Idle"}
 
-    def _set_command_sync_progress(self, **payload: Any) -> None:
-        next_payload = dict(self._command_sync_progress)
+    def _set_command_sync_progress(self, *, device_key: str | None = None, **payload: Any) -> None:
+        normalized_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
+        next_payload = self.get_command_sync_progress(normalized_key)
         next_payload.update(payload)
-        self._command_sync_progress = next_payload
+        self._command_sync_progress[normalized_key] = next_payload
         async_dispatcher_send(self.hass, signal_command_sync(self.entry_id))
 
     def _managed_wifi_devices(
         self, devices: dict[int, dict[str, Any]] | None = None
-    ) -> list[tuple[int, str]]:
-        managed: list[tuple[int, str]] = []
-        prefix = f"{COMMAND_BRAND_PREFIX}-"
+    ) -> list[tuple[int, str, str, str]]:
+        managed: list[tuple[int, str, str, str]] = []
         for dev_id, device in (devices or self.devices).items():
             brand = str(device.get("brand") or "").strip()
-            if brand.startswith(prefix):
-                managed.append((int(dev_id), brand))
+            device_key, command_hash = _parse_managed_wifi_brand(brand)
+            if device_key and command_hash:
+                managed.append((int(dev_id), device_key, command_hash, brand))
         return managed
 
     async def _async_refresh_devices_snapshot(
@@ -1560,14 +1581,12 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
-    def get_managed_command_hashes(self) -> list[str]:
-        prefix = f"{COMMAND_BRAND_PREFIX}-"
+    def get_managed_command_hashes(self, device_key: str | None = None) -> list[str]:
+        normalized_key = "".join(ch for ch in str(device_key or "").lower() if ch.isalnum())
         hashes: set[str] = set()
-        for _dev_id, brand in self._managed_wifi_devices():
-            text = str(brand or "").strip()
-            if not text.startswith(prefix):
+        for _dev_id, managed_key, command_hash, _brand in self._managed_wifi_devices():
+            if normalized_key and managed_key != normalized_key:
                 continue
-            command_hash = text[len(prefix):].strip()
             if command_hash:
                 hashes.add(command_hash)
         return sorted(hashes)
@@ -1641,7 +1660,7 @@ class SofabatonHub:
         if store is None:
             return
 
-        payload = await store.async_get_hub_config(self.entry_id)
+        payload = await store.async_get_hub_config(self.entry_id, device_key=DEFAULT_WIFI_DEVICE_KEY)
         command_key = normalize_command_name(command_label)
         for slot in payload.get("commands", []):
             if normalize_command_name(slot.get("name")) != command_key:
@@ -1654,6 +1673,7 @@ class SofabatonHub:
         *,
         command_payload: dict[str, Any],
         request_port: int,
+        device_key: str = DEFAULT_WIFI_DEVICE_KEY,
         device_name: str = "Home Assistant",
     ) -> dict[str, Any]:
         if self._command_sync_lock.locked():
@@ -1663,9 +1683,13 @@ class SofabatonHub:
             commands = list(command_payload.get("commands") or [])
             configured_slots = count_configured_command_slots(commands)
             commands_hash = str(command_payload.get("commands_hash") or "")
+            deployed_commands_hash = str(command_payload.get("deployed_commands_hash") or "")
+            deployed_device_id = command_payload.get("deployed_device_id")
+            normalized_device_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
             brand_name = f"{COMMAND_BRAND_PREFIX}-{commands_hash}"
             total_steps = 8 if configured_slots > 0 else 7
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 status="running",
                 current_step=0,
                 total_steps=total_steps,
@@ -1673,6 +1697,7 @@ class SofabatonHub:
             )
 
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 current_step=1,
                 message="Ensuring Wifi Device is enabled",
             )
@@ -1684,6 +1709,7 @@ class SofabatonHub:
                 listener_error = listener.get_last_start_error()
                 if listener_error:
                     self._set_command_sync_progress(
+                        device_key=normalized_device_key,
                         status="failed",
                         message=(
                             "Failed enabling Wifi Device. "
@@ -1698,15 +1724,27 @@ class SofabatonHub:
                     )
 
             device_snapshot = await self._async_refresh_devices_snapshot()
-            managed = self._managed_wifi_devices(device_snapshot)
+            managed_by_id: dict[int, tuple[int, str, str, str]] = {}
+            for dev_id, managed_key, managed_hash, brand in self._managed_wifi_devices(device_snapshot):
+                if isinstance(deployed_device_id, int) and int(dev_id) == deployed_device_id:
+                    managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
+                    continue
+                if deployed_commands_hash and managed_hash == deployed_commands_hash:
+                    managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
+                    continue
+                if managed_key == normalized_device_key:
+                    managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
+            managed = list(managed_by_id.values())
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 current_step=2,
                 message="Deleting existing managed Wifi Device(s)",
             )
-            for dev_id, _brand in managed:
+            for dev_id, _managed_key, _managed_hash, _brand in managed:
                 result = await self.async_delete_device(dev_id)
                 if not result:
                     self._set_command_sync_progress(
+                        device_key=normalized_device_key,
                         status="failed",
                         message=f"Failed deleting managed device {dev_id}",
                     )
@@ -1717,12 +1755,26 @@ class SofabatonHub:
             if configured_slots == 0:
                 if self.roku_server_enabled:
                     self._set_command_sync_progress(
+                        device_key=normalized_device_key,
                         current_step=3,
                         message="Disabling Wifi Device",
                     )
                     await self.async_set_roku_server_enabled(False)
 
+                hass_data = getattr(self.hass, "data", {})
+                domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+                store = domain_data.get("command_config_store")
+                if store is not None:
+                    await store.async_save_deployed_wifi_commands(
+                        self.entry_id,
+                        normalized_device_key,
+                        [],
+                        deployed_device_id=None,
+                        commands_hash="",
+                    )
+
                 self._set_command_sync_progress(
+                    device_key=normalized_device_key,
                     status="success",
                     current_step=7,
                     total_steps=total_steps,
@@ -1793,6 +1845,7 @@ class SofabatonHub:
                 )
 
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 current_step=3,
                 message="Creating Wifi Device on Hub",
             )
@@ -1807,8 +1860,9 @@ class SofabatonHub:
             )
             if not created or not created.get("device_id"):
                 self._set_command_sync_progress(
-                status="failed",
-                message="Failed creating Wifi Device",
+                    device_key=normalized_device_key,
+                    status="failed",
+                    message="Failed creating Wifi Device",
                 )
                 raise HomeAssistantError("Failed creating Wifi Device")
 
@@ -1830,6 +1884,7 @@ class SofabatonHub:
 
             add_results: dict[int, bool] = {}
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 current_step=4,
                 message="Adding Wifi Device to Activities",
             )
@@ -1844,6 +1899,7 @@ class SofabatonHub:
             if activity_ids and not all(add_results.values()):
                 await self.async_delete_device(wifi_device_id)
                 self._set_command_sync_progress(
+                    device_key=normalized_device_key,
                     status="failed",
                     current_step=5,
                     message="Failed activity membership; rolled back Wifi Device",
@@ -1851,6 +1907,7 @@ class SofabatonHub:
                 raise HomeAssistantError("Failed adding Wifi Device to all activities")
 
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 current_step=5,
                 message="Applying activity favorites",
             )
@@ -1920,6 +1977,7 @@ class SofabatonHub:
                 )
 
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 current_step=6,
                 message="Applying activity button mappings",
             )
@@ -1955,6 +2013,7 @@ class SofabatonHub:
                     )
 
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 current_step=7,
                 message="Refreshing activity maps and buttons",
             )
@@ -1987,6 +2046,7 @@ class SofabatonHub:
             )
 
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 current_step=8,
                 message="Resyncing physical remote",
             )
@@ -2001,10 +2061,14 @@ class SofabatonHub:
             if store is not None:
                 await store.async_save_deployed_wifi_commands(
                     self.entry_id,
+                    normalized_device_key,
                     list(commands[:_WIFI_COMMAND_SLOT_COUNT]),
+                    deployed_device_id=wifi_device_id,
+                    commands_hash=commands_hash,
                 )
 
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 status="success",
                 current_step=8,
                 total_steps=total_steps,

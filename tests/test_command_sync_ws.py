@@ -22,6 +22,7 @@ class _Store:
     async def async_get_hub_config(self, entry_id, **kwargs):
         return {
             "commands_hash": "abc123",
+            "deployed_commands_hash": "",
             "power_on_command_id": 1,
             "power_off_command_id": 2,
             "commands": [
@@ -47,7 +48,7 @@ class _Hub:
             "message": "Idle",
         }
 
-    def get_command_sync_progress(self):
+    def get_command_sync_progress(self, _device_key=None):
         return dict(self._progress)
 
     def get_managed_command_hashes(self):
@@ -144,9 +145,44 @@ def test_ws_command_sync_progress_uses_success_hash_to_clear_sync_needed(monkeyp
     assert payload["sync_needed"] is False
 
 
+def test_ws_command_sync_progress_uses_deployed_hash_to_clear_sync_needed(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+
+    class _DeployedStore(_Store):
+        async def async_get_hub_config(self, entry_id, **kwargs):
+            payload = await super().async_get_hub_config(entry_id, **kwargs)
+            payload["deployed_commands_hash"] = "abc123"
+            payload["deployed_device_id"] = 22
+            return payload
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return _DeployedStore()
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_get_command_sync_progress(
+                SimpleNamespace(), conn, {"id": 13, "entity_id": "remote.living_room"}
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    payload = conn.result[1]
+    assert payload["sync_needed"] is False
+
+
 class _EmptyStore:
     async def async_get_hub_config(self, entry_id, **kwargs):
-        return {"commands_hash": "abc123", "commands": []}
+        return {"commands_hash": "abc123", "deployed_commands_hash": "", "commands": []}
 
 
 def test_ws_get_command_config_returns_power_assignments(monkeypatch):
@@ -217,11 +253,20 @@ def test_ws_command_sync_progress_zero_config_with_managed_is_sync_needed(monkey
     conn = _Conn()
     hub = _Hub()
 
+    class _DeployedStore(_EmptyStore):
+        async def async_get_hub_config(self, entry_id, **kwargs):
+            return {
+                "commands_hash": "abc123",
+                "deployed_commands_hash": "abc123",
+                "deployed_device_id": 22,
+                "commands": [],
+            }
+
     async def fake_resolve(_hass, _data):
         return hub
 
     async def fake_store(_hass):
-        return _EmptyStore()
+        return _DeployedStore()
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
     monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)

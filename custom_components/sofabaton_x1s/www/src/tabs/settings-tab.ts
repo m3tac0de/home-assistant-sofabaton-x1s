@@ -9,6 +9,7 @@ export function renderSettingsTab(params: {
   hub: ControlPanelHubState | null;
   hass: HassLike | null;
   persistentCacheEnabled: boolean;
+  hubCommandBusy: boolean;
   pendingSettingKey: SettingKey | null;
   pendingActionKey: HubAction | null;
   onToggleSetting: (setting: SettingKey, enabled: boolean) => void;
@@ -18,7 +19,7 @@ export function renderSettingsTab(params: {
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
   if (!params.hub) return html`<div class="cache-state">No hubs found.</div>`;
 
-  const busy = !!(params.pendingSettingKey || params.pendingActionKey);
+  const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
   const settingValue = (key: Exclude<SettingKey, "persistent_cache">) => !!params.hub?.settings?.[key];
 

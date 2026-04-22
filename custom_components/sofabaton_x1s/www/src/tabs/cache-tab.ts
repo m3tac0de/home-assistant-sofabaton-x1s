@@ -14,6 +14,7 @@ export function renderCacheTab(params: {
   persistentCacheEnabled: boolean;
   staleData: boolean;
   refreshBusy: boolean;
+  hubCommandBusy: boolean;
   activeRefreshLabel: string | null;
   openSection: SectionId | null;
   openEntity: string | null;
@@ -33,7 +34,7 @@ export function renderCacheTab(params: {
     const id = Number(activity.id);
     const key = `act-${id}`;
     const isOpen = params.openEntity === key;
-    const locked = params.refreshBusy || params.selectedHubProxyConnected;
+    const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
     const favorites = activityFavorites(params.hub, id);
     const macros = activityMacros(params.hub, id);
@@ -63,7 +64,7 @@ export function renderCacheTab(params: {
     const id = Number(device.id);
     const key = `dev-${id}`;
     const isOpen = params.openEntity === key;
-    const locked = params.refreshBusy || params.selectedHubProxyConnected;
+    const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
     const commands = deviceCommands(params.hub, id);
     return html`
@@ -89,8 +90,8 @@ export function renderCacheTab(params: {
     <div class="tab-panel">
       ${params.staleData ? html`<div class="stale-banner"><span class="stale-banner-text">Cache was updated externally. Refresh to see latest data.</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>Refresh</button></div>` : null}
       <div class="cache-panel">
-        ${renderAccordionSection({ sectionId: "activities", title: "Activities", count: activities.length, isOpen: params.openSection === "activities", disabled: params.refreshBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("activities"), onRefresh: () => params.onRefreshSection("activities"), body: activities.map(renderActivity) })}
-        ${renderAccordionSection({ sectionId: "devices", title: "Devices", count: devices.length, isOpen: params.openSection === "devices", disabled: params.refreshBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("devices"), onRefresh: () => params.onRefreshSection("devices"), body: devices.map(renderDevice) })}
+        ${renderAccordionSection({ sectionId: "activities", title: "Activities", count: activities.length, isOpen: params.openSection === "activities", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("activities"), onRefresh: () => params.onRefreshSection("activities"), body: activities.map(renderActivity) })}
+        ${renderAccordionSection({ sectionId: "devices", title: "Devices", count: devices.length, isOpen: params.openSection === "devices", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("devices"), onRefresh: () => params.onRefreshSection("devices"), body: devices.map(renderDevice) })}
       </div>
     </div>
   `;

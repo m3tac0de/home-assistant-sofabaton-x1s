@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import secrets
 from copy import deepcopy
 from typing import Any
 
@@ -18,6 +19,9 @@ COMMAND_BRAND_PREFIX = "m3tac0de"
 COMMAND_SLOT_COUNT = 10
 POWER_COMMAND_MIN = 1
 POWER_COMMAND_MAX = 10
+MAX_WIFI_DEVICES = 5
+DEFAULT_WIFI_DEVICE_KEY = "default"
+DEFAULT_WIFI_DEVICE_NAME = "Home Assistant"
 
 DEFAULT_COMMAND_ACTION = {"action": "perform-action"}
 
@@ -167,12 +171,14 @@ def _hash_payload(commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def compute_commands_hash(
     commands: list[dict[str, Any]],
     *,
+    device_name: str = DEFAULT_WIFI_DEVICE_NAME,
     roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
     power_on_command_id: int | None = None,
     power_off_command_id: int | None = None,
 ) -> str:
     payload = {
         "commands": _hash_payload(normalize_commands(commands)),
+        "device_name": str(device_name or DEFAULT_WIFI_DEVICE_NAME).strip(),
         "roku_listen_port": int(roku_listen_port),
         "power_on_command_id": normalize_power_command_id(power_on_command_id),
         "power_off_command_id": normalize_power_command_id(power_off_command_id),
@@ -190,6 +196,52 @@ def normalize_command_name(value: Any) -> str:
     return text.casefold()
 
 
+def _normalize_device_key(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    return "".join(ch for ch in text if ch.isalnum())[:24]
+
+
+def _default_device_payload(
+    *,
+    device_key: str = DEFAULT_WIFI_DEVICE_KEY,
+    device_name: str = DEFAULT_WIFI_DEVICE_NAME,
+) -> dict[str, Any]:
+    return {
+        "device_key": _normalize_device_key(device_key) or DEFAULT_WIFI_DEVICE_KEY,
+        "device_name": str(device_name or DEFAULT_WIFI_DEVICE_NAME).strip() or DEFAULT_WIFI_DEVICE_NAME,
+        "commands": default_commands(),
+        "power_on_command_id": None,
+        "power_off_command_id": None,
+        "deployed_commands": [],
+        "deployed_device_id": None,
+        "deployed_commands_hash": "",
+    }
+
+
+def _normalize_device_payload(
+    device: Any,
+    *,
+    fallback_key: str,
+    fallback_name: str = DEFAULT_WIFI_DEVICE_NAME,
+) -> dict[str, Any]:
+    if not isinstance(device, dict):
+        return _default_device_payload(device_key=fallback_key, device_name=fallback_name)
+
+    payload = _default_device_payload(
+        device_key=_normalize_device_key(device.get("device_key")) or fallback_key,
+        device_name=str(device.get("device_name") or fallback_name).strip() or fallback_name,
+    )
+    payload["commands"] = normalize_commands(device.get("commands"))
+    payload["power_on_command_id"] = normalize_power_command_id(device.get("power_on_command_id"))
+    payload["power_off_command_id"] = normalize_power_command_id(device.get("power_off_command_id"))
+    deployed = device.get("deployed_commands")
+    payload["deployed_commands"] = deployed if isinstance(deployed, list) else []
+    deployed_device_id = device.get("deployed_device_id")
+    payload["deployed_device_id"] = int(deployed_device_id) if isinstance(deployed_device_id, int) else None
+    payload["deployed_commands_hash"] = str(device.get("deployed_commands_hash") or "").strip()
+    return payload
+
+
 class CommandConfigStore:
     def __init__(self, hass: HomeAssistant) -> None:
         self._store: Store[dict[str, Any]] = Store(
@@ -205,46 +257,150 @@ class CommandConfigStore:
         if isinstance(loaded, dict) and isinstance(loaded.get("hubs"), dict):
             self._data = loaded
 
-    async def async_get_hub_config(
+    def _hub_record(self, entry_id: str) -> dict[str, Any]:
+        hubs = self._data.setdefault("hubs", {})
+        hub = hubs.setdefault(entry_id, {})
+        if not isinstance(hub, dict):
+            hub = {}
+            hubs[entry_id] = hub
+        return hub
+
+    def _hub_device_records(self, entry_id: str) -> list[dict[str, Any]]:
+        hub = self._hub_record(entry_id)
+        devices_raw = hub.get("devices")
+        if isinstance(devices_raw, list):
+            normalized: list[dict[str, Any]] = []
+            seen_keys: set[str] = set()
+            for idx, device in enumerate(devices_raw):
+                fallback_key = f"device{idx + 1}"
+                payload = _normalize_device_payload(device, fallback_key=fallback_key)
+                if payload["device_key"] in seen_keys:
+                    payload["device_key"] = f"{payload['device_key']}{idx + 1}"
+                seen_keys.add(payload["device_key"])
+                normalized.append(payload)
+            hub["devices"] = normalized[:MAX_WIFI_DEVICES]
+            return hub["devices"]
+
+        if any(key in hub for key in ("commands", "power_on_command_id", "power_off_command_id", "deployed_wifi_commands")):
+            migrated = _default_device_payload()
+            migrated["commands"] = normalize_commands(hub.get("commands"))
+            migrated["power_on_command_id"] = normalize_power_command_id(hub.get("power_on_command_id"))
+            migrated["power_off_command_id"] = normalize_power_command_id(hub.get("power_off_command_id"))
+            deployed = hub.get("deployed_wifi_commands")
+            migrated["deployed_commands"] = deployed if isinstance(deployed, list) else []
+            hub["devices"] = [migrated]
+            return hub["devices"]
+
+        hub["devices"] = []
+        return hub["devices"]
+
+    def _find_hub_device_record(
         self,
         entry_id: str,
-        *,
-        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+        device_key: str | None,
     ) -> dict[str, Any]:
-        hub = self._data.setdefault("hubs", {}).get(entry_id)
-        if not isinstance(hub, dict):
-            commands = default_commands()
-            return {
-                "commands": commands,
-                "power_on_command_id": None,
-                "power_off_command_id": None,
-                "hash_version": COMMAND_HASH_VERSION,
-                "commands_hash": compute_commands_hash(
-                    commands,
-                    roku_listen_port=roku_listen_port,
-                ),
-            }
+        devices = self._hub_device_records(entry_id)
+        normalized_key = _normalize_device_key(device_key) if device_key is not None else ""
+        if normalized_key:
+            for device in devices:
+                if device["device_key"] == normalized_key:
+                    return device
+            raise KeyError(normalized_key)
+        if devices:
+            return devices[0]
+        default_device = _default_device_payload()
+        devices.append(default_device)
+        return default_device
 
-        commands = normalize_commands(hub.get("commands"))
-        power_on_command_id = normalize_power_command_id(hub.get("power_on_command_id"))
-        power_off_command_id = normalize_power_command_id(hub.get("power_off_command_id"))
+    def _payload_for_device(
+        self,
+        device: dict[str, Any],
+        *,
+        roku_listen_port: int,
+    ) -> dict[str, Any]:
+        commands = normalize_commands(device.get("commands"))
+        power_on_command_id = normalize_power_command_id(device.get("power_on_command_id"))
+        power_off_command_id = normalize_power_command_id(device.get("power_off_command_id"))
+        device_name = str(device.get("device_name") or DEFAULT_WIFI_DEVICE_NAME).strip() or DEFAULT_WIFI_DEVICE_NAME
         return {
+            "device_key": str(device.get("device_key") or DEFAULT_WIFI_DEVICE_KEY),
+            "device_name": device_name,
             "commands": commands,
             "power_on_command_id": power_on_command_id,
             "power_off_command_id": power_off_command_id,
             "hash_version": COMMAND_HASH_VERSION,
             "commands_hash": compute_commands_hash(
                 commands,
+                device_name=device_name,
                 roku_listen_port=roku_listen_port,
                 power_on_command_id=power_on_command_id,
                 power_off_command_id=power_off_command_id,
             ),
+            "configured_slot_count": count_configured_command_slots(commands),
+            "deployed_device_id": device.get("deployed_device_id"),
+            "deployed_commands_hash": str(device.get("deployed_commands_hash") or ""),
         }
+
+    async def async_list_hub_devices(
+        self,
+        entry_id: str,
+        *,
+        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    ) -> list[dict[str, Any]]:
+        return [
+            self._payload_for_device(device, roku_listen_port=roku_listen_port)
+            for device in self._hub_device_records(entry_id)
+        ]
+
+    async def async_get_hub_config(
+        self,
+        entry_id: str,
+        *,
+        device_key: str | None = None,
+        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    ) -> dict[str, Any]:
+        device = self._find_hub_device_record(entry_id, device_key)
+        return self._payload_for_device(device, roku_listen_port=roku_listen_port)
+
+    async def async_create_hub_device(
+        self,
+        entry_id: str,
+        device_name: str,
+        *,
+        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    ) -> dict[str, Any]:
+        devices = self._hub_device_records(entry_id)
+        if len(devices) >= MAX_WIFI_DEVICES:
+            raise ValueError(f"Maximum of {MAX_WIFI_DEVICES} Wifi Devices supported")
+        device_key = _normalize_device_key(secrets.token_hex(4))
+        while any(device["device_key"] == device_key for device in devices):
+            device_key = _normalize_device_key(secrets.token_hex(4))
+        payload = _default_device_payload(
+            device_key=device_key,
+            device_name=str(device_name or DEFAULT_WIFI_DEVICE_NAME).strip() or DEFAULT_WIFI_DEVICE_NAME,
+        )
+        devices.append(payload)
+        await self._store.async_save(self._data)
+        return self._payload_for_device(payload, roku_listen_port=roku_listen_port)
+
+    async def async_delete_hub_device(self, entry_id: str, device_key: str) -> bool:
+        devices = self._hub_device_records(entry_id)
+        normalized_key = _normalize_device_key(device_key)
+        next_devices = [device for device in devices if device["device_key"] != normalized_key]
+        if len(next_devices) == len(devices):
+            return False
+        self._hub_record(entry_id)["devices"] = next_devices
+        await self._store.async_save(self._data)
+        return True
 
     async def async_save_deployed_wifi_commands(
         self,
         entry_id: str,
+        device_key: str,
         commands: list[dict[str, Any]],
+        *,
+        deployed_device_id: int | None = None,
+        commands_hash: str = "",
     ) -> None:
         """Persist the command list that was last successfully synced to the hub.
 
@@ -252,21 +408,35 @@ class CommandConfigStore:
         ``command_index`` values embedded in callback URLs, so it must never be
         mutated after being written here.
         """
-        hub = self._data.setdefault("hubs", {}).setdefault(entry_id, {})
-        hub["deployed_wifi_commands"] = commands
+        hub_device = self._find_hub_device_record(entry_id, device_key)
+        hub_device["deployed_commands"] = commands
+        hub_device["deployed_device_id"] = deployed_device_id
+        hub_device["deployed_commands_hash"] = str(commands_hash or "").strip()
         await self._store.async_save(self._data)
 
-    def get_deployed_wifi_commands(self, entry_id: str) -> list[dict[str, Any]]:
+    def get_deployed_wifi_commands(
+        self,
+        entry_id: str,
+        *,
+        hub_device_id: int | None = None,
+        device_key: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Return the deployed command snapshot for *entry_id*, or [] if none."""
-        hub = self._data.get("hubs", {}).get(entry_id, {})
-        result = hub.get("deployed_wifi_commands") if isinstance(hub, dict) else None
-        return result if isinstance(result, list) else []
+        for device in self._hub_device_records(entry_id):
+            if hub_device_id is not None and device.get("deployed_device_id") == hub_device_id:
+                result = device.get("deployed_commands")
+                return result if isinstance(result, list) else []
+            if device_key is not None and device.get("device_key") == _normalize_device_key(device_key):
+                result = device.get("deployed_commands")
+                return result if isinstance(result, list) else []
+        return []
 
     async def async_set_hub_commands(
         self,
         entry_id: str,
         commands: Any,
         *,
+        device_key: str | None = None,
         roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
         power_on_command_id: Any = None,
         power_off_command_id: Any = None,
@@ -274,19 +444,9 @@ class CommandConfigStore:
         normalized = normalize_commands(commands)
         normalized_power_on = normalize_power_command_id(power_on_command_id)
         normalized_power_off = normalize_power_command_id(power_off_command_id)
-        payload = {
-            "commands": normalized,
-            "power_on_command_id": normalized_power_on,
-            "power_off_command_id": normalized_power_off,
-            "hash_version": COMMAND_HASH_VERSION,
-            "commands_hash": compute_commands_hash(
-                normalized,
-                roku_listen_port=roku_listen_port,
-                power_on_command_id=normalized_power_on,
-                power_off_command_id=normalized_power_off,
-            ),
-        }
-        hubs = self._data.setdefault("hubs", {})
-        hubs[entry_id] = payload
+        device = self._find_hub_device_record(entry_id, device_key)
+        device["commands"] = normalized
+        device["power_on_command_id"] = normalized_power_on
+        device["power_off_command_id"] = normalized_power_off
         await self._store.async_save(self._data)
-        return payload
+        return self._payload_for_device(device, roku_listen_port=roku_listen_port)
