@@ -36,6 +36,7 @@ Commands are not fetched automatically on startup (too slow/noisy), so this acti
 | `device`  | HA Device   |    ✓     | Select your Sofabaton hub from the dropdown (UI mode recommended). |
 | `ent_id`  | int (1–255) |    ✓     | Sofabaton entity id: device id (1–99) or activity id (101+).       |
 
+
 ```yaml
 action: sofabaton_x1s.fetch_device_commands
 data:
@@ -189,6 +190,10 @@ The Sofabaton hub then calls back into the integration's HTTP listener whenever 
 | `device_name` | string         |    ✓     | Name for the Wifi Device as it will appear on the hub. Letters, numbers, and spaces only. Default: `Home Assistant`. |
 | `commands`    | list of string |    ✓     | 1–10 command names. Letters, numbers, and spaces only.                                                               |
 
+| `power_on_command_id` | int |    –     | Optional 1-based position in `commands` to use as the device power-on command. This is not a final hub command id. |
+| `power_off_command_id` | int |    –     | Optional 1-based position in `commands` to use as the device power-off command. This is not a final hub command id. |
+| `input_command_ids` | list of int |    –     | Optional ordered list of 1-based positions in `commands` to register as device input switchers on X1/X1S hubs. |
+
 ```yaml
 action: sofabaton_x1s.create_wifi_device
 data:
@@ -198,6 +203,9 @@ data:
     - Scene Movie
     - Scene Gaming
     - Lights Off
+  input_command_ids:
+    - 2
+    - 3
 ```
 
 See [`docs/wifi_commands.md`](wifi_commands.md) for the full Wifi Commands guide.
@@ -235,6 +243,7 @@ Adds a device to an activity on the hub, so the activity can use that device's c
 | `device`      | HA Device     |    ✓     | Your Sofabaton hub. |
 | `activity_id` | int (101–200) |    ✓     | Activity id (101+). |
 | `device_id`   | int (1–99)    |    ✓     | Device id (1–99).   |
+| `input_command_id` | int (1–255) |    –     | Optional device command id to set as the POWER_ON input on X1/X1S hubs. |
 
 ```yaml
 action: sofabaton_x1s.device_to_activity
@@ -242,6 +251,7 @@ data:
   device: 89c3874a93f1e9ee0f49e24a2710535e
   activity_id: 103
   device_id: 2
+  input_command_id: 4
 ```
 
 ---

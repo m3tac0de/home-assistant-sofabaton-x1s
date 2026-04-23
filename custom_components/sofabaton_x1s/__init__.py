@@ -13,7 +13,7 @@ from homeassistant.components import frontend
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components import websocket_api
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -39,16 +39,52 @@ from .const import (
 )
 from .diagnostics import (
     async_disable_hex_logging_capture,
+    async_get_hub_log_lines,
+    async_subscribe_hub_log_lines,
     async_setup_diagnostics,
     async_teardown_diagnostics,
 )
 from .hub import SofabatonHub, get_hub_model
-from .command_config import CommandConfigStore, count_configured_command_slots
+from .command_config import (
+    CommandConfigStore,
+    MAX_WIFI_DEVICES,
+    count_configured_command_slots,
+    normalize_command_id_list,
+    normalize_power_command_id,
+    wifi_device_requires_listener,
+)
 from .cache_store import PersistentCacheStore
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
-_WIFI_NAME_RE = re.compile(r"^(?:[^\W_]| )+$", re.UNICODE)
+_WIFI_NAME_RE = re.compile(r"^(?:[^\W_]|[ +&.'()_-])+$", re.UNICODE)
+_WIFI_NAME_ASCII_RE = re.compile(r"^[A-Za-z0-9 ]+$")
+
+
+def _hub_supports_unicode_wifi_names(hub: SofabatonHub) -> bool:
+    version = str(getattr(hub, "version", "") or "").upper()
+    return "X1S" in version or "X2" in version
+
+
+def _sanitize_wifi_name_for_hub(hub: SofabatonHub, value: Any) -> str:
+    text = str(value or "")
+    pattern = _WIFI_NAME_RE if _hub_supports_unicode_wifi_names(hub) else _WIFI_NAME_ASCII_RE
+    filtered = "".join(ch for ch in text if pattern.fullmatch(ch))
+    return filtered[:20].strip()
+
+
+def _validate_wifi_name_for_hub(hub: SofabatonHub, value: Any, *, field_name: str = "device_name") -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError(f"{field_name} is required")
+    text = _sanitize_wifi_name_for_hub(hub, raw)
+    if not text:
+        if _hub_supports_unicode_wifi_names(hub):
+            raise ValueError(
+                f"{field_name} must contain only letters (including accented/umlaut), numbers, spaces, and common symbols like +"
+            )
+        raise ValueError(f"{field_name} must contain only letters, numbers, and spaces")
+    return text
 
 
 def _inspect_frontend_dir(frontend_dir: Path) -> tuple[str, bool, list[str]]:
@@ -93,6 +129,45 @@ async def _async_get_persistent_cache_store(hass: HomeAssistant) -> PersistentCa
     await store.async_load()
     domain_data["persistent_cache_store"] = store
     return store
+
+
+def _build_wifi_device_sync_payload(
+    hub: SofabatonHub,
+    config_payload: dict[str, Any],
+    *,
+    device_key: str,
+) -> dict[str, Any]:
+    commands_hash = str(config_payload.get("commands_hash") or "")
+    deployed_commands_hash = str(config_payload.get("deployed_commands_hash") or "")
+    deployed_device_id = config_payload.get("deployed_device_id")
+    managed_hashes = hub.get_managed_command_hashes()
+    progress = hub.get_command_sync_progress(device_key)
+    progress_hash = str(progress.get("commands_hash") or "")
+    configured_slots = count_configured_command_slots(config_payload.get("commands"))
+    has_deployed_device = isinstance(deployed_device_id, int)
+    sync_needed = (
+        (configured_slots > 0 and bool(commands_hash) and commands_hash != deployed_commands_hash)
+        or (configured_slots == 0 and (has_deployed_device or bool(deployed_commands_hash)))
+    )
+    if commands_hash and str(progress.get("status") or "") == "success" and progress_hash == commands_hash:
+        sync_needed = False
+    return {
+        **progress,
+        "device_key": device_key,
+        "commands_hash": commands_hash,
+        "deployed_commands_hash": deployed_commands_hash,
+        "managed_command_hashes": managed_hashes,
+        "configured_slot_count": configured_slots,
+        "has_managed_device": has_deployed_device or bool(deployed_commands_hash),
+        "sync_needed": sync_needed,
+    }
+
+
+async def _async_wifi_listener_needed(hass: HomeAssistant, entry_id: str) -> bool:
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, entry_id)
+    devices = await store.async_list_hub_devices(entry_id, roku_listen_port=roku_listen_port)
+    return any(wifi_device_requires_listener(device) for device in devices)
 
 
 def _build_control_panel_hub_payload(
@@ -159,6 +234,7 @@ async def _async_persist_all_hub_cache(hass: HomeAssistant) -> int:
     {
         vol.Required("type"): f"{DOMAIN}/command_config/get",
         vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("device_key"): str,
     }
 )
 @websocket_api.async_response
@@ -176,7 +252,15 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
 
     store = await _async_get_command_config_store(hass)
     roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
-    payload = await store.async_get_hub_config(hub.entry_id, roku_listen_port=roku_listen_port)
+    try:
+        payload = await store.async_get_hub_config(
+            hub.entry_id,
+            device_key=msg.get("device_key"),
+            roku_listen_port=roku_listen_port,
+        )
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
+        return
     connection.send_result(msg["id"], payload)
 
 
@@ -185,6 +269,9 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
         vol.Required("type"): f"{DOMAIN}/command_config/set",
         vol.Required("entity_id"): cv.entity_id,
         vol.Required("commands"): list,
+        vol.Optional("device_key"): str,
+        vol.Optional("power_on_command_id"): int,
+        vol.Optional("power_off_command_id"): int,
     }
 )
 @websocket_api.async_response
@@ -199,7 +286,10 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
     payload = await store.async_set_hub_commands(
         hub.entry_id,
         msg["commands"],
+        device_key=msg.get("device_key"),
         roku_listen_port=roku_listen_port,
+        power_on_command_id=msg.get("power_on_command_id"),
+        power_off_command_id=msg.get("power_off_command_id"),
     )
     connection.send_result(msg["id"], payload)
 
@@ -208,6 +298,7 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
     {
         vol.Required("type"): f"{DOMAIN}/command_sync/progress",
         vol.Required("entity_id"): cv.entity_id,
+        vol.Optional("device_key"): str,
     }
 )
 @websocket_api.async_response
@@ -219,35 +310,132 @@ async def _ws_get_command_sync_progress(hass: HomeAssistant, connection, msg: di
 
     store = await _async_get_command_config_store(hass)
     roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
-    payload = await store.async_get_hub_config(hub.entry_id, roku_listen_port=roku_listen_port)
-    commands_hash = str(payload.get("commands_hash") or "")
-    managed_hashes = hub.get_managed_command_hashes()
-    progress = hub.get_command_sync_progress()
-    progress_hash = str(progress.get("commands_hash") or "")
-    configured_slots = count_configured_command_slots(payload.get("commands"))
-    has_managed_device = bool(managed_hashes)
-    sync_needed = (
-        (configured_slots > 0 and bool(commands_hash) and commands_hash not in managed_hashes)
-        or (configured_slots == 0 and has_managed_device)
-    )
-    if (
-        commands_hash
-        and str(progress.get("status") or "") == "success"
-        and progress_hash == commands_hash
-    ):
-        sync_needed = False
-
+    device_key = str(msg.get("device_key") or "").strip()
+    try:
+        payload = await store.async_get_hub_config(
+            hub.entry_id,
+            device_key=device_key or None,
+            roku_listen_port=roku_listen_port,
+        )
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
+        return
     connection.send_result(
         msg["id"],
-        {
-            **progress,
-            "commands_hash": commands_hash,
-            "managed_command_hashes": managed_hashes,
-            "configured_slot_count": configured_slots,
-            "has_managed_device": has_managed_device,
-            "sync_needed": sync_needed,
-        },
+        _build_wifi_device_sync_payload(hub, payload, device_key=str(payload.get("device_key") or device_key or "")),
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_devices/list",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_list_command_devices(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    devices = await store.async_list_hub_devices(hub.entry_id, roku_listen_port=roku_listen_port)
+    payload = []
+    for device in devices:
+        device_key = str(device.get("device_key") or "")
+        payload.append({
+            **device,
+            **_build_wifi_device_sync_payload(hub, device, device_key=device_key),
+        })
+    connection.send_result(msg["id"], {"devices": payload, "max_devices": MAX_WIFI_DEVICES})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_device/create",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("device_name"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_create_command_device(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    try:
+        device_name = _validate_wifi_name_for_hub(hub, msg.get("device_name"), field_name="device_name")
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    try:
+        payload = await store.async_create_hub_device(
+            hub.entry_id,
+            device_name,
+            roku_listen_port=roku_listen_port,
+        )
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_format", str(err))
+        return
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/command_device/delete",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("device_key"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    try:
+        payload = await store.async_get_hub_config(
+            hub.entry_id,
+            device_key=msg["device_key"],
+            roku_listen_port=roku_listen_port,
+        )
+    except KeyError:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Wifi Device")
+        return
+
+    deleted_hub_device = False
+    deployed_device_id = payload.get("deployed_device_id")
+    deployed_commands_hash = str(payload.get("deployed_commands_hash") or "").strip()
+    if isinstance(deployed_device_id, int):
+        result = await hub.async_delete_device(deployed_device_id)
+        deleted_hub_device = bool(result)
+    if not deleted_hub_device:
+        snapshot = await hub._async_refresh_devices_snapshot()
+        normalized_device_key = "".join(ch for ch in str(msg["device_key"]).strip().lower() if ch.isalnum())
+        for managed_device_id, managed_key, managed_hash, _brand in hub._managed_wifi_devices(snapshot):
+            if deployed_commands_hash:
+                if managed_hash != deployed_commands_hash:
+                    continue
+            elif managed_key != normalized_device_key:
+                continue
+            result = await hub.async_delete_device(managed_device_id)
+            deleted_hub_device = bool(result)
+            if deleted_hub_device:
+                break
+    deleted_config = await store.async_delete_hub_device(hub.entry_id, msg["device_key"])
+    if (
+        hub.roku_server_enabled
+        and (deleted_hub_device or not wifi_device_requires_listener(payload))
+        and not await _async_wifi_listener_needed(hass, hub.entry_id)
+    ):
+        await hub.async_set_roku_server_enabled(False)
+    connection.send_result(msg["id"], {"deleted_config": deleted_config, "deleted_hub_device": deleted_hub_device})
 
 
 @websocket_api.websocket_command(
@@ -368,6 +556,57 @@ async def _ws_control_panel_run_action(
         await hub.async_resync_remote()
 
     connection.send_result(msg["id"], {"ok": True})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/logs/get",
+        vol.Required("entry_id"): str,
+        vol.Optional("limit", default=250): vol.All(int, vol.Range(min=1, max=1000)),
+    }
+)
+@websocket_api.async_response
+async def _ws_get_hub_logs(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    entry = hass.config_entries.async_get_entry(hub.entry_id)
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton config entry")
+        return
+
+    lines = await async_get_hub_log_lines(hass, entry, limit=int(msg["limit"]))
+    connection.send_result(msg["id"], {"lines": lines})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/logs/subscribe",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_subscribe_hub_logs(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    entry = hass.config_entries.async_get_entry(hub.entry_id)
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton config entry")
+        return
+
+    @callback
+    def _forward(payload: dict[str, Any]) -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], payload))
+
+    connection.subscriptions[msg["id"]] = async_subscribe_hub_log_lines(hass, entry, _forward)
+    connection.send_result(msg["id"])
 
 
 @websocket_api.websocket_command(
@@ -502,10 +741,15 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_get_command_config)
     websocket_api.async_register_command(hass, _ws_set_command_config)
     websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
+    websocket_api.async_register_command(hass, _ws_list_command_devices)
+    websocket_api.async_register_command(hass, _ws_create_command_device)
+    websocket_api.async_register_command(hass, _ws_delete_command_device)
     websocket_api.async_register_command(hass, _ws_set_hub_version)
     websocket_api.async_register_command(hass, _ws_get_control_panel_state)
     websocket_api.async_register_command(hass, _ws_control_panel_set_setting)
     websocket_api.async_register_command(hass, _ws_control_panel_run_action)
+    websocket_api.async_register_command(hass, _ws_get_hub_logs)
+    websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache)
     websocket_api.async_register_command(hass, _ws_set_persistent_cache)
     websocket_api.async_register_command(hass, _ws_refresh_persistent_cache_entry)
@@ -816,9 +1060,7 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
 
     _raise_if_sync_in_progress(hub, "_async_handle_create_wifi_device")
 
-    device_name = str(call.data.get("device_name", "Home Assistant")).strip() or "Home Assistant"
-    if not _WIFI_NAME_RE.fullmatch(device_name):
-        raise ValueError("device_name must contain only letters (including accented/umlaut), numbers, and spaces")
+    device_name = _validate_wifi_name_for_hub(hub, call.data.get("device_name", "Home Assistant"), field_name="device_name")
     raw_commands = call.data.get("commands")
     if not isinstance(raw_commands, list):
         raise ValueError("commands must be a list of strings")
@@ -832,9 +1074,34 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
         command_name = str(command).strip()
         if not command_name:
             raise ValueError("commands entries must not be empty")
-        if not _WIFI_NAME_RE.fullmatch(command_name):
-            raise ValueError("commands entries must contain only letters (including accented/umlaut), numbers, and spaces")
+        if not _sanitize_wifi_name_for_hub(hub, command_name) or _sanitize_wifi_name_for_hub(hub, command_name) != command_name[:20].strip():
+            if _hub_supports_unicode_wifi_names(hub):
+                raise ValueError("commands entries must contain only letters (including accented/umlaut), numbers, and spaces")
+            raise ValueError("commands entries must contain only letters, numbers, and spaces")
         commands.append(command_name)
+
+    max_command_id = len(commands)
+    raw_power_on_command_id = call.data.get("power_on_command_id")
+    raw_power_off_command_id = call.data.get("power_off_command_id")
+    raw_input_command_ids = call.data.get("input_command_ids")
+    power_on_command_id = normalize_power_command_id(
+        raw_power_on_command_id,
+        max_command_id=max_command_id,
+    )
+    power_off_command_id = normalize_power_command_id(
+        raw_power_off_command_id,
+        max_command_id=max_command_id,
+    )
+    if raw_power_on_command_id is not None and power_on_command_id is None:
+        raise ValueError(f"power_on_command_id must be between 1 and {max_command_id}")
+    if raw_power_off_command_id is not None and power_off_command_id is None:
+        raise ValueError(f"power_off_command_id must be between 1 and {max_command_id}")
+    input_command_ids = normalize_command_id_list(
+        raw_input_command_ids,
+        max_command_id=max_command_id,
+    )
+    if raw_input_command_ids is not None and input_command_ids is None:
+        raise ValueError(f"input_command_ids entries must each be between 1 and {max_command_id}")
 
     request_port = _resolve_roku_listen_port(hass, hub.entry_id)
 
@@ -842,6 +1109,9 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
         device_name=device_name,
         commands=commands,
         request_port=request_port,
+        power_on_command_id=power_on_command_id,
+        power_off_command_id=power_off_command_id,
+        input_command_ids=input_command_ids,
     )
 
 
@@ -855,6 +1125,9 @@ async def _async_handle_device_to_activity(call: ServiceCall):
 
     activity_id = int(call.data["activity_id"])
     device_id = int(call.data["device_id"])
+    input_command_id: int | None = call.data.get("input_command_id")
+    if input_command_id is not None:
+        input_command_id = int(input_command_id)
 
     if activity_id < 1 or activity_id > 255:
         raise ValueError("activity_id must be between 1 and 255")
@@ -864,6 +1137,7 @@ async def _async_handle_device_to_activity(call: ServiceCall):
     return await hub.async_add_device_to_activity(
         activity_id=activity_id,
         device_id=device_id,
+        input_cmd_id=input_command_id,
     )
 
 
@@ -1036,15 +1310,21 @@ async def _async_handle_sync_command_config(call: ServiceCall):
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
     store = await _async_get_command_config_store(hass)
+    device_key = str(call.data.get("device_key") or "").strip() or None
 
     roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
-    payload = await store.async_get_hub_config(hub.entry_id, roku_listen_port=roku_listen_port)
+    payload = await store.async_get_hub_config(
+        hub.entry_id,
+        device_key=device_key,
+        roku_listen_port=roku_listen_port,
+    )
     request_port = roku_listen_port
-    device_name = str(call.data.get("device_name", "Home Assistant")).strip() or "Home Assistant"
+    device_name = str(call.data.get("device_name") or payload.get("device_name") or "Home Assistant").strip() or "Home Assistant"
 
     return await hub.async_sync_command_config(
         command_payload=payload,
         request_port=request_port,
+        device_key=str(payload.get("device_key") or device_key or ""),
         device_name=device_name,
     )
 

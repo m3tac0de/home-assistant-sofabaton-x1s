@@ -1,0 +1,15 @@
+{
+  "name": "x1s-hass-root",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:tools-card": "node ./scripts/build-tools-card.mjs",
+    "build:frontend-tests": "node ./scripts/build-frontend-tests.mjs",
+    "test:frontend": "npm run build:frontend-tests && node --test tests/frontend-dist/control-panel-store.test.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.0",
+    "lit": "^3.3.1",
+    "typescript": "^5.9.3"
+  }
+}

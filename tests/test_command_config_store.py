@@ -70,6 +70,8 @@ def test_command_store_get_set_roundtrip() -> None:
 
     default_payload = _run(store.async_get_hub_config("hub-1"))
     assert len(default_payload["commands"]) == 10
+    assert default_payload["power_on_command_id"] is None
+    assert default_payload["power_off_command_id"] is None
     assert default_payload["hash_version"] == COMMAND_HASH_VERSION
 
     updated = _run(
@@ -80,17 +82,25 @@ def test_command_store_get_set_roundtrip() -> None:
                     "name": "Launch Netflix",
                     "add_as_favorite": True,
                     "hard_button": "194",
+                    "input_activity_id": "101",
                     "activities": ["101"],
                     "action": {"action": "perform-action", "perform_action": "script.test"},
                 }
             ],
+            power_on_command_id=1,
+            power_off_command_id=2,
         )
     )
     assert updated["commands"][0]["name"] == "Launch Netflix"
+    assert updated["commands"][0]["input_activity_id"] == "101"
+    assert updated["power_on_command_id"] == 1
+    assert updated["power_off_command_id"] == 2
     assert len(updated["commands_hash"]) == 15
 
     loaded = _run(store.async_get_hub_config("hub-1"))
     assert loaded["commands"] == updated["commands"]
+    assert loaded["power_on_command_id"] == updated["power_on_command_id"]
+    assert loaded["power_off_command_id"] == updated["power_off_command_id"]
     assert loaded["commands_hash"] == updated["commands_hash"]
 
 
@@ -136,6 +146,54 @@ def test_compute_commands_hash_changes_when_long_press_toggle_changes() -> None:
     assert compute_commands_hash(commands) != compute_commands_hash(with_long_press)
 
 
+def test_compute_commands_hash_changes_when_power_command_changes() -> None:
+    commands = [
+        {
+            "name": "Lights",
+            "add_as_favorite": True,
+            "hard_button": "182",
+            "activities": ["102", "101"],
+            "action": {"action": "perform-action", "service": "x"},
+        }
+    ]
+
+    assert compute_commands_hash(commands) != compute_commands_hash(commands, power_on_command_id=1)
+
+
+def test_compute_commands_hash_changes_when_input_activity_changes() -> None:
+    commands = [
+        {
+            "name": "Lights",
+            "add_as_favorite": False,
+            "hard_button": "",
+            "input_activity_id": "101",
+            "activities": [],
+            "action": {"action": "perform-action", "service": "x"},
+        }
+    ]
+
+    with_other_activity = [{**commands[0], "input_activity_id": "102"}]
+
+    assert compute_commands_hash(commands) != compute_commands_hash(with_other_activity)
+
+
+def test_compute_commands_hash_changes_when_device_name_changes() -> None:
+    commands = [
+        {
+            "name": "Lights",
+            "add_as_favorite": True,
+            "hard_button": "182",
+            "activities": ["102", "101"],
+            "action": {"action": "perform-action", "service": "x"},
+        }
+    ]
+
+    assert compute_commands_hash(commands, device_name="Home Assistant") != compute_commands_hash(
+        commands,
+        device_name="Bedroom TV",
+    )
+
+
 def test_count_configured_command_slots_counts_non_default_slots() -> None:
     assert count_configured_command_slots([]) == 0
 
@@ -149,3 +207,148 @@ def test_count_configured_command_slots_counts_non_default_slots() -> None:
         }
     ]
     assert count_configured_command_slots(commands) == 1
+
+
+def test_get_deployed_wifi_commands_falls_back_for_migrated_single_device_store() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "commands": default_commands(),
+                "deployed_wifi_commands": [
+                    {
+                        "name": "Legacy Slot",
+                        "action": {"action": "perform-action", "perform_action": "script.legacy"},
+                    }
+                ],
+            }
+        }
+    }
+
+    deployed = store.get_deployed_wifi_commands("hub-1", hub_device_id=77)
+
+    assert deployed == [
+        {
+            "name": "Legacy Slot",
+            "action": {"action": "perform-action", "perform_action": "script.legacy"},
+        }
+    ]
+
+
+def test_get_deployed_wifi_commands_does_not_fall_back_when_multiple_devices_exist() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "devices": [
+                    {
+                        "device_key": "default",
+                        "device_name": "Home Assistant",
+                        "commands": default_commands(),
+                        "deployed_commands": [{"name": "Legacy Slot"}],
+                        "deployed_device_id": None,
+                    },
+                    {
+                        "device_key": "other",
+                        "device_name": "Bedroom TV",
+                        "commands": default_commands(),
+                        "deployed_commands": [],
+                        "deployed_device_id": None,
+                    },
+                ]
+            }
+        }
+    }
+
+    assert store.get_deployed_wifi_commands("hub-1", hub_device_id=77) == []
+
+
+def test_get_live_wifi_command_slot_uses_deployed_device_id_match() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "devices": [
+                    {
+                        "device_key": "default",
+                        "device_name": "Home Assistant",
+                        "commands": [
+                            {"name": "Live Slot", "action": {"action": "perform-action", "perform_action": "script.live"}}
+                        ],
+                        "deployed_commands": [{"name": "Old Slot"}],
+                        "deployed_device_id": 77,
+                    }
+                ]
+            }
+        }
+    }
+
+    slot = store.get_live_wifi_command_slot("hub-1", hub_device_id=77, command_index=0)
+
+    assert slot == {
+        "name": "Live Slot",
+        "add_as_favorite": False,
+        "hard_button": "",
+        "long_press_enabled": False,
+        "input_activity_id": "",
+        "activities": [],
+        "action": {"action": "perform-action", "perform_action": "script.live"},
+        "long_press_action": {"action": "perform-action"},
+    }
+
+
+def test_get_live_wifi_command_slot_falls_back_for_migrated_single_device_store() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "commands": [
+                    {"name": "Live Slot", "action": {"action": "perform-action", "perform_action": "script.live"}}
+                ],
+                "deployed_wifi_commands": [{"name": "Old Slot"}],
+            }
+        }
+    }
+
+    slot = store.get_live_wifi_command_slot("hub-1", hub_device_id=77, command_index=0)
+
+    assert slot == {
+        "name": "Live Slot",
+        "add_as_favorite": False,
+        "hard_button": "",
+        "long_press_enabled": False,
+        "input_activity_id": "",
+        "activities": [],
+        "action": {"action": "perform-action", "perform_action": "script.live"},
+        "long_press_action": {"action": "perform-action"},
+    }
+
+
+def test_async_set_deployed_device_id_updates_existing_device_record() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "devices": [
+                    {
+                        "device_key": "default",
+                        "device_name": "Home Assistant",
+                        "commands": default_commands(),
+                        "deployed_commands": [{"name": "Legacy Slot"}],
+                        "deployed_device_id": None,
+                    }
+                ]
+            }
+        }
+    }
+
+    changed = _run(store.async_set_deployed_device_id("hub-1", "default", 77))
+    payload = _run(store.async_get_hub_config("hub-1", device_key="default"))
+
+    assert changed is True
+    assert payload["deployed_device_id"] == 77

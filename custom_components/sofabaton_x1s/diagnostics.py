@@ -6,11 +6,12 @@ import logging
 import re
 import socket
 from collections import deque
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 
 from .const import CONF_HOST, CONF_MAC, DOMAIN
+from .logging_utils import extract_hub_log_entry_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -25,36 +26,57 @@ _IP_ADDRESS_PATTERN = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _MAC_ADDRESS_PATTERN = re.compile(r"\b[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}\b")
 _HOST_KEYS = {CONF_HOST.lower()}
 _MAC_KEYS = {CONF_MAC.lower()}
-
-
 class _InMemoryLogHandler(logging.Handler):
     """Keep a bounded list of log lines for diagnostics export."""
 
-    def __init__(self) -> None:
+    def __init__(self, hass: HomeAssistant) -> None:
         super().__init__()
-        self._records: deque[str] = deque(maxlen=_MAX_LOG_RECORDS)
+        self._hass = hass
+        self._records: deque[dict[str, Any]] = deque(maxlen=_MAX_LOG_RECORDS)
         self._current_chars = 0
+        self._subscribers: dict[object, tuple[str, Callable[[dict[str, Any]], None]]] = {}
         self.setFormatter(logging.Formatter(_LOG_FORMAT))
 
     def emit(self, record: logging.LogRecord) -> None:  # pragma: no cover - thin wrapper
         try:
             if len(self._records) == self._records.maxlen:
                 removed = self._records.popleft()
-                self._current_chars -= len(removed)
+                self._current_chars -= len(str(removed.get("line", "")))
 
             formatted = self.format(record)
             formatted_length = len(formatted)
-            self._records.append(formatted)
+            payload = {
+                "line": formatted,
+                "level": str(record.levelname or ""),
+                "logger": str(record.name or ""),
+                "entry_id": extract_hub_log_entry_id(record.getMessage()),
+            }
+            self._records.append(payload)
             self._current_chars += formatted_length
 
             while self._current_chars > _MAX_LOG_CHARACTERS and self._records:
                 removed = self._records.popleft()
-                self._current_chars -= len(removed)
+                self._current_chars -= len(str(removed.get("line", "")))
+
+            entry_id = payload.get("entry_id")
+            if entry_id:
+                for subscribed_entry_id, callback_fn in list(self._subscribers.values()):
+                    if subscribed_entry_id != entry_id:
+                        continue
+                    self._hass.loop.call_soon_threadsafe(callback_fn, dict(payload))
         except Exception:  # noqa: BLE001 - defensive, diagnostics should never break logging
             _LOGGER.debug("Failed to record diagnostic log", exc_info=True)
 
-    def get_records(self) -> list[str]:
+    def get_records(self) -> list[dict[str, Any]]:
         return list(self._records)
+
+    def add_subscriber(
+        self, token: object, entry_id: str, callback_fn: Callable[[dict[str, Any]], None]
+    ) -> None:
+        self._subscribers[token] = (entry_id, callback_fn)
+
+    def remove_subscriber(self, token: object) -> None:
+        self._subscribers.pop(token, None)
 
     def detach(self) -> None:
         """Remove this handler from the loggers we attached to."""
@@ -63,17 +85,17 @@ class _InMemoryLogHandler(logging.Handler):
             logger = logging.getLogger(logger_name)
             logger.removeHandler(self)
 
-
 def _get_handler(hass: HomeAssistant) -> _InMemoryLogHandler:
     domain_data = hass.data.setdefault(DOMAIN, {})
     handler: _InMemoryLogHandler | None = domain_data.get("_diag_handler")
     if handler:
         return handler
 
-    handler = _InMemoryLogHandler()
+    handler = _InMemoryLogHandler(hass)
     domain_data["_diag_handler"] = handler
     domain_data.setdefault("_logger_state", {})
     domain_data.setdefault("_hex_capture_entries", set())
+    domain_data.setdefault("_live_log_subscribers", 0)
     return handler
 
 
@@ -185,10 +207,67 @@ def async_disable_hex_logging_capture(hass: HomeAssistant, entry_id: str) -> Non
     active_entries: set[str] = domain_data.get("_hex_capture_entries", set())
     active_entries.discard(entry_id)
 
-    if active_entries:
+    if active_entries or int(domain_data.get("_live_log_subscribers", 0)) > 0:
         return
 
     _detach_capture(hass)
+
+
+def _sanitize_log_record(payload: dict[str, Any], entry: ConfigEntry) -> dict[str, Any]:
+    line = _sanitize_log_lines([str(payload.get("line", ""))], entry)[0]
+    return {
+        "line": line,
+        "level": str(payload.get("level", "")),
+        "logger": str(payload.get("logger", "")),
+        "entry_id": str(payload.get("entry_id", "") or ""),
+    }
+
+
+async def async_get_hub_log_lines(
+    hass: HomeAssistant, entry: ConfigEntry, *, limit: int = 250
+) -> list[dict[str, Any]]:
+    handler = _get_handler(hass)
+    entry_id = str(entry.entry_id)
+    records = [
+        _sanitize_log_record(payload, entry)
+        for payload in handler.get_records()
+        if str(payload.get("entry_id", "")) == entry_id
+    ]
+    if limit > 0:
+        return records[-limit:]
+    return records
+
+
+@callback
+def async_subscribe_hub_log_lines(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    callback_fn: Callable[[dict[str, Any]], None],
+) -> Callable[[], None]:
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    handler = _get_handler(hass)
+    token = object()
+    entry_id = str(entry.entry_id)
+
+    @callback
+    def _forward(payload: dict[str, Any]) -> None:
+        callback_fn(_sanitize_log_record(payload, entry))
+
+    live_count = int(domain_data.get("_live_log_subscribers", 0)) + 1
+    domain_data["_live_log_subscribers"] = live_count
+    _attach_capture(hass)
+    handler.add_subscriber(token, entry_id, _forward)
+
+    @callback
+    def _unsubscribe() -> None:
+        handler.remove_subscriber(token)
+        next_count = max(0, int(domain_data.get("_live_log_subscribers", 0)) - 1)
+        domain_data["_live_log_subscribers"] = next_count
+        active_entries: set[str] = domain_data.get("_hex_capture_entries", set())
+        if not active_entries and next_count == 0:
+            _detach_capture(hass)
+
+    return _unsubscribe
 
 
 def async_teardown_diagnostics(hass: HomeAssistant) -> None:
@@ -268,7 +347,7 @@ async def async_get_config_entry_diagnostics(
             }
         )
 
-    logs = _sanitize_log_lines(handler.get_records(), entry)
+    logs = [record["line"] for record in await async_get_hub_log_lines(hass, entry, limit=0)]
 
     return {
         "entry": entry_dict,
