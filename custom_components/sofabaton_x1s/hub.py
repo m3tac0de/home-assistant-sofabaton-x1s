@@ -411,6 +411,7 @@ class SofabatonHub:
                 self.devices = devs
                 self._devices_generation += 1
                 self._bump_cache_generation()
+                self.hass.async_create_task(self._async_reconcile_deployed_wifi_device_ids())
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -503,6 +504,7 @@ class SofabatonHub:
             self.devices = devs
             self._devices_generation += 1
             self._bump_cache_generation()
+            await self._async_reconcile_deployed_wifi_device_ids()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
 
         if acts_ready:
@@ -1434,6 +1436,7 @@ class SofabatonHub:
         command_label = ""
         device_name = None
         press_type = "short"
+        command_index: int | None = None
         resolved_slot: dict[str, Any] | None = None
 
         if len(parts) >= 4 and parts[0] == "launch":
@@ -1485,8 +1488,14 @@ class SofabatonHub:
         }
         self._last_ip_command = record
         async_dispatcher_send(self.hass, signal_ip_commands(self.entry_id))
-        if resolved_slot is not None:
-            await self._async_run_wifi_slot_action(resolved_slot, command_label, press_type=press_type)
+        if resolved_slot is not None and command_index is not None:
+            await self._async_maybe_run_live_wifi_slot_action(
+                command_index=command_index,
+                hub_device_id=device_id if device_id >= 0 else None,
+                fallback_slot=resolved_slot,
+                command_label=command_label,
+                press_type=press_type,
+            )
         else:
             await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
 
@@ -1518,6 +1527,45 @@ class SofabatonHub:
             if device_key and command_hash:
                 managed.append((int(dev_id), device_key, command_hash, brand))
         return managed
+
+    async def _async_reconcile_deployed_wifi_device_ids(self) -> None:
+        hass_data = getattr(self.hass, "data", {})
+        domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+        store = domain_data.get("command_config_store")
+        if store is None:
+            return
+
+        managed_by_key: dict[str, int] = {}
+        duplicate_keys: set[str] = set()
+        for managed_device_id, managed_key, _managed_hash, _brand in self._managed_wifi_devices():
+            if managed_key in managed_by_key and managed_by_key[managed_key] != managed_device_id:
+                duplicate_keys.add(managed_key)
+                continue
+            managed_by_key[managed_key] = managed_device_id
+
+        for duplicate_key in duplicate_keys:
+            managed_by_key.pop(duplicate_key, None)
+
+        if not managed_by_key:
+            return
+
+        changed = False
+        for device in await store.async_list_hub_devices(self.entry_id):
+            device_key = str(device.get("device_key") or "").strip()
+            if not device_key or isinstance(device.get("deployed_device_id"), int):
+                continue
+            managed_device_id = managed_by_key.get(device_key)
+            if managed_device_id is None:
+                continue
+            if await store.async_set_deployed_device_id(
+                self.entry_id,
+                device_key,
+                managed_device_id,
+            ):
+                changed = True
+
+        if changed:
+            async_dispatcher_send(self.hass, signal_command_sync(self.entry_id))
 
     async def _async_refresh_devices_snapshot(
         self, timeout_seconds: float = 15.0
@@ -1668,6 +1716,33 @@ class SofabatonHub:
                 continue
             await self._async_run_wifi_slot_action(slot, command_label, press_type=press_type)
             return
+
+    async def _async_maybe_run_live_wifi_slot_action(
+        self,
+        *,
+        command_index: int,
+        hub_device_id: int | None,
+        fallback_slot: dict[str, Any],
+        command_label: str,
+        press_type: str = "short",
+    ) -> None:
+        hass_data = getattr(self.hass, "data", {})
+        domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+        store = domain_data.get("command_config_store")
+        if store is None:
+            await self._async_run_wifi_slot_action(fallback_slot, command_label, press_type=press_type)
+            return
+
+        live_slot = store.get_live_wifi_command_slot(
+            self.entry_id,
+            command_index=command_index,
+            hub_device_id=hub_device_id,
+        )
+        await self._async_run_wifi_slot_action(
+            live_slot if isinstance(live_slot, dict) else fallback_slot,
+            command_label,
+            press_type=press_type,
+        )
 
     async def _async_wifi_listener_needed(self) -> bool:
         hass_data = getattr(self.hass, "data", {})

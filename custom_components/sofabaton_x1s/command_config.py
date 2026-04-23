@@ -422,6 +422,22 @@ class CommandConfigStore:
         hub_device["deployed_commands_hash"] = str(commands_hash or "").strip()
         await self._store.async_save(self._data)
 
+    async def async_set_deployed_device_id(
+        self,
+        entry_id: str,
+        device_key: str,
+        deployed_device_id: int | None,
+    ) -> bool:
+        """Persist the deployed hub-device id for an existing Wifi Device record."""
+
+        hub_device = self._find_hub_device_record(entry_id, device_key)
+        normalized_device_id = int(deployed_device_id) if isinstance(deployed_device_id, int) else None
+        if hub_device.get("deployed_device_id") == normalized_device_id:
+            return False
+        hub_device["deployed_device_id"] = normalized_device_id
+        await self._store.async_save(self._data)
+        return True
+
     def get_deployed_wifi_commands(
         self,
         entry_id: str,
@@ -430,14 +446,65 @@ class CommandConfigStore:
         device_key: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return the deployed command snapshot for *entry_id*, or [] if none."""
-        for device in self._hub_device_records(entry_id):
+        devices = self._hub_device_records(entry_id)
+        for device in devices:
             if hub_device_id is not None and device.get("deployed_device_id") == hub_device_id:
                 result = device.get("deployed_commands")
                 return result if isinstance(result, list) else []
             if device_key is not None and device.get("device_key") == _normalize_device_key(device_key):
                 result = device.get("deployed_commands")
                 return result if isinstance(result, list) else []
+
+        # Upgrade bridge for the old single-device store layout used before
+        # deployed hub-device ids were persisted. Once a user re-syncs on the
+        # newer multi-device implementation this fallback becomes unnecessary.
+        if hub_device_id is not None and len(devices) == 1:
+            legacy_device = devices[0]
+            if legacy_device.get("deployed_device_id") is None:
+                result = legacy_device.get("deployed_commands")
+                if isinstance(result, list) and result:
+                    return result
         return []
+
+    def get_live_wifi_command_slot(
+        self,
+        entry_id: str,
+        *,
+        command_index: int,
+        hub_device_id: int | None = None,
+        device_key: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Return the current staged slot for a callback-targeted Wifi Device."""
+
+        devices = self._hub_device_records(entry_id)
+        target_device: dict[str, Any] | None = None
+
+        normalized_key = _normalize_device_key(device_key) if device_key is not None else ""
+        if normalized_key:
+            for device in devices:
+                if device.get("device_key") == normalized_key:
+                    target_device = device
+                    break
+        elif hub_device_id is not None:
+            for device in devices:
+                if device.get("deployed_device_id") == hub_device_id:
+                    target_device = device
+                    break
+
+            # Upgrade bridge for single-device records migrated from the old
+            # store layout where deployed hub-device ids were not persisted.
+            if target_device is None and len(devices) == 1:
+                legacy_device = devices[0]
+                if legacy_device.get("deployed_device_id") is None:
+                    target_device = legacy_device
+
+        if target_device is None:
+            return None
+
+        commands = normalize_commands(target_device.get("commands"))
+        if 0 <= command_index < len(commands):
+            return commands[command_index]
+        return None
 
     async def async_set_hub_commands(
         self,

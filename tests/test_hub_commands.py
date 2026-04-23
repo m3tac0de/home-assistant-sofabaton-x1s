@@ -647,7 +647,7 @@ def test_roku_http_post_runs_configured_short_press_action():
     service_calls: list[tuple[str, str, dict, dict | None, bool]] = []
     async def _async_call(domain, service, data, target=None, blocking=False):
         service_calls.append((domain, service, data, target, blocking))
-    async def _async_get_hub_config(_entry_id):
+    async def _async_get_hub_config(_entry_id, **_kwargs):
         return {
             "commands": [
                 {
@@ -715,7 +715,7 @@ def test_roku_http_post_runs_configured_long_press_action():
     service_calls: list[tuple[str, str, dict, dict | None, bool]] = []
     async def _async_call(domain, service, data, target=None, blocking=False):
         service_calls.append((domain, service, data, target, blocking))
-    async def _async_get_hub_config(_entry_id):
+    async def _async_get_hub_config(_entry_id, **_kwargs):
         return {
             "commands": [
                 {
@@ -774,6 +774,94 @@ def test_roku_http_post_runs_configured_long_press_action():
             "turn_on",
             {},
             {"entity_id": "light.long_press_target"},
+            True,
+        )
+    ]
+
+    loop.close()
+
+
+def test_roku_http_post_resolves_slot_callback_from_migrated_single_device_store():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+    service_calls: list[tuple[str, str, dict, dict | None, bool]] = []
+
+    async def _async_call(domain, service, data, target=None, blocking=False):
+        service_calls.append((domain, service, data, target, blocking))
+
+    class _Store:
+        def get_deployed_wifi_commands(self, entry_id, *, hub_device_id=None, device_key=None):
+            if entry_id != "entry-id":
+                return []
+            if hub_device_id == 7:
+                return [
+                    {
+                        "name": "Legacy Slot",
+                        "action": {
+                            "action": "perform-action",
+                            "perform_action": "light.turn_on",
+                            "target": {"entity_id": "light.deployed_target"},
+                        },
+                    }
+                ]
+            return []
+
+        def get_live_wifi_command_slot(self, entry_id, *, command_index, hub_device_id=None, device_key=None):
+            if entry_id != "entry-id" or hub_device_id != 7 or command_index != 0:
+                return None
+            return {
+                "name": "Edited Slot",
+                "action": {
+                    "action": "perform-action",
+                    "perform_action": "light.turn_on",
+                    "target": {"entity_id": "light.live_target"},
+                },
+            }
+
+        async def async_get_hub_config(self, _entry_id, **_kwargs):
+            return {"commands": []}
+
+    hass.services = SimpleNamespace(async_call=_async_call)
+    hass.data = {
+        "sofabaton_x1s": {
+            "command_config_store": _Store()
+        }
+    }
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/7/0/short",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    ip_command = hub.get_last_ip_command()
+    assert ip_command
+    assert ip_command["command_label"] == "Legacy Slot"
+    assert service_calls == [
+        (
+            "light",
+            "turn_on",
+            {},
+            {"entity_id": "light.live_target"},
             True,
         )
     ]
@@ -2002,6 +2090,61 @@ def test_on_devices_burst_does_not_override_mdns_hub_version() -> None:
     loop.run_until_complete(asyncio.sleep(0))
 
     assert hub.version == "X1"
+
+    loop.close()
+
+
+def test_on_devices_burst_reconciles_legacy_managed_wifi_device_id() -> None:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    class _Store:
+        def __init__(self) -> None:
+            self.devices = [
+                {
+                    "device_key": "default",
+                    "deployed_device_id": None,
+                }
+            ]
+            self.set_calls: list[tuple[str, str, int | None]] = []
+
+        async def async_list_hub_devices(self, entry_id):
+            assert entry_id == "entry-id"
+            return list(self.devices)
+
+        async def async_set_deployed_device_id(self, entry_id, device_key, deployed_device_id):
+            self.set_calls.append((entry_id, device_key, deployed_device_id))
+            for device in self.devices:
+                if device["device_key"] == device_key:
+                    device["deployed_device_id"] = deployed_device_id
+                    return True
+            return False
+
+    store = _Store()
+    hass.data = {"sofabaton_x1s": {"command_config_store": store}}
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version="X1",
+    )
+
+    hub._proxy.get_devices = lambda: ({11: {"name": "Managed Device", "brand": "m3tac0de-abc"}}, True)
+
+    hub._on_devices_burst("devices")
+    loop.run_until_complete(asyncio.sleep(0))
+
+    assert store.set_calls == [("entry-id", "default", 11)]
+    assert store.devices[0]["deployed_device_id"] == 11
 
     loop.close()
 

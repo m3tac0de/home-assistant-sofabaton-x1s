@@ -207,3 +207,148 @@ def test_count_configured_command_slots_counts_non_default_slots() -> None:
         }
     ]
     assert count_configured_command_slots(commands) == 1
+
+
+def test_get_deployed_wifi_commands_falls_back_for_migrated_single_device_store() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "commands": default_commands(),
+                "deployed_wifi_commands": [
+                    {
+                        "name": "Legacy Slot",
+                        "action": {"action": "perform-action", "perform_action": "script.legacy"},
+                    }
+                ],
+            }
+        }
+    }
+
+    deployed = store.get_deployed_wifi_commands("hub-1", hub_device_id=77)
+
+    assert deployed == [
+        {
+            "name": "Legacy Slot",
+            "action": {"action": "perform-action", "perform_action": "script.legacy"},
+        }
+    ]
+
+
+def test_get_deployed_wifi_commands_does_not_fall_back_when_multiple_devices_exist() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "devices": [
+                    {
+                        "device_key": "default",
+                        "device_name": "Home Assistant",
+                        "commands": default_commands(),
+                        "deployed_commands": [{"name": "Legacy Slot"}],
+                        "deployed_device_id": None,
+                    },
+                    {
+                        "device_key": "other",
+                        "device_name": "Bedroom TV",
+                        "commands": default_commands(),
+                        "deployed_commands": [],
+                        "deployed_device_id": None,
+                    },
+                ]
+            }
+        }
+    }
+
+    assert store.get_deployed_wifi_commands("hub-1", hub_device_id=77) == []
+
+
+def test_get_live_wifi_command_slot_uses_deployed_device_id_match() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "devices": [
+                    {
+                        "device_key": "default",
+                        "device_name": "Home Assistant",
+                        "commands": [
+                            {"name": "Live Slot", "action": {"action": "perform-action", "perform_action": "script.live"}}
+                        ],
+                        "deployed_commands": [{"name": "Old Slot"}],
+                        "deployed_device_id": 77,
+                    }
+                ]
+            }
+        }
+    }
+
+    slot = store.get_live_wifi_command_slot("hub-1", hub_device_id=77, command_index=0)
+
+    assert slot == {
+        "name": "Live Slot",
+        "add_as_favorite": False,
+        "hard_button": "",
+        "long_press_enabled": False,
+        "input_activity_id": "",
+        "activities": [],
+        "action": {"action": "perform-action", "perform_action": "script.live"},
+        "long_press_action": {"action": "perform-action"},
+    }
+
+
+def test_get_live_wifi_command_slot_falls_back_for_migrated_single_device_store() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "commands": [
+                    {"name": "Live Slot", "action": {"action": "perform-action", "perform_action": "script.live"}}
+                ],
+                "deployed_wifi_commands": [{"name": "Old Slot"}],
+            }
+        }
+    }
+
+    slot = store.get_live_wifi_command_slot("hub-1", hub_device_id=77, command_index=0)
+
+    assert slot == {
+        "name": "Live Slot",
+        "add_as_favorite": False,
+        "hard_button": "",
+        "long_press_enabled": False,
+        "input_activity_id": "",
+        "activities": [],
+        "action": {"action": "perform-action", "perform_action": "script.live"},
+        "long_press_action": {"action": "perform-action"},
+    }
+
+
+def test_async_set_deployed_device_id_updates_existing_device_record() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "devices": [
+                    {
+                        "device_key": "default",
+                        "device_name": "Home Assistant",
+                        "commands": default_commands(),
+                        "deployed_commands": [{"name": "Legacy Slot"}],
+                        "deployed_device_id": None,
+                    }
+                ]
+            }
+        }
+    }
+
+    changed = _run(store.async_set_deployed_device_id("hub-1", "default", 77))
+    payload = _run(store.async_get_hub_config("hub-1", device_key="default"))
+
+    assert changed is True
+    assert payload["deployed_device_id"] == 77
