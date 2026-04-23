@@ -51,12 +51,13 @@ from .command_config import (
     count_configured_command_slots,
     normalize_command_id_list,
     normalize_power_command_id,
+    wifi_device_requires_listener,
 )
 from .cache_store import PersistentCacheStore
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
-_WIFI_NAME_RE = re.compile(r"^(?:[^\W_]| )+$", re.UNICODE)
+_WIFI_NAME_RE = re.compile(r"^(?:[^\W_]|[ +&.'()_-])+$", re.UNICODE)
 _WIFI_NAME_ASCII_RE = re.compile(r"^[A-Za-z0-9 ]+$")
 
 
@@ -79,7 +80,9 @@ def _validate_wifi_name_for_hub(hub: SofabatonHub, value: Any, *, field_name: st
     text = _sanitize_wifi_name_for_hub(hub, raw)
     if not text:
         if _hub_supports_unicode_wifi_names(hub):
-            raise ValueError(f"{field_name} must contain only letters (including accented/umlaut), numbers, and spaces")
+            raise ValueError(
+                f"{field_name} must contain only letters (including accented/umlaut), numbers, spaces, and common symbols like +"
+            )
         raise ValueError(f"{field_name} must contain only letters, numbers, and spaces")
     return text
 
@@ -158,6 +161,13 @@ def _build_wifi_device_sync_payload(
         "has_managed_device": has_deployed_device or bool(deployed_commands_hash),
         "sync_needed": sync_needed,
     }
+
+
+async def _async_wifi_listener_needed(hass: HomeAssistant, entry_id: str) -> bool:
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, entry_id)
+    devices = await store.async_list_hub_devices(entry_id, roku_listen_port=roku_listen_port)
+    return any(wifi_device_requires_listener(device) for device in devices)
 
 
 def _build_control_panel_hub_payload(
@@ -419,6 +429,12 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
             if deleted_hub_device:
                 break
     deleted_config = await store.async_delete_hub_device(hub.entry_id, msg["device_key"])
+    if (
+        hub.roku_server_enabled
+        and (deleted_hub_device or not wifi_device_requires_listener(payload))
+        and not await _async_wifi_listener_needed(hass, hub.entry_id)
+    ):
+        await hub.async_set_roku_server_enabled(False)
     connection.send_result(msg["id"], {"deleted_config": deleted_config, "deleted_hub_device": deleted_hub_device})
 
 

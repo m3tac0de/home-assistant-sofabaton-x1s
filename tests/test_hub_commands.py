@@ -1759,6 +1759,99 @@ def test_sync_command_config_post_hoc_reorder_uses_tracked_fav_ids(monkeypatch):
     loop.close()
 
 
+def test_sync_command_config_with_zero_slots_keeps_listener_when_another_device_is_deployed(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    class _Store:
+        def __init__(self) -> None:
+            self.devices = {
+                "default": {
+                    "device_key": "default",
+                    "deployed_device_id": 11,
+                    "deployed_commands_hash": "abc",
+                },
+                "other": {
+                    "device_key": "other",
+                    "deployed_device_id": 22,
+                    "deployed_commands_hash": "otherhash",
+                },
+            }
+
+        async def async_save_deployed_wifi_commands(
+            self,
+            entry_id,
+            device_key,
+            commands,
+            *,
+            deployed_device_id=None,
+            commands_hash="",
+        ):
+            self.devices[device_key] = {
+                "device_key": device_key,
+                "deployed_device_id": deployed_device_id,
+                "deployed_commands_hash": commands_hash,
+            }
+
+        async def async_list_hub_devices(self, entry_id):
+            return list(self.devices.values())
+
+    hass.data = {"sofabaton_x1s": {"command_config_store": _Store()}}
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    hub.devices = {
+        11: {"brand": "m3tac0de-abc", "name": "Managed Device"},
+        22: {"brand": "m3tac0de-otherhash", "name": "Other Managed Device"},
+    }
+
+    deleted: list[int] = []
+    enabled_calls: list[bool] = []
+
+    async def _delete(dev_id, *_args, **_kwargs):
+        deleted.append(dev_id)
+        return {"status": "success"}
+
+    async def _set_enabled(enable: bool):
+        enabled_calls.append(enable)
+        hub.roku_server_enabled = enable
+
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+    monkeypatch.setattr(hub, "async_set_roku_server_enabled", _set_enabled)
+
+    payload = {
+        "commands": [],
+        "commands_hash": "abc",
+        "deployed_device_id": 11,
+        "deployed_commands_hash": "abc",
+    }
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert deleted == [11]
+    assert result["status"] == "success"
+    assert enabled_calls == []
+    assert hub.roku_server_enabled is True
+
+    loop.close()
+
+
 def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

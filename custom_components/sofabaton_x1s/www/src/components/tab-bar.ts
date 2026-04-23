@@ -6,10 +6,10 @@ export function renderTabBar(params: {
   persistentCacheEnabled: boolean;
   onSelect: (tabId: TabId) => void;
 }) {
-  const tabs: Array<{ id: TabId; label: string; disabled: boolean; pushRight?: boolean }> = [
+  const tabs: Array<{ id: TabId; label: string; shortLabel?: string; disabled: boolean; pushRight?: boolean }> = [
     { id: "hub", label: "Hub", disabled: false },
     { id: "settings", label: "Settings", disabled: false },
-    { id: "wifi_commands", label: "Wifi Commands", disabled: false },
+    { id: "wifi_commands", label: "Wifi Commands", shortLabel: "Wifi", disabled: false },
     { id: "cache", label: "Cache", disabled: !params.persistentCacheEnabled },
     { id: "logs", label: "Logs", disabled: false, pushRight: true },
   ];
@@ -18,11 +18,12 @@ export function renderTabBar(params: {
       ${tabs.map(
         (tab) => html`
           <button
-            class="tab-btn${tab.pushRight ? " tab-btn--push-right" : ""}${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
+            class="tab-btn${tab.pushRight ? " tab-btn--push-right" : ""}${tab.shortLabel ? " tab-btn--has-short-label" : ""}${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
             ?disabled=${tab.disabled}
             @click=${() => params.onSelect(tab.id)}
           >
-            ${tab.label}
+            <span class="tab-btn-label">${tab.label}</span>
+            ${tab.shortLabel ? html`<span class="tab-btn-label-short">${tab.shortLabel}</span>` : null}
           </button>
         `,
       )}

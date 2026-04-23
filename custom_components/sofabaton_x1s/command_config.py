@@ -138,6 +138,14 @@ def count_configured_command_slots(commands: Any) -> int:
     return configured
 
 
+def wifi_device_requires_listener(config_payload: dict[str, Any]) -> bool:
+    """Return True when this wifi-device record still expects callbacks."""
+
+    deployed_device_id = config_payload.get("deployed_device_id")
+    deployed_commands_hash = str(config_payload.get("deployed_commands_hash") or "").strip()
+    return isinstance(deployed_device_id, int) or bool(deployed_commands_hash)
+
+
 def _hash_payload(commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
     for slot in commands:

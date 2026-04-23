@@ -51,6 +51,7 @@ from .command_config import (
     count_configured_command_slots,
     normalize_command_name,
     normalize_power_command_id,
+    wifi_device_requires_listener,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1668,6 +1669,15 @@ class SofabatonHub:
             await self._async_run_wifi_slot_action(slot, command_label, press_type=press_type)
             return
 
+    async def _async_wifi_listener_needed(self) -> bool:
+        hass_data = getattr(self.hass, "data", {})
+        domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+        store = domain_data.get("command_config_store")
+        if store is not None:
+            devices = await store.async_list_hub_devices(self.entry_id)
+            return any(wifi_device_requires_listener(device) for device in devices)
+        return False
+
     async def async_sync_command_config(
         self,
         *,
@@ -1732,7 +1742,11 @@ class SofabatonHub:
                 if deployed_commands_hash and managed_hash == deployed_commands_hash:
                     managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
                     continue
-                if managed_key == normalized_device_key:
+                if (
+                    not isinstance(deployed_device_id, int)
+                    and not deployed_commands_hash
+                    and managed_key == normalized_device_key
+                ):
                     managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
             managed = list(managed_by_id.values())
             self._set_command_sync_progress(
@@ -1753,14 +1767,6 @@ class SofabatonHub:
                     )
 
             if configured_slots == 0:
-                if self.roku_server_enabled:
-                    self._set_command_sync_progress(
-                        device_key=normalized_device_key,
-                        current_step=3,
-                        message="Disabling Wifi Device",
-                    )
-                    await self.async_set_roku_server_enabled(False)
-
                 hass_data = getattr(self.hass, "data", {})
                 domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
                 store = domain_data.get("command_config_store")
@@ -1772,6 +1778,14 @@ class SofabatonHub:
                         deployed_device_id=None,
                         commands_hash="",
                     )
+
+                if self.roku_server_enabled and not await self._async_wifi_listener_needed():
+                    self._set_command_sync_progress(
+                        device_key=normalized_device_key,
+                        current_step=3,
+                        message="Disabling Wifi Device",
+                    )
+                    await self.async_set_roku_server_enabled(False)
 
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
