@@ -1174,12 +1174,26 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     )
     hub.roku_server_enabled = True
 
-    monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
-    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([], True))
+    requested_maps: list[int] = []
+    requested_buttons: list[tuple[int, bool]] = []
 
+    monkeypatch.setattr(
+        hub._proxy,
+        "request_activity_mapping",
+        lambda _act: requested_maps.append(_act) or True,
+    )
+
+    def _get_buttons_for_entity(ent_id: int, *, fetch_if_missing: bool = True):
+        requested_buttons.append((ent_id, fetch_if_missing))
+        return ([], True)
+
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", _get_buttons_for_entity)
+
+    cache_refresh_calls: list[tuple[int, bool, bool, bool]] = []
     macro_refresh_calls: list[tuple[str, int]] = []
 
     def _clear_entity_cache(ent_id: int, clear_buttons: bool = False, clear_favorites: bool = False, clear_macros: bool = False):
+        cache_refresh_calls.append((ent_id, clear_buttons, clear_favorites, clear_macros))
         if clear_macros:
             macro_refresh_calls.append(("clear", ent_id))
 
@@ -1261,9 +1275,13 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
             "brand_name": "m3tac0de-abc",
             "power_on_command_id": 1,
             "power_off_command_id": None,
+            "input_command_ids": None,
         }
     ]
     assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
+    assert requested_maps == [101]
+    assert requested_buttons == [(101, True)]
+    assert cache_refresh_calls == [(101, True, False, True)]
     assert macro_refresh_calls == [("clear", 101), ("fetch", 101)]
     assert resync_calls == [True]
 
@@ -2279,6 +2297,7 @@ def test_prime_buttons_fetches_activity_map_when_not_cached(monkeypatch):
     assert called["request_map"] == 1
 
     loop.close()
+
 
 def test_restore_persistent_cache_primes_hub_trackers():
     loop = asyncio.new_event_loop()

@@ -2,8 +2,6 @@ const CARD_NAME = "Sofabaton Virtual Remote";
 const CARD_VERSION = "0.1.5";
 const KEY_CAPTURE_HELP_URL =
   "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
-const YAML_HELPER_INFO_URL =
-  "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
 const AUTOMATION_ASSIST_SESSION_KEY = "__sofabatonAutomationAssistSession__";
 const PREVIEW_ACTIVITY_CACHE_KEY = "__sofabatonPreviewActivityCache__";
@@ -4928,27 +4926,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       this._lastEditorRemoteUnavailable !== remoteUnavailable;
     this._lastEditorRemoteUnavailable = remoteUnavailable;
 
-    if (this._commandConfigLoading) {
-      if (availabilityChanged) this._renderCommandsEditor();
-      return;
-    }
-
-    if (this._commandConfigLoadedFor !== entityId) {
-      this._loadCommandConfigFromBackend().then(() =>
-        this._renderCommandsEditor(),
-      );
-      this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
-      this._renderCommandsEditor();
-      return;
-    }
-
     if (availabilityChanged) {
       this._renderCommandsEditor();
     }
   }
 
   setConfig(config) {
-    const prevScroll = this._captureEditorScroll();
     const incomingConfig = { ...(config || {}) };
 
     if ("preview_activity" in incomingConfig) {
@@ -4964,13 +4947,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     }
 
     const nextEntity = String(incomingConfig?.entity || "");
-    if (nextEntity !== String(this._commandConfigLoadedFor || "")) {
-      this._commandConfigLoadedFor = null;
-      if (this._commandSyncPollTimer) {
-        clearTimeout(this._commandSyncPollTimer);
-        this._commandSyncPollTimer = null;
-      }
-    }
     if (nextEntity !== String(this._editorIntegrationEntityId || "")) {
       this._editorIntegrationEntityId = null;
       this._editorIntegrationDomain = null;
@@ -4986,13 +4962,11 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     this._config = incomingConfig;
 
     if (configUnchanged) {
-      this._restoreEditorScroll(prevScroll);
       return;
     }
 
     this._syncLayoutSelectionWithPreview();
     this._render();
-    this._restoreEditorScroll(prevScroll);
   }
 
   _render() {
@@ -5331,78 +5305,11 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   async _loadCommandConfigFromBackend(force = false) {
-    if (!this._hass?.callWS || !this._config?.entity) return;
-    const entityId = String(this._config.entity || "").trim();
-    if (!entityId) return;
-    if (this._commandConfigLoading && !force) return;
-    if (this._commandConfigLoadedFor === entityId && !force) return;
-
-    this._commandConfigLoading = true;
-    try {
-      const result = await this._hass.callWS({
-        type: "sofabaton_x1s/command_config/get",
-        entity_id: entityId,
-      });
-      const commands = this._normalizeCommandsForStorage(
-        result?.commands || [],
-      );
-      this._commandConfigHash = String(result?.commands_hash || "");
-      this._commandConfigHashVersion = String(result?.hash_version || "");
-      this._commandConfigLoadedFor = entityId;
-      this._commandsData = commands;
-    } catch (err) {
-      if (!Array.isArray(this._commandsData)) {
-        this._commandsData = this._normalizeCommandsForStorage([]);
-      }
-      this._commandConfigLoadedFor = entityId;
-    } finally {
-      this._commandConfigLoading = false;
-    }
+    return;
   }
 
   async _loadCommandSyncProgress(force = false) {
-    if (!this._hass?.callWS || !this._config?.entity) return;
-    const entityId = String(this._config.entity || "").trim();
-    if (!entityId) return;
-    if (this._commandSyncLoading && !force) return;
-
-    this._commandSyncLoading = true;
-    try {
-      const result = await this._hass.callWS({
-        type: "sofabaton_x1s/command_sync/progress",
-        entity_id: entityId,
-      });
-      this._commandSyncState = {
-        status: String(result?.status || "idle"),
-        current_step: Number(result?.current_step || 0),
-        total_steps: Number(result?.total_steps || 0),
-        message: String(result?.message || "Idle"),
-        commands_hash: String(result?.commands_hash || ""),
-        managed_command_hashes: Array.isArray(result?.managed_command_hashes)
-          ? result.managed_command_hashes
-              .map((item) => String(item || ""))
-              .filter(Boolean)
-          : [],
-        sync_needed: Boolean(result?.sync_needed),
-      };
-    } catch (err) {
-      if (
-        !this._commandSyncState ||
-        typeof this._commandSyncState !== "object"
-      ) {
-        this._commandSyncState = {
-          status: "idle",
-          current_step: 0,
-          total_steps: 0,
-          message: "Unable to load sync status",
-          commands_hash: "",
-          managed_command_hashes: [],
-          sync_needed: false,
-        };
-      }
-    } finally {
-      this._commandSyncLoading = false;
-    }
+    return;
   }
 
   _syncStatusTone(status) {
@@ -5648,20 +5555,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   async _submitHubVersionModal() {
-    const entityId = String(this._config?.entity || "").trim();
-    const selected = this._hubVersionModalSelectedVersion;
-    if (!entityId || !selected || !this._hass?.callWS) return;
-
-    this._hubVersionModalConfirm.disabled = true;
-    try {
-      await this._hass.callWS({
-        type: "sofabaton_x1s/hub/set_version",
-        entity_id: entityId,
-        version: selected,
-      });
-    } finally {
-      this._hubVersionModalConfirm.disabled = false;
-    }
     this._closeHubVersionModal();
   }
 
@@ -5683,39 +5576,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   async _runCommandConfigSync() {
-    if (this._commandSyncRunning) return;
-    const entityId = String(this._config?.entity || "").trim();
-    if (!entityId || !this._hass?.callService) return;
-
-    const confirmed = await this._confirmCommandConfigSync();
-    if (!confirmed) return;
-
-    this._commandSyncState = {
-      ...(this._commandSyncState || {}),
-      status: "running",
-      current_step: 0,
-      total_steps: Number(this._commandSyncState?.total_steps || 0),
-      message: "Starting sync",
-      sync_needed: true,
-    };
-    this._commandSyncRunning = true;
-    this._renderCommandsEditor();
-
-    try {
-      await this._hass.callService("sofabaton_x1s", "sync_command_config", {
-        entity_id: entityId,
-      });
-    } catch (err) {
-      this._commandSyncState = {
-        ...(this._commandSyncState || {}),
-        status: "failed",
-        message: String(err?.message || "Sync failed to start"),
-      };
-    } finally {
-      this._commandSyncRunning = false;
-      await this._loadCommandSyncProgress(true);
-      this._renderCommandsEditor();
-    }
+    return;
   }
 
   _commandsList() {
@@ -5731,30 +5592,12 @@ class SofabatonRemoteCardEditor extends HTMLElement {
   }
 
   async _setCommands(nextCommands, options = {}) {
-    const prevScroll = this._captureEditorScroll();
     const emitChanged = options.emitChanged !== false;
     const normalized = this._normalizeCommandsForStorage(nextCommands);
     this._commandsData = normalized;
 
-    const entityId = String(this._config?.entity || "").trim();
-    if (entityId && this._hass?.callWS) {
-      try {
-        const result = await this._hass.callWS({
-          type: "sofabaton_x1s/command_config/set",
-          entity_id: entityId,
-          commands: normalized,
-        });
-        this._commandConfigHash = String(result?.commands_hash || "");
-        this._commandConfigHashVersion = String(result?.hash_version || "");
-      } catch (err) {
-        // noop for now; editor keeps local staged data
-      }
-      await this._loadCommandSyncProgress(true);
-    }
-
     if (emitChanged) this._fireChanged();
     this._renderCommandsEditor();
-    this._restoreEditorScroll(prevScroll);
   }
 
   _cloneCommandSlot(slot) {
@@ -5876,26 +5719,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       el = el.parentElement || el.parentNode?.host || null;
     }
     return document.scrollingElement || null;
-  }
-
-  _captureEditorScroll() {
-    const host = this._scrollHostForEditor();
-    return {
-      host,
-      top: host?.scrollTop ?? 0,
-    };
-  }
-
-  _restoreEditorScroll(snapshot) {
-    const host = snapshot?.host;
-    const top = Number(snapshot?.top ?? 0);
-    if (!host) return;
-    requestAnimationFrame(() => {
-      host.scrollTop = top;
-      setTimeout(() => {
-        host.scrollTop = top;
-      }, 50);
-    });
   }
 
   _hideUiActionTypeSelector(actionSelector) {
@@ -6348,24 +6171,6 @@ class SofabatonRemoteCardEditor extends HTMLElement {
     const showRemoteTriggers = !this._isHubIntegrationForEditor();
     const remoteUnavailable = this._editorRemoteUnavailable(entityId);
 
-    if (
-      showRemoteTriggers &&
-      entityId &&
-      this._commandConfigLoadedFor !== entityId &&
-      !this._commandConfigLoading
-    ) {
-      this._loadCommandConfigFromBackend().then(() =>
-        this._renderCommandsEditor(),
-      );
-      this._loadCommandSyncProgress().then(() => this._renderCommandsEditor());
-      this._commandsWrap.innerHTML = "";
-      const loading = document.createElement("div");
-      loading.className = "sb-commands-note";
-      loading.textContent = "Loading Commands…";
-      this._commandsWrap.appendChild(loading);
-      return;
-    }
-
     if (typeof this._commandsExpanded !== "boolean")
       this._commandsExpanded = false;
 
@@ -6509,56 +6314,34 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       return;
     }
 
+    if (this._commandSyncPollTimer) {
+      clearTimeout(this._commandSyncPollTimer);
+      this._commandSyncPollTimer = null;
+    }
+    this._confirmClearSlot = null;
+    this._activeCommandModal = null;
+    this._activeCommandSlot = null;
+
     const divider = document.createElement("div");
     divider.className = "sb-commands-divider";
     meta.appendChild(divider);
 
-    const sectionTitleWrap = document.createElement("div");
-    sectionTitleWrap.className = "sb-commands-section-title-wrap";
-
     const sectionTitle = document.createElement("div");
     sectionTitle.className = "sb-commands-section-title";
-    sectionTitle.textContent = "Wifi Commands";
-
-    const sectionHelp = document.createElement("a");
-    sectionHelp.className = "sb-commands-section-help";
-    sectionHelp.href = YAML_HELPER_INFO_URL;
-    sectionHelp.target = "_blank";
-    sectionHelp.rel = "noopener noreferrer";
-    sectionHelp.title = "Learn more about Wifi Commands";
-    sectionHelp.setAttribute("aria-label", "Wifi Commands documentation");
-    sectionHelp.innerHTML =
-      '<ha-icon icon="mdi:help-circle-outline"></ha-icon>';
-    sectionHelp.addEventListener("click", (ev) => ev.stopPropagation());
-
-    sectionTitleWrap.appendChild(sectionTitle);
-    sectionTitleWrap.appendChild(sectionHelp);
-    meta.appendChild(sectionTitleWrap);
+    sectionTitle.textContent = "Wifi Commands Moved";
+    meta.appendChild(sectionTitle);
 
     const sectionSub = document.createElement("div");
     sectionSub.className = "sb-commands-section-subtitle";
     sectionSub.textContent =
-      "Receive button presses from the hub: Assign Home Assistant actions to physical buttons or favorites and deploy the configuration to your hub.";
+      "Wifi Commands are no longer configured from the Sofabaton Virtual Remote. Open the Sofabaton Control Panel card to manage this feature.";
     meta.appendChild(sectionSub);
 
-    const hubVersionConfident =
-      this._hass?.states?.[this._config?.entity]?.attributes
-        ?.hub_version_confident !== false;
-    if (!hubVersionConfident) {
-      const versionWarnBtn = document.createElement("button");
-      versionWarnBtn.type = "button";
-      versionWarnBtn.className =
-        "sb-commands-section-subtitle sb-hub-version-warn-btn";
-      versionWarnBtn.textContent =
-        "\u26a0\ufe0f Your hub may be miss-versioned! Click here to fix it.";
-      versionWarnBtn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        this._openHubVersionModal();
-      });
-      meta.appendChild(versionWarnBtn);
-    }
-
     body.appendChild(meta);
+    exp.appendChild(header);
+    exp.appendChild(body);
+    this._commandsWrap.appendChild(exp);
+    return;
 
     const syncState = this._commandSyncState || {};
     const syncStatus = String(syncState.status || "idle");

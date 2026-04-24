@@ -2109,6 +2109,12 @@ class SofabatonHub:
             for act_id in sorted(activity_ids):
                 if not add_results.get(act_id, False):
                     continue
+                self._reset_entity_cache(
+                    act_id,
+                    clear_buttons=True,
+                    clear_favorites=False,
+                    clear_macros=True,
+                )
                 await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
                 await self.hass.async_add_executor_job(
                     partial(self._proxy.get_buttons_for_entity, act_id, fetch_if_missing=True)
@@ -2116,7 +2122,7 @@ class SofabatonHub:
                 await self.hass.async_add_executor_job(
                     self._proxy.clear_entity_cache,
                     act_id,
-                    False,
+                    True,
                     False,
                     True,
                 )
