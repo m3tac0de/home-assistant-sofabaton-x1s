@@ -19,3 +19,6 @@ pytest-cache-files-*/
 pytest.ini
 .python-version
 .claude/
+node_modules/
+playwright-report/
+test-results/

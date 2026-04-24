@@ -4,10 +4,15 @@
   "type": "module",
   "scripts": {
     "build:tools-card": "node ./scripts/build-tools-card.mjs",
+    "build:remote-card": "node ./scripts/build-remote-card.mjs",
     "build:frontend-tests": "node ./scripts/build-frontend-tests.mjs",
-    "test:frontend": "npm run build:frontend-tests && node --test tests/frontend-dist/control-panel-store.test.js"
+    "test:frontend": "npm run build:frontend-tests && node --test tests/frontend-dist/control-panel-store.test.js",
+    "test:playwright": "playwright test",
+    "test:playwright:update": "playwright test --update-snapshots",
+    "test:playwright:remote": "playwright test tests/playwright/remote-card.spec.js"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "esbuild": "^0.27.0",
     "lit": "^3.3.1",
     "typescript": "^5.9.3"
