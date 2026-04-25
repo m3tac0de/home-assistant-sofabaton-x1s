@@ -12,7 +12,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 - 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard cards**: Sofabaton Virtual Remote & Sofabaton Control Panel
 - 🤖 **Send key presses to the hub**: `remote.send_command`, Sofabaton Virtual Remote, Sofabaton Control Panel, “recorded keypress”
-- ⚡ **Receive key presses from the hub**: Sofabaton Virtual Remote, "Wifi Commands" see [`docs/wifi_commands.md`](docs/wifi_commands.md)
+- ⚡ **Receive key presses from the hub**: "Wifi Commands" via the Control Panel card, see [`docs/wifi_commands.md`](docs/wifi_commands.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
 - 🪵 **Useful logs & diagnostics**: see [`docs/logging.md`](docs/logging.md)
 
@@ -74,11 +74,13 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 - 🎛 **Activity select** entity (`select.<hub>_activity`)
 - 🔘 **Dynamic button entities** that match your **currently active activity**
 - ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations
-- 💎 **Receive key presses**: "Wifi Commands" configured via the UI, trigger Actions directly from key presses on the physical remote
+- 💎 **Receive key presses**: “Wifi Commands” configured via the Control Panel card, trigger Actions directly from key presses on the physical remote
+- 🔌 **Multiple Wifi Devices**: up to 5 Wifi Devices per hub, each with 10 command slots, power control, and input control
 - 🔔 **Find Remote** diagnostic button (buzzer)
 - 🟢 **Sensors** for activity, connectivity, app connection, recorded keypress, wifi commands
 - 🧪 **Diagnostic “Index” sensor** for command lists/macros/favorites
 - 🛰 **Proxy can be disabled** per device (stop advertising/binding for the official app)
+- 🪵 **Live Hub Logs** tab in the Control Panel card for real-time diagnostics
 
 ---
 
@@ -171,9 +173,13 @@ Find it in the Cards selection menu, or add it manually using the following YAML
 type: custom:sofabaton-control-panel
 ```
 
-With this card **persistent cache** can be enabled, meaning that any data retrieved from the hub is cached and survives a restart of Home Assistant.
-With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable at certain tasks.  
-Use the card to navigate your cache and refresh it whenever required.
+The Control Panel card is the central management UI for the integration. Its tabs cover:
+
+- **Hub** — hub status, connectivity, and quick actions.
+- **Wifi Commands** — configure and deploy Wifi Devices and their commands (see below). Up to 5 Wifi Devices per hub.
+- **Cache** — enable **persistent cache** so data retrieved from the hub survives a restart. With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable.
+- **Settings** — per-hub configuration options.
+- **Logs** — live streaming of hub log output for real-time diagnostics.
 
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/24fc4e60-ee77-417a-ab1d-4fd004217c8d" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/222952bd-19c8-4d0a-bc71-4a45b9a21bef" />
@@ -187,11 +193,13 @@ Use the card to navigate your cache and refresh it whenever required.
 
 ### Wifi Commands: Receive key presses from the hub and trigger an automation.
 
-In the Sofabaton Virtual Remote card's configuration editor, under **Automation Assist > Wifi Commands** 10 slots are available for custom commands.
+In the **Sofabaton Control Panel** card, open the **Wifi Commands** tab. Up to **5 Wifi Devices** can be created per hub, each with 10 command slots.
 
-1. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
-2. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
-3. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.
+1. **Add a Wifi Device**: Give it a name. Multiple devices let you group commands separately or assign different power/input configurations per activity.
+2. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
+3. **Configure power / input** (optional): Mark a command as the device's Power ON or Power OFF command (all hubs). On X1/X1S hubs, mark commands as input switchers so the hub can switch inputs automatically when entering an activity.
+4. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
+5. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.
 
 More details are here: [`docs/wifi_commands.md`](docs/wifi_commands.md)
 

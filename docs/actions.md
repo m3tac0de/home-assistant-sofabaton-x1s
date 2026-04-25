@@ -182,17 +182,16 @@ data:
 Low-level action that creates a Wifi Device on the hub with a set of named command slots.
 The Sofabaton hub then calls back into the integration's HTTP listener whenever one of those commands is triggered.
 
-> **Note:** If you are using the **Wifi Commands** feature through the Virtual Remote card, you do not need to call this action directly — `sync_command_config` handles the full lifecycle. Use `create_wifi_device` only if you are building a fully custom integration without the card UI.
+> **Note:** If you are using the **Wifi Commands** feature through the Control Panel card, you do not need to call this action directly — `sync_command_config` handles the full lifecycle. Use `create_wifi_device` only if you are building a fully custom integration without the card UI.
 
-| Parameter     | Type           | Required | Description                                                                                                          |
-| ------------- | -------------- | :------: | -------------------------------------------------------------------------------------------------------------------- |
-| `device`      | HA Device      |    ✓     | Your Sofabaton hub.                                                                                                  |
-| `device_name` | string         |    ✓     | Name for the Wifi Device as it will appear on the hub. Letters, numbers, and spaces only. Default: `Home Assistant`. |
-| `commands`    | list of string |    ✓     | 1–10 command names. Letters, numbers, and spaces only.                                                               |
-
-| `power_on_command_id` | int |    –     | Optional 1-based position in `commands` to use as the device power-on command. This is not a final hub command id. |
-| `power_off_command_id` | int |    –     | Optional 1-based position in `commands` to use as the device power-off command. This is not a final hub command id. |
-| `input_command_ids` | list of int |    –     | Optional ordered list of 1-based positions in `commands` to register as device input switchers on X1/X1S hubs. |
+| Parameter              | Type           | Required | Description                                                                                                                      |
+| ---------------------- | -------------- | :------: | -------------------------------------------------------------------------------------------------------------------------------- |
+| `device`               | HA Device      |    ✓     | Your Sofabaton hub.                                                                                                              |
+| `device_name`          | string         |    ✓     | Name for the Wifi Device as it will appear on the hub. Letters, numbers, and spaces only. Default: `Home Assistant`.             |
+| `commands`             | list of string |    ✓     | 1–10 command names. Letters, numbers, and spaces only.                                                                           |
+| `power_on_command_id`  | int (1–10)     |    –     | 1-based position in `commands` to use as the device power-on command. Not a final hub command id.                                |
+| `power_off_command_id` | int (1–10)     |    –     | 1-based position in `commands` to use as the device power-off command. Not a final hub command id.                               |
+| `input_command_ids`    | list of int    |    –     | Ordered list of 1-based positions in `commands` to register as input switchers on X1/X1S hubs. Not final hub command ids. |
 
 ```yaml
 action: sofabaton_x1s.create_wifi_device
@@ -217,7 +216,7 @@ See [`docs/wifi_commands.md`](wifi_commands.md) for the full Wifi Commands guide
 Deploys the saved Wifi Commands configuration to the hub.
 This recreates the managed Wifi Device with the current command-slot settings and applies all activity button mappings.
 
-Normally triggered by the **Sync to hub** button in the Virtual Remote card's Wifi Commands editor, but can also be called directly from automations or scripts.
+Normally triggered by the **Sync to hub** button in the Control Panel card's Wifi Commands tab, but can also be called directly from automations or scripts.
 
 > This operation reconfigures the hub. It can take several minutes. All other hub interactions are blocked while it runs. The physical remote is automatically instructed to sync at the end.
 
@@ -380,7 +379,7 @@ data:
 
 ### Trigger a hub resync after modifying Wifi Commands
 
-If you update Wifi Command configuration outside the Virtual Remote card, call `sync_command_config` to push the changes to the hub. No need to touch the card UI.
+If you update Wifi Command configuration outside the Control Panel card, call `sync_command_config` to push the changes to the hub. No need to touch the card UI.
 
 ```yaml
 action: sofabaton_x1s.sync_command_config
