@@ -3166,6 +3166,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
       if (ev && typeof ev.stopImmediatePropagation === "function")
         ev.stopImmediatePropagation();
       try {
+        this._fireEvent("haptic", "light");
         fn(ev);
       } catch (e) {
       }
@@ -4184,6 +4185,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
         }
         lastSelectedActivityValue = String(value);
         lastSelectedActivityAt = now;
+        this._fireEvent("haptic", "light");
         Promise.resolve(this._setActivity(value)).catch((err) => {
           console.error(
             "[sofabaton-virtual-remote] Failed to set activity:",

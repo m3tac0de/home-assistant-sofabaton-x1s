@@ -2369,6 +2369,7 @@ class SofabatonRemoteCard extends HTMLElement {
         ev.stopImmediatePropagation();
 
       try {
+        this._fireEvent("haptic", "light");
         fn(ev);
       } catch (e) {
         /* no-op */
@@ -3469,6 +3470,7 @@ class SofabatonRemoteCard extends HTMLElement {
         }
         lastSelectedActivityValue = String(value);
         lastSelectedActivityAt = now;
+        this._fireEvent("haptic", "light");
         Promise.resolve(this._setActivity(value)).catch((err) => {
           // eslint-disable-next-line no-console
           console.error(

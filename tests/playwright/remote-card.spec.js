@@ -18,6 +18,35 @@ function cardLocator(page) {
 }
 
 test.describe("remote card playwright harness", () => {
+  test("emits Home Assistant haptic events for core remote interactions", async ({ page }) => {
+    await mountCard(page, "active");
+
+    await page.evaluate(() => {
+      window.__remoteCardHaptics = [];
+      document.addEventListener(
+        "haptic",
+        (event) => {
+          window.__remoteCardHaptics.push(event.detail ?? null);
+        },
+        true,
+      );
+    });
+
+    await page.locator(".macroFavoritesButton").first().click();
+    await page.locator(".dpad .key").first().click();
+
+    await page.locator("ha-select").click();
+    await page.locator("ha-select").evaluate((node) => {
+      const option = Array.from(node.shadowRoot.querySelectorAll(".option"))
+        .find((entry) => entry.textContent.trim() === "Play Xbox");
+      option.click();
+    });
+
+    await expect
+      .poll(async () => page.evaluate(() => window.__remoteCardHaptics))
+      .toEqual(["light", "light", "light"]);
+  });
+
   test("captures powered-off visual baseline", async ({ page }) => {
     await mountCard(page, "powered_off");
     await expect(cardLocator(page)).toHaveScreenshot("remote-card-powered-off.png");
