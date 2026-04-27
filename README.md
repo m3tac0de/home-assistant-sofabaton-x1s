@@ -73,12 +73,10 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 - 🧩 **Multiple hubs** supported
 - 🎛 **Activity select** entity (`select.<hub>_activity`)
 - 🔘 **Dynamic button entities** that match your **currently active activity**
-- ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations
+- ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations. Use the dashboard cards to retrieve the codes you need.
 - 💎 **Receive key presses**: “Wifi Commands” configured via the Control Panel card, trigger Actions directly from key presses on the physical remote
-- 🔌 **Multiple Wifi Devices**: up to 5 Wifi Devices per hub, each with 10 command slots, power control, and input control
 - 🔔 **Find Remote** diagnostic button (buzzer)
 - 🟢 **Sensors** for activity, connectivity, app connection, recorded keypress, wifi commands
-- 🧪 **Diagnostic “Index” sensor** for command lists/macros/favorites
 - 🛰 **Proxy can be disabled** per device (stop advertising/binding for the official app)
 - 🪵 **Live Hub Logs** tab in the Control Panel card for real-time diagnostics
 
@@ -161,7 +159,7 @@ This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 - The card is designed to work with **this integration** and the **official X2 integration**.
 
 > This integration auto-deploys the card. You DO NOT have to install it separately.
-> The card is also available as a separate HACS frontend plugin. It's recommended you install it that way, so it can be updated separately from this integration.
+> The card is also available as a separate HACS frontend plugin.
 > This integration automatically stops deploying the card as soon as it detects that the card is installed through HACS (a reboot of Home Assistant is required).
 
 ## ⚙️ Dashboard card - Sofabaton Control Panel
@@ -173,12 +171,11 @@ Find it in the Cards selection menu, or add it manually using the following YAML
 type: custom:sofabaton-control-panel
 ```
 
-The Control Panel card is the central management UI for the integration. Its tabs cover:
+The Control Panel card is the central management UI for the integration. Its main features are:
 
-- **Hub** — hub status, connectivity, and quick actions.
-- **Wifi Commands** — configure and deploy Wifi Devices and their commands (see below). Up to 5 Wifi Devices per hub.
-- **Cache** — enable **persistent cache** so data retrieved from the hub survives a restart. With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable.
-- **Settings** — per-hub configuration options.
+- **Wifi Commands** — Configure and deploy Wifi Devices and their commands (see below). Up to 5 Wifi Devices per hub.
+- **Persistent Cache** — Enable **persistent cache** in the **Setting** tab so data retrieved from the hub survives a restart. With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable.
+- **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.
 - **Logs** — live streaming of hub log output for real-time diagnostics.
 
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/24fc4e60-ee77-417a-ab1d-4fd004217c8d" />
@@ -197,7 +194,7 @@ In the **Sofabaton Control Panel** card, open the **Wifi Commands** tab. Up to *
 
 1. **Add a Wifi Device**: Give it a name. Multiple devices let you group commands separately or assign different power/input configurations per activity.
 2. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
-3. **Configure power / input** (optional): Mark a command as the device's Power ON or Power OFF command (all hubs). On X1/X1S hubs, mark commands as input switchers so the hub can switch inputs automatically when entering an activity.
+3. **Configure power / input** (optional): Mark a command as the device's Power ON or Power OFF command. Alternatively, a command can be configured to be an INPUT of the Wifi Device, and assigned to an Activity. The commands become part of the Activity's startup and shutdown sequences.
 4. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
 5. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.
 

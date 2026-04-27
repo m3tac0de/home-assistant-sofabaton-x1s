@@ -36,7 +36,6 @@ Commands are not fetched automatically on startup (too slow/noisy), so this acti
 | `device`  | HA Device   |    ✓     | Select your Sofabaton hub from the dropdown (UI mode recommended). |
 | `ent_id`  | int (1–255) |    ✓     | Sofabaton entity id: device id (1–99) or activity id (101+).       |
 
-
 ```yaml
 action: sofabaton_x1s.fetch_device_commands
 data:
@@ -184,14 +183,14 @@ The Sofabaton hub then calls back into the integration's HTTP listener whenever 
 
 > **Note:** If you are using the **Wifi Commands** feature through the Control Panel card, you do not need to call this action directly — `sync_command_config` handles the full lifecycle. Use `create_wifi_device` only if you are building a fully custom integration without the card UI.
 
-| Parameter              | Type           | Required | Description                                                                                                                      |
-| ---------------------- | -------------- | :------: | -------------------------------------------------------------------------------------------------------------------------------- |
-| `device`               | HA Device      |    ✓     | Your Sofabaton hub.                                                                                                              |
-| `device_name`          | string         |    ✓     | Name for the Wifi Device as it will appear on the hub. Letters, numbers, and spaces only. Default: `Home Assistant`.             |
-| `commands`             | list of string |    ✓     | 1–10 command names. Letters, numbers, and spaces only.                                                                           |
-| `power_on_command_id`  | int (1–10)     |    –     | 1-based position in `commands` to use as the device power-on command. Not a final hub command id.                                |
-| `power_off_command_id` | int (1–10)     |    –     | 1-based position in `commands` to use as the device power-off command. Not a final hub command id.                               |
-| `input_command_ids`    | list of int    |    –     | Ordered list of 1-based positions in `commands` to register as input switchers on X1/X1S hubs. Not final hub command ids. |
+| Parameter              | Type           | Required | Description                                                                                                          |
+| ---------------------- | -------------- | :------: | -------------------------------------------------------------------------------------------------------------------- |
+| `device`               | HA Device      |    ✓     | Your Sofabaton hub.                                                                                                  |
+| `device_name`          | string         |    ✓     | Name for the Wifi Device as it will appear on the hub. Letters, numbers, and spaces only. Default: `Home Assistant`. |
+| `commands`             | list of string |    ✓     | 1–10 command names. Letters, numbers, and spaces only.                                                               |
+| `power_on_command_id`  | int (1–10)     |    –     | 1-based position in `commands` to use as the device power-on command. Not a final hub command id.                    |
+| `power_off_command_id` | int (1–10)     |    –     | 1-based position in `commands` to use as the device power-off command. Not a final hub command id.                   |
+| `input_command_ids`    | list of int    |    –     | Ordered list of 1-based positions in `commands` to register as input switchers. Not final hub command ids.           |
 
 ```yaml
 action: sofabaton_x1s.create_wifi_device
@@ -237,12 +236,12 @@ data:
 
 Adds a device to an activity on the hub, so the activity can use that device's commands.
 
-| Parameter     | Type          | Required | Description         |
-| ------------- | ------------- | :------: | ------------------- |
-| `device`      | HA Device     |    ✓     | Your Sofabaton hub. |
-| `activity_id` | int (101–200) |    ✓     | Activity id (101+). |
-| `device_id`   | int (1–99)    |    ✓     | Device id (1–99).   |
-| `input_command_id` | int (1–255) |    –     | Optional device command id to set as the POWER_ON input on X1/X1S hubs. |
+| Parameter          | Type          | Required | Description                                                      |
+| ------------------ | ------------- | :------: | ---------------------------------------------------------------- |
+| `device`           | HA Device     |    ✓     | Your Sofabaton hub.                                              |
+| `activity_id`      | int (101–200) |    ✓     | Activity id (101+).                                              |
+| `device_id`        | int (1–99)    |    ✓     | Device id (1–99).                                                |
+| `input_command_id` | int (1–255)   |    –     | Optional device command id to set as the input for the Activity. |
 
 ```yaml
 action: sofabaton_x1s.device_to_activity
