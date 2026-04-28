@@ -1471,10 +1471,15 @@ class SofabatonHub:
                     device_name = unquote("/".join(trailing_parts)).replace("_", " ")
 
         timestamp = datetime.now(timezone.utc)
+        resolved_device_name = (
+            device_name
+            or (self._get_cached_device_name(device_id) if device_id >= 0 else None)
+            or (self.devices.get(device_id, {}).get("name") if device_id >= 0 else None)
+        )
         record = {
             "entity_id": device_id,
             "entity_kind": "device",
-            "entity_name": device_name or (self.devices.get(device_id, {}).get("name") if device_id >= 0 else None),
+            "entity_name": resolved_device_name,
             "command_id": command_label,
             "command_label": command_label,
             "button_label": command_label,
@@ -1956,6 +1961,17 @@ class SofabatonHub:
                 raise HomeAssistantError("Failed creating Wifi Device")
 
             wifi_device_id = int(created["device_id"])
+            cached_created_device = self._proxy.state.devices.get(wifi_device_id & 0xFF)
+            if isinstance(cached_created_device, dict):
+                self.devices[wifi_device_id & 0xFF] = dict(cached_created_device)
+            else:
+                self.devices[wifi_device_id & 0xFF] = {
+                    "brand": brand_name,
+                    "name": device_name,
+                }
+            self._devices_generation += 1
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
 
             activity_ids: set[int] = set()
             for slot in commands:

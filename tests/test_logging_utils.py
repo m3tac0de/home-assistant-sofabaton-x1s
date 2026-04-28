@@ -1,7 +1,8 @@
 import logging
+from asyncio import run
 from types import SimpleNamespace
 
-from custom_components.sofabaton_x1s.diagnostics import _InMemoryLogHandler
+from custom_components.sofabaton_x1s.diagnostics import _InMemoryLogHandler, _record_matches_entry, async_get_hub_log_lines
 from custom_components.sofabaton_x1s.logging_utils import (
     extract_hub_log_entry_id,
     get_hub_logger,
@@ -56,6 +57,53 @@ def test_diagnostics_handler_uses_canonical_prefix_for_entry_filtering():
 
     assert records[0]["entry_id"] == "entry-1"
     assert records[1]["entry_id"] is None
+
+
+def test_unattributed_log_records_match_all_hubs():
+    assert _record_matches_entry({"entry_id": None}, "entry-1") is True
+    assert _record_matches_entry({"entry_id": ""}, "entry-1") is True
+    assert _record_matches_entry({"entry_id": "entry-1"}, "entry-1") is True
+    assert _record_matches_entry({"entry_id": "entry-2"}, "entry-1") is False
+
+
+def test_diagnostics_handler_forwards_unattributed_logs_to_all_subscribers():
+    hass = SimpleNamespace(data={}, loop=SimpleNamespace(call_soon_threadsafe=lambda cb, payload: cb(payload)))
+    handler = _InMemoryLogHandler(hass)
+    logger = logging.getLogger("tests.diagnostics.subscribers")
+    hub_1_payloads: list[dict[str, object]] = []
+    hub_2_payloads: list[dict[str, object]] = []
+
+    handler.add_subscriber(object(), "entry-1", lambda payload: hub_1_payloads.append(payload))
+    handler.add_subscriber(object(), "entry-2", lambda payload: hub_2_payloads.append(payload))
+
+    handler.emit(logger.makeRecord(logger.name, logging.ERROR, __file__, 12, "Unexpected failure", (), None))
+
+    assert len(hub_1_payloads) == 1
+    assert len(hub_2_payloads) == 1
+    assert hub_1_payloads[0]["entry_id"] is None
+    assert hub_2_payloads[0]["entry_id"] is None
+
+
+def test_async_get_hub_log_lines_includes_unattributed_records():
+    hass = SimpleNamespace(data={}, loop=SimpleNamespace(call_soon_threadsafe=lambda cb, payload: cb(payload)))
+    handler = _InMemoryLogHandler(hass)
+    hass.data["sofabaton_x1s"] = {
+        "_diag_handler": handler,
+        "_logger_state": {},
+        "_hex_capture_entries": set(),
+        "_live_log_subscribers": 0,
+    }
+    logger = logging.getLogger("tests.diagnostics.history")
+    entry = SimpleNamespace(entry_id="entry-1", data={}, options={})
+
+    handler.emit(logger.makeRecord(logger.name, logging.INFO, __file__, 20, "[entry-1] target", (), None))
+    handler.emit(logger.makeRecord(logger.name, logging.ERROR, __file__, 21, "Unexpected failure", (), None))
+    handler.emit(logger.makeRecord(logger.name, logging.INFO, __file__, 22, "[entry-2] other hub", (), None))
+
+    records = run(async_get_hub_log_lines(hass, entry, limit=0))
+
+    assert [record["entry_id"] for record in records] == ["entry-1", ""]
+    assert any("Unexpected failure" in record["line"] for record in records)
 
 
 def test_x1_proxy_logs_with_hub_prefix():

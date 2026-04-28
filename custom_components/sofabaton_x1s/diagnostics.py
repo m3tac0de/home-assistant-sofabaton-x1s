@@ -26,6 +26,15 @@ _IP_ADDRESS_PATTERN = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _MAC_ADDRESS_PATTERN = re.compile(r"\b[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}\b")
 _HOST_KEYS = {CONF_HOST.lower()}
 _MAC_KEYS = {CONF_MAC.lower()}
+
+
+def _record_matches_entry(payload: dict[str, Any], entry_id: str) -> bool:
+    """Return True when a log record belongs to a hub or is globally relevant."""
+
+    payload_entry_id = str(payload.get("entry_id", "") or "")
+    return not payload_entry_id or payload_entry_id == entry_id
+
+
 class _InMemoryLogHandler(logging.Handler):
     """Keep a bounded list of log lines for diagnostics export."""
 
@@ -58,12 +67,10 @@ class _InMemoryLogHandler(logging.Handler):
                 removed = self._records.popleft()
                 self._current_chars -= len(str(removed.get("line", "")))
 
-            entry_id = payload.get("entry_id")
-            if entry_id:
-                for subscribed_entry_id, callback_fn in list(self._subscribers.values()):
-                    if subscribed_entry_id != entry_id:
-                        continue
-                    self._hass.loop.call_soon_threadsafe(callback_fn, dict(payload))
+            for subscribed_entry_id, callback_fn in list(self._subscribers.values()):
+                if not _record_matches_entry(payload, subscribed_entry_id):
+                    continue
+                self._hass.loop.call_soon_threadsafe(callback_fn, dict(payload))
         except Exception:  # noqa: BLE001 - defensive, diagnostics should never break logging
             _LOGGER.debug("Failed to record diagnostic log", exc_info=True)
 
@@ -231,7 +238,7 @@ async def async_get_hub_log_lines(
     records = [
         _sanitize_log_record(payload, entry)
         for payload in handler.get_records()
-        if str(payload.get("entry_id", "")) == entry_id
+        if _record_matches_entry(payload, entry_id)
     ]
     if limit > 0:
         return records[-limit:]

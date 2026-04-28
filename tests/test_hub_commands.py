@@ -869,6 +869,66 @@ def test_roku_http_post_resolves_slot_callback_from_migrated_single_device_store
     loop.close()
 
 
+def test_roku_http_post_new_format_uses_cached_device_name_when_local_catalog_is_stale():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    class _Store:
+        def get_deployed_wifi_commands(self, entry_id, *, hub_device_id=None, device_key=None):
+            if entry_id == "entry-id" and hub_device_id == 7:
+                return [{"name": "Edited Slot"}]
+            return []
+
+        def get_live_wifi_command_slot(self, entry_id, *, command_index, hub_device_id=None, device_key=None):
+            return None
+
+        async def async_get_hub_config(self, _entry_id, **_kwargs):
+            return {"commands": []}
+
+    hass.data = {
+        "sofabaton_x1s": {
+            "command_config_store": _Store()
+        }
+    }
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+    hub.devices = {}
+    hub._proxy.state.devices[7] = {
+        "brand": "m3tac0de-default-hash",
+        "name": "Fresh Wifi Device",
+    }
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/7/0/short",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    ip_command = hub.get_last_ip_command()
+    assert ip_command
+    assert ip_command["command_label"] == "Edited Slot"
+    assert ip_command["entity_name"] == "Fresh Wifi Device"
+
+    loop.close()
+
+
 def test_command_to_favorite_executor_job_uses_partial_not_kwargs():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
