@@ -1,4 +1,4 @@
-// ../node_modules/@lit/reactive-element/css-tag.js
+// node_modules/@lit/reactive-element/css-tag.js
 var t = globalThis;
 var e = t.ShadowRoot && (void 0 === t.ShadyCSS || t.ShadyCSS.nativeShadow) && "adoptedStyleSheets" in Document.prototype && "replace" in CSSStyleSheet.prototype;
 var s = /* @__PURE__ */ Symbol();
@@ -43,7 +43,7 @@ var c = e ? (t4) => t4 : (t4) => t4 instanceof CSSStyleSheet ? ((t5) => {
   return r(e5);
 })(t4) : t4;
 
-// ../node_modules/@lit/reactive-element/reactive-element.js
+// node_modules/@lit/reactive-element/reactive-element.js
 var { is: i2, defineProperty: e2, getOwnPropertyDescriptor: h, getOwnPropertyNames: r2, getOwnPropertySymbols: o2, getPrototypeOf: n2 } = Object;
 var a = globalThis;
 var c2 = a.trustedTypes;
@@ -265,7 +265,7 @@ var y = class extends HTMLElement {
 };
 y.elementStyles = [], y.shadowRootOptions = { mode: "open" }, y[d("elementProperties")] = /* @__PURE__ */ new Map(), y[d("finalized")] = /* @__PURE__ */ new Map(), p?.({ ReactiveElement: y }), (a.reactiveElementVersions ?? (a.reactiveElementVersions = [])).push("2.1.2");
 
-// ../node_modules/lit-html/lit-html.js
+// node_modules/lit-html/lit-html.js
 var t2 = globalThis;
 var i3 = (t4) => t4;
 var s2 = t2.trustedTypes;
@@ -520,7 +520,7 @@ var D = (t4, i7, s4) => {
   return h3._$AI(t4), h3;
 };
 
-// ../node_modules/lit-element/lit-element.js
+// node_modules/lit-element/lit-element.js
 var s3 = globalThis;
 var i4 = class extends y {
   constructor() {
@@ -1732,7 +1732,7 @@ function renderLogsTab(params) {
   });
 }
 
-// ../node_modules/lit-html/directive.js
+// node_modules/lit-html/directive.js
 var e4 = (t4) => (...e5) => ({ _$litDirective$: t4, values: e5 });
 var i5 = class {
   constructor(t4) {
@@ -1751,12 +1751,12 @@ var i5 = class {
   }
 };
 
-// ../node_modules/lit-html/directive-helpers.js
+// node_modules/lit-html/directive-helpers.js
 var { I: t3 } = j;
 var m2 = {};
 var p3 = (o5, t4 = m2) => o5._$AH = t4;
 
-// ../node_modules/lit-html/directives/keyed.js
+// node_modules/lit-html/directives/keyed.js
 var i6 = e4(class extends i5 {
   constructor() {
     super(...arguments), this.key = A;
@@ -1772,6 +1772,7 @@ var i6 = e4(class extends i5 {
 // custom_components/sofabaton_x1s/www/src/tabs/wifi-commands-tab.ts
 var SLOT_COUNT = 10;
 var INPUT_ICON = "mdi:video-input-hdmi";
+var WIFI_COMMANDS_DOCS_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md";
 var ID = {
   UP: 174,
   DOWN: 178,
@@ -2098,12 +2099,10 @@ var SofabatonWifiCommandsTab = class extends i4 {
     }
     const remoteUnavailable = this._remoteUnavailable();
     const syncRunning = this._syncState.status === "running";
-    const syncMessage = this._syncMessage(remoteUnavailable);
     return this._renderSelectedDeviceView({
       selectedDevice,
       remoteUnavailable,
-      syncRunning,
-      syncMessage
+      syncRunning
     });
     return b2`
       <div class="tab-panel">
@@ -2133,7 +2132,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
               <ha-icon icon=${this._syncStatusIcon(remoteUnavailable)}></ha-icon>
               <span>${this._syncMessageShort(remoteUnavailable)}</span>
             </span>
-            <div class="sync-message">${syncMessage}</div>
+            <div class="sync-message">${this._renderSyncMessage(remoteUnavailable)}</div>
           </div>
           ${remoteUnavailable ? A : syncRunning ? b2`<div class="sync-static">Syncing…</div>` : this._syncState.sync_needed ? b2`
             <button class="sync-btn sync-btn-primary" ?disabled=${this._commandSyncRunning} @click=${this._runCommandConfigSync}>Sync to Hub</button>
@@ -2158,11 +2157,9 @@ var SofabatonWifiCommandsTab = class extends i4 {
   _renderSelectedDeviceView({
     selectedDevice,
     remoteUnavailable,
-    syncRunning,
-    syncMessage
+    syncRunning
   }) {
     const externallyLocked = this._hubCommandLocked() && !this._commandSyncRunning;
-    const syncDockMessage = externallyLocked ? this._effectiveHubCommandLabel() : syncMessage;
     return b2`
       <div class="tab-panel">
         <div class="detail-view">
@@ -2190,7 +2187,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
             `}
           </div>
           <div class="sticky-footer">
-            ${this._renderStatusDock(syncDockMessage, this._syncDockTone(remoteUnavailable, externallyLocked))}
+            ${this._renderStatusDock(this._renderSyncMessage(remoteUnavailable, externallyLocked), this._syncDockTone(remoteUnavailable, externallyLocked))}
           </div>
         </div>
         ${this._renderDetailsModal()}
@@ -3412,12 +3409,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
   }
   _syncMessage(remoteUnavailable) {
     if (remoteUnavailable) return "Remote entity unavailable. Is the app connected?";
-    if (this._syncState.status === "running") {
-      const total = Number(this._syncState.total_steps || 0);
-      const current = Number(this._syncState.current_step || 0);
-      const progress = total > 0 ? ` (${Math.min(current, total)}/${total})` : "";
-      return `${String(this._syncState.message || "Sync in progress")}${progress}`;
-    }
+    if (this._syncState.status === "running") return String(this._syncState.message || "Sync in progress");
     if (this._syncState.status === "failed") return String(this._syncState.message || "Last sync failed.");
     if (this._syncState.sync_needed) return "Command config changes need to be synced to the hub.";
     if (this._syncState.status === "success") return "Hub command configuration is up to date.";
@@ -3469,6 +3461,11 @@ var SofabatonWifiCommandsTab = class extends i4 {
     if (this._syncState.status === "running" || externallyLocked) return "status-progress";
     if (this._syncState.sync_needed) return "status-warning";
     return "status-success";
+  }
+  _renderSyncMessage(remoteUnavailable, externallyLocked = false) {
+    const message = externallyLocked ? this._effectiveHubCommandLabel() : this._syncMessage(remoteUnavailable);
+    if (remoteUnavailable || this._syncState.status !== "failed") return message;
+    return b2`${message} <a class="sync-doc-link" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noreferrer">See documentation</a>`;
   }
   _renderStatusDock(message, tone) {
     return b2`
@@ -3772,6 +3769,7 @@ SofabatonWifiCommandsTab.styles = i`
       line-height: 1.35;
       text-align: center;
     }
+    .bottom-dock-status > span:last-child { min-width: 0; }
     .dock-status-indicator {
       width: 10px;
       height: 10px;
@@ -3823,6 +3821,8 @@ SofabatonWifiCommandsTab.styles = i`
     .sync-row.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); }
     .sync-message-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
     .sync-message { font-size: 13px; line-height: 1.4; }
+    .sync-doc-link { color: var(--primary-color); font-weight: 600; text-decoration: none; }
+    .sync-doc-link:hover { text-decoration: underline; }
     .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
     .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .version-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }

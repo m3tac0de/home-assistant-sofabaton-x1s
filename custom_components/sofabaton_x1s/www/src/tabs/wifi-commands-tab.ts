@@ -5,6 +5,7 @@ import { entityForHub, proxyClientConnected, remoteAttrsForHub } from "../shared
 
 const SLOT_COUNT = 10;
 const INPUT_ICON = "mdi:video-input-hdmi";
+const WIFI_COMMANDS_DOCS_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md";
 
 const ID = {
   UP: 174,
@@ -305,6 +306,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       line-height: 1.35;
       text-align: center;
     }
+    .bottom-dock-status > span:last-child { min-width: 0; }
     .dock-status-indicator {
       width: 10px;
       height: 10px;
@@ -356,6 +358,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     .sync-row.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); }
     .sync-message-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
     .sync-message { font-size: 13px; line-height: 1.4; }
+    .sync-doc-link { color: var(--primary-color); font-weight: 600; text-decoration: none; }
+    .sync-doc-link:hover { text-decoration: underline; }
     .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
     .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .version-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
@@ -671,13 +675,11 @@ class SofabatonWifiCommandsTab extends LitElement {
     }
     const remoteUnavailable = this._remoteUnavailable();
     const syncRunning = this._syncState.status === "running";
-    const syncMessage = this._syncMessage(remoteUnavailable);
 
     return this._renderSelectedDeviceView({
       selectedDevice,
       remoteUnavailable,
       syncRunning,
-      syncMessage,
     });
 
     return html`
@@ -708,7 +710,7 @@ class SofabatonWifiCommandsTab extends LitElement {
               <ha-icon icon=${this._syncStatusIcon(remoteUnavailable)}></ha-icon>
               <span>${this._syncMessageShort(remoteUnavailable)}</span>
             </span>
-            <div class="sync-message">${syncMessage}</div>
+            <div class="sync-message">${this._renderSyncMessage(remoteUnavailable)}</div>
           </div>
           ${remoteUnavailable ? nothing : syncRunning ? html`<div class="sync-static">Syncing…</div>` : this._syncState.sync_needed ? html`
             <button class="sync-btn sync-btn-primary" ?disabled=${this._commandSyncRunning} @click=${this._runCommandConfigSync}>Sync to Hub</button>
@@ -735,15 +737,12 @@ class SofabatonWifiCommandsTab extends LitElement {
     selectedDevice,
     remoteUnavailable,
     syncRunning,
-    syncMessage,
   }: {
     selectedDevice: WifiDeviceSummary;
     remoteUnavailable: boolean;
     syncRunning: boolean;
-    syncMessage: string;
   }) {
     const externallyLocked = this._hubCommandLocked() && !this._commandSyncRunning;
-    const syncDockMessage = externallyLocked ? this._effectiveHubCommandLabel() : syncMessage;
     return html`
       <div class="tab-panel">
         <div class="detail-view">
@@ -771,7 +770,7 @@ class SofabatonWifiCommandsTab extends LitElement {
             `}
           </div>
           <div class="sticky-footer">
-            ${this._renderStatusDock(syncDockMessage, this._syncDockTone(remoteUnavailable, externallyLocked))}
+            ${this._renderStatusDock(this._renderSyncMessage(remoteUnavailable, externallyLocked), this._syncDockTone(remoteUnavailable, externallyLocked))}
           </div>
         </div>
         ${this._renderDetailsModal()}
@@ -2155,12 +2154,7 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _syncMessage(remoteUnavailable: boolean) {
     if (remoteUnavailable) return "Remote entity unavailable. Is the app connected?";
-    if (this._syncState.status === "running") {
-      const total = Number(this._syncState.total_steps || 0);
-      const current = Number(this._syncState.current_step || 0);
-      const progress = total > 0 ? ` (${Math.min(current, total)}/${total})` : "";
-      return `${String(this._syncState.message || "Sync in progress")}${progress}`;
-    }
+    if (this._syncState.status === "running") return String(this._syncState.message || "Sync in progress");
     if (this._syncState.status === "failed") return String(this._syncState.message || "Last sync failed.");
     if (this._syncState.sync_needed) return "Command config changes need to be synced to the hub.";
     if (this._syncState.status === "success") return "Hub command configuration is up to date.";
@@ -2221,7 +2215,13 @@ class SofabatonWifiCommandsTab extends LitElement {
     return "status-success";
   }
 
-  private _renderStatusDock(message: string, tone: string) {
+  private _renderSyncMessage(remoteUnavailable: boolean, externallyLocked = false) {
+    const message = externallyLocked ? this._effectiveHubCommandLabel() : this._syncMessage(remoteUnavailable);
+    if (remoteUnavailable || this._syncState.status !== "failed") return message;
+    return html`${message} <a class="sync-doc-link" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noreferrer">See documentation</a>`;
+  }
+
+  private _renderStatusDock(message: unknown, tone: string) {
     return html`
       <div class="bottom-dock-status">
         <span class="dock-status-indicator ${tone}"></span>

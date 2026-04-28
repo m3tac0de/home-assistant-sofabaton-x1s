@@ -5490,10 +5490,7 @@ class SofabatonRemoteCardEditor extends HTMLElement {
       syncMessage.textContent =
         "Remote entity unavailable. Is the app connected?";
     } else if (syncRunning) {
-      const cur = Number(syncState.current_step || 0);
-      const total = Number(syncState.total_steps || 0);
-      const progress = total > 0 ? ` (${Math.min(cur, total)}/${total})` : "";
-      syncMessage.textContent = `${String(syncState.message || "Sync in progress")}${progress}`;
+      syncMessage.textContent = String(syncState.message || "Sync in progress");
     } else if (syncStatus === "failed") {
       syncMessage.textContent = String(
         syncState.message || "Last sync failed.",

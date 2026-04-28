@@ -1820,8 +1820,48 @@ def test_sync_command_config_reports_wifi_listener_enable_failure(monkeypatch):
     assert "Unable to enable Wifi Device" in str(err.value)
     progress = hub.get_command_sync_progress()
     assert progress["status"] == "failed"
-    assert "Port 8060 may already be in use" in progress["message"]
-    assert "docs/wifi_commands.md" in progress["message"]
+    assert progress["message"] == "Wifi Device could not be enabled on port 8060."
+
+    loop.close()
+
+
+def test_sync_command_config_reports_failed_progress_for_unexpected_errors(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    async def _boom():
+        raise RuntimeError("unexpected boom")
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _boom)
+
+    payload = {
+        "commands": [{"name": "Command 1", "activities": ["101"]}],
+        "commands_hash": "abc",
+    }
+
+    with pytest.raises(RuntimeError, match="unexpected boom"):
+        loop.run_until_complete(
+            hub.async_sync_command_config(command_payload=payload, request_port=8060)
+        )
+
+    progress = hub.get_command_sync_progress()
+    assert progress["status"] == "failed"
+    assert progress["message"] == "Sync failed"
 
     loop.close()
 
