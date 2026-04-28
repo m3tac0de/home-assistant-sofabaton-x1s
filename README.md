@@ -41,7 +41,7 @@ sofabaton_x1s:
 
 ---
 
-## ⚙️ What this integration does
+## 🔌 What this integration does
 
 This integration establishes a direct and sustained connection with a Sofabaton hub, leveraging APIs intended for the Sofabaton app.
 Sofabaton hubs allow **only one client connection at a time**. To enable this integration and using the app at the same time, this integration works by acting as a **local proxy**:
@@ -116,7 +116,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ---
 
-## ⚙️ Entities you’ll get
+## 📋 Entities you’ll get
 
 - **Remote**: `remote.<hub>_remote`  
   Used for automations (`remote.send_command`). Unavailable while the official app is connected to the proxy.
@@ -165,7 +165,7 @@ This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 > The card is also available as a separate HACS frontend plugin.
 > This integration automatically stops deploying the card as soon as it detects that the card is installed through HACS (a reboot of Home Assistant is required).
 
-## ⚙️ Dashboard card - Sofabaton Control Panel
+## 🖥️ Dashboard card - Sofabaton Control Panel
 
 This integration adds the **Sofabaton Control Panel** Lovelace card to your Home Assistant.
 Find it in the Cards selection menu, or add it manually using the following YAML:
