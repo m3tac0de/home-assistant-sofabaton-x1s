@@ -65,7 +65,6 @@ from .protocol_const import (
     OP_REQ_ACTIVITY_MAP,
     OP_DELETE_DEVICE,
     OP_ACTIVITY_ASSIGN_FINALIZE,
-    OP_ACTIVITY_ASSIGN_COMMIT,
     OP_ACTIVITY_CONFIRM,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
@@ -2418,14 +2417,6 @@ class X1Proxy:
                     ack_payload[0],
                 )
             macro_updates.append(macro_button)
-
-        if self.hub_version == HUB_VERSION_X2:
-            commit_payload = bytes([act_lo, 0x01])
-            self._log.info("[ACTIVITY_ASSIGN] commit assignment act=0x%02X payload=%s", act_lo, commit_payload.hex(" "))
-            self._send_cmd_frame(OP_ACTIVITY_ASSIGN_COMMIT, commit_payload)
-            if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0) is None:
-                self._log.warning("[ACTIVITY_ASSIGN] missing ACK after 0x0265 commit act=0x%02X", act_lo)
-                return None
 
         self.clear_entity_cache(
             act_lo,

@@ -17,7 +17,6 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_X2_REMOTE_SYNC,
     OP_REQ_COMMANDS,
     OP_ACTIVITY_ASSIGN_FINALIZE,
-    OP_ACTIVITY_ASSIGN_COMMIT,
 )
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import ActivityMapHandler, DeviceButtonFamilyHandler
@@ -2116,7 +2115,7 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
 
 
 
-def test_add_device_to_activity_x2_sends_commit_stage(monkeypatch) -> None:
+def test_add_device_to_activity_x2_uses_same_assignment_flow_as_x1s(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
         proxy_enabled=False,
@@ -2181,9 +2180,21 @@ def test_add_device_to_activity_x2_sends_commit_stage(monkeypatch) -> None:
     result = proxy.add_device_to_activity(101, 6)
 
     assert result is not None
-    assert sent[-1] == (OP_ACTIVITY_ASSIGN_COMMIT, bytes([0x65, 0x01]))
+    assert sent == [
+        (0x024F, bytes([0x01, 0x00])),
+        (0x024F, bytes([0x02, 0x00])),
+        (0x024F, bytes([0x06, 0x00])),
+        (0x024D, bytes([0x65, 0xC6])),
+        (0x024D, bytes([0x65, 0xC7])),
+    ]
     assert len(family_sends) == 2
-    assert ack_calls[-1] == [(0x0103, None)]
+    assert ack_calls == [
+        [(0x0103, None)],
+        [(0x0103, None)],
+        [(0x0103, None)],
+        [(0x0112, 198)],
+        [(0x0112, 199)],
+    ]
 
 
 def test_add_device_to_activity_rejects_activity_inputs_error_ack(monkeypatch) -> None:
