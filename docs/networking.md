@@ -51,7 +51,7 @@ graph LR
 ```markdown
 RED ARROWS : You need these for your Sofabaton iOS app
 BLUE ARROW : You need this for your Sofabaton Android app
-BLACK ARROWS : Needed for everybody
+OTHER ARROWS : Needed for everybody
 ```
 
 ## Segment 1 – Hub ↔ Integration
@@ -62,7 +62,8 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 
 - Uses mDNS/Bonjour for the `_x1hub._udp.local.` (X1 and X1S) or `_sofabaton_hub._udp.local.` (X2) advertisement to learn the hub IP/UDP port.
 - If hubs sit on a different VLAN, multicast must be forwarded or you need to add the hub manually in the config flow (IP + UDP port).
-  When rebroadcasting mDNS across VLANs, an issue may be encountered due to the X2 hub advertising a non-conformant Service Name. The name "sofabaton_hub" is explicitly disallowed in mDNS standard RFC 6335 (Section 5.1 explicitly states: "The service name... MUST NOT contain underscores."). mDNS libraries like Zeroconf will not be able to rebroadcast as newer versions strictly implement the standard. To work around this, rebroadcast as `_x1hub._udp.local.`, integration and app will then work as intended. The integration itself also follows this strategy.
+
+> ⚠️ When rebroadcasting mDNS across VLANs, an issue may be encountered due to the X2 hub advertising a non-conformant Service Name. The name "sofabaton_hub" is explicitly disallowed in mDNS standard RFC 6335 (Section 5.1). mDNS libraries like Zeroconf will not be able to rebroadcast as newer versions strictly implement the standard. To work around this, rebroadcast as `_x1hub._udp.local.`, integration and app will then work as intended. The integration itself also follows this strategy.
 
 ### Connect flow
 
@@ -95,7 +96,7 @@ Two discovery mechanisms run in parallel:
 
 Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Android can discover on other ports, but iOS discovery is lost if you move away from 8102.
 
-> ⚠️ iOS discovery and VLANs
+> ⚠️ **iOS discovery and VLANs**
 >
 > The iOS app’s discovery uses **UDP broadcast** on port 8102. By default, routers do **not**
 > forward broadcasts across VLANs/subnets, even if normal unicast traffic (HTTP, TCP, etc.)
@@ -108,6 +109,16 @@ Keep the proxy UDP listener on **8102** to satisfy the iOS discovery flow. Andro
 >   can do this), or you must rely on manual configuration (although that supports only a single hub)
 > - Once discovery is done, all further communication is unicast UDP and TCP and will happily
 >   traverse your routed VLANs.
+
+> ⚠️ **iOS app limitation: only one hub visible at a time**
+>
+> When using the iOS Sofabaton app, only one hub will appear in the app, even if you have
+> multiple hubs and the proxy is advertising all of them. This is a limitation of the iOS
+> discovery mechanism and cannot be worked around.
+>
+> **Why:** iOS discovery identifies hubs by the MAC address embedded in their UDP broadcast
+> packet. Because all proxy advertisements originate from the same Home Assistant host, they
+> all carry the same MAC address, so the app collapses them into one.
 
 ### Connect flow (app side)
 
@@ -150,7 +161,7 @@ When the app is connected, command-sending entities in Home Assistant intentiona
   boundaries by default.
 - **iOS app sees only 1 hub while there should be more:** this is an unfortunate limitation of how iOS discovery works and cannot be resolved.
 
-## For the road
+## Complete port reference
 
 ```
 | From          | To            | Protocol | Port(s)              | Used for                                      | Needed for                            |

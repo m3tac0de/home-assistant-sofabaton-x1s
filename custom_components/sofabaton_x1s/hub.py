@@ -25,7 +25,6 @@ from .const import (
     HUB_VERSION_X1,
     HUB_VERSION_X1S,
     HUB_VERSION_X2,
-    WIFI_DEVICE_ENABLE_DOCS_URL,
     HVER_BY_HUB_VERSION,
     classify_hub_version,
     format_hub_entry_title,
@@ -42,15 +41,38 @@ from .const import (
     signal_command_sync,
 )
 from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
+from .logging_utils import get_hub_logger
 from .lib.protocol_const import ButtonName
 from .lib.x1_proxy import X1Proxy
-from .command_config import COMMAND_BRAND_PREFIX, count_configured_command_slots, normalize_command_name
+from .command_config import (
+    COMMAND_BRAND_PREFIX,
+    DEFAULT_WIFI_DEVICE_KEY,
+    count_configured_command_slots,
+    normalize_command_name,
+    normalize_power_command_id,
+    wifi_device_requires_listener,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.DOWN, "left": ButtonName.LEFT, "right": ButtonName.RIGHT, "ok": ButtonName.OK, "back": ButtonName.BACK, "home": ButtonName.HOME, "menu": ButtonName.MENU, "volup": ButtonName.VOL_UP, "voldn": ButtonName.VOL_DOWN, "mute": ButtonName.MUTE, "chup": ButtonName.CH_UP, "chdn": ButtonName.CH_DOWN, "guide": ButtonName.GUIDE, "dvr": ButtonName.DVR, "play": ButtonName.PLAY, "exit": ButtonName.EXIT, "rew": ButtonName.REW, "pause": ButtonName.PAUSE, "fwd": ButtonName.FWD, "red": ButtonName.RED, "green": ButtonName.GREEN, "yellow": ButtonName.YELLOW, "blue": ButtonName.BLUE, "a": ButtonName.A, "b": ButtonName.B, "c": ButtonName.C}
 _WIFI_COMMAND_SLOT_COUNT = 10
 _WIFI_COMMAND_LONG_PRESS_OFFSET = 10
+
+
+def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
+    text = str(brand or "").strip()
+    prefix = f"{COMMAND_BRAND_PREFIX}-"
+    if not text.startswith(prefix):
+        return None, None
+    suffix = text[len(prefix):].strip()
+    if not suffix:
+        return None, None
+    if "-" not in suffix:
+        return DEFAULT_WIFI_DEVICE_KEY, suffix
+    device_key, command_hash = suffix.split("-", 1)
+    device_key = "".join(ch for ch in str(device_key).lower() if ch.isalnum())
+    return (device_key or DEFAULT_WIFI_DEVICE_KEY), command_hash.strip()
 
 
 def get_hub_model(entry: ConfigEntry) -> str:
@@ -121,9 +143,10 @@ class SofabatonHub:
         self._last_ip_command: dict[str, Any] | None = None
         self._button_waiters: dict[int, list] = {}
         self._command_sync_lock = asyncio.Lock()
-        self._command_sync_progress: dict[str, Any] = {"status": "idle", "current_step": 0, "total_steps": 0, "message": "Idle"}
+        self._command_sync_progress: dict[str, dict[str, Any]] = {}
+        self._log = get_hub_logger(_LOGGER, self.entry_id)
 
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] Creating X1Proxy for hub %s (%s:%s)",
             self.entry_id,
             name,
@@ -188,13 +211,13 @@ class SofabatonHub:
         return proxy
 
     async def async_start(self) -> None:
-        _LOGGER.debug("[%s] Starting proxy threads", self.entry_id)
+        self._log.debug("[%s] Starting proxy threads", self.entry_id)
         zc = await async_get_instance(self.hass)
         self._proxy.set_zeroconf(zc)
         await self.hass.async_add_executor_job(self._proxy.start)
 
     async def async_stop(self) -> None:
-        _LOGGER.debug("[%s] Stopping proxy", self.entry_id)
+        self._log.debug("[%s] Stopping proxy", self.entry_id)
         await self.hass.async_add_executor_job(self._proxy.stop)
 
     async def async_apply_new_settings(
@@ -219,7 +242,7 @@ class SofabatonHub:
         if not changed:
             return
 
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] Updating hub settings to %s:%s (proxy_udp_port=%s, hub_listen_base=%s)",
             self.entry_id,
             self.host,
@@ -245,7 +268,7 @@ class SofabatonHub:
     # ------------------------------------------------------------------
     def _on_activity_change(self, new_id: Optional[int], old_id: Optional[int], name: Optional[str]) -> None:
         def _inner() -> None:
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] Activity changed: %s → %s (%s)",
                 self.entry_id,
                 old_id,
@@ -284,7 +307,7 @@ class SofabatonHub:
     def _on_activities_burst(self, key: str) -> None:
         def _inner() -> None:
             acts, ready = self._get_activities_cached()
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] on_burst_end('activities'): ready=%s, count=%s",
                 self.entry_id,
                 ready,
@@ -340,7 +363,7 @@ class SofabatonHub:
 
     def _on_client_state_change(self, connected: bool) -> None:
         def _inner() -> None:
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] Proxy client state changed: connected=%s",
                 self.entry_id,
                 connected,
@@ -349,7 +372,7 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_client(self.entry_id))
 
             if not connected and self.current_activity is not None:
-                _LOGGER.debug(
+                self._log.debug(
                     "[%s] Client disconnected, re-priming buttons for activity %s",
                     self.entry_id,
                     self.current_activity,
@@ -361,7 +384,7 @@ class SofabatonHub:
 
     def _on_hub_state_change(self, connected: bool) -> None:
         def _inner() -> None:
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] Hub connection state changed: connected=%s",
                 self.entry_id,
                 connected,
@@ -375,7 +398,7 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_hub(self.entry_id))
 
             if connected:
-                _LOGGER.debug("[%s] Hub connected, doing initial sync", self.entry_id)
+                self._log.debug("[%s] Hub connected, doing initial sync", self.entry_id)
                 self.hass.async_create_task(self._async_initial_sync())
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -387,6 +410,7 @@ class SofabatonHub:
                 self.devices = devs
                 self._devices_generation += 1
                 self._bump_cache_generation()
+                self.hass.async_create_task(self._async_reconcile_deployed_wifi_device_ids())
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
         self.hass.loop.call_soon_threadsafe(_inner)
 
@@ -459,7 +483,7 @@ class SofabatonHub:
     # ------------------------------------------------------------------
     async def _async_initial_sync(self) -> None:
         acts, acts_ready = await self.hass.async_add_executor_job(partial(self._proxy.get_activities, force_refresh=True))
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] initial_sync: got activities ready=%s count=%s",
             self.entry_id,
             acts_ready,
@@ -468,7 +492,7 @@ class SofabatonHub:
         self.activities_ready = acts_ready
 
         devs, devs_ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] initial_sync: got devices ready=%s count=%s",
             self.entry_id,
             devs_ready,
@@ -479,6 +503,7 @@ class SofabatonHub:
             self.devices = devs
             self._devices_generation += 1
             self._bump_cache_generation()
+            await self._async_reconcile_deployed_wifi_device_ids()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
 
         if acts_ready:
@@ -487,7 +512,7 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
 
         if self.current_activity is not None:
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] initial_sync: priming buttons for current activity %s",
                 self.entry_id,
                 self.current_activity,
@@ -510,7 +535,7 @@ class SofabatonHub:
         self._buttons_ready_for = {int(ent_id) for ent_id in self._proxy.state.buttons.keys()}
         self._command_entities = {int(ent_id) for ent_id in self._proxy.state.commands.keys()}
 
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] Restored persistent cache: devices=%s buttons=%s commands=%s macros=%s activities_map=%s",
             self.entry_id,
             len(self._proxy.state.devices),
@@ -560,8 +585,13 @@ class SofabatonHub:
         return data
 
     def _cache_activity_ids(self, data: dict[str, Any]) -> list[int]:
-        activity_ids: set[int] = set()
-        activity_ids.update(int(act_id) & 0xFF for act_id in self.activities.keys())
+        catalog_ids: set[int] = set()
+        catalog_ids.update(int(act_id) & 0xFF for act_id in self.activities.keys())
+        state_activities = getattr(self._proxy.state, "activities", {})
+        if isinstance(state_activities, dict):
+            catalog_ids.update(int(act_id) & 0xFF for act_id in state_activities.keys())
+
+        activity_ids: set[int] = set(catalog_ids)
 
         for key in (
             "activity_macros",
@@ -580,7 +610,8 @@ class SofabatonHub:
                 except (TypeError, ValueError):
                     continue
 
-        return sorted(activity_id for activity_id in activity_ids if 1 <= activity_id <= 255)
+        visible_ids = catalog_ids if catalog_ids else activity_ids
+        return sorted(activity_id for activity_id in visible_ids if 1 <= activity_id <= 255)
 
     def _get_cached_activity_name(self, act_id: int) -> str | None:
         act_lo = act_id & 0xFF
@@ -820,28 +851,39 @@ class SofabatonHub:
         commands: list[Any] | None = None,
         request_port: int = 8060,
         brand_name: str = "m3tac0de",
+        power_on_command_id: int | None = None,
+        power_off_command_id: int | None = None,
+        input_command_ids: list[int] | None = None,
     ) -> dict[str, Any] | None:
         """Replay the WiFi virtual-device creation sequence on the selected hub."""
 
         return await self.hass.async_add_executor_job(
-            self._proxy.create_wifi_device,
-            device_name,
-            commands,
-            request_port,
-            brand_name,
+            partial(
+                self._proxy.create_wifi_device,
+                device_name=device_name,
+                commands=commands,
+                request_port=request_port,
+                brand_name=brand_name,
+                power_on_command_id=power_on_command_id,
+                power_off_command_id=power_off_command_id,
+                input_command_ids=input_command_ids,
+            ),
         )
 
     async def async_add_device_to_activity(
         self,
         activity_id: int,
         device_id: int,
+        input_cmd_id: int | None = None,
     ) -> dict[str, Any] | None:
         """Replay the activity-device confirmation sequence on the selected hub."""
 
         return await self.hass.async_add_executor_job(
-            self._proxy.add_device_to_activity,
-            activity_id,
-            device_id,
+            lambda: self._proxy.add_device_to_activity(
+                activity_id,
+                device_id,
+                input_cmd_id=input_cmd_id,
+            )
         )
 
     async def async_delete_device(self, device_id: int) -> dict[str, Any] | None:
@@ -1134,7 +1176,7 @@ class SofabatonHub:
                 return
             await asyncio.sleep(0.05)
 
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] timed out waiting for activity map for 0x%02X",
             self.entry_id,
             act_lo,
@@ -1168,7 +1210,7 @@ class SofabatonHub:
                 return
             await asyncio.sleep(0.05)
 
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] timed out waiting for commands for 0x%02X",
             self.entry_id,
             ent_id & 0xFF,
@@ -1227,7 +1269,7 @@ class SofabatonHub:
     async def _async_prime_buttons_for(self, act_id: int) -> None:
         # dedupe here
         if act_id in self._pending_button_fetch:
-            _LOGGER.debug(
+            self._log.debug(
                 "[%s] prime_buttons_for(%s): already pending, skipping",
                 self.entry_id,
                 act_id,
@@ -1235,7 +1277,7 @@ class SofabatonHub:
             return
 
         self._pending_button_fetch.add(act_id)
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] prime_buttons_for(%s): calling proxy.get_buttons_for_entity()",
             self.entry_id,
             act_id,
@@ -1244,7 +1286,7 @@ class SofabatonHub:
             self._proxy.get_buttons_for_entity,
             act_id,
         )
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] prime_buttons_for(%s): ready=%s count=%s",
             self.entry_id,
             act_id,
@@ -1393,6 +1435,7 @@ class SofabatonHub:
         command_label = ""
         device_name = None
         press_type = "short"
+        command_index: int | None = None
         resolved_slot: dict[str, Any] | None = None
 
         if len(parts) >= 4 and parts[0] == "launch":
@@ -1411,7 +1454,7 @@ class SofabatonHub:
                 domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
                 store = domain_data.get("command_config_store")
                 if store is not None:
-                    deployed = store.get_deployed_wifi_commands(self.entry_id)
+                    deployed = store.get_deployed_wifi_commands(self.entry_id, hub_device_id=device_id)
                     if 0 <= command_index < len(deployed):
                         resolved_slot = deployed[command_index]
                         command_label = str(resolved_slot.get("name", ""))
@@ -1427,10 +1470,15 @@ class SofabatonHub:
                     device_name = unquote("/".join(trailing_parts)).replace("_", " ")
 
         timestamp = datetime.now(timezone.utc)
+        resolved_device_name = (
+            device_name
+            or (self._get_cached_device_name(device_id) if device_id >= 0 else None)
+            or (self.devices.get(device_id, {}).get("name") if device_id >= 0 else None)
+        )
         record = {
             "entity_id": device_id,
             "entity_kind": "device",
-            "entity_name": device_name or (self.devices.get(device_id, {}).get("name") if device_id >= 0 else None),
+            "entity_name": resolved_device_name,
             "command_id": command_label,
             "command_label": command_label,
             "button_label": command_label,
@@ -1444,8 +1492,14 @@ class SofabatonHub:
         }
         self._last_ip_command = record
         async_dispatcher_send(self.hass, signal_ip_commands(self.entry_id))
-        if resolved_slot is not None:
-            await self._async_run_wifi_slot_action(resolved_slot, command_label, press_type=press_type)
+        if resolved_slot is not None and command_index is not None:
+            await self._async_maybe_run_live_wifi_slot_action(
+                command_index=command_index,
+                hub_device_id=device_id if device_id >= 0 else None,
+                fallback_slot=resolved_slot,
+                command_label=command_label,
+                press_type=press_type,
+            )
         else:
             await self._async_maybe_run_configured_ip_action(command_label, press_type=press_type)
 
@@ -1453,25 +1507,87 @@ class SofabatonHub:
     def is_sync_in_progress(self) -> bool:
         return self._command_sync_lock.locked()
 
-    def get_command_sync_progress(self) -> dict[str, Any]:
-        return dict(self._command_sync_progress)
+    def get_command_sync_progress(self, device_key: str | None = None) -> dict[str, Any]:
+        normalized_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
+        progress = self._command_sync_progress.get(normalized_key)
+        if isinstance(progress, dict):
+            return dict(progress)
+        return {"status": "idle", "current_step": 0, "total_steps": 0, "message": "Idle"}
 
-    def _set_command_sync_progress(self, **payload: Any) -> None:
-        next_payload = dict(self._command_sync_progress)
+    def _set_command_sync_progress(self, *, device_key: str | None = None, **payload: Any) -> None:
+        normalized_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
+        next_payload = self.get_command_sync_progress(normalized_key)
         next_payload.update(payload)
-        self._command_sync_progress = next_payload
+        self._command_sync_progress[normalized_key] = next_payload
         async_dispatcher_send(self.hass, signal_command_sync(self.entry_id))
+
+    def _command_sync_failure_message(
+        self,
+        *,
+        request_port: int,
+        reason: str = "Sync failed",
+        detail: str | None = None,
+    ) -> str:
+        detail_text = str(detail or "").strip()
+        if detail_text == "sync_in_progress":
+            return "Another Wifi Command sync is already running."
+        if detail_text and "port" in detail_text.lower() and "in use" in detail_text.lower():
+            return f"Wifi Device could not be enabled on port {request_port}."
+        if detail_text.startswith("Failed "):
+            return detail_text
+        if detail_text.startswith("power_"):
+            return detail_text
+        return reason
 
     def _managed_wifi_devices(
         self, devices: dict[int, dict[str, Any]] | None = None
-    ) -> list[tuple[int, str]]:
-        managed: list[tuple[int, str]] = []
-        prefix = f"{COMMAND_BRAND_PREFIX}-"
+    ) -> list[tuple[int, str, str, str]]:
+        managed: list[tuple[int, str, str, str]] = []
         for dev_id, device in (devices or self.devices).items():
             brand = str(device.get("brand") or "").strip()
-            if brand.startswith(prefix):
-                managed.append((int(dev_id), brand))
+            device_key, command_hash = _parse_managed_wifi_brand(brand)
+            if device_key and command_hash:
+                managed.append((int(dev_id), device_key, command_hash, brand))
         return managed
+
+    async def _async_reconcile_deployed_wifi_device_ids(self) -> None:
+        hass_data = getattr(self.hass, "data", {})
+        domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+        store = domain_data.get("command_config_store")
+        if store is None:
+            return
+
+        managed_by_key: dict[str, int] = {}
+        duplicate_keys: set[str] = set()
+        for managed_device_id, managed_key, _managed_hash, _brand in self._managed_wifi_devices():
+            if managed_key in managed_by_key and managed_by_key[managed_key] != managed_device_id:
+                duplicate_keys.add(managed_key)
+                continue
+            managed_by_key[managed_key] = managed_device_id
+
+        for duplicate_key in duplicate_keys:
+            managed_by_key.pop(duplicate_key, None)
+
+        if not managed_by_key:
+            return
+
+        changed = False
+        for device in await store.async_list_hub_devices(self.entry_id):
+            device_key = str(device.get("device_key") or "").strip()
+            if not device_key or isinstance(device.get("deployed_device_id"), int):
+                continue
+            managed_device_id = managed_by_key.get(device_key)
+            if managed_device_id is None:
+                continue
+            if await store.async_set_deployed_device_id(
+                self.entry_id,
+                device_key,
+                managed_device_id,
+            ):
+                changed = True
+
+        if changed:
+            async_dispatcher_send(self.hass, signal_command_sync(self.entry_id))
 
     async def _async_refresh_devices_snapshot(
         self, timeout_seconds: float = 15.0
@@ -1508,7 +1624,10 @@ class SofabatonHub:
                     break
                 await asyncio.sleep(0.1)
             new_ids = await self.hass.async_add_executor_job(self._proxy.get_known_activity_ids)
-            for act_id in old_ids - new_ids:
+            cached_detail_ids = await self.hass.async_add_executor_job(
+                self._proxy.get_cached_activity_detail_ids
+            )
+            for act_id in (old_ids | cached_detail_ids) - new_ids:
                 await self.hass.async_add_executor_job(
                     partial(self._proxy.clear_persistent_cache_for, act_id, kind="activity")
                 )
@@ -1533,14 +1652,12 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
             async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
-    def get_managed_command_hashes(self) -> list[str]:
-        prefix = f"{COMMAND_BRAND_PREFIX}-"
+    def get_managed_command_hashes(self, device_key: str | None = None) -> list[str]:
+        normalized_key = "".join(ch for ch in str(device_key or "").lower() if ch.isalnum())
         hashes: set[str] = set()
-        for _dev_id, brand in self._managed_wifi_devices():
-            text = str(brand or "").strip()
-            if not text.startswith(prefix):
+        for _dev_id, managed_key, command_hash, _brand in self._managed_wifi_devices():
+            if normalized_key and managed_key != normalized_key:
                 continue
-            command_hash = text[len(prefix):].strip()
             if command_hash:
                 hashes.add(command_hash)
         return sorted(hashes)
@@ -1595,7 +1712,7 @@ class SofabatonHub:
         try:
             await self._async_execute_action_config(action)
         except Exception as err:  # pragma: no cover - service boundary
-            _LOGGER.warning(
+            self._log.warning(
                 "[%s] Failed executing configured IP action for '%s': %s",
                 self.entry_id,
                 command_label,
@@ -1614,7 +1731,7 @@ class SofabatonHub:
         if store is None:
             return
 
-        payload = await store.async_get_hub_config(self.entry_id)
+        payload = await store.async_get_hub_config(self.entry_id, device_key=DEFAULT_WIFI_DEVICE_KEY)
         command_key = normalize_command_name(command_label)
         for slot in payload.get("commands", []):
             if normalize_command_name(slot.get("name")) != command_key:
@@ -1622,11 +1739,48 @@ class SofabatonHub:
             await self._async_run_wifi_slot_action(slot, command_label, press_type=press_type)
             return
 
+    async def _async_maybe_run_live_wifi_slot_action(
+        self,
+        *,
+        command_index: int,
+        hub_device_id: int | None,
+        fallback_slot: dict[str, Any],
+        command_label: str,
+        press_type: str = "short",
+    ) -> None:
+        hass_data = getattr(self.hass, "data", {})
+        domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+        store = domain_data.get("command_config_store")
+        if store is None:
+            await self._async_run_wifi_slot_action(fallback_slot, command_label, press_type=press_type)
+            return
+
+        live_slot = store.get_live_wifi_command_slot(
+            self.entry_id,
+            command_index=command_index,
+            hub_device_id=hub_device_id,
+        )
+        await self._async_run_wifi_slot_action(
+            live_slot if isinstance(live_slot, dict) else fallback_slot,
+            command_label,
+            press_type=press_type,
+        )
+
+    async def _async_wifi_listener_needed(self) -> bool:
+        hass_data = getattr(self.hass, "data", {})
+        domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+        store = domain_data.get("command_config_store")
+        if store is not None:
+            devices = await store.async_list_hub_devices(self.entry_id)
+            return any(wifi_device_requires_listener(device) for device in devices)
+        return False
+
     async def async_sync_command_config(
         self,
         *,
         command_payload: dict[str, Any],
         request_port: int,
+        device_key: str = DEFAULT_WIFI_DEVICE_KEY,
         device_name: str = "Home Assistant",
     ) -> dict[str, Any]:
         if self._command_sync_lock.locked():
@@ -1636,183 +1790,255 @@ class SofabatonHub:
             commands = list(command_payload.get("commands") or [])
             configured_slots = count_configured_command_slots(commands)
             commands_hash = str(command_payload.get("commands_hash") or "")
+            deployed_commands_hash = str(command_payload.get("deployed_commands_hash") or "")
+            deployed_device_id = command_payload.get("deployed_device_id")
+            normalized_device_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
             brand_name = f"{COMMAND_BRAND_PREFIX}-{commands_hash}"
             total_steps = 8 if configured_slots > 0 else 7
             self._set_command_sync_progress(
+                device_key=normalized_device_key,
                 status="running",
                 current_step=0,
                 total_steps=total_steps,
                 message="Starting sync",
             )
 
-            self._set_command_sync_progress(
-                current_step=1,
-                message="Ensuring Wifi Device is enabled",
-            )
-            if configured_slots > 0 and not self.roku_server_enabled:
-                await self.async_set_roku_server_enabled(True)
-                from .roku_listener import async_get_roku_listener
-
-                listener = await async_get_roku_listener(self.hass)
-                listener_error = listener.get_last_start_error()
-                if listener_error:
-                    self._set_command_sync_progress(
-                        status="failed",
-                        message=(
-                            "Failed enabling Wifi Device. "
-                            f"Port {request_port} may already be in use. "
-                            f"Details: {listener_error}. See {WIFI_DEVICE_ENABLE_DOCS_URL}"
-                        ),
-                    )
-                    raise HomeAssistantError(
-                        "Unable to enable Wifi Device (Roku/HTTP Listener): "
-                        f"port {request_port} may already be in use. "
-                        f"See {WIFI_DEVICE_ENABLE_DOCS_URL}"
-                    )
-
-            device_snapshot = await self._async_refresh_devices_snapshot()
-            managed = self._managed_wifi_devices(device_snapshot)
-            self._set_command_sync_progress(
-                current_step=2,
-                message="Deleting existing managed Wifi Device(s)",
-            )
-            for dev_id, _brand in managed:
-                result = await self.async_delete_device(dev_id)
-                if not result:
-                    self._set_command_sync_progress(
-                        status="failed",
-                        message=f"Failed deleting managed device {dev_id}",
-                    )
-                    raise HomeAssistantError(
-                        f"Failed deleting managed device {dev_id}"
-                    )
-
-            if configured_slots == 0:
-                if self.roku_server_enabled:
-                    self._set_command_sync_progress(
-                        current_step=3,
-                        message="Disabling Wifi Device",
-                    )
-                    await self.async_set_roku_server_enabled(False)
-
+            try:
                 self._set_command_sync_progress(
-                    status="success",
-                    current_step=7,
-                    total_steps=total_steps,
-                    message="No configured slots; managed Wifi Device removed",
-                    wifi_device_id=None,
-                    commands_hash=commands_hash,
+                    device_key=normalized_device_key,
+                    current_step=1,
+                    message="Ensuring Wifi Device is enabled",
                 )
-                return {
-                    "status": "success",
-                    "wifi_device_id": None,
-                    "commands_hash": commands_hash,
-                    "activities": [],
-                    "deleted_managed_devices": len(managed),
-                }
+                if configured_slots > 0 and not self.roku_server_enabled:
+                    await self.async_set_roku_server_enabled(True)
+                    from .roku_listener import async_get_roku_listener
 
-            command_defs: list[dict[str, Any]] = []
-            for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
-                name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
-                command_defs.append(
-                    {
-                        "display_name": name,
-                        "trigger_name": name,
-                        "press_type": "short",
-                        "command_index": idx,
-                    }
-                )
-            for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
-                name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
-                command_defs.append(
-                    {
-                        "display_name": f"{name} Long Press",
-                        "trigger_name": name,
-                        "press_type": "long",
-                        "command_index": idx,
-                    }
-                )
+                    listener = await async_get_roku_listener(self.hass)
+                    listener_error = listener.get_last_start_error()
+                    if listener_error:
+                        raise HomeAssistantError(
+                            "Unable to enable Wifi Device (Roku/HTTP Listener): "
+                            f"port {request_port} may already be in use"
+                        )
 
-            self._set_command_sync_progress(
-                current_step=3,
-                message="Creating Wifi Device on Hub",
-            )
-            created = await self.async_create_wifi_device(
-                device_name=device_name,
-                commands=command_defs,
-                request_port=request_port,
-                brand_name=brand_name,
-            )
-            if not created or not created.get("device_id"):
+                device_snapshot = await self._async_refresh_devices_snapshot()
+                managed_by_id: dict[int, tuple[int, str, str, str]] = {}
+                for dev_id, managed_key, managed_hash, brand in self._managed_wifi_devices(device_snapshot):
+                    if isinstance(deployed_device_id, int) and int(dev_id) == deployed_device_id:
+                        managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
+                        continue
+                    if deployed_commands_hash and managed_hash == deployed_commands_hash:
+                        managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
+                        continue
+                    if (
+                        not isinstance(deployed_device_id, int)
+                        and not deployed_commands_hash
+                        and managed_key == normalized_device_key
+                    ):
+                        managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
+                managed = list(managed_by_id.values())
                 self._set_command_sync_progress(
-                status="failed",
-                message="Failed creating Wifi Device",
+                    device_key=normalized_device_key,
+                    current_step=2,
+                    message="Deleting existing managed Wifi Device",
                 )
-                raise HomeAssistantError("Failed creating Wifi Device")
+                for dev_id, _managed_key, _managed_hash, _brand in managed:
+                    result = await self.async_delete_device(dev_id)
+                    if not result:
+                        raise HomeAssistantError(
+                            f"Failed deleting managed device {dev_id}"
+                        )
 
-            wifi_device_id = int(created["device_id"])
+                if configured_slots == 0:
+                    hass_data = getattr(self.hass, "data", {})
+                    domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+                    store = domain_data.get("command_config_store")
+                    if store is not None:
+                        await store.async_save_deployed_wifi_commands(
+                            self.entry_id,
+                            normalized_device_key,
+                            [],
+                            deployed_device_id=None,
+                            commands_hash="",
+                        )
 
-            activity_ids: set[int] = set()
-            for slot in commands:
-                for act in slot.get("activities", []):
+                    if self.roku_server_enabled and not await self._async_wifi_listener_needed():
+                        self._set_command_sync_progress(
+                            device_key=normalized_device_key,
+                            current_step=3,
+                            message="Disabling Wifi Device",
+                        )
+                        await self.async_set_roku_server_enabled(False)
+
+                    self._set_command_sync_progress(
+                        device_key=normalized_device_key,
+                        status="success",
+                        current_step=7,
+                        total_steps=total_steps,
+                        message="No configured slots; managed Wifi Device removed",
+                        wifi_device_id=None,
+                        commands_hash=commands_hash,
+                    )
+                    return {
+                        "status": "success",
+                        "wifi_device_id": None,
+                        "commands_hash": commands_hash,
+                        "activities": [],
+                        "deleted_managed_devices": len(managed),
+                    }
+
+                command_defs: list[dict[str, Any]] = []
+                input_command_ids: list[int] = []
+                activity_input_command_ids: dict[int, int] = {}
+                max_power_command_id = min(len(commands), _WIFI_COMMAND_SLOT_COUNT)
+                raw_power_on_command_id = command_payload.get("power_on_command_id")
+                raw_power_off_command_id = command_payload.get("power_off_command_id")
+                power_on_command_id = normalize_power_command_id(
+                    raw_power_on_command_id,
+                    max_command_id=max_power_command_id,
+                )
+                power_off_command_id = normalize_power_command_id(
+                    raw_power_off_command_id,
+                    max_command_id=max_power_command_id,
+                )
+                if raw_power_on_command_id is not None and power_on_command_id is None:
+                    raise HomeAssistantError(
+                        f"power_on_command_id must be between 1 and {max_power_command_id}"
+                    )
+                if raw_power_off_command_id is not None and power_off_command_id is None:
+                    raise HomeAssistantError(
+                        f"power_off_command_id must be between 1 and {max_power_command_id}"
+                    )
+                for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                    raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
+                    if not raw_input_activity_id:
+                        continue
                     try:
-                        activity_ids.add(int(act))
+                        input_activity_id = int(raw_input_activity_id)
                     except (TypeError, ValueError):
                         continue
+                    command_id = idx + 1
+                    input_command_ids.append(command_id)
+                    activity_input_command_ids.setdefault(input_activity_id, command_id)
+                for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                    name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                    command_defs.append(
+                        {
+                            "display_name": name,
+                            "trigger_name": name,
+                            "press_type": "short",
+                            "command_index": idx,
+                        }
+                    )
+                for idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                    name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+                    command_defs.append(
+                        {
+                            "display_name": f"{name} Long Press",
+                            "trigger_name": name,
+                            "press_type": "long",
+                            "command_index": idx,
+                        }
+                    )
 
-            add_results: dict[int, bool] = {}
-            self._set_command_sync_progress(
-                current_step=4,
-                message="Adding Wifi Device to Activities",
-            )
-            for act_id in sorted(activity_ids):
-                result = await self.async_add_device_to_activity(act_id, wifi_device_id)
-                add_results[act_id] = bool(result)
-
-            if activity_ids and not all(add_results.values()):
-                await self.async_delete_device(wifi_device_id)
                 self._set_command_sync_progress(
-                    status="failed",
-                    current_step=5,
-                    message="Failed activity membership; rolled back Wifi Device",
+                    device_key=normalized_device_key,
+                    current_step=3,
+                    message="Creating Wifi Device on Hub",
                 )
-                raise HomeAssistantError("Failed adding Wifi Device to all activities")
+                created = await self.async_create_wifi_device(
+                    device_name=device_name,
+                    commands=command_defs,
+                    request_port=request_port,
+                    brand_name=brand_name,
+                    power_on_command_id=power_on_command_id,
+                    power_off_command_id=power_off_command_id,
+                    input_command_ids=input_command_ids or None,
+                )
+                if not created or not created.get("device_id"):
+                    raise HomeAssistantError("Failed creating Wifi Device")
 
-            self._set_command_sync_progress(
-                current_step=5,
-                message="Applying activity favorites",
-            )
+                wifi_device_id = int(created["device_id"])
+                cached_created_device = self._proxy.state.devices.get(wifi_device_id & 0xFF)
+                if isinstance(cached_created_device, dict):
+                    self.devices[wifi_device_id & 0xFF] = dict(cached_created_device)
+                else:
+                    self.devices[wifi_device_id & 0xFF] = {
+                        "brand": brand_name,
+                        "name": device_name,
+                    }
+                self._devices_generation += 1
+                self._bump_cache_generation()
+                async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+
+                activity_ids: set[int] = set()
+                for slot in commands:
+                    for act in slot.get("activities", []):
+                        try:
+                            activity_ids.add(int(act))
+                        except (TypeError, ValueError):
+                            continue
+                    raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
+                    if raw_input_activity_id:
+                        try:
+                            activity_ids.add(int(raw_input_activity_id))
+                        except (TypeError, ValueError):
+                            pass
+
+                add_results: dict[int, bool] = {}
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    current_step=4,
+                    message="Adding Wifi Device to Activities",
+                )
+                for act_id in sorted(activity_ids):
+                    result = await self.async_add_device_to_activity(
+                        act_id,
+                        wifi_device_id,
+                        input_cmd_id=activity_input_command_ids.get(act_id),
+                    )
+                    add_results[act_id] = bool(result)
+
+                if activity_ids and not all(add_results.values()):
+                    await self.async_delete_device(wifi_device_id)
+                    raise HomeAssistantError("Failed adding Wifi Device to all activities")
+
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    current_step=5,
+                    message="Applying activity favorites",
+                )
 
             # Track the hub-assigned fav_id for every successfully added favorite,
             # keyed by activity and ordered by command slot (add order).  We use
             # these tracked ids in the post-hoc reorder rather than a pre-existing
             # snapshot so that fav_id recycling (the hub reusing freed ids) cannot
             # cause old scrambled orders to be mistaken for "existing to preserve".
-            activities_new_fav_ids: dict[int, list[int]] = {}
+                activities_new_fav_ids: dict[int, list[int]] = {}
 
-            activities_with_favorites: set[int] = set()
-            for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
-                if not slot.get("add_as_favorite"):
-                    continue
-                command_id = slot_idx + 1
-                for act in slot.get("activities", []):
-                    try:
-                        act_id = int(act)
-                    except (TypeError, ValueError):
+                activities_with_favorites: set[int] = set()
+                for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                    if not slot.get("add_as_favorite"):
                         continue
-                    if not add_results.get(act_id, False):
-                        continue
-                    result = await self.async_command_to_favorite(
-                        act_id,
-                        wifi_device_id,
-                        command_id,
-                        refresh_after_write=False,
-                    )
-                    activities_with_favorites.add(act_id)
-                    if result and result.get("fav_id") is not None:
-                        activities_new_fav_ids.setdefault(act_id, []).append(
-                            result["fav_id"]
+                    command_id = slot_idx + 1
+                    for act in slot.get("activities", []):
+                        try:
+                            act_id = int(act)
+                        except (TypeError, ValueError):
+                            continue
+                        if not add_results.get(act_id, False):
+                            continue
+                        result = await self.async_command_to_favorite(
+                            act_id,
+                            wifi_device_id,
+                            command_id,
+                            refresh_after_write=False,
                         )
+                        activities_with_favorites.add(act_id)
+                        if result and result.get("fav_id") is not None:
+                            activities_new_fav_ids.setdefault(act_id, []).append(
+                                result["fav_id"]
+                            )
 
             # Explicitly reorder so that all favorites (including the 5th+) get
             # a display slot on the physical remote.  Without this step the
@@ -1829,80 +2055,88 @@ class SofabatonHub:
             # recycling: when the hub reuses an id that was freed by a prior
             # managed-device deletion, the recycled id still lands in
             # activities_new_fav_ids and is correctly treated as a new add.
-            for act_id in sorted(activities_with_favorites):
-                all_order = await self.async_request_favorites_order(act_id)
-                if not all_order:
-                    continue
-                new_fav_id_list = activities_new_fav_ids.get(act_id, [])
-                new_fav_id_set = set(new_fav_id_list)
-                # Pre-existing = everything in current slot order that is NOT
-                # one of the newly-added wifi-command favorites.
-                pre_existing = [
-                    fav_id
-                    for fav_id, _slot in sorted(all_order, key=lambda x: x[1])
-                    if fav_id not in new_fav_id_set
-                ]
-                final_order = pre_existing + new_fav_id_list
-                await self.async_reorder_favorites(
-                    act_id, final_order, refresh_after_write=False
-                )
-
-            self._set_command_sync_progress(
-                current_step=6,
-                message="Applying activity button mappings",
-            )
-            for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
-                hard_button = str(slot.get("hard_button") or "").strip().lower()
-                if not hard_button:
-                    continue
-                button_id = _HARD_BUTTON_TO_CODE.get(hard_button)
-                if not button_id:
-                    continue
-                command_id = slot_idx + 1
-                long_press_enabled = bool(slot.get("long_press_enabled"))
-                long_press_command_id = (
-                    slot_idx + 1 + _WIFI_COMMAND_LONG_PRESS_OFFSET
-                    if long_press_enabled
-                    else None
-                )
-                for act in slot.get("activities", []):
-                    try:
-                        act_id = int(act)
-                    except (TypeError, ValueError):
+                for act_id in sorted(activities_with_favorites):
+                    all_order = await self.async_request_favorites_order(act_id)
+                    if not all_order:
                         continue
-                    if not add_results.get(act_id, False):
-                        continue
-                    await self.async_command_to_button(
-                        act_id,
-                        button_id,
-                        wifi_device_id,
-                        command_id,
-                        long_press_device_id=wifi_device_id if long_press_enabled else None,
-                        long_press_command_id=long_press_command_id,
-                        refresh_after_write=False,
+                    new_fav_id_list = activities_new_fav_ids.get(act_id, [])
+                    new_fav_id_set = set(new_fav_id_list)
+                    # Pre-existing = everything in current slot order that is NOT
+                    # one of the newly-added wifi-command favorites.
+                    pre_existing = [
+                        fav_id
+                        for fav_id, _slot in sorted(all_order, key=lambda x: x[1])
+                        if fav_id not in new_fav_id_set
+                    ]
+                    final_order = pre_existing + new_fav_id_list
+                    await self.async_reorder_favorites(
+                        act_id, final_order, refresh_after_write=False
                     )
 
-            self._set_command_sync_progress(
-                current_step=7,
-                message="Refreshing activity maps and buttons",
-            )
-            for act_id in sorted(activity_ids):
-                if not add_results.get(act_id, False):
-                    continue
-                await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
-                await self.hass.async_add_executor_job(
-                    partial(self._proxy.get_buttons_for_entity, act_id, fetch_if_missing=True)
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    current_step=6,
+                    message="Applying activity button mappings",
                 )
-                await self.hass.async_add_executor_job(
-                    self._proxy.clear_entity_cache,
-                    act_id,
-                    False,
-                    False,
-                    True,
+                for slot_idx, slot in enumerate(commands[:_WIFI_COMMAND_SLOT_COUNT]):
+                    hard_button = str(slot.get("hard_button") or "").strip().lower()
+                    if not hard_button:
+                        continue
+                    button_id = _HARD_BUTTON_TO_CODE.get(hard_button)
+                    if not button_id:
+                        continue
+                    command_id = slot_idx + 1
+                    long_press_enabled = bool(slot.get("long_press_enabled"))
+                    long_press_command_id = (
+                        slot_idx + 1 + _WIFI_COMMAND_LONG_PRESS_OFFSET
+                        if long_press_enabled
+                        else None
+                    )
+                    for act in slot.get("activities", []):
+                        try:
+                            act_id = int(act)
+                        except (TypeError, ValueError):
+                            continue
+                        if not add_results.get(act_id, False):
+                            continue
+                        await self.async_command_to_button(
+                            act_id,
+                            button_id,
+                            wifi_device_id,
+                            command_id,
+                            long_press_device_id=wifi_device_id if long_press_enabled else None,
+                            long_press_command_id=long_press_command_id,
+                            refresh_after_write=False,
+                        )
+
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    current_step=7,
+                    message="Refreshing activity maps and buttons",
                 )
-                await self.hass.async_add_executor_job(
-                    partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
-                )
+                for act_id in sorted(activity_ids):
+                    if not add_results.get(act_id, False):
+                        continue
+                    self._reset_entity_cache(
+                        act_id,
+                        clear_buttons=True,
+                        clear_favorites=False,
+                        clear_macros=True,
+                    )
+                    await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
+                    await self.hass.async_add_executor_job(
+                        partial(self._proxy.get_buttons_for_entity, act_id, fetch_if_missing=True)
+                    )
+                    await self.hass.async_add_executor_job(
+                        self._proxy.clear_entity_cache,
+                        act_id,
+                        True,
+                        False,
+                        True,
+                    )
+                    await self.hass.async_add_executor_job(
+                        partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
+                    )
 
             # Fetch device commands for the newly-created wifi device so that
             # state.commands[wifi_device_id] is populated with the real labels
@@ -1910,42 +2144,57 @@ class SofabatonHub:
             # falls back to "Command N" because command_to_favorite clears
             # activity_favorite_labels and the activity-map refresh only returns
             # slot/command IDs, not labels.
-            await self.hass.async_add_executor_job(
-                partial(self._proxy.get_commands_for_entity, wifi_device_id, fetch_if_missing=True)
-            )
+                await self.hass.async_add_executor_job(
+                    partial(self._proxy.get_commands_for_entity, wifi_device_id, fetch_if_missing=True)
+                )
 
-            self._set_command_sync_progress(
-                current_step=8,
-                message="Resyncing physical remote",
-            )
-            await self.async_resync_remote()
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    current_step=8,
+                    message="Resyncing physical remote",
+                )
+                await self.async_resync_remote()
 
             # Persist the command list that was just synced to the hub.
             # Callbacks will resolve command indices against this frozen snapshot,
             # independently of any subsequent staged-config edits.
-            hass_data = getattr(self.hass, "data", {})
-            domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
-            store = domain_data.get("command_config_store")
-            if store is not None:
-                await store.async_save_deployed_wifi_commands(
-                    self.entry_id,
-                    list(commands[:_WIFI_COMMAND_SLOT_COUNT]),
-                )
+                hass_data = getattr(self.hass, "data", {})
+                domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+                store = domain_data.get("command_config_store")
+                if store is not None:
+                    await store.async_save_deployed_wifi_commands(
+                        self.entry_id,
+                        normalized_device_key,
+                        list(commands[:_WIFI_COMMAND_SLOT_COUNT]),
+                        deployed_device_id=wifi_device_id,
+                        commands_hash=commands_hash,
+                    )
 
-            self._set_command_sync_progress(
-                status="success",
-                current_step=8,
-                total_steps=total_steps,
-                message="Sync complete",
-                wifi_device_id=wifi_device_id,
-                commands_hash=commands_hash,
-            )
-            return {
-                "status": "success",
-                "wifi_device_id": wifi_device_id,
-                "commands_hash": commands_hash,
-                "activities": sorted(activity_ids),
-            }
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    status="success",
+                    current_step=8,
+                    total_steps=total_steps,
+                    message="Sync complete",
+                    wifi_device_id=wifi_device_id,
+                    commands_hash=commands_hash,
+                )
+                return {
+                    "status": "success",
+                    "wifi_device_id": wifi_device_id,
+                    "commands_hash": commands_hash,
+                    "activities": sorted(activity_ids),
+                }
+            except Exception as err:
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    status="failed",
+                    message=self._command_sync_failure_message(
+                        request_port=request_port,
+                        detail=str(err),
+                    ),
+                )
+                raise
 
     def get_last_ip_command(self) -> dict[str, Any] | None:
         if self._last_ip_command is None:
@@ -1979,7 +2228,7 @@ class SofabatonHub:
         return "ready"
 
     async def async_activate_activity(self, act_id: int) -> None:
-        _LOGGER.debug("[%s] Activating activity %s", self.entry_id, act_id)
+        self._log.debug("[%s] Activating activity %s", self.entry_id, act_id)
         await self.hass.async_add_executor_job(
             self._proxy.send_command,
             int(act_id),
@@ -1989,7 +2238,7 @@ class SofabatonHub:
     async def async_power_off_current(self) -> None:
         if self.current_activity is None:
             return
-        _LOGGER.debug("[%s] Powering off current activity %s", self.entry_id, self.current_activity)
+        self._log.debug("[%s] Powering off current activity %s", self.entry_id, self.current_activity)
         await self.hass.async_add_executor_job(
             self._proxy.send_command,
             int(self.current_activity),
@@ -1997,11 +2246,11 @@ class SofabatonHub:
         )
 
     async def async_find_remote(self) -> None:
-        _LOGGER.debug("[%s] Triggering find-remote signal", self.entry_id)
+        self._log.debug("[%s] Triggering find-remote signal", self.entry_id)
         await self.hass.async_add_executor_job(self._proxy.find_remote, self.version)
 
     async def async_resync_remote(self) -> None:
-        _LOGGER.debug("[%s] Triggering remote resync", self.entry_id)
+        self._log.debug("[%s] Triggering remote resync", self.entry_id)
         await self.hass.async_add_executor_job(self._proxy.resync_remote, self.version)
 
     def _async_update_options(self, key: str, value: Any) -> None:
@@ -2046,7 +2295,7 @@ class SofabatonHub:
         async_dispatcher_send(self.hass, signal_hub(self.entry_id))
 
     async def async_set_proxy_enabled(self, enable: bool) -> None:
-        _LOGGER.debug("[%s] Setting proxy enabled=%s", self.entry_id, enable)
+        self._log.debug("[%s] Setting proxy enabled=%s", self.entry_id, enable)
         if enable:
             await self.hass.async_add_executor_job(self._proxy.enable_proxy)
         else:
@@ -2058,7 +2307,7 @@ class SofabatonHub:
 
 
     async def async_set_roku_server_enabled(self, enable: bool) -> None:
-        _LOGGER.debug("[%s] Setting WiFi device enabled=%s", self.entry_id, enable)
+        self._log.debug("[%s] Setting WiFi device enabled=%s", self.entry_id, enable)
         self.roku_server_enabled = enable
         self.hass.loop.call_soon_threadsafe(
             self._async_update_options, CONF_ROKU_SERVER_ENABLED, enable
@@ -2070,7 +2319,7 @@ class SofabatonHub:
         await listener.async_set_hub_enabled(self.entry_id, enable)
 
     async def async_set_hex_logging_enabled(self, enable: bool) -> None:
-        _LOGGER.debug("[%s] Setting hex logging enabled=%s", self.entry_id, enable)
+        self._log.debug("[%s] Setting hex logging enabled=%s", self.entry_id, enable)
         await self.hass.async_add_executor_job(self._proxy.set_diag_dump, enable)
         self.hex_logging_enabled = enable
         if enable:
@@ -2089,9 +2338,9 @@ class SofabatonHub:
 
     async def async_send_button(self, btn_code: int) -> None:
         if self.current_activity is None:
-            _LOGGER.debug("[%s] Tried to send button %s but no activity is active", self.entry_id, btn_code)
+            self._log.debug("[%s] Tried to send button %s but no activity is active", self.entry_id, btn_code)
             return
-        _LOGGER.debug(
+        self._log.debug(
             "[%s] Sending button %s for activity %s",
             self.entry_id,
             btn_code,
@@ -2111,7 +2360,7 @@ class SofabatonHub:
           So "VOL_UP", "VOL_DOWN", "MUTE", etc.
         """
         
-        _LOGGER.debug("[DEBUG] Trying to send command %s to device %s", key, device)
+        self._log.debug("Trying to send command %s to device %s", key, device)
 
         # advanced path: user specified the target entity
         if device is not None:
@@ -2152,3 +2401,4 @@ class SofabatonHub:
             int(ent_id),
             int(key_code),
         )
+

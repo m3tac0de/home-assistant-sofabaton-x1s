@@ -22,6 +22,9 @@ class _Store:
     async def async_get_hub_config(self, entry_id, **kwargs):
         return {
             "commands_hash": "abc123",
+            "deployed_commands_hash": "",
+            "power_on_command_id": 1,
+            "power_off_command_id": 2,
             "commands": [
                 {
                     "name": "Launch Netflix",
@@ -44,12 +47,24 @@ class _Hub:
             "total_steps": 0,
             "message": "Idle",
         }
+        self.roku_server_enabled = True
+        self.disable_calls = []
 
-    def get_command_sync_progress(self):
+    def get_command_sync_progress(self, _device_key=None):
         return dict(self._progress)
 
     def get_managed_command_hashes(self):
         return ["oldhash"]
+
+    async def async_set_roku_server_enabled(self, enable: bool):
+        self.disable_calls.append(enable)
+        self.roku_server_enabled = enable
+
+    async def async_delete_device(self, _device_id):
+        return {"status": "success"}
+
+    async def _async_refresh_devices_snapshot(self):
+        return {}
 
 
 def test_ws_command_sync_progress_reports_sync_needed(monkeypatch):
@@ -142,9 +157,73 @@ def test_ws_command_sync_progress_uses_success_hash_to_clear_sync_needed(monkeyp
     assert payload["sync_needed"] is False
 
 
+def test_ws_command_sync_progress_uses_deployed_hash_to_clear_sync_needed(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+
+    class _DeployedStore(_Store):
+        async def async_get_hub_config(self, entry_id, **kwargs):
+            payload = await super().async_get_hub_config(entry_id, **kwargs)
+            payload["deployed_commands_hash"] = "abc123"
+            payload["deployed_device_id"] = 22
+            return payload
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return _DeployedStore()
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_get_command_sync_progress(
+                SimpleNamespace(), conn, {"id": 13, "entity_id": "remote.living_room"}
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    payload = conn.result[1]
+    assert payload["sync_needed"] is False
+
+
 class _EmptyStore:
     async def async_get_hub_config(self, entry_id, **kwargs):
-        return {"commands_hash": "abc123", "commands": []}
+        return {"commands_hash": "abc123", "deployed_commands_hash": "", "commands": []}
+
+
+def test_ws_get_command_config_returns_power_assignments(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return _Store()
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_get_command_config(
+                SimpleNamespace(), conn, {"id": 12, "entity_id": "remote.living_room"}
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    payload = conn.result[1]
+    assert payload["power_on_command_id"] == 1
+    assert payload["power_off_command_id"] == 2
 
 
 def test_ws_command_sync_progress_zero_config_and_no_managed_not_needed(monkeypatch):
@@ -186,11 +265,20 @@ def test_ws_command_sync_progress_zero_config_with_managed_is_sync_needed(monkey
     conn = _Conn()
     hub = _Hub()
 
+    class _DeployedStore(_EmptyStore):
+        async def async_get_hub_config(self, entry_id, **kwargs):
+            return {
+                "commands_hash": "abc123",
+                "deployed_commands_hash": "abc123",
+                "deployed_device_id": 22,
+                "commands": [],
+            }
+
     async def fake_resolve(_hass, _data):
         return hub
 
     async def fake_store(_hass):
-        return _EmptyStore()
+        return _DeployedStore()
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
     monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
@@ -210,3 +298,114 @@ def test_ws_command_sync_progress_zero_config_with_managed_is_sync_needed(monkey
     assert payload["configured_slot_count"] == 0
     assert payload["has_managed_device"] is True
     assert payload["sync_needed"] is True
+
+
+def test_ws_delete_command_device_disables_listener_when_last_deployed_device_is_removed(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+
+    class _DeleteStore:
+        def __init__(self):
+            self.devices = [
+                {
+                    "device_key": "default",
+                    "deployed_device_id": 22,
+                    "deployed_commands_hash": "abc123",
+                }
+            ]
+
+        async def async_get_hub_config(self, entry_id, **kwargs):
+            return dict(self.devices[0])
+
+        async def async_delete_hub_device(self, entry_id, device_key):
+            self.devices = []
+            return True
+
+        async def async_list_hub_devices(self, entry_id, **kwargs):
+            return list(self.devices)
+
+    store = _DeleteStore()
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        hass = SimpleNamespace()
+        loop.run_until_complete(
+            integration._ws_delete_command_device(
+                hass,
+                conn,
+                {"id": 21, "entity_id": "remote.living_room", "device_key": "default"},
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    assert conn.result == (21, {"deleted_config": True, "deleted_hub_device": True})
+    assert hub.disable_calls == [False]
+
+
+def test_ws_delete_command_device_keeps_listener_when_another_deployed_device_remains(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+
+    class _DeleteStore:
+        def __init__(self):
+            self.devices = [
+                {
+                    "device_key": "default",
+                    "deployed_device_id": 22,
+                    "deployed_commands_hash": "abc123",
+                },
+                {
+                    "device_key": "other",
+                    "deployed_device_id": 23,
+                    "deployed_commands_hash": "def456",
+                },
+            ]
+
+        async def async_get_hub_config(self, entry_id, **kwargs):
+            return dict(self.devices[0])
+
+        async def async_delete_hub_device(self, entry_id, device_key):
+            self.devices = [device for device in self.devices if device["device_key"] != device_key]
+            return True
+
+        async def async_list_hub_devices(self, entry_id, **kwargs):
+            return list(self.devices)
+
+    store = _DeleteStore()
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        hass = SimpleNamespace()
+        loop.run_until_complete(
+            integration._ws_delete_command_device(
+                hass,
+                conn,
+                {"id": 22, "entity_id": "remote.living_room", "device_key": "default"},
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    assert conn.result == (22, {"deleted_config": True, "deleted_hub_device": True})
+    assert hub.disable_calls == []

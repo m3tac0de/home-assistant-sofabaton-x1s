@@ -1,6 +1,6 @@
 # Actions reference (Sofabaton X1/X1S/X2)
 
-This page documents all custom Actions (services) provided by the integration.
+This page documents all custom Actions provided by the integration.
 Find them in Home Assistant at **Settings → Developer Tools → Actions**, then filter by `sofabaton_x1s`.
 
 ---
@@ -90,7 +90,7 @@ Optionally a second command can be assigned to a long-press on the same button.
 | `device`                | HA Device     |    ✓     | Your Sofabaton hub.                                                                   |
 | `activity_id`           | int (101–255) |    ✓     | Activity id the mapping is created in.                                                |
 | `button_id`             | int (1–255)   |    ✓     | Physical button code (see [Button ID table](#button-id-reference) below).             |
-| `device_id`             | int (1-99)    |    ✓     | Device id the command belongs to.                                                     |
+| `device_id`             | int (1–99)    |    ✓     | Device id the command belongs to.                                                     |
 | `command_id`            | int (1–255)   |    ✓     | Command id within that device.                                                        |
 | `long_press_device_id`  | int (1–99)    |    –     | Device id for the long-press command. Required together with `long_press_command_id`. |
 | `long_press_command_id` | int (1–255)   |    –     | Command id for the long-press action. Required together with `long_press_device_id`.  |
@@ -115,13 +115,13 @@ data:
 
 Adds a command as a quick-access favorite for an activity.
 
-| Parameter     | Type          | Required | Description                                                                                |
-| ------------- | ------------- | :------: | ------------------------------------------------------------------------------------------ |
-| `device`      | HA Device     |    ✓     | Your Sofabaton hub.                                                                        |
-| `activity_id` | int (101–255) |    ✓     | Activity id to add the favorite to.                                                        |
-| `device_id`   | int (1–99)    |    ✓     | Device id the command belongs to.                                                          |
-| `command_id`  | int (1–255)   |    ✓     | Command id within that device.                                                             |
-| `slot_id`     | int (0–255)   |    –     | Optional slot/index for the favorite position in the hub's mapping payload (default: `0`). |
+| Parameter     | Type          | Required | Description                                                                                                             |
+| ------------- | ------------- | :------: | ----------------------------------------------------------------------------------------------------------------------- |
+| `device`      | HA Device     |    ✓     | Your Sofabaton hub.                                                                                                     |
+| `activity_id` | int (101–255) |    ✓     | Activity id to add the favorite to.                                                                                     |
+| `device_id`   | int (1–99)    |    ✓     | Device id the command belongs to.                                                                                       |
+| `command_id`  | int (1–255)   |    ✓     | Command id within that device.                                                                                          |
+| `slot_id`     | int (0–255)   |    –     | Optional slot/index for the favorite order position in the hub's mapping payload (default: `0`, putting it at the top). |
 
 ```yaml
 action: sofabaton_x1s.command_to_favorite
@@ -181,13 +181,16 @@ data:
 Low-level action that creates a Wifi Device on the hub with a set of named command slots.
 The Sofabaton hub then calls back into the integration's HTTP listener whenever one of those commands is triggered.
 
-> **Note:** If you are using the **Wifi Commands** feature through the Virtual Remote card, you do not need to call this action directly — `sync_command_config` handles the full lifecycle. Use `create_wifi_device` only if you are building a fully custom integration without the card UI.
+> **Note:** If you are using the **Wifi Commands** feature through the Control Panel card, you do not need to call this action directly — `sync_command_config` handles the full lifecycle. Use `create_wifi_device` only if you are building a fully custom integration without the card UI.
 
-| Parameter     | Type           | Required | Description                                                                                                          |
-| ------------- | -------------- | :------: | -------------------------------------------------------------------------------------------------------------------- |
-| `device`      | HA Device      |    ✓     | Your Sofabaton hub.                                                                                                  |
-| `device_name` | string         |    ✓     | Name for the Wifi Device as it will appear on the hub. Letters, numbers, and spaces only. Default: `Home Assistant`. |
-| `commands`    | list of string |    ✓     | 1–10 command names. Letters, numbers, and spaces only.                                                               |
+| Parameter              | Type           | Required | Description                                                                                                          |
+| ---------------------- | -------------- | :------: | -------------------------------------------------------------------------------------------------------------------- |
+| `device`               | HA Device      |    ✓     | Your Sofabaton hub.                                                                                                  |
+| `device_name`          | string         |    ✓     | Name for the Wifi Device as it will appear on the hub. Letters, numbers, and spaces only. Default: `Home Assistant`. |
+| `commands`             | list of string |    ✓     | 1–10 command names. Letters, numbers, and spaces only.                                                               |
+| `power_on_command_id`  | int (1–10)     |    –     | 1-based position in `commands` to use as the device power-on command. Not a final hub command id.                    |
+| `power_off_command_id` | int (1–10)     |    –     | 1-based position in `commands` to use as the device power-off command. Not a final hub command id.                   |
+| `input_command_ids`    | list of int    |    –     | Ordered list of 1-based positions in `commands` to register as input switchers. Not final hub command ids.           |
 
 ```yaml
 action: sofabaton_x1s.create_wifi_device
@@ -198,6 +201,9 @@ data:
     - Scene Movie
     - Scene Gaming
     - Lights Off
+  input_command_ids:
+    - 2
+    - 3
 ```
 
 See [`docs/wifi_commands.md`](wifi_commands.md) for the full Wifi Commands guide.
@@ -209,7 +215,7 @@ See [`docs/wifi_commands.md`](wifi_commands.md) for the full Wifi Commands guide
 Deploys the saved Wifi Commands configuration to the hub.
 This recreates the managed Wifi Device with the current command-slot settings and applies all activity button mappings.
 
-Normally triggered by the **Sync to hub** button in the Virtual Remote card's Wifi Commands editor, but can also be called directly from automations or scripts.
+Normally triggered by the **Sync to hub** button in the Control Panel card's Wifi Commands tab, but can also be called directly from automations or scripts.
 
 > This operation reconfigures the hub. It can take several minutes. All other hub interactions are blocked while it runs. The physical remote is automatically instructed to sync at the end.
 
@@ -230,11 +236,12 @@ data:
 
 Adds a device to an activity on the hub, so the activity can use that device's commands.
 
-| Parameter     | Type          | Required | Description         |
-| ------------- | ------------- | :------: | ------------------- |
-| `device`      | HA Device     |    ✓     | Your Sofabaton hub. |
-| `activity_id` | int (101–200) |    ✓     | Activity id (101+). |
-| `device_id`   | int (1–99)    |    ✓     | Device id (1–99).   |
+| Parameter          | Type          | Required | Description                                                      |
+| ------------------ | ------------- | :------: | ---------------------------------------------------------------- |
+| `device`           | HA Device     |    ✓     | Your Sofabaton hub.                                              |
+| `activity_id`      | int (101–255) |    ✓     | Activity id (101+).                                              |
+| `device_id`        | int (1–99)    |    ✓     | Device id (1–99).                                                |
+| `input_command_id` | int (1–255)   |    –     | Optional device command id to set as the input for the Activity. |
 
 ```yaml
 action: sofabaton_x1s.device_to_activity
@@ -242,6 +249,7 @@ data:
   device: 89c3874a93f1e9ee0f49e24a2710535e
   activity_id: 103
   device_id: 2
+  input_command_id: 4
 ```
 
 ---
@@ -252,10 +260,10 @@ Deletes a device from the hub and confirms all impacted activities.
 
 > This is a destructive hub operation. Use with caution.
 
-| Parameter   | Type        | Required | Description          |
-| ----------- | ----------- | :------: | -------------------- |
-| `device`    | HA Device   |    ✓     | Your Sofabaton hub.  |
-| `device_id` | int (1–255) |    ✓     | Device id to delete. |
+| Parameter   | Type       | Required | Description          |
+| ----------- | ---------- | :------: | -------------------- |
+| `device`    | HA Device  |    ✓     | Your Sofabaton hub.  |
+| `device_id` | int (1–99) |    ✓     | Device id to delete. |
 
 ```yaml
 action: sofabaton_x1s.delete_device
@@ -370,7 +378,7 @@ data:
 
 ### Trigger a hub resync after modifying Wifi Commands
 
-If you update Wifi Command configuration outside the Virtual Remote card, call `sync_command_config` to push the changes to the hub. No need to touch the card UI.
+If you update Wifi Command configuration outside the Control Panel card, call `sync_command_config` to push the changes to the hub. No need to touch the card UI.
 
 ```yaml
 action: sofabaton_x1s.sync_command_config

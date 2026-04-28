@@ -12,7 +12,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 - 🚀 **Quick start**: install + add your hub
 - 🕹️ **Dashboard cards**: Sofabaton Virtual Remote & Sofabaton Control Panel
 - 🤖 **Send key presses to the hub**: `remote.send_command`, Sofabaton Virtual Remote, Sofabaton Control Panel, “recorded keypress”
-- ⚡ **Receive key presses from the hub**: Sofabaton Virtual Remote, "Wifi Commands" see [`docs/wifi_commands.md`](docs/wifi_commands.md)
+- ⚡ **Receive key presses from the hub**: "Wifi Commands" via the Control Panel card, see [`docs/wifi_commands.md`](docs/wifi_commands.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
 - 🪵 **Useful logs & diagnostics**: see [`docs/logging.md`](docs/logging.md)
 
@@ -25,6 +25,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 3. Go to **Settings → Devices & Services**. Your Sofabaton hubs appear at the top of the page. **Add** them and follow the flow.
    - Discovery via mDNS should show your hubs automatically.
    - If discovery fails (VLAN / mDNS), see networking docs or add manually.
+   - ⚠️**iOS users:** please see the networking docs
 
    To add manually:
    Go to **Settings → Devices & Services → Add integration** → search **Sofabaton X1S** (listing name) and follow the flow.
@@ -40,7 +41,7 @@ sofabaton_x1s:
 
 ---
 
-## ⚙️ What this integration does
+## 🔌 What this integration does
 
 This integration establishes a direct and sustained connection with a Sofabaton hub, leveraging APIs intended for the Sofabaton app.
 Sofabaton hubs allow **only one client connection at a time**. To enable this integration and using the app at the same time, this integration works by acting as a **local proxy**:
@@ -73,12 +74,14 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 - 🧩 **Multiple hubs** supported
 - 🎛 **Activity select** entity (`select.<hub>_activity`)
 - 🔘 **Dynamic button entities** that match your **currently active activity**
-- ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations
-- 💎 **Receive key presses**: "Wifi Commands" configured via the UI, trigger Actions directly from key presses on the physical remote
+- ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations. Use the dashboard cards to retrieve the codes you need.
+- 💎 **Receive key presses**: “Wifi Commands” configured via the Control Panel card, trigger Actions directly from key presses on the physical remote
 - 🔔 **Find Remote** diagnostic button (buzzer)
 - 🟢 **Sensors** for activity, connectivity, app connection, recorded keypress, wifi commands
-- 🧪 **Diagnostic “Index” sensor** for command lists/macros/favorites
 - 🛰 **Proxy can be disabled** per device (stop advertising/binding for the official app)
+- 🪵 **Live Hub Logs** tab in the Control Panel card for real-time diagnostics
+
+> This documentation uses markup such as `select.<hub>_activity`, where `<hub>` is your hub's name as configured in Home Assistant — for example, `select.living_room_activity`.
 
 ---
 
@@ -113,7 +116,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ---
 
-## ⚙️ Entities you’ll get
+## 📋 Entities you’ll get
 
 - **Remote**: `remote.<hub>_remote`  
   Used for automations (`remote.send_command`). Unavailable while the official app is connected to the proxy.
@@ -159,10 +162,12 @@ This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 - The card is designed to work with **this integration** and the **official X2 integration**.
 
 > This integration auto-deploys the card. You DO NOT have to install it separately.
-> The card is also available as a separate HACS frontend plugin. It's recommended you install it that way, so it can be updated separately from this integration.
+> The card is also available as a separate HACS frontend plugin.
 > This integration automatically stops deploying the card as soon as it detects that the card is installed through HACS (a reboot of Home Assistant is required).
 
-## ⚙️ Dashboard card - Sofabaton Control Panel
+<img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-01.png" width="220"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-02.png" width="220"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-03.png" width="220">
+
+## 🖥️ Dashboard card - Sofabaton Control Panel
 
 This integration adds the **Sofabaton Control Panel** Lovelace card to your Home Assistant.
 Find it in the Cards selection menu, or add it manually using the following YAML:
@@ -171,39 +176,43 @@ Find it in the Cards selection menu, or add it manually using the following YAML
 type: custom:sofabaton-control-panel
 ```
 
-With this card **persistent cache** can be enabled, meaning that any data retrieved from the hub is cached and survives a restart of Home Assistant.
-With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable at certain tasks.  
-Use the card to navigate your cache and refresh it whenever required.
+The Control Panel card is the central management UI for the integration. Its main features are:
 
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/24fc4e60-ee77-417a-ab1d-4fd004217c8d" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/222952bd-19c8-4d0a-bc71-4a45b9a21bef" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/a2622cdd-1df9-4075-88cc-49caf55057ef" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/96b1e008-3f14-4e21-ba60-62ad41d83a1b" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/81343a3a-8e14-4310-b52d-70967688e915" />
+- **Wifi Commands** — Configure and deploy Wifi Devices and their commands (see below). Up to 5 Wifi Devices per hub.
+- **Persistent Cache** — Enable **persistent cache** in the **Setting** tab so data retrieved from the hub survives a restart. With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable.
+- **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.
+- **Logs** — live streaming of hub log output for real-time diagnostics.
+
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/1577a745-058a-4951-aa9f-9ae217d45465" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/f435ea51-dbfa-4f79-8a41-1ae240872431" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/a6470a7e-7ee9-48e7-8c18-3a75ece218f8" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/7fae9569-484a-4eb6-9d58-edae9541d876" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/2d9ac19d-17a4-4d7d-afa4-5173ce814f85" />
 
 ---
 
 ## 🤖 Automations
 
-### Wifi Commands: Receive key presses from the hub and trigger an automation.
+### Receive key presses from the hub
 
-In the Sofabaton Virtual Remote card's configuration editor, under **Automation Assist > Wifi Commands** 10 slots are available for custom commands.
+The **Wifi Commands** feature lets you trigger Home Assistant Actions directly from physical button presses on the remote.
 
-1. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
-2. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
-3. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.
+Configure up to 5 Wifi Devices per hub (10 command slots each) via the **Control Panel** card's Wifi Commands tab. Each command can:
 
-More details are here: [`docs/wifi_commands.md`](docs/wifi_commands.md)
+- run a Home Assistant Action immediately when pressed
+- participate in activity startup/shutdown sequences (power on/off, input switching)
 
-> - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
-> - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
-> - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
+> Actions can be added, changed, or removed at any time without resyncing to the hub. Only structural changes (command names, button assignments, activities) require a sync, which takes several minutes.
 
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/79f2d841-e4ef-4252-9a62-e2c7ef577f88" />  
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/d87210e9-2966-4d05-9d40-bbb89296e410" />
+Full setup guide → [`docs/wifi_commands.md`](docs/wifi_commands.md)
+
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/ecd17007-3645-4ea6-ad28-53b1287370aa" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/c225a472-7a22-4dbb-91dd-5a23df1fbc3f" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/cbc0a2e1-635b-4b7c-804d-e0e67051b643" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/16015586-a4c4-4f7c-99b8-51d5af71b35c" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/ead35c29-9a53-4906-a7af-c65009bba3fc" />  
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/7bdad456-f637-43c6-8c50-9c3ccaad6990" />  
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/45e2f748-44f2-48c6-bc70-abee75ad30cf" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/bb737cf5-1d8e-41bd-95ea-b003e191b7d6" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/0fb3629a-dd97-4ccd-ab1b-caed75014a84" />
 
 ---
 

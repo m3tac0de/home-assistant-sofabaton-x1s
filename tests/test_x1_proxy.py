@@ -17,9 +17,9 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_X2_REMOTE_SYNC,
     OP_REQ_COMMANDS,
     OP_ACTIVITY_ASSIGN_FINALIZE,
-    OP_ACTIVITY_ASSIGN_COMMIT,
 )
-from custom_components.sofabaton_x1s.lib.opcode_handlers import ActivityMapHandler
+from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
+from custom_components.sofabaton_x1s.lib.opcode_handlers import ActivityMapHandler, DeviceButtonFamilyHandler
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
@@ -78,6 +78,58 @@ def test_complete_activity_snapshot_commits_after_row1_then_out_of_order_rows() 
         0x67: {"name": "Play Switch 2", "active": False, "needs_confirm": False},
     }
     assert proxy.state.current_activity_hint == 0x66
+
+
+def test_try_finish_activities_burst_ends_burst_once_snapshot_is_complete() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._begin_activity_request()
+    assert proxy.ingest_activity_row(
+        row_idx=1,
+        expected_rows=2,
+        act_id=0x65,
+        activity={"id": 0x65, "name": "Watch TV", "active": False, "needs_confirm": False},
+    )
+    assert proxy.ingest_activity_row(
+        row_idx=2,
+        expected_rows=2,
+        act_id=0x66,
+        activity={"id": 0x66, "name": "Play Xbox", "active": True, "needs_confirm": False},
+    )
+    proxy._burst.start("activities", now=0.0)
+
+    finished = proxy.try_finish_activities_burst()
+
+    assert finished is True
+    assert proxy._burst.active is False
+    assert proxy.state.activities == {
+        0x65: {"name": "Watch TV", "active": False, "needs_confirm": False},
+        0x66: {"name": "Play Xbox", "active": True, "needs_confirm": False},
+    }
+    assert proxy.state.current_activity_hint == 0x66
+
+
+def test_try_finish_activity_map_burst_ends_matching_burst() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._activity_map_complete.add(0x65)
+    proxy._burst.start("activity_map:101", now=0.0)
+
+    finished = proxy.try_finish_activity_map_burst(0x65)
+
+    assert finished is True
+    assert proxy._burst.active is False
+
+
+def test_try_finish_buttons_burst_requires_expected_final_frame() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._burst.start("buttons:101", now=0.0)
+    proxy.note_buttons_frame(0x65, frame_no=1, total_frames=2)
+
+    assert proxy.try_finish_buttons_burst(0x65, frame_no=1) is False
+    assert proxy.try_finish_buttons_burst(0x65, frame_no=2) is True
+    assert proxy._burst.active is False
 
 
 def test_ghost_activity_row_is_ignored_without_request_in_flight() -> None:
@@ -518,9 +570,107 @@ def test_create_wifi_device_replays_sequence(monkeypatch) -> None:
     assert any((0x013E, 0xAB) in wait for wait in ack_waits)
     assert any((0x0112, 0xC6) in wait for wait in ack_waits)
     assert any((0x0112, 0xC7) in wait for wait in ack_waits)
+    power_payloads = {payload[7]: payload for opcode, payload in sent if (opcode & 0xFF) == 0x12}
+    assert power_payloads[ButtonName.POWER_ON][8] == 0x00
+    assert power_payloads[ButtonName.POWER_OFF][8] == 0x00
     frame_7746 = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x46)
     expected_token = (sum(frame_7746[:-1]) - 2) & 0xFF
     assert frame_7746[-1] == expected_token
+
+
+def test_create_wifi_device_can_assign_power_on_and_power_off_commands(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x04)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(
+        commands=[f"Command {idx}" for idx in range(1, 11)],
+        power_on_command_id=9,
+        power_off_command_id=10,
+    )
+
+    assert result == {"device_id": 0x04, "status": "success"}
+    power_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x12]
+    assert len(power_payloads) == 4
+
+    create_on_payload, create_off_payload, on_payload, off_payload = power_payloads
+
+    assert create_on_payload[:9] == bytes.fromhex("01 00 01 01 00 01 04 c6 00")
+    assert create_off_payload[:9] == bytes.fromhex("01 00 01 01 00 01 04 c7 00")
+    assert on_payload[:19] == bytes.fromhex("01 00 01 01 00 01 04 c6 01 04 09 00 00 00 00 4e 29 00 ff")
+    assert off_payload[:19] == bytes.fromhex("01 00 01 01 00 01 04 c7 01 04 0a 00 00 00 00 4e 2a 00 ff")
+    assert on_payload[19:49].rstrip(b"\x00") == b"POWER_ON"
+    assert off_payload[19:49].rstrip(b"\x00") == b"POWER_OFF"
+
+    family_41_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x41]
+    assert family_41_payloads == [bytes([0x04, 0x04]), bytes([0x04, 0x04]), bytes([0x04, 0x01])]
+
+    payload_7b08 = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x08]
+    assert len(payload_7b08) == 2
+    assert bytes.fromhex("fc 02 01 03 00 fc 00 fc 01") in payload_7b08[-1]
+
+
+def test_create_wifi_device_can_mix_assigned_and_cleared_power_commands(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x04)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(
+        commands=[f"Command {idx}" for idx in range(1, 10)],
+        power_on_command_id=9,
+        power_off_command_id=None,
+    )
+
+    assert result == {"device_id": 0x04, "status": "success"}
+    power_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x12]
+    assert len(power_payloads) == 4
+
+    _create_on_payload, _create_off_payload, on_payload, off_payload = power_payloads
+
+    assert on_payload[:19] == bytes.fromhex("01 00 01 01 00 01 04 c6 01 04 09 00 00 00 00 4e 29 00 ff")
+    assert off_payload[:9] == bytes.fromhex("01 00 01 01 00 01 04 c7 00")
+    assert off_payload[9:39].rstrip(b"\x00") == b"POWER_OFF"
+
+
+def test_create_wifi_device_skips_second_stage_when_power_is_unset(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x08)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(commands=["Launch One"])
+
+    assert result == {"device_id": 0x08, "status": "success"}
+    family_41_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x41]
+    assert family_41_payloads == [bytes([0x08, 0x04]), bytes([0x08, 0x04])]
+    payload_7b08 = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x08]
+    assert len(payload_7b08) == 1
 
 
 def test_create_wifi_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
@@ -691,6 +841,407 @@ def test_create_wifi_device_x1s_accepts_command_definitions_with_press_type(monk
     assert long_request.startswith(b"POST /launch/")
     assert b"/0/short" in short_request
     assert b"/1/long" in long_request
+
+
+def test_create_wifi_device_x1s_can_assign_power_on_and_power_off_commands(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x09)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(
+        device_name="Living Room Roku",
+        commands=[f"Command {idx}" for idx in range(1, 11)],
+        request_port=8765,
+        power_on_command_id=6,
+        power_off_command_id=4,
+    )
+
+    assert result == {"device_id": 0x09, "status": "success"}
+    family_41_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x41]
+    assert family_41_payloads == [bytes([0x09, 0x04]), bytes([0x09, 0x01])]
+
+    payload_08 = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x08]
+    assert len(payload_08) == 2
+
+    power_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x12]
+    assert len(power_payloads) == 2
+    on_payload, off_payload = power_payloads
+
+    assert on_payload[:19] == bytes.fromhex("01 00 01 01 00 01 09 c6 01 09 06 00 00 00 00 00 00 00 ff")
+    assert off_payload[:19] == bytes.fromhex("01 00 01 01 00 01 09 c7 01 09 04 00 00 00 00 00 00 00 ff")
+    assert on_payload[19:79].startswith("POWER_ON".encode("utf-16le"))
+    assert off_payload[19:79].startswith("POWER_OFF".encode("utf-16le"))
+
+
+def test_create_wifi_device_x1s_without_power_commands_skips_power_edit_flow(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x09)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(device_name="Living Room Roku", commands=["My Cmd"], request_port=8765)
+
+    assert result == {"device_id": 0x09, "status": "success"}
+    families = {opcode & 0xFF for opcode, _ in sent}
+    assert 0x12 not in families
+    assert [payload for opcode, payload in sent if (opcode & 0xFF) == 0x41] == [bytes([0x09, 0x04])]
+
+
+def test_create_wifi_device_x1_can_assign_input_commands(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x04)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.2.77")
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(
+        commands=[f"Command {idx}" for idx in range(1, 11)],
+        input_command_ids=[2, 4, 6],
+    )
+
+    assert result == {"device_id": 0x04, "status": "success"}
+
+    assert any(opcode == 0x0148 and payload == bytes([0x04]) for opcode, payload in sent)
+
+    input_payload = next(payload for opcode, payload in sent if opcode == 0xC846)
+    assert len(input_payload) == 200
+    assert input_payload[:11] == bytes.fromhex("01 00 01 01 00 01 04 01 03 00 00")
+    assert input_payload[11:38] == bytes.fromhex("02 00 00 00 00 4e 22") + b"Command 2".ljust(20, b"\x00")
+    assert input_payload[38:65] == bytes.fromhex("04 00 00 00 00 4e 24") + b"Command 4".ljust(20, b"\x00")
+    assert input_payload[65:92] == bytes.fromhex("06 00 00 00 00 4e 26") + b"Command 6".ljust(20, b"\x00")
+    assert input_payload[92:199] == b"\x00" * 107
+    assert input_payload[-1] == (sum(input_payload[:-1]) - 0x02) & 0xFF
+
+    refresh_requests = [(opcode, payload) for opcode, payload in sent if opcode == 0x020C]
+    assert refresh_requests == [
+        (0x020C, bytes([0x04, 0x02])),
+        (0x020C, bytes([0x04, 0x04])),
+        (0x020C, bytes([0x04, 0x06])),
+    ]
+
+    payload_08 = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x08]
+    assert len(payload_08) == 2
+
+
+def test_create_wifi_device_x1_six_inputs_uses_fa46_plus_2246_commit(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x0D)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.2.77")
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.create_wifi_device(
+        commands=[f"TEST {idx}" for idx in range(1, 7)],
+        input_command_ids=[1, 2, 3, 4, 5, 6],
+    )
+
+    assert result == {"device_id": 0x0D, "status": "success"}
+
+    family_46_frames = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
+
+    # FA46: 250B fixed, sub=02, N_total=6 in header, all 6 entries
+    fa46_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0xFA46]
+    assert len(fa46_frames) == 1
+    _, fa46_payload = fa46_frames[0]
+    assert len(fa46_payload) == 250
+    assert fa46_payload[:11] == bytes.fromhex("01 00 01 01 00 02 0d 01 06 00 00")  # sub=02, N=6
+    # Entry 1: cmd_id=1, command_code=0x4E21, label "TEST 1" (20B padded)
+    assert fa46_payload[11:38] == bytes.fromhex("01 00 00 00 00 4e 21") + b"TEST 1".ljust(20, b"\x00")
+    # Entry 6: cmd_id=6, command_code=0x4E26, label "TEST 6"
+    assert fa46_payload[11 + 5 * 27 : 11 + 6 * 27] == bytes.fromhex("06 00 00 00 00 4e 26") + b"TEST 6".ljust(20, b"\x00")
+
+    # 2246 commit: 34B (= 6*27 - 128), last byte = (sum(fa46_payload) - 0x02) & 0xFF
+    commit_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0x2246]
+    assert len(commit_frames) == 1
+    _, commit_payload = commit_frames[0]
+    assert len(commit_payload) == 34
+    assert commit_payload[:4] == bytes.fromhex("01 00 02 00")
+    assert commit_payload[4:-1] == bytes(29)
+    expected_checksum = (sum(fa46_payload) - 0x02) & 0xFF
+    assert commit_payload[-1] == expected_checksum
+
+    # No old-style single-frame with inline checksum (e.g., 0xC846) for N=6
+    old_style_opcodes = {0xFA46, 0x2246, 0x7746}  # FA46, commit, sync are all expected
+    assert not any(opcode not in old_style_opcodes and (opcode & 0xFF) == 0x46 for opcode, _ in family_46_frames)
+
+
+def test_create_wifi_device_x1s_can_assign_input_commands(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x09)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
+
+    result = proxy.create_wifi_device(
+        device_name="Living Room Roku",
+        commands=[f"TEST {idx}" for idx in range(1, 7)],
+        request_port=8060,
+        input_command_ids=[1, 3, 5],
+    )
+
+    assert result == {"device_id": 0x09, "status": "success"}
+
+    req_activity_frames = [(opcode, payload) for opcode, payload in sent if opcode == 0x0148]
+    assert req_activity_frames == [(0x0148, bytes([0x09]))]
+
+    # X1S uses FA46 (sub=02, fixed 250B) + 1046 commit for N≥3 inputs.
+    family_46_frames = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
+    fa46_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0xFA46]
+    assert len(fa46_frames) == 1, f"expected exactly 1 FA46 frame, got {len(fa46_frames)}"
+    _, fa46_payload = fa46_frames[0]
+    assert len(fa46_payload) == 250
+    # Header: sub=02 (byte[5]), device_id=0x09, num_inputs=3
+    assert fa46_payload[:10] == bytes.fromhex("01 00 01 01 00 02 09 01 03 00")
+    # First input entry (48B): fixed fields + label
+    assert fa46_payload[10:20] == bytes.fromhex("00 01 00 00 00 00 00 00 01 00")
+    assert "TEST 1".encode("utf-16le") in fa46_payload
+    assert "TEST 3".encode("utf-16le") in fa46_payload
+    assert "TEST 5".encode("utf-16le") in fa46_payload
+    # No inner checksum byte on FA46
+
+    # 1046 commit frame: 16B, last byte = (sum(fa46_payload) - 0x02) & 0xFF
+    commit_frames = [(opcode, payload) for opcode, payload in sent if opcode == 0x1046]
+    assert len(commit_frames) == 1, f"expected exactly 1 1046 commit frame, got {len(commit_frames)}"
+    _, commit_payload = commit_frames[0]
+    assert len(commit_payload) == 16
+    assert commit_payload[:15] == bytes.fromhex("01 00 02 00 00 00 00 00 00 00 00 00 00 00 00")
+    expected_checksum = (sum(fa46_payload) - 0x02) & 0xFF
+    assert commit_payload[15] == expected_checksum
+
+    refresh_requests = [(opcode, payload) for opcode, payload in sent if opcode == 0x020C]
+    assert refresh_requests == [
+        (0x020C, bytes([0x09, 0x01])),
+        (0x020C, bytes([0x09, 0x03])),
+        (0x020C, bytes([0x09, 0x05])),
+    ]
+
+    finalize_payload = next(payload for opcode, payload in sent if opcode == 0xD508)
+    assert len(finalize_payload) == 213
+    assert finalize_payload[7] == 0x09
+    assert finalize_payload[9] == 0x09
+    assert finalize_payload[10:12] == bytes.fromhex("1c 10")
+
+
+def test_create_wifi_device_x1s_five_inputs_uses_fa46_plus_7046_commit(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x10)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
+
+    result = proxy.create_wifi_device(
+        device_name="Input test 6cmd 5in",
+        commands=[f"TEST {idx}" for idx in range(1, 7)],
+        request_port=8060,
+        input_command_ids=[1, 2, 3, 4, 5],
+    )
+
+    assert result == {"device_id": 0x10, "status": "success"}
+
+    family_46_frames = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
+    fa46_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0xFA46]
+    assert len(fa46_frames) == 1
+    _, fa46_payload = fa46_frames[0]
+    assert len(fa46_payload) == 250
+    assert fa46_payload[:10] == bytes.fromhex("01 00 01 01 00 02 10 01 05 00")  # N_total=5
+
+    # N=5 commit: opcode 0x7046 (112B payload = 5*48-128)
+    commit_frames = [(opcode, payload) for opcode, payload in sent if opcode == 0x7046]
+    assert len(commit_frames) == 1
+    _, commit_payload = commit_frames[0]
+    assert len(commit_payload) == 112
+    assert commit_payload[:4] == bytes.fromhex("01 00 02 00")
+    assert commit_payload[4:-1] == bytes(107)  # 107 zero bytes
+    expected_checksum = (sum(fa46_payload) - 0x02) & 0xFF
+    assert commit_payload[-1] == expected_checksum
+
+    assert not any(opcode == 0x1046 for opcode, _ in sent)
+    assert not any(opcode == 0xA046 for opcode, _ in sent)
+
+
+def test_create_wifi_device_x1s_six_inputs_uses_fa46_plus_a046(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "wait_for_roku_device_id", lambda timeout=5.0: 0x09)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
+    monkeypatch.setattr(proxy, "_wait_for_wifi_input_refresh", lambda *, device_id, command_id, timeout=5.0: True)
+
+    result = proxy.create_wifi_device(
+        device_name="Input test 9x",
+        commands=[f"TEST {idx}" for idx in range(1, 7)],
+        request_port=8060,
+        input_command_ids=[1, 2, 3, 4, 5, 6],
+    )
+
+    assert result == {"device_id": 0x09, "status": "success"}
+
+    # FA46 frame: 250B, sub=02, N_total=6 in header, only entries 1-5
+    family_46_frames = [(opcode, payload) for opcode, payload in sent if (opcode & 0xFF) == 0x46]
+    fa46_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0xFA46]
+    assert len(fa46_frames) == 1
+    _, fa46_payload = fa46_frames[0]
+    assert len(fa46_payload) == 250
+    assert fa46_payload[:10] == bytes.fromhex("01 00 01 01 00 02 09 01 06 00")  # N_total=6
+    assert "TEST 1".encode("utf-16le") in fa46_payload
+    assert "TEST 5".encode("utf-16le") in fa46_payload
+    assert "TEST 6".encode("utf-16le") not in fa46_payload  # overflow, not in FA46
+
+    # A046 frame: 160B continuation, overflow entry 6, combined checksum
+    a046_frames = [(opcode, payload) for opcode, payload in family_46_frames if opcode == 0xA046]
+    assert len(a046_frames) == 1
+    _, a046_payload = a046_frames[0]
+    assert len(a046_payload) == 160
+    assert a046_payload[:10] == bytes.fromhex("01 00 02 00 06 00 00 00 00 00")  # N_total=6
+    assert a046_payload[10:13] == bytes.fromhex("00 06 00")  # overflow entry cmd_id=6
+    assert "TEST 6".encode("utf-16le") in a046_payload
+    expected_checksum = (sum(fa46_payload) + sum(a046_payload[:-1]) - 0x05) & 0xFF
+    assert a046_payload[-1] == expected_checksum
+
+    # No variable-size commit frame for N>5 (uses A046 instead)
+    assert not any(opcode in {0x1046, 0x4046, 0x7046} for opcode, _ in sent)
+
+    refresh_requests = [(opcode, payload) for opcode, payload in sent if opcode == 0x020C]
+    assert refresh_requests == [(0x020C, bytes([0x09, i])) for i in range(1, 7)]
+
+
+def test_x1s_input_refresh_frame_updates_command_cache() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    handler = DeviceButtonFamilyHandler()
+    payload = bytes.fromhex(
+        "01 00 01 01 00 01 0A 03 1C 00 00 00 00 00 00 00 "
+        "54 00 45 00 53 00 54 00 20 00 31 00 "
+        + "00 " * 48 +
+        "C0 A8 02 4D 1F 7C 00 79 "
+        + "50 4F 53 54 20 2F 6C 61 75 6E 63 68 2F 65 32 36 61 34 34 38 36 31 62 34 35 2F 31 30 2F 32 2F 73 68 6F 72 74 20 48 54 54 50 2F 31 2E 31 0D 0A 48 6F 73 74 3A 31 39 32 2E 31 36 38 2E 32 2E 37 37 3A 38 30 36 30 0D 0A 43 6F 6E 74 65 6E 74 2D 54 79 70 65 3A 61 70 70 6C 69 63 61 74 69 6F 6E 2F 78 2D 77 77 77 2D 66 6F 72 6D 2D 75 72 6C 65 6E 63 6F 64 65 64 0D 0A 0D 0A B9"
+    )
+    raw = bytes.fromhex("a5 5a cd 0d") + payload + bytes.fromhex("4e")
+
+    handler.handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=0xCD0D,
+            direction="H→A",
+            payload=payload,
+            raw=raw,
+            name="OP_CD0D",
+        )
+    )
+
+    assert proxy.state.commands[0x0A][0x03] == "TEST 1"
 
 
 def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
@@ -946,6 +1497,30 @@ def test_get_single_command_allows_multiple_pending_commands(monkeypatch) -> Non
         (OP_REQ_COMMANDS, b"\x05\x01", True, "commands:5:1"),
         (OP_REQ_COMMANDS, b"\x05\x02", True, "commands:5:2"),
     ]
+
+
+def test_x1_input_refresh_frame_updates_command_cache() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    handler = DeviceButtonFamilyHandler()
+    payload = bytes.fromhex(
+        "01 00 01 01 00 01 08 02 0a 00 00 00 00 4e 22 "
+        "54 45 53 54 20 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "1d 6c 61 75 6e 63 68 2f 63 62 33 38 33 35 33 39 36 38 34 62 2f 38 2f 31 2f 73 68 6f 72 74 2b"
+    )
+    raw = bytes.fromhex("a5 5a 4c 0d") + payload + bytes.fromhex("92")
+
+    handler.handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=0x4C0D,
+            direction="H→A",
+            payload=payload,
+            raw=raw,
+            name="OP_4C0D",
+        )
+    )
+
+    assert proxy.state.commands[0x08][0x02] == "TEST 2"
 
 
 def test_build_frame_for_single_command_payloads() -> None:
@@ -1367,7 +1942,7 @@ def test_add_device_to_activity_discards_stale_members_before_refresh(monkeypatc
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
-        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None, input_index=0: source_payload,
     )
     monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
     monkeypatch.setattr(
@@ -1381,8 +1956,8 @@ def test_add_device_to_activity_discards_stale_members_before_refresh(monkeypatc
     assert result is not None
     # Confirm sequence should use fresh map data (dev 1) + new device only.
     assert sent[:2] == [
-        (0x024F, bytes([0x01, 0x01])),
-        (0x024F, bytes([0x09, 0x01])),
+        (0x024F, bytes([0x01, 0x00])),
+        (0x024F, bytes([0x09, 0x00])),
     ]
 
 
@@ -1437,7 +2012,7 @@ def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> N
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
-        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None, input_index=0: source_payload,
     )
     monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
     monkeypatch.setattr(
@@ -1452,8 +2027,8 @@ def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> N
     assert result["members_before"] == [1, 2, 6]
     assert result["members_confirmed"] == [1, 2, 6, 5]
     assert sent[:4] == [
-        (0x024F, bytes([0x01, 0x01])),
-        (0x024F, bytes([0x02, 0x01])),
+        (0x024F, bytes([0x01, 0x00])),
+        (0x024F, bytes([0x02, 0x00])),
         (0x024F, bytes([0x06, 0x00])),
         (0x024F, bytes([0x05, 0x00])),
     ]
@@ -1508,7 +2083,7 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
-        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None, input_index=0: source_payload,
     )
 
     monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
@@ -1532,15 +2107,15 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
 
     assert result is None
     assert sent == [
-        (0x024F, bytes([0x01, 0x01])),
-        (0x024F, bytes([0x06, 0x01])),
+        (0x024F, bytes([0x01, 0x00])),
+        (0x024F, bytes([0x06, 0x00])),
     ]
 
 
 
 
 
-def test_add_device_to_activity_x2_sends_commit_stage(monkeypatch) -> None:
+def test_add_device_to_activity_x2_uses_same_assignment_flow_as_x1s(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
         proxy_enabled=False,
@@ -1586,7 +2161,7 @@ def test_add_device_to_activity_x2_sends_commit_stage(monkeypatch) -> None:
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
-        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None, input_index=0: source_payload,
     )
 
     ack_calls: list[list[tuple[int, int | None]]] = []
@@ -1605,9 +2180,21 @@ def test_add_device_to_activity_x2_sends_commit_stage(monkeypatch) -> None:
     result = proxy.add_device_to_activity(101, 6)
 
     assert result is not None
-    assert sent[-1] == (OP_ACTIVITY_ASSIGN_COMMIT, bytes([0x65, 0x01]))
+    assert sent == [
+        (0x024F, bytes([0x01, 0x00])),
+        (0x024F, bytes([0x02, 0x00])),
+        (0x024F, bytes([0x06, 0x00])),
+        (0x024D, bytes([0x65, 0xC6])),
+        (0x024D, bytes([0x65, 0xC7])),
+    ]
     assert len(family_sends) == 2
-    assert ack_calls[-1] == [(0x0103, None)]
+    assert ack_calls == [
+        [(0x0103, None)],
+        [(0x0103, None)],
+        [(0x0103, None)],
+        [(0x0112, 198)],
+        [(0x0112, 199)],
+    ]
 
 
 def test_add_device_to_activity_rejects_activity_inputs_error_ack(monkeypatch) -> None:
@@ -1692,7 +2279,7 @@ def test_add_device_to_activity_x1_does_not_send_finalize_stage(monkeypatch) -> 
     monkeypatch.setattr(
         proxy,
         "_build_macro_save_payload",
-        lambda source_payload, *, device_id, button_id, allowed_device_ids=None: source_payload,
+        lambda source_payload, *, device_id, button_id, allowed_device_ids=None, input_index=0: source_payload,
     )
     monkeypatch.setattr(
         proxy,
@@ -2440,3 +3027,543 @@ def test_command_to_button_requires_all_acks(monkeypatch) -> None:
 
     assert proxy.command_to_button(0x65, 0xC1, 0x05, 0x02) is None
     assert requested_map == []
+
+
+# ---------------------------------------------------------------------------
+# _parse_activity_inputs_payloads
+# ---------------------------------------------------------------------------
+
+def _make_activity_inputs_entry(slot_id: int, cmd_id: int, name: str = "") -> bytes:
+    """Build a 27-byte ACTIVITY_INPUTS entry."""
+    name_bytes = name.encode("ascii", errors="replace")[:20].ljust(20, b"\x00")
+    return bytes([slot_id, 0, 0, 0, 0, (cmd_id >> 8) & 0xFF, cmd_id & 0xFF]) + name_bytes
+
+
+def test_parse_activity_inputs_payloads_single_page() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = b"\x00" * 11
+    entry3 = _make_activity_inputs_entry(3, 3, "CMD 3")
+    entry4 = _make_activity_inputs_entry(4, 4, "CMD 4")
+    entry6 = _make_activity_inputs_entry(6, 6, "CMD 6")
+    payload = header + entry3 + entry4 + entry6
+
+    entries = proxy._parse_activity_inputs_payloads([payload])
+
+    assert entries == [(3, 3), (4, 4), (6, 6)]
+
+
+def test_parse_activity_inputs_payloads_multi_page_spanning_entry() -> None:
+    """An entry that straddles the page-1/page-2 boundary must be reassembled correctly."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    entry_a = _make_activity_inputs_entry(0x31, 0x31, "Input A")
+    entry_b = _make_activity_inputs_entry(0x45, 0x45, "Input B")
+
+    # Split entry_b across two pages: first 10 bytes in page 1, rest in page 2
+    header1 = b"\x00" * 11
+    header2 = bytes([0x01, 0x00, 0x02])
+
+    page1 = header1 + entry_a + entry_b[:10]
+    page2 = header2 + entry_b[10:] + _make_activity_inputs_entry(0x46, 0x46, "Input C")
+
+    entries = proxy._parse_activity_inputs_payloads([page1, page2])
+
+    assert entries == [(0x31, 0x31), (0x45, 0x45), (0x46, 0x46)]
+
+
+def test_parse_activity_inputs_payloads_stops_at_null_slot() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = b"\x00" * 11
+    entry = _make_activity_inputs_entry(5, 5, "CMD 5")
+    terminator = b"\x00" * 27
+
+    entries = proxy._parse_activity_inputs_payloads([header + entry + terminator])
+
+    assert entries == [(5, 5)]
+
+
+# ---------------------------------------------------------------------------
+# _parse_activity_inputs_x1s
+# ---------------------------------------------------------------------------
+
+def _make_x1s_wifi_entry(slot_id: int, ordinal: int, name: str = "") -> bytes:
+    """Build a 48-byte X1S WiFi/custom-device ACTIVITY_INPUTS entry (sub_type=0x02)."""
+    name_utf16 = name.encode("utf-16-le")[:38]
+    name_padded = name_utf16.ljust(38, b"\x00")
+    return bytes([0x00, slot_id, 0, 0, 0, 0, 0, 0, ordinal, 0]) + name_padded
+
+
+def _make_x1s_ir_entry(slot_id: int, cmd_code: int, ordinal: int, name: str = "") -> bytes:
+    """Build a 36-byte X1S IR/RF-device ACTIVITY_INPUTS entry (sub_type=0x03)."""
+    name_utf16 = name.encode("utf-16-le")[:27]
+    name_padded = name_utf16.ljust(27, b"\x00")
+    return bytes([slot_id, 0, 0, 0, 0, (cmd_code >> 8) & 0xFF, cmd_code & 0xFF, ordinal, 0]) + name_padded
+
+
+def _make_x1s_wifi_page1_header(device_id: int, num_inputs: int) -> bytes:
+    """Build the 10-byte page-1 header for X1S WiFi device (sub_type=0x02)."""
+    return bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x02, device_id & 0xFF, 0x01, num_inputs & 0xFF, 0x00])
+
+
+def _make_x1s_ir_page1_header(device_id: int, num_inputs: int) -> bytes:
+    """Build the 11-byte page-1 header for X1S IR device (sub_type=0x03)."""
+    return bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x03, device_id & 0xFF, 0x01, num_inputs & 0xFF, 0x00, 0x00])
+
+
+def test_parse_activity_inputs_x1s_wifi_single_page() -> None:
+    """WiFi device (sub_type=02, entry_size=48): parse 4 entries from one FA47 page."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=4)
+    e1 = _make_x1s_wifi_entry(3, 1, "TEST 3")
+    e2 = _make_x1s_wifi_entry(4, 2, "TEST 4")
+    e3 = _make_x1s_wifi_entry(5, 3, "TEST 5")
+    e4 = _make_x1s_wifi_entry(6, 4, "TEST 6")
+    payload = header + e1 + e2 + e3 + e4 + bytes(250 - 10 - 4 * 48)
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(3, 1), (4, 2), (5, 3), (6, 4)]
+
+
+def test_parse_activity_inputs_x1s_wifi_stops_at_null_slot() -> None:
+    """Parsing halts when slot_id is 0x00 (end-of-list sentinel)."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = _make_x1s_wifi_page1_header(device_id=0x0A, num_inputs=2)
+    e1 = _make_x1s_wifi_entry(3, 1, "TEST 3")
+    e2 = _make_x1s_wifi_entry(4, 2, "TEST 4")
+    terminator = bytes(48)  # slot_id=0 -> stop
+    payload = header + e1 + e2 + terminator
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(3, 1), (4, 2)]
+
+
+def test_parse_activity_inputs_x1s_wifi_matches_real_capture() -> None:
+    """Regression: captured X1S WiFi FA47 payload parses into all 4 entries."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    payload = bytes.fromhex(
+        "01 00 01 01 00 02 09 01 04 00 00 03 00 00 00 00 00 00 01 00 "
+        "54 00 45 00 53 00 54 00 20 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 04 00 00 00 00 00 00 02 00 54 00 45 00 53 00 54 00 20 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 05 00 00 00 00 00 00 03 00 54 00 45 00 53 00 54 00 20 00 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 06 00 00 00 00 00 00 04 00 54 00 45 00 53 00 54 00 20 00 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+    )
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(3, 1), (4, 2), (5, 3), (6, 4)]
+
+
+def test_parse_activity_inputs_x1s_ir_single_page() -> None:
+    """IR device (sub_type=03, entry_size=36): parse entries correctly."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = _make_x1s_ir_page1_header(device_id=0x03, num_inputs=3)
+    e1 = _make_x1s_ir_entry(0x33, 0x3310, 1, "Input aux1")
+    e2 = _make_x1s_ir_entry(0x34, 0x3311, 2, "Input aux2")
+    e3 = _make_x1s_ir_entry(0x35, 0x3667, 3, "Input bk")
+    payload = header + e1 + e2 + e3 + bytes(250 - 11 - 3 * 36)
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(0x33, 1), (0x34, 2), (0x35, 3)]
+
+
+def test_parse_activity_inputs_x1s_multi_page_uses_4byte_header() -> None:
+    """Subsequent FA47 pages for X1S carry a 4-byte header (not 3-byte like X1)."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header1 = _make_x1s_ir_page1_header(device_id=0x03, num_inputs=7)
+    entries_p1 = b"".join(_make_x1s_ir_entry(0x30 + i, 0x3300 + i, i + 1, f"Input {i+1}") for i in range(5))
+    page1 = header1 + entries_p1 + bytes(250 - 11 - 5 * 36)
+
+    # X1S subsequent page: 4-byte header
+    header2 = bytes([0x01, 0x00, 0x02, 0x00])
+    entries_p2 = (
+        _make_x1s_ir_entry(0x35, 0x3305, 6, "Input 6")
+        + _make_x1s_ir_entry(0x36, 0x3306, 7, "Input 7")
+    )
+    page2 = header2 + entries_p2 + bytes(100)
+
+    entries = proxy._parse_activity_inputs_x1s([page1, page2])
+
+    assert len(entries) == 7
+    assert entries[0] == (0x30, 1)
+    assert entries[5] == (0x35, 6)
+    assert entries[6] == (0x36, 7)
+
+
+def test_parse_activity_inputs_x1s_unknown_subtype_falls_back_to_36() -> None:
+    """An unknown sub_type defaults to entry_size=36 and logs a warning."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    unknown_header = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0xFF, 0x05, 0x01, 0x02, 0x00, 0x00])
+    e1 = _make_x1s_ir_entry(0x10, 0x1011, 1, "Inp1")
+    e2 = _make_x1s_ir_entry(0x11, 0x1012, 2, "Inp2")
+    payload = unknown_header + e1 + e2
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(0x10, 1), (0x11, 2)]
+
+
+# ---------------------------------------------------------------------------
+# query_device_input_index
+# ---------------------------------------------------------------------------
+
+def test_query_device_input_index_returns_ordinal(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    header = b"\x00" * 11
+    # slot_ids 3, 4, 5, 6 — cmd 5 is at ordinal 3
+    entries_bytes = (
+        _make_activity_inputs_entry(3, 3)
+        + _make_activity_inputs_entry(4, 4)
+        + _make_activity_inputs_entry(5, 5)
+        + _make_activity_inputs_entry(6, 6)
+    )
+    payload = header + entries_bytes
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: sent.append((opcode, data)))
+
+    def _fake_burst(timeout=5.0):
+        proxy._activity_inputs_payloads.clear()
+        proxy._activity_inputs_payloads.append(payload)
+        return True
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
+
+    result = proxy.query_device_input_index(0x05, 5)
+
+    assert result == 3
+    from custom_components.sofabaton_x1s.lib.protocol_const import OP_REQ_ACTIVITY_INPUTS
+    assert sent == [(OP_REQ_ACTIVITY_INPUTS, bytes([0x05]))]
+
+
+def test_query_device_input_index_returns_none_on_timeout(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: False)
+
+    assert proxy.query_device_input_index(0x05, 5) is None
+
+
+def test_query_device_input_index_returns_none_when_not_found(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = b"\x00" * 11
+    payload = header + _make_activity_inputs_entry(3, 3)
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+
+    def _fake_burst(timeout=5.0):
+        proxy._activity_inputs_payloads.clear()
+        proxy._activity_inputs_payloads.append(payload)
+        return True
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
+
+    assert proxy.query_device_input_index(0x05, 99) is None
+
+
+def test_query_device_input_index_x1s_returns_embedded_ordinal(monkeypatch) -> None:
+    """On X1S, the ordinal is read from chunk[7] rather than computed by list position."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    # Device 9 has inputs TEST 3 (cmd=3, ord=1), TEST 4 (cmd=4, ord=2), TEST 5 (cmd=5, ord=3)
+    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=3)
+    page1 = (
+        header
+        + _make_x1s_wifi_entry(3, 1, "TEST 3")
+        + _make_x1s_wifi_entry(4, 2, "TEST 4")
+        + _make_x1s_wifi_entry(5, 3, "TEST 5")
+        + bytes(250 - 10 - 3 * 48)
+    )
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: sent.append((opcode, data)))
+
+    def _fake_burst(timeout=5.0):
+        proxy._activity_inputs_payloads.clear()
+        proxy._activity_inputs_payloads.append(page1)
+        return True
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
+
+    # cmd_id=4 (TEST 4) should return ordinal=2
+    result = proxy.query_device_input_index(0x09, 4)
+    assert result == 2
+
+    from custom_components.sofabaton_x1s.lib.protocol_const import OP_REQ_ACTIVITY_INPUTS
+    assert sent == [(OP_REQ_ACTIVITY_INPUTS, bytes([0x09]))]
+
+
+def test_query_device_input_index_autodetects_x1s_payload_shape_when_hub_version_is_x1(monkeypatch) -> None:
+    """X1S/X2 payload layout should win even if the stored hub_version is stale."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=4)
+    page1 = (
+        header
+        + _make_x1s_wifi_entry(3, 1, "TEST 3")
+        + _make_x1s_wifi_entry(4, 2, "TEST 4")
+        + _make_x1s_wifi_entry(5, 3, "TEST 5")
+        + _make_x1s_wifi_entry(6, 4, "TEST 6")
+        + bytes(250 - 10 - 4 * 48)
+    )
+    page2 = bytes([0x01, 0x00, 0x02, 0x00]) + bytes(65)
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+
+    def _fake_burst(timeout=5.0):
+        proxy._activity_inputs_payloads.clear()
+        proxy._activity_inputs_payloads.extend([page1, page2])
+        return True
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
+
+    assert proxy.query_device_input_index(0x09, 4) == 2
+
+
+def test_query_device_input_index_x1s_returns_none_when_not_found(monkeypatch) -> None:
+    """X1S: return None and log warning when cmd_id is absent from the inputs list."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=1)
+    page1 = header + _make_x1s_wifi_entry(3, 1, "TEST 3") + bytes(200)
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
+
+    def _fake_burst(timeout=5.0):
+        proxy._activity_inputs_payloads.clear()
+        proxy._activity_inputs_payloads.append(page1)
+        return True
+
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", _fake_burst)
+
+    assert proxy.query_device_input_index(0x09, 99) is None
+
+
+# ---------------------------------------------------------------------------
+# add_device_to_activity with input_cmd_id
+# ---------------------------------------------------------------------------
+
+def _make_add_device_to_activity_mocks(proxy, monkeypatch, *, members=(1,)):
+    """Set up minimal mocks for add_device_to_activity integration tests."""
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _request_activity_mapping(act_id: int) -> bool:
+        act_lo = act_id & 0xFF
+        for m in members:
+            proxy.state.record_activity_member(act_lo, m)
+        proxy._activity_map_complete.add(act_lo)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
+
+    sent_cmd: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent_cmd.append((opcode, payload)))
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_roku_ack_any",
+        lambda candidates, timeout=5.0: (
+            candidates[0][0],
+            bytes([candidates[0][1] if candidates[0][1] is not None else 0x00]),
+        ),
+    )
+    return sent_cmd
+
+
+def test_add_device_to_activity_with_input_cmd_id_sets_c5_byte(monkeypatch) -> None:
+    """input_cmd_id resolves to ordinal 3 and that value is written to byte[8] of the 0xC5 record."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    sent_cmd = _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
+
+    # Header must be exactly 9 bytes; byte[8] = row count.
+    power_on_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 01 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "01 00 00 00 00 00 2d 76 00"
+    )
+    power_off_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c7 01 "
+        "01 c7 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 ff ff"
+    )
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_macro_payload",
+        lambda act, button, timeout=5.0: (
+            power_on_source if button == 0xC6 else power_off_source
+        ),
+    )
+
+    # query_device_input_index mock: cmd_id 5 is ordinal 3
+    monkeypatch.setattr(proxy, "query_device_input_index", lambda dev_id, cmd_id, **kw: 3)
+
+    saved_payloads: list[bytes] = []
+    monkeypatch.setattr(
+        proxy,
+        "_send_family_frame",
+        lambda family, payload: saved_payloads.append(payload),
+    )
+
+    result = proxy.add_device_to_activity(101, 2, input_cmd_id=5)
+
+    assert result is not None
+
+    # POWER_ON macro (first saved payload) must contain a 0xC5 record with byte[8]=3
+    on_payload = saved_payloads[0]
+    c5_idx = on_payload.find(bytes([0x02, 0xC5]))
+    assert c5_idx != -1, "0xC5 record for device 0x02 not found in POWER_ON payload"
+    assert on_payload[c5_idx + 8] == 3, f"Expected input_index=3, got {on_payload[c5_idx + 8]}"
+
+
+def test_add_device_to_activity_x1s_with_input_cmd_id_sets_input_index(monkeypatch) -> None:
+    """On X1S hubs, input_cmd_id resolves via query_device_input_index and writes the ordinal to byte[8]."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
+
+    power_on_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 01 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "01 00 00 00 00 00 2d 76 00"
+    )
+    power_off_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c7 01 "
+        "01 c7 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 ff ff"
+    )
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_macro_payload",
+        lambda act, button, timeout=5.0: (
+            power_on_source if button == 0xC6 else power_off_source
+        ),
+    )
+
+    # cmd_id 5 is at ordinal 2 in the X1S device's input list
+    monkeypatch.setattr(proxy, "query_device_input_index", lambda dev_id, cmd_id, **kw: 2)
+
+    saved_payloads: list[bytes] = []
+    monkeypatch.setattr(
+        proxy,
+        "_send_family_frame",
+        lambda family, payload: saved_payloads.append(payload),
+    )
+
+    result = proxy.add_device_to_activity(101, 2, input_cmd_id=5)
+
+    assert result is not None
+
+    # POWER_ON macro must contain a 0xC5 record for device 0x02 with byte[8]=2
+    on_payload = saved_payloads[0]
+    c5_idx = on_payload.find(bytes([0x02, 0xC5]))
+    assert c5_idx != -1, "0xC5 record for device 0x02 not found in POWER_ON payload"
+    assert on_payload[c5_idx + 8] == 2, f"Expected input_index=2, got {on_payload[c5_idx + 8]}"
+
+
+def test_add_device_to_activity_input_cmd_id_updates_existing_c5_record(monkeypatch) -> None:
+    """When a 0xC5 record already exists in the macro, its byte[8] is updated to the new input_index."""
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    _make_add_device_to_activity_mocks(proxy, monkeypatch, members=[1])
+
+    # POWER_ON source already contains a 0xC5 record for device 1 with old input_index=0x1A (26)
+    power_on_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 02 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 1a ff "
+        "50 4f 57 45 52 5f 4f 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "02 00 00 00 00 00 2d 76 00"
+    )
+    power_off_source = bytes.fromhex(
+        "01 00 01 01 00 01 65 c7 01 "
+        "01 c7 00 00 00 00 00 00 01 ff "
+        "50 4f 57 45 52 5f 4f 46 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 ff ff"
+    )
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_macro_payload",
+        lambda act, button, timeout=5.0: (
+            power_on_source if button == 0xC6 else power_off_source
+        ),
+    )
+
+    # query returns ordinal 4 (new input)
+    monkeypatch.setattr(proxy, "query_device_input_index", lambda dev_id, cmd_id, **kw: 4)
+
+    saved_payloads: list[bytes] = []
+    monkeypatch.setattr(
+        proxy,
+        "_send_family_frame",
+        lambda family, payload: saved_payloads.append(payload),
+    )
+
+    result = proxy.add_device_to_activity(101, 1, input_cmd_id=5)
+
+    assert result is not None
+
+    on_payload = saved_payloads[0]
+    c5_idx = on_payload.find(bytes([0x01, 0xC5]))
+    assert c5_idx != -1
+    assert on_payload[c5_idx + 8] == 4, f"Expected updated input_index=4, got {on_payload[c5_idx + 8]}"

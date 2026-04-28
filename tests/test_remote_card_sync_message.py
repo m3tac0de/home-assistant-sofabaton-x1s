@@ -1,24 +1,25 @@
 from pathlib import Path
 
 
-def test_failed_sync_message_branch_precedes_sync_needed_branch() -> None:
+def test_remote_card_x1s_notice_points_users_to_control_panel() -> None:
     source = Path("custom_components/sofabaton_x1s/www/remote-card.js").read_text(
         encoding="utf-8",
     )
 
-    failed_branch = 'else if (syncStatus === "failed") {'
-    failed_message = 'syncState.message || "Last sync failed."'
-    sync_needed_branch = "else if (syncNeeded) {"
-    sync_needed_message = (
-        '"Command config changes need to be synced to the hub."'
+    assert 'sectionTitle.textContent = "Wifi Commands Moved";' in source
+    assert "Sofabaton Control Panel card" in source
+
+
+def test_remote_card_no_longer_calls_wifi_commands_backend() -> None:
+    source = Path("custom_components/sofabaton_x1s/www/remote-card.js").read_text(
+        encoding="utf-8",
     )
 
-    failed_branch_index = source.index(failed_branch)
-    sync_needed_branch_index = source.index(sync_needed_branch)
-
-    assert failed_branch_index < sync_needed_branch_index
-    assert failed_message in source
-    assert sync_needed_message in source
+    assert "sofabaton_x1s/command_config/get" not in source
+    assert "sofabaton_x1s/command_config/set" not in source
+    assert "sofabaton_x1s/command_sync/progress" not in source
+    assert 'callService("sofabaton_x1s", "sync_command_config"' not in source
+    assert 'type: "sofabaton_x1s/hub/set_version"' not in source
 
 
 def test_x2_requests_are_tied_to_confirmed_current_activity_changes() -> None:
