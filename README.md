@@ -165,6 +165,8 @@ This integration supports the **Sofabaton Virtual Remote** Lovelace card.
 > The card is also available as a separate HACS frontend plugin.
 > This integration automatically stops deploying the card as soon as it detects that the card is installed through HACS (a reboot of Home Assistant is required).
 
+<img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-01.png" width="220"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-02.png" width="220"> <img src="https://raw.githubusercontent.com/m3tac0de/sofabaton-virtual-remote/refs/heads/main/screenshots/virtual-remote-03.png" width="220">
+
 ## 🖥️ Dashboard card - Sofabaton Control Panel
 
 This integration adds the **Sofabaton Control Panel** Lovelace card to your Home Assistant.
@@ -181,11 +183,11 @@ The Control Panel card is the central management UI for the integration. Its mai
 - **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.
 - **Logs** — live streaming of hub log output for real-time diagnostics.
 
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/24fc4e60-ee77-417a-ab1d-4fd004217c8d" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/222952bd-19c8-4d0a-bc71-4a45b9a21bef" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/a2622cdd-1df9-4075-88cc-49caf55057ef" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/96b1e008-3f14-4e21-ba60-62ad41d83a1b" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/81343a3a-8e14-4310-b52d-70967688e915" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/1577a745-058a-4951-aa9f-9ae217d45465" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/f435ea51-dbfa-4f79-8a41-1ae240872431" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/a6470a7e-7ee9-48e7-8c18-3a75ece218f8" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/7fae9569-484a-4eb6-9d58-edae9541d876" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/2d9ac19d-17a4-4d7d-afa4-5173ce814f85" />
 
 ---
 
@@ -204,11 +206,13 @@ Configure up to 5 Wifi Devices per hub (10 command slots each) via the **Control
 
 Full setup guide → [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/79f2d841-e4ef-4252-9a62-e2c7ef577f88" />  
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/d87210e9-2966-4d05-9d40-bbb89296e410" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/ecd17007-3645-4ea6-ad28-53b1287370aa" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/c225a472-7a22-4dbb-91dd-5a23df1fbc3f" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/cbc0a2e1-635b-4b7c-804d-e0e67051b643" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/16015586-a4c4-4f7c-99b8-51d5af71b35c" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/ead35c29-9a53-4906-a7af-c65009bba3fc" />  
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/7bdad456-f637-43c6-8c50-9c3ccaad6990" />  
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/45e2f748-44f2-48c6-bc70-abee75ad30cf" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/bb737cf5-1d8e-41bd-95ea-b003e191b7d6" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/0fb3629a-dd97-4ccd-ab1b-caed75014a84" />
 
 ---
 
