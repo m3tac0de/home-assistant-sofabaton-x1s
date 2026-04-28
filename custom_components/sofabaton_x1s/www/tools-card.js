@@ -4054,14 +4054,29 @@ if (!customElements.get("sofabaton-wifi-commands-tab")) {
 
 // custom_components/sofabaton_x1s/www/src/tools-card.ts
 var TOOLS_TYPE = "sofabaton-control-panel";
-var TOOLS_VERSION = "0.1.0";
+var TOOLS_VERSION = "0.0.3";
 var LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
 var EDITOR_TYPE = `${TOOLS_TYPE}-editor`;
 function logOnce() {
   const windowWithFlag = window;
   if (windowWithFlag[LOG_ONCE_KEY]) return;
   windowWithFlag[LOG_ONCE_KEY] = true;
-  console.log(`Sofabaton Control Panel ${TOOLS_VERSION}`);
+  const base = "padding:2px 10px;border-radius:999px;font-weight:700;font-size:12px;line-height:18px;border:1px solid transparent;";
+  const red = base + "background:#fff;color:#ef4444;border-color:#ef4444;";
+  const green = base + "background:#062b12;color:#22c55e;border-color:#22c55e;";
+  const yellow = base + "background:#111827;color:#facc15;border-color:#facc15;";
+  const blue = base + "background:#fff;color:#3b82f6;border-color:#3b82f6;";
+  const gap = "color:transparent;";
+  console.log(
+    `%cSofabaton%c %c Control %c %c  Panel  %c %c   ${TOOLS_VERSION}   `,
+    red,
+    gap,
+    green,
+    gap,
+    yellow,
+    gap,
+    blue
+  );
 }
 var SofabatonControlPanelCard = class extends i4 {
   constructor() {
