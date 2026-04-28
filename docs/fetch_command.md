@@ -1,13 +1,19 @@
 # Index Sensor & Fetch Action Guide (Sofabaton X1/X1S/X2)
 
+> **Recommended:** This integration includes the **Sofabaton Control Panel** card. It is now the recommended approach for retrieving device and command ids.  
+> Enable persistent cache in the card's Settings tab, then browse your devices and activities directly in the UI — no actions required.
+>
+> The guide below covers the same workflow manually, which is useful for scripting or if you prefer Developer Tools.
+
 This guide explains how to use:
 
-- `sofabaton_x1s.fetch_device_commands` (Action / service)
+- `sofabaton_x1s.fetch_device_commands` (Action)
 - `sensor.<hub>_index` (Diagnostic Index sensor)
 
 …to discover **device/activity IDs** and **command IDs** for use with `remote.send_command`.
 
 If you just want to capture a single button press quickly, the **Recorded Keypress sensor** is usually faster:
+
 - **Key Capture**, a feature of the Sofabaton Virtual Remote card (see main README)
 - `sensor.<hub>_recorded_keypress` (see main README)
 
@@ -18,10 +24,10 @@ If you just want to capture a single button press quickly, the **Recorded Keypre
 Your Sofabaton hub assigns a number to each device and activity you add to it.
 Within each of those devices and activities exists a list of commands, favorites and macros. These are also each given a number.
 
-- **`ent_id`** = Sofabaton “entity id” on the hub  
+- **`ent_id`** = Sofabaton “entity id” on the hub
   - device ids usually start at **1**
   - activity ids usually start at **101**
-- **`command_id`** = the numeric command id *inside* that entity’s command list
+- **`command_id`** = the numeric command id _inside_ that entity’s command list
 
 Once you have those numbers, you can call:
 
@@ -49,8 +55,8 @@ The Index sensor is a structured map that can contain:
   - and after fetching: `commands: [{ name, command }, ...]`
 - `activities` → map keyed by activity id (`"101"`, `"102"`, …)
   - each activity can have `name`, `active`
-  - and after fetching (depending on hub config):  
-    - `macros: [{ name, command }, ...]`  
+  - and after fetching (depending on hub config):
+    - `macros: [{ name, command }, ...]`
     - `favorites: [{ name, command, device }, ...]`
 
 The device/activity list is populated always, but **commands/macros/favorites populate on demand** via the fetch action.
@@ -87,8 +93,8 @@ This avoids guessing the HA “Device id” string.
 ```yaml
 action: sofabaton_x1s.fetch_device_commands
 data:
-  device: 89c3874a93f1e9ee0f49e24a2710535e  # select hub device in UI mode
-  ent_id: 5                                 # Sofabaton device id (or 101+ activity id)
+  device: 89c3874a93f1e9ee0f49e24a2710535e # select hub device in UI mode
+  ent_id: 5 # Sofabaton device id (or 101+ activity id)
 ```
 
 After it completes, check `sensor.<hub>_index`.
@@ -100,6 +106,7 @@ After it completes, check `sensor.<hub>_index`.
 ### 1) Pick what you want to control
 
 Examples:
+
 - A device command like **“Guide”** on your projector
 - An activity macro like **“Dim lights”**
 - A favorite like **“Exit”**
@@ -156,7 +163,7 @@ target:
   entity_id: remote.<hub>_remote
 data:
   device: 1
-  command: 3   # Guide
+  command: 3 # Guide
 ```
 
 ### B) Run an activity macro
@@ -180,7 +187,7 @@ target:
   entity_id: remote.<hub>_remote
 data:
   device: 103
-  command: 1   # Dim lights (macro)
+  command: 1 # Dim lights (macro)
 ```
 
 ### C) Use an activity favorite
@@ -196,6 +203,8 @@ activities:
         device: 1
 ```
 
+> If a favorite entry does **not** include a `device` field, treat it like a macro and send it with `device: <activity id>`.
+
 Automation:
 
 ```yaml
@@ -204,26 +213,28 @@ target:
   entity_id: remote.<hub>_remote
 data:
   device: 1
-  command: 2   # Exit
+  command: 2 # Exit
 ```
-
-If a favorite entry does **not** include a `device` field, treat it like a macro and send it with `device: <activity id>`.
 
 ---
 
 ## FAQ / Common pitfalls
 
 ### “My Index has devices/activities, but no commands”
+
 That’s expected until you run `sofabaton_x1s.fetch_device_commands` for a specific `ent_id`.
 
 ### “What’s the difference between `device` and `ent_id` in the fetch action?”
+
 - `device` = **Home Assistant Device** representing your Sofabaton hub (chosen from UI mode dropdown)
 - `ent_id` = **Sofabaton entity id** (device or activity id on the hub)
 
 ### “The command entities are unavailable”
+
 If the official Sofabaton app is connected to the proxy, “writer” entities can become unavailable by design. Disconnect the app from the virtual hub to allow HA to send commands.
 
 ### “IDs are strings in the Index”
+
 Yes. In the Index sensor attributes they appear as keys like `"103"`.  
 When calling `remote.send_command`, you can use them as numbers (e.g. `device: 103`).
 

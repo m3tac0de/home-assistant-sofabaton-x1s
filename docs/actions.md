@@ -1,6 +1,6 @@
 # Actions reference (Sofabaton X1/X1S/X2)
 
-This page documents all custom Actions (services) provided by the integration.
+This page documents all custom Actions provided by the integration.
 Find them in Home Assistant at **Settings → Developer Tools → Actions**, then filter by `sofabaton_x1s`.
 
 ---
@@ -90,7 +90,7 @@ Optionally a second command can be assigned to a long-press on the same button.
 | `device`                | HA Device     |    ✓     | Your Sofabaton hub.                                                                   |
 | `activity_id`           | int (101–255) |    ✓     | Activity id the mapping is created in.                                                |
 | `button_id`             | int (1–255)   |    ✓     | Physical button code (see [Button ID table](#button-id-reference) below).             |
-| `device_id`             | int (1-99)    |    ✓     | Device id the command belongs to.                                                     |
+| `device_id`             | int (1–99)    |    ✓     | Device id the command belongs to.                                                     |
 | `command_id`            | int (1–255)   |    ✓     | Command id within that device.                                                        |
 | `long_press_device_id`  | int (1–99)    |    –     | Device id for the long-press command. Required together with `long_press_command_id`. |
 | `long_press_command_id` | int (1–255)   |    –     | Command id for the long-press action. Required together with `long_press_device_id`.  |
@@ -115,13 +115,13 @@ data:
 
 Adds a command as a quick-access favorite for an activity.
 
-| Parameter     | Type          | Required | Description                                                                                |
-| ------------- | ------------- | :------: | ------------------------------------------------------------------------------------------ |
-| `device`      | HA Device     |    ✓     | Your Sofabaton hub.                                                                        |
-| `activity_id` | int (101–255) |    ✓     | Activity id to add the favorite to.                                                        |
-| `device_id`   | int (1–99)    |    ✓     | Device id the command belongs to.                                                          |
-| `command_id`  | int (1–255)   |    ✓     | Command id within that device.                                                             |
-| `slot_id`     | int (0–255)   |    –     | Optional slot/index for the favorite position in the hub's mapping payload (default: `0`). |
+| Parameter     | Type          | Required | Description                                                                                                             |
+| ------------- | ------------- | :------: | ----------------------------------------------------------------------------------------------------------------------- |
+| `device`      | HA Device     |    ✓     | Your Sofabaton hub.                                                                                                     |
+| `activity_id` | int (101–255) |    ✓     | Activity id to add the favorite to.                                                                                     |
+| `device_id`   | int (1–99)    |    ✓     | Device id the command belongs to.                                                                                       |
+| `command_id`  | int (1–255)   |    ✓     | Command id within that device.                                                                                          |
+| `slot_id`     | int (0–255)   |    –     | Optional slot/index for the favorite order position in the hub's mapping payload (default: `0`, putting it at the top). |
 
 ```yaml
 action: sofabaton_x1s.command_to_favorite
@@ -239,7 +239,7 @@ Adds a device to an activity on the hub, so the activity can use that device's c
 | Parameter          | Type          | Required | Description                                                      |
 | ------------------ | ------------- | :------: | ---------------------------------------------------------------- |
 | `device`           | HA Device     |    ✓     | Your Sofabaton hub.                                              |
-| `activity_id`      | int (101–200) |    ✓     | Activity id (101+).                                              |
+| `activity_id`      | int (101–255) |    ✓     | Activity id (101+).                                              |
 | `device_id`        | int (1–99)    |    ✓     | Device id (1–99).                                                |
 | `input_command_id` | int (1–255)   |    –     | Optional device command id to set as the input for the Activity. |
 
@@ -260,10 +260,10 @@ Deletes a device from the hub and confirms all impacted activities.
 
 > This is a destructive hub operation. Use with caution.
 
-| Parameter   | Type        | Required | Description          |
-| ----------- | ----------- | :------: | -------------------- |
-| `device`    | HA Device   |    ✓     | Your Sofabaton hub.  |
-| `device_id` | int (1–255) |    ✓     | Device id to delete. |
+| Parameter   | Type       | Required | Description          |
+| ----------- | ---------- | :------: | -------------------- |
+| `device`    | HA Device  |    ✓     | Your Sofabaton hub.  |
+| `device_id` | int (1–99) |    ✓     | Device id to delete. |
 
 ```yaml
 action: sofabaton_x1s.delete_device

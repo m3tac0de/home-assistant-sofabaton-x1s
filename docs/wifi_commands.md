@@ -57,6 +57,44 @@ The **Wifi Commands** feature uses an HTTP listener that will by default attempt
 The port the HTTP listener binds to can be changed in the integration's general config, but doing so will break X1 compatibility. Other hub versions can freely change ports.
 Detailed networking documentation is [here](networking.md).
 
+## `sensor.<hub>_wifi_commands`
+
+Updates whenever a Wifi Command key is pressed. Use it to build automations that respond to
+any command without configuring individual Actions per command.
+
+**State** resets to `Waiting for button press` after a short delay, so trigger on the
+state _changing away_ from that value rather than on a specific command name.
+
+**Attributes** at the moment of the press:
+
+| Attribute          | Example value               | Description                 |
+| ------------------ | --------------------------- | --------------------------- |
+| `received_command` | `Scene Movie`               | Command name as configured  |
+| `from_device`      | `Home Assistant`            | Wifi Device name            |
+| `press_type`       | `short` / `long`            | Short or long press         |
+| `timestamp`        | `2026-04-28T21:00:00+00:00` | ISO 8601 time of the press  |
+| `source_ip`        | `192.168.1.50`              | IP the hub called back from |
+
+**State value** when pressed: `<device>/<command>` or `<device>/<command>/longpress`  
+**State value** at rest: `Waiting for button press`
+
+### Automation example
+
+```yaml
+trigger:
+  - platform: state
+    entity_id: sensor.<hub>_wifi_commands
+    not_to: "Waiting for button press"
+action:
+  - if:
+      - condition: template
+        value_template: "{{ trigger.to_state.attributes.received_command == 'Scene Movie' }}"
+    then:
+      - action: scene.turn_on
+        target:
+          entity_id: scene.movie_mode
+```
+
 ## Relevant entities
 
 `sensor.<hub>_wifi_commands`  
@@ -68,13 +106,10 @@ Enables/Disables the HTTP listener / Wifi Device. Switched off by default. Autom
 `button.<hub>_resync_remote`  
 Forces a resync of the physical remote. Automatically called at the end of a hub synchronization sequence.
 
-## State of the feature
+## Recovery
 
-This has been built for robustness and security, and has been extensively tested across all hub versions.
-
-- significantly fortified HTTP listener
+- This feature involves reconfiguring the hub, it is therefore a good idea to create a backup of your hub configuration before using this feature.
 - if at any stage deployment of the Wifi Device fails, a rollback is performed and no trace will be left on the hub
 - manual removal: this feature creates a Device on the Sofabaton hub. Removing it through the app is safe and removes the Wifi Commands configuration from your hub. The integration will notice hub configuration is no longer in sync, and provides the option to re-sync.
 
-This feature involves reconfiguring the hub, it is therefore a good idea to create a backup of your hub configuration before using this feature.  
 Please [open an issue](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues) in case of any problems, make sure to [include detailed logs](logging.md).

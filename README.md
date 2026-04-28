@@ -25,6 +25,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 3. Go to **Settings → Devices & Services**. Your Sofabaton hubs appear at the top of the page. **Add** them and follow the flow.
    - Discovery via mDNS should show your hubs automatically.
    - If discovery fails (VLAN / mDNS), see networking docs or add manually.
+   - ⚠️**iOS users:** please see the networking docs
 
    To add manually:
    Go to **Settings → Devices & Services → Add integration** → search **Sofabaton X1S** (listing name) and follow the flow.
@@ -79,6 +80,8 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 - 🟢 **Sensors** for activity, connectivity, app connection, recorded keypress, wifi commands
 - 🛰 **Proxy can be disabled** per device (stop advertising/binding for the official app)
 - 🪵 **Live Hub Logs** tab in the Control Panel card for real-time diagnostics
+
+> This documentation uses markup such as `select.<hub>_activity`, where `<hub>` is your hub's name as configured in Home Assistant — for example, `select.living_room_activity`.
 
 ---
 
@@ -188,21 +191,18 @@ The Control Panel card is the central management UI for the integration. Its mai
 
 ## 🤖 Automations
 
-### Wifi Commands: Receive key presses from the hub and trigger an automation.
+### Receive key presses from the hub
 
-In the **Sofabaton Control Panel** card, open the **Wifi Commands** tab. Up to **5 Wifi Devices** can be created per hub, each with 10 command slots.
+The **Wifi Commands** feature lets you trigger Home Assistant Actions directly from physical button presses on the remote.
 
-1. **Add a Wifi Device**: Give it a name. Multiple devices let you group commands separately or assign different power/input configurations per activity.
-2. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
-3. **Configure power / input** (optional): Mark a command as the device's Power ON or Power OFF command. Alternatively, a command can be configured to be an INPUT of the Wifi Device, and assigned to an Activity. The commands become part of the Activity's startup and shutdown sequences.
-4. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
-5. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.
+Configure up to 5 Wifi Devices per hub (10 command slots each) via the **Control Panel** card's Wifi Commands tab. Each command can:
 
-More details are here: [`docs/wifi_commands.md`](docs/wifi_commands.md)
+- run a Home Assistant Action immediately when pressed
+- participate in activity startup/shutdown sequences (power on/off, input switching)
 
-> - Synchronization may take several minutes. During this time all other interactions with the hub are blocked.
-> - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
-> - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
+> Actions can be added, changed, or removed at any time without resyncing to the hub. Only structural changes (command names, button assignments, activities) require a sync, which takes several minutes.
+
+Full setup guide → [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/79f2d841-e4ef-4252-9a62-e2c7ef577f88" />  
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/d87210e9-2966-4d05-9d40-bbb89296e410" />
