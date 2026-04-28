@@ -4102,6 +4102,11 @@ var SofabatonControlPanelCard = class extends i4 {
   static getConfigElement() {
     return document.createElement(EDITOR_TYPE);
   }
+  static getStubConfig() {
+    return {
+      card_height: 600
+    };
+  }
   connectedCallback() {
     super.connectedCallback();
     logOnce();
@@ -4336,3 +4341,11 @@ var SofabatonControlPanelEditor = class extends HTMLElement {
 };
 if (!customElements.get(TOOLS_TYPE)) customElements.define(TOOLS_TYPE, SofabatonControlPanelCard);
 if (!customElements.get(EDITOR_TYPE)) customElements.define(EDITOR_TYPE, SofabatonControlPanelEditor);
+window.customCards = window.customCards || [];
+if (!window.customCards.some((c4) => c4.type === TOOLS_TYPE)) {
+  window.customCards.push({
+    type: TOOLS_TYPE,
+    name: "Sofabaton Control Panel",
+    description: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wi-Fi commands."
+  });
+}
