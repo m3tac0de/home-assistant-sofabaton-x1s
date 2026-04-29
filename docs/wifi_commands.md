@@ -91,16 +91,28 @@ state _changing away_ from that value rather than on a specific command name.
 ```yaml
 trigger:
   - platform: state
-    entity_id: sensor.<hub>_wifi_commands
+    entity_id: sensor.<hub>_wifi_commands   # i.e. sensor.livingroom_wifi_commands
     not_to: "Waiting for button press"
 action:
-  - if:
-      - condition: template
-        value_template: "{{ trigger.to_state.attributes.received_command == 'Scene Movie' }}"
-    then:
-      - action: scene.turn_on
-        target:
-          entity_id: scene.movie_mode
+  - variables:
+      command: "{{ trigger.to_state.attributes.received_command }}"
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'Scene Movie' }}"
+        sequence:
+          - action: scene.turn_on
+            target:
+              entity_id: scene.movie_mode
+
+      - conditions:
+          - condition: template
+            value_template: "{{ command == 'Scene Gaming' }}"
+        sequence:
+          - action: scene.turn_on
+            target:
+              entity_id: scene.gaming_mode
 ```
 
 ## Relevant entities
