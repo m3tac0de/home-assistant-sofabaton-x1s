@@ -175,6 +175,9 @@ interface WifiDeviceSummary extends SyncState {
   device_name: string;
   configured_slot_count: number;
   deployed_device_id?: number | null;
+  commands?: Array<Record<string, unknown>>;
+  power_on_command_id?: number | null;
+  power_off_command_id?: number | null;
 }
 
 class SofabatonWifiCommandsTab extends LitElement {
@@ -505,6 +508,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .checkbox-icon.input { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--ha-card-background, transparent)); }
     .checkbox-copy > span:first-child { font-size: 14px; line-height: 1.35; }
     .checkbox-subtext { min-height: 1.35em; font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); white-space: normal; }
+    .button-conflict-hint { font-size: 12px; line-height: 1.35; color: var(--warning-color, var(--secondary-text-color)); padding: 2px 0 4px; }
     .checkbox-row ha-switch { align-self: center; }
     .checkbox-row.nested-control { padding-left: 36px; }
     .input-selector-wrap.nested-control { box-sizing: border-box; padding-left: 36px; }
@@ -1121,7 +1125,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                         <span class="checkbox-icon input"><ha-icon icon=${INPUT_ICON}></ha-icon></span>
                         <span class="checkbox-copy">
                           <span>Set as Activity input</span>
-                          <span class="checkbox-subtext">${hasActivities ? "Command called as part of Activity startup sequence" : "No activities available for this hub."}</span>
+                          <span class="checkbox-subtext">${hasActivities ? this._inputActivityReplacementLabel() : "No activities available for this hub."}</span>
                         </span>
                       </span>
                       <ha-switch
@@ -1165,6 +1169,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                   .value=${this._selectorValueForButton(draft)}
                   @value-changed=${(event: CustomEvent) => this._handleHardButtonChanged(event)}
                 ></ha-selector>
+                ${this._hardButtonReplacementLabel() ? html`<div class="button-conflict-hint">${this._hardButtonReplacementLabel()}</div>` : nothing}
                 <button class="checkbox-row nested-control ${hasMappedButton && draft.long_press_enabled ? "active" : ""}" ?disabled=${!hasMappedButton} @click=${() => {
                   this._toggleLongPressRow();
                 }}>
@@ -1767,6 +1772,21 @@ class SofabatonWifiCommandsTab extends LitElement {
         if (slotIdx !== idx && slot.is_power_off) next[slotIdx] = this._cloneCommandSlot({ ...slot, is_power_off: false });
       });
     }
+    const inputActivityId = String(next[idx].input_activity_id || "").trim();
+    if (inputActivityId) {
+      next.forEach((slot, slotIdx) => {
+        if (slotIdx !== idx && String(slot.input_activity_id || "").trim() === inputActivityId)
+          next[slotIdx] = this._cloneCommandSlot({ ...slot, input_activity_id: "" });
+      });
+    }
+    const hardButton = String(next[idx].hard_button || "").trim();
+    if (hardButton) {
+      next.forEach((slot, slotIdx) => {
+        if (slotIdx !== idx && String(slot.hard_button || "").trim() === hardButton)
+          next[slotIdx] = this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } });
+      });
+      await this._clearButtonFromOtherDevices(hardButton, String(this._selectedDeviceKey || ""));
+    }
     this._commandSaveError = "";
     delete this._commandEditorDrafts[idx];
     this._commandEditorDrafts = { ...this._commandEditorDrafts };
@@ -1926,6 +1946,61 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (!replacement) return `No current ${kind} command set`;
     const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
     return `Replaces "${name}" as the ${kind} command`;
+  }
+
+  private _inputActivityReplacementSlot(activityId: string) {
+    if (!Number.isInteger(this._activeCommandSlot) || !activityId) return null;
+    const activeIdx = Number(this._activeCommandSlot);
+    const commands = this._commandsList();
+    for (let idx = 0; idx < commands.length; idx += 1) {
+      if (idx === activeIdx) continue;
+      if (String(commands[idx].input_activity_id || "").trim() === activityId) return { index: idx, slot: commands[idx] };
+    }
+    return null;
+  }
+
+  private _inputActivityReplacementLabel() {
+    const draft = this._activeCommandDraft();
+    const activityId = String(draft?.input_activity_id || "").trim();
+    if (!activityId) return "Command called as part of Activity startup sequence";
+    const replacement = this._inputActivityReplacementSlot(activityId);
+    if (!replacement) return "Command called as part of Activity startup sequence";
+    const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
+    return `Replaces "${name}" as input for ${this._activityName(activityId)}`;
+  }
+
+  private _hardButtonConflictInfo(buttonId: string) {
+    if (!buttonId || !Number.isInteger(this._activeCommandSlot)) return null;
+    const activeIdx = Number(this._activeCommandSlot);
+    const currentDeviceKey = String(this._selectedDeviceKey || "");
+    const commands = this._commandsList();
+    for (let idx = 0; idx < commands.length; idx += 1) {
+      if (idx === activeIdx) continue;
+      if (String(commands[idx].hard_button || "").trim() === buttonId) {
+        const name = String(commands[idx].name || "").trim() || `Command ${idx + 1}`;
+        return { deviceName: this._selectedWifiDevice()?.device_name || "this device", slotName: name, isSameDevice: true, deviceKey: currentDeviceKey };
+      }
+    }
+    for (const device of this._wifiDevices) {
+      if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
+      for (let idx = 0; idx < device.commands.length; idx += 1) {
+        if (String(device.commands[idx]?.hard_button || "").trim() === buttonId) {
+          const name = String(device.commands[idx]?.name || "").trim() || `Command ${idx + 1}`;
+          return { deviceName: device.device_name, slotName: name, isSameDevice: false, deviceKey: device.device_key };
+        }
+      }
+    }
+    return null;
+  }
+
+  private _hardButtonReplacementLabel() {
+    const draft = this._activeCommandDraft();
+    const buttonId = String(draft?.hard_button || "").trim();
+    if (!buttonId) return "";
+    const conflict = this._hardButtonConflictInfo(buttonId);
+    if (!conflict) return "";
+    if (conflict.isSameDevice) return `Replaces "${conflict.slotName}" on this button`;
+    return `Replaces "${conflict.slotName}" from ${conflict.deviceName}`;
   }
 
   private _setPowerCommandFlag(kind: "on" | "off", enabled: boolean) {
@@ -2136,6 +2211,35 @@ class SofabatonWifiCommandsTab extends LitElement {
     next[idx] = this._commandSlotDefault(idx);
     this._confirmClearSlot = null;
     await this._setCommands(next);
+  }
+
+  private async _clearButtonFromOtherDevices(buttonId: string, currentDeviceKey: string) {
+    if (!buttonId || !this.hass?.callWS) return;
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId) return;
+    for (const device of this._wifiDevices) {
+      if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
+      const conflictIdx = device.commands.findIndex((cmd) => String(cmd?.hard_button || "").trim() === buttonId);
+      if (conflictIdx === -1) continue;
+      const slots = this._normalizeCommandsForStorage(device.commands, device.power_on_command_id, device.power_off_command_id);
+      const cleared = slots.map((slot, i) =>
+        i === conflictIdx ? this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } }) : slot
+      );
+      const { powerOnCommandId, powerOffCommandId } = this._derivePowerCommandIds(cleared);
+      const normalized = this._normalizeCommandsForStorage(cleared, powerOnCommandId, powerOffCommandId);
+      try {
+        await this.hass.callWS({
+          type: "sofabaton_x1s/command_config/set",
+          entity_id: entityId,
+          device_key: device.device_key,
+          commands: normalized,
+          power_on_command_id: powerOnCommandId ?? undefined,
+          power_off_command_id: powerOffCommandId ?? undefined,
+        });
+      } catch (_error) {
+        // Best-effort cross-device cleanup; current device save still proceeds.
+      }
+    }
   }
 
   private _syncStatusTone(status: string) {
@@ -2476,13 +2580,6 @@ class SofabatonWifiCommandsTab extends LitElement {
         const element = dropdown as HTMLElement;
         element.style.display = "none";
         element.setAttribute("aria-hidden", "true");
-      });
-      node.querySelectorAll("ha-selector-select, ha-control-select, ha-formfield").forEach((element) => {
-        const htmlElement = element as HTMLElement;
-        if (htmlElement.textContent?.includes("Perform action")) {
-          htmlElement.style.display = "none";
-          htmlElement.setAttribute("aria-hidden", "true");
-        }
       });
     };
 

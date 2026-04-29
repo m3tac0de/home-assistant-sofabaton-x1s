@@ -18,7 +18,7 @@ In the **Sofabaton Control Panel** card, open the **Wifi Commands** tab. Up to *
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/c225a472-7a22-4dbb-91dd-5a23df1fbc3f" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/cbc0a2e1-635b-4b7c-804d-e0e67051b643" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/16015586-a4c4-4f7c-99b8-51d5af71b35c" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/ead35c29-9a53-4906-a7af-c65009bba3fc" />  
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/262c8dfa-fd0d-48fc-9be4-3543ed11e6a8" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/bb737cf5-1d8e-41bd-95ea-b003e191b7d6" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/0fb3629a-dd97-4ccd-ab1b-caed75014a84" />
 

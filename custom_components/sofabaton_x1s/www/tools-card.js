@@ -620,13 +620,16 @@ var cardStyles = i`
   .hub-row-value { font-size: 13px; font-weight: 700; text-align: right; word-break: break-word; }
   .setting-title { font-size: 14px; font-weight: 700; }
   .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .setting-tile { min-height: 132px; padding: 16px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: linear-gradient(180deg, color-mix(in srgb, var(--card-background-color, #fff) 92%, white), var(--card-background-color, #fff)); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02); }
+  .setting-tile { min-height: 132px; display: flex; flex-direction: column; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: linear-gradient(180deg, color-mix(in srgb, var(--card-background-color, #fff) 92%, white), var(--card-background-color, #fff)); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02); overflow: hidden; }
   .setting-tile.toggle, .setting-tile.action { cursor: pointer; transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease; }
   .setting-tile.toggle:hover, .setting-tile.action:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06); transform: translateY(-1px); }
   .setting-tile.toggle:active, .setting-tile.action:active, .setting-tile.pressed { border-color: color-mix(in srgb, var(--primary-color) 70%, var(--divider-color)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 25%, transparent); transform: translateY(0); background: linear-gradient(180deg, color-mix(in srgb, var(--card-background-color, #fff) 84%, var(--primary-color)), color-mix(in srgb, var(--card-background-color, #fff) 92%, var(--primary-color))); }
   .setting-tile.disabled { opacity: 0.55; cursor: default; box-shadow: none; transform: none; }
+  .setting-tile-content { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px; }
   .setting-tile-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .setting-description { font-size: 13px; line-height: 1.45; color: var(--secondary-text-color); }
+  .setting-tile-footer { margin-top: auto; min-height: 24px; display: flex; align-items: center; justify-content: center; padding: 0 10px; border-top: 1px solid color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color)); font-size: 10px; font-weight: 800; letter-spacing: 0.24em; text-transform: uppercase; }
+  .setting-tile-footer--global { background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 82%, #08131c), color-mix(in srgb, var(--primary-color) 58%, #14324b)); color: white; border-top-color: color-mix(in srgb, var(--primary-color) 55%, transparent); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); }
   .setting-icon { font-size: 22px; line-height: 1; }
   .cache-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: -16px; }
   .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
@@ -1524,11 +1527,14 @@ function renderSettingTile(params) {
   }}
       @click=${params.onClick ?? A}
     >
-      <div class="setting-tile-header">
-        <div class="setting-title">${params.title}</div>
-        ${params.control}
+      <div class="setting-tile-content">
+        <div class="setting-tile-header">
+          <div class="setting-title">${params.title}</div>
+          ${params.control}
+        </div>
+        <div class="setting-description">${params.description}</div>
       </div>
-      <div class="setting-description">${params.description}</div>
+      ${params.footerLabel ? b2`<div class="setting-tile-footer ${params.footerClass ?? ""}">${params.footerLabel}</div>` : A}
     </div>
   `;
 }
@@ -1549,6 +1555,8 @@ function renderSettingsTab(params) {
     title: "Persistent Cache",
     description: "Store activity and device data locally for faster access.",
     classes: `toggle${busy ? " disabled" : ""}`,
+    footerLabel: "GLOBAL",
+    footerClass: "setting-tile-footer--global",
     control: b2`<ha-switch .checked=${params.persistentCacheEnabled} .disabled=${busy} @change=${(event) => {
       event.stopPropagation();
       params.onToggleSetting("persistent_cache", !!event.currentTarget.checked);
@@ -1947,6 +1955,21 @@ var SofabatonWifiCommandsTab = class extends i4 {
         next.forEach((slot, slotIdx) => {
           if (slotIdx !== idx && slot.is_power_off) next[slotIdx] = this._cloneCommandSlot({ ...slot, is_power_off: false });
         });
+      }
+      const inputActivityId = String(next[idx].input_activity_id || "").trim();
+      if (inputActivityId) {
+        next.forEach((slot, slotIdx) => {
+          if (slotIdx !== idx && String(slot.input_activity_id || "").trim() === inputActivityId)
+            next[slotIdx] = this._cloneCommandSlot({ ...slot, input_activity_id: "" });
+        });
+      }
+      const hardButton = String(next[idx].hard_button || "").trim();
+      if (hardButton) {
+        next.forEach((slot, slotIdx) => {
+          if (slotIdx !== idx && String(slot.hard_button || "").trim() === hardButton)
+            next[slotIdx] = this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } });
+        });
+        await this._clearButtonFromOtherDevices(hardButton, String(this._selectedDeviceKey || ""));
       }
       this._commandSaveError = "";
       delete this._commandEditorDrafts[idx];
@@ -2539,7 +2562,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
                         <span class="checkbox-icon input"><ha-icon icon=${INPUT_ICON}></ha-icon></span>
                         <span class="checkbox-copy">
                           <span>Set as Activity input</span>
-                          <span class="checkbox-subtext">${hasActivities ? "Command called as part of Activity startup sequence" : "No activities available for this hub."}</span>
+                          <span class="checkbox-subtext">${hasActivities ? this._inputActivityReplacementLabel() : "No activities available for this hub."}</span>
                         </span>
                       </span>
                       <ha-switch
@@ -2583,6 +2606,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
                   .value=${this._selectorValueForButton(draft)}
                   @value-changed=${(event) => this._handleHardButtonChanged(event)}
                 ></ha-selector>
+                ${this._hardButtonReplacementLabel() ? b2`<div class="button-conflict-hint">${this._hardButtonReplacementLabel()}</div>` : A}
                 <button class="checkbox-row nested-control ${hasMappedButton && draft.long_press_enabled ? "active" : ""}" ?disabled=${!hasMappedButton} @click=${() => {
       this._toggleLongPressRow();
     }}>
@@ -3242,6 +3266,57 @@ var SofabatonWifiCommandsTab = class extends i4 {
     const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
     return `Replaces "${name}" as the ${kind} command`;
   }
+  _inputActivityReplacementSlot(activityId) {
+    if (!Number.isInteger(this._activeCommandSlot) || !activityId) return null;
+    const activeIdx = Number(this._activeCommandSlot);
+    const commands = this._commandsList();
+    for (let idx = 0; idx < commands.length; idx += 1) {
+      if (idx === activeIdx) continue;
+      if (String(commands[idx].input_activity_id || "").trim() === activityId) return { index: idx, slot: commands[idx] };
+    }
+    return null;
+  }
+  _inputActivityReplacementLabel() {
+    const draft = this._activeCommandDraft();
+    const activityId = String(draft?.input_activity_id || "").trim();
+    if (!activityId) return "Command called as part of Activity startup sequence";
+    const replacement = this._inputActivityReplacementSlot(activityId);
+    if (!replacement) return "Command called as part of Activity startup sequence";
+    const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
+    return `Replaces "${name}" as input for ${this._activityName(activityId)}`;
+  }
+  _hardButtonConflictInfo(buttonId) {
+    if (!buttonId || !Number.isInteger(this._activeCommandSlot)) return null;
+    const activeIdx = Number(this._activeCommandSlot);
+    const currentDeviceKey = String(this._selectedDeviceKey || "");
+    const commands = this._commandsList();
+    for (let idx = 0; idx < commands.length; idx += 1) {
+      if (idx === activeIdx) continue;
+      if (String(commands[idx].hard_button || "").trim() === buttonId) {
+        const name = String(commands[idx].name || "").trim() || `Command ${idx + 1}`;
+        return { deviceName: this._selectedWifiDevice()?.device_name || "this device", slotName: name, isSameDevice: true, deviceKey: currentDeviceKey };
+      }
+    }
+    for (const device of this._wifiDevices) {
+      if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
+      for (let idx = 0; idx < device.commands.length; idx += 1) {
+        if (String(device.commands[idx]?.hard_button || "").trim() === buttonId) {
+          const name = String(device.commands[idx]?.name || "").trim() || `Command ${idx + 1}`;
+          return { deviceName: device.device_name, slotName: name, isSameDevice: false, deviceKey: device.device_key };
+        }
+      }
+    }
+    return null;
+  }
+  _hardButtonReplacementLabel() {
+    const draft = this._activeCommandDraft();
+    const buttonId = String(draft?.hard_button || "").trim();
+    if (!buttonId) return "";
+    const conflict = this._hardButtonConflictInfo(buttonId);
+    if (!conflict) return "";
+    if (conflict.isSameDevice) return `Replaces "${conflict.slotName}" on this button`;
+    return `Replaces "${conflict.slotName}" from ${conflict.deviceName}`;
+  }
   _setPowerCommandFlag(kind, enabled) {
     if (!Number.isInteger(this._activeCommandSlot)) return;
     const key = kind === "on" ? "is_power_on" : "is_power_off";
@@ -3394,6 +3469,33 @@ var SofabatonWifiCommandsTab = class extends i4 {
     next[idx] = this._commandSlotDefault(idx);
     this._confirmClearSlot = null;
     await this._setCommands(next);
+  }
+  async _clearButtonFromOtherDevices(buttonId, currentDeviceKey) {
+    if (!buttonId || !this.hass?.callWS) return;
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId) return;
+    for (const device of this._wifiDevices) {
+      if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
+      const conflictIdx = device.commands.findIndex((cmd) => String(cmd?.hard_button || "").trim() === buttonId);
+      if (conflictIdx === -1) continue;
+      const slots = this._normalizeCommandsForStorage(device.commands, device.power_on_command_id, device.power_off_command_id);
+      const cleared = slots.map(
+        (slot, i7) => i7 === conflictIdx ? this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } }) : slot
+      );
+      const { powerOnCommandId, powerOffCommandId } = this._derivePowerCommandIds(cleared);
+      const normalized = this._normalizeCommandsForStorage(cleared, powerOnCommandId, powerOffCommandId);
+      try {
+        await this.hass.callWS({
+          type: "sofabaton_x1s/command_config/set",
+          entity_id: entityId,
+          device_key: device.device_key,
+          commands: normalized,
+          power_on_command_id: powerOnCommandId ?? void 0,
+          power_off_command_id: powerOffCommandId ?? void 0
+        });
+      } catch (_error) {
+      }
+    }
   }
   _syncStatusTone(status) {
     if (status === "failed") return "sync-error";
@@ -3608,13 +3710,6 @@ var SofabatonWifiCommandsTab = class extends i4 {
         const element = dropdown;
         element.style.display = "none";
         element.setAttribute("aria-hidden", "true");
-      });
-      node.querySelectorAll("ha-selector-select, ha-control-select, ha-formfield").forEach((element) => {
-        const htmlElement = element;
-        if (htmlElement.textContent?.includes("Perform action")) {
-          htmlElement.style.display = "none";
-          htmlElement.setAttribute("aria-hidden", "true");
-        }
       });
     };
     const tryHide = () => {
@@ -3968,6 +4063,7 @@ SofabatonWifiCommandsTab.styles = i`
     .checkbox-icon.input { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--ha-card-background, transparent)); }
     .checkbox-copy > span:first-child { font-size: 14px; line-height: 1.35; }
     .checkbox-subtext { min-height: 1.35em; font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); white-space: normal; }
+    .button-conflict-hint { font-size: 12px; line-height: 1.35; color: var(--warning-color, var(--secondary-text-color)); padding: 2px 0 4px; }
     .checkbox-row ha-switch { align-self: center; }
     .checkbox-row.nested-control { padding-left: 36px; }
     .input-selector-wrap.nested-control { box-sizing: border-box; padding-left: 36px; }

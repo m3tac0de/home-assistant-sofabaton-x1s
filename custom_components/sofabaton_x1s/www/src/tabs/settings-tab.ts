@@ -31,6 +31,8 @@ export function renderSettingsTab(params: {
           title: "Persistent Cache",
           description: "Store activity and device data locally for faster access.",
           classes: `toggle${busy ? " disabled" : ""}`,
+          footerLabel: "GLOBAL",
+          footerClass: "setting-tile-footer--global",
           control: html`<ha-switch .checked=${params.persistentCacheEnabled} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("persistent_cache", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
           onClick: busy ? undefined : () => params.onToggleSetting("persistent_cache", !params.persistentCacheEnabled),
         })}
