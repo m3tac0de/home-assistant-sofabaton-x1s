@@ -5,6 +5,8 @@ export function renderSettingTile(params: {
   description: string;
   classes?: string;
   control: unknown;
+  footerLabel?: string;
+  footerClass?: string;
   onClick?: () => void;
 }) {
   return html`
@@ -26,11 +28,16 @@ export function renderSettingTile(params: {
       }}
       @click=${params.onClick ?? nothing}
     >
-      <div class="setting-tile-header">
-        <div class="setting-title">${params.title}</div>
-        ${params.control}
+      <div class="setting-tile-content">
+        <div class="setting-tile-header">
+          <div class="setting-title">${params.title}</div>
+          ${params.control}
+        </div>
+        <div class="setting-description">${params.description}</div>
       </div>
-      <div class="setting-description">${params.description}</div>
+      ${params.footerLabel
+        ? html`<div class="setting-tile-footer ${params.footerClass ?? ""}">${params.footerLabel}</div>`
+        : nothing}
     </div>
   `;
 }

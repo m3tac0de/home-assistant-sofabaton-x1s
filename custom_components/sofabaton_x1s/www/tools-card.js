@@ -620,13 +620,16 @@ var cardStyles = i`
   .hub-row-value { font-size: 13px; font-weight: 700; text-align: right; word-break: break-word; }
   .setting-title { font-size: 14px; font-weight: 700; }
   .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .setting-tile { min-height: 132px; padding: 16px; display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: linear-gradient(180deg, color-mix(in srgb, var(--card-background-color, #fff) 92%, white), var(--card-background-color, #fff)); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02); }
+  .setting-tile { min-height: 132px; display: flex; flex-direction: column; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: linear-gradient(180deg, color-mix(in srgb, var(--card-background-color, #fff) 92%, white), var(--card-background-color, #fff)); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02); overflow: hidden; }
   .setting-tile.toggle, .setting-tile.action { cursor: pointer; transition: border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease; }
   .setting-tile.toggle:hover, .setting-tile.action:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06); transform: translateY(-1px); }
   .setting-tile.toggle:active, .setting-tile.action:active, .setting-tile.pressed { border-color: color-mix(in srgb, var(--primary-color) 70%, var(--divider-color)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary-color) 25%, transparent); transform: translateY(0); background: linear-gradient(180deg, color-mix(in srgb, var(--card-background-color, #fff) 84%, var(--primary-color)), color-mix(in srgb, var(--card-background-color, #fff) 92%, var(--primary-color))); }
   .setting-tile.disabled { opacity: 0.55; cursor: default; box-shadow: none; transform: none; }
+  .setting-tile-content { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 16px; }
   .setting-tile-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
   .setting-description { font-size: 13px; line-height: 1.45; color: var(--secondary-text-color); }
+  .setting-tile-footer { margin-top: auto; min-height: 24px; display: flex; align-items: center; justify-content: center; padding: 0 10px; border-top: 1px solid color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color)); font-size: 10px; font-weight: 800; letter-spacing: 0.24em; text-transform: uppercase; }
+  .setting-tile-footer--global { background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 82%, #08131c), color-mix(in srgb, var(--primary-color) 58%, #14324b)); color: white; border-top-color: color-mix(in srgb, var(--primary-color) 55%, transparent); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); }
   .setting-icon { font-size: 22px; line-height: 1; }
   .cache-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: -16px; }
   .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
@@ -1524,11 +1527,14 @@ function renderSettingTile(params) {
   }}
       @click=${params.onClick ?? A}
     >
-      <div class="setting-tile-header">
-        <div class="setting-title">${params.title}</div>
-        ${params.control}
+      <div class="setting-tile-content">
+        <div class="setting-tile-header">
+          <div class="setting-title">${params.title}</div>
+          ${params.control}
+        </div>
+        <div class="setting-description">${params.description}</div>
       </div>
-      <div class="setting-description">${params.description}</div>
+      ${params.footerLabel ? b2`<div class="setting-tile-footer ${params.footerClass ?? ""}">${params.footerLabel}</div>` : A}
     </div>
   `;
 }
@@ -1549,6 +1555,8 @@ function renderSettingsTab(params) {
     title: "Persistent Cache",
     description: "Store activity and device data locally for faster access.",
     classes: `toggle${busy ? " disabled" : ""}`,
+    footerLabel: "GLOBAL",
+    footerClass: "setting-tile-footer--global",
     control: b2`<ha-switch .checked=${params.persistentCacheEnabled} .disabled=${busy} @change=${(event) => {
       event.stopPropagation();
       params.onToggleSetting("persistent_cache", !!event.currentTarget.checked);
