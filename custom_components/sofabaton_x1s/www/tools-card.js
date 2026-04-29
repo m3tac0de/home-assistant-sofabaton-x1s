@@ -1,4 +1,4 @@
-// node_modules/@lit/reactive-element/css-tag.js
+// ../../../node_modules/@lit/reactive-element/css-tag.js
 var t = globalThis;
 var e = t.ShadowRoot && (void 0 === t.ShadyCSS || t.ShadyCSS.nativeShadow) && "adoptedStyleSheets" in Document.prototype && "replace" in CSSStyleSheet.prototype;
 var s = /* @__PURE__ */ Symbol();
@@ -43,7 +43,7 @@ var c = e ? (t4) => t4 : (t4) => t4 instanceof CSSStyleSheet ? ((t5) => {
   return r(e5);
 })(t4) : t4;
 
-// node_modules/@lit/reactive-element/reactive-element.js
+// ../../../node_modules/@lit/reactive-element/reactive-element.js
 var { is: i2, defineProperty: e2, getOwnPropertyDescriptor: h, getOwnPropertyNames: r2, getOwnPropertySymbols: o2, getPrototypeOf: n2 } = Object;
 var a = globalThis;
 var c2 = a.trustedTypes;
@@ -265,7 +265,7 @@ var y = class extends HTMLElement {
 };
 y.elementStyles = [], y.shadowRootOptions = { mode: "open" }, y[d("elementProperties")] = /* @__PURE__ */ new Map(), y[d("finalized")] = /* @__PURE__ */ new Map(), p?.({ ReactiveElement: y }), (a.reactiveElementVersions ?? (a.reactiveElementVersions = [])).push("2.1.2");
 
-// node_modules/lit-html/lit-html.js
+// ../../../node_modules/lit-html/lit-html.js
 var t2 = globalThis;
 var i3 = (t4) => t4;
 var s2 = t2.trustedTypes;
@@ -520,7 +520,7 @@ var D = (t4, i7, s4) => {
   return h3._$AI(t4), h3;
 };
 
-// node_modules/lit-element/lit-element.js
+// ../../../node_modules/lit-element/lit-element.js
 var s3 = globalThis;
 var i4 = class extends y {
   constructor() {
@@ -1732,7 +1732,7 @@ function renderLogsTab(params) {
   });
 }
 
-// node_modules/lit-html/directive.js
+// ../../../node_modules/lit-html/directive.js
 var e4 = (t4) => (...e5) => ({ _$litDirective$: t4, values: e5 });
 var i5 = class {
   constructor(t4) {
@@ -1751,12 +1751,12 @@ var i5 = class {
   }
 };
 
-// node_modules/lit-html/directive-helpers.js
+// ../../../node_modules/lit-html/directive-helpers.js
 var { I: t3 } = j;
 var m2 = {};
 var p3 = (o5, t4 = m2) => o5._$AH = t4;
 
-// node_modules/lit-html/directives/keyed.js
+// ../../../node_modules/lit-html/directives/keyed.js
 var i6 = e4(class extends i5 {
   constructor() {
     super(...arguments), this.key = A;
@@ -1947,6 +1947,21 @@ var SofabatonWifiCommandsTab = class extends i4 {
         next.forEach((slot, slotIdx) => {
           if (slotIdx !== idx && slot.is_power_off) next[slotIdx] = this._cloneCommandSlot({ ...slot, is_power_off: false });
         });
+      }
+      const inputActivityId = String(next[idx].input_activity_id || "").trim();
+      if (inputActivityId) {
+        next.forEach((slot, slotIdx) => {
+          if (slotIdx !== idx && String(slot.input_activity_id || "").trim() === inputActivityId)
+            next[slotIdx] = this._cloneCommandSlot({ ...slot, input_activity_id: "" });
+        });
+      }
+      const hardButton = String(next[idx].hard_button || "").trim();
+      if (hardButton) {
+        next.forEach((slot, slotIdx) => {
+          if (slotIdx !== idx && String(slot.hard_button || "").trim() === hardButton)
+            next[slotIdx] = this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } });
+        });
+        await this._clearButtonFromOtherDevices(hardButton, String(this._selectedDeviceKey || ""));
       }
       this._commandSaveError = "";
       delete this._commandEditorDrafts[idx];
@@ -2539,7 +2554,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
                         <span class="checkbox-icon input"><ha-icon icon=${INPUT_ICON}></ha-icon></span>
                         <span class="checkbox-copy">
                           <span>Set as Activity input</span>
-                          <span class="checkbox-subtext">${hasActivities ? "Command called as part of Activity startup sequence" : "No activities available for this hub."}</span>
+                          <span class="checkbox-subtext">${hasActivities ? this._inputActivityReplacementLabel() : "No activities available for this hub."}</span>
                         </span>
                       </span>
                       <ha-switch
@@ -2583,6 +2598,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
                   .value=${this._selectorValueForButton(draft)}
                   @value-changed=${(event) => this._handleHardButtonChanged(event)}
                 ></ha-selector>
+                ${this._hardButtonReplacementLabel() ? b2`<div class="button-conflict-hint">${this._hardButtonReplacementLabel()}</div>` : A}
                 <button class="checkbox-row nested-control ${hasMappedButton && draft.long_press_enabled ? "active" : ""}" ?disabled=${!hasMappedButton} @click=${() => {
       this._toggleLongPressRow();
     }}>
@@ -3242,6 +3258,57 @@ var SofabatonWifiCommandsTab = class extends i4 {
     const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
     return `Replaces "${name}" as the ${kind} command`;
   }
+  _inputActivityReplacementSlot(activityId) {
+    if (!Number.isInteger(this._activeCommandSlot) || !activityId) return null;
+    const activeIdx = Number(this._activeCommandSlot);
+    const commands = this._commandsList();
+    for (let idx = 0; idx < commands.length; idx += 1) {
+      if (idx === activeIdx) continue;
+      if (String(commands[idx].input_activity_id || "").trim() === activityId) return { index: idx, slot: commands[idx] };
+    }
+    return null;
+  }
+  _inputActivityReplacementLabel() {
+    const draft = this._activeCommandDraft();
+    const activityId = String(draft?.input_activity_id || "").trim();
+    if (!activityId) return "Command called as part of Activity startup sequence";
+    const replacement = this._inputActivityReplacementSlot(activityId);
+    if (!replacement) return "Command called as part of Activity startup sequence";
+    const name = String(replacement.slot.name || "").trim() || `Command ${replacement.index + 1}`;
+    return `Replaces "${name}" as input for ${this._activityName(activityId)}`;
+  }
+  _hardButtonConflictInfo(buttonId) {
+    if (!buttonId || !Number.isInteger(this._activeCommandSlot)) return null;
+    const activeIdx = Number(this._activeCommandSlot);
+    const currentDeviceKey = String(this._selectedDeviceKey || "");
+    const commands = this._commandsList();
+    for (let idx = 0; idx < commands.length; idx += 1) {
+      if (idx === activeIdx) continue;
+      if (String(commands[idx].hard_button || "").trim() === buttonId) {
+        const name = String(commands[idx].name || "").trim() || `Command ${idx + 1}`;
+        return { deviceName: this._selectedWifiDevice()?.device_name || "this device", slotName: name, isSameDevice: true, deviceKey: currentDeviceKey };
+      }
+    }
+    for (const device of this._wifiDevices) {
+      if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
+      for (let idx = 0; idx < device.commands.length; idx += 1) {
+        if (String(device.commands[idx]?.hard_button || "").trim() === buttonId) {
+          const name = String(device.commands[idx]?.name || "").trim() || `Command ${idx + 1}`;
+          return { deviceName: device.device_name, slotName: name, isSameDevice: false, deviceKey: device.device_key };
+        }
+      }
+    }
+    return null;
+  }
+  _hardButtonReplacementLabel() {
+    const draft = this._activeCommandDraft();
+    const buttonId = String(draft?.hard_button || "").trim();
+    if (!buttonId) return "";
+    const conflict = this._hardButtonConflictInfo(buttonId);
+    if (!conflict) return "";
+    if (conflict.isSameDevice) return `Replaces "${conflict.slotName}" on this button`;
+    return `Replaces "${conflict.slotName}" from ${conflict.deviceName}`;
+  }
   _setPowerCommandFlag(kind, enabled) {
     if (!Number.isInteger(this._activeCommandSlot)) return;
     const key = kind === "on" ? "is_power_on" : "is_power_off";
@@ -3394,6 +3461,33 @@ var SofabatonWifiCommandsTab = class extends i4 {
     next[idx] = this._commandSlotDefault(idx);
     this._confirmClearSlot = null;
     await this._setCommands(next);
+  }
+  async _clearButtonFromOtherDevices(buttonId, currentDeviceKey) {
+    if (!buttonId || !this.hass?.callWS) return;
+    const entityId = String(this._entityId() || "").trim();
+    if (!entityId) return;
+    for (const device of this._wifiDevices) {
+      if (device.device_key === currentDeviceKey || !Array.isArray(device.commands)) continue;
+      const conflictIdx = device.commands.findIndex((cmd) => String(cmd?.hard_button || "").trim() === buttonId);
+      if (conflictIdx === -1) continue;
+      const slots = this._normalizeCommandsForStorage(device.commands, device.power_on_command_id, device.power_off_command_id);
+      const cleared = slots.map(
+        (slot, i7) => i7 === conflictIdx ? this._cloneCommandSlot({ ...slot, hard_button: "", long_press_enabled: false, long_press_action: { ...DEFAULT_ACTION } }) : slot
+      );
+      const { powerOnCommandId, powerOffCommandId } = this._derivePowerCommandIds(cleared);
+      const normalized = this._normalizeCommandsForStorage(cleared, powerOnCommandId, powerOffCommandId);
+      try {
+        await this.hass.callWS({
+          type: "sofabaton_x1s/command_config/set",
+          entity_id: entityId,
+          device_key: device.device_key,
+          commands: normalized,
+          power_on_command_id: powerOnCommandId ?? void 0,
+          power_off_command_id: powerOffCommandId ?? void 0
+        });
+      } catch (_error) {
+      }
+    }
   }
   _syncStatusTone(status) {
     if (status === "failed") return "sync-error";
@@ -3968,6 +4062,7 @@ SofabatonWifiCommandsTab.styles = i`
     .checkbox-icon.input { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, var(--ha-card-background, transparent)); }
     .checkbox-copy > span:first-child { font-size: 14px; line-height: 1.35; }
     .checkbox-subtext { min-height: 1.35em; font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); white-space: normal; }
+    .button-conflict-hint { font-size: 12px; line-height: 1.35; color: var(--warning-color, var(--secondary-text-color)); padding: 2px 0 4px; }
     .checkbox-row ha-switch { align-self: center; }
     .checkbox-row.nested-control { padding-left: 36px; }
     .input-selector-wrap.nested-control { box-sizing: border-box; padding-left: 36px; }
