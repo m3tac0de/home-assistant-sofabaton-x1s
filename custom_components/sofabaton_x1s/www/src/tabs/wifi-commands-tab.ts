@@ -2581,13 +2581,6 @@ class SofabatonWifiCommandsTab extends LitElement {
         element.style.display = "none";
         element.setAttribute("aria-hidden", "true");
       });
-      node.querySelectorAll("ha-selector-select, ha-control-select, ha-formfield").forEach((element) => {
-        const htmlElement = element as HTMLElement;
-        if (htmlElement.textContent?.includes("Perform action")) {
-          htmlElement.style.display = "none";
-          htmlElement.setAttribute("aria-hidden", "true");
-        }
-      });
     };
 
     const tryHide = () => {
