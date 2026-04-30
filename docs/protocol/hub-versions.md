@@ -26,8 +26,8 @@ If `HVER` is absent or unrecognised, default to X1 behaviour.
 | X2 (native)| `_sofabaton_hub._udp.local.`  |
 | X2 (proxy) | `_x1hub._udp.local.`          |
 
-X2 hubs re-advertise under the `_x1hub._udp.local.` service type when acting as a
-proxy, to maintain compatibility with existing clients.
+This repository's proxy intentionally advertises X2 as `_x1hub._udp.local.` for
+compatibility with existing clients and tooling.
 
 ---
 
@@ -68,7 +68,7 @@ The proxy reply to an app NOTIFY_ME probe differs by hub version:
 
 | Opcode   | Hub versions | Name              | Notes |
 |----------|-------------|-------------------|-------|
-| `0x0023` | X1, X1S     | `FIND_REMOTE`     | `[0x01]` payload |
+| `0x0023` | X1, X1S     | `FIND_REMOTE`     | empty payload observed in this implementation |
 | `0x0323` | X2          | `FIND_REMOTE_X2`  | `[0x00, 0x00, 0x08]` payload |
 | `0x0064` | X1, X1S     | `REMOTE_SYNC`     | Force remote↔hub sync |
 | `0x012E` | X2          | `X2_REMOTE_LIST`  | List connected remotes |
@@ -83,6 +83,12 @@ The proxy reply to an app NOTIFY_ME probe differs by hub version:
 | `0xD538` | X1S, X2      | `ACTIVITY_ASSIGN_FINALIZE`  |
 | `0x0265` | X2           | `ACTIVITY_ASSIGN_COMMIT`    |
 
+Observed follow-up for `DELETE_DEVICE`:
+
+- all observed versions use `DELETE_DEVICE` (`0x0109`) for the delete request itself
+- X1 follows with `ACTIVITY_CONFIRM` (`0x7B38`) when affected activities must be saved
+- X1S / X2 follow with `ACTIVITY_ASSIGN_FINALIZE` (`0xD538`)
+
 ### Keepalive
 
 | Opcode   | Hub versions | Name         | Notes |
@@ -91,6 +97,19 @@ The proxy reply to an app NOTIFY_ME probe differs by hub version:
 | `0x0242` | X1S, X2     | `PING2_ACK`  | Hub → Client response |
 
 X1 hubs do not respond to `PING2` with `PING2_ACK`.
+
+---
+
+## Activity inputs
+
+`REQ_ACTIVITY_INPUTS` (`0x0148`) is used as the request opcode across all observed
+versions in this repository. The important version difference is the response layout:
+
+- X1 uses the older activity-inputs payload shape
+- X1S / X2 use the newer `0x47` payload layout with subtype-specific record sizes
+
+So the protocol distinction here is primarily in **response parsing**, not in the
+request opcode itself.
 
 ---
 

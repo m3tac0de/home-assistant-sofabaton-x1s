@@ -1,7 +1,9 @@
 # Frame Format
 
-Every message exchanged over TCP (and over UDP for discovery handshakes) uses the
-same binary frame structure.
+Most protocol messages exchanged over TCP use the same binary frame structure. The
+UDP `CALL_ME` handshake also uses this structure. The app's `NOTIFY_ME` discovery
+probe is best treated as a fixed 5-byte magic probe that happens to match the same
+sync/opcode/checksum pattern.
 
 ---
 
@@ -106,5 +108,12 @@ The same notation is used in the [opcodes.md](opcodes.md) tables.
 
 All multi-byte integers are **big-endian** unless noted otherwise.
 
-String/text payloads are typically **UTF-16 LE** (for device/command names stored on
-the hub) or **UTF-8** (for mDNS TXT records and HTTP callback payloads).
+String/text encodings are **record-dependent**:
+
+- X1 catalog names are often **UTF-8**
+- X1S/X2 catalog names are often **UTF-16 BE**
+- Command labels are observed as **ASCII**, **UTF-16 BE**, and some other variants
+- Macro labels are commonly **UTF-16 LE** or **ASCII**
+- mDNS TXT records and HTTP callback payloads are **UTF-8**
+
+Do not assume a single text encoding applies across the entire protocol.

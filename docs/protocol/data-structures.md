@@ -22,41 +22,42 @@ REQ_ACTIVATE payload: [entity_id_lo, key_code]
 
 ## Device catalog row (`CATALOG_ROW_DEVICE`, `0xD50B` / `0x7B0B`)
 
-One frame per device, in a burst response to `REQ_DEVICES`:
+One frame per device, in a burst response to `REQ_DEVICES`.
 
-```
- Byte  Field
-    0  device_id   (1–99)
-    1  brand_code  (brand classification byte)
-    2  name_length (byte count of name that follows)
-  3..  name        (UTF-8, length bytes)
-    …  padding / additional metadata
-```
+Observed layouts are **version-specific** and should be parsed as fixed-position
+records rather than short `[id][len][name]` tuples:
 
-The brand code is an internal Sofabaton classification; it is opaque in the
-protocol (no known public mapping).
+- X1S / X2 (`0xD50B`): device ID is observed at payload bytes `6..7`; name and brand
+  are stored in fixed-width text regions and are commonly decoded as **UTF-16 BE**
+- X1 (`0x7B0B`): device ID is also observed at payload bytes `6..7`; name and brand
+  are stored in later fixed-width regions and are commonly decoded as **UTF-8**
+
+The exact meaning of several surrounding bytes remains undocumented.
 
 ---
 
 ## Activity catalog row (`CATALOG_ROW_ACTIVITY`, `0xD53B` / `0x7B3B`)
 
-One frame per activity, in a burst response to `REQ_ACTIVITIES`:
+One frame per activity, in a burst response to `REQ_ACTIVITIES`.
 
-```
- Byte  Field
-    0  activity_id  (101–255, low byte)
-    1  active_flag  (0x01 = currently active, 0x00 = inactive)
-    2  name_length
-  3..  name (UTF-8)
-    …  member device IDs and metadata
-```
+Observed layouts are again **version-specific**:
+
+- activity ID is observed at payload bytes `6..7`
+- an active-state byte is observed near offset `35`
+- X1S / X2 activity labels are commonly decoded from a fixed text region using
+  **UTF-16 BE**
+- X1 activity labels are commonly decoded from a later **UTF-8** region
+
+Some rows also carry a `needs_confirm` style flag, but its exact schema is still
+heuristic.
 
 ---
 
 ## Device button / command record
 
-Command records are embedded in `DEVBTN_PAGE` frames. Multiple records can be packed
-into a single frame, separated by `0xFF` bytes:
+Command records are embedded in `DEVBTN_PAGE` frames. Multiple records are often
+packed into a single frame, commonly separated by `0xFF` bytes, but there are
+important variants.
 
 ```
 One chunk (between 0xFF separators):
@@ -65,7 +66,7 @@ One chunk (between 0xFF separators):
     0   device_id   (lo byte of owning device)
     1   command_id  (1–255)
   2..8  control_block (7 bytes: IR code, protocol type, or zeros for IP commands)
-  9..   label (UTF-16-LE or ASCII, zero-terminated or padded)
+  9..   label (encoding varies by record type)
 ```
 
 The **control block** format:
@@ -74,12 +75,19 @@ The **control block** format:
 - The first byte `0x03` or `0x0D` indicates specific IR protocol variants
 - All-zero bytes 0–4 indicate no IR code (virtual/IP device)
 
-Label encoding heuristics (in priority order):
+Observed label encoding heuristics:
 1. UTF-32-LE (detected by every 4th byte being `0x00`)
 2. ASCII (bytes 0x20–0x7E, no nulls)
-3. UTF-16-LE (interleaved nulls)
-4. UTF-16-BE (fallback)
+3. UTF-16-BE
+4. Other misaligned or padded variants
 5. Latin-1 (last resort)
+
+Known variants:
+
+- some command pages use alternate opcodes with shifted payload offsets
+- some X2 Wifi-device command pages use fixed-width 70-byte records with no `0xFF`
+  separators
+- labels are not uniformly UTF-16 LE
 
 ---
 
@@ -106,8 +114,14 @@ Records are 18 bytes, packed contiguously:
 
 ## Macro record
 
-Macro records are returned as multi-frame bursts to `REQ_MACRO_LABELS`. Each record
-associates a macro command ID with a human-readable label:
+Macro records are returned as multi-frame bursts to `REQ_MACRO_LABELS`. Two request
+forms are currently known:
+
+- `[act_lo, 0xFF]` — fetch macro labels for the activity as a burst
+- `[act_lo, macro_button]` — fetch the backing payload for a specific macro button
+  such as `POWER_ON` (`0xC6`) or `POWER_OFF` (`0xC7`)
+
+Each decoded macro record associates a macro command ID with a human-readable label:
 
 ```
 activity_id  (1 byte — the activity this macro belongs to)
@@ -122,8 +136,8 @@ explicit separator bytes).
 
 ## Activity favorites / keybinding slot
 
-A favorites slot maps a remote button position to a device command for display in
-the app's activity view:
+A cached favorite or keybinding slot maps a remote button position to a device
+command for display in the app's activity view:
 
 ```
 button_id   (position on remote, may be 0 if unassigned)
@@ -134,9 +148,26 @@ source      ("keymap" or "activity_map" — which frame provided this data)
 
 ---
 
+## Favorites order response
+
+The hub exposes a separate favorites-order response family used for reorder/delete
+flows:
+
+```
+[01 00 01 01 00 01] [act_lo] [fav_id slot] × N
+```
+
+Each pair describes which hub-internal favorite identifier occupies which display
+slot. This response belongs to family `0x63` and is triggered by `FAV_ORDER_REQ`
+(`0x0162`).
+
+---
+
 ## IP command definition (Wifi Device creation)
 
-Sent with `DEFINE_IP_CMD` (`0x0ED3`) during Wifi Device creation:
+Sent with `DEFINE_IP_CMD` (`0x0ED3`) during Wifi Device creation. In observed
+traffic this payload is preceded by a fixed-width UTF-16LE button label block, after
+which the HTTP fields are encoded as:
 
 ```
 method_len   (1 byte)

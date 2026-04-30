@@ -16,11 +16,11 @@ Direction: **A→H** = app/client to hub, **H→A** = hub to app/client, **↔**
 | `0x023C` | `REQ_BUTTONS`           | `[act_lo, 0xFF]` | All       | Fetch button↔command keymap for an activity |
 | `0x025C` | `REQ_COMMANDS`          | `[ent_lo, 0xFF]` or `[ent_lo, cmd_id]` | All | Full command list or single command |
 | `0x023F` | `REQ_ACTIVATE`          | `[id_lo, key_code]` | All     | Activate activity or send command |
-| `0x016C` | `REQ_ACTIVITY_MAP`      | `[act_lo]`    | X1           | Request activity favorites mapping |
-| `0x024D` | `REQ_MACRO_LABELS`      | `[act_lo, 0xFF]` | All       | Request macro definitions for an activity |
-| `0x0148` | `REQ_ACTIVITY_INPUTS`   | `[0x01]`      | X1S, X2      | Request activity input candidates |
-| `0x0109` | `DELETE_DEVICE`         | `[dev_lo]`    | X1           | Remove device from hub |
-| `0x0023` | `FIND_REMOTE`           | `[0x01]`      | X1, X1S      | Trigger remote buzzer |
+| `0x016C` | `REQ_ACTIVITY_MAP`      | `[act_lo]`    | X1           | X1 request opcode for activity favorites mapping; X1S/X2 use different activity-assignment and mapping flows |
+| `0x024D` | `REQ_MACRO_LABELS`      | `[act_lo, 0xFF]` or `[act_lo, macro_button]` | All | Fetch macro labels or a specific macro payload |
+| `0x0148` | `REQ_ACTIVITY_INPUTS`   | `[device_lo]` | All observed | Request activity input candidates for one device; response layout differs between X1 and X1S/X2 |
+| `0x0109` | `DELETE_DEVICE`         | `[dev_lo]`    | All observed | Remove device from hub; follow-up activity confirmation opcode differs by hub version |
+| `0x0023` | `FIND_REMOTE`           | (none observed) | X1, X1S    | Trigger remote buzzer |
 | `0x0323` | `FIND_REMOTE_X2`        | `[0x00, 0x00, 0x08]` | X2  | Trigger remote buzzer (X2) |
 | `0x0064` | `REMOTE_SYNC`           | (none)        | X1, X1S      | Force remote ↔ hub re-sync |
 | `0x012E` | `X2_REMOTE_LIST`        | `[0x00]`      | X2           | List connected remotes |
@@ -57,6 +57,24 @@ These opcodes are used in order to create a virtual "Wifi Device" (see [wifi-com
 |----------|-----------------------------|-----------|-------|
 | `0xD538` | `ACTIVITY_ASSIGN_FINALIZE`  | A→H       | Save activity after macro assignment |
 | `0x7B38` | `ACTIVITY_CONFIRM`          | A→H       | Confirm activity assignment row (X1) |
+
+### Cross-version workflow notes
+
+- `DELETE_DEVICE` (`0x0109`) is followed by an activity confirmation step when the
+  deletion changes an activity:
+  - X1 uses `ACTIVITY_CONFIRM` (`0x7B38`)
+  - X1S / X2 use `ACTIVITY_ASSIGN_FINALIZE` (`0xD538`)
+- `REQ_ACTIVITY_INPUTS` (`0x0148`) is used as the request opcode across all observed
+  versions in this repository, but the returned `0x47` payload layout differs between
+  X1 and X1S/X2
+
+### Favorites write flow
+
+| Family / Opcode | Name                 | Direction | Notes |
+|-----------------|----------------------|-----------|-------|
+| family `0x63`   | `FAV_ORDER_RESP`     | H→A       | Current `(fav_id, slot)` ordering, response to `0x0162` |
+| family `0x61`   | `SET_FAVORITES_ORDER`| A→H       | Writes a new order list |
+| family `0x65`   | `FAV_COMMIT`         | A→H       | Commit step after reorder/delete |
 
 ---
 
@@ -201,3 +219,7 @@ total number of frames to expect. The burst is complete when either:
 - A TAIL opcode (`0x495D`, `0x303D`, or `0x8F5D`) is received.
 
 Each PAGE frame carries a **frame number** at payload byte 2 (1-indexed).
+
+Not every data family follows this exact header/page/tail structure. Favorites-order
+responses, for example, are currently treated as single payload frames in family
+`0x63`.
