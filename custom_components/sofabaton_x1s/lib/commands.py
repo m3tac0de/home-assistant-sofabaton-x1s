@@ -11,13 +11,6 @@ from .protocol_const import (
     opcode_family,
     OP_MARKER,
     OP_DEVBTN_SINGLE,
-    OP_DEVBTN_PAGE_ALT1,
-    OP_DEVBTN_PAGE_ALT2,
-    OP_DEVBTN_PAGE_ALT3,
-    OP_DEVBTN_PAGE_ALT4,
-    OP_DEVBTN_PAGE_ALT5,
-    OP_DEVBTN_PAGE_ALT6,
-    OP_DEVBTN_PAGE_ALT7,
     OP_KEYMAP_CONT,
     OP_KEYMAP_FINAL_X1S,
     OP_KEYMAP_PAGE_X2_C03D,
@@ -340,19 +333,7 @@ def parse_command_burst_frame(
         return None
 
     if payload[:2] != b"\x01\x00":
-        total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
-        legacy_header = frame_no == 1 and total_frames is not None and total_frames > 0
-        return CommandBurstFrame(
-            opcode=opcode,
-            hub_line="legacy",
-            layout_kind="legacy",
-            role="header" if legacy_header else "page",
-            frame_no=frame_no,
-            device_id=payload[3],
-            data_start=6,
-            total_frames=total_frames if legacy_header else None,
-            total_commands=payload[6] if legacy_header and len(payload) > 6 else None,
-        )
+        return None
 
     if frame_no == 1 and len(payload) > 7 and payload[4] == 0x00:
         layout_kind = "shared_classic"
@@ -389,6 +370,24 @@ def parse_command_burst_frame(
             format_marker=payload[8] if len(payload) > 8 else None,
         )
 
+    if (
+        len(payload) > 10
+        and payload[3] == payload[4]
+        and payload[5] in (0x03, 0x0D, 0x1A, 0x1C)
+        and payload[6:10] == b"\x00" * 4
+    ):
+        return CommandBurstFrame(
+            opcode=opcode,
+            hub_line="x1" if hinted_line == "shared" else hinted_line,
+            layout_kind="x1_page_dupdev",
+            role="page",
+            frame_no=frame_no,
+            device_id=payload[3],
+            data_start=4,
+            first_command_id=payload[5],
+            format_marker=payload[6] if len(payload) > 6 else None,
+        )
+
     role = "page"
     return CommandBurstFrame(
         opcode=opcode,
@@ -413,30 +412,6 @@ class DeviceCommandAssembler:
         if dev_id not in self._buffers:
             self._buffers[dev_id] = _CommandBurst()
         return self._buffers[dev_id]
-
-    def _data_offset(self, opcode: int) -> int:
-        """Return the start offset for command data within a frame payload."""
-
-        # Some hubs send command pages using slightly different layouts. In
-        # particular, opcodes 0xF75D and 0xA35D place the device ID and command
-        # records two bytes earlier than the typical DEVBTN_* frames. Account
-        # for this to avoid trimming off the first record (e.g. the "Stop"
-        # command in the newly observed response).
-        if opcode in (
-            OP_DEVBTN_PAGE_ALT1,
-            OP_DEVBTN_PAGE_ALT2,
-            OP_DEVBTN_PAGE_ALT3,
-            OP_DEVBTN_PAGE_ALT4,
-            OP_DEVBTN_PAGE_ALT5,
-            OP_DEVBTN_PAGE_ALT6,
-            OP_DEVBTN_PAGE_ALT7,
-        ):
-            return 4
-
-        if opcode == OP_DEVBTN_SINGLE:
-            return 7
-        
-        return 6
 
     def feed(
         self,

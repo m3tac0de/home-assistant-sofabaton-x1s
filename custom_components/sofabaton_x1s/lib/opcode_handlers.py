@@ -143,29 +143,6 @@ def _decode_ascii_blocks(payload: bytes) -> list[str]:
     return parts
 
 
-def _is_probable_header_frame(payload: bytes) -> bool:
-    """Heuristic to identify DEVBTN header pages when only the family matches."""
-
-    if len(payload) < 6:
-        return False
-
-    frame_no = payload[2]
-    total_frames = int.from_bytes(payload[4:6], "big")
-
-    return frame_no == 1 and total_frames > 1
-
-
-def _is_probable_single_command(payload: bytes) -> bool:
-    """Heuristic to identify single-command DEVBTN responses within the family."""
-
-    if len(payload) < 6:
-        return False
-
-    frame_no = payload[2]
-    total_frames = int.from_bytes(payload[4:6], "big")
-
-    return frame_no == 1 and total_frames <= 1
-
 
 @register_handler(opcode_families_low=(FAMILY_MACROS,), directions=("H→A",))
 class MacroHandler(BaseFrameHandler):
@@ -345,24 +322,6 @@ def _parse_ip_command_fields(payload: bytes) -> tuple[str, str, dict[str, str]]:
 
 
     return method, url, headers
-
-def _infer_command_entity(proxy: "X1Proxy", payload: bytes) -> int:
-    """Best-effort guess of the entity a command burst belongs to."""
-
-    burst_kind = getattr(proxy._burst, "kind", None)
-    if burst_kind and ":" in burst_kind:
-        prefix, ent_str = burst_kind.split(":", 1)
-        if prefix == "commands":
-            try:
-                return int(ent_str)
-            except ValueError:
-                pass
-
-    if len(payload) >= 8:
-        return payload[7]
-
-    return 0
-
 
 def _extract_dev_id(
     raw: bytes,
@@ -1265,7 +1224,12 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
         if len(payload) < 4:
             return
 
-        dev_id = _infer_command_entity(proxy, payload)
+        dev_id = _extract_dev_id(
+            raw,
+            payload,
+            frame.opcode,
+            hub_version=proxy.hub_version,
+        )
 
         now = time.monotonic()
         if not proxy._burst.active:
@@ -1292,7 +1256,7 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
 
 @register_handler(opcode_families_low=(FAMILY_DEVBTNS, 0x0D), directions=("H→A",))
 class DeviceButtonFamilyHandler(BaseFrameHandler):
-    """Route all device-button family responses using heuristics."""
+    """Route device-command family responses using parsed frame metadata."""
 
     def __init__(self) -> None:
         self._single = DeviceButtonSingleHandler()
@@ -1301,7 +1265,6 @@ class DeviceButtonFamilyHandler(BaseFrameHandler):
 
     def handle(self, frame: FrameContext) -> None:
         opcode = frame.opcode
-        payload = frame.payload
         parsed = parse_command_burst_frame(
             opcode,
             frame.raw,
@@ -1340,11 +1303,19 @@ class DeviceButtonFamilyHandler(BaseFrameHandler):
                 fmt,
             )
 
-        if (parsed is not None and parsed.is_single) or opcode == OP_DEVBTN_SINGLE or _is_probable_single_command(payload):
+        if parsed is None:
+            frame.proxy._log.debug(
+                "[REQ_COMMANDS] ignoring unparsed family frame opcode=0x%04X len=%d",
+                opcode,
+                len(frame.payload),
+            )
+            return
+
+        if parsed.is_single:
             self._single.handle(frame)
             return
 
-        if (parsed is not None and parsed.is_header) or _is_probable_header_frame(payload):
+        if parsed.is_header:
             self._header.handle(frame)
             return
 

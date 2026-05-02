@@ -132,14 +132,30 @@ def _build_x1_page_frame(
 
 def test_device_command_assembly_tracks_frames() -> None:
     dev_id = 0x2A
-    payload = b"legacy_payload_chunk" + b"hue_payload_chunk"
+    payload = b"header_payload_chunk" + b"page_payload_chunk"
     data_part1 = payload[: len(payload) // 2]
     data_part2 = payload[len(payload) // 2 :]
 
     assembler = DeviceCommandAssembler()
 
-    header_frame = _build_frame(OP_DEVBTN_HEADER, 1, 2, dev_id, data_part1)
-    tail_frame = _build_frame(OP_DEVBTN_TAIL, 2, 2, dev_id, data_part2)
+    header_frame = _build_x1s_frame(
+        OP_DEVBTN_HEADER,
+        frame_no=1,
+        total_frames=2,
+        total_commands=4,
+        dev_id=dev_id,
+        command_id=0x01,
+        format_marker=0x1C,
+        data=data_part1,
+    )
+    tail_frame = _build_x1_page_frame(
+        OP_DEVBTN_TAIL,
+        frame_no=2,
+        dev_id=dev_id,
+        command_id=0x02,
+        format_marker=0x1C,
+        data=data_part2,
+    )
 
     assert assembler.feed(OP_DEVBTN_HEADER, header_frame) == []
 
@@ -148,7 +164,7 @@ def test_device_command_assembly_tracks_frames() -> None:
 
     assembled_dev_id, assembled_payload = completed[0]
     assert assembled_dev_id == dev_id
-    assert assembled_payload == payload
+    assert assembled_payload == header_frame[4:-1][7:] + tail_frame[4:-1][3:]
 
 
 def test_device_command_assembly_handles_single_command_page() -> None:
@@ -592,7 +608,16 @@ def test_device_button_header_handler_merges_existing_commands(monkeypatch) -> N
         lambda opcode, raw, dev_id_override=None, hub_version=None: [(dev_id, b"payload")],
     )
 
-    raw = _build_frame(OP_DEVBTN_HEADER, 1, 1, dev_id, bytes([dev_id]))
+    raw = _build_x1s_frame(
+        OP_DEVBTN_HEADER,
+        frame_no=1,
+        total_frames=1,
+        total_commands=1,
+        dev_id=dev_id,
+        command_id=0x01,
+        format_marker=0x1C,
+        data=b"",
+    )
     payload = raw[4:-1]
     frame = FrameContext(
         proxy=proxy,
@@ -618,8 +643,24 @@ def test_device_button_family_handler_handles_header_family_variants(monkeypatch
 
     dev_id = 0x2A
     alt_header_opcode = OP_DEVBTN_HEADER ^ 0x0100
-    header_raw = _build_frame(alt_header_opcode, 1, 2, dev_id, b"abc")
-    tail_raw = _build_frame(OP_DEVBTN_TAIL, 2, 2, dev_id, b"def")
+    header_raw = _build_x1s_frame(
+        alt_header_opcode,
+        frame_no=1,
+        total_frames=2,
+        total_commands=2,
+        dev_id=dev_id,
+        command_id=0x01,
+        format_marker=0x1C,
+        data=b"abc",
+    )
+    tail_raw = _build_x1_page_frame(
+        OP_DEVBTN_TAIL,
+        frame_no=2,
+        dev_id=dev_id,
+        command_id=0x02,
+        format_marker=0x1C,
+        data=b"def",
+    )
 
     header_frame = FrameContext(
         proxy=proxy,
@@ -643,7 +684,7 @@ def test_device_button_family_handler_handles_header_family_variants(monkeypatch
     handler.handle(tail_frame)
 
     assert captured[0][0] == dev_id
-    assert captured[0][1] == b"abcdef"
+    assert captured[0][1] == header_raw[4:-1][7:] + tail_raw[4:-1][3:]
 
 
 def test_device_button_family_handler_handles_single_family_variants(monkeypatch) -> None:
@@ -692,18 +733,28 @@ def test_device_button_payload_handler_merges_existing_commands(monkeypatch) -> 
 
     dev_id = 0x2A
     proxy.state.commands[dev_id] = {1: "Existing"}
+    seen_dev_ids: list[int] = []
 
     def fake_parse(payload: bytes, parsed_dev_id: int) -> dict[int, str]:
+        seen_dev_ids.append(parsed_dev_id)
         return {2: "New"}
 
     monkeypatch.setattr(proxy, "parse_device_commands", fake_parse)
-    monkeypatch.setattr(
-        proxy._command_assembler,
-        "feed",
-        lambda opcode, raw, dev_id_override=None, hub_version=None: [(dev_id, b"payload")],
-    )
 
-    raw = _build_frame(OP_DEVBTN_PAGE, 1, 1, dev_id, b"\x00\x00")
+    def fake_feed(opcode, raw, dev_id_override=None, hub_version=None):
+        assert dev_id_override == dev_id
+        return [(dev_id, b"payload")]
+
+    monkeypatch.setattr(proxy._command_assembler, "feed", fake_feed)
+
+    raw = _build_x1_page_frame(
+        OP_DEVBTN_PAGE,
+        frame_no=2,
+        dev_id=dev_id,
+        command_id=0x01,
+        format_marker=0x1C,
+        data=b"",
+    )
     payload = raw[4:-1]
     frame = FrameContext(
         proxy=proxy,
@@ -717,6 +768,7 @@ def test_device_button_payload_handler_merges_existing_commands(monkeypatch) -> 
     handler.handle(frame)
 
     assert proxy.state.commands[dev_id] == {1: "Existing", 2: "New"}
+    assert seen_dev_ids == [dev_id]
 
 
 def test_single_command_handler_routes_favorite_labels() -> None:
@@ -1052,8 +1104,9 @@ def test_parse_device_commands_handles_ascii_labels() -> None:
 
     payload = ascii_payload[4:-1]
     opcode = int.from_bytes(ascii_payload[2:4], "big")
-    data_offset = proxy._command_assembler._data_offset(opcode)  # type: ignore[attr-defined]
-    assembled_payload = payload[data_offset:]
+    parsed_frame = parse_command_burst_frame(opcode, ascii_payload, hub_version=HUB_VERSION_X1)
+    assert parsed_frame is not None
+    assembled_payload = payload[parsed_frame.data_start:]
 
     parsed = proxy.parse_device_commands(assembled_payload, dev_id)
 
@@ -1161,8 +1214,9 @@ def test_parse_device_commands_handles_early_data_offset() -> None:
 
     payload = early_offset_payload[4:-1]
     opcode = int.from_bytes(early_offset_payload[2:4], "big")
-    data_offset = proxy._command_assembler._data_offset(opcode)  # type: ignore[attr-defined]
-    assembled_payload = payload[data_offset:]
+    parsed_frame = parse_command_burst_frame(opcode, early_offset_payload, hub_version=HUB_VERSION_X1)
+    assert parsed_frame is not None
+    assembled_payload = payload[parsed_frame.data_start:]
 
     parsed = proxy.parse_device_commands(assembled_payload, dev_id)
 
@@ -1203,11 +1257,28 @@ def test_alt_page_variant_uses_correct_device_and_offset() -> None:
     handler = DeviceButtonFamilyHandler()
 
     dev_id = 0x07
+    captured: list[tuple[int, bytes]] = []
 
-    header_raw = _build_alt_page_frame(
-        OP_DEVBTN_PAGE_ALT1, 1, 2, dev_id, 1, "Stop", add_separator=True
+    proxy.parse_device_commands = lambda payload, parsed_dev_id: captured.append((parsed_dev_id, payload)) or {}  # type: ignore[method-assign]
+
+    header_raw = _build_x1s_frame(
+        OP_DEVBTN_PAGE_ALT1,
+        frame_no=1,
+        total_frames=2,
+        total_commands=2,
+        dev_id=dev_id,
+        command_id=1,
+        format_marker=0x0D,
+        data=b"Stop",
     )
-    alt_raw = _build_alt_page_frame(OP_DEVBTN_PAGE_ALT6, 2, 2, dev_id, 2, "Play")
+    alt_raw = _build_x1_page_frame(
+        OP_DEVBTN_PAGE_ALT6,
+        frame_no=2,
+        dev_id=dev_id,
+        command_id=2,
+        format_marker=0x0D,
+        data=b"Play",
+    )
 
     header_frame = FrameContext(
         proxy=proxy,
@@ -1230,7 +1301,7 @@ def test_alt_page_variant_uses_correct_device_and_offset() -> None:
     handler.handle(header_frame)
     handler.handle(alt_frame)
 
-    assert proxy.state.commands[dev_id] == {1: "Stop", 2: "Play"}
+    assert captured == [(dev_id, header_raw[4:-1][7:] + alt_raw[4:-1][3:])]
 
 
 def test_alt_page_variant_535d_preserves_volume_command_ids() -> None:
@@ -1238,17 +1309,28 @@ def test_alt_page_variant_535d_preserves_volume_command_ids() -> None:
     handler = DeviceButtonFamilyHandler()
 
     dev_id = 0x01
+    captured: list[tuple[int, bytes]] = []
 
-    header_raw = _build_alt_page_frame(
+    proxy.parse_device_commands = lambda payload, parsed_dev_id: captured.append((parsed_dev_id, payload)) or {}  # type: ignore[method-assign]
+
+    header_raw = _build_x1s_frame(
         OP_DEVBTN_PAGE_ALT1,
-        1,
-        2,
-        dev_id,
-        121,
-        "Volume_down",
-        add_separator=True,
+        frame_no=1,
+        total_frames=2,
+        total_commands=2,
+        dev_id=dev_id,
+        command_id=121,
+        format_marker=0x0D,
+        data=b"Volume_down",
     )
-    alt_raw = _build_alt_page_frame(OP_DEVBTN_PAGE_ALT7, 2, 2, dev_id, 122, "Volume_up")
+    alt_raw = _build_x1_page_frame(
+        OP_DEVBTN_PAGE_ALT7,
+        frame_no=2,
+        dev_id=dev_id,
+        command_id=122,
+        format_marker=0x0D,
+        data=b"Volume_up",
+    )
 
     header_frame = FrameContext(
         proxy=proxy,
@@ -1271,7 +1353,7 @@ def test_alt_page_variant_535d_preserves_volume_command_ids() -> None:
     handler.handle(header_frame)
     handler.handle(alt_frame)
 
-    assert proxy.state.commands[dev_id] == {121: "Volume_down", 122: "Volume_up"}
+    assert captured == [(dev_id, header_raw[4:-1][7:] + alt_raw[4:-1][3:])]
 
 
 def test_x1_roku_pages_keep_all_twenty_commands() -> None:

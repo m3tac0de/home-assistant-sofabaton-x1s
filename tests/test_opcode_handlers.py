@@ -635,12 +635,12 @@ def test_devbtn_extra_contains_pause_and_red() -> None:
     )
     handler = KeymapHandler()
 
-    frame = _build_context(
-        proxy,
-        "a5 5a 30 3d 01 00 02 14 00 00 00 00 00 00 00 00 65 bc 02 00 00 00 00 00 a6 0e 02 00 00 00 00 00 92 0f 65 be 02 00 00 00 00 00 00 20 00 00 00 00 00 00 00 00 42",
-        OP_KEYMAP_EXTRA,
-        "KEYMAP_EXTRA",
+    payload = bytes.fromhex(
+        "01 00 01 01 00 01 02"
+        " 65 bc 02 00 00 00 00 00 a6 0e 00 00 00 00 00 00 00 00"
+        " 65 be 02 00 00 00 00 00 00 20 00 00 00 00 00 00 00 00"
     )
+    frame = _build_payload_context(proxy, OP_KEYMAP_EXTRA, payload, "KEYMAP_EXTRA")
 
     handler.handle(frame)
 
