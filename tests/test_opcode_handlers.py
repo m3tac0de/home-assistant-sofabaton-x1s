@@ -1,7 +1,6 @@
 """Unit tests for opcode handlers."""
 
 from __future__ import annotations
-
 from pathlib import Path
 import sys
 import types
@@ -539,12 +538,11 @@ def test_keymap_table_d_includes_pause() -> None:
     )
     handler = KeymapHandler()
 
-    frame = _build_context(
-        proxy,
-        "a5 5a 1e 3d 01 00 02 14 00 00 00 00 00 00 00 00 65 bc 02 00 00 00 00 00 a6 0e 00 00 00 00 00 00 00 00 48",
-        OP_KEYMAP_TBL_D,
-        "KEYMAP_TABLE_D",
+    payload = bytes.fromhex(
+        "01 00 01 01 00 01 01"
+        " 65 bc 02 00 00 00 00 00 a6 0e 00 00 00 00 00 00 00 00"
     )
+    frame = _build_payload_context(proxy, OP_KEYMAP_TBL_D, payload, "KEYMAP_TABLE_D")
 
     handler.handle(frame)
 
@@ -582,12 +580,16 @@ def test_keymap_table_f_adds_color_buttons() -> None:
     )
     handler = KeymapHandler()
 
-    frame = _build_context(
-        proxy,
-        "a5 5a 78 3d 01 00 02 3c 00 00 00 00 00 00 00 00 67 bc 01 00 00 00 00 00 a6 1f 00 00 00 00 00 00 00 00 67 bd 01 00 00 00 00 1b 46 31 00 00 00 00 00 00 00 00 67 be 01 00 00 00 00 00 e7 3b 00 00 00 00 00 00 00 00 67 bf 01 00 00 00 00 00 ec 32 00 00 00 00 00 00 00 00 67 c0 01 00 00 00 00 00 f6 3f 00 00 00 00 00 00 00 00 67 c1 01 00 00 00 00 00 f1 2e 00 00 00 00 00 00 00 00 c5",
-        OP_KEYMAP_TBL_F,
-        "KEYMAP_TABLE_F",
+    payload = bytes.fromhex(
+        "01 00 01 01 00 01 06"
+        " 67 bc 01 00 00 00 00 00 a6 1f 00 00 00 00 00 00 00 00"
+        " 67 bd 01 00 00 00 00 1b 46 31 00 00 00 00 00 00 00 00"
+        " 67 be 01 00 00 00 00 00 e7 3b 00 00 00 00 00 00 00 00"
+        " 67 bf 01 00 00 00 00 00 ec 32 00 00 00 00 00 00 00 00"
+        " 67 c0 01 00 00 00 00 00 f6 3f 00 00 00 00 00 00 00 00"
+        " 67 c1 01 00 00 00 00 00 f1 2e 00 00 00 00 00 00 00 00"
     )
+    frame = _build_payload_context(proxy, OP_KEYMAP_TBL_F, payload, "KEYMAP_TABLE_F")
 
     handler.handle(frame)
 

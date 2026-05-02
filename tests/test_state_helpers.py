@@ -91,7 +91,7 @@ def test_state_listeners_receive_notifications() -> None:
     assert client_states == [False, True]
 
 
-def test_accumulate_keymap_tracks_favorites_and_commands() -> None:
+def test_replace_keymap_rows_tracks_favorites_and_commands() -> None:
     cache = ActivityCache()
     act = 0x66
     favorite_button_id = 0x01
@@ -132,7 +132,7 @@ def test_accumulate_keymap_tracks_favorites_and_commands() -> None:
         + [0x00] * 6
     )
 
-    cache.accumulate_keymap(act, rec_fav + rec_normal)
+    cache.replace_keymap_rows(act, rec_fav + rec_normal)
 
     refs = cache.get_activity_command_refs(act)
     assert (0x03, 0x03) in refs
@@ -147,7 +147,7 @@ def test_accumulate_keymap_tracks_favorites_and_commands() -> None:
     )
 
 
-def test_accumulate_keymap_stops_at_standard_buttons() -> None:
+def test_replace_keymap_rows_stops_at_standard_buttons() -> None:
     cache = ActivityCache()
     act = 0x66
 
@@ -157,7 +157,7 @@ def test_accumulate_keymap_stops_at_standard_buttons() -> None:
         " 66 ae 01 00 00 00 00 00 2e 16 00 00 00 00 00 00 00 00"
     )
 
-    cache.accumulate_keymap(act, payload)
+    cache.replace_keymap_rows(act, payload)
 
     favorites = cache.get_activity_favorite_slots(act)
     assert len(favorites) == 2
@@ -207,7 +207,7 @@ def test_buttonname_lookup_excludes_python_metadata_attrs() -> None:
     assert 0x0B not in BUTTONNAME_BY_CODE
 
 
-def test_accumulate_keymap_does_not_treat_slot_0x0b_as_standard_button() -> None:
+def test_replace_keymap_rows_does_not_treat_slot_0x0b_as_standard_button() -> None:
     cache = ActivityCache()
     act = 0x67
 
@@ -218,7 +218,7 @@ def test_accumulate_keymap_does_not_treat_slot_0x0b_as_standard_button() -> None
         " 67 ae 01 00 00 00 00 00 2e 16 00 00 00 00 00 00 00 00"
     )
 
-    cache.accumulate_keymap(act, payload)
+    cache.replace_keymap_rows(act, payload)
 
     assert {slot["button_id"] for slot in cache.get_activity_favorite_slots(act)} == {0x01, 0x0B, 0x0F}
     assert cache.get_activity_command_refs(act) == {(0x0B, 0x01), (0x01, 0x17), (0x01, 0x0F)}
@@ -226,7 +226,7 @@ def test_accumulate_keymap_does_not_treat_slot_0x0b_as_standard_button() -> None
     assert cache.get_activity_keybinding_slots(act) == []
 
 
-def test_accumulate_keymap_keeps_ch_up_mapping_as_keybinding_slot() -> None:
+def test_replace_keymap_rows_keeps_ch_up_mapping_as_keybinding_slot() -> None:
     cache = ActivityCache()
     act = 0x67
 
@@ -236,7 +236,7 @@ def test_accumulate_keymap_keeps_ch_up_mapping_as_keybinding_slot() -> None:
         " 67 b7 0b 00 00 00 00 4e 26 06 00 00 00 00 00 00 00 00"
     )
 
-    cache.accumulate_keymap(act, payload)
+    cache.replace_keymap_rows(act, payload)
 
     refs = cache.get_activity_command_refs(act)
     assert (0x0B, 0x06) in refs
@@ -255,7 +255,7 @@ def test_activity_mapping_upsert_overrides_keymap_duplicate_pair() -> None:
     cache = ActivityCache()
     act = 0x67
 
-    cache.accumulate_keymap(
+    cache.replace_keymap_rows(
         act,
         bytes.fromhex(
             "67 b7 0b 00 00 00 00 4e 26 06 00 00 00 00 00 00 00 00"
@@ -278,7 +278,7 @@ def test_keymap_favorite_overrides_legacy_activity_map_duplicate_pair() -> None:
     act = 0x67
 
     cache.record_activity_mapping(act, 0x0B, 0x06, button_id=0x99)
-    cache.accumulate_keymap(
+    cache.replace_keymap_rows(
         act,
         bytes.fromhex(
             "67 01 0b 00 00 00 00 4e 26 06 00 00 00 00 00 00 00 00"
@@ -296,7 +296,7 @@ def test_keymap_favorite_overrides_legacy_activity_map_duplicate_pair() -> None:
     assert slots[0]["source"] == "keymap"
 
 
-def test_accumulate_keymap_ignores_home_and_vol_up_as_favorites() -> None:
+def test_replace_keymap_rows_ignores_home_and_vol_up_as_favorites() -> None:
     cache = ActivityCache()
     act = 0x67
 
@@ -306,7 +306,7 @@ def test_accumulate_keymap_ignores_home_and_vol_up_as_favorites() -> None:
         " 67 b7 0b 00 00 00 00 4e 26 06 00 00 00 00 00 00 00 00"
     )
 
-    cache.accumulate_keymap(act, payload)
+    cache.replace_keymap_rows(act, payload)
 
     refs = cache.get_activity_command_refs(act)
     assert (0x0B, 0x06) in refs
@@ -319,7 +319,7 @@ def test_accumulate_keymap_ignores_home_and_vol_up_as_favorites() -> None:
     assert cache.get_activity_favorite_slots(act) == []
 
 
-def test_accumulate_keymap_keeps_alternate_keybinding_formats() -> None:
+def test_replace_keymap_rows_keeps_alternate_keybinding_formats() -> None:
     cache = ActivityCache()
     act = 0x66
 
@@ -330,7 +330,7 @@ def test_accumulate_keymap_keeps_alternate_keybinding_formats() -> None:
         " 66 b9 02 00 00 00 00 00 33 80 00 00 00 00 00 00 00 00"
     )
 
-    cache.accumulate_keymap(act, payload)
+    cache.replace_keymap_rows(act, payload)
 
     assert cache.get_activity_keybinding_slots(act) == [
         {"button_id": ButtonName.OK, "device_id": 0x02, "command_id": 0x80, "source": "keymap"},
@@ -360,7 +360,7 @@ def test_activity_keybinding_labels_with_slots() -> None:
     ]
 
 
-def test_accumulate_keymap_extracts_long_press_details() -> None:
+def test_replace_keymap_rows_extracts_long_press_details() -> None:
     cache = ActivityCache()
     act = 0x65
 
@@ -379,7 +379,7 @@ def test_accumulate_keymap_extracts_long_press_details() -> None:
         ]
     )
 
-    cache.accumulate_keymap(act, record)
+    cache.replace_keymap_rows(act, record)
 
     assert ButtonName.OK in cache.buttons[act]
     details = cache.button_details[act][ButtonName.OK]
@@ -392,7 +392,7 @@ def test_accumulate_keymap_extracts_long_press_details() -> None:
     ]
 
 
-def test_accumulate_keymap_no_long_press_omits_long_press_details() -> None:
+def test_replace_keymap_rows_no_long_press_omits_long_press_details() -> None:
     cache = ActivityCache()
     act = 0x65
 
@@ -411,7 +411,7 @@ def test_accumulate_keymap_no_long_press_omits_long_press_details() -> None:
         ]
     )
 
-    cache.accumulate_keymap(act, record)
+    cache.replace_keymap_rows(act, record)
 
     assert ButtonName.BLUE in cache.buttons[act]
     details = cache.button_details[act][ButtonName.BLUE]

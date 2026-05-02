@@ -1000,8 +1000,6 @@ class KeymapHandler(BaseFrameHandler):
         if parsed is not None:
             activity_id_decimal = parsed.activity_id if parsed.activity_id is not None else burst_act_lo
             if activity_id_decimal is None:
-                activity_id_decimal = self._infer_activity_from_payload(payload)
-            if activity_id_decimal is None:
                 return
 
             burst_key = f"buttons:{activity_id_decimal}"
@@ -1067,67 +1065,6 @@ class KeymapHandler(BaseFrameHandler):
                 )
             return
 
-        keymap_opcodes = {
-            OP_MARKER,
-            OP_KEYMAP_CONT,
-            OP_KEYMAP_FINAL_X1S,
-            OP_KEYMAP_OVERLAY_X1,
-            OP_KEYMAP_PAGE_X1_663D,
-            OP_KEYMAP_PAGE_X1_AE3D,
-            OP_KEYMAP_PAGE_X1_E43D,
-            OP_KEYMAP_PAGE_X2_C03D,
-            OP_KEYMAP_TBL_A,
-            OP_KEYMAP_TBL_B,
-            OP_KEYMAP_TBL_C,
-            OP_KEYMAP_TBL_D,
-            OP_KEYMAP_TBL_E,
-            OP_KEYMAP_TBL_F,
-            OP_KEYMAP_TBL_G,
-            OP_KEYMAP_EXTRA,
-        }
-
-        activity_id_decimal = burst_act_lo
-        if activity_id_decimal is None:
-            activity_id_decimal = self._infer_activity_from_payload(payload)
-        if activity_id_decimal is None:
-            return
-
-        looks_like_keymap = self._looks_like_keymap_payload(payload, activity_id_decimal)
-        burst_kind = getattr(proxy._burst, "kind", "")
-        if proxy._burst.active and not burst_kind.startswith("buttons:") and not looks_like_keymap:
-            return
-        if not looks_like_keymap and (burst_act_lo is None or frame.opcode not in keymap_opcodes):
-            return
-
-        burst_key = f"buttons:{activity_id_decimal}"
-        if proxy._burst.active and proxy._burst.kind == burst_key:
-            proxy._burst.last_ts = now + proxy._burst.response_grace
-        else:
-            proxy._burst.start(burst_key, now=now)
-
-        frame_no = payload[2] if len(payload) >= 3 else None
-        total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
-        proxy.note_buttons_frame(
-            activity_id_decimal,
-            frame_no=frame_no,
-            total_frames=total_frames,
-        )
-
-        proxy._accumulate_keymap(activity_id_decimal, payload)
-        keys = [
-            f"{BUTTONNAME_BY_CODE.get(c, f'0x{c:02X}')}(0x{c:02X})"
-            for c in sorted(proxy.state.buttons.get(activity_id_decimal, set()))
-        ]
-        proxy._log.info(
-            "[KEYMAP] act=0x%02X mapped{%d}: %s",
-            activity_id_decimal,
-            len(keys),
-            ", ".join(keys),
-        )
-        if frame.opcode == OP_MARKER and frame_no is not None:
-            proxy.note_buttons_frame(activity_id_decimal, frame_no=frame_no, total_frames=frame_no)
-        proxy.try_finish_buttons_burst(activity_id_decimal, frame_no=frame_no)
-
     def _burst_activity(self, proxy: "X1Proxy") -> int | None:
         burst_kind = getattr(proxy._burst, "kind", None)
         if proxy._burst.active and burst_kind and burst_kind.startswith("buttons:"):
@@ -1136,35 +1073,6 @@ class KeymapHandler(BaseFrameHandler):
             except ValueError:
                 return None
         return None
-
-    def _infer_activity_from_payload(self, payload: bytes) -> int | None:
-        for i in range(len(payload) - 1):
-            if payload[i + 1] in BUTTONNAME_BY_CODE:
-                return payload[i]
-        return None
-
-    def _looks_like_keymap_payload(self, payload: bytes, act_lo: int) -> bool:
-        for i in range(len(payload) - 1):
-            if payload[i] == act_lo and payload[i + 1] in BUTTONNAME_BY_CODE:
-                return True
-
-        # Some payloads (favorites) only contain button IDs that are not part of
-        # the known mapping table. These still follow a recognizable layout of
-        # 18-byte records with zeroed padding between the device and command
-        # identifiers, so look for that structure as a fallback.
-        RECORD_SIZE = 18
-        for i in range(len(payload) - RECORD_SIZE + 1):
-            if payload[i] != act_lo:
-                continue
-
-            looks_like_favorite_record = (
-                payload[i + 3 : i + 7] == b"\x00" * 4
-                and payload[i + 12 : i + 18] == b"\x00" * 6
-            )
-
-            if looks_like_favorite_record:
-                return True
-        return False
 
 
 @register_handler(opcodes=(OP_REQ_COMMANDS,), directions=("A→H",))

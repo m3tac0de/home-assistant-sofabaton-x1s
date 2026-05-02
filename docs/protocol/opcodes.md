@@ -108,15 +108,37 @@ and header layouts.
 | `0x535D` | `REQ_COMMANDS_FINAL_X1_535D` | Final data page variant on X1 |
 | `0x4D5D` | `REQ_COMMANDS_SINGLE`        | Single-command metadata (targeted REQ_COMMANDS) |
 | `0x495D` | `REQ_COMMANDS_FINAL_X1S_X2_495D` | Final data page variant on X1S/X2 |
-| `0x303D` | `REQ_BUTTONS_PAGE_EXTRA` | Small follow-up page (REQ_BUTTONS family) |
 | `0x8F5D` | `REQ_COMMANDS_FINAL_X1S_X2_8F5D` | Final data page variant on X1S/X2 |
 
-Current parser model:
-- route by family low byte `0x5D`, not by a closed list of continuation opcodes
-- classify headers structurally from the payload layout
-- treat header-derived `total_pages`, `total_commands`, and `device_id` as authoritative burst metadata
-- treat non-header `0x5D` frames that match the family payload shape as data-bearing command pages
-- complete bursts primarily from `frame_no` and header `total_pages`, so new high-byte variants are accepted automatically when their `0x5D` page layout matches
+Current parser model (`parse_command_burst_frame()` in `commands.py`):
+
+**Frame roles:**
+- `"header"` — frame_no==1 with a recognized total_frames value; sets burst metadata (device_id, total_frames, total_commands)
+- `"page"` — continuation frame carrying command records
+- `"final"` — final data-bearing page (distinguished by opcode, not by being empty)
+- `"single"` — targeted single-command response
+
+**Header layout variants** (standard frames start with `payload[:2] == \x01\x00`):
+
+| `layout_kind` | Detection | `device_id` | `total_frames` | `total_commands` | `data_start` |
+|---|---|---|---|---|---|
+| `x1s_x2` / `x1_classic` | frame_no==1 AND `payload[4]==0x00` | `payload[7]` | `payload[4:6]` big-endian | `payload[6]` | 7 |
+| `x1_wifi` | frame_no==1 AND `payload[4]!=0x00` AND len>8 | `payload[6]` | `payload[4]` (1 byte) | `payload[5]` | 6 |
+
+**Legacy layout** (`payload[:2] != \x01\x00`):
+- `device_id=payload[3]`, `data_start=6`; role is `"header"` if frame_no==1 AND total_frames>0
+
+**Single-command layout:**
+- opcode == `0x4D5D` (OP_DEVBTN_SINGLE) OR `payload[:6] == \x01\x00\x01\x01\x00\x01`
+- `device_id=payload[7]` (signature-match case), `data_start=7`; total_frames forced to 1
+
+**Page frames:**
+- frame_no=`payload[2]`, device_id=`payload[3]`, `data_start=3`
+- `first_command_id=payload[4]`, `format_marker=payload[5]`
+
+Classification is delegated entirely to `parse_command_burst_frame()`; `DeviceCommandAssembler.feed()`
+calls it on every frame to determine dev_id, role, and data_start. New high-byte variants with a
+`0x5D` low byte are accepted automatically when their payload layout matches a known shape.
 
 ### `REQ_BUTTONS` / keymap pages (family `0x3D`)
 
@@ -137,15 +159,32 @@ Current parser model:
 | `0x733D` | `REQ_BUTTONS_OVERLAY_X1` | X1 single-page overlay-heavy burst |
 | `0xAE3D` | `REQ_BUTTONS_PAGE_X1_AE3D` | X1 continuation/data page |
 | `0xE43D` | `REQ_BUTTONS_PAGE_X1_E43D` | X1 continuation/data page |
+| `0x303D` | `REQ_BUTTONS_PAGE_EXTRA`   | Small follow-up page occasionally appended after the main burst |
 
-Current parser model:
-- `payload[2]` = `frame_no`
-- `payload[4:6]` = `total_frames` on header/first page
-- `payload[6]` = `total_rows` on header/first page
-- `payload[7]` = `activity_id` on header/first page
-- Page bodies normalize into a single row stream of fixed `18-byte` records.
-- Overlay rows and physical-button rows share the same burst; only rows whose `row[1]` is a known button code populate `state.buttons`.
-- X1S/X2 continuation pages can split rows across frame boundaries, so the parser concatenates page bodies before splitting rows.
+Current parser model (`parse_button_burst_frame()` in `commands.py`):
+
+**Frame roles:**
+- `"header"` — frame_no==1, total_frames>0, len(payload)>7
+  - `activity_id = payload[7]`, `data_start = 7`
+  - `layout_kind = "x1_overlay"` for opcode `0x733D` or X1 hub with total_frames==1; `"header"` otherwise
+- `"marker"` — opcode `0x0C3D` (OP_MARKER), or when activity_id cannot be extracted from the payload
+  - `has_row_data = False`; `layout_kind = "x1s_marker"` or `"marker_like"`
+  - X1S/X2 hubs send an `OP_MARKER` frame as a segment boundary before continuation pages
+- `"page"` — data-bearing frame where frame_no < total_frames
+- `"final"` — data-bearing last frame where frame_no >= total_frames
+
+**Activity ID on non-header frames** (`_extract_button_activity_id()`):
+- scans `payload[3:]` for 18-byte row signatures by checking for four zero bytes at `[offset+3:offset+7]`
+- prefers rows whose `byte[1]` is in range `0xAE–0xC1` (known ButtonName codes); falls back to `0x01–0x20`
+
+**Data start offsets:**
+- header: `data_start=7` (row data begins after `activity_id` byte)
+- page / final: `data_start=3`
+- marker: `data_start=len(payload)` (no row data)
+
+**Assembly:** `DeviceButtonAssembler` (in `commands.py`) accumulates frames keyed by `activity_id`.
+Completed bursts are delivered as `(activity_id, row_stream, total_rows)` tuples and passed to
+`ActivityCache.replace_keymap_rows()`, which processes the assembled stream as fixed 18-byte records.
 
 ### Activity membership pages
 
@@ -181,13 +220,27 @@ Current parser model:
 | `0x8213` | `MACROS_A2`   | Macro definition page |
 | `0x6413` | `MACROS_B2`   | Macro definition page |
 
-Current parser model:
-- `REQ_MACRO_LABELS` request is `A→H 0x024D` with payload `[act_lo, 0xFF]`.
-- Responses belong to family `0x13`; the low byte identifies the family and the observed high byte matches payload length.
-- `payload[0]` = fragment index
-- `payload[3]` = total fragments in the burst
-- `payload[6]` = activity id
-- `payload[7]` on record-start fragments = macro command id
+Current parser model (`parse_macro_burst_frame()` in `macros.py`):
+
+**Frame roles:**
+- `"record_start"` — detected when `payload[2]==0x01 AND payload[5] in (0x01, 0x02) AND payload[6]!=0x00`
+  - `fragment_index = payload[0]` (defaults to 1 if zero)
+  - `total_fragments = payload[3]` (range-validated 1–64; `None` if outside range)
+  - `activity_id = payload[6]`
+  - `start_command_id = payload[7]` (when payload length > 7)
+  - `data_start = 7`
+- `"continuation"` — all other frames belonging to the family
+  - no activity_id or fragment_index derivable from this frame alone
+  - `data_start = 7` (or `len(payload)` for short payloads)
+
+**payload_length_matches_hi:** the high byte of any family-`0x13` opcode equals the observed payload
+length. This is a per-frame validity signal; no separate length field is present.
+
+**Assembly:** `MacroAssembler` accumulates frames keyed by activity_id derived from `record_start`
+frames; continuation frames are appended in sequence. Record boundaries (byte offsets into the
+assembled payload) are tracked from each `record_start` frame position and passed to
+`decode_macro_records()` for accurate label extraction.
+
 - Bursts return both user-visible macros and built-in power lifecycle macros.
 - Observed built-in system macro ids:
   - `0xC6` = `POWER_ON`
@@ -219,7 +272,6 @@ Current parser model:
 |----------|-----------------|-----------|-------|
 | `0x0301` | `ACK_SUCCESS`   | H→A       | General acknowledgment of a request |
 | `0x0160` | `ACK_READY`     | H→A       | Hub ready for next command |
-| `0x0C3D` | `MARKER`        | H→A       | Segment boundary before continuation |
 | `0x0242` | `PING2_ACK`     | H→A       | Keepalive response (X1S, X2) |
 
 ### Informational
@@ -249,7 +301,7 @@ The **low byte** groups related opcodes:
 | `0x0B`   | Device rows    | `0xD50B`, `0x7B0B` |
 | `0x3B`   | Activity rows  | `0xD53B`, `0x7B3B` |
 | `0x13`   | Macro pages    | `0x6E13`, `0x5A13`, `0x8213`, `0x6413` |
-| `0x3D`   | `REQ_BUTTONS` pages | `0xF13D`, `0xFA3D`, `0x3D3D`, `0x543D`, `0xC03D`, `0x233D`, `0x0C3D`, `0x663D`, `0x733D`, `0xAE3D`, `0xE43D` |
+| `0x3D`   | `REQ_BUTTONS` pages | `0xF13D`, `0xFA3D`, `0x3D3D`, `0x543D`, `0xC03D`, `0x233D`, `0x0C3D`, `0x303D`, `0x663D`, `0x733D`, `0xAE3D`, `0xE43D` |
 | `0x5D`   | Dev-button pages | `0xD95D`, `0xD55D`, `0x495D`, `0x4D5D`, `0x8F5D`, ALT1–7 |
 | `0x10`   | Fav delete     | `0x0210` |
 | `0x62`   | Fav order req  | `0x0162` |

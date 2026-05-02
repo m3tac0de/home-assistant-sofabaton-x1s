@@ -4343,15 +4343,12 @@ class X1Proxy:
                 ent_lo = int(key.split(":", 1)[1])
                 self._pending_button_requests.discard(ent_lo)
                 self._button_burst_expected_frames.pop(ent_lo, None)
-                self.state.clear_keymap_remainders(ent_lo)
             except ValueError:
                 self._pending_button_requests.clear()
                 self._button_burst_expected_frames.clear()
-                self.state.clear_keymap_remainders()
         else:
             self._pending_button_requests.clear()
             self._button_burst_expected_frames.clear()
-            self.state.clear_keymap_remainders()
 
     def _handle_idle(self, now: float) -> None:
         self._burst.tick(now, can_issue=self.can_issue_commands, sender=self._send_cmd_frame)
@@ -4424,9 +4421,6 @@ class X1Proxy:
     def _clear_app_device_retry(self) -> None:
         self._app_devices_deadline = None
         self._app_devices_retry_sent = False
-
-    def _accumulate_keymap(self, act_lo: int, payload: bytes) -> None:
-        self.state.accumulate_keymap(act_lo, payload)
 
     def parse_device_commands(self, payload: bytes, dev_id: int) -> Dict[int, str]:
         return self.state.parse_device_commands(payload, dev_id)

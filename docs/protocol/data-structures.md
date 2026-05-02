@@ -93,21 +93,43 @@ Known variants:
 
 ## Keymap record (from `REQ_BUTTONS` / KEYMAP_TBL responses)
 
-Each record maps one remote button to a device command for a specific activity.
-Records are 18 bytes, packed contiguously:
+The `REQ_BUTTONS` burst is assembled by `DeviceButtonAssembler` into a contiguous row stream
+delivered to `ActivityCache.replace_keymap_rows()`. The stream contains two distinct row types
+in order: **favorite / keybinding slots first**, then **physical-button mappings**. Both types
+share the same 18-byte layout; the parser distinguishes them by `button_id`.
+
+### Row type 1 — Favorite / keybinding slot
+
+`button_id` is **not** a known ButtonName code (i.e. not in `0x97–0x9D` or `0xAE–0xC7`).
+It is a hub-internal slot index, typically in the range `0x01–0x20`. These rows appear before
+any physical-button rows in the assembled stream. Once the first physical-button row is seen,
+no further favorite rows are parsed.
+
+Rows matching a keybinding indicator pattern (bytes 3–8) are routed to `activity_keybinding_slots`;
+all others go to `activity_favorite_slots`. Known indicator patterns:
+- `record[3:7] == \x00×4` and `record[7] == 0x4E`
+- `record[3:8] == \x00×5` and `record[8] == 0x33`
+- `record[3:7] == \x00×4` and `record[7] == 0x42` and `record[8] == 0x2D`
+
+### Row type 2 — Physical button mapping
+
+`button_id` is a known ButtonName code. These rows populate `state.buttons[act_lo]` and
+`button_details[act_lo]`, and are also checked against the keybinding indicator patterns above.
+
+### Byte layout (both row types)
 
 ```
- Byte  Field
-    0  act_lo          (activity ID low byte — validates record alignment)
-    1  button_id       (ButtonName code, see button-codes table below)
-    2  device_id       (device the button controls in this activity)
-  3..9 padding / control bytes
-    9  command_id      (command to send when button pressed)
-   10  long_press_device_id  (0 if no long-press action)
- 11..14 zeros (when long_press present)
-   15  0x4E            (marker byte when long_press present)
-   16  unused
-   17  long_press_command_id (0 if no long-press action)
+ Byte   Field
+    0   act_lo               (activity ID low byte — validates record alignment)
+    1   button_id            (ButtonName code or hub slot index; determines row type)
+    2   device_id            (device the button controls in this activity)
+  3..8  control bytes        (keybinding type indicator — see patterns above)
+    9   command_id           (command to send when button is pressed)
+   10   long_press_device_id (0 if no long-press action is configured)
+ 11..14 zeros                (required when a long-press action is present)
+   15   0x4E                 (marker byte, present when long-press is configured)
+   16   long_press_marker    (non-zero when long-press is configured)
+   17   long_press_command_id (0 if no long-press action is configured)
 ```
 
 ---
@@ -121,16 +143,21 @@ forms are currently known:
 - `[act_lo, macro_button]` — fetch the backing payload for a specific macro button
   such as `POWER_ON` (`0xC6`) or `POWER_OFF` (`0xC7`)
 
-Each decoded macro record associates a macro command ID with a human-readable label:
+The burst is assembled by `MacroAssembler` from frames classified as `"record_start"` or
+`"continuation"` by `parse_macro_burst_frame()`. Record boundaries (byte offsets into the
+assembled payload) are tracked from each `"record_start"` frame position and passed to
+`decode_macro_records()` for label extraction.
+
+Each macro record occupies a region of the assembled payload starting at a tracked boundary:
 
 ```
-activity_id  (1 byte — the activity this macro belongs to)
-command_id   (1 byte — macro slot number, 1-indexed)
-label        (UTF-16-LE or ASCII, variable length)
+offset+0  command_id  (1 byte — macro slot number, 1-indexed within the activity)
+offset+1+ label       (UTF-16-LE or ASCII, variable length; decoded by heuristic scanning)
 ```
 
-Records are separated by parsing heuristics in the reassembled burst payload (no
-explicit separator bytes).
+`activity_id` is derived from the `"record_start"` frame's payload (byte 6), not from
+within the record body itself. There are no explicit separator bytes between records in
+the assembled payload.
 
 ---
 
