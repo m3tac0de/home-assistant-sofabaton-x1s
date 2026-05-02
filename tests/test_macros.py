@@ -110,6 +110,29 @@ def test_parse_macro_burst_frame_x1s_utf16_record_start() -> None:
     assert parsed.start_command_id == 0x0D
 
 
+def test_decode_macro_records_x1_max_length_ascii_label_without_terminator() -> None:
+    payload = bytes.fromhex(
+        "01 01 08 07 00 00 00 00 00 47 00 ff 74 65 73 74 20 6d 61 63 72 6f 2d 32 20"
+        " 6c 6f 6e 67 65 72 2e 61 6e 5f 2b 37 33 37 33 37 37"
+    )
+
+    decoded = decode_macro_records(payload, 0x68, [0])
+
+    assert decoded == [(0x68, 0x01, "test macro-2 longer.an_+737377")]
+
+
+def test_decode_macro_records_x1s_utf16_unicode_label_without_terminator() -> None:
+    payload = bytes.fromhex(
+        "03 01 08 04 00 00 00 00 00 00 00 ff 00 54 00 65 01 25 01 15 01 25 01 37 00 64"
+        " 00 68 00 64 00 62 00 a7 20 77 21 5e 00 64 00 68 00 2b 00 2b 00 5f 00 5f 00 2d"
+        " 00 2d 00 68 00 64 00 62 00 32 00 38 00 33 00 79 00 68 00 64"
+    )
+
+    decoded = decode_macro_records(payload, 0x69, [0])
+
+    assert decoded == [(0x69, 0x03, "Teĥĕĥķdhdb§⁷⅞dh++__--hdb283yhd")]
+
+
 def test_x1s_multi_page_macroburst_out_of_order() -> None:
     assembler = MacroAssembler()
     activity_id = 0x69
