@@ -21,7 +21,11 @@ _ensure_stub_package("custom_components", ROOT / "custom_components")
 _ensure_stub_package("custom_components.sofabaton_x1s", ROOT / "custom_components" / "sofabaton_x1s")
 _ensure_stub_package("custom_components.sofabaton_x1s.lib", ROOT / "custom_components" / "sofabaton_x1s" / "lib")
 
-from custom_components.sofabaton_x1s.lib.macros import MacroAssembler, decode_macro_records
+from custom_components.sofabaton_x1s.lib.macros import (
+    MacroAssembler,
+    decode_macro_records,
+    parse_macro_burst_frame,
+)
 from custom_components.sofabaton_x1s.lib.protocol_const import FAMILY_MACROS, SYNC0, SYNC1
 
 
@@ -70,6 +74,40 @@ def test_single_page_macroburst() -> None:
     assert act == activity_id
     decoded = decode_macro_records(blob, activity_id, boundaries)
     assert decoded == [(activity_id, 1, "TEST1")]
+
+
+def test_parse_macro_burst_frame_x1_ascii_record_start() -> None:
+    raw = bytes.fromhex(
+        "a5 5a 46 13 01 00 01 04 00 01 65 07 03 01 22 00 00 00 00 41 c7 00 ff 01 2d"
+        " 00 00 00 00 42 3f 00 ff 01 4e 00 00 00 00 2f 55 00 ff 74 65 73 74 20 6d 61"
+        " 63 72 6f 20 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 54 15"
+    )
+    parsed = parse_macro_burst_frame(int.from_bytes(raw[2:4], "big"), raw)
+
+    assert parsed is not None
+    assert parsed.role == "record_start"
+    assert parsed.fragment_index == 1
+    assert parsed.total_fragments == 4
+    assert parsed.activity_id == 0x65
+    assert parsed.start_command_id == 0x07
+    assert parsed.payload_length_matches_hi is True
+
+
+def test_parse_macro_burst_frame_x1s_utf16_record_start() -> None:
+    raw = bytes.fromhex(
+        "a5 5a 50 13 01 00 01 04 00 01 65 0d 01 04 05 00 00 00 00 00 4c 00 ff 00 74"
+        " 00 65 00 73 00 74 00 20 00 6d 00 61 00 63 00 72 00 6f 00 20 00 31 00 00 00"
+        " 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+        " 00 00 00 00 00 00 00 00 00 00 09 7c"
+    )
+    parsed = parse_macro_burst_frame(int.from_bytes(raw[2:4], "big"), raw)
+
+    assert parsed is not None
+    assert parsed.role == "record_start"
+    assert parsed.fragment_index == 1
+    assert parsed.total_fragments == 4
+    assert parsed.activity_id == 0x65
+    assert parsed.start_command_id == 0x0D
 
 
 def test_x1s_multi_page_macroburst_out_of_order() -> None:

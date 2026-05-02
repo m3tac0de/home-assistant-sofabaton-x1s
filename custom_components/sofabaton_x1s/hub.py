@@ -924,9 +924,13 @@ class SofabatonHub:
     def get_favorites(self, activity_id: int) -> list[dict[str, Any]]:
         """Return cached favorites for *activity_id* (no hub round-trip).
 
-        Each entry comes from the activity map/keymap cache and contains the
-        activity-map ``button_id`` plus ``device_id``, ``command_id``, and
-        ``source``.
+        Each entry comes from the cached quick-access/keymap view and contains
+        the visible quick-access ``button_id`` plus ``device_id``,
+        ``command_id``, and ``source``.
+
+        ``favorite_button_id`` is the preferred neutral field name. The older
+        ``activity_map_button_id`` alias is still included for compatibility
+        with callers that already consume it.
 
         On X1S, these cached quick-access ``button_id`` values share the same
         identifier space used by the Macro & Favorite Keys UI. The hub's raw
@@ -939,6 +943,8 @@ class SofabatonHub:
         favorites: list[dict[str, Any]] = []
         for slot in self._proxy.state.get_activity_favorite_slots(act_lo):
             favorite = dict(slot)
+            favorite.setdefault("favorite_button_id", favorite.get("button_id"))
+            # Legacy alias retained for existing consumers.
             favorite.setdefault("activity_map_button_id", favorite.get("button_id"))
             favorites.append(favorite)
         return favorites
@@ -982,6 +988,7 @@ class SofabatonHub:
             favorite_by_id[entry_id] = {
                 "fav_id": entry_id,
                 "button_id": entry_id,
+                "favorite_button_id": entry_id,
                 "activity_map_button_id": entry_id,
                 "slot": None,
                 "type": "favorite",

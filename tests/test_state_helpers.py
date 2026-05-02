@@ -273,6 +273,29 @@ def test_activity_mapping_upsert_overrides_keymap_duplicate_pair() -> None:
     assert slots[0]["button_id"] == 0x99
 
 
+def test_keymap_favorite_overrides_legacy_activity_map_duplicate_pair() -> None:
+    cache = ActivityCache()
+    act = 0x67
+
+    cache.record_activity_mapping(act, 0x0B, 0x06, button_id=0x99)
+    cache.accumulate_keymap(
+        act,
+        bytes.fromhex(
+            "67 01 0b 00 00 00 00 4e 26 06 00 00 00 00 00 00 00 00"
+        ),
+    )
+
+    slots = [
+        slot
+        for slot in cache.get_activity_favorite_slots(act)
+        if slot["device_id"] == 0x0B and slot["command_id"] == 0x06
+    ]
+
+    assert len(slots) == 1
+    assert slots[0]["button_id"] == 0x01
+    assert slots[0]["source"] == "keymap"
+
+
 def test_accumulate_keymap_ignores_home_and_vol_up_as_favorites() -> None:
     cache = ActivityCache()
     act = 0x67

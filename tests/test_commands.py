@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -22,7 +23,12 @@ _ensure_stub_package("custom_components", ROOT / "custom_components")
 _ensure_stub_package("custom_components.sofabaton_x1s", ROOT / "custom_components" / "sofabaton_x1s")
 _ensure_stub_package("custom_components.sofabaton_x1s.lib", ROOT / "custom_components" / "sofabaton_x1s" / "lib")
 
-from custom_components.sofabaton_x1s.lib.commands import DeviceCommandAssembler
+from custom_components.sofabaton_x1s.lib.commands import (
+    DeviceButtonAssembler,
+    DeviceCommandAssembler,
+    parse_button_burst_frame,
+    parse_command_burst_frame,
+)
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib import opcode_handlers
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
@@ -30,15 +36,24 @@ from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     DeviceButtonPayloadHandler,
     DeviceButtonFamilyHandler,
     DeviceButtonSingleHandler,
+    KeymapHandler,
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_DEVBTN_HEADER,
     OP_DEVBTN_PAGE,
     OP_DEVBTN_PAGE_ALT1,
+    OP_DEVBTN_PAGE_ALT4,
     OP_DEVBTN_PAGE_ALT6,
     OP_DEVBTN_PAGE_ALT7,
     OP_DEVBTN_TAIL,
     OP_DEVBTN_SINGLE,
+    OP_KEYMAP_CONT,
+    OP_KEYMAP_FINAL_X1S,
+    OP_KEYMAP_OVERLAY_X1,
+    OP_KEYMAP_PAGE_X1_AE3D,
+    OP_KEYMAP_PAGE_X2_C03D,
+    OP_KEYMAP_TBL_B,
+    OP_MARKER,
     SYNC0,
     SYNC1,
 )
@@ -48,6 +63,68 @@ from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 def _build_frame(opcode: int, frame_no: int, total_frames: int, dev_id: int, data: bytes) -> bytes:
     prefix = bytes([SYNC0, SYNC1, opcode >> 8, opcode & 0xFF])
     payload = b"\x00\x00" + bytes([frame_no, dev_id]) + total_frames.to_bytes(2, "big") + data
+    frame_wo_checksum = prefix + payload
+    checksum = sum(frame_wo_checksum) & 0xFF
+    return frame_wo_checksum + bytes([checksum])
+
+
+def _build_x1_wifi_frame(
+    opcode: int,
+    *,
+    frame_no: int,
+    total_frames: int,
+    total_commands: int,
+    dev_id: int,
+    command_id: int,
+    format_marker: int,
+    data: bytes,
+) -> bytes:
+    prefix = bytes([SYNC0, SYNC1, opcode >> 8, opcode & 0xFF])
+    payload = (
+        b"\x01\x00"
+        + bytes([frame_no, 0x01, total_frames, total_commands, dev_id, command_id, format_marker])
+        + data
+    )
+    frame_wo_checksum = prefix + payload
+    checksum = sum(frame_wo_checksum) & 0xFF
+    return frame_wo_checksum + bytes([checksum])
+
+
+def _build_x1s_frame(
+    opcode: int,
+    *,
+    frame_no: int,
+    total_frames: int,
+    total_commands: int,
+    dev_id: int,
+    command_id: int,
+    format_marker: int,
+    data: bytes,
+) -> bytes:
+    prefix = bytes([SYNC0, SYNC1, opcode >> 8, opcode & 0xFF])
+    payload = (
+        b"\x01\x00"
+        + bytes([frame_no, 0x01])
+        + total_frames.to_bytes(2, "big")
+        + bytes([total_commands, dev_id, command_id, format_marker])
+        + data
+    )
+    frame_wo_checksum = prefix + payload
+    checksum = sum(frame_wo_checksum) & 0xFF
+    return frame_wo_checksum + bytes([checksum])
+
+
+def _build_x1_page_frame(
+    opcode: int,
+    *,
+    frame_no: int,
+    dev_id: int,
+    command_id: int,
+    format_marker: int,
+    data: bytes,
+) -> bytes:
+    prefix = bytes([SYNC0, SYNC1, opcode >> 8, opcode & 0xFF])
+    payload = b"\x01\x00" + bytes([frame_no, dev_id, command_id, format_marker, 0x00, 0x00]) + data
     frame_wo_checksum = prefix + payload
     checksum = sum(frame_wo_checksum) & 0xFF
     return frame_wo_checksum + bytes([checksum])
@@ -122,6 +199,382 @@ def test_single_command_handler_logs_and_stores_state(caplog) -> None:
     assert "2 : Exit" in caplog.text
 
 
+def test_parse_command_burst_frame_detects_x1_wifi_header_variant() -> None:
+    raw = _build_x1_wifi_frame(
+        OP_DEVBTN_PAGE_ALT1,
+        frame_no=1,
+        total_frames=4,
+        total_commands=20,
+        dev_id=0x0A,
+        command_id=0x01,
+        format_marker=0x1A,
+        data=b"header",
+    )
+
+    parsed = parse_command_burst_frame(OP_DEVBTN_PAGE_ALT1, raw)
+
+    assert parsed is not None
+    assert parsed.layout_kind == "x1_wifi"
+    assert parsed.is_header
+    assert parsed.total_frames == 4
+    assert parsed.total_commands == 20
+    assert parsed.device_id == 0x0A
+    assert parsed.first_command_id == 0x01
+    assert parsed.format_marker == 0x1A
+    assert parsed.data_start == 6
+
+
+def test_parse_command_burst_frame_detects_x1s_x2_header_variant() -> None:
+    raw = _build_x1s_frame(
+        OP_DEVBTN_HEADER,
+        frame_no=1,
+        total_frames=7,
+        total_commands=20,
+        dev_id=0x02,
+        command_id=0x01,
+        format_marker=0x1C,
+        data=b"header",
+    )
+
+    parsed = parse_command_burst_frame(OP_DEVBTN_HEADER, raw, hub_version=HUB_VERSION_X1S)
+
+    assert parsed is not None
+    assert parsed.layout_kind == "x1s_x2"
+    assert parsed.is_header
+    assert parsed.total_frames == 7
+    assert parsed.total_commands == 20
+    assert parsed.device_id == 0x02
+    assert parsed.first_command_id == 0x01
+    assert parsed.format_marker == 0x1C
+    assert parsed.data_start == 7
+
+
+def test_parse_command_burst_frame_accepts_unenumerated_page_variant() -> None:
+    raw = _build_x1_page_frame(
+        0xAA5D,
+        frame_no=2,
+        dev_id=0x02,
+        command_id=0x04,
+        format_marker=0x1C,
+        data=b"page",
+    )
+
+    parsed = parse_command_burst_frame(0xAA5D, raw, hub_version=HUB_VERSION_X2)
+
+    assert parsed is not None
+    assert parsed.hub_line == "x1s_x2"
+    assert parsed.role == "page"
+    assert parsed.device_id == 0x02
+    assert parsed.first_command_id == 0x04
+    assert parsed.format_marker == 0x1C
+    assert parsed.data_start == 3
+
+
+def test_x1_wifi_header_variant_uses_header_device_and_frame_count() -> None:
+    assembler = DeviceCommandAssembler()
+    frames = [
+        _build_x1_wifi_frame(
+            OP_DEVBTN_PAGE_ALT1,
+            frame_no=1,
+            total_frames=4,
+            total_commands=20,
+            dev_id=0x0A,
+            command_id=0x01,
+            format_marker=0x1A,
+            data=b"head",
+        ),
+        _build_x1_page_frame(
+            OP_DEVBTN_PAGE_ALT4,
+            frame_no=2,
+            dev_id=0x0A,
+            command_id=0x07,
+            format_marker=0x1A,
+            data=b"page2",
+        ),
+        _build_x1_page_frame(
+            OP_DEVBTN_PAGE_ALT4,
+            frame_no=3,
+            dev_id=0x0A,
+            command_id=0x0D,
+            format_marker=0x1A,
+            data=b"page3",
+        ),
+        _build_x1_page_frame(
+            OP_DEVBTN_PAGE_ALT7,
+            frame_no=4,
+            dev_id=0x0A,
+            command_id=0x13,
+            format_marker=0x1A,
+            data=b"page4",
+        ),
+    ]
+
+    completed: list[tuple[int, bytes]] = []
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw))
+
+    assert len(completed) == 1
+    assembled_dev_id, _ = completed[0]
+    assert assembled_dev_id == 0x0A
+    assert assembler.finalize_contiguous(0x0A) == []
+
+
+def test_x1s_x2_unenumerated_page_completes_from_header_metadata() -> None:
+    assembler = DeviceCommandAssembler()
+    header = _build_x1s_frame(
+        OP_DEVBTN_HEADER,
+        frame_no=1,
+        total_frames=2,
+        total_commands=4,
+        dev_id=0x02,
+        command_id=0x01,
+        format_marker=0x1C,
+        data=b"head",
+    )
+    page = _build_x1_page_frame(
+        0xAA5D,
+        frame_no=2,
+        dev_id=0x02,
+        command_id=0x04,
+        format_marker=0x1C,
+        data=b"page",
+    )
+
+    assert assembler.feed(OP_DEVBTN_HEADER, header, hub_version=HUB_VERSION_X2) == []
+
+    completed = assembler.feed(0xAA5D, page, hub_version=HUB_VERSION_X2)
+
+    assert completed == [(0x02, header[4:-1][7:] + page[4:-1][3:])]
+
+
+def test_parse_button_burst_frame_detects_x1_overlay_variant() -> None:
+    raw = bytes.fromhex(
+        "a5 5a 73 3d 01 00 01 01 00 01 06 65 01 09 00 00 00 00 4e 24 01 00 00 00 00 00 00 00 00 "
+        "65 02 09 00 00 00 00 4e 24 02 00 00 00 00 00 00 00 00 65 03 09 00 00 00 00 4e 24 04 00 "
+        "00 00 00 00 00 00 00 65 04 0a 00 00 00 00 4e 24 01 00 00 00 00 00 00 00 00 65 b9 02 00 "
+        "00 00 00 00 33 80 00 00 00 00 00 00 00 00 65 be 09 00 00 00 00 4e 21 01 09 00 00 00 00 "
+        "4e 2b 0b 48"
+    )
+
+    parsed = parse_button_burst_frame(OP_KEYMAP_OVERLAY_X1, raw, hub_version=HUB_VERSION_X1)
+
+    assert parsed is not None
+    assert parsed.hub_line == "x1"
+    assert parsed.layout_kind == "x1_overlay"
+    assert parsed.is_header
+    assert parsed.frame_no == 1
+    assert parsed.total_frames == 1
+    assert parsed.total_rows == 6
+    assert parsed.activity_id == 0x65
+    assert parsed.data_start == 7
+    assert parsed.has_row_data is True
+
+
+def test_parse_button_burst_frame_detects_x1s_final_and_marker_variants() -> None:
+    final_raw = bytes.fromhex(
+        "a5 5a 23 3d 01 00 03 00 00 00 4e 23 03 00 00 00 00 00 00 00 00 65 bf 09 00 00 00 00 4e "
+        "22 02 00 00 00 00 00 00 00 00 76"
+    )
+    marker_raw = bytes.fromhex(
+        "a5 5a 0c 3d 01 00 02 0e 00 00 00 00 00 00 00 00 59"
+    )
+
+    parsed_final = parse_button_burst_frame(
+        OP_KEYMAP_FINAL_X1S,
+        final_raw,
+        hub_version=HUB_VERSION_X1S,
+    )
+    parsed_marker = parse_button_burst_frame(
+        OP_MARKER,
+        marker_raw,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    assert parsed_final is not None
+    assert parsed_final.hub_line == "x1s_x2"
+    assert parsed_final.is_final
+    assert parsed_final.activity_id == 0x65
+    assert parsed_final.data_start == 3
+    assert parsed_final.has_row_data is True
+
+    assert parsed_marker is not None
+    assert parsed_marker.hub_line == "x1s_x2"
+    assert parsed_marker.is_marker
+    assert parsed_marker.activity_id is None
+    assert parsed_marker.has_row_data is False
+
+
+def test_parse_button_burst_frame_accepts_unenumerated_x2_continuation_variant() -> None:
+    raw = bytes.fromhex(
+        "a5 5a 8a 3d 01 00 02 7a 00 00 00 00 00 00 00 00 66 b7 06 00 00 00 00 08 7c 35 00 00 00 "
+        "00 00 00 00 00 66 b8 09 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 66 b9 09 00 00 00 "
+        "00 00 33 79 00 00 00 00 00 00 00 00 66 ba 06 00 00 00 00 31 ee 36 00 00 00 00 00 00 00 "
+        "00 66 bb 06 00 00 00 00 01 d2 25 00 00 00 00 00 00 00 00 66 bc 06 00 00 00 00 00 a6 3d "
+        "00 00 00 00 00 00 00 00 66 bd 06 00 00 00 00 1b 46 18 00 00 00 00 00 00 00 00 3c"
+    )
+    opcode = int.from_bytes(raw[2:4], "big")
+
+    parsed = parse_button_burst_frame(opcode, raw, hub_version=HUB_VERSION_X2)
+
+    assert parsed is not None
+    assert parsed.hub_line == "x1s_x2"
+    assert parsed.role == "final"
+    assert parsed.activity_id == 0x66
+    assert parsed.data_start == 3
+    assert parsed.has_row_data is True
+
+
+def test_keymap_handler_reassembles_x1s_split_rows() -> None:
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+    handler = KeymapHandler()
+
+    frames = [
+        bytes.fromhex(
+            "a5 5a fa 3d 01 00 01 01 00 03 1d 65 01 04 00 00 00 00 00 38 01 00 00 00 00 00 00 00 00 "
+            "65 02 04 00 00 00 00 00 3d 02 00 00 00 00 00 00 00 00 65 03 04 00 00 00 00 00 42 03 00 "
+            "00 00 00 00 00 00 00 65 04 04 00 00 00 00 00 47 04 00 00 00 00 00 00 00 00 65 05 04 00 "
+            "00 00 00 00 4c 05 00 00 00 00 00 00 00 00 65 06 04 00 00 00 00 00 51 06 00 00 00 00 00 "
+            "00 00 00 65 07 08 00 00 00 00 4e 21 01 00 00 00 00 00 00 00 00 65 08 09 00 00 00 00 4e "
+            "21 01 00 00 00 00 00 00 00 00 65 09 09 00 00 00 00 4e 22 02 00 00 00 00 00 00 00 00 65 "
+            "0a 09 00 00 00 00 4e 23 03 00 00 00 00 00 00 00 00 65 0f 0a 00 00 00 00 4e 21 01 00 00 "
+            "00 00 00 00 00 00 65 10 0a 00 00 00 00 4e 22 02 00 00 00 00 00 00 00 00 65 11 0a 00 00 "
+            "00 00 4e 23 03 00 00 00 00 00 00 00 00 65 12 0a 00 00 00 00 4e 24 f9"
+        ),
+        bytes.fromhex(
+            "a5 5a fa 3d 01 00 02 04 00 00 00 00 00 00 00 00 65 13 0a 00 00 00 00 4e 25 05 00 00 00 "
+            "00 00 00 00 00 65 ae 04 00 00 00 00 01 13 12 00 00 00 00 00 00 00 00 65 af 04 00 00 00 "
+            "00 03 28 10 00 00 00 00 00 00 00 00 65 b0 04 00 00 00 00 00 2a 1a 00 00 00 00 00 00 00 "
+            "00 65 b1 04 00 00 00 00 03 29 11 00 00 00 00 00 00 00 00 65 b2 04 00 00 00 00 01 15 0f "
+            "00 00 00 00 00 00 00 00 65 b3 04 00 00 00 00 00 74 13 00 00 00 00 00 00 00 00 65 b4 04 "
+            "00 00 00 00 00 88 17 00 00 00 00 00 00 00 00 65 b6 03 00 00 00 00 2e 77 79 00 00 00 00 "
+            "00 00 00 00 65 b8 03 00 00 00 00 00 6a 71 00 00 00 00 00 00 00 00 65 b9 03 00 00 00 00 "
+            "00 33 78 00 00 00 00 00 00 00 00 65 bb 04 00 00 00 00 01 d2 1d 00 00 00 00 00 00 00 00 "
+            "65 bc 04 00 00 00 00 27 78 1b 00 00 00 00 00 00 00 00 65 be 09 00 3c"
+        ),
+        bytes.fromhex(
+            "a5 5a 23 3d 01 00 03 00 00 00 4e 23 03 00 00 00 00 00 00 00 00 65 bf 09 00 00 00 00 4e "
+            "22 02 00 00 00 00 00 00 00 00 76"
+        ),
+    ]
+
+    for raw in frames:
+        frame = FrameContext(
+            proxy=proxy,
+            opcode=int.from_bytes(raw[2:4], "big"),
+            direction="Hâ†’A",
+            payload=raw[4:-1],
+            raw=raw,
+            name="KEYMAP",
+        )
+        handler.handle(frame)
+
+    assert proxy.state.buttons[0x65] == {
+        0xAE,
+        0xAF,
+        0xB0,
+        0xB1,
+        0xB2,
+        0xB3,
+        0xB4,
+        0xB6,
+        0xB8,
+        0xB9,
+        0xBB,
+        0xBC,
+        0xBE,
+        0xBF,
+    }
+
+
+def test_keymap_handler_x1_overlay_rows_do_not_become_fake_buttons() -> None:
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1)
+    handler = KeymapHandler()
+
+    raw = bytes.fromhex(
+        "a5 5a 73 3d 01 00 01 01 00 01 06 65 01 09 00 00 00 00 4e 24 01 00 00 00 00 00 00 00 00 "
+        "65 02 09 00 00 00 00 4e 24 02 00 00 00 00 00 00 00 00 65 03 09 00 00 00 00 4e 24 04 00 "
+        "00 00 00 00 00 00 00 65 04 0a 00 00 00 00 4e 24 01 00 00 00 00 00 00 00 00 65 b9 02 00 "
+        "00 00 00 00 33 80 00 00 00 00 00 00 00 00 65 be 09 00 00 00 00 4e 21 01 09 00 00 00 00 "
+        "4e 2b 0b 48"
+    )
+
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_KEYMAP_OVERLAY_X1,
+        direction="Hâ†’A",
+        payload=raw[4:-1],
+        raw=raw,
+        name="KEYMAP_OVERLAY",
+    )
+    handler.handle(frame)
+
+    assert proxy.state.buttons[0x65] == {0xB9, 0xBE}
+    assert 0x01 not in proxy.state.buttons[0x65]
+    assert 0x02 not in proxy.state.buttons[0x65]
+
+
+def test_keymap_handler_reassembles_x2_extended_button_rows() -> None:
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X2)
+    handler = KeymapHandler()
+
+    frames = [
+        bytes.fromhex(
+            "a5 5a fa 3d 01 00 01 01 00 02 18 65 01 01 00 00 00 00 4e 21 01 00 00 00 00 00 00 00 00 "
+            "65 02 01 00 00 00 00 4e 22 02 00 00 00 00 00 00 00 00 65 03 01 00 00 00 00 4e 23 03 00 "
+            "00 00 00 00 00 00 00 65 04 01 00 00 00 00 4e 24 04 00 00 00 00 00 00 00 00 65 05 01 00 "
+            "00 00 00 4e 25 05 00 00 00 00 00 00 00 00 65 97 02 00 00 00 00 00 00 03 02 00 00 00 00 "
+            "00 00 05 65 98 02 00 00 00 00 00 00 04 02 00 00 00 00 00 00 06 65 99 02 00 00 00 00 00 "
+            "00 01 02 00 00 00 00 00 00 02 65 9c 05 00 00 00 00 00 92 0d 00 00 00 00 00 00 00 00 65 "
+            "9d 09 00 00 00 00 00 d3 31 00 00 00 00 00 00 00 00 65 ae 05 00 00 00 00 01 13 12 00 00 "
+            "00 00 00 00 00 00 65 af 05 00 00 00 00 03 28 10 00 00 00 00 00 00 00 00 65 b0 05 00 00 "
+            "00 00 00 2a 1a 00 00 00 00 00 00 00 00 65 b1 05 00 00 00 00 03 29 a7"
+        ),
+        bytes.fromhex(
+            "a5 5a c0 3d 01 00 02 11 00 00 00 00 00 00 00 00 65 b2 05 00 00 00 00 01 15 0f 00 00 00 "
+            "00 00 00 00 00 65 b3 05 00 00 00 00 00 74 13 00 00 00 00 00 00 00 00 65 b4 05 00 00 00 "
+            "00 00 88 17 00 00 00 00 00 00 00 00 65 b5 05 00 00 00 00 00 2d 18 00 00 00 00 00 00 00 "
+            "00 65 b6 09 00 00 00 00 2e 77 7a 00 00 00 00 00 00 00 00 65 b8 09 00 00 00 00 00 6a 71 "
+            "00 00 00 00 00 00 00 00 65 b9 09 00 00 00 00 00 33 79 00 00 00 00 00 00 00 00 65 bb 05 "
+            "00 00 00 00 01 d2 1d 00 00 00 00 00 00 00 00 65 bc 05 00 00 00 00 00 a6 1b 00 00 00 00 "
+            "00 00 00 00 65 bd 05 00 00 00 00 1b 46 15 00 00 00 00 00 00 00 00 c6"
+        ),
+    ]
+
+    for raw in frames:
+        frame = FrameContext(
+            proxy=proxy,
+            opcode=int.from_bytes(raw[2:4], "big"),
+            direction="Hâ†’A",
+            payload=raw[4:-1],
+            raw=raw,
+            name="KEYMAP_X2",
+        )
+        handler.handle(frame)
+
+    assert proxy.state.buttons[0x65] == {
+        0x97,
+        0x98,
+        0x99,
+        0x9C,
+        0x9D,
+        0xAE,
+        0xAF,
+        0xB0,
+        0xB1,
+        0xB2,
+        0xB3,
+        0xB4,
+        0xB5,
+        0xB6,
+        0xB8,
+        0xB9,
+        0xBB,
+        0xBC,
+        0xBD,
+    }
+
+
 def test_device_button_header_handler_merges_existing_commands(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1")
     handler = DeviceButtonHeaderHandler()
@@ -136,7 +589,7 @@ def test_device_button_header_handler_merges_existing_commands(monkeypatch) -> N
     monkeypatch.setattr(
         proxy._command_assembler,
         "feed",
-        lambda opcode, raw, dev_id_override=None: [(dev_id, b"payload")],
+        lambda opcode, raw, dev_id_override=None, hub_version=None: [(dev_id, b"payload")],
     )
 
     raw = _build_frame(OP_DEVBTN_HEADER, 1, 1, dev_id, bytes([dev_id]))
@@ -247,7 +700,7 @@ def test_device_button_payload_handler_merges_existing_commands(monkeypatch) -> 
     monkeypatch.setattr(
         proxy._command_assembler,
         "feed",
-        lambda opcode, raw, dev_id_override=None: [(dev_id, b"payload")],
+        lambda opcode, raw, dev_id_override=None, hub_version=None: [(dev_id, b"payload")],
     )
 
     raw = _build_frame(OP_DEVBTN_PAGE, 1, 1, dev_id, b"\x00\x00")
@@ -426,7 +879,7 @@ def test_single_command_handler_matches_pending_device_when_id_differs(monkeypat
     monkeypatch.setattr(
         proxy._command_assembler,
         "feed",
-        lambda opcode, raw, dev_id_override=None: [(1, b"payload")],
+        lambda opcode, raw, dev_id_override=None, hub_version=None: [(1, b"payload")],
     )
 
     raw = _build_frame(OP_DEVBTN_SINGLE, 1, 1, 1, b"\x00\x00")
@@ -819,6 +1272,70 @@ def test_alt_page_variant_535d_preserves_volume_command_ids() -> None:
     handler.handle(alt_frame)
 
     assert proxy.state.commands[dev_id] == {121: "Volume_down", 122: "Volume_up"}
+
+
+def test_x1_roku_pages_keep_all_twenty_commands() -> None:
+    proxy = X1Proxy("127.0.0.1")
+    assembler = DeviceCommandAssembler()
+
+    frames = [
+        bytes.fromhex(
+            "a5 5a f7 5d 01 00 01 01 00 04 14 0a 01 0a 00 00 00 00 4e 21 43 6f 6d 6d 61 6e 64 20 31 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0a 02 0a 00 00 00 00 "
+            "4e 22 43 6f 6d 6d 61 6e 64 20 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 ff 0a 03 0a 00 00 00 00 4e 23 43 6f 6d 6d 61 6e 64 20 33 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 ff 0a 04 0a 00 00 00 00 4e 24 43 6f 6d 6d 61 6e 64 20 "
+            "34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0a 05 0a 00 00 00 00 "
+            "4e 25 43 6f 6d 6d 61 6e 64 20 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 ff 0a 06 0a 00 00 00 00 4e 26 43 6f 6d 6d 61 6e 64 20 36 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 ff 0d"
+        ),
+        bytes.fromhex(
+            "a5 5a f3 5d 01 00 02 0a 07 0a 00 00 00 00 4e 27 43 6f 6d 6d 61 6e 64 20 37 00 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0a 08 0a 00 00 00 00 4e 28 43 6f 6d 6d "
+            "61 6e 64 20 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0a 09 0a "
+            "00 00 00 00 4e 29 43 6f 6d 6d 61 6e 64 20 39 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+            "00 00 00 00 00 00 ff 0a 0a 0a 00 00 00 00 4e 2a 43 6f 6d 6d 61 6e 64 20 31 30 00 00 00 00 "
+            "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0a 0b 0a 00 00 00 00 4e 2b 43 6f 6d 6d "
+            "61 6e 64 20 31 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 0a 0c 0a "
+            "00 00 00 00 4e 2c 43 6f 6d 6d 61 6e 64 20 32 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 "
+            "00 00 00 00 00 00 ff 2a"
+        ),
+        bytes.fromhex(
+            "a5 5a f3 5d 01 00 03 0a 0d 0a 00 00 00 00 4e 2d 43 6f 6d 6d 61 6e 64 20 33 20 4c 6f 6e 67 "
+            "20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 0a 0e 0a 00 00 00 00 4e 2e 43 6f 6d 6d "
+            "61 6e 64 20 34 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 0a 0f 0a "
+            "00 00 00 00 4e 2f 43 6f 6d 6d 61 6e 64 20 35 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 "
+            "00 00 00 00 00 00 ff 0a 10 0a 00 00 00 00 4e 30 43 6f 6d 6d 61 6e 64 20 36 20 4c 6f 6e 67 "
+            "20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 0a 11 0a 00 00 00 00 4e 31 43 6f 6d 6d "
+            "61 6e 64 20 37 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 0a 12 0a "
+            "00 00 00 00 4e 32 43 6f 6d 6d 61 6e 64 20 38 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 "
+            "00 00 00 00 00 00 ff bc"
+        ),
+        bytes.fromhex(
+            "a5 5a 53 5d 01 00 04 0a 13 0a 00 00 00 00 4e 33 43 6f 6d 6d 61 6e 64 20 39 20 4c 6f 6e 67 "
+            "20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 00 ff 0a 14 0a 00 00 00 00 4e 34 43 6f 6d 6d "
+            "61 6e 64 20 31 30 20 4c 6f 6e 67 20 50 72 65 73 73 00 00 00 00 00 00 00 00 00 ff 16"
+        ),
+    ]
+
+    completed: list[tuple[int, bytes]] = []
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw))
+
+    assert len(completed) == 1
+
+    dev_id, payload = completed[0]
+    parsed = proxy.parse_device_commands(payload, dev_id)
+
+    assert dev_id == 0x0A
+    assert len(parsed) == 20
+    assert 0 not in parsed
+    assert parsed[7] == "Command 7"
+    assert parsed[13] == "Command 3 Long Press"
+    assert parsed[19] == "Command 9 Long Press"
+    assert parsed[20] == "Command 10 Long Press"
 
 
 def test_parse_device_commands_keeps_single_character_numeric_labels() -> None:

@@ -147,6 +147,24 @@ class ActivityCache:
                     continue
             i += 1
 
+    def replace_keymap_rows(self, act_lo: int, row_stream: bytes) -> None:
+        """Replace the physical-button view for ``act_lo`` from an assembled row stream."""
+
+        self.buttons[act_lo] = set()
+        self.button_details.pop(act_lo, None)
+
+        favorites_allowed = True
+        record_size = 18
+        usable = len(row_stream) - (len(row_stream) % record_size)
+
+        for start in range(0, usable, record_size):
+            record = row_stream[start : start + record_size]
+            favorites_allowed, _ = self._parse_keymap_record(
+                act_lo,
+                record,
+                favorites_allowed=favorites_allowed,
+            )
+
     def _parse_keymap_record(
         self, act_lo: int, record: bytes, *, favorites_allowed: bool
     ) -> tuple[bool, bool]:
@@ -241,7 +259,9 @@ class ActivityCache:
             if slot["button_id"] != (button_id & 0xFF):
                 continue
             existing_source = slot.get("source", "keymap")
-            if existing_source != "activity_map" and source == "activity_map":
+            # Preserve legacy activity-map slots for compatibility, but treat
+            # keymap-derived data as the authoritative source when both exist.
+            if existing_source == "activity_map" and source != "activity_map":
                 slots[idx] = {
                     "button_id": button_id & 0xFF,
                     "device_id": pair[0],
@@ -285,7 +305,9 @@ class ActivityCache:
             if (slot["device_id"], slot["command_id"]) != pair:
                 continue
             existing_source = slot.get("source", "keymap")
-            if existing_source != "activity_map" and source == "activity_map":
+            # Preserve legacy activity-map slots for compatibility, but prefer
+            # keymap-derived favorite rows when both describe the same pair.
+            if existing_source == "activity_map" and source != "activity_map":
                 slots[idx] = {
                     "button_id": button_id,
                     "device_id": pair[0],
@@ -344,7 +366,13 @@ class ActivityCache:
         *,
         button_id: int | None = None,
     ) -> None:
-        """Record an activity favorite mapping entry."""
+        """Record a legacy activity-map favorite mapping entry.
+
+        Current protocol findings suggest activity favorites primarily come
+        from REQ_BUTTONS/keymap rows; REQ_ACTIVITY_MAP is now treated as a
+        membership roster. This helper remains for compatibility with restored
+        cache data and older tests.
+        """
 
         dev_lo = device_id & 0xFF
         self.record_activity_member(act_lo, dev_lo)

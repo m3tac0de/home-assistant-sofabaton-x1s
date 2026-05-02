@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 import re
 from typing import Dict, List, Tuple
 
+from .protocol_const import FAMILY_MACROS, opcode_family, opcode_hi
+
 
 @dataclass(slots=True)
 class _MacroBurst:
@@ -11,6 +13,77 @@ class _MacroBurst:
     frames: Dict[int, bytes] = field(default_factory=dict)
     activity_id: int | None = None
     record_start_frames: set = field(default_factory=set)
+
+
+@dataclass(slots=True)
+class MacroBurstFrame:
+    opcode: int
+    role: str
+    fragment_index: int | None
+    total_fragments: int | None
+    activity_id: int | None
+    start_command_id: int | None
+    data_start: int
+    payload_length_matches_hi: bool
+
+    @property
+    def is_record_start(self) -> bool:
+        return self.role == "record_start"
+
+    @property
+    def display_name(self) -> str:
+        return "REQ_MACRO_LABELS_PAGE" if self.is_record_start else "REQ_MACRO_LABELS_CONT"
+
+
+def parse_macro_burst_frame(opcode: int, raw_frame: bytes) -> MacroBurstFrame | None:
+    """Return parsed family metadata for a macro frame."""
+
+    if len(raw_frame) < 7 or opcode_family(opcode) != FAMILY_MACROS:
+        return None
+
+    payload = raw_frame[4:-1]
+    if not payload:
+        return None
+
+    payload_len_matches_hi = opcode_hi(opcode) == len(payload)
+    if len(payload) < 7:
+        return MacroBurstFrame(
+            opcode=opcode,
+            role="continuation",
+            fragment_index=None,
+            total_fragments=None,
+            activity_id=None,
+            start_command_id=None,
+            data_start=len(payload),
+            payload_length_matches_hi=payload_len_matches_hi,
+        )
+
+    p0, _, x, p3, _, y, a = payload[:7]
+    if x == 0x01 and y in (0x01, 0x02) and a != 0x00:
+        total_fragments = p3 or None
+        if total_fragments is not None and not (1 <= total_fragments <= 64):
+            total_fragments = None
+        return MacroBurstFrame(
+            opcode=opcode,
+            role="record_start",
+            fragment_index=p0 or 1,
+            total_fragments=total_fragments,
+            activity_id=a,
+            start_command_id=payload[7] if len(payload) > 7 else None,
+            data_start=7,
+            payload_length_matches_hi=payload_len_matches_hi,
+        )
+
+    return MacroBurstFrame(
+        opcode=opcode,
+        role="continuation",
+        fragment_index=None,
+        total_fragments=None,
+        activity_id=None,
+        start_command_id=None,
+        data_start=7 if len(payload) > 7 else len(payload),
+        payload_length_matches_hi=payload_len_matches_hi,
+    )
 
 
 class MacroAssembler:
@@ -331,5 +404,7 @@ def decode_macro_records(payload: bytes, activity_id: int, record_boundaries: li
 
 __all__ = [
     "MacroAssembler",
+    "MacroBurstFrame",
     "decode_macro_records",
+    "parse_macro_burst_frame",
 ]

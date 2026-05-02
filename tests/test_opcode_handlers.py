@@ -357,7 +357,9 @@ def test_keymap_handler_accepts_favorite_only_payload() -> None:
         "66 01 03 00 00 00 00 00 38 03 00 00 00 00 00 00 00 00"
         " 66 02 03 00 00 00 00 00 4c 07 00 00 00 00 00 00 00 00"
     )
-    payload = b"\x00" * 7 + favorite_records
+    # Exercise the structured keymap parser with a realistic single-frame
+    # header layout whose row stream contains only favorite-style records.
+    payload = bytes.fromhex("01 00 01 01 00 01 02") + favorite_records
 
     frame = _build_payload_context(proxy, OP_KEYMAP_TBL_B, payload, "KEYMAP_TABLE_B")
 
@@ -1081,6 +1083,43 @@ def test_activity_map_ignores_control_tuples_from_x1_tail() -> None:
         handler.handle(frame)
 
     assert proxy.state.get_activity_command_refs(act) == set()
+    assert proxy.state.get_activity_members(act) == [0x01, 0x02]
+
+
+def test_activity_map_x1s_tracks_members_without_creating_favorite_refs() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_udp_port=0,
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    handler = ActivityMapHandler()
+
+    act = 0x65
+    proxy._pending_activity_map_requests.add(act)
+
+    frames = (
+        "a5 5a d5 6d 01 00 01 02 00 01 00 03 0b 02 0d 07 fc f4 7a 6f 97 eb 45 a4 a5 35 a3 b6 57 b1 f4 25 00 05 00 01 00 44 00 65 00 6e 00 6f 00 6e 00 20 00 41 00 56 00 43 00 2d 00 58 00 33 00 38 00 30 00 30 00 48 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 44 00 65 00 6e 00 6f 00 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 00 fc 01 01 03 00 fc 01 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 92 0b",
+        "a5 5a d5 6d 02 00 01 02 00 01 00 07 07 04 0d 03 35 d8 9f 8f bb fb 4c 69 89 76 a6 42 5a d3 95 b9 00 00 00 00 00 58 00 62 00 6f 00 78 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 58 00 62 00 6f 00 78 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 00 fc 02 01 02 00 fc 01 fc 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 56 00",
+    )
+
+    for raw_hex in frames:
+        raw = bytes.fromhex(raw_hex)
+        frame = FrameContext(
+            proxy=proxy,
+            opcode=0xD56D,
+            direction="H→A",
+            payload=raw[4:-1],
+            raw=raw,
+            name="ACTIVITY_MAP_PAGE_X1S",
+        )
+        handler.handle(frame)
+
+    assert proxy.state.get_activity_members(act) == [0x03, 0x07]
+    assert proxy.state.get_activity_command_refs(act) == set()
+    assert proxy.state.get_activity_favorite_slots(act) == []
 
 
 def test_catalog_device_handler_keeps_mdns_hub_version() -> None:

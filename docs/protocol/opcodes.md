@@ -16,7 +16,7 @@ Direction: **A→H** = app/client to hub, **H→A** = hub to app/client, **↔**
 | `0x023C` | `REQ_BUTTONS`           | `[act_lo, 0xFF]` | All       | Fetch button↔command keymap for an activity |
 | `0x025C` | `REQ_COMMANDS`          | `[ent_lo, 0xFF]` or `[ent_lo, cmd_id]` | All | Full command list or single command |
 | `0x023F` | `REQ_ACTIVATE`          | `[id_lo, key_code]` | All     | Activate activity or send command |
-| `0x016C` | `REQ_ACTIVITY_MAP`      | `[act_lo]`    | X1           | X1 request opcode for activity favorites mapping; X1S/X2 use different activity-assignment and mapping flows |
+| `0x016C` | `REQ_ACTIVITY_MAP`      | `[act_lo]`    | X1           | Request activity membership roster (one member row per device/endpoint) |
 | `0x024D` | `REQ_MACRO_LABELS`      | `[act_lo, 0xFF]` or `[act_lo, macro_button]` | All | Fetch macro labels or a specific macro payload |
 | `0x0148` | `REQ_ACTIVITY_INPUTS`   | `[device_lo]` | All observed | Request activity input candidates for one device; response layout differs between X1 and X1S/X2 |
 | `0x0109` | `DELETE_DEVICE`         | `[dev_lo]`    | All observed | Remove device from hub; follow-up activity confirmation opcode differs by hub version |
@@ -91,43 +91,86 @@ These opcodes are used in order to create a virtual "Wifi Device" (see [wifi-com
 
 ### Device button / command pages (family `0x5D`)
 
-These form a multi-frame burst: `DEVBTN_HEADER` → one or more body pages → `DEVBTN_TAIL`.
+These form a multi-frame `REQ_COMMANDS` burst: header page → one or more data pages → a
+data-bearing final page. X1S/X2 and X1 share family `0x5D`, but use different opcode sets
+and header layouts.
 
 | Opcode   | Name                    | Notes |
 |----------|-------------------------|-------|
-| `0xD95D` | `DEVBTN_HEADER`         | Opens a device-button burst; contains total frame count |
-| `0xD55D` | `DEVBTN_PAGE`           | Body page with 2–3 command entries |
-| `0xF75D` | `DEVBTN_PAGE_ALT1`      | Variant page layout (earlier payload offset) |
-| `0xA35D` | `DEVBTN_PAGE_ALT2`      | Variant page layout |
-| `0x2F5D` | `DEVBTN_PAGE_ALT3`      | Variant page layout |
-| `0xF35D` | `DEVBTN_PAGE_ALT4`      | Variant page layout |
-| `0x7B5D` | `DEVBTN_PAGE_ALT5`      | Variant page layout |
-| `0xCB5D` | `DEVBTN_PAGE_ALT6`      | Variant page layout |
-| `0x535D` | `DEVBTN_PAGE_ALT7`      | Variant page layout |
-| `0x4D5D` | `DEVBTN_SINGLE`         | Single-command metadata (targeted REQ_COMMANDS) |
-| `0x495D` | `DEVBTN_TAIL`           | Burst terminator, type 1 |
-| `0x303D` | `KEYMAP_EXTRA`          | Small follow-up page (keymap family) |
-| `0x8F5D` | `DEVBTN_MORE`           | Small follow-up page |
+| `0xD95D` | `REQ_COMMANDS_HEADER_X1S_X2` | Header page on X1S/X2; payload carries total pages, total commands, and device id |
+| `0xD55D` | `REQ_COMMANDS_PAGE_X1S_X2`   | Body page on X1S/X2; typically 3 command entries per full page |
+| `0xF75D` | `REQ_COMMANDS_HEADER_X1`     | Header page on X1; observed in both classic and WiFi/Hue header layouts |
+| `0xA35D` | `REQ_COMMANDS_FINAL_X1_A35D` | Final data page variant on X1 |
+| `0x2F5D` | `REQ_COMMANDS_PAGE_X1_2F5D`  | Observed X1 page variant |
+| `0xF35D` | `REQ_COMMANDS_PAGE_X1`       | Main body page on X1; typically 6 command entries per full page |
+| `0x7B5D` | `REQ_COMMANDS_PAGE_OR_FINAL_X1_7B5D` | Observed X1 page/final variant |
+| `0xCB5D` | `REQ_COMMANDS_FINAL_X1_CB5D` | Final data page variant on X1 |
+| `0x535D` | `REQ_COMMANDS_FINAL_X1_535D` | Final data page variant on X1 |
+| `0x4D5D` | `REQ_COMMANDS_SINGLE`        | Single-command metadata (targeted REQ_COMMANDS) |
+| `0x495D` | `REQ_COMMANDS_FINAL_X1S_X2_495D` | Final data page variant on X1S/X2 |
+| `0x303D` | `REQ_BUTTONS_PAGE_EXTRA` | Small follow-up page (REQ_BUTTONS family) |
+| `0x8F5D` | `REQ_COMMANDS_FINAL_X1S_X2_8F5D` | Final data page variant on X1S/X2 |
 
-### Keymap / continuation pages (family `0x3D`)
+Current parser model:
+- route by family low byte `0x5D`, not by a closed list of continuation opcodes
+- classify headers structurally from the payload layout
+- treat header-derived `total_pages`, `total_commands`, and `device_id` as authoritative burst metadata
+- treat non-header `0x5D` frames that match the family payload shape as data-bearing command pages
+- complete bursts primarily from `frame_no` and header `total_pages`, so new high-byte variants are accepted automatically when their `0x5D` page layout matches
+
+### `REQ_BUTTONS` / keymap pages (family `0x3D`)
 
 | Opcode   | Name              | Notes |
 |----------|-------------------|-------|
-| `0xF13D` | `KEYMAP_TBL_A`    | Activity button keymap |
-| `0xFA3D` | `KEYMAP_TBL_B`    | Activity button keymap variant |
-| `0x3D3D` | `KEYMAP_TBL_C`    | Returned when Hue buttons requested |
-| `0x1E3D` | `KEYMAP_TBL_D`    | Observed variant |
-| `0xBB3D` | `KEYMAP_TBL_E`    | Observed variant |
-| `0x783D` | `KEYMAP_TBL_F`    | Observed variant |
-| `0xCD3D` | `KEYMAP_TBL_G`    | Observed variant |
-| `0x543D` | `KEYMAP_CONT`     | Continuation page after MARKER |
+| `0xF13D` | `REQ_BUTTONS_PAGE_A`    | Observed `0x3D` family page variant |
+| `0xFA3D` | `REQ_BUTTONS_HEADER_OR_PAGE` | Header / first page, and X1S/X2 continuation in some bursts |
+| `0x3D3D` | `REQ_BUTTONS_PAGE_C`    | Observed `0x3D` family page variant |
+| `0x1E3D` | `REQ_BUTTONS_PAGE_D`    | Observed `0x3D` family page variant |
+| `0xBB3D` | `REQ_BUTTONS_PAGE_E`    | Observed `0x3D` family page variant |
+| `0x783D` | `REQ_BUTTONS_PAGE_F`    | Observed `0x3D` family page variant |
+| `0xCD3D` | `REQ_BUTTONS_PAGE_G`    | Observed `0x3D` family page variant |
+| `0x543D` | `REQ_BUTTONS_PAGE_X1S_X2` | X1S/X2 continuation/data page |
+| `0xC03D` | `REQ_BUTTONS_PAGE_X1S_X2_C03D` | X2 continuation/data page |
+| `0x233D` | `REQ_BUTTONS_FINAL_X1S_X2_233D` | X1S/X2 short final data page |
+| `0x0C3D` | `REQ_BUTTONS_MARKER_X1S_X2` | X1S/X2 marker-only trailing page |
+| `0x663D` | `REQ_BUTTONS_PAGE_X1_663D` | X1 continuation/data page |
+| `0x733D` | `REQ_BUTTONS_OVERLAY_X1` | X1 single-page overlay-heavy burst |
+| `0xAE3D` | `REQ_BUTTONS_PAGE_X1_AE3D` | X1 continuation/data page |
+| `0xE43D` | `REQ_BUTTONS_PAGE_X1_E43D` | X1 continuation/data page |
 
-### Activity mapping pages (favorites)
+Current parser model:
+- `payload[2]` = `frame_no`
+- `payload[4:6]` = `total_frames` on header/first page
+- `payload[6]` = `total_rows` on header/first page
+- `payload[7]` = `activity_id` on header/first page
+- Page bodies normalize into a single row stream of fixed `18-byte` records.
+- Overlay rows and physical-button rows share the same burst; only rows whose `row[1]` is a known button code populate `state.buttons`.
+- X1S/X2 continuation pages can split rows across frame boundaries, so the parser concatenates page bodies before splitting rows.
+
+### Activity membership pages
 
 | Opcode   | Name                    | Hub versions | Notes |
 |----------|-------------------------|--------------|-------|
-| `0x7B6D` | `ACTIVITY_MAP_PAGE`     | X1           | Activity favorites mapping |
-| `0xD56D` | `ACTIVITY_MAP_PAGE_X1S` | X1S, X2      | Activity favorites mapping variant |
+| `0x7B6D` | `ACTIVITY_MAP_PAGE`     | X1           | Activity member row on X1 |
+| `0xD56D` | `ACTIVITY_MAP_PAGE_X1S` | X1S, X2      | Activity member row on X1S/X2 |
+
+Current parser model:
+- `REQ_ACTIVITY_MAP` is treated as an activity membership roster, not a favorites or macros table.
+- One frame corresponds to one activity member device/endpoint.
+- `payload[0]` = row index (1-based)
+- `payload[3]` = total member rows in the roster
+- `payload[6:8]` = member device id
+- X1 and X1S/X2 share the same semantics but use different row layouts and text encodings.
+- Observed row subtypes include IR, Bluetooth, Roku/WiFi, Hue/WiFi, IP/WiFi, and MQTT-style device rows.
+- Observed member-row device classes so far:
+  - X1: IR, Bluetooth, Roku/WiFi, Hue/WiFi
+  - X1S: IR, console/device rows, Roku/WiFi-style, Hue/WiFi
+  - X2: IR, IP/WiFi, MQTT-style
+- Favorites, keybindings, labels, and macros are resolved through other families:
+  - `REQ_BUTTONS` (`0x3D`) for favorite/keybinding references
+  - `REQ_COMMANDS` (`0x5D`) for labels
+  - `FAV_ORDER_RESP` (`0x63`) for hub ordering
+  - macro family (`0x13`) for activity macros
 
 ### Macro pages (family `0x13`)
 
@@ -137,6 +180,20 @@ These form a multi-frame burst: `DEVBTN_HEADER` → one or more body pages → `
 | `0x5A13` | `MACROS_B1`   | Macro definition page |
 | `0x8213` | `MACROS_A2`   | Macro definition page |
 | `0x6413` | `MACROS_B2`   | Macro definition page |
+
+Current parser model:
+- `REQ_MACRO_LABELS` request is `A→H 0x024D` with payload `[act_lo, 0xFF]`.
+- Responses belong to family `0x13`; the low byte identifies the family and the observed high byte matches payload length.
+- `payload[0]` = fragment index
+- `payload[3]` = total fragments in the burst
+- `payload[6]` = activity id
+- `payload[7]` on record-start fragments = macro command id
+- Bursts return both user-visible macros and built-in power lifecycle macros.
+- Observed built-in system macro ids:
+  - `0xC6` = `POWER_ON`
+  - `0xC7` = `POWER_OFF`
+- User-facing macro lists should filter out `POWER_*` labels.
+- X1 labels are often ASCII; X1S/X2 labels are often UTF-16LE.
 
 ### Remote and input discovery
 
@@ -192,7 +249,7 @@ The **low byte** groups related opcodes:
 | `0x0B`   | Device rows    | `0xD50B`, `0x7B0B` |
 | `0x3B`   | Activity rows  | `0xD53B`, `0x7B3B` |
 | `0x13`   | Macro pages    | `0x6E13`, `0x5A13`, `0x8213`, `0x6413` |
-| `0x3D`   | Keymap pages   | `0xF13D`, `0xFA3D`, `0x3D3D`, `0x543D`, `0x0C3D` |
+| `0x3D`   | `REQ_BUTTONS` pages | `0xF13D`, `0xFA3D`, `0x3D3D`, `0x543D`, `0xC03D`, `0x233D`, `0x0C3D`, `0x663D`, `0x733D`, `0xAE3D`, `0xE43D` |
 | `0x5D`   | Dev-button pages | `0xD95D`, `0xD55D`, `0x495D`, `0x4D5D`, `0x8F5D`, ALT1–7 |
 | `0x10`   | Fav delete     | `0x0210` |
 | `0x62`   | Fav order req  | `0x0162` |
@@ -213,12 +270,19 @@ Hub → Client: PAGE frame N
 Hub → Client: TAIL frame (or MARKER + continuation burst)
 ```
 
-The `DEVBTN_HEADER` frame (`0xD95D`) payload bytes 4–5 (big-endian) contain the
-total number of frames to expect. The burst is complete when either:
-- The number of received frames equals `total_frames`, or
-- A TAIL opcode (`0x495D`, `0x303D`, or `0x8F5D`) is received.
+For X1S/X2, the header frame `0xD95D` uses:
+- payload bytes 4–5 (big-endian): total pages
+- payload byte 6: total commands
+- payload byte 7: device id
 
-Each PAGE frame carries a **frame number** at payload byte 2 (1-indexed).
+For X1, two header layouts are observed:
+- classic / Bluetooth / IR: `00 <pages> <commands> <dev>`
+- WiFi / Hue: `<pages> <commands> <dev> 01`
+
+Each page carries a **frame number** at payload byte 2 (1-indexed). The burst is
+complete primarily when the received `frame_no` reaches the header's `total_pages`;
+the final-page opcodes (`0x495D`, `0x8F5D`, `0xCB5D`, `0x535D`, `0xA35D`, and other
+observed X1 finals) act as validation and fallback cues rather than empty terminators.
 
 Not every data family follows this exact header/page/tail structure. Favorites-order
 responses, for example, are currently treated as single payload frames in family

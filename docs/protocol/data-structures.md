@@ -143,7 +143,10 @@ command for display in the app's activity view:
 button_id   (position on remote, may be 0 if unassigned)
 device_id   (device that owns the command)
 command_id  (the command to invoke)
-source      ("keymap" or "activity_map" — which frame provided this data)
+source      ("keymap" or "activity_map" — which frame provided this data;
+             current protocol findings suggest new favorite slots primarily come
+             from REQ_BUTTONS/keymap rows, while activity_map is mainly a
+             membership roster)
 ```
 
 ---

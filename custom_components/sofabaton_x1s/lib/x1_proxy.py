@@ -15,8 +15,13 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
 from ..logging_utils import get_hub_logger
 from .frame_handlers import FrameContext, frame_handler_registry
-from .commands import DeviceCommandAssembler
-from .macros import MacroAssembler
+from .commands import (
+    DeviceButtonAssembler,
+    DeviceCommandAssembler,
+    parse_button_burst_frame,
+    parse_command_burst_frame,
+)
+from .macros import MacroAssembler, parse_macro_burst_frame
 
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
@@ -296,6 +301,7 @@ class X1Proxy:
         self._adv_started = False
 
         self.state = ActivityCache()
+        self._button_assembler = DeviceButtonAssembler()
         self._command_assembler = DeviceCommandAssembler()
         self._macro_assembler = MacroAssembler()
         self._burst = BurstScheduler()
@@ -4430,13 +4436,110 @@ class X1Proxy:
     # ---------------------------------------------------------------------
     def _log_frames(self, direction: str, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
         for op, raw, payload, scid, ecid in frames:
-            name = OPNAMES.get(op, f"OP_{op:04X}")
+            name = OPNAMES.get(op)
             hi = opcode_hi(op)
             fam = opcode_family(op)
             note = f"#{scid}→#{ecid}" if scid != ecid else f"#{ecid}"
+            parsed = parse_command_burst_frame(
+                op,
+                raw,
+                hub_version=self.hub_version,
+            )
+            parsed_macro = parse_macro_burst_frame(op, raw)
+            if name is None and parsed_macro is not None:
+                name = parsed_macro.display_name
+            if name is None:
+                name = f"OP_{op:04X}"
             self._log.info("[FRAME %s] %s %s (0x%04X) len=%d", note, direction, name, op, len(raw))
+            if parsed is not None:
+                totals = (
+                    f"{parsed.frame_no}/{parsed.total_frames}"
+                    if parsed.total_frames is not None
+                    else f"{parsed.frame_no}"
+                )
+                first_cmd = (
+                    f" first_cmd=0x{parsed.first_command_id:02X}"
+                    if parsed.first_command_id is not None
+                    else ""
+                )
+                fmt = (
+                    f" fmt=0x{parsed.format_marker:02X}"
+                    if parsed.format_marker is not None
+                    else ""
+                )
+                total_commands = (
+                    f" total_cmds={parsed.total_commands}"
+                    if parsed.total_commands is not None
+                    else ""
+                )
+                self._log.debug(
+                    "[FRAME %s] REQ_COMMANDS role=%s variant=%s page=%s dev=0x%02X%s%s%s",
+                    note,
+                    parsed.role,
+                    parsed.layout_kind,
+                    totals,
+                    parsed.device_id,
+                    total_commands,
+                    first_cmd,
+                    fmt,
+                )
+            parsed_buttons = parse_button_burst_frame(op, raw, hub_version=self.hub_version)
+            if parsed_buttons is not None:
+                totals = (
+                    f"{parsed_buttons.frame_no}/{parsed_buttons.total_frames}"
+                    if parsed_buttons.total_frames is not None
+                    else f"{parsed_buttons.frame_no}"
+                )
+                total_rows = (
+                    f" total_rows={parsed_buttons.total_rows}"
+                    if parsed_buttons.total_rows is not None
+                    else ""
+                )
+                activity = (
+                    f" act=0x{parsed_buttons.activity_id:02X}"
+                    if parsed_buttons.activity_id is not None
+                    else ""
+                )
+                row_data = " row_data=yes" if parsed_buttons.has_row_data else " row_data=no"
+                self._log.debug(
+                    "[FRAME %s] REQ_BUTTONS role=%s variant=%s page=%s%s%s%s",
+                    note,
+                    parsed_buttons.role,
+                    parsed_buttons.layout_kind,
+                    totals,
+                    activity,
+                    total_rows,
+                    row_data,
+                )
 
-            if op not in OPNAMES:
+            if parsed_macro is not None:
+                frag = (
+                    f"{parsed_macro.fragment_index}/{parsed_macro.total_fragments}"
+                    if parsed_macro.fragment_index is not None and parsed_macro.total_fragments is not None
+                    else (f"{parsed_macro.fragment_index}" if parsed_macro.fragment_index is not None else "?")
+                )
+                activity = (
+                    f" act=0x{parsed_macro.activity_id:02X}"
+                    if parsed_macro.activity_id is not None
+                    else ""
+                )
+                start_cmd = (
+                    f" start_cmd=0x{parsed_macro.start_command_id:02X}"
+                    if parsed_macro.start_command_id is not None
+                    else ""
+                )
+                len_ok = " len_ok=yes" if parsed_macro.payload_length_matches_hi else " len_ok=no"
+                self._log.debug(
+                    "[FRAME %s] REQ_MACROS role=%s frag=%s%s%s%s",
+                    note,
+                    parsed_macro.role,
+                    frag,
+                    activity,
+                    start_cmd,
+                    len_ok,
+                )
+
+            if op not in OPNAMES and parsed_macro is None:
                 self._log.debug(
                     "[FRAME %s] unknown opcode 0x%04X hi=0x%02X family(lo)=0x%02X",
                     direction,

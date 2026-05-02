@@ -131,6 +131,7 @@ def test_describe_favorites_order_includes_favorites_and_macros() -> None:
         {
             "fav_id": 0x01,
             "button_id": 0x01,
+            "favorite_button_id": 0x01,
             "activity_map_button_id": 0x01,
             "slot": 0x02,
             "type": "favorite",
@@ -177,6 +178,7 @@ def test_describe_favorites_order_appends_cached_entries_missing_from_hub_order(
         {
             "fav_id": 0x01,
             "button_id": 0x01,
+            "favorite_button_id": 0x01,
             "activity_map_button_id": 0x01,
             "slot": 0x01,
             "type": "favorite",
@@ -187,6 +189,7 @@ def test_describe_favorites_order_appends_cached_entries_missing_from_hub_order(
         {
             "fav_id": 0x02,
             "button_id": 0x02,
+            "favorite_button_id": 0x02,
             "activity_map_button_id": 0x02,
             "slot": 0x02,
             "type": "favorite",
@@ -197,6 +200,7 @@ def test_describe_favorites_order_appends_cached_entries_missing_from_hub_order(
         {
             "fav_id": 0x03,
             "button_id": 0x03,
+            "favorite_button_id": 0x03,
             "activity_map_button_id": 0x03,
             "slot": 0x03,
             "type": "favorite",

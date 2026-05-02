@@ -56,3 +56,19 @@ def test_family_constants_align_with_examples() -> None:
     assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_HEADER)
     assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_TAIL)
     assert const.FAMILY_DEVBTNS == const.opcode_lo(const.OP_DEVBTN_SINGLE)
+
+
+def test_req_commands_opnames_use_role_oriented_labels() -> None:
+    assert const.OPNAMES[const.OP_DEVBTN_HEADER] == "REQ_COMMANDS_HEADER_X1S_X2"
+    assert const.OPNAMES[const.OP_DEVBTN_PAGE] == "REQ_COMMANDS_PAGE_X1S_X2"
+    assert const.OPNAMES[const.OP_DEVBTN_PAGE_ALT1] == "REQ_COMMANDS_HEADER_X1"
+    assert const.OPNAMES[const.OP_DEVBTN_PAGE_ALT4] == "REQ_COMMANDS_PAGE_X1"
+    assert const.OPNAMES[const.OP_DEVBTN_PAGE_ALT6] == "REQ_COMMANDS_FINAL_X1_CB5D"
+
+
+def test_req_buttons_opnames_use_role_oriented_labels() -> None:
+    assert const.OPNAMES[const.OP_KEYMAP_TBL_B] == "REQ_BUTTONS_HEADER_OR_PAGE"
+    assert const.OPNAMES[const.OP_KEYMAP_CONT] == "REQ_BUTTONS_PAGE_X1S_X2"
+    assert const.OPNAMES[const.OP_KEYMAP_FINAL_X1S] == "REQ_BUTTONS_FINAL_X1S_X2_233D"
+    assert const.OPNAMES[const.OP_KEYMAP_PAGE_X2_C03D] == "REQ_BUTTONS_PAGE_X1S_X2_C03D"
+    assert const.OPNAMES[const.OP_KEYMAP_OVERLAY_X1] == "REQ_BUTTONS_OVERLAY_X1"
