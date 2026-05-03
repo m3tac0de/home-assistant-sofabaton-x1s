@@ -31,7 +31,6 @@ All paths are relative to `custom_components/sofabaton_x1s/lib/`.
 | Macro burst reassembly | `macros.py` | `MacroAssembler` |
 | Macro record decoding | `macros.py` | `decode_macro_records()` |
 | Keymap state replacement | `state_helpers.py` | `ActivityCache.replace_keymap_rows()` |
-| Keymap record parsing (incremental) | `state_helpers.py` | `ActivityCache.accumulate_keymap()` |
 | In-memory state cache | `state_helpers.py` | `ActivityCache` class |
 | Burst scheduling | `state_helpers.py` | `BurstScheduler` class |
 | High-level proxy API | `x1_proxy.py` | `X1Proxy` class |

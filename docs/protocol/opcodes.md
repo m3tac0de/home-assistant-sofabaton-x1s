@@ -125,16 +125,16 @@ Current parser model (`parse_command_burst_frame()` in `commands.py`):
 | `x1s_x2` / `x1_classic` | frame_no==1 AND `payload[4]==0x00` | `payload[7]` | `payload[4:6]` big-endian | `payload[6]` | 7 |
 | `x1_wifi` | frame_no==1 AND `payload[4]!=0x00` AND len>8 | `payload[6]` | `payload[4]` (1 byte) | `payload[5]` | 6 |
 
-**Legacy layout** (`payload[:2] != \x01\x00`):
-- `device_id=payload[3]`, `data_start=6`; role is `"header"` if frame_no==1 AND total_frames>0
-
 **Single-command layout:**
 - opcode == `0x4D5D` (OP_DEVBTN_SINGLE) OR `payload[:6] == \x01\x00\x01\x01\x00\x01`
 - `device_id=payload[7]` (signature-match case), `data_start=7`; total_frames forced to 1
 
-**Page frames:**
-- frame_no=`payload[2]`, device_id=`payload[3]`, `data_start=3`
-- `first_command_id=payload[4]`, `format_marker=payload[5]`
+**Page frame variants:**
+
+| `layout_kind` | Detection | `device_id` | `data_start` | Notes |
+|---|---|---|---|---|
+| `x1_page_dupdev` | `payload[3]==payload[4]` AND `payload[5] in (0x03, 0x0D, 0x1A, 0x1C)` AND `payload[6:10]==\x00*4` | `payload[3]` | 4 | X1 WiFi/Hue variant with duplicated device byte |
+| `page` (standard) | all other continuation frames | `payload[3]` | 3 | `first_command_id=payload[4]`, `format_marker=payload[5]` |
 
 Classification is delegated entirely to `parse_command_burst_frame()`; `DeviceCommandAssembler.feed()`
 calls it on every frame to determine dev_id, role, and data_start. New high-byte variants with a

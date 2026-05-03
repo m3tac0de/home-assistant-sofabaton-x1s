@@ -95,26 +95,20 @@ Known variants:
 
 The `REQ_BUTTONS` burst is assembled by `DeviceButtonAssembler` into a contiguous row stream
 delivered to `ActivityCache.replace_keymap_rows()`. The stream contains two distinct row types
-in order: **favorite / keybinding slots first**, then **physical-button mappings**. Both types
+in order: **activity favorite slots first**, then **physical-button mappings**. Both types
 share the same 18-byte layout; the parser distinguishes them by `button_id`.
 
-### Row type 1 — Favorite / keybinding slot
+### Row type 1 — Activity favorite slot
 
 `button_id` is **not** a known ButtonName code (i.e. not in `0x97–0x9D` or `0xAE–0xC7`).
 It is a hub-internal slot index, typically in the range `0x01–0x20`. These rows appear before
 any physical-button rows in the assembled stream. Once the first physical-button row is seen,
 no further favorite rows are parsed.
 
-Rows matching a keybinding indicator pattern (bytes 3–8) are routed to `activity_keybinding_slots`;
-all others go to `activity_favorite_slots`. Known indicator patterns:
-- `record[3:7] == \x00×4` and `record[7] == 0x4E`
-- `record[3:8] == \x00×5` and `record[8] == 0x33`
-- `record[3:7] == \x00×4` and `record[7] == 0x42` and `record[8] == 0x2D`
-
 ### Row type 2 — Physical button mapping
 
 `button_id` is a known ButtonName code. These rows populate `state.buttons[act_lo]` and
-`button_details[act_lo]`, and are also checked against the keybinding indicator patterns above.
+`button_details[act_lo]` for the activity.
 
 ### Byte layout (both row types)
 
@@ -123,7 +117,7 @@ all others go to `activity_favorite_slots`. Known indicator patterns:
     0   act_lo               (activity ID low byte — validates record alignment)
     1   button_id            (ButtonName code or hub slot index; determines row type)
     2   device_id            (device the button controls in this activity)
-  3..8  control bytes        (keybinding type indicator — see patterns above)
+  3..8  control bytes        (purpose not yet fully characterized)
     9   command_id           (command to send when button is pressed)
    10   long_press_device_id (0 if no long-press action is configured)
  11..14 zeros                (required when a long-press action is present)
@@ -131,6 +125,10 @@ all others go to `activity_favorite_slots`. Known indicator patterns:
    16   long_press_marker    (non-zero when long-press is configured)
    17   long_press_command_id (0 if no long-press action is configured)
 ```
+
+`replace_keymap_rows()` also handles a trailing partial record at the end of the assembled
+stream: if the final bytes start with the correct `act_lo` and a known ButtonName code, they
+are padded to 18 bytes and parsed as a physical-button row.
 
 ---
 
@@ -152,12 +150,18 @@ Each macro record occupies a region of the assembled payload starting at a track
 
 ```
 offset+0  command_id  (1 byte — macro slot number, 1-indexed within the activity)
-offset+1+ label       (UTF-16-LE or ASCII, variable length; decoded by heuristic scanning)
+offset+1+ record body (variable length — contains an 0xFF separator followed by a label)
 ```
 
+Within the record body, the label is located after the last `0xFF` byte:
+- If the byte immediately after `0xFF` is `0x00` with a non-zero following byte, the label
+  is decoded as **UTF-16BE**.
+- Otherwise, if the byte after `0xFF` is non-zero, the label is decoded as **ASCII**.
+- If no `0xFF` is found, or these conditions are not met, a heuristic scan of the record
+  body is used to locate a UTF-16LE, UTF-16BE, or ASCII label sequence.
+
 `activity_id` is derived from the `"record_start"` frame's payload (byte 6), not from
-within the record body itself. There are no explicit separator bytes between records in
-the assembled payload.
+within the record body itself.
 
 ---
 
