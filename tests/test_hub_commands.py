@@ -314,7 +314,7 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
             "name": "Movies",
             "is_active": True,
             "favorite_count": 1,
-            "keybinding_count": 1,
+            "keybinding_count": 0,
             "macro_count": 1,
         }
     ]
@@ -330,19 +330,7 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
             }
         ]
     }
-    assert payload["activity_keybindings"] == {
-        "101": [
-            {
-                "button_id": keybinding_button_id,
-                "button_name": "Ch Up",
-                "device_id": dev_id,
-                "device_name": "Denon",
-                "command_id": 0x07,
-                "label": "Volume Up",
-                "source": "keymap",
-            }
-        ]
-    }
+    assert payload["activity_keybindings"] == {}
     assert payload["devices_list"] == [
         {
             "id": dev_id,

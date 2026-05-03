@@ -1305,12 +1305,7 @@ class X1Proxy:
 
         seen_pairs: set[tuple[int, int]] = set()
 
-        keybinding_pairs = {
-            (slot["device_id"], slot["command_id"])
-            for slot in self.state.get_activity_keybinding_slots(act_lo)
-        }
-
-        for dev_id, command_id in refs | keybinding_pairs:
+        for dev_id, command_id in refs:
             pair = (dev_id, command_id)
             if pair in seen_pairs:
                 continue
@@ -1318,37 +1313,22 @@ class X1Proxy:
             seen_pairs.add(pair)
 
             favorite_label = self.state.get_favorite_label(act_lo, dev_id, command_id)
-            keybinding_label = self.state.get_keybinding_label(act_lo, dev_id, command_id)
-            if favorite_label and (pair not in keybinding_pairs or keybinding_label):
+            if favorite_label:
                 self.state.record_favorite_label(act_lo, dev_id, command_id, favorite_label)
-                if pair in keybinding_pairs and keybinding_label:
-                    self.state.record_keybinding_label(act_lo, dev_id, command_id, keybinding_label)
                 continue
 
             device_cmds = self.state.commands.get(dev_id & 0xFF)
             if device_cmds and command_id in device_cmds:
                 label = device_cmds[command_id]
-                if pair in refs:
-                    self.state.record_favorite_label(act_lo, dev_id, command_id, label)
-                if pair in keybinding_pairs:
-                    self.state.record_keybinding_label(act_lo, dev_id, command_id, label)
+                self.state.record_favorite_label(act_lo, dev_id, command_id, label)
                 continue
 
-            pair_is_favorite = pair in refs
-            pair_is_keybinding = pair in keybinding_pairs
-
-            if pair_is_favorite:
-                self._favorite_label_requests[pair].add(act_id)
-            if pair_is_keybinding:
-                self._keybinding_label_requests[pair].add(act_id)
-
-            if not fetch_if_missing and not pair_is_favorite:
-                continue
+            self._favorite_label_requests[pair].add(act_id)
 
             single_cmds, ready = self.get_single_command_for_entity(
                 dev_id, command_id, fetch_if_missing=fetch_if_missing
             )
-            if pair_is_favorite and not ready:
+            if not ready:
                 all_ready = False
 
             if single_cmds:
@@ -1359,16 +1339,10 @@ class X1Proxy:
 
                 label = single_cmds.get(command_id)
                 if label:
-                    if pair_is_favorite:
-                        self.state.record_favorite_label(act_lo, dev_id, command_id, label)
-                    if pair_is_keybinding:
-                        self.state.record_keybinding_label(act_lo, dev_id, command_id, label)
+                    self.state.record_favorite_label(act_lo, dev_id, command_id, label)
 
             if ready:
-                if pair_is_favorite:
-                    self._favorite_label_requests.pop(pair, None)
-                if pair_is_keybinding:
-                    self._keybinding_label_requests.pop(pair, None)
+                self._favorite_label_requests.pop(pair, None)
 
         return (commands_by_device, all_ready)
 

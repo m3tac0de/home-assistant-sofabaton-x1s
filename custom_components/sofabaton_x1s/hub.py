@@ -580,7 +580,11 @@ class SofabatonHub:
         data["cache_generation"] = self.cache_generation
         data["activities"] = self._build_cache_activity_list(data)
         data["activity_favorites"] = self._build_cache_activity_favorites()
-        data["activity_keybindings"] = self._build_cache_activity_keybindings()
+        # REQ_BUTTONS is authoritative for enabled buttons and favorites, but
+        # not for the underlying binding targets of normal hard buttons.
+        # Preserve the cache key for compatibility, but leave it empty until a
+        # dedicated binding-details family is implemented.
+        data["activity_keybindings"] = {}
         data["devices_list"] = self._build_cache_devices_list(data)
         return data
 
@@ -657,7 +661,6 @@ class SofabatonHub:
 
     def _build_cache_activity_list(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         favorites = self._build_cache_activity_favorites()
-        keybindings = self._build_cache_activity_keybindings()
         macros_raw = data.get("activity_macros", {})
         macros_by_activity = macros_raw if isinstance(macros_raw, dict) else {}
 
@@ -672,7 +675,7 @@ class SofabatonHub:
                     "name": self._get_cached_activity_name(act_id) or f"Activity {act_id}",
                     "is_active": bool(activity.get("active", False)) if isinstance(activity, dict) else False,
                     "favorite_count": len(favorites.get(act_key, [])),
-                    "keybinding_count": len(keybindings.get(act_key, [])),
+                    "keybinding_count": 0,
                     "macro_count": len(macros) if isinstance(macros, list) else 0,
                 }
             )
@@ -725,47 +728,6 @@ class SofabatonHub:
             favorites_by_activity[str(act_lo)] = rows
 
         return favorites_by_activity
-
-    def _build_cache_activity_keybindings(self) -> dict[str, list[dict[str, Any]]]:
-        keybindings_by_activity: dict[str, list[dict[str, Any]]] = {}
-        button_names = self.get_button_name_map()
-        activity_ids = (
-            set(int(act_id) & 0xFF for act_id in self.activities.keys())
-            | set(int(act_id) & 0xFF for act_id in self._proxy.state.activity_keybinding_slots.keys())
-        )
-
-        for act_id in sorted(activity_id for activity_id in activity_ids if 1 <= activity_id <= 255):
-            act_lo = act_id & 0xFF
-            slots = self._proxy.state.get_activity_keybinding_slots(act_lo)
-            labels = {
-                (int(row.get("device_id", 0)) & 0xFF, int(row.get("command_id", 0)) & 0xFF): str(row.get("name") or "").strip()
-                for row in self._proxy.state.get_activity_keybinding_labels(act_lo)
-                if isinstance(row, dict)
-            }
-            if not slots:
-                continue
-
-            rows: list[dict[str, Any]] = []
-            for slot in slots:
-                button_id = int(slot.get("button_id", 0)) & 0xFF
-                device_id = int(slot.get("device_id", 0)) & 0xFF
-                command_id = int(slot.get("command_id", 0)) & 0xFF
-                label = labels.get((device_id, command_id)) or self._proxy.state.commands.get(device_id, {}).get(command_id)
-                rows.append(
-                    {
-                        "button_id": button_id,
-                        "button_name": button_names.get(button_id, f"Button {button_id}"),
-                        "device_id": device_id,
-                        "device_name": self._get_cached_device_name(device_id) or f"Device {device_id}",
-                        "command_id": command_id,
-                        "label": str(label).strip() if label else f"Command {command_id}",
-                        "source": str(slot.get("source", "cache")),
-                    }
-                )
-
-            keybindings_by_activity[str(act_lo)] = rows
-
-        return keybindings_by_activity
 
     def _build_cache_devices_list(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         devices_raw = data.get("devices", {})

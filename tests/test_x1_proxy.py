@@ -263,7 +263,7 @@ def test_ensure_commands_for_activity_only_favorites(monkeypatch) -> None:
 
 
 
-def test_ensure_commands_for_activity_fetches_keybinding_labels(monkeypatch) -> None:
+def test_ensure_commands_for_activity_ignores_keybinding_slots(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     cache = ActivityCache()
@@ -282,7 +282,6 @@ def test_ensure_commands_for_activity_fetches_keybinding_labels(monkeypatch) -> 
         calls.append((ent_id, command_id, fetch_if_missing))
         mappings = {
             (0x01, 0x1111): ({0x1111: "Favorite One"}, True),
-            (0x01, 0x2222): ({0x2222: "Volume Down Cmd"}, False),
         }
         return mappings.get((ent_id, command_id), ({}, False))
 
@@ -291,14 +290,14 @@ def test_ensure_commands_for_activity_fetches_keybinding_labels(monkeypatch) -> 
     commands_by_device, ready = proxy.ensure_commands_for_activity(act)
 
     assert ready is True
-    assert set(calls) == {(0x01, 0x1111, True), (0x01, 0x2222, True)}
-    assert commands_by_device == {0x01: {0x1111: "Favorite One", 0x2222: "Volume Down Cmd"}}
+    assert calls == [(0x01, 0x1111, True)]
+    assert commands_by_device == {0x01: {0x1111: "Favorite One"}}
     assert proxy.state.activity_favorite_labels[act] == {(0x01, 0x1111): "Favorite One"}
-    assert proxy.state.activity_keybinding_labels[act] == {(0x01, 0x2222): "Volume Down Cmd"}
-    assert proxy._keybinding_label_requests == {(0x01, 0x2222): {act}}
+    assert proxy.state.activity_keybinding_labels.get(act, {}) == {}
+    assert proxy._keybinding_label_requests == {}
 
 
-def test_ensure_commands_for_activity_does_not_requeue_keybinding_fetches_during_poll(
+def test_ensure_commands_for_activity_leaves_existing_keybinding_requests_untouched(
     monkeypatch,
 ) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)

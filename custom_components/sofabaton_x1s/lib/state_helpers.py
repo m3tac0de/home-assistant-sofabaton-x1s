@@ -97,18 +97,6 @@ class ActivityCache:
                 details["long_press_device_id"] = record[10]
                 details["long_press_command_id"] = record[17]
             self.button_details[act_lo][button_id] = details
-            if self._looks_like_activity_keybinding_record(
-                record,
-                device_id=device_id,
-                command_id=command_id,
-            ):
-                self._upsert_activity_keybinding_slot(
-                    act_lo,
-                    button_id=button_id,
-                    device_id=device_id,
-                    command_id=command_id,
-                    source="keymap",
-                )
             return False, True
 
         if favorites_allowed:
@@ -121,32 +109,6 @@ class ActivityCache:
             )
             return True, True
         return favorites_allowed, False
-
-
-    def _looks_like_activity_keybinding_record(
-        self, record: bytes, *, device_id: int, command_id: int
-    ) -> bool:
-        if len(record) < 18:
-            return False
-        if device_id == 0 or command_id in (0x00, 0xFC):
-            return False
-        has_no_long_press = record[10:18] == b"\x00" * 8
-        has_long_press = (
-            record[10] != 0
-            and record[11:15] == b"\x00" * 4
-            and record[15] == 0x4E
-            and record[16] != 0
-            and record[17] != 0
-        )
-        if not has_no_long_press and not has_long_press:
-            return False
-        if record[3:7] == b"\x00" * 4 and record[7] == 0x4E:
-            return True
-        if record[3:8] == b"\x00" * 5 and record[8] == 0x33:
-            return True
-        if record[3:7] == b"\x00" * 4 and record[7] == 0x42 and record[8] == 0x2D:
-            return True
-        return False
 
     def _upsert_activity_keybinding_slot(
         self,
