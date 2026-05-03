@@ -266,18 +266,31 @@ def _decode_macro_record_label(record: bytes) -> str:
     """Decode a macro label from one record body using stable observed layouts."""
 
     separator = record.rfind(b"\xff")
+    direct_label = ""
     if separator >= 0 and separator + 1 < len(record):
         start = separator + 1
         if start + 1 < len(record) and record[start] == 0x00 and record[start + 1] != 0x00:
             label = _decode_utf16be_region(record, start=start)
             label = _normalize_macro_label(label)
             if label and any(ch.isalnum() for ch in label) and all(ch.isprintable() or ch.isspace() for ch in label):
-                return label
+                direct_label = label
         elif record[start] != 0x00:
             label = _decode_ascii_region(record, start=start)
             label = _normalize_macro_label(label)
             if label and any(ch.isalnum() for ch in label) and all(ch.isprintable() or ch.isspace() for ch in label):
-                return label
+                direct_label = label
+
+    if direct_label:
+        # Some X1S/X2 power-macro records end with a trailing field separator and
+        # one-byte metadata tail. In that shape, "last 0xFF wins" produces a fake
+        # one-character label (for example "4") even though the real visible label
+        # earlier in the record is POWER_OFF / POWER_ON. Prefer the structural
+        # fallback when the direct tail candidate is unusually short.
+        if len(direct_label) <= 2:
+            fallback_label = _find_label_in_record(record)
+            if fallback_label and fallback_label != direct_label:
+                return fallback_label
+        return direct_label
 
     return _find_label_in_record(record)
 
