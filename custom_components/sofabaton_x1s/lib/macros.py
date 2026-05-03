@@ -251,6 +251,17 @@ def _decode_utf16be_region(region: bytes, *, start: int) -> str:
     return raw.decode("utf-16be", errors="ignore").replace("\x00", "").strip()
 
 
+def _normalize_macro_label(label: str) -> str:
+    """Remove transport/control artifacts from decoded macro labels."""
+
+    normalized = label.strip()
+    while normalized and (ord(normalized[0]) < 0x20 or normalized[0] == "\uffff"):
+        normalized = normalized[1:].lstrip()
+    if "\xff" in normalized:
+        normalized = normalized.split("\xff")[-1]
+    return normalized.strip()
+
+
 def _decode_macro_record_label(record: bytes) -> str:
     """Decode a macro label from one record body using stable observed layouts."""
 
@@ -259,10 +270,12 @@ def _decode_macro_record_label(record: bytes) -> str:
         start = separator + 1
         if start + 1 < len(record) and record[start] == 0x00 and record[start + 1] != 0x00:
             label = _decode_utf16be_region(record, start=start)
+            label = _normalize_macro_label(label)
             if label and any(ch.isalnum() for ch in label) and all(ch.isprintable() or ch.isspace() for ch in label):
                 return label
         elif record[start] != 0x00:
             label = _decode_ascii_region(record, start=start)
+            label = _normalize_macro_label(label)
             if label and any(ch.isalnum() for ch in label) and all(ch.isprintable() or ch.isspace() for ch in label):
                 return label
 
@@ -314,9 +327,7 @@ def _find_label_in_record(record: bytes) -> str:
     except Exception:
         return ""
 
-    if "\xff" in label:
-        label = label.split("\xff")[-1]
-    return label
+    return _normalize_macro_label(label)
 
 
 def decode_macro_records(payload: bytes, activity_id: int, record_boundaries: list[int]) -> list[tuple[int, int, str]]:

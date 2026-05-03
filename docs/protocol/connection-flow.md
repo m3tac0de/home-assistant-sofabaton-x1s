@@ -18,8 +18,8 @@ In practice:
 - the official **Android app** is known to use the mDNS path successfully
 - the official **iOS app** appears to rely on the UDP `NOTIFY_ME` broadcast path and
   does not appear to support mDNS discovery
-- a proxy implementation re-uses these same mechanisms when exposing a virtual hub to
-  the official app
+- a third-party bridge can re-use these same mechanisms when exposing a virtual
+  hub to the official app
 
 ---
 
@@ -35,8 +35,8 @@ The hub advertises via **mDNS** (Multicast DNS, RFC 6762):
 | X1S   | `_x1hub._udp.local.`          |
 | X2    | `_sofabaton_hub._udp.local.` (observed on physical hubs) |
 
-> **Note:** In this repository's proxy implementation, X2 is re-advertised as
-> `_x1hub._udp.local.` for compatibility. Physical X2 hubs have been observed using
+> Compatibility note: some third-party bridges re-advertise X2-compatible
+> endpoints as `_x1hub._udp.local.`. Physical X2 hubs have been observed using
 > `_sofabaton_hub._udp.local.`.
 
 TXT records of interest:
@@ -162,8 +162,8 @@ device_id[6]   = 0x4B  (X1 / X2)
                  0x45  (X1S)
 ```
 
-The **CALL_ME hint** (used by a proxy implementation to match subsequent `CALL_ME`
-frames back to the correct virtual hub) is
+The **CALL_ME hint** (useful when matching subsequent `CALL_ME` frames back to the
+correct virtual hub) is
 `MAC[0:5] + suffix_byte` (the same as `device_id[1:7]`).
 
 ### 2.3 Client sends CALL_ME after discovery

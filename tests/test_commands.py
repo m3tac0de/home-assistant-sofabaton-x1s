@@ -188,6 +188,48 @@ def test_device_command_assembly_handles_single_command_page() -> None:
     assert parsed == {2: "Exit"}
 
 
+def test_device_command_assembly_handles_x2_unicode_single_command_page() -> None:
+    assembler = DeviceCommandAssembler()
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 01 03 1c 00 00 00 00 00 00 00 44 00 69 00 73 00 6e 00 65 "
+        "00 79 00 2b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 64"
+    )
+
+    opcode = int.from_bytes(raw[2:4], "big")
+    assert opcode == OP_DEVBTN_SINGLE
+
+    completed = assembler.feed(opcode, raw, hub_version=HUB_VERSION_X2)
+
+    assert len(completed) == 1
+    dev_id, payload = completed[0]
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X2)
+    parsed = proxy.parse_device_commands(payload, dev_id)
+
+    assert parsed == {3: "Disney+"}
+
+
+def test_device_command_assembly_preserves_x1s_single_command_label_with_ff_byte() -> None:
+    assembler = DeviceCommandAssembler()
+    raw = bytes.fromhex(
+        "a5 5a 4d 5d 01 00 01 01 00 01 01 06 01 0d 00 00 00 00 00 2a 00 4f 00 6b 00 2b 00 20 00 68 "
+        "00 69 00 48 00 4f 00 31 00 32 00 5f 00 68 00 6f 00 20 00 ff 00 20 00 37 00 33 00 37 00 33 "
+        "00 68 00 64 00 62 00 64 00 62 00 64 00 37 00 20 00 68 00 64 ff 7f"
+    )
+
+    opcode = int.from_bytes(raw[2:4], "big")
+    assert opcode == OP_DEVBTN_SINGLE
+
+    completed = assembler.feed(opcode, raw, hub_version=HUB_VERSION_X1S)
+
+    assert len(completed) == 1
+    dev_id, payload = completed[0]
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+    parsed = proxy.parse_device_commands(payload, dev_id)
+
+    assert parsed == {1: "Ok+ hiHO12_ho ÿ 7373hdbdbd7 hd"}
+
+
 def test_single_command_handler_logs_and_stores_state(caplog) -> None:
     proxy = X1Proxy("127.0.0.1")
     handler = DeviceButtonSingleHandler()
@@ -1011,6 +1053,30 @@ def test_device_button_single_handler_uses_device_id_from_payload(
     assert f"{expected_cmd_id} : {expected_label}" in caplog.text
 
 
+def test_parse_command_burst_frame_recognizes_x1s_input_refresh_layout() -> None:
+    raw = bytes.fromhex(
+        "a5 5a cd 0d "
+        "01 00 01 01 00 01 0c 05 1c 00 00 00 00 00 00 00 "
+        "43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 35 00 "
+        + "00 " * 44
+        + "c0 a8 02 4d 1f 7c 00 79 "
+        + "50 4f 53 54 20 2f 6c 61 75 6e 63 68 2f 65 32 36 61 34 34 38 36 31 62 34 35 "
+        "2f 31 32 2f 34 2f 73 68 6f 72 74 20 48 54 54 50 2f 31 2e 31 0d 0a 48 6f 73 74 "
+        "3a 31 39 32 2e 31 36 38 2e 32 2e 37 37 3a 38 30 36 30 0d 0a 43 6f 6e 74 65 6e "
+        "74 2d 54 79 70 65 3a 61 70 70 6c 69 63 61 74 69 6f 6e 2f 78 2d 77 77 77 2d 66 "
+        "6f 72 6d 2d 75 72 6c 65 6e 63 6f 64 65 64 0d 0a 0d 0a 42 bb 4e"
+    )
+
+    parsed = parse_command_burst_frame(0xCD0D, raw, hub_version=HUB_VERSION_X1S)
+
+    assert parsed is not None
+    assert parsed.layout_kind == "input_config_refresh"
+    assert parsed.role == "single"
+    assert parsed.device_id == 0x0C
+    assert parsed.first_command_id == 0x05
+    assert parsed.format_marker == 0x1C
+
+
 @pytest.mark.parametrize(
     ("raw_hex", "expected_dev_id", "expected_cmd_id", "expected_label"),
     [
@@ -1786,6 +1852,37 @@ def test_parse_device_commands_handles_req_commands_toggle_office() -> None:
         4: "tst4",
         5: "tst5",
     }
+
+
+def test_parse_device_commands_preserves_x1s_unicode_label_with_ff_byte() -> None:
+    frames_hex = (
+        "a5 5a d9 5d 01 00 01 01 00 07 14 0c 01 1c 00 00 00 00 00 00 00 48 00 73 00 62 01 25 00 df 20 78 01 49 00 df 00 ff 00 76 01 25 00 20 00 2b 00 5f 00 2d 00 20 00 32 00 37 00 34 00 20 00 76 00 64 00 76 00 24 00 24 00 00 00 00 00 00 00 00 00 00 ff 0c 02 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 03 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff bb",
+        "a5 5a d5 5d 01 00 02 0c 04 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 05 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 06 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff f4",
+        "a5 5a d5 5d 01 00 03 0c 07 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 08 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 09 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 39 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07",
+        "a5 5a d5 5d 01 00 04 0c 0a 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 31 00 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 0b 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 31 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 0c 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 32 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff e7",
+        "a5 5a d5 5d 01 00 05 0c 0d 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 33 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 0e 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 34 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 0f 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 35 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff a6",
+        "a5 5a d5 5d 01 00 06 0c 10 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 36 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 11 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 37 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 12 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 38 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff b9",
+        "a5 5a 8f 5d 01 00 07 0c 13 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 39 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 0c 14 1c 00 00 00 00 00 00 00 43 00 6f 00 6d 00 6d 00 61 00 6e 00 64 00 20 00 31 00 30 00 20 00 4c 00 6f 00 6e 00 67 00 20 00 50 00 72 00 65 00 73 00 73 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 7a",
+    )
+
+    frames = [bytes.fromhex(block) for block in frames_hex]
+    assembler = DeviceCommandAssembler()
+    completed: list[tuple[int, bytes]] = []
+    dev_id = 0x0C
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, dev_id_override=dev_id))
+
+    assert len(completed) == 1
+
+    proxy = X1Proxy("127.0.0.1")
+    assembled_dev_id, assembled_payload = completed[0]
+    parsed = proxy.parse_device_commands(assembled_payload, assembled_dev_id)
+
+    assert parsed[1] == "Hsb\u0125\u00df\u2078\u0149\u00df\u00ffv\u0125 +_- 274 vdv$$"
+    assert parsed[2] == "Command 2"
+    assert parsed[20] == "Command 10 Long Press"
 
 
 def test_parse_device_commands_handles_dev_id_three_sequence() -> None:

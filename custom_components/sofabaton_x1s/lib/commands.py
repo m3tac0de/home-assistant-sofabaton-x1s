@@ -304,6 +304,11 @@ def parse_command_burst_frame(
     hinted_line = _command_hub_line(hub_version)
     frame_no = payload[2]
 
+    is_input_refresh_layout = (
+        opcode_family(opcode) == 0x0D
+        and len(payload) > 8
+        and payload[:6] == b"\x01\x00\x01\x01\x00\x01"
+    )
     is_single_layout = (
         opcode == OP_DEVBTN_SINGLE
         or (
@@ -314,19 +319,32 @@ def parse_command_burst_frame(
     )
     if is_single_layout:
         device_id = payload[3]
+        layout_kind = "single"
+        data_start = 7
+        first_command_id = payload[8] if len(payload) > 8 else None
+        format_marker = payload[9] if len(payload) > 9 else None
         if payload[:6] == b"\x01\x00\x01\x01\x00\x01" and len(payload) > 7:
             device_id = payload[7]
+        if is_input_refresh_layout:
+            # 0x020C WiFi/input-config refresh replies reuse the single-frame
+            # envelope, but the payload fields differ from normal REQ_COMMANDS:
+            #   <dev_id> <slot_id> <fmt> ...
+            device_id = payload[6]
+            layout_kind = "input_config_refresh"
+            data_start = 8
+            first_command_id = payload[7] if len(payload) > 7 else None
+            format_marker = payload[8] if len(payload) > 8 else None
         return CommandBurstFrame(
             opcode=opcode,
             hub_line=hinted_line,
-            layout_kind="single",
+            layout_kind=layout_kind,
             role="single",
             frame_no=frame_no,
             device_id=device_id,
             total_frames=1,
-            data_start=7,
-            first_command_id=payload[8] if len(payload) > 8 else None,
-            format_marker=payload[9] if len(payload) > 9 else None,
+            data_start=data_start,
+            first_command_id=first_command_id,
+            format_marker=format_marker,
         )
 
     if not _is_devbtn_family(opcode):
@@ -688,6 +706,43 @@ def _iter_fixed_width_utf16_records(data: bytes, dev_id: int) -> Iterator[Comman
     yield from records
 
 
+def _split_command_chunks(data: bytes, dev_id: int) -> Iterator[bytes]:
+    """Split assembled command payloads on real record separators only.
+
+    Modern hubs prefix follow-on records with ``0xFF`` before the next
+    ``<dev_id> <command_id> <fmt>`` tuple. Some Unicode labels can legitimately
+    contain ``0xFF`` bytes (for example U+00FF in UTF-16BE), so a plain
+    ``data.split(b"\\xFF")`` corrupts those labels and invents fake records.
+    """
+
+    target = dev_id & 0xFF
+    separators: list[int] = []
+
+    for idx in range(0, len(data) - 7):
+        if data[idx] != 0xFF or data[idx + 1] != target:
+            continue
+        if data[idx + 3] not in (0x03, 0x0A, 0x0D, 0x1A, 0x1C):
+            continue
+        if data[idx + 4 : idx + 8] != b"\x00" * 4:
+            continue
+        separators.append(idx)
+
+    # Older command streams commonly terminate the final record with a bare
+    # 0xFF byte. Preserve the old split semantics for that trailing delimiter
+    # without treating 0x00 0xFF inside UTF-16BE labels as a separator.
+    if data.endswith(b"\xFF"):
+        separators.append(len(data) - 1)
+
+    start = 0
+    for sep in separators:
+        if sep > start:
+            yield data[start:sep]
+        start = sep + 1
+
+    if start < len(data):
+        yield data[start:]
+
+
 def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
     target = dev_id & 0xFF
     if b"\xff" not in data:
@@ -696,7 +751,7 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
             yield from fixed_width_records
             return
 
-    chunks: Iterable[bytes] = data.split(b"\xff")
+    chunks: Iterable[bytes] = _split_command_chunks(data, dev_id)
 
     for chunk in chunks:
         if len(chunk) < 9:

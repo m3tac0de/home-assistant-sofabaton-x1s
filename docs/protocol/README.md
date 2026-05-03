@@ -1,60 +1,74 @@
-# Sofabaton Hub Protocol — Reference Documentation
+# Sofabaton Hub Protocol Reference
 
-> **Disclaimer:** This documentation is based on reverse-engineering of undisclosed
-> Sofabaton hub firmware. It is unofficial and may become inaccurate as firmware
-> evolves. There is no warranty of correctness or completeness.
+> Disclaimer: this documentation is based on reverse-engineering of an
+> undocumented protocol. It is unofficial and may become inaccurate as firmware
+> changes.
 
-This directory documents the binary protocol used by the Sofabaton X1, X1S, and X2
-remote control hubs. The documentation is implementation-agnostic — no Python, no
-Home Assistant, no specific library required. Any language can implement a client from
-this specification.
+This directory documents the Sofabaton X1, X1S, and X2 hub protocol at the wire
+level. The goal is that a client can be implemented from these documents without
+depending on a particular language, library, or Home Assistant integration.
 
-The reference implementation (Python, MIT license) lives in `/sofabaton_x1/` in the
-repository root. See [reference-impl.md](reference-impl.md) for a map from protocol
-concepts to source files.
+Implementation notes for this repository's Python code are kept separate in
+[reference-impl.md](reference-impl.md).
 
 ---
 
-## Tested firmware
+## Scope
 
-| Model | Hub version property (`HVER`) |
-|-------|-------------------------------|
-| X1    | `1`                           |
-| X1S   | `2`                           |
-| X2    | `3`                           |
+These documents focus on:
+- frame layout
+- discovery and session setup
+- opcode meanings
+- recurring payload structures
+- hub-version differences
+- WiFi/IP device flows
+
+They intentionally avoid:
+- parser method names
+- class names
+- cache-layout details
+- assumptions that are specific to this repository
 
 ---
 
-## Table of contents
+## Tested hub lines
 
-| Document | Contents |
-|----------|----------|
-| [frame-format.md](frame-format.md) | Wire format: sync bytes, opcode layout, checksum |
-| [connection-flow.md](connection-flow.md) | Discovery, CALL_ME/NOTIFY_ME, TCP connect-back, session lifecycle |
-| [opcodes.md](opcodes.md) | All known opcodes with direction, payload shape, hub version support |
-| [data-structures.md](data-structures.md) | Entity IDs, device/activity/command/button record layouts |
-| [hub-versions.md](hub-versions.md) | X1 vs X1S vs X2 differences, opcode variant tables |
-| [wifi-commands.md](wifi-commands.md) | Wifi Device creation, HTTP callback protocol |
-| [reference-impl.md](reference-impl.md) | Source file map for the Python reference implementation |
+| Model | `HVER` |
+|-------|--------|
+| X1 | `1` |
+| X1S | `2` |
+| X2 | `3` |
+
+---
+
+## Contents
+
+| Document | Purpose |
+|----------|---------|
+| [frame-format.md](frame-format.md) | Sync bytes, opcode encoding, checksum |
+| [connection-flow.md](connection-flow.md) | Discovery, `CALL_ME`, TCP session establishment |
+| [opcodes.md](opcodes.md) | Known request and response opcodes |
+| [data-structures.md](data-structures.md) | Repeated payload structures and row layouts |
+| [hub-versions.md](hub-versions.md) | X1 vs X1S vs X2 differences |
+| [wifi-commands.md](wifi-commands.md) | WiFi/IP device creation, sync, and refresh flows |
+| [reference-impl.md](reference-impl.md) | Mapping from protocol concepts to this repository's code |
 
 ---
 
 ## Quick orientation
 
-The Sofabaton hub speaks a proprietary binary protocol over TCP and UDP. There is
-**no authentication** — the protocol assumes a trusted local network. The general
-operating model is:
+At a high level:
 
-1. The hub advertises itself via mDNS on the local network.
-2. A client (app or proxy) opens a UDP socket and sends a `CALL_ME` frame to the hub's
-   UDP port (`8102` by default).
-3. The hub responds and immediately opens a **TCP connection back** to the IP address
-   and port that were embedded in the `CALL_ME` frame.
-4. The client now has a full-duplex TCP session and begins exchanging framed binary
-   messages.
+1. The hub is discovered through mDNS or UDP broadcast.
+2. The client sends `CALL_ME` over UDP.
+3. The hub opens a TCP connection back to the client.
+4. Most data is exchanged as framed binary messages on that TCP session.
+5. Many requests return multi-frame bursts rather than one self-contained reply.
 
-All hub data — devices, activities, commands — is returned in multi-frame **burst**
-responses. A single request triggers a header frame, one or more body pages, and a
-tail frame that signals completion.
+One important protocol characteristic is that text encoding is family-specific:
+- many modern X1S/X2 families use UTF-16BE
+- some WiFi/IP-specific flows use UTF-16LE
+- older X1 traffic often uses ASCII or UTF-8-compatible text
 
-See [connection-flow.md](connection-flow.md) for the full picture.
+Clients should therefore select string decoding based on the opcode family and
+payload layout, not from a single global encoding rule.

@@ -1046,7 +1046,7 @@ class RequestCommandsHandler(BaseFrameHandler):
 
 
 class DeviceButtonSingleHandler(BaseFrameHandler):
-    """Handle single-command payloads returned by :opcode:`OP_REQ_COMMANDS`."""
+    """Handle single-command payloads and WiFi input-refresh labels."""
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
@@ -1068,6 +1068,9 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
             and len(payload) >= 16
             and payload[:6] == b"\x01\x00\x01\x01\x00\x01"
         ):
+            # 0x020C WiFi/input-config refresh replies return a single label
+            # using a distinct field layout from normal REQ_COMMANDS singles:
+            #   <dev_id> <slot_id> <fmt> ...
             dev_id = payload[6]
             command_id = payload[7]
             if len(payload) >= 76 and payload[8] == 0x1C:
@@ -1277,31 +1280,47 @@ class DeviceButtonFamilyHandler(BaseFrameHandler):
                 if parsed.total_frames is not None
                 else f"{parsed.frame_no}"
             )
-            first_cmd = (
-                f" first_cmd=0x{parsed.first_command_id:02X}"
-                if parsed.first_command_id is not None
-                else ""
-            )
             fmt = (
                 f" fmt=0x{parsed.format_marker:02X}"
                 if parsed.format_marker is not None
                 else ""
             )
-            total_commands = (
-                f" total_cmds={parsed.total_commands}"
-                if parsed.total_commands is not None
-                else ""
-            )
-            frame.proxy._log.debug(
-                "[REQ_COMMANDS] role=%s variant=%s page=%s dev=0x%02X%s%s%s",
-                parsed.role,
-                parsed.layout_kind,
-                totals,
-                parsed.device_id,
-                total_commands,
-                first_cmd,
-                fmt,
-            )
+            if parsed.layout_kind == "input_config_refresh":
+                slot = (
+                    f" slot=0x{parsed.first_command_id:02X}"
+                    if parsed.first_command_id is not None
+                    else ""
+                )
+                frame.proxy._log.debug(
+                    "[INPUT_REFRESH] role=%s variant=%s page=%s dev=0x%02X%s%s",
+                    parsed.role,
+                    parsed.layout_kind,
+                    totals,
+                    parsed.device_id,
+                    slot,
+                    fmt,
+                )
+            else:
+                first_cmd = (
+                    f" first_cmd=0x{parsed.first_command_id:02X}"
+                    if parsed.first_command_id is not None
+                    else ""
+                )
+                total_commands = (
+                    f" total_cmds={parsed.total_commands}"
+                    if parsed.total_commands is not None
+                    else ""
+                )
+                frame.proxy._log.debug(
+                    "[REQ_COMMANDS] role=%s variant=%s page=%s dev=0x%02X%s%s%s",
+                    parsed.role,
+                    parsed.layout_kind,
+                    totals,
+                    parsed.device_id,
+                    total_commands,
+                    first_cmd,
+                    fmt,
+                )
 
         if parsed is None:
             frame.proxy._log.debug(

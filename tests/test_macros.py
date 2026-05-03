@@ -133,6 +133,40 @@ def test_decode_macro_records_x1s_utf16_unicode_label_without_terminator() -> No
     assert decoded == [(0x69, 0x03, "Teĥĕĥķdhdb§⁷⅞dh++__--hdb283yhd")]
 
 
+def test_decode_macro_records_x1s_power_only_activity_filters_control_prefixed_power_labels() -> None:
+    assembler = MacroAssembler()
+
+    raw_hex = """
+    a5 5a 6e 13 01 00 01 02 00 01 6a c6 04 0d c6 00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff ff ff 01 0d c5 00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff ff ff 01 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 52 27
+    a5 5a 5a 13 02 00 01 02 00 01 6a c7 02 0d c7 00 00 00 00 00 00 00 ff ff ff ff ff ff ff ff ff ff 01 00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 46 00 46 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 c7 fe
+    """
+
+    payload = bytes(int(value, 16) for value in raw_hex.split())
+
+    frames: list[bytes] = []
+    idx = 0
+    while idx < len(payload):
+        next_idx = payload.find(b"\xA5\x5A", idx + 2)
+        if next_idx == -1:
+            frames.append(payload[idx:])
+            break
+        frames.append(payload[idx:next_idx])
+        idx = next_idx
+
+    completed: list[tuple[int, bytes, list[int]]] = []
+    for frame in frames:
+        opcode = int.from_bytes(frame[2:4], "big")
+        frag_payload = frame[4:-1]
+        completed.extend(assembler.feed(opcode, frag_payload, frame))
+
+    assert len(completed) == 1
+    activity_id, blob, boundaries = completed[0]
+    assert activity_id == 0x6A
+
+    decoded = decode_macro_records(blob, activity_id, boundaries)
+    assert decoded == []
+
+
 def test_x1s_multi_page_macroburst_out_of_order() -> None:
     assembler = MacroAssembler()
     activity_id = 0x69
