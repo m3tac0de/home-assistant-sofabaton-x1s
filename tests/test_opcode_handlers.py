@@ -36,6 +36,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
+from custom_components.sofabaton_x1s.lib import opcode_handlers
 from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     ActivityMapHandler,
     AckReadyHandler,
@@ -675,6 +676,51 @@ def test_macro_handler_reassembles_and_records_macros() -> None:
 
     assert any(entry["command_id"] == 0x01 and entry["label"] == "Power On" for entry in macros)
     assert any(entry["command_id"] == 0x02 and entry["label"] == "Watch TV" for entry in macros)
+
+
+def test_macro_handler_drains_completed_burst_immediately(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = MacroHandler()
+
+    act = 0x34
+    record_one = bytes([0x01]) + "Power On".encode("utf-16le") + b"\x00\x00"
+    record_two = bytes([0x02]) + "Watch TV".encode("utf-16le") + b"\x00\x00"
+    combined = record_one + record_two
+
+    payload_one = combined[: len(combined) // 2]
+    payload_two = combined[len(combined) // 2 :]
+
+    raw_one = _build_macro_raw((OP_MACROS_A1 >> 8) & 0xFF, 1, 2, act, payload_one)
+    raw_two = _build_macro_raw((OP_MACROS_B1 >> 8) & 0xFF, 2, 2, act, payload_two)
+
+    opcode_one = (OP_MACROS_A1 >> 8) << 8 | (OP_MACROS_A1 & 0xFF)
+    opcode_two = (OP_MACROS_B1 >> 8) << 8 | (OP_MACROS_B1 & 0xFF)
+
+    proxy._pending_macro_requests.add(act)
+    proxy._burst.queue.append((0x025C, b"\x01\x03", True, "commands:1:3"))
+
+    sent: list[tuple[int, bytes]] = []
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+    monkeypatch.setattr(opcode_handlers.time, "monotonic", lambda: 100.0)
+
+    handler.handle(_build_context(proxy, raw_one, opcode_one, "MACROS_A1"))
+
+    assert sent == []
+    assert proxy._burst.active is True
+    assert proxy._burst.kind == f"macros:{act}"
+
+    handler.handle(_build_context(proxy, raw_two, opcode_two, "MACROS_B1"))
+
+    assert sent == [(0x025C, b"\x01\x03")]
+    assert proxy._burst.active is True
+    assert proxy._burst.kind == "commands:1:3"
+    assert proxy._burst.last_ts == 100.0 + proxy._burst.response_grace
+    assert act in proxy._macros_complete
+    assert act not in proxy._pending_macro_requests
 
 
 def test_macro_handler_parses_sample_activity_67() -> None:

@@ -897,7 +897,7 @@ def test_single_command_handler_normalizes_x1s_0x1c_command_id() -> None:
     assert proxy.state.activity_favorite_labels[0x66] == {(8, 8): "Command 8"}
 
 
-def test_single_command_handler_skips_response_grace_for_targeted_command_burst(monkeypatch) -> None:
+def test_single_command_handler_drains_targeted_command_burst_immediately(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1")
     handler = DeviceButtonSingleHandler()
 
@@ -905,6 +905,13 @@ def test_single_command_handler_skips_response_grace_for_targeted_command_burst(
     proxy._burst.active = True
     proxy._burst.kind = "commands:1:2"
     proxy._burst.last_ts = 0.0
+    proxy._pending_command_requests[1] = {0x02, 0x03}
+    proxy._burst.queue.append((0x025C, b"\x01\x03", True, "commands:1:3"))
+
+    sent: list[tuple[int, bytes]] = []
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
 
     raw = bytes.fromhex(
         "a5 5a 4d 5d 01 00 01 01 00 01 01 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74 00 00 00 00 00 "
@@ -926,7 +933,11 @@ def test_single_command_handler_skips_response_grace_for_targeted_command_burst(
 
     handler.handle(frame)
 
-    assert proxy._burst.last_ts == 100.0
+    assert sent == [(0x025C, b"\x01\x03")]
+    assert proxy._burst.active is True
+    assert proxy._burst.kind == "commands:1:3"
+    assert proxy._burst.last_ts == 100.0 + proxy._burst.response_grace
+    assert proxy._pending_command_requests[1] == {0x03}
 
 
 def test_single_command_handler_keeps_response_grace_for_device_command_burst(monkeypatch) -> None:

@@ -211,6 +211,14 @@ class MacroHandler(BaseFrameHandler):
                     ", ".join(f"{m['command_id']}: {m['label']}" for m in macros),
                 )
 
+        if completed:
+            proxy._burst.finish(
+                burst_key,
+                can_issue=proxy.can_issue_commands,
+                sender=proxy._send_cmd_frame,
+                now=now,
+            )
+
 
 
 
@@ -1091,12 +1099,14 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
 
         now = time.monotonic()
         burst_kind = proxy._burst.kind or ""
+        targeted_burst_key: str | None = None
         if proxy._burst.active and burst_kind.startswith("commands:"):
             # For targeted command fetches (commands:<dev>:<cmd>) we already
-            # have the response frame, so do not hold the burst open for the
-            # normal response grace window. This lets the scheduler drain the
-            # next queued request much sooner.
+            # have the response frame, so we can finish the burst as soon as
+            # this handler finishes processing the label and immediately drain
+            # the next queued request.
             if burst_kind.count(":") >= 2:
+                targeted_burst_key = burst_kind
                 proxy._burst.last_ts = now
             else:
                 proxy._burst.last_ts = now + proxy._burst.response_grace
@@ -1177,6 +1187,14 @@ class DeviceButtonSingleHandler(BaseFrameHandler):
                             f"{cmd_id:2d} : {label}" for cmd_id, label in proxy.state.commands[dev_key].items()
                         )
                     )
+
+        if targeted_burst_key is not None:
+            proxy._burst.finish(
+                targeted_burst_key,
+                can_issue=proxy.can_issue_commands,
+                sender=proxy._send_cmd_frame,
+                now=now,
+            )
 
 
 class DeviceButtonHeaderHandler(BaseFrameHandler):

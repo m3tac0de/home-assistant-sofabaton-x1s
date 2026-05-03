@@ -113,7 +113,7 @@ String/text encodings are **record-dependent**:
 - X1 catalog names are often **UTF-8**
 - X1S/X2 catalog names are often **UTF-16 BE**
 - Command labels are observed as **ASCII**, **UTF-16 BE**, and some other variants
-- Macro labels are commonly **UTF-16 LE** or **ASCII**
+- Macro labels are commonly **UTF-16 BE** on X1S/X2 and **ASCII** on X1
 - mDNS TXT records and HTTP callback payloads are **UTF-8**
 
 Do not assume a single text encoding applies across the entire protocol.
