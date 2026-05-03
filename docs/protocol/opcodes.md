@@ -81,23 +81,20 @@ This document describes observed wire behavior. Implementation notes belong in
 
 ### Command list and single-command responses (family `0x5D`)
 
-Observed `REQ_COMMANDS` responses use family `0x5D` on all hub lines, but the
-high byte and payload layout vary by frame role and hub generation.
+Observed `REQ_COMMANDS` responses use family `0x5D` on all hub lines. The high
+byte varies by payload size and device class, so clients should not key on a
+fixed list of full opcodes. The stable protocol concepts are:
 
-| Opcode   | Name | Notes |
-|----------|------|-------|
-| `0xD95D` | `REQ_COMMANDS_HEADER_X1S_X2` | Header page on X1S/X2 |
-| `0xD55D` | `REQ_COMMANDS_PAGE_X1S_X2` | Body page on X1S/X2 |
-| `0x495D` | `REQ_COMMANDS_FINAL_X1S_X2_495D` | Final data page on X1S/X2 |
-| `0x8F5D` | `REQ_COMMANDS_FINAL_X1S_X2_8F5D` | Final data page on X1S/X2 |
-| `0x4D5D` | `REQ_COMMANDS_SINGLE` | Targeted single-command response |
-| `0xF75D` | `REQ_COMMANDS_HEADER_X1` | Header page on X1 |
-| `0xF35D` | `REQ_COMMANDS_PAGE_X1` | Body page on X1 |
-| `0x2F5D` | `REQ_COMMANDS_PAGE_X1_2F5D` | X1 page variant |
-| `0x7B5D` | `REQ_COMMANDS_PAGE_OR_FINAL_X1_7B5D` | X1 page/final variant |
-| `0xA35D` | `REQ_COMMANDS_FINAL_X1_A35D` | X1 final-page variant |
-| `0xCB5D` | `REQ_COMMANDS_FINAL_X1_CB5D` | X1 final-page variant |
-| `0x535D` | `REQ_COMMANDS_FINAL_X1_535D` | X1 final-page variant |
+| Role | Notes | Representative examples |
+|------|-------|-------------------------|
+| Header page | Starts a multi-page command burst and carries burst totals | `0xD95D` on X1S/X2, `0xF75D` on X1 |
+| Body page | Carries one or more command records | `0xD55D` on X1S/X2, `0xF35D` on X1 |
+| Final data page | Last data-bearing page of the burst | `0x495D`, `0x8F5D` on X1S/X2; several high-byte variants on X1 |
+| Single-command response | Targeted reply for `[dev_lo, cmd_lo]` requests | `0x4D5D` |
+
+For X1, multiple full opcodes have been observed for page/final roles. They are
+best treated as payload-layout variants within family `0x5D`, not as separate
+protocol concepts.
 
 #### Standard single-command layout (`0x4D5D`)
 
@@ -158,26 +155,19 @@ Observed X1 continuation-page variants:
 
 ### Activity keymap / favorite rows (family `0x3D`)
 
-Observed `REQ_BUTTONS` responses use family `0x3D`.
+Observed `REQ_BUTTONS` responses use family `0x3D`. As with `0x5D`, the high
+byte varies and should not be treated as the protocol abstraction. The stable
+roles are:
 
-| Opcode   | Name | Notes |
-|----------|------|-------|
-| `0xFA3D` | `REQ_BUTTONS_HEADER_OR_PAGE` | Header on X1S/X2; also a page variant |
-| `0xF13D` | `REQ_BUTTONS_PAGE_A` | Observed page variant |
-| `0x3D3D` | `REQ_BUTTONS_PAGE_C` | Observed page variant |
-| `0x1E3D` | `REQ_BUTTONS_PAGE_D` | Observed page variant |
-| `0xBB3D` | `REQ_BUTTONS_PAGE_E` | Observed page variant |
-| `0x783D` | `REQ_BUTTONS_PAGE_F` | Observed page variant |
-| `0xCD3D` | `REQ_BUTTONS_PAGE_G` | Observed page variant |
-| `0x543D` | `REQ_BUTTONS_PAGE_X1S_X2` | X1S/X2 continuation/final page |
-| `0xC03D` | `REQ_BUTTONS_PAGE_X1S_X2_C03D` | X2 continuation/final page |
-| `0x233D` | `REQ_BUTTONS_FINAL_X1S_X2_233D` | Short X1S/X2 final page |
-| `0x0C3D` | `REQ_BUTTONS_MARKER_X1S_X2` | Marker page with no row data |
-| `0x663D` | `REQ_BUTTONS_PAGE_X1_663D` | X1 continuation/final page |
-| `0x733D` | `REQ_BUTTONS_OVERLAY_X1` | X1 single-page overlay burst |
-| `0xAE3D` | `REQ_BUTTONS_PAGE_X1_AE3D` | X1 page variant |
-| `0xE43D` | `REQ_BUTTONS_PAGE_X1_E43D` | X1 page variant |
-| `0x303D` | `REQ_BUTTONS_PAGE_EXTRA` | Small trailing page in some bursts |
+| Role | Notes | Representative examples |
+|------|-------|-------------------------|
+| Header page | Starts the burst and carries total-row metadata | `0xFA3D` on X1S/X2; `0x733D` on some X1 single-page bursts |
+| Data page | Carries 18-byte keymap/favorite rows | `0x543D` on X1S/X2; multiple high-byte variants on X1 |
+| Final data page | Last row-bearing page in the burst | `0x233D` on X1S/X2; several high-byte variants on X1 |
+| Marker page | Segment boundary with no row data | `0x0C3D` |
+
+Several additional full opcodes have been observed in this family, especially on
+X1. They are best treated as high-byte variants of the same row-bearing roles.
 
 Observed semantics:
 - the burst yields a stream of fixed 18-byte rows
@@ -214,12 +204,9 @@ Observed row classes include:
 
 ### Macro labels and payloads (family `0x13`)
 
-| Opcode   | Name | Notes |
-|----------|------|-------|
-| `0x6E13` | `MACROS_A1` | Macro fragment |
-| `0x5A13` | `MACROS_B1` | Macro fragment |
-| `0x8213` | `MACROS_A2` | Macro fragment |
-| `0x6413` | `MACROS_B2` | Macro fragment |
+Observed `REQ_MACRO_LABELS` replies use family `0x13`. The high byte tracks the
+payload length, so full opcodes such as `0x6E13`, `0x5A13`, `0x8213`, and
+`0x6413` are examples rather than separate semantic message types.
 
 Observed semantics:
 - `REQ_MACRO_LABELS` returns one burst per activity
@@ -253,15 +240,15 @@ Observed semantics:
 - response layout differs between X1 and X1S/X2
 - X1S/X2 uses subtype-specific payloads with embedded input ordinals
 
-### IP command synchronization rows (family `0x0D`)
+### IP command synchronization and input-refresh rows (family `0x0D`)
 
-| Opcode   | Name | Notes |
-|----------|------|-------|
-| `0x0DD3` | `IPCMD_ROW_A` | IP-command sync row |
-| `0x0DAC` | `IPCMD_ROW_B` | IP-command sync row |
-| `0x0D9B` | `IPCMD_ROW_C` | IP-command sync row |
-| `0x0DAE` | `IPCMD_ROW_D` | IP-command sync row |
-| `0x8D5D` | `DEVICE_SAVE_HEAD` | Hub-assigned device id during WiFi/IP device creation |
+Observed family `0x0D` traffic includes:
+- IP-command sync rows returned after `REQ_IPCMD_SYNC` (`0x0C02`)
+- WiFi/input-config label refresh replies returned after `REQ_INPUT_CONFIG_LABEL` (`0x020C`)
+
+Representative examples:
+- `0x0DD3`, `0x0DAC`, `0x0D9B`, `0x0DAE` for IP-command sync rows
+- `0xCD0D` for a single input-refresh reply
 
 Observed text encoding:
 - command/button names in the `0x0Dxx` sync rows are UTF-16LE
@@ -285,12 +272,12 @@ Observed text encoding:
 |----------|--------|----------|
 | `0x0B` | Device catalog | `0xD50B`, `0x7B0B` |
 | `0x3B` | Activity catalog | `0xD53B`, `0x7B3B` |
-| `0x13` | Macro fragments | `0x6E13`, `0x5A13`, `0x8213`, `0x6413` |
-| `0x3D` | Activity keymap / favorites | `0xFA3D`, `0x543D`, `0x733D`, `0x0C3D` |
-| `0x5D` | Command pages and single-command labels | `0xD95D`, `0xD55D`, `0x4D5D`, `0x8F5D` |
+| `0x13` | Macro fragments | variable high byte; examples include `0x6E13`, `0x5A13` |
+| `0x3D` | Activity keymap / favorites | variable high byte; examples include `0xFA3D`, `0x543D`, `0x0C3D` |
+| `0x5D` | Command pages and single-command labels | variable high byte; examples include `0xD95D`, `0xD55D`, `0x4D5D` |
 | `0x6D` | Activity membership roster | `0x7B6D`, `0xD56D` |
 | `0x47` | Activity input candidates | `0xFA47`, `0xC947` |
-| `0x0D` | IP-command sync and input-refresh labels | `0x0DD3`, `0x0DAC`, `0xCD0D` |
+| `0x0D` | IP-command sync and input-refresh labels | variable high byte; examples include `0x0DD3`, `0x0DAC`, `0xCD0D` |
 | `0x63` | Favorite ordering | variable high byte |
 
 ---
