@@ -625,23 +625,32 @@ class CatalogDeviceHandler(BaseFrameHandler):
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
-        proxy._burst.start("devices", now=time.monotonic())
+        now = time.monotonic()
 
         payload = frame.payload
         raw = frame.raw
         row_idx = payload[0] if len(payload) >= 1 else None
+        expected_rows = payload[3] if len(payload) >= 4 and payload[3] > 0 else None
         dev_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         name_bytes_raw = raw[36 : 36 + 60]
         device_label = name_bytes_raw.decode("utf-16be").strip("\x00")
         brand_bytes_raw = raw[96 : 96 + 60]
         brand_label = brand_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
 
-
         if dev_id is not None:
-            proxy.state.devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
+            accepted = proxy.ingest_device_row(
+                row_idx=row_idx,
+                expected_rows=expected_rows,
+                dev_id=dev_id,
+                device={"brand": brand_label, "name": device_label},
+            )
+            if not accepted:
+                return
+            proxy._burst.start("devices", now=now)
             proxy._log.info(
-                "[DEV] #%s id=0x%04X (%d) brand='%s' name='%s'",
+                "[DEV] #%s/%s id=0x%04X (%d) brand='%s' name='%s'",
                 row_idx,
+                expected_rows if expected_rows is not None else "?",
                 dev_id,
                 dev_id,
                 brand_label,
@@ -649,6 +658,8 @@ class CatalogDeviceHandler(BaseFrameHandler):
             )
         elif device_label:
             proxy._log.info("[DEV] name='%s'", device_label)
+
+        proxy.try_finish_devices_burst()
 
 
 @register_handler(opcodes=(OP_X1_DEVICE,), directions=("H→A",))
@@ -658,10 +669,10 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         now = time.monotonic()
-        proxy._burst.start("devices", now=now)
 
         payload = frame.payload
         row_idx = payload[0] if payload else None
+        expected_rows = payload[3] if len(payload) >= 4 and payload[3] > 0 else None
         dev_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
 
         name_bytes = payload[32:62]
@@ -671,10 +682,19 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
         brand_label = brand_bytes.split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
 
         if dev_id is not None:
-            proxy.state.devices[dev_id & 0xFF] = {"brand": brand_label, "name": device_label}
+            accepted = proxy.ingest_device_row(
+                row_idx=row_idx,
+                expected_rows=expected_rows,
+                dev_id=dev_id,
+                device={"brand": brand_label, "name": device_label},
+            )
+            if not accepted:
+                return
+            proxy._burst.start("devices", now=now)
             proxy._log.info(
-                "[DEV] #%s id=0x%04X (%d) brand='%s' name='%s'",
+                "[DEV] #%s/%s id=0x%04X (%d) brand='%s' name='%s'",
                 row_idx,
+                expected_rows if expected_rows is not None else "?",
                 dev_id,
                 dev_id,
                 brand_label,
@@ -682,6 +702,8 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
             )
         elif device_label:
             proxy._log.info("[DEV] name='%s'", device_label)
+
+        proxy.try_finish_devices_burst()
 
 
 
@@ -1215,7 +1237,9 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
             hub_version=proxy.hub_version,
         )
 
-        proxy._burst.start(f"commands:{dev_id}", now=time.monotonic())
+        now = time.monotonic()
+        burst_key = f"commands:{dev_id}"
+        proxy._burst.start(burst_key, now=now)
 
         completed = proxy._command_assembler.feed(
             frame.opcode,
@@ -1232,6 +1256,14 @@ class DeviceButtonHeaderHandler(BaseFrameHandler):
                 proxy._log.info(
                     " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in existing.items())
                 )
+
+        if completed:
+            proxy._burst.finish(
+                burst_key,
+                can_issue=proxy.can_issue_commands,
+                sender=proxy._send_cmd_frame,
+                now=now,
+            )
 
 
 class DeviceButtonPayloadHandler(BaseFrameHandler):
@@ -1253,8 +1285,9 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
         )
 
         now = time.monotonic()
+        burst_key = f"commands:{dev_id}"
         if not proxy._burst.active:
-            proxy._burst.start(f"commands:{dev_id}", now=now)
+            proxy._burst.start(burst_key, now=now)
         else:
             proxy._burst.last_ts = now + proxy._burst.response_grace
 
@@ -1273,6 +1306,14 @@ class DeviceButtonPayloadHandler(BaseFrameHandler):
                 proxy._log.info(
                     " ".join(f"{cmd_id:2d} : {label}" for cmd_id, label in existing.items())
                 )
+
+        if completed:
+            proxy._burst.finish(
+                burst_key,
+                can_issue=proxy.can_issue_commands,
+                sender=proxy._send_cmd_frame,
+                now=now,
+            )
 
 
 @register_handler(opcode_families_low=(FAMILY_DEVBTNS, 0x0D), directions=("H→A",))

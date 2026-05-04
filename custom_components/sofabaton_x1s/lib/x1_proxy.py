@@ -316,6 +316,11 @@ class X1Proxy:
         self._pending_activity_map_requests: set[int] = set()
         self._activity_map_complete: set[int] = set()
         self._activity_row_payloads: dict[int, bytes] = {}
+        self._device_request_serial = 0
+        self._device_request_inflight: int | None = None
+        self._device_pending_generation: int | None = None
+        self._device_pending_expected_rows: int | None = None
+        self._device_pending_rows: dict[int, dict[str, Any]] = {}
         self._activity_request_serial = 0
         self._activity_request_inflight: int | None = None
         self._activity_retry_count = 0
@@ -380,6 +385,7 @@ class X1Proxy:
         self._burst.on_burst_end("macros", self._on_macros_burst_end)
         self._burst.on_burst_end("activity_map", self._on_activity_map_burst_end)
         self._burst.on_burst_end("activities", self._on_activities_burst_end)
+        self._burst.on_burst_end("devices", self._on_devices_burst_end)
         self.on_burst_end("activities", self.handle_active_state)
 
         self._hub_connected: bool = False
@@ -1030,12 +1036,22 @@ class X1Proxy:
         self._activity_row_payloads.clear()
         self.state.set_hint(None)
 
+    def _reset_pending_device_snapshot(self, generation: int | None = None) -> None:
+        self._device_pending_generation = generation
+        self._device_pending_expected_rows = None
+        self._device_pending_rows = {}
+
     def _reset_pending_activity_snapshot(self, generation: int | None = None) -> None:
         self._activity_pending_generation = generation
         self._activity_pending_expected_rows = None
         self._activity_pending_rows = {}
         self._activity_pending_payloads = {}
         self._activity_pending_hint = None
+
+    def _begin_device_request(self) -> None:
+        self._device_request_serial += 1
+        self._device_request_inflight = self._device_request_serial
+        self._reset_pending_device_snapshot(self._device_request_inflight)
 
     def _begin_activity_request(self, *, is_retry: bool = False) -> None:
         self._activity_request_serial += 1
@@ -1064,6 +1080,25 @@ class X1Proxy:
             return False
         seen = set(self._activity_pending_rows.keys())
         return seen == set(range(1, expected + 1))
+
+    def _device_snapshot_complete(self) -> bool:
+        expected = self._device_pending_expected_rows
+        if expected is None or expected <= 0:
+            return False
+        seen = set(self._device_pending_rows.keys())
+        return seen == set(range(1, expected + 1))
+
+    def try_finish_devices_burst(self) -> bool:
+        generation = self._device_request_inflight
+        if generation is None or self._device_pending_generation != generation:
+            return False
+        if not self._device_snapshot_complete():
+            return False
+        return self._burst.finish(
+            "devices",
+            can_issue=self.can_issue_commands,
+            sender=self._send_cmd_frame,
+        )
 
     def try_finish_activities_burst(self) -> bool:
         generation = self._activity_request_inflight
@@ -1164,6 +1199,100 @@ class X1Proxy:
             self._activity_pending_hint = act_id
 
         return True
+
+    def ingest_device_row(
+        self,
+        *,
+        row_idx: int | None,
+        expected_rows: int | None,
+        dev_id: int | None,
+        device: dict[str, Any] | None,
+    ) -> bool:
+        generation = self._device_request_inflight
+        if generation is None:
+            self._log.warning(
+                "[DEV] ignoring ghost device row idx=%s dev_id=%s: no request in flight",
+                row_idx,
+                dev_id,
+            )
+            return False
+
+        if row_idx is None or row_idx <= 0 or dev_id is None or device is None:
+            return False
+
+        if row_idx == 1:
+            self._reset_pending_device_snapshot(generation)
+        elif self._device_pending_generation != generation:
+            self._log.warning(
+                "[DEV] ignoring device row idx=%s dev_id=%s before row #1 for request=%s",
+                row_idx,
+                dev_id,
+                generation,
+            )
+            return False
+
+        if expected_rows is not None and expected_rows > 0:
+            if self._device_pending_expected_rows is None:
+                self._device_pending_expected_rows = expected_rows
+            elif self._device_pending_expected_rows != expected_rows:
+                self._log.warning(
+                    "[DEV] row-count mismatch in pending snapshot: had=%s got=%s idx=%s",
+                    self._device_pending_expected_rows,
+                    expected_rows,
+                    row_idx,
+                )
+                self._reset_pending_device_snapshot(generation)
+                self._device_pending_expected_rows = expected_rows
+                if row_idx != 1:
+                    self._log.warning(
+                        "[DEV] ignoring device row idx=%s after row-count mismatch until row #1 restarts snapshot",
+                        row_idx,
+                    )
+                    return False
+
+        self._device_pending_rows[row_idx] = {
+            "id": dev_id & 0xFF,
+            "brand": str(device.get("brand", "")),
+            "name": str(device.get("name", "")),
+        }
+        return True
+
+    def _commit_pending_device_snapshot(self) -> None:
+        ordered_rows = sorted(self._device_pending_rows.items())
+        committed: dict[int, dict[str, Any]] = {}
+        for _row_idx, row in ordered_rows:
+            dev_id = int(row["id"]) & 0xFF
+            committed[dev_id] = {
+                "brand": row["brand"],
+                "name": row["name"],
+            }
+        self.state.devices = committed
+
+    def _on_devices_burst_end(self, key: str) -> None:
+        generation = self._device_request_inflight
+        complete = generation is not None and self._device_pending_generation == generation and self._device_snapshot_complete()
+
+        if complete:
+            self._commit_pending_device_snapshot()
+            self._log.info(
+                "[DEV] committed complete devices snapshot rows=%d request=%s",
+                len(self._device_pending_rows),
+                generation,
+            )
+
+        self._device_request_inflight = None
+
+        if not complete:
+            expected = self._device_pending_expected_rows
+            seen = sorted(self._device_pending_rows.keys())
+            if generation is not None:
+                self._log.warning(
+                    "[DEV] discarding incomplete devices snapshot request=%s expected=%s seen=%s",
+                    generation,
+                    expected,
+                    seen,
+                )
+        self._reset_pending_device_snapshot()
 
     def _commit_pending_activity_snapshot(self) -> None:
         ordered_rows = sorted(self._activity_pending_rows.items())
@@ -4349,6 +4478,8 @@ class X1Proxy:
 
     def _send_cmd_frame(self, opcode: int, payload: bytes) -> None:
         frame = self._build_frame(opcode, payload)
+        if opcode == OP_REQ_DEVICES:
+            self._begin_device_request()
         if opcode == OP_REQ_ACTIVITIES:
             is_retry = self._activity_retry_send_pending
             self._activity_retry_send_pending = False
@@ -4384,6 +4515,7 @@ class X1Proxy:
     def _handle_app_frames(self, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
         for opcode, _raw, _payload, _scid, _ecid in frames:
             if opcode == OP_REQ_DEVICES:
+                self._begin_device_request()
                 self._app_devices_deadline = time.monotonic() + 1.0
                 self._app_devices_retry_sent = False
 

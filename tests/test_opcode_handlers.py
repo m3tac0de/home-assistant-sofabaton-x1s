@@ -1175,6 +1175,7 @@ def test_catalog_device_handler_keeps_mdns_hub_version() -> None:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=HUB_VERSION_X1
     )
     handler = CatalogDeviceHandler()
+    proxy._begin_device_request()
 
     payload = bytes([0x01, 0x00, 0x01, 0x06, 0x00, 0x01, 0x00, 0x06]) + (b"\x00" * 210)
     frame = _build_payload_context(proxy, 0xD50B, payload, "CATALOG_ROW_DEVICE")
@@ -1188,6 +1189,7 @@ def test_x1_catalog_device_handler_keeps_mdns_hub_version() -> None:
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False, hub_version=HUB_VERSION_X1S
     )
     handler = X1CatalogDeviceHandler()
+    proxy._begin_device_request()
 
     payload = bytes([0x01, 0x00, 0x01, 0x06, 0x00, 0x01, 0x00, 0x06]) + (b"\x00" * 80)
     frame = _build_payload_context(proxy, OP_X1_DEVICE, payload, "X1_DEVICE")

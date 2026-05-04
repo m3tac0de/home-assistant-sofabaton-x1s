@@ -109,6 +109,48 @@ def test_try_finish_activities_burst_ends_burst_once_snapshot_is_complete() -> N
     assert proxy.state.current_activity_hint == 0x66
 
 
+def test_try_finish_devices_burst_ends_burst_once_snapshot_is_complete() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._begin_device_request()
+    assert proxy.ingest_device_row(
+        row_idx=1,
+        expected_rows=2,
+        dev_id=0x01,
+        device={"brand": "Denon", "name": "AVR"},
+    )
+    assert proxy.ingest_device_row(
+        row_idx=2,
+        expected_rows=2,
+        dev_id=0x02,
+        device={"brand": "Sony", "name": "TV"},
+    )
+    proxy._burst.start("devices", now=0.0)
+
+    finished = proxy.try_finish_devices_burst()
+
+    assert finished is True
+    assert proxy._burst.active is False
+    assert proxy.state.devices == {
+        0x01: {"brand": "Denon", "name": "AVR"},
+        0x02: {"brand": "Sony", "name": "TV"},
+    }
+
+
+def test_ghost_device_row_is_ignored_without_request_in_flight() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    accepted = proxy.ingest_device_row(
+        row_idx=1,
+        expected_rows=2,
+        dev_id=0x01,
+        device={"brand": "Denon", "name": "AVR"},
+    )
+
+    assert accepted is False
+    assert proxy.state.devices == {}
+
+
 def test_try_finish_activity_map_burst_ends_matching_burst() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 

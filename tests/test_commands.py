@@ -167,6 +167,77 @@ def test_device_command_assembly_tracks_frames() -> None:
     assert assembled_payload == header_frame[4:-1][7:] + tail_frame[4:-1][3:]
 
 
+def test_full_command_burst_drains_immediately_when_final_page_arrives(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1")
+    header_handler = DeviceButtonHeaderHandler()
+    payload_handler = DeviceButtonPayloadHandler()
+
+    dev_id = 0x2A
+    combined = b"header_payload_chunk" + b"page_payload_chunk"
+    data_part1 = combined[: len(combined) // 2]
+    data_part2 = combined[len(combined) // 2 :]
+
+    header_frame = _build_x1s_frame(
+        OP_DEVBTN_HEADER,
+        frame_no=1,
+        total_frames=2,
+        total_commands=4,
+        dev_id=dev_id,
+        command_id=0x01,
+        format_marker=0x1C,
+        data=data_part1,
+    )
+    tail_frame = _build_x1_page_frame(
+        OP_DEVBTN_TAIL,
+        frame_no=2,
+        dev_id=dev_id,
+        command_id=0x02,
+        format_marker=0x1C,
+        data=data_part2,
+    )
+
+    proxy._pending_command_requests[dev_id] = {0xFF}
+    proxy._burst.queue.append((0x025C, b"\x2b\xff", True, "commands:43"))
+
+    sent: list[tuple[int, bytes]] = []
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+    monkeypatch.setattr(opcode_handlers.time, "monotonic", lambda: 100.0)
+
+    header_handler.handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=OP_DEVBTN_HEADER,
+            direction="H→A",
+            payload=header_frame[4:-1],
+            raw=header_frame,
+            name="DEVBTN_HEADER",
+        )
+    )
+
+    assert sent == []
+    assert proxy._burst.active is True
+    assert proxy._burst.kind == f"commands:{dev_id}"
+
+    payload_handler.handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=OP_DEVBTN_TAIL,
+            direction="H→A",
+            payload=tail_frame[4:-1],
+            raw=tail_frame,
+            name="DEVBTN_TAIL",
+        )
+    )
+
+    assert sent == [(0x025C, b"\x2b\xff")]
+    assert proxy._burst.active is True
+    assert proxy._burst.kind == "commands:43"
+    assert proxy._burst.last_ts == 100.0 + proxy._burst.response_grace
+    assert dev_id not in proxy._pending_command_requests
+
+
 def test_device_command_assembly_handles_single_command_page() -> None:
     assembler = DeviceCommandAssembler()
     raw = bytes.fromhex(

@@ -32,12 +32,17 @@ REQ_ACTIVATE payload = [entity_lo, key_code]
 One frame corresponds to one device.
 
 Observed stable fields:
+- `payload[0]` = 1-based row index
+- `payload[3]` = total device rows in the burst
 - `payload[6:8]` = device id
+- some captures also repeat the row index / total near `payload[9:11]`
 - X1S/X2 text regions are commonly UTF-16BE
 - X1 text regions are commonly UTF-8 or ASCII-compatible
 
 The exact meaning of several surrounding control bytes is still incomplete, but
 the rows behave as fixed-position records rather than short TLV structures.
+In observed X1 and X1S/X2 traffic, the burst can be treated as complete once
+all row indexes `1..payload[3]` have been received.
 
 ### Activity catalog row (`0xD53B` / `0x7B3B`)
 
