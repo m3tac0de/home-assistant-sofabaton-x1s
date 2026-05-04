@@ -417,13 +417,23 @@ async def _ws_delete_command_device(hass: HomeAssistant, connection, msg: dict[s
         deleted_hub_device = bool(result)
     if not deleted_hub_device:
         snapshot = await hub._async_refresh_devices_snapshot()
-        normalized_device_key = "".join(ch for ch in str(msg["device_key"]).strip().lower() if ch.isalnum())
-        for managed_device_id, managed_key, managed_hash, _brand in hub._managed_wifi_devices(snapshot):
-            if deployed_commands_hash:
-                if managed_hash != deployed_commands_hash:
-                    continue
-            elif managed_key != normalized_device_key:
-                continue
+        stored_devices = await store.async_list_hub_devices(hub.entry_id, roku_listen_port=roku_listen_port)
+        matches, ambiguous = hub._match_managed_wifi_devices(
+            managed_devices=hub._managed_wifi_devices(snapshot),
+            stored_devices=stored_devices,
+            device_key=msg["device_key"],
+            deployed_device_id=deployed_device_id,
+            deployed_commands_hash=deployed_commands_hash,
+            commands_hash=str(payload.get("commands_hash") or ""),
+        )
+        if ambiguous:
+            connection.send_error(
+                msg["id"],
+                "ambiguous",
+                "Could not safely identify existing Wifi Device on hub",
+            )
+            return
+        for managed_device_id, _managed_key, _managed_hash, _brand in matches:
             result = await hub.async_delete_device(managed_device_id)
             deleted_hub_device = bool(result)
             if deleted_hub_device:

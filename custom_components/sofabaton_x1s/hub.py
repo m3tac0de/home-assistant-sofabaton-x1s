@@ -69,7 +69,7 @@ def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
     if not suffix:
         return None, None
     if "-" not in suffix:
-        return DEFAULT_WIFI_DEVICE_KEY, suffix
+        return None, suffix
     device_key, command_hash = suffix.split("-", 1)
     device_key = "".join(ch for ch in str(device_key).lower() if ch.isalnum())
     return (device_key or DEFAULT_WIFI_DEVICE_KEY), command_hash.strip()
@@ -1510,14 +1510,66 @@ class SofabatonHub:
 
     def _managed_wifi_devices(
         self, devices: dict[int, dict[str, Any]] | None = None
-    ) -> list[tuple[int, str, str, str]]:
-        managed: list[tuple[int, str, str, str]] = []
+    ) -> list[tuple[int, str | None, str, str]]:
+        managed: list[tuple[int, str | None, str, str]] = []
         for dev_id, device in (devices or self.devices).items():
             brand = str(device.get("brand") or "").strip()
             device_key, command_hash = _parse_managed_wifi_brand(brand)
-            if device_key and command_hash:
+            if command_hash:
                 managed.append((int(dev_id), device_key, command_hash, brand))
         return managed
+
+    def _match_managed_wifi_devices(
+        self,
+        *,
+        managed_devices: list[tuple[int, str | None, str, str]],
+        stored_devices: list[dict[str, Any]] | None = None,
+        device_key: str | None = None,
+        deployed_device_id: Any = None,
+        deployed_commands_hash: str = "",
+        commands_hash: str = "",
+    ) -> tuple[list[tuple[int, str | None, str, str]], bool]:
+        if isinstance(deployed_device_id, int):
+            matches = [row for row in managed_devices if row[0] == int(deployed_device_id)]
+            return matches, len(matches) > 1
+
+        deployed_hash = str(deployed_commands_hash or "").strip()
+        if deployed_hash:
+            matches = [row for row in managed_devices if row[2] == deployed_hash]
+            if len(matches) == 1:
+                return matches, False
+            if len(matches) > 1:
+                return [], True
+
+        current_hash = str(commands_hash or "").strip()
+        if current_hash:
+            matches = [row for row in managed_devices if row[2] == current_hash]
+            if len(matches) == 1:
+                return matches, False
+            if len(matches) > 1:
+                return [], True
+
+        normalized_device_key = (
+            "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum())
+            or DEFAULT_WIFI_DEVICE_KEY
+        )
+        matches = [
+            row
+            for row in managed_devices
+            if row[1] is not None and row[1] == normalized_device_key
+        ]
+        if len(matches) == 1:
+            return matches, False
+        if len(matches) > 1:
+            return [], True
+
+        if stored_devices is None and len(managed_devices) == 1:
+            return [managed_devices[0]], False
+
+        if stored_devices is not None and len(stored_devices) == 1 and len(managed_devices) == 1:
+            return [managed_devices[0]], False
+
+        return [], False
 
     async def _async_reconcile_deployed_wifi_device_ids(self) -> None:
         hass_data = getattr(self.hass, "data", {})
@@ -1526,28 +1578,27 @@ class SofabatonHub:
         if store is None:
             return
 
-        managed_by_key: dict[str, int] = {}
-        duplicate_keys: set[str] = set()
-        for managed_device_id, managed_key, _managed_hash, _brand in self._managed_wifi_devices():
-            if managed_key in managed_by_key and managed_by_key[managed_key] != managed_device_id:
-                duplicate_keys.add(managed_key)
-                continue
-            managed_by_key[managed_key] = managed_device_id
-
-        for duplicate_key in duplicate_keys:
-            managed_by_key.pop(duplicate_key, None)
-
-        if not managed_by_key:
+        managed_devices = self._managed_wifi_devices()
+        if not managed_devices:
             return
 
+        stored_devices = await store.async_list_hub_devices(self.entry_id)
         changed = False
-        for device in await store.async_list_hub_devices(self.entry_id):
+        for device in stored_devices:
             device_key = str(device.get("device_key") or "").strip()
             if not device_key or isinstance(device.get("deployed_device_id"), int):
                 continue
-            managed_device_id = managed_by_key.get(device_key)
-            if managed_device_id is None:
+            matches, ambiguous = self._match_managed_wifi_devices(
+                managed_devices=managed_devices,
+                stored_devices=stored_devices,
+                device_key=device_key,
+                deployed_device_id=device.get("deployed_device_id"),
+                deployed_commands_hash=str(device.get("deployed_commands_hash") or ""),
+                commands_hash=str(device.get("commands_hash") or ""),
+            )
+            if ambiguous or len(matches) != 1:
                 continue
+            managed_device_id = matches[0][0]
             if await store.async_set_deployed_device_id(
                 self.entry_id,
                 device_key,
@@ -1764,6 +1815,9 @@ class SofabatonHub:
             normalized_device_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
             brand_name = f"{COMMAND_BRAND_PREFIX}-{commands_hash}"
             total_steps = 8 if configured_slots > 0 else 7
+            hass_data = getattr(self.hass, "data", {})
+            domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
+            store = domain_data.get("command_config_store")
             self._set_command_sync_progress(
                 device_key=normalized_device_key,
                 status="running",
@@ -1791,21 +1845,20 @@ class SofabatonHub:
                         )
 
                 device_snapshot = await self._async_refresh_devices_snapshot()
-                managed_by_id: dict[int, tuple[int, str, str, str]] = {}
-                for dev_id, managed_key, managed_hash, brand in self._managed_wifi_devices(device_snapshot):
-                    if isinstance(deployed_device_id, int) and int(dev_id) == deployed_device_id:
-                        managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
-                        continue
-                    if deployed_commands_hash and managed_hash == deployed_commands_hash:
-                        managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
-                        continue
-                    if (
-                        not isinstance(deployed_device_id, int)
-                        and not deployed_commands_hash
-                        and managed_key == normalized_device_key
-                    ):
-                        managed_by_id[int(dev_id)] = (dev_id, managed_key, managed_hash, brand)
-                managed = list(managed_by_id.values())
+                managed_devices = self._managed_wifi_devices(device_snapshot)
+                stored_devices = await store.async_list_hub_devices(self.entry_id) if store is not None else None
+                managed, ambiguous = self._match_managed_wifi_devices(
+                    managed_devices=managed_devices,
+                    stored_devices=stored_devices,
+                    device_key=normalized_device_key,
+                    deployed_device_id=deployed_device_id,
+                    deployed_commands_hash=deployed_commands_hash,
+                    commands_hash=commands_hash,
+                )
+                if ambiguous:
+                    raise HomeAssistantError(
+                        "Unable to safely identify existing managed Wifi Device; multiple matches found"
+                    )
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=2,
@@ -1819,9 +1872,6 @@ class SofabatonHub:
                         )
 
                 if configured_slots == 0:
-                    hass_data = getattr(self.hass, "data", {})
-                    domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
-                    store = domain_data.get("command_config_store")
                     if store is not None:
                         await store.async_save_deployed_wifi_commands(
                             self.entry_id,
@@ -2124,12 +2174,9 @@ class SofabatonHub:
                 )
                 await self.async_resync_remote()
 
-            # Persist the command list that was just synced to the hub.
-            # Callbacks will resolve command indices against this frozen snapshot,
-            # independently of any subsequent staged-config edits.
-                hass_data = getattr(self.hass, "data", {})
-                domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
-                store = domain_data.get("command_config_store")
+                # Persist the command list that was just synced to the hub.
+                # Callbacks will resolve command indices against this frozen snapshot,
+                # independently of any subsequent staged-config edits.
                 if store is not None:
                     await store.async_save_deployed_wifi_commands(
                         self.entry_id,
