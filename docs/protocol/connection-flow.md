@@ -204,20 +204,20 @@ CLIENT                               HUB
    |                                     |
    |-- REQ_ACTIVITIES -----------------> |
    |<-- CATALOG_ROW_ACTIVITY (N rows) -- |
-   |-- REQ_DEVICES -------------------> |
+   |-- REQ_DEVICES ------------------->  |
    |<-- CATALOG_ROW_DEVICE (N rows) ---- |
    |                                     |
-   |  … bidirectional command/response …  |
+   |  … bidirectional command/response … |
 ```
 
 ```
 APP / CLIENT                         HUB
    |                                     |
-   |-- UDP NOTIFY_ME probe -----------> |  (broadcast to subnet:8102)
+   |-- UDP NOTIFY_ME probe ----------->  |  (broadcast to subnet:8102)
    |                                     |
    |<-- UDP NOTIFY_ME reply -- (bcast) --|  (hub broadcasts to subnet:8100)
    |                                     |
-   |-- UDP CALL_ME -------------------> |  (client sends CALL_ME to discovered hub)
+   |-- UDP CALL_ME ------------------->  |  (client sends CALL_ME to discovered hub)
    |                                     |
    |<------- TCP connect-back ---------- |  (hub connects to client IP:port from CALL_ME)
    |                                     |
@@ -227,11 +227,11 @@ APP / CLIENT                         HUB
 ```
 PROXY                                APP
    |                                     |
-   |<-- UDP NOTIFY_ME probe ----------- |  (app broadcasts to subnet:8102)
+   |<-- UDP NOTIFY_ME probe -----------  |  (app broadcasts to subnet:8102)
    |                                     |
-   |-- UDP NOTIFY_ME reply --> (bcast) -> |  (proxy broadcasts to subnet:8100)
+   |-- UDP NOTIFY_ME reply --> (bcast) ->|  (proxy broadcasts to subnet:8100)
    |                                     |
-   |<-- UDP CALL_ME ------------------- |  (app sends CALL_ME to proxy)
+   |<-- UDP CALL_ME -------------------  |  (app sends CALL_ME to proxy)
    |                                     |
    |-- TCP connect -------------------- >|  (proxy connects to app IP:port from CALL_ME)
    |                                     |
