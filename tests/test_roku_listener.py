@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from custom_components.sofabaton_x1s.roku_listener import RokuListenerManager
 
@@ -260,6 +261,34 @@ def test_listener_restarts_when_port_changes(monkeypatch) -> None:
 
         assert starts == [8060, 8765]
         assert manager._bound_port == 8765
+
+    asyncio.run(_run())
+
+
+def test_handle_client_logs_request_progression(caplog) -> None:
+    async def _run() -> None:
+        manager = RokuListenerManager(_FakeHass())
+        hub = _FakeHub(entry_id="e1", action_id="abc123", host="10.0.0.12")
+        await manager.async_register_hub(hub, enabled=True)
+
+        reader = _FakeStreamReader(
+            [
+                b"POST /launch/abc123/7/Lights_On HTTP/1.1\r\n",
+                b"Content-Length: 0\r\n",
+                b"\r\n",
+            ]
+        )
+        writer = _FakeStreamWriter()
+
+        with caplog.at_level(logging.INFO, logger="custom_components.sofabaton_x1s.roku_listener"):
+            await manager._async_handle_client(reader, writer)
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("[WIFI_HTTP] request received ip=10.0.0.12" in message for message in messages)
+        assert any("[e1] [WIFI_HTTP] accepted listener request source_ip=10.0.0.12 path=/launch/abc123/7/Lights_On" in message for message in messages)
+        assert any("[WIFI_HTTP] request completed ip=10.0.0.12 method=POST path=/launch/abc123/7/Lights_On status=200" in message for message in messages)
+
+        await manager.async_remove_hub("e1")
 
     asyncio.run(_run())
 

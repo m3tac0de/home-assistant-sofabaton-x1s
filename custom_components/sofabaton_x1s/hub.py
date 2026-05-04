@@ -46,6 +46,7 @@ from .lib.protocol_const import ButtonName
 from .lib.x1_proxy import X1Proxy
 from .command_config import (
     COMMAND_BRAND_PREFIX,
+    async_get_command_config_store,
     DEFAULT_WIFI_DEVICE_KEY,
     count_configured_command_slots,
     normalize_command_name,
@@ -1419,14 +1420,11 @@ class SofabatonHub:
                 command_index = int(parts[3])
                 if len(parts) >= 5 and parts[4] in ("short", "long"):
                     press_type = parts[4]
-                hass_data = getattr(self.hass, "data", {})
-                domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
-                store = domain_data.get("command_config_store")
-                if store is not None:
-                    deployed = store.get_deployed_wifi_commands(self.entry_id, hub_device_id=device_id)
-                    if 0 <= command_index < len(deployed):
-                        resolved_slot = deployed[command_index]
-                        command_label = str(resolved_slot.get("name", ""))
+                store = await async_get_command_config_store(self.hass)
+                deployed = store.get_deployed_wifi_commands(self.entry_id, hub_device_id=device_id)
+                if 0 <= command_index < len(deployed):
+                    resolved_slot = deployed[command_index]
+                    command_label = str(resolved_slot.get("name", ""))
             else:
                 # Old format (backwards compat):
                 # launch/{hub_id}/{device_id}/{command_name}/{device_name}/{press_type}
@@ -1459,6 +1457,15 @@ class SofabatonHub:
             "body": body.decode("utf-8", errors="ignore"),
             "headers": headers,
         }
+        self._log.info(
+            "[WIFI_HTTP] mapped listener request source_ip=%s device_id=%s device_name=%s command=%s press_type=%s path=%s",
+            source_ip or "unknown",
+            device_id,
+            resolved_device_name or "<unknown>",
+            command_label or "<unresolved>",
+            press_type,
+            path,
+        )
         self._last_ip_command = record
         async_dispatcher_send(self.hass, signal_ip_commands(self.entry_id))
         if resolved_slot is not None and command_index is not None:
@@ -1572,12 +1579,7 @@ class SofabatonHub:
         return [], False
 
     async def _async_reconcile_deployed_wifi_device_ids(self) -> None:
-        hass_data = getattr(self.hass, "data", {})
-        domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
-        store = domain_data.get("command_config_store")
-        if store is None:
-            return
-
+        store = await async_get_command_config_store(self.hass)
         managed_devices = self._managed_wifi_devices()
         if not managed_devices:
             return
@@ -1745,12 +1747,7 @@ class SofabatonHub:
         *,
         press_type: str = "short",
     ) -> None:
-        hass_data = getattr(self.hass, "data", {})
-        domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
-        store = domain_data.get("command_config_store")
-        if store is None:
-            return
-
+        store = await async_get_command_config_store(self.hass)
         payload = await store.async_get_hub_config(self.entry_id, device_key=DEFAULT_WIFI_DEVICE_KEY)
         command_key = normalize_command_name(command_label)
         for slot in payload.get("commands", []):
@@ -1768,13 +1765,7 @@ class SofabatonHub:
         command_label: str,
         press_type: str = "short",
     ) -> None:
-        hass_data = getattr(self.hass, "data", {})
-        domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
-        store = domain_data.get("command_config_store")
-        if store is None:
-            await self._async_run_wifi_slot_action(fallback_slot, command_label, press_type=press_type)
-            return
-
+        store = await async_get_command_config_store(self.hass)
         live_slot = store.get_live_wifi_command_slot(
             self.entry_id,
             command_index=command_index,
@@ -1787,13 +1778,9 @@ class SofabatonHub:
         )
 
     async def _async_wifi_listener_needed(self) -> bool:
-        hass_data = getattr(self.hass, "data", {})
-        domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
-        store = domain_data.get("command_config_store")
-        if store is not None:
-            devices = await store.async_list_hub_devices(self.entry_id)
-            return any(wifi_device_requires_listener(device) for device in devices)
-        return False
+        store = await async_get_command_config_store(self.hass)
+        devices = await store.async_list_hub_devices(self.entry_id)
+        return any(wifi_device_requires_listener(device) for device in devices)
 
     async def async_sync_command_config(
         self,
@@ -1815,9 +1802,7 @@ class SofabatonHub:
             normalized_device_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
             brand_name = f"{COMMAND_BRAND_PREFIX}-{commands_hash}"
             total_steps = 8 if configured_slots > 0 else 7
-            hass_data = getattr(self.hass, "data", {})
-            domain_data = hass_data.get(DOMAIN, {}) if isinstance(hass_data, dict) else {}
-            store = domain_data.get("command_config_store")
+            store = await async_get_command_config_store(self.hass)
             self._set_command_sync_progress(
                 device_key=normalized_device_key,
                 status="running",

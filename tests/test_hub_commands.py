@@ -1,7 +1,9 @@
 import asyncio
+import logging
 import pytest
 from types import SimpleNamespace
 
+import custom_components.sofabaton_x1s.hub as hub_module
 from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 
@@ -2047,6 +2049,105 @@ def test_sync_command_config_with_zero_slots_keeps_listener_when_another_device_
     assert result["status"] == "success"
     assert enabled_calls == []
     assert hub.roku_server_enabled is True
+
+    loop.close()
+
+
+def test_roku_http_post_new_format_lazy_loads_command_store(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+    hass.data = {"sofabaton_x1s": {}}
+
+    class _Store:
+        def get_deployed_wifi_commands(self, entry_id, *, hub_device_id=None, device_key=None):
+            if entry_id == "entry-id" and hub_device_id == 8:
+                return [{"name": "Scene Lights"}]
+            return []
+
+        def get_live_wifi_command_slot(self, entry_id, *, command_index, hub_device_id=None, device_key=None):
+            if entry_id == "entry-id" and hub_device_id == 8 and command_index == 0:
+                return {
+                    "name": "Scene Lights",
+                    "action": {"action": "perform-action", "perform_action": "script.scene_lights"},
+                }
+            return None
+
+        async def async_get_hub_config(self, _entry_id, **_kwargs):
+            return {"commands": []}
+
+    async def _fake_get_store(_hass):
+        return _Store()
+
+    monkeypatch.setattr(hub_module, "async_get_command_config_store", _fake_get_store)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    loop.run_until_complete(
+        hub.async_handle_roku_http_post(
+            path="/launch/actionid/8/0/short",
+            headers={"content-type": "text/plain"},
+            body=b"payload",
+            source_ip="127.0.0.1",
+        )
+    )
+
+    ip_command = hub.get_last_ip_command()
+    assert ip_command
+    assert ip_command["command_label"] == "Scene Lights"
+
+    loop.close()
+
+
+def test_roku_http_post_logs_mapped_command(caplog):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    with caplog.at_level(logging.INFO, logger="custom_components.sofabaton_x1s.hub"):
+        loop.run_until_complete(
+            hub.async_handle_roku_http_post(
+                path="/launch/actionid/7/Lights_On/Living_Room_TV/long",
+                headers={"content-type": "text/plain"},
+                body=b"payload",
+                source_ip="127.0.0.1",
+            )
+        )
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert any(
+        "[entry-id] [WIFI_HTTP] mapped listener request source_ip=127.0.0.1 device_id=7 device_name=Living Room TV command=Lights On press_type=long path=/launch/actionid/7/Lights_On/Living_Room_TV/long"
+        in message
+        for message in messages
+    )
 
     loop.close()
 

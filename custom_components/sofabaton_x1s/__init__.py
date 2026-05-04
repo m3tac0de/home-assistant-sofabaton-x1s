@@ -48,6 +48,7 @@ from .hub import SofabatonHub, get_hub_model
 from .command_config import (
     CommandConfigStore,
     MAX_WIFI_DEVICES,
+    async_get_command_config_store,
     count_configured_command_slots,
     normalize_command_id_list,
     normalize_power_command_id,
@@ -108,15 +109,7 @@ def _resolve_roku_listen_port(hass: HomeAssistant, entry_id: str) -> int:
 
 
 async def _async_get_command_config_store(hass: HomeAssistant) -> CommandConfigStore:
-    domain_data = hass.data.setdefault(DOMAIN, {})
-    store = domain_data.get("command_config_store")
-    if isinstance(store, CommandConfigStore):
-        return store
-
-    store = CommandConfigStore(hass)
-    await store.async_load()
-    domain_data["command_config_store"] = store
-    return store
+    return await async_get_command_config_store(hass)
 
 
 async def _async_get_persistent_cache_store(hass: HomeAssistant) -> PersistentCacheStore:
@@ -916,6 +909,7 @@ async def _async_get_integration_version(hass: HomeAssistant) -> str:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async_setup_diagnostics(hass)
+    await _async_get_command_config_store(hass)
 
     data = entry.data
     opts = entry.options

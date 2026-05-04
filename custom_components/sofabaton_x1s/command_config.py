@@ -525,3 +525,17 @@ class CommandConfigStore:
         device["power_off_command_id"] = normalized_power_off
         await self._store.async_save(self._data)
         return self._payload_for_device(device, roku_listen_port=roku_listen_port)
+
+
+async def async_get_command_config_store(hass: HomeAssistant) -> CommandConfigStore:
+    """Return the shared command-config store, loading it on demand."""
+
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    store = domain_data.get("command_config_store")
+    if isinstance(store, CommandConfigStore):
+        return store
+
+    store = CommandConfigStore(hass)
+    await store.async_load()
+    domain_data["command_config_store"] = store
+    return store

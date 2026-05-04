@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from typing import Any
 
 from .const import DOMAIN, DEFAULT_ROKU_LISTEN_PORT
+from .logging_utils import get_hub_logger
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,6 +47,11 @@ class RokuListenerManager:
 
     def get_last_start_error(self) -> str | None:
         return self._last_start_error
+
+    @staticmethod
+    def _format_source_ip(source_ip: str) -> str:
+        normalized = str(source_ip or "").strip()
+        return normalized or "unknown"
 
     async def async_set_listen_port(self, listen_port: int) -> None:
         new_port = int(listen_port)
@@ -132,20 +138,51 @@ class RokuListenerManager:
         try:
             request_line = await asyncio.wait_for(reader.readline(), timeout=self._read_timeout_seconds)
             if not request_line:
+                _LOGGER.warning(
+                    "[%s] [WIFI_HTTP] rejected empty request from ip=%s",
+                    DOMAIN,
+                    self._format_source_ip(source_ip),
+                )
                 self._write_response(writer, 400, b"bad request")
                 return
             if len(request_line) > self._max_request_line_bytes:
+                _LOGGER.warning(
+                    "[%s] [WIFI_HTTP] rejected oversized request line from ip=%s bytes=%s limit=%s",
+                    DOMAIN,
+                    self._format_source_ip(source_ip),
+                    len(request_line),
+                    self._max_request_line_bytes,
+                )
                 self._write_response(writer, 431, b"request headers too large")
                 return
 
             decoded_request_line = request_line.decode("utf-8", errors="ignore").strip()
+            _LOGGER.info(
+                "[%s] [WIFI_HTTP] request received ip=%s line=%s",
+                DOMAIN,
+                self._format_source_ip(source_ip),
+                decoded_request_line,
+            )
             request_parts = decoded_request_line.split()
             if len(request_parts) != 3:
+                _LOGGER.warning(
+                    "[%s] [WIFI_HTTP] rejected malformed request line from ip=%s line=%s",
+                    DOMAIN,
+                    self._format_source_ip(source_ip),
+                    decoded_request_line,
+                )
                 self._write_response(writer, 400, b"bad request")
                 return
 
             method, path, version = request_parts
             if version not in ("HTTP/1.0", "HTTP/1.1"):
+                _LOGGER.warning(
+                    "[%s] [WIFI_HTTP] rejected invalid HTTP version from ip=%s version=%s path=%s",
+                    DOMAIN,
+                    self._format_source_ip(source_ip),
+                    version,
+                    path,
+                )
                 self._write_response(writer, 400, b"bad request")
                 return
 
@@ -160,6 +197,13 @@ class RokuListenerManager:
                 header_count += 1
                 header_bytes += len(line)
                 if header_count > self._max_header_count or header_bytes > self._max_header_bytes:
+                    _LOGGER.warning(
+                        "[%s] [WIFI_HTTP] rejected oversized headers from ip=%s count=%s bytes=%s",
+                        DOMAIN,
+                        self._format_source_ip(source_ip),
+                        header_count,
+                        header_bytes,
+                    )
                     self._write_response(writer, 431, b"request headers too large")
                     return
 
@@ -170,14 +214,36 @@ class RokuListenerManager:
             try:
                 content_length = int(content_length_raw)
             except (TypeError, ValueError):
+                _LOGGER.warning(
+                    "[%s] [WIFI_HTTP] rejected invalid content length from ip=%s value=%s path=%s",
+                    DOMAIN,
+                    self._format_source_ip(source_ip),
+                    content_length_raw,
+                    path,
+                )
                 self._write_response(writer, 400, b"bad request")
                 return
 
             if content_length < 0:
+                _LOGGER.warning(
+                    "[%s] [WIFI_HTTP] rejected negative content length from ip=%s value=%s path=%s",
+                    DOMAIN,
+                    self._format_source_ip(source_ip),
+                    content_length,
+                    path,
+                )
                 self._write_response(writer, 400, b"bad request")
                 return
 
             if content_length > self._max_body_bytes:
+                _LOGGER.warning(
+                    "[%s] [WIFI_HTTP] rejected oversized body declaration from ip=%s bytes=%s limit=%s path=%s",
+                    DOMAIN,
+                    self._format_source_ip(source_ip),
+                    content_length,
+                    self._max_body_bytes,
+                    path,
+                )
                 self._write_response(writer, 413, b"payload too large")
                 return
 
@@ -192,8 +258,24 @@ class RokuListenerManager:
                 body=b"",
                 source_ip=source_ip,
             )
+            log_method = method.upper()
+            log_level = logging.INFO if status < 400 else logging.WARNING
+            _LOGGER.log(
+                log_level,
+                "[%s] [WIFI_HTTP] request completed ip=%s method=%s path=%s status=%s",
+                DOMAIN,
+                self._format_source_ip(source_ip),
+                log_method,
+                path,
+                status,
+            )
             self._write_response(writer, status, payload)
         except asyncio.TimeoutError:
+            _LOGGER.warning(
+                "[%s] [WIFI_HTTP] request timed out from ip=%s",
+                DOMAIN,
+                self._format_source_ip(source_ip),
+            )
             self._write_response(writer, 408, b"request timeout")
         except Exception:  # pragma: no cover - defensive network boundary
             _LOGGER.exception("[%s] Wifi Device listener failed to process request", DOMAIN)
@@ -212,13 +294,32 @@ class RokuListenerManager:
         source_ip: str,
     ) -> tuple[int, bytes]:
         if method.upper() != "POST":
+            _LOGGER.warning(
+                "[%s] [WIFI_HTTP] rejected non-POST request from ip=%s method=%s path=%s",
+                DOMAIN,
+                self._format_source_ip(source_ip),
+                method,
+                path,
+            )
             return (405, b"method not allowed")
 
         normalized_path = self._normalize_request_path(path)
         parts = [part for part in normalized_path.strip("/").split("/") if part]
         if any(len(part) > self._max_path_segment_length for part in parts):
+            _LOGGER.warning(
+                "[%s] [WIFI_HTTP] rejected overlong path segment from ip=%s path=%s",
+                DOMAIN,
+                self._format_source_ip(source_ip),
+                normalized_path,
+            )
             return (400, b"bad request")
         if len(parts) < 4 or parts[0] != "launch":
+            _LOGGER.warning(
+                "[%s] [WIFI_HTTP] rejected unrecognized path from ip=%s path=%s",
+                DOMAIN,
+                self._format_source_ip(source_ip),
+                normalized_path,
+            )
             return (404, b"not found")
 
         action_id = parts[1]
@@ -229,17 +330,29 @@ class RokuListenerManager:
                 break
 
         if target is None:
+            _LOGGER.warning(
+                "[%s] [WIFI_HTTP] no enabled hub matched action_id=%s from ip=%s path=%s",
+                DOMAIN,
+                action_id,
+                self._format_source_ip(source_ip),
+                normalized_path,
+            )
             return (404, b"unknown hub")
 
+        hub_log = get_hub_logger(_LOGGER, target.hub.entry_id)
         if target.allowed_ips and source_ip and source_ip not in target.allowed_ips:
-            _LOGGER.warning(
-                "[%s] Rejected Wifi Device request for hub=%s from unexpected IP=%s",
-                DOMAIN,
-                target.hub.entry_id,
+            hub_log.warning(
+                "[WIFI_HTTP] rejected listener request from unexpected ip=%s path=%s",
                 source_ip,
+                normalized_path,
             )
             return (403, b"forbidden")
 
+        hub_log.info(
+            "[WIFI_HTTP] accepted listener request source_ip=%s path=%s",
+            self._format_source_ip(source_ip),
+            normalized_path,
+        )
         await target.hub.async_handle_roku_http_post(
             path=normalized_path,
             headers=headers,
