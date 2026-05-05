@@ -1934,6 +1934,9 @@ var SofabatonWifiCommandsTab = class extends i4 {
     this._deletingDeviceKey = null;
     this._creatingDevice = false;
     this._maxWifiDevices = 5;
+    this._copyingDebugConfig = false;
+    this._debugCopyMessage = "";
+    this._debugCopyMessageTimer = null;
     this._saveActiveCommandModal = async () => {
       if (!Number.isInteger(this._activeCommandSlot)) return;
       const idx = Number(this._activeCommandSlot);
@@ -2000,6 +2003,24 @@ var SofabatonWifiCommandsTab = class extends i4 {
     this._closeOnBackdrop = () => {
       if (this._activeCommandModal === "action") this._closeCommandActionEditor();
       else this._closeCommandEditor();
+    };
+    this._copyCommandConfigDebug = async () => {
+      const entityId = String(this._entityId() || "").trim();
+      if (!entityId || !this.hass?.callWS || this._copyingDebugConfig) return;
+      this._copyingDebugConfig = true;
+      this._debugCopyMessage = "";
+      try {
+        const payload = await this.hass.callWS({
+          type: "sofabaton_x1s/command_config/export",
+          entity_id: entityId
+        });
+        await this._writeTextToClipboard(JSON.stringify(payload, null, 2));
+        this._setDebugCopyMessage("Debug config copied. Paste it into the GitHub issue.");
+      } catch (error) {
+        this._setDebugCopyMessage(String(error?.message || "Unable to copy debug config"));
+      } finally {
+        this._copyingDebugConfig = false;
+      }
     };
     this._goBackToDeviceList = () => {
       this._selectedDeviceKey = null;
@@ -2086,6 +2107,10 @@ var SofabatonWifiCommandsTab = class extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._clearPollTimer();
+    if (this._debugCopyMessageTimer != null) {
+      window.clearTimeout(this._debugCopyMessageTimer);
+      this._debugCopyMessageTimer = null;
+    }
   }
   updated(changed) {
     if (changed.has("hub") || changed.has("hass")) void this._ensureLoadedForCurrentHub();
@@ -2194,7 +2219,12 @@ var SofabatonWifiCommandsTab = class extends i4 {
                 </button>
                 <div class="detail-title">${selectedDevice.device_name}</div>
               </div>
-              ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
+              <div class="detail-title-actions">
+                <button class="list-action-btn" ?disabled=${this._copyingDebugConfig} @click=${this._copyCommandConfigDebug}>
+                  ${this._copyingDebugConfig ? "Copying\u2026" : "Copy Debug"}
+                </button>
+                ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
+              </div>
             </div>
           </div>
           <div class="detail-scroll">
@@ -2203,6 +2233,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
                 Your hub may be miss-versioned. Click here to fix it.
               </button>
             `}
+            ${this._debugCopyMessage ? b2`<div class="debug-copy-note">${this._debugCopyMessage}</div>` : A}
             ${remoteUnavailable ? A : b2`
               <div class="command-grid">
                 ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
@@ -2285,8 +2316,12 @@ var SofabatonWifiCommandsTab = class extends i4 {
             <div class="list-header-copy">
               <div class="acc-title">WIFI DEVICES</div>
               <div class="section-subtitle">Choose a Wifi Device to edit its command slots, or add a new one.</div>
+              ${this._debugCopyMessage ? b2`<div class="debug-copy-note">${this._debugCopyMessage}</div>` : A}
             </div>
             <div class="list-header-action">
+              <button class="list-action-btn" ?disabled=${this._copyingDebugConfig} @click=${this._copyCommandConfigDebug}>
+                ${this._copyingDebugConfig ? "Copying\u2026" : "Copy Debug"}
+              </button>
               <button class="detail-sync-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
                 Add Wifi Device
               </button>
@@ -3587,6 +3622,33 @@ var SofabatonWifiCommandsTab = class extends i4 {
     const classes = `detail-sync-btn${!disabled && this._syncState.sync_needed ? " sync-btn-primary" : ""}`;
     return b2`<button class=${classes} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>${label}</button>`;
   }
+  _setDebugCopyMessage(message) {
+    this._debugCopyMessage = message;
+    if (this._debugCopyMessageTimer != null) window.clearTimeout(this._debugCopyMessageTimer);
+    this._debugCopyMessageTimer = window.setTimeout(() => {
+      this._debugCopyMessageTimer = null;
+      this._debugCopyMessage = "";
+    }, 8e3);
+  }
+  async _writeTextToClipboard(text) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-9999px";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand("copy");
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  }
   _selectWifiDevice(deviceKey) {
     this._selectedDeviceKey = String(deviceKey || "").trim();
     void this._loadCommandConfigFromBackend(true);
@@ -3774,7 +3836,9 @@ SofabatonWifiCommandsTab.properties = {
   _deleteDeviceKey: { state: true },
   _deletingDeviceKey: { state: true },
   _creatingDevice: { state: true },
-  _maxWifiDevices: { state: true }
+  _maxWifiDevices: { state: true },
+  _copyingDebugConfig: { state: true },
+  _debugCopyMessage: { state: true }
 };
 SofabatonWifiCommandsTab.styles = i`
     :host { display: flex; flex: 1; min-height: 0; }
@@ -3789,6 +3853,7 @@ SofabatonWifiCommandsTab.styles = i`
     .detail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
     .detail-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
     .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+    .detail-title-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     .detail-title { font-size: 18px; font-weight: 700; color: var(--primary-text-color); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: 10px; background: transparent; color: var(--primary-text-color); font: inherit; }
     .back-btn, .list-action-btn, .detail-sync-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
@@ -3797,7 +3862,8 @@ SofabatonWifiCommandsTab.styles = i`
     .list-header-copy { min-width: 0; }
     .list-header-copy .acc-title { display: block; }
     .list-header-copy .section-subtitle { margin-top: 8px; }
-    .list-header-action { grid-column: 2; grid-row: 1; align-self: start; }
+    .debug-copy-note { margin-top: 8px; color: var(--secondary-text-color); font-size: 12px; line-height: 1.4; }
+    .list-header-action { grid-column: 2; grid-row: 1; align-self: start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     .device-list { display: grid; gap: 10px; }
     .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: 18px; padding: 10px 14px; background: var(--ha-card-background, var(--card-background-color)); text-align: left; display: flex; align-items: center; gap: 14px; cursor: pointer; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
@@ -4130,10 +4196,12 @@ SofabatonWifiCommandsTab.styles = i`
       .dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
       .list-header { grid-template-columns: 1fr; }
       .list-header-action { grid-column: 1; grid-row: auto; width: 100%; }
-      .list-header-action > .detail-sync-btn { width: 100%; justify-content: center; }
+      .list-header-action > .detail-sync-btn,
+      .list-header-action > .list-action-btn { width: 100%; justify-content: center; }
       .detail-title-row { gap: 8px; }
       .detail-title-main { min-width: 0; flex: 1; }
-      .detail-sync-btn { flex: 0 0 auto; max-width: 44%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .detail-title-actions { gap: 6px; }
+      .detail-sync-btn, .list-action-btn { flex: 0 0 auto; max-width: 44%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .device-card { align-items: center; gap: 10px; padding: 10px 12px; }
       .device-card-main { align-items: center; flex-direction: row; gap: 10px; }
       .device-card-name { flex: 1; }

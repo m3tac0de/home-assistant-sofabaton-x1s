@@ -226,6 +226,103 @@ def test_ws_get_command_config_returns_power_assignments(monkeypatch):
     assert payload["power_off_command_id"] == 2
 
 
+def test_ws_export_command_config_returns_debug_snapshot(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+
+    class _ExportStore(_Store):
+        async def async_export_hub_config(self, entry_id, **kwargs):
+            assert entry_id == "entry-1"
+            return {
+                "entry_id": entry_id,
+                "command_config_store": {
+                    "hubs": {
+                        entry_id: {
+                            "devices": [
+                                {
+                                    "device_key": "default",
+                                    "device_name": "Home Assistant",
+                                    "commands": [],
+                                    "deployed_commands": [],
+                                    "deployed_device_id": 22,
+                                    "deployed_commands_hash": "abc123",
+                                }
+                            ]
+                        }
+                    }
+                },
+                "device_summaries": [
+                    {
+                        "device_key": "default",
+                        "device_name": "Home Assistant",
+                        "commands_hash": "abc123",
+                        "deployed_device_id": 22,
+                        "deployed_commands_hash": "abc123",
+                    }
+                ],
+            }
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return _ExportStore()
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+    monkeypatch.setattr(
+        hub,
+        "_managed_wifi_devices",
+        lambda: [(22, "default", "abc123", "m3tac0de-default-abc123")],
+        raising=False,
+    )
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_export_command_config(
+                SimpleNamespace(), conn, {"id": 14, "entity_id": "remote.living_room"}
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    payload = conn.result[1]
+    assert payload["entry_id"] == "entry-1"
+    assert payload["device_summaries"][0]["deployed_device_id"] == 22
+    assert payload["managed_wifi_devices"] == [
+        {
+            "device_id": 22,
+            "device_key": "default",
+            "commands_hash": "abc123",
+            "brand": "m3tac0de-default-abc123",
+        }
+    ]
+
+
+def test_ws_export_command_config_reports_not_found(monkeypatch):
+    conn = _Conn()
+
+    async def fake_resolve(_hass, _data):
+        return None
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_export_command_config(
+                SimpleNamespace(), conn, {"id": 15, "entity_id": "remote.missing"}
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.result is None
+    assert conn.error == (15, "not_found", "Could not resolve Sofabaton hub")
+
+
 def test_ws_command_sync_progress_zero_config_and_no_managed_not_needed(monkeypatch):
     conn = _Conn()
 

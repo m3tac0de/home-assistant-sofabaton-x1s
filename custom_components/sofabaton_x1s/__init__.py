@@ -259,6 +259,37 @@ async def _ws_get_command_config(hass: HomeAssistant, connection, msg: dict[str,
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/command_config/export",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_export_command_config(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    payload = await store.async_export_hub_config(
+        hub.entry_id,
+        roku_listen_port=roku_listen_port,
+    )
+    payload["managed_wifi_devices"] = [
+        {
+            "device_id": dev_id,
+            "device_key": device_key,
+            "commands_hash": command_hash,
+            "brand": brand,
+        }
+        for dev_id, device_key, command_hash, brand in hub._managed_wifi_devices()
+    ]
+    connection.send_result(msg["id"], payload)
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/command_config/set",
         vol.Required("entity_id"): cv.entity_id,
         vol.Required("commands"): list,
@@ -742,6 +773,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
         return
 
     websocket_api.async_register_command(hass, _ws_get_command_config)
+    websocket_api.async_register_command(hass, _ws_export_command_config)
     websocket_api.async_register_command(hass, _ws_set_command_config)
     websocket_api.async_register_command(hass, _ws_get_command_sync_progress)
     websocket_api.async_register_command(hass, _ws_list_command_devices)

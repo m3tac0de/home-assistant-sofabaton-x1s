@@ -360,6 +360,32 @@ class CommandConfigStore:
             for device in self._hub_device_records(entry_id)
         ]
 
+    async def async_export_hub_config(
+        self,
+        entry_id: str,
+        *,
+        roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
+    ) -> dict[str, Any]:
+        """Return a hub-scoped debug snapshot of the command-config store."""
+
+        devices = self._hub_device_records(entry_id)
+        return {
+            "store_version": COMMAND_CONFIG_STORE_VERSION,
+            "store_minor_version": COMMAND_CONFIG_STORE_MINOR_VERSION,
+            "entry_id": entry_id,
+            "command_config_store": {
+                "hubs": {
+                    entry_id: {
+                        "devices": deepcopy(devices),
+                    }
+                }
+            },
+            "device_summaries": [
+                self._payload_for_device(device, roku_listen_port=roku_listen_port)
+                for device in devices
+            ],
+        }
+
     async def async_get_hub_config(
         self,
         entry_id: str,
