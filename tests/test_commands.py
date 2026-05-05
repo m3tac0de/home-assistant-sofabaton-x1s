@@ -399,6 +399,61 @@ def test_parse_command_burst_frame_accepts_unenumerated_page_variant() -> None:
     assert parsed.data_start == 3
 
 
+@pytest.mark.parametrize(
+    ("raw_hex", "expected_page", "expected_dev_id", "expected_cmd_id", "expected_fmt"),
+    [
+        (
+            "a5 5a d5 5d 01 00 02 04 04 03 00 00 00 00 00 47 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 05 03 00 00 00 00 00 4c 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 06 03 00 00 00 00 00 51 00 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d5",
+            2,
+            0x04,
+            0x04,
+            0x03,
+        ),
+        (
+            "a5 5a d5 5d 01 00 03 07 07 0d 00 00 00 00 00 4c 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 08 0d 00 00 00 00 00 51 00 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 09 0d 00 00 00 00 00 56 00 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 18",
+            3,
+            0x07,
+            0x07,
+            0x0D,
+        ),
+    ],
+)
+def test_parse_command_burst_frame_does_not_misclassify_x1s_pages_when_dev_id_matches_command_id(
+    raw_hex: str,
+    expected_page: int,
+    expected_dev_id: int,
+    expected_cmd_id: int,
+    expected_fmt: int,
+) -> None:
+    parsed = parse_command_burst_frame(0xD55D, bytes.fromhex(raw_hex), hub_version=HUB_VERSION_X1S)
+
+    assert parsed is not None
+    assert parsed.layout_kind == "x1s_x2"
+    assert parsed.role == "page"
+    assert parsed.frame_no == expected_page
+    assert parsed.device_id == expected_dev_id
+    assert parsed.first_command_id == expected_cmd_id
+    assert parsed.format_marker == expected_fmt
+    assert parsed.data_start == 3
+
+
+def test_parse_command_burst_frame_treats_x1_page_with_matching_dev_and_cmd_as_normal_page() -> None:
+    raw = bytes.fromhex(
+        "a5 5a f3 5d 01 00 02 07 07 1a 00 00 00 00 17 13 47 61 72 61 67 65 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 08 1a 00 00 00 00 17 18 47 61 72 61 67 65 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 09 1a 00 00 00 00 17 13 43 6c 65 6f 20 6b 61 6d 65 72 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 0a 1a 00 00 00 00 17 18 43 6c 65 6f 20 6b 61 6d 65 72 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 0b 1a 00 00 00 00 17 13 49 6e 6e 65 20 4b 61 6d 65 72 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 0c 1a 00 00 00 00 17 18 49 6e 6e 65 20 4b 61 6d 65 72 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 86"
+    )
+
+    parsed = parse_command_burst_frame(0xF35D, raw, hub_version=HUB_VERSION_X1)
+
+    assert parsed is not None
+    assert parsed.layout_kind == "x1_page"
+    assert parsed.role == "page"
+    assert parsed.frame_no == 2
+    assert parsed.device_id == 0x07
+    assert parsed.first_command_id == 0x07
+    assert parsed.format_marker == 0x1A
+    assert parsed.data_start == 3
+
+
 def test_x1_wifi_header_variant_uses_header_device_and_frame_count() -> None:
     assembler = DeviceCommandAssembler()
     frames = [
@@ -1364,12 +1419,13 @@ def test_parse_device_commands_handles_early_data_offset() -> None:
     opcode = int.from_bytes(early_offset_payload[2:4], "big")
     parsed_frame = parse_command_burst_frame(opcode, early_offset_payload, hub_version=HUB_VERSION_X1)
     assert parsed_frame is not None
+    assert parsed_frame.layout_kind == "x1_page"
     assembled_payload = payload[parsed_frame.data_start:]
 
     parsed = proxy.parse_device_commands(assembled_payload, dev_id)
 
     assert parsed == {
-        13: "Stop",
+        7: "Stop",
         8: "Time mode",
         9: "Fast_forward",
         10: "Ok/select",
@@ -1965,6 +2021,71 @@ def test_parse_device_commands_preserves_x1s_unicode_label_with_ff_byte() -> Non
     assert parsed[1] == "Hsb\u0125\u00df\u2078\u0149\u00df\u00ffv\u0125 +_- 274 vdv$$"
     assert parsed[2] == "Command 2"
     assert parsed[20] == "Command 10 Long Press"
+
+
+def test_parse_device_commands_keeps_sequential_numeric_labels_when_x1s_dev_matches_first_cmd() -> None:
+    frames_hex = (
+        "a5 5a d9 5d 01 00 01 01 00 0b 20 04 01 03 00 00 00 00 00 38 00 30 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 02 03 00 00 00 00 00 3d 00 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 03 03 00 00 00 00 00 42 00 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff c5",
+        "a5 5a d5 5d 01 00 02 04 04 03 00 00 00 00 00 47 00 33 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 05 03 00 00 00 00 00 4c 00 34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 06 03 00 00 00 00 00 51 00 35 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff d5",
+        "a5 5a d5 5d 01 00 03 04 07 03 00 00 00 00 00 56 00 36 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 08 03 00 00 00 00 00 5b 00 37 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 04 09 03 00 00 00 00 00 60 00 38 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 15",
+    )
+
+    frames = [bytes.fromhex(block) for block in frames_hex]
+    assembler = DeviceCommandAssembler()
+    completed: list[tuple[int, bytes]] = []
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, hub_version=HUB_VERSION_X1S))
+
+    if not completed:
+        completed.extend(assembler.finalize_contiguous(0x04))
+
+    assert len(completed) == 1
+
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+    assembled_dev_id, assembled_payload = completed[0]
+    parsed = proxy.parse_device_commands(assembled_payload, assembled_dev_id)
+
+    assert parsed[1] == "0"
+    assert parsed[2] == "1"
+    assert parsed[3] == "2"
+    assert parsed[4] == "3"
+    assert parsed[5] == "4"
+    assert parsed[6] == "5"
+    assert parsed[7] == "6"
+    assert parsed[8] == "7"
+    assert parsed[9] == "8"
+
+
+def test_parse_device_commands_keeps_x1_ascii_rows_aligned_when_dev_matches_first_cmd() -> None:
+    frames_hex = (
+        "a5 5a f7 5d 01 00 01 01 00 04 16 07 01 1a 00 00 00 00 17 13 6b 61 6e 74 6f 6f 72 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 02 1a 00 00 00 00 17 18 6b 61 6e 74 6f 6f 72 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 03 1a 00 00 00 00 17 13 48 75 69 73 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 04 1a 00 00 00 00 17 18 48 75 69 73 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 05 1a 00 00 00 00 17 13 4b 65 72 73 74 76 65 72 6c 69 63 68 74 69 6e 67 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 ff 07 06 1a 00 00 00 00 17 18 4b 65 72 73 74 76 65 72 6c 69 63 68 74 69 6e 67 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 ff d6",
+        "a5 5a f3 5d 01 00 02 07 07 1a 00 00 00 00 17 13 47 61 72 61 67 65 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 08 1a 00 00 00 00 17 18 47 61 72 61 67 65 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 09 1a 00 00 00 00 17 13 43 6c 65 6f 20 6b 61 6d 65 72 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 0a 1a 00 00 00 00 17 18 43 6c 65 6f 20 6b 61 6d 65 72 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 0b 1a 00 00 00 00 17 13 49 6e 6e 65 20 4b 61 6d 65 72 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 0c 1a 00 00 00 00 17 18 49 6e 6e 65 20 4b 61 6d 65 72 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 86",
+        "a5 5a f3 5d 01 00 03 07 0d 1a 00 00 00 00 17 13 53 6f 75 73 74 65 72 72 61 69 6e 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 0e 1a 00 00 00 00 17 18 53 6f 75 73 74 65 72 72 61 69 6e 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 0f 1a 00 00 00 00 17 13 48 61 6c 6c 77 61 79 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 10 1a 00 00 00 00 17 18 48 61 6c 6c 77 61 79 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 11 1a 00 00 00 00 17 13 54 6f 6d 6f 20 6b 61 6d 65 72 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 12 1a 00 00 00 00 17 18 54 6f 6d 6f 20 6b 61 6d 65 72 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 03",
+        "a5 5a a3 5d 01 00 04 07 13 1a 00 00 00 00 17 13 48 75 69 73 20 61 72 65 61 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 14 1a 00 00 00 00 17 18 48 75 69 73 20 61 72 65 61 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 15 1a 00 00 00 00 17 13 47 61 6d 69 6e 67 20 64 65 73 6b 20 6f 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 07 16 1a 00 00 00 00 17 18 47 61 6d 69 6e 67 20 64 65 73 6b 20 6f 66 66 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 10",
+    )
+
+    frames = [bytes.fromhex(block) for block in frames_hex]
+    assembler = DeviceCommandAssembler()
+    completed: list[tuple[int, bytes]] = []
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, hub_version=HUB_VERSION_X1))
+
+    if not completed:
+        completed.extend(assembler.finalize_contiguous(0x07))
+
+    assert len(completed) == 1
+
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1)
+    assembled_dev_id, assembled_payload = completed[0]
+    parsed = proxy.parse_device_commands(assembled_payload, assembled_dev_id)
+
+    assert parsed[6] == "Kerstverlichting off"
+    assert parsed[7] == "Garage on"
+    assert parsed[8] == "Garage off"
 
 
 def test_parse_device_commands_handles_dev_id_three_sequence() -> None:

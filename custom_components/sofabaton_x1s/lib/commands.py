@@ -388,24 +388,6 @@ def parse_command_burst_frame(
             format_marker=payload[8] if len(payload) > 8 else None,
         )
 
-    if (
-        len(payload) > 10
-        and payload[3] == payload[4]
-        and payload[5] in (0x03, 0x0D, 0x1A, 0x1C)
-        and payload[6:10] == b"\x00" * 4
-    ):
-        return CommandBurstFrame(
-            opcode=opcode,
-            hub_line="x1" if hinted_line == "shared" else hinted_line,
-            layout_kind="x1_page_dupdev",
-            role="page",
-            frame_no=frame_no,
-            device_id=payload[3],
-            data_start=4,
-            first_command_id=payload[5],
-            format_marker=payload[6] if len(payload) > 6 else None,
-        )
-
     role = "page"
     return CommandBurstFrame(
         opcode=opcode,
