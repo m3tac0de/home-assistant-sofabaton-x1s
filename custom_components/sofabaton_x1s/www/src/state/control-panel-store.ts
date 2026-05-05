@@ -22,10 +22,23 @@ import {
   selectedHub,
 } from "../shared/utils/control-panel-selectors";
 
+function normalizeLoadedFrontendVersion(value: unknown): string {
+  const version = String(value ?? "").trim();
+  return version || "dev";
+}
+
+function normalizeExpectedFrontendVersion(value: unknown): string | null {
+  const version = String(value ?? "").trim();
+  return version || null;
+}
+
 const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   hass: null,
   state: null,
   contents: null,
+  toolsFrontendVersionLoaded: "dev",
+  toolsFrontendVersionExpected: null,
+  toolsFrontendVersionMismatch: false,
   loading: false,
   loadError: null,
   selectedHubEntryId: null,
@@ -49,6 +62,10 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   pendingScrollEntityKey: null,
 };
 
+interface ControlPanelStoreOptions {
+  loadedFrontendVersion?: string;
+}
+
 export class ControlPanelStore {
   private _snapshot: ControlPanelSnapshot = { ...INITIAL_SNAPSHOT };
   private _loadingStatePromise: Promise<void> | null = null;
@@ -60,8 +77,18 @@ export class ControlPanelStore {
   private _lastObservedGenerations = cacheGenerationSnapshot(null);
   private _lastHassFingerprint = "";
   private _lastConnectionFingerprint = "";
+  private readonly _loadedFrontendVersion: string;
 
-  constructor(private readonly onChange: (snapshot: ControlPanelSnapshot) => void) {}
+  constructor(
+    private readonly onChange: (snapshot: ControlPanelSnapshot) => void,
+    options: ControlPanelStoreOptions = {},
+  ) {
+    this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
+    this._snapshot = {
+      ...INITIAL_SNAPSHOT,
+      toolsFrontendVersionLoaded: this._loadedFrontendVersion,
+    };
+  }
 
   get snapshot() {
     return this._snapshot;
@@ -212,7 +239,8 @@ export class ControlPanelStore {
     this._loadingStatePromise = (async () => {
       try {
         const [state, contents] = await Promise.all([api.loadState(), api.loadCacheContents()]);
-        this._snapshot = { ...this._snapshot, state, contents, loadError: null };
+        this.applyControlPanelState(state);
+        this._snapshot = { ...this._snapshot, contents };
         this.syncSelection();
       } catch (error) {
         this._snapshot = { ...this._snapshot, loadError: formatError(error) };
@@ -229,7 +257,7 @@ export class ControlPanelStore {
 
   async loadControlPanelState() {
     const state = await this.api().loadState();
-    this._snapshot = { ...this._snapshot, state, loadError: null };
+    this.applyControlPanelState(state);
     this.syncSelection();
     this.emit();
   }
@@ -452,6 +480,18 @@ export class ControlPanelStore {
     this._logsUnsub?.();
     this._logsUnsub = null;
     this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
+  }
+
+  private applyControlPanelState(state: ControlPanelSnapshot["state"]) {
+    const expectedVersion = normalizeExpectedFrontendVersion(state?.tools_frontend_version);
+    this._snapshot = {
+      ...this._snapshot,
+      state,
+      loadError: null,
+      toolsFrontendVersionExpected: expectedVersion,
+      toolsFrontendVersionMismatch:
+        expectedVersion !== null && expectedVersion !== this._loadedFrontendVersion,
+    };
   }
 
   private applyOptimisticSetting(setting: SettingKey, enabled: boolean) {

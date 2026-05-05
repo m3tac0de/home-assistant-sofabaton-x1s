@@ -305,6 +305,9 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
     async def fake_store(_hass):
         return store
 
+    async def fake_version(_hass):
+        return "2026.5.1"
+
     hass = SimpleNamespace(
         data={},
         config_entries=SimpleNamespace(
@@ -313,6 +316,7 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
     )
 
     monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(integration, "_async_get_integration_version", fake_version)
     monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
     monkeypatch.setattr(integration, "get_hub_model", lambda _entry: "X1S")
 
@@ -329,6 +333,7 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
         40,
         {
             "persistent_cache_enabled": False,
+            "tools_frontend_version": "2026.5.1",
             "hubs": [
                 {
                     "entry_id": "entry-1",
@@ -364,6 +369,9 @@ def test_ws_get_control_panel_state_disables_actions_when_client_connected(monke
     async def fake_store(_hass):
         return store
 
+    async def fake_version(_hass):
+        return "2026.5.1"
+
     hass = SimpleNamespace(
         data={},
         config_entries=SimpleNamespace(
@@ -372,6 +380,7 @@ def test_ws_get_control_panel_state_disables_actions_when_client_connected(monke
     )
 
     monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+    monkeypatch.setattr(integration, "_async_get_integration_version", fake_version)
     monkeypatch.setattr(integration, "_get_hubs", lambda _data: [hub])
     monkeypatch.setattr(integration, "get_hub_model", lambda _entry: "X1S")
 

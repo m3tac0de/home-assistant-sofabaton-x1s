@@ -676,6 +676,14 @@ var cardStyles = i`
   .cache-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 16px; text-align: center; font-size: 13px; line-height: 1.6; }
   .cache-state-icon { font-size: 32px; line-height: 1; margin-bottom: 4px; }
   .cache-state-sub { font-size: 12px; line-height: 1.5; max-width: 260px; }
+  .version-mismatch-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px 20px; text-align: center; }
+  .version-mismatch-icon { font-size: 34px; line-height: 1; }
+  .version-mismatch-title { font-size: 18px; font-weight: 800; color: var(--primary-text-color); }
+  .version-mismatch-copy { max-width: 420px; font-size: 13px; line-height: 1.6; color: var(--secondary-text-color); }
+  .version-mismatch-versions { width: min(100%, 360px); display: grid; gap: 10px; padding: 14px; border: 1px solid color-mix(in srgb, var(--error-color, #db4437) 24%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: color-mix(in srgb, var(--error-color, #db4437) 4%, var(--card-background-color, var(--ha-card-background))); text-align: left; }
+  .version-mismatch-row { display: grid; gap: 3px; }
+  .version-mismatch-label { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--secondary-text-color); }
+  .version-mismatch-value { font-size: 13px; font-weight: 700; font-family: "SF Mono", "Fira Code", Consolas, monospace; color: var(--primary-text-color); word-break: break-word; }
   .stale-banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--warning-color, #ff9800) 30%, transparent); }
   .stale-banner-text { flex: 1; }
   .stale-banner-btn { background: none; border: 1px solid var(--divider-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--primary-text-color); }
@@ -953,10 +961,21 @@ function hubIcon(kind, classes = "") {
 }
 
 // custom_components/sofabaton_x1s/www/src/state/control-panel-store.ts
+function normalizeLoadedFrontendVersion(value) {
+  const version = String(value ?? "").trim();
+  return version || "dev";
+}
+function normalizeExpectedFrontendVersion(value) {
+  const version = String(value ?? "").trim();
+  return version || null;
+}
 var INITIAL_SNAPSHOT = {
   hass: null,
   state: null,
   contents: null,
+  toolsFrontendVersionLoaded: "dev",
+  toolsFrontendVersionExpected: null,
+  toolsFrontendVersionMismatch: false,
   loading: false,
   loadError: null,
   selectedHubEntryId: null,
@@ -980,7 +999,7 @@ var INITIAL_SNAPSHOT = {
   pendingScrollEntityKey: null
 };
 var ControlPanelStore = class {
-  constructor(onChange) {
+  constructor(onChange, options = {}) {
     this.onChange = onChange;
     this._snapshot = { ...INITIAL_SNAPSHOT };
     this._loadingStatePromise = null;
@@ -992,6 +1011,11 @@ var ControlPanelStore = class {
     this._lastObservedGenerations = cacheGenerationSnapshot(null);
     this._lastHassFingerprint = "";
     this._lastConnectionFingerprint = "";
+    this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
+    this._snapshot = {
+      ...INITIAL_SNAPSHOT,
+      toolsFrontendVersionLoaded: this._loadedFrontendVersion
+    };
   }
   get snapshot() {
     return this._snapshot;
@@ -1115,7 +1139,8 @@ var ControlPanelStore = class {
     this._loadingStatePromise = (async () => {
       try {
         const [state, contents] = await Promise.all([api.loadState(), api.loadCacheContents()]);
-        this._snapshot = { ...this._snapshot, state, contents, loadError: null };
+        this.applyControlPanelState(state);
+        this._snapshot = { ...this._snapshot, contents };
         this.syncSelection();
       } catch (error) {
         this._snapshot = { ...this._snapshot, loadError: formatError(error) };
@@ -1131,7 +1156,7 @@ var ControlPanelStore = class {
   }
   async loadControlPanelState() {
     const state = await this.api().loadState();
-    this._snapshot = { ...this._snapshot, state, loadError: null };
+    this.applyControlPanelState(state);
     this.syncSelection();
     this.emit();
   }
@@ -1336,6 +1361,16 @@ var ControlPanelStore = class {
     this._logsUnsub?.();
     this._logsUnsub = null;
     this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
+  }
+  applyControlPanelState(state) {
+    const expectedVersion = normalizeExpectedFrontendVersion(state?.tools_frontend_version);
+    this._snapshot = {
+      ...this._snapshot,
+      state,
+      loadError: null,
+      toolsFrontendVersionExpected: expectedVersion,
+      toolsFrontendVersionMismatch: expectedVersion !== null && expectedVersion !== this._loadedFrontendVersion
+    };
   }
   applyOptimisticSetting(setting, enabled) {
     if (!this._snapshot.state) return;
@@ -4218,9 +4253,14 @@ if (!customElements.get("sofabaton-wifi-commands-tab")) {
 
 // custom_components/sofabaton_x1s/www/src/tools-card.ts
 var TOOLS_TYPE = "sofabaton-control-panel";
-var TOOLS_VERSION = "0.0.3";
 var LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
 var EDITOR_TYPE = `${TOOLS_TYPE}-editor`;
+function resolveLoadedToolsFrontendVersion() {
+  const version = new URL(import.meta.url, window.location.href).searchParams.get("v");
+  return String(version || "").trim() || "dev";
+}
+var LOADED_TOOLS_FRONTEND_VERSION = resolveLoadedToolsFrontendVersion();
+var TOOLS_VERSION = LOADED_TOOLS_FRONTEND_VERSION;
 function logOnce() {
   const windowWithFlag = window;
   if (windowWithFlag[LOG_ONCE_KEY]) return;
@@ -4248,10 +4288,13 @@ var SofabatonControlPanelCard = class extends i4 {
     this._config = {};
     this._lastRenderedTab = null;
     this._pendingCacheScrollSnapshot = null;
-    this._store = new ControlPanelStore((snapshot) => {
-      this._snapshot = snapshot;
-      this.requestUpdate();
-    });
+    this._store = new ControlPanelStore(
+      (snapshot) => {
+        this._snapshot = snapshot;
+        this.requestUpdate();
+      },
+      { loadedFrontendVersion: LOADED_TOOLS_FRONTEND_VERSION }
+    );
     this._snapshot = this._store.snapshot;
   }
   setConfig(config) {
@@ -4369,12 +4412,46 @@ var SofabatonControlPanelCard = class extends i4 {
       behavior: "smooth"
     });
   }
+  renderVersionMismatch(height) {
+    return b2`
+      <ha-card>
+        <div class="card-inner" style=${`height:${height}px`}>
+          <div class="card-header">
+            <span class="card-title">Sofabaton Control Panel</span>
+          </div>
+          <div class="card-body">
+            <div class="version-mismatch-state">
+              <div class="version-mismatch-icon">!</div>
+              <div class="version-mismatch-title">Tools card refresh required</div>
+              <div class="version-mismatch-copy">
+                This dashboard is still showing an older cached Sofabaton tools card than the backend release now running in Home Assistant.
+                Refresh or reopen the dashboard/browser so the updated card is loaded before using these tools again.
+              </div>
+              <div class="version-mismatch-versions">
+                <div class="version-mismatch-row">
+                  <div class="version-mismatch-label">Backend expects</div>
+                  <div class="version-mismatch-value">${this._snapshot.toolsFrontendVersionExpected || "unknown"}</div>
+                </div>
+                <div class="version-mismatch-row">
+                  <div class="version-mismatch-label">Card loaded</div>
+                  <div class="version-mismatch-value">${this._snapshot.toolsFrontendVersionLoaded}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
   render() {
     const hub = selectedHub(this._snapshot);
     const cacheHub = selectedHubCache(this._snapshot);
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
     const height = Number(this._config.card_height ?? 600);
+    if (this._snapshot.toolsFrontendVersionMismatch) {
+      return this.renderVersionMismatch(height);
+    }
     const sharedHubCommandBusy = Boolean(
       this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey
     );

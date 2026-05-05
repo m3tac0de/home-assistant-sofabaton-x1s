@@ -12,9 +12,16 @@ import { renderLogsTab } from "./tabs/logs-tab";
 import "./tabs/wifi-commands-tab";
 
 const TOOLS_TYPE = "sofabaton-control-panel";
-const TOOLS_VERSION = "0.0.3";
 const LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
 const EDITOR_TYPE = `${TOOLS_TYPE}-editor`;
+
+function resolveLoadedToolsFrontendVersion() {
+  const version = new URL(import.meta.url, window.location.href).searchParams.get("v");
+  return String(version || "").trim() || "dev";
+}
+
+const LOADED_TOOLS_FRONTEND_VERSION = resolveLoadedToolsFrontendVersion();
+const TOOLS_VERSION = LOADED_TOOLS_FRONTEND_VERSION;
 
 function logOnce() {
   const windowWithFlag = window as Window & Record<string, unknown>;
@@ -62,10 +69,13 @@ class SofabatonControlPanelCard extends LitElement {
 
   constructor() {
     super();
-    this._store = new ControlPanelStore((snapshot) => {
-      this._snapshot = snapshot;
-      this.requestUpdate();
-    });
+    this._store = new ControlPanelStore(
+      (snapshot) => {
+        this._snapshot = snapshot;
+        this.requestUpdate();
+      },
+      { loadedFrontendVersion: LOADED_TOOLS_FRONTEND_VERSION },
+    );
     this._snapshot = this._store.snapshot;
   }
 
@@ -213,12 +223,47 @@ class SofabatonControlPanelCard extends LitElement {
     });
   }
 
+  private renderVersionMismatch(height: number) {
+    return html`
+      <ha-card>
+        <div class="card-inner" style=${`height:${height}px`}>
+          <div class="card-header">
+            <span class="card-title">Sofabaton Control Panel</span>
+          </div>
+          <div class="card-body">
+            <div class="version-mismatch-state">
+              <div class="version-mismatch-icon">!</div>
+              <div class="version-mismatch-title">Tools card refresh required</div>
+              <div class="version-mismatch-copy">
+                This dashboard is still showing an older cached Sofabaton tools card than the backend release now running in Home Assistant.
+                Refresh or reopen the dashboard/browser so the updated card is loaded before using these tools again.
+              </div>
+              <div class="version-mismatch-versions">
+                <div class="version-mismatch-row">
+                  <div class="version-mismatch-label">Backend expects</div>
+                  <div class="version-mismatch-value">${this._snapshot.toolsFrontendVersionExpected || "unknown"}</div>
+                </div>
+                <div class="version-mismatch-row">
+                  <div class="version-mismatch-label">Card loaded</div>
+                  <div class="version-mismatch-value">${this._snapshot.toolsFrontendVersionLoaded}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+
   protected render() {
     const hub = selectedHub(this._snapshot);
     const cacheHub = selectedHubCache(this._snapshot);
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
     const height = Number(this._config.card_height ?? 600);
+    if (this._snapshot.toolsFrontendVersionMismatch) {
+      return this.renderVersionMismatch(height);
+    }
     const sharedHubCommandBusy = Boolean(
       this._snapshot.refreshBusy ||
       this._snapshot.externalHubCommandBusy ||

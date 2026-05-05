@@ -1299,10 +1299,21 @@ function connectionFingerprint(hass) {
 }
 
 // custom_components/sofabaton_x1s/www/src/state/control-panel-store.ts
+function normalizeLoadedFrontendVersion(value) {
+  const version = String(value ?? "").trim();
+  return version || "dev";
+}
+function normalizeExpectedFrontendVersion(value) {
+  const version = String(value ?? "").trim();
+  return version || null;
+}
 var INITIAL_SNAPSHOT = {
   hass: null,
   state: null,
   contents: null,
+  toolsFrontendVersionLoaded: "dev",
+  toolsFrontendVersionExpected: null,
+  toolsFrontendVersionMismatch: false,
   loading: false,
   loadError: null,
   selectedHubEntryId: null,
@@ -1326,7 +1337,7 @@ var INITIAL_SNAPSHOT = {
   pendingScrollEntityKey: null
 };
 var ControlPanelStore = class {
-  constructor(onChange) {
+  constructor(onChange, options = {}) {
     this.onChange = onChange;
     this._snapshot = { ...INITIAL_SNAPSHOT };
     this._loadingStatePromise = null;
@@ -1338,6 +1349,11 @@ var ControlPanelStore = class {
     this._lastObservedGenerations = cacheGenerationSnapshot(null);
     this._lastHassFingerprint = "";
     this._lastConnectionFingerprint = "";
+    this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
+    this._snapshot = {
+      ...INITIAL_SNAPSHOT,
+      toolsFrontendVersionLoaded: this._loadedFrontendVersion
+    };
   }
   get snapshot() {
     return this._snapshot;
@@ -1461,7 +1477,8 @@ var ControlPanelStore = class {
     this._loadingStatePromise = (async () => {
       try {
         const [state, contents] = await Promise.all([api.loadState(), api.loadCacheContents()]);
-        this._snapshot = { ...this._snapshot, state, contents, loadError: null };
+        this.applyControlPanelState(state);
+        this._snapshot = { ...this._snapshot, contents };
         this.syncSelection();
       } catch (error) {
         this._snapshot = { ...this._snapshot, loadError: formatError(error) };
@@ -1477,7 +1494,7 @@ var ControlPanelStore = class {
   }
   async loadControlPanelState() {
     const state = await this.api().loadState();
-    this._snapshot = { ...this._snapshot, state, loadError: null };
+    this.applyControlPanelState(state);
     this.syncSelection();
     this.emit();
   }
@@ -1683,6 +1700,16 @@ var ControlPanelStore = class {
     this._logsUnsub = null;
     this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
   }
+  applyControlPanelState(state) {
+    const expectedVersion = normalizeExpectedFrontendVersion(state?.tools_frontend_version);
+    this._snapshot = {
+      ...this._snapshot,
+      state,
+      loadError: null,
+      toolsFrontendVersionExpected: expectedVersion,
+      toolsFrontendVersionMismatch: expectedVersion !== null && expectedVersion !== this._loadedFrontendVersion
+    };
+  }
   applyOptimisticSetting(setting, enabled) {
     if (!this._snapshot.state) return;
     const hub = selectedHub(this._snapshot);
@@ -1748,6 +1775,7 @@ var ControlPanelStore = class {
 // tests/frontend/control-panel-store.test.ts
 var baseState = {
   persistent_cache_enabled: true,
+  tools_frontend_version: "dev",
   hubs: [
     {
       entry_id: "hub-1",
@@ -1797,7 +1825,9 @@ function createHass(overrides = {}) {
 }
 function createStore() {
   const snapshots = [];
-  const store = new ControlPanelStore((snapshot) => snapshots.push(snapshot));
+  const store = new ControlPanelStore((snapshot) => snapshots.push(snapshot), {
+    loadedFrontendVersion: "dev"
+  });
   return { store, snapshots };
 }
 function flush() {
@@ -1820,6 +1850,55 @@ test("loadState keeps cache tab unavailable when persistent cache is disabled", 
   store.selectTab("cache");
   assert.equal(store.snapshot.selectedTab, "settings");
   assert.equal(store.snapshot.state?.persistent_cache_enabled, false);
+});
+test("loadState keeps tools card unblocked when frontend version matches backend", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(createHass());
+  await store.loadState();
+  assert.equal(store.snapshot.toolsFrontendVersionLoaded, "dev");
+  assert.equal(store.snapshot.toolsFrontendVersionExpected, "dev");
+  assert.equal(store.snapshot.toolsFrontendVersionMismatch, false);
+});
+test("loadState blocks tools card when backend expects a different frontend version", async () => {
+  const store = new ControlPanelStore(() => void 0, {
+    loadedFrontendVersion: "2026.5.0"
+  });
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({
+          ...baseState,
+          tools_frontend_version: "2026.5.1"
+        })
+      }
+    })
+  );
+  await store.loadState();
+  assert.equal(store.snapshot.toolsFrontendVersionExpected, "2026.5.1");
+  assert.equal(store.snapshot.toolsFrontendVersionMismatch, true);
+});
+test("later control-panel refresh can transition tools card into blocked mismatch state", async () => {
+  const { store } = createStore();
+  let currentVersion = "dev";
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({
+          ...baseState,
+          tools_frontend_version: currentVersion
+        })
+      }
+    })
+  );
+  await store.loadState();
+  assert.equal(store.snapshot.toolsFrontendVersionMismatch, false);
+  currentVersion = "2026.5.1";
+  await store.loadControlPanelState();
+  assert.equal(store.snapshot.toolsFrontendVersionExpected, "2026.5.1");
+  assert.equal(store.snapshot.toolsFrontendVersionMismatch, true);
 });
 test("setSetting applies optimistic state and rolls back on failure", async () => {
   const { store } = createStore();

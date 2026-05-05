@@ -51,6 +51,7 @@ export interface ControlPanelHubState {
 
 export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
+  tools_frontend_version: string;
   hubs: ControlPanelHubState[];
 }
 
@@ -96,6 +97,9 @@ export interface ControlPanelSnapshot {
   hass: HassLike | null;
   state: ControlPanelStateResponse | null;
   contents: CacheContentsResponse | null;
+  toolsFrontendVersionLoaded: string;
+  toolsFrontendVersionExpected: string | null;
+  toolsFrontendVersionMismatch: boolean;
   loading: boolean;
   loadError: string | null;
   selectedHubEntryId: string | null;

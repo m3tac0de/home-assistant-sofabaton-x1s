@@ -503,8 +503,10 @@ async def _ws_get_control_panel_state(
     hass: HomeAssistant, connection, msg: dict[str, Any]
 ) -> None:
     store = await _async_get_persistent_cache_store(hass)
+    tools_frontend_version = await _async_get_integration_version(hass)
     payload = {
         "persistent_cache_enabled": store.enabled,
+        "tools_frontend_version": tools_frontend_version,
         "hubs": [
             _build_control_panel_hub_payload(
                 hass,
