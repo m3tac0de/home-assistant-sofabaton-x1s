@@ -1285,6 +1285,11 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     monkeypatch.setattr(hub, "async_command_to_favorite", _favorite)
     monkeypatch.setattr(hub, "async_command_to_button", _button)
     monkeypatch.setattr(hub, "async_delete_device", _delete)
+    monkeypatch.setattr(
+        hub,
+        "async_fetch_device_commands",
+        lambda *_args, **_kwargs: asyncio.sleep(0),
+    )
 
     resync_calls: list[bool] = []
 
@@ -1339,6 +1344,125 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     assert cache_refresh_calls == [(101, True, False, True)]
     assert macro_refresh_calls == [("clear", 101), ("fetch", 101)]
     assert resync_calls == [True]
+
+    loop.close()
+
+
+def test_sync_command_config_primes_wifi_device_commands_before_refreshing_favorites(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    async def _refresh_devices(_timeout=15.0):
+        return {}
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices)
+    monkeypatch.setattr(
+        hub,
+        "async_create_wifi_device",
+        lambda *_a, **_k: asyncio.sleep(0, result={"device_id": 9, "status": "success"}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_add_device_to_activity",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_command_to_favorite",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success", "fav_id": 1}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_request_favorites_order",
+        lambda *_a, **_k: asyncio.sleep(0, result=[(1, 1)]),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_reorder_favorites",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}),
+    )
+    monkeypatch.setattr(hub, "async_resync_remote", lambda: asyncio.sleep(0))
+
+    call_order: list[str] = []
+
+    async def _fetch_device_commands(ent_id: int, *, wait_timeout: float = 10.0):
+        assert ent_id == 9
+        call_order.append("req_commands")
+        hub._proxy.state.commands[ent_id & 0xFF] = {1: "Scene Lights"}
+        hub._proxy._commands_complete.add(ent_id & 0xFF)
+
+    def _request_map(act_id: int) -> bool:
+        call_order.append("request_activity_mapping")
+        hub._proxy._activity_map_complete.add(act_id & 0xFF)
+        return True
+
+    def _get_buttons_for_entity(act_id: int, *, fetch_if_missing: bool = True):
+        call_order.append("get_buttons_for_entity")
+        hub._proxy.state.activity_favorite_slots[act_id & 0xFF] = [
+            {"button_id": 1, "device_id": 9, "command_id": 1, "source": "cache"}
+        ]
+        return ([], True)
+
+    original_ensure_commands = hub._proxy.ensure_commands_for_activity
+
+    def _ensure_commands_for_activity(act_id: int, *, fetch_if_missing: bool = True):
+        call_order.append("ensure_commands_for_activity")
+        return original_ensure_commands(act_id, fetch_if_missing=fetch_if_missing)
+
+    monkeypatch.setattr(hub, "async_fetch_device_commands", _fetch_device_commands)
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", _request_map)
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", _get_buttons_for_entity)
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_a, **_k: None)
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_a, **_k: ([], True))
+    monkeypatch.setattr(hub._proxy, "ensure_commands_for_activity", _ensure_commands_for_activity)
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_single_command_for_entity",
+        lambda *_a, **_k: pytest.fail(
+            "favorite label resolution should reuse cached REQ_COMMANDS data"
+        ),
+    )
+
+    payload = {
+        "commands": [
+            {
+                "name": "Scene Lights",
+                "add_as_favorite": True,
+                "hard_button": "",
+                "activities": ["101"],
+                "action": {"action": "perform-action"},
+            }
+        ],
+        "commands_hash": "abc",
+    }
+
+    loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert call_order.index("req_commands") < call_order.index("request_activity_mapping")
+    assert call_order.index("request_activity_mapping") < call_order.index(
+        "ensure_commands_for_activity"
+    )
+    assert hub.get_activity_favorites_for(101) == [
+        {"name": "Scene Lights", "device_id": 9, "command_id": 1}
+    ]
 
     loop.close()
 
@@ -1740,6 +1864,11 @@ def test_sync_command_config_enables_wifi_device_before_sync(monkeypatch):
     monkeypatch.setattr(hub, "async_command_to_favorite", _favorite)
     monkeypatch.setattr(hub, "async_command_to_button", _button)
     monkeypatch.setattr(hub, "async_delete_device", _delete)
+    monkeypatch.setattr(
+        hub,
+        "async_fetch_device_commands",
+        lambda *_args, **_kwargs: asyncio.sleep(0),
+    )
 
     resync_calls: list[bool] = []
 
@@ -1929,6 +2058,11 @@ def test_sync_command_config_post_hoc_reorder_uses_tracked_fav_ids(monkeypatch):
     monkeypatch.setattr(hub, "async_request_favorites_order", _request_favorites_order)
     monkeypatch.setattr(hub, "async_reorder_favorites", _reorder)
     monkeypatch.setattr(hub, "async_resync_remote", lambda: asyncio.sleep(0))
+    monkeypatch.setattr(
+        hub,
+        "async_fetch_device_commands",
+        lambda *_args, **_kwargs: asyncio.sleep(0),
+    )
     monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
     monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_a, **_k: ([], True))
     monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_a, **_k: None)
@@ -2305,6 +2439,11 @@ def test_sync_command_config_assigns_wifi_inputs_to_device_and_activity(monkeypa
     monkeypatch.setattr(hub, "async_create_wifi_device", _create)
     monkeypatch.setattr(hub, "async_add_device_to_activity", _add_activity)
     monkeypatch.setattr(hub, "async_command_to_favorite", lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}))
+    monkeypatch.setattr(
+        hub,
+        "async_fetch_device_commands",
+        lambda *_args, **_kwargs: asyncio.sleep(0),
+    )
     monkeypatch.setattr(hub, "async_resync_remote", lambda: asyncio.sleep(0))
     monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
     monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_a, **_k: ([], True))

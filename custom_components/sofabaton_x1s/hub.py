@@ -2049,6 +2049,11 @@ class SofabatonHub:
                     await self.async_delete_device(wifi_device_id)
                     raise HomeAssistantError("Failed adding Wifi Device to all activities")
 
+                # Warm the wifi-device command cache before activity refreshes
+                # so favorite-label resolution can reuse the full REQ_COMMANDS
+                # result instead of falling back to per-command lookups later.
+                await self.async_fetch_device_commands(wifi_device_id)
+
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
                     current_step=5,
@@ -2170,7 +2175,7 @@ class SofabatonHub:
                         clear_macros=True,
                     )
                     await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
-                    await self.hass.async_add_executor_job(
+                    _, buttons_ready = await self.hass.async_add_executor_job(
                         partial(self._proxy.get_buttons_for_entity, act_id, fetch_if_missing=True)
                     )
                     await self.hass.async_add_executor_job(
@@ -2180,19 +2185,19 @@ class SofabatonHub:
                         False,
                         True,
                     )
+                    if not buttons_ready:
+                        await self._async_wait_for_buttons_ready(act_id)
+                    await self._async_wait_for_activity_map_ready(act_id)
+                    await self.hass.async_add_executor_job(
+                        partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
+                    )
                     await self.hass.async_add_executor_job(
                         partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
                     )
 
-            # Fetch device commands for the newly-created wifi device so that
-            # state.commands[wifi_device_id] is populated with the real labels
-            # (e.g. "Dim the lights").  Without this, _build_cache_activity_favorites
-            # falls back to "Command N" because command_to_favorite clears
-            # activity_favorite_labels and the activity-map refresh only returns
-            # slot/command IDs, not labels.
-                await self.hass.async_add_executor_job(
-                    partial(self._proxy.get_commands_for_entity, wifi_device_id, fetch_if_missing=True)
-                )
+                if activity_ids:
+                    self._bump_cache_generation()
+                    async_dispatcher_send(self.hass, signal_commands(self.entry_id))
 
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
