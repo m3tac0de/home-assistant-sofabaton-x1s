@@ -15,7 +15,8 @@ from .const import DEFAULT_ROKU_LISTEN_PORT, DOMAIN
 COMMAND_CONFIG_STORE_VERSION = 1
 COMMAND_CONFIG_STORE_MINOR_VERSION = 3
 COMMAND_HASH_VERSION = "v4"
-COMMAND_BRAND_PREFIX = "m3tac0de"
+COMMAND_BRAND_PREFIX = "m3"
+LEGACY_COMMAND_BRAND_PREFIX = "m3tac0de"
 COMMAND_SLOT_COUNT = 10
 POWER_COMMAND_MIN = 1
 POWER_COMMAND_MAX = 10
@@ -313,6 +314,10 @@ class CommandConfigStore:
             for device in devices:
                 if device["device_key"] == normalized_key:
                     return device
+            if normalized_key == DEFAULT_WIFI_DEVICE_KEY and not devices:
+                default_device = _default_device_payload()
+                devices.append(default_device)
+                return default_device
             raise KeyError(normalized_key)
         if devices:
             return devices[0]
@@ -464,6 +469,58 @@ class CommandConfigStore:
         await self._store.async_save(self._data)
         return True
 
+    async def async_reconcile_deployed_wifi_devices(
+        self,
+        entry_id: str,
+        assignments: list[tuple[str, int | None, str]],
+    ) -> bool:
+        """Persist repaired deployed-device ownership for all Wifi Device records.
+
+        Any record not present in *assignments* has its deployed ownership cleared.
+        This lets the hub reconcile pass repair duplicate or stale migrated claims
+        in one atomic store write.
+        """
+
+        devices = self._hub_device_records(entry_id)
+        normalized_assignments: dict[str, tuple[int | None, str]] = {}
+        for raw_device_key, raw_device_id, raw_commands_hash in assignments:
+            normalized_key = _normalize_device_key(raw_device_key)
+            if not normalized_key:
+                continue
+            normalized_assignments[normalized_key] = (
+                int(raw_device_id) if isinstance(raw_device_id, int) else None,
+                str(raw_commands_hash or "").strip(),
+            )
+
+        changed = False
+        for device in devices:
+            device_key = str(device.get("device_key") or "")
+            assignment = normalized_assignments.get(device_key)
+            if assignment is not None:
+                deployed_device_id, deployed_commands_hash = assignment
+                if device.get("deployed_device_id") != deployed_device_id:
+                    device["deployed_device_id"] = deployed_device_id
+                    changed = True
+                if str(device.get("deployed_commands_hash") or "").strip() != deployed_commands_hash:
+                    device["deployed_commands_hash"] = deployed_commands_hash
+                    changed = True
+                continue
+
+            if device.get("deployed_device_id") is not None:
+                device["deployed_device_id"] = None
+                changed = True
+            if str(device.get("deployed_commands_hash") or "").strip():
+                device["deployed_commands_hash"] = ""
+                changed = True
+            deployed_commands = device.get("deployed_commands")
+            if isinstance(deployed_commands, list) and deployed_commands:
+                device["deployed_commands"] = []
+                changed = True
+
+        if changed:
+            await self._store.async_save(self._data)
+        return changed
+
     def get_deployed_wifi_commands(
         self,
         entry_id: str,
@@ -473,13 +530,22 @@ class CommandConfigStore:
     ) -> list[dict[str, Any]]:
         """Return the deployed command snapshot for *entry_id*, or [] if none."""
         devices = self._hub_device_records(entry_id)
-        for device in devices:
-            if hub_device_id is not None and device.get("deployed_device_id") == hub_device_id:
-                result = device.get("deployed_commands")
+        if hub_device_id is not None:
+            matches = [device for device in devices if device.get("deployed_device_id") == hub_device_id]
+            if len(matches) == 1:
+                result = matches[0].get("deployed_commands")
                 return result if isinstance(result, list) else []
-            if device_key is not None and device.get("device_key") == _normalize_device_key(device_key):
-                result = device.get("deployed_commands")
+            if len(matches) > 1:
+                return []
+
+        if device_key is not None:
+            normalized_key = _normalize_device_key(device_key)
+            matches = [device for device in devices if device.get("device_key") == normalized_key]
+            if len(matches) == 1:
+                result = matches[0].get("deployed_commands")
                 return result if isinstance(result, list) else []
+            if len(matches) > 1:
+                return []
 
         # Upgrade bridge for the old single-device store layout used before
         # deployed hub-device ids were persisted. Once a user re-syncs on the
@@ -507,15 +573,17 @@ class CommandConfigStore:
 
         normalized_key = _normalize_device_key(device_key) if device_key is not None else ""
         if normalized_key:
-            for device in devices:
-                if device.get("device_key") == normalized_key:
-                    target_device = device
-                    break
+            matches = [device for device in devices if device.get("device_key") == normalized_key]
+            if len(matches) == 1:
+                target_device = matches[0]
+            elif len(matches) > 1:
+                return None
         elif hub_device_id is not None:
-            for device in devices:
-                if device.get("deployed_device_id") == hub_device_id:
-                    target_device = device
-                    break
+            matches = [device for device in devices if device.get("deployed_device_id") == hub_device_id]
+            if len(matches) == 1:
+                target_device = matches[0]
+            elif len(matches) > 1:
+                return None
 
             # Upgrade bridge for single-device records migrated from the old
             # store layout where deployed hub-device ids were not persisted.
@@ -558,7 +626,7 @@ async def async_get_command_config_store(hass: HomeAssistant) -> CommandConfigSt
 
     domain_data = hass.data.setdefault(DOMAIN, {})
     store = domain_data.get("command_config_store")
-    if isinstance(store, CommandConfigStore):
+    if store is not None:
         return store
 
     store = CommandConfigStore(hass)

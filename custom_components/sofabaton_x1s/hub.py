@@ -46,6 +46,7 @@ from .lib.protocol_const import ButtonName
 from .lib.x1_proxy import X1Proxy
 from .command_config import (
     COMMAND_BRAND_PREFIX,
+    LEGACY_COMMAND_BRAND_PREFIX,
     async_get_command_config_store,
     DEFAULT_WIFI_DEVICE_KEY,
     count_configured_command_slots,
@@ -63,10 +64,12 @@ _WIFI_COMMAND_LONG_PRESS_OFFSET = 10
 
 def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
     text = str(brand or "").strip()
-    prefix = f"{COMMAND_BRAND_PREFIX}-"
-    if not text.startswith(prefix):
-        return None, None
-    suffix = text[len(prefix):].strip()
+    suffix = ""
+    for prefix_value in (COMMAND_BRAND_PREFIX, LEGACY_COMMAND_BRAND_PREFIX):
+        prefix = f"{prefix_value}-"
+        if text.startswith(prefix):
+            suffix = text[len(prefix):].strip()
+            break
     if not suffix:
         return None, None
     if "-" not in suffix:
@@ -1573,7 +1576,7 @@ class SofabatonHub:
         if stored_devices is None and len(managed_devices) == 1:
             return [managed_devices[0]], False
 
-        if stored_devices is not None and len(stored_devices) == 1 and len(managed_devices) == 1:
+        if stored_devices is not None and len(stored_devices) <= 1 and len(managed_devices) == 1:
             return [managed_devices[0]], False
 
         return [], False
@@ -1581,32 +1584,71 @@ class SofabatonHub:
     async def _async_reconcile_deployed_wifi_device_ids(self) -> None:
         store = await async_get_command_config_store(self.hass)
         managed_devices = self._managed_wifi_devices()
-        if not managed_devices:
-            return
-
         stored_devices = await store.async_list_hub_devices(self.entry_id)
-        changed = False
-        for device in stored_devices:
-            device_key = str(device.get("device_key") or "").strip()
-            if not device_key or isinstance(device.get("deployed_device_id"), int):
+        stored_by_key = {
+            str(device.get("device_key") or "").strip(): device
+            for device in stored_devices
+            if str(device.get("device_key") or "").strip()
+        }
+        assignments: list[tuple[str, int | None, str]] = []
+        assigned_keys: set[str] = set()
+
+        def _pick_unique(matches: list[dict[str, Any]]) -> dict[str, Any] | None:
+            remaining = [
+                device for device in matches
+                if str(device.get("device_key") or "").strip() not in assigned_keys
+            ]
+            if len(remaining) == 1:
+                return remaining[0]
+            return None
+
+        for managed_device_id, managed_device_key, managed_hash, _brand in managed_devices:
+            owner: dict[str, Any] | None = None
+
+            if managed_device_key:
+                device = stored_by_key.get(managed_device_key)
+                if device is not None and managed_device_key not in assigned_keys:
+                    owner = device
+
+            if owner is None:
+                owner = _pick_unique(
+                    [
+                        device for device in stored_devices
+                        if str(device.get("deployed_commands_hash") or "").strip() == managed_hash
+                    ]
+                )
+
+            if owner is None:
+                owner = _pick_unique(
+                    [
+                        device for device in stored_devices
+                        if str(device.get("commands_hash") or "").strip() == managed_hash
+                    ]
+                )
+
+            if owner is None:
+                owner = _pick_unique(
+                    [
+                        device for device in stored_devices
+                        if device.get("deployed_device_id") == managed_device_id
+                    ]
+                )
+
+            if owner is None and len(stored_devices) == 1 and len(managed_devices) == 1:
+                only_device_key = str(stored_devices[0].get("device_key") or "").strip()
+                if only_device_key and only_device_key not in assigned_keys:
+                    owner = stored_devices[0]
+
+            if owner is None:
                 continue
-            matches, ambiguous = self._match_managed_wifi_devices(
-                managed_devices=managed_devices,
-                stored_devices=stored_devices,
-                device_key=device_key,
-                deployed_device_id=device.get("deployed_device_id"),
-                deployed_commands_hash=str(device.get("deployed_commands_hash") or ""),
-                commands_hash=str(device.get("commands_hash") or ""),
-            )
-            if ambiguous or len(matches) != 1:
+
+            owner_device_key = str(owner.get("device_key") or "").strip()
+            if not owner_device_key:
                 continue
-            managed_device_id = matches[0][0]
-            if await store.async_set_deployed_device_id(
-                self.entry_id,
-                device_key,
-                managed_device_id,
-            ):
-                changed = True
+            assignments.append((owner_device_key, managed_device_id, managed_hash))
+            assigned_keys.add(owner_device_key)
+
+        changed = await store.async_reconcile_deployed_wifi_devices(self.entry_id, assignments)
 
         if changed:
             async_dispatcher_send(self.hass, signal_command_sync(self.entry_id))
@@ -1800,7 +1842,7 @@ class SofabatonHub:
             deployed_commands_hash = str(command_payload.get("deployed_commands_hash") or "")
             deployed_device_id = command_payload.get("deployed_device_id")
             normalized_device_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
-            brand_name = f"{COMMAND_BRAND_PREFIX}-{commands_hash}"
+            brand_name = f"{COMMAND_BRAND_PREFIX}-{normalized_device_key}-{commands_hash}"
             total_steps = 8 if configured_slots > 0 else 7
             store = await async_get_command_config_store(self.hass)
             self._set_command_sync_progress(

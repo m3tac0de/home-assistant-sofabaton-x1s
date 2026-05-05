@@ -352,3 +352,104 @@ def test_async_set_deployed_device_id_updates_existing_device_record() -> None:
 
     assert changed is True
     assert payload["deployed_device_id"] == 77
+
+
+def test_get_deployed_wifi_commands_returns_empty_when_multiple_records_claim_same_device_id() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "devices": [
+                    {
+                        "device_key": "default",
+                        "device_name": "Home Assistant",
+                        "commands": default_commands(),
+                        "deployed_commands": [{"name": "Default Slot"}],
+                        "deployed_device_id": 77,
+                    },
+                    {
+                        "device_key": "other",
+                        "device_name": "Bedroom TV",
+                        "commands": default_commands(),
+                        "deployed_commands": [{"name": "Other Slot"}],
+                        "deployed_device_id": 77,
+                    },
+                ]
+            }
+        }
+    }
+
+    assert store.get_deployed_wifi_commands("hub-1", hub_device_id=77) == []
+
+
+def test_get_live_wifi_command_slot_returns_none_when_multiple_records_claim_same_device_id() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "devices": [
+                    {
+                        "device_key": "default",
+                        "device_name": "Home Assistant",
+                        "commands": [{"name": "Default Slot"}],
+                        "deployed_device_id": 77,
+                    },
+                    {
+                        "device_key": "other",
+                        "device_name": "Bedroom TV",
+                        "commands": [{"name": "Other Slot"}],
+                        "deployed_device_id": 77,
+                    },
+                ]
+            }
+        }
+    }
+
+    assert store.get_live_wifi_command_slot("hub-1", hub_device_id=77, command_index=0) is None
+
+
+def test_async_reconcile_deployed_wifi_devices_assigns_one_owner_and_clears_conflicts() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    store._data = {  # type: ignore[attr-defined]
+        "hubs": {
+            "hub-1": {
+                "devices": [
+                    {
+                        "device_key": "default",
+                        "device_name": "Home Assistant",
+                        "commands": default_commands(),
+                        "deployed_commands": [{"name": "Stale Default Slot"}],
+                        "deployed_device_id": 3,
+                        "deployed_commands_hash": "oldhash",
+                    },
+                    {
+                        "device_key": "other",
+                        "device_name": "LG G2 77",
+                        "commands": default_commands(),
+                        "deployed_commands": [{"name": "Live Slot"}],
+                        "deployed_device_id": 3,
+                        "deployed_commands_hash": "oldhash",
+                    },
+                ]
+            }
+        }
+    }
+
+    changed = _run(
+        store.async_reconcile_deployed_wifi_devices(
+            "hub-1",
+            [("other", 3, "8b0425839ab9dda")],
+        )
+    )
+    default_payload = _run(store.async_get_hub_config("hub-1", device_key="default"))
+    other_payload = _run(store.async_get_hub_config("hub-1", device_key="other"))
+
+    assert changed is True
+    assert default_payload["deployed_device_id"] is None
+    assert default_payload["deployed_commands_hash"] == ""
+    assert other_payload["deployed_device_id"] == 3
+    assert other_payload["deployed_commands_hash"] == "8b0425839ab9dda"
+    assert store.get_deployed_wifi_commands("hub-1", device_key="default") == []
