@@ -60,6 +60,8 @@ Observed stable fields:
 
 Command-list bursts return one or more command records per page. The exact page
 layout varies by hub line, but the repeated command unit has a consistent shape.
+The burst should be treated as a paged byte stream: page boundaries are not
+guaranteed to align to command-record boundaries.
 
 ### Repeated command unit
 
@@ -86,6 +88,14 @@ Observed command-label encodings:
 - some labels can legitimately contain raw byte `0xFF` as part of UTF-16BE text
   (for example `U+00FF`), so consumers must not split records on bare `0xFF`
   unless a full record separator pattern is present
+
+### Paging behavior
+
+Observed paging behavior:
+- command records may span page boundaries
+- non-header pages should be treated primarily as continuations of the current
+  command burst, not as self-contained command lists
+- record decoding is safest after concatenating the page bodies for the burst
 
 ### Input-config refresh labels (`0x020C -> 0xCD0D`)
 
@@ -136,6 +146,29 @@ byte 3..8   row-specific metadata
 byte 9   command id or row-specific value
 byte 10..17 row-specific metadata / padding
 ```
+
+### Paging behavior
+
+Observed paging behavior:
+- the family is a paged byte stream of 18-byte rows
+- page boundaries are not guaranteed to align to row boundaries
+- a non-header page may contain:
+  - several complete rows
+  - the start of a row that finishes on the next page
+  - only the tail bytes of a row that started on the previous page
+
+Observed X1 edge case:
+- a final `REQ_BUTTONS` page can be shorter than one full 18-byte row
+- in that shape, the page is only a continuation fragment and does not contain a
+  trustworthy activity id or total-row count of its own
+
+Client guidance:
+- trust burst totals and activity id from the header page
+- treat later pages as row-stream continuations first
+- do not assume that every non-header page can be parsed independently into
+  complete 18-byte rows
+- do not treat zero-valued total-frame fields on non-header pages as an
+  authoritative new burst total
 
 ### Favorite rows
 
@@ -199,6 +232,8 @@ best understood as an activity membership roster rather than a favorites table.
 
 Macro replies are multi-fragment bursts. Each fragment that starts a new record
 contains enough metadata to identify the activity and macro id.
+As with `REQ_COMMANDS`, fragments should be treated as pieces of one assembled
+byte stream rather than as independently decodable record pages.
 
 ### Fragment header
 
@@ -232,6 +267,13 @@ Some X1S `POWER_ON` / `POWER_OFF` records for empty power sequences carry a
 leading control byte before the visible UTF-16BE text. Consumers should ignore
 leading control characters before deciding whether a label is `POWER_ON` or
 `POWER_OFF`.
+
+### Paging behavior
+
+Observed paging behavior:
+- one macro record may span multiple fragments
+- record starts are identified by fragment metadata, but label decoding is
+  safest after concatenating fragment bodies for the burst
 
 ---
 

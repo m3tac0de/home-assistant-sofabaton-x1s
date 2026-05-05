@@ -117,3 +117,9 @@ String/text encodings are **record-dependent**:
 - mDNS TXT records and HTTP callback payloads are **UTF-8**
 
 Do not assume a single text encoding applies across the entire protocol.
+
+For paged response families such as `REQ_COMMANDS`, `REQ_BUTTONS`, and
+`REQ_MACRO_LABELS`, also do not assume that each frame carries a self-contained
+set of complete records. In observed traffic, page boundaries can split records
+or rows, so clients should often concatenate page bodies for a burst before
+performing record-level decoding.

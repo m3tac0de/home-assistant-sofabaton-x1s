@@ -609,6 +609,68 @@ def test_parse_button_burst_frame_accepts_unenumerated_x2_continuation_variant()
     assert parsed.has_row_data is True
 
 
+def test_parse_button_burst_frame_treats_short_x1_tail_fragment_as_continuation() -> None:
+    raw = bytes.fromhex(
+        "a5 5a 11 3d 01 00 03 00 00 00 4e 24 04 0d 00 00 00 00 4e 2e 0e 5e"
+    )
+    opcode = int.from_bytes(raw[2:4], "big")
+
+    parsed = parse_button_burst_frame(opcode, raw, hub_version=HUB_VERSION_X1)
+
+    assert parsed is not None
+    assert parsed.hub_line == "x1"
+    assert parsed.layout_kind == "x1_page"
+    assert parsed.role == "page"
+    assert parsed.frame_no == 3
+    assert parsed.activity_id is None
+    assert parsed.total_frames is None
+    assert parsed.total_rows is None
+    assert parsed.data_start == 3
+    assert parsed.has_row_data is True
+
+
+def test_device_button_assembler_completes_x1_burst_with_short_tail_fragment() -> None:
+    frames = [
+        bytes.fromhex(
+            "a5 5a fa 3d 01 00 01 01 00 03 1c 65 01 09 00 00 00 00 4e 24 01 00 00 00 00 00 00 00 00 "
+            "65 02 09 00 00 00 00 4e 24 02 00 00 00 00 00 00 00 00 65 03 09 00 00 00 00 4e 24 04 00 "
+            "00 00 00 00 00 00 00 65 04 0a 00 00 00 00 4e 24 01 00 00 00 00 00 00 00 00 65 05 0a 00 "
+            "00 00 00 4e 24 02 00 00 00 00 00 00 00 00 65 06 0a 00 00 00 00 4e 24 03 00 00 00 00 00 "
+            "00 00 00 65 09 09 00 00 00 00 4e 24 05 00 00 00 00 00 00 00 00 65 0a 09 00 00 00 00 4e "
+            "24 06 00 00 00 00 00 00 00 00 65 0b 0e 00 00 00 00 4e 24 01 00 00 00 00 00 00 00 00 65 "
+            "0c 0e 00 00 00 00 4e 24 02 00 00 00 00 00 00 00 00 65 0d 0e 00 00 00 00 4e 24 03 00 00 "
+            "00 00 00 00 00 00 65 0f 0e 00 00 00 00 4e 24 04 00 00 00 00 00 00 00 00 65 10 0e 00 00 "
+            "00 00 4e 24 05 00 00 00 00 00 00 00 00 65 12 0d 00 00 00 00 4e 24 5c"
+        ),
+        bytes.fromhex(
+            "a5 5a fa 3d 01 00 02 01 00 00 00 00 00 00 00 00 65 13 0d 00 00 00 00 4e 24 02 00 00 00 "
+            "00 00 00 00 00 65 14 0d 00 00 00 00 4e 24 03 00 00 00 00 00 00 00 00 65 15 0d 00 00 00 "
+            "00 4e 24 04 00 00 00 00 00 00 00 00 65 16 0e 00 00 00 00 4e 24 06 00 00 00 00 00 00 00 "
+            "00 65 17 0e 00 00 00 00 4e 24 07 00 00 00 00 00 00 00 00 65 18 0e 00 00 00 00 4e 24 08 "
+            "00 00 00 00 00 00 00 00 65 19 0e 00 00 00 00 4e 24 09 00 00 00 00 00 00 00 00 65 1a 0e "
+            "00 00 00 00 4e 24 0a 00 00 00 00 00 00 00 00 65 b0 09 00 00 00 00 4e 25 05 00 00 00 00 "
+            "00 00 00 00 65 b9 02 00 00 00 00 00 33 80 00 00 00 00 00 00 00 00 65 be 0d 00 00 00 00 "
+            "4e 21 01 00 00 00 00 00 00 00 00 65 bf 0d 00 00 00 00 4e 22 02 00 00 00 00 00 00 00 00 "
+            "65 c0 0d 00 00 00 00 4e 23 03 0d 00 00 00 00 4e 2d 0d 65 c1 0d 00 5e"
+        ),
+        bytes.fromhex("a5 5a 11 3d 01 00 03 00 00 00 4e 24 04 0d 00 00 00 00 4e 2e 0e 5e"),
+    ]
+
+    assembler = DeviceButtonAssembler()
+    completed: list[tuple[int, bytes, int | None]] = []
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, activity_id_override=0x65, hub_version=HUB_VERSION_X1))
+
+    assert len(completed) == 1
+    act_id, row_stream, row_count = completed[0]
+
+    assert act_id == 0x65
+    assert row_count == 0x1C
+    assert row_stream == frames[0][4:-1][7:] + frames[1][4:-1][3:] + frames[2][4:-1][3:]
+
+
 def test_keymap_handler_reassembles_x1s_split_rows() -> None:
     proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
     handler = KeymapHandler()

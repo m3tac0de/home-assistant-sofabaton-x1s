@@ -180,6 +180,19 @@ Observed semantics:
   - the true underlying target of ordinary hard-button bindings
   - long-press metadata for ordinary hard buttons
 
+Observed paging behavior:
+- page boundaries do not necessarily align to 18-byte row boundaries
+- a final page may contain only the tail bytes needed to complete a row that
+  started on the previous page
+- later pages may omit trustworthy local burst metadata even though they still
+  carry row-stream bytes
+
+Client guidance:
+- derive burst totals and activity id from the header when available
+- concatenate row bytes across pages before assuming row boundaries
+- treat very short non-header pages as continuation fragments, not as fresh
+  self-contained row pages
+
 ### Activity membership roster (family `0x6D`)
 
 | Opcode   | Name | Hub versions | Notes |

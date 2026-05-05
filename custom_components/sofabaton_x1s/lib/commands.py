@@ -212,7 +212,9 @@ def parse_button_burst_frame(
     frame_no = payload[2]
     hinted_line = _button_hub_line(hub_version)
     total_frames = int.from_bytes(payload[4:6], "big") if len(payload) >= 6 else None
-    total_rows = payload[6] if len(payload) > 6 and payload[6] > 0 else None
+    if total_frames == 0:
+        total_frames = None
+    total_rows = payload[6] if frame_no == 1 and len(payload) > 6 and payload[6] > 0 else None
 
     if frame_no == 1 and total_frames is not None and total_frames > 0 and len(payload) > 7:
         layout_kind = "header"
@@ -246,6 +248,31 @@ def parse_button_burst_frame(
         )
 
     stream = payload[3:] if len(payload) > 3 else b""
+    if stream and len(stream) < 18:
+        inferred_line = hinted_line
+        if inferred_line == "shared":
+            inferred_line = "x1s_x2" if frame_no > 1 else "shared"
+
+        role = "final" if total_frames is not None and frame_no >= total_frames else "page"
+        layout_kind = "page"
+        if inferred_line == "x1":
+            layout_kind = "x1_page"
+        elif inferred_line == "x1s_x2":
+            layout_kind = "x1s_final" if role == "final" else "x1s_page"
+
+        return ButtonBurstFrame(
+            opcode=opcode,
+            hub_line=inferred_line,
+            layout_kind=layout_kind,
+            role=role,
+            frame_no=frame_no,
+            activity_id=None,
+            data_start=3,
+            total_frames=total_frames,
+            total_rows=None,
+            has_row_data=True,
+        )
+
     activity_id = _extract_button_activity_id(stream)
     if activity_id is None:
         return ButtonBurstFrame(
