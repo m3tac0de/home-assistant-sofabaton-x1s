@@ -232,11 +232,11 @@ class SofabatonControlPanelCard extends LitElement {
           </div>
           <div class="card-body">
             <div class="version-mismatch-state">
-              <div class="version-mismatch-icon">!</div>
-              <div class="version-mismatch-title">Tools card refresh required</div>
+              <div class="version-mismatch-icon"><ha-icon icon="mdi:alert"></ha-icon></div>
+              <div class="version-mismatch-title">Refresh required to update the Sofabaton Control Panel card</div>
               <div class="version-mismatch-copy">
-                This dashboard is still showing an older cached Sofabaton tools card than the backend release now running in Home Assistant.
-                Refresh or reopen the dashboard/browser so the updated card is loaded before using these tools again.
+                This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant.
+                Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.
               </div>
               <div class="version-mismatch-versions">
                 <div class="version-mismatch-row">

@@ -677,7 +677,8 @@ var cardStyles = i`
   .cache-state-icon { font-size: 32px; line-height: 1; margin-bottom: 4px; }
   .cache-state-sub { font-size: 12px; line-height: 1.5; max-width: 260px; }
   .version-mismatch-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 28px 20px; text-align: center; }
-  .version-mismatch-icon { font-size: 34px; line-height: 1; }
+  .version-mismatch-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--warning-color, #ff9800); }
+  .version-mismatch-icon ha-icon { --mdc-icon-size: 34px; }
   .version-mismatch-title { font-size: 18px; font-weight: 800; color: var(--primary-text-color); }
   .version-mismatch-copy { max-width: 420px; font-size: 13px; line-height: 1.6; color: var(--secondary-text-color); }
   .version-mismatch-versions { width: min(100%, 360px); display: grid; gap: 10px; padding: 14px; border: 1px solid color-mix(in srgb, var(--error-color, #db4437) 24%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: color-mix(in srgb, var(--error-color, #db4437) 4%, var(--card-background-color, var(--ha-card-background))); text-align: left; }
@@ -4460,11 +4461,11 @@ var SofabatonControlPanelCard = class extends i4 {
           </div>
           <div class="card-body">
             <div class="version-mismatch-state">
-              <div class="version-mismatch-icon">!</div>
-              <div class="version-mismatch-title">Tools card refresh required</div>
+              <div class="version-mismatch-icon"><ha-icon icon="mdi:alert"></ha-icon></div>
+              <div class="version-mismatch-title">Refresh required to update the Sofabaton Control Panel card</div>
               <div class="version-mismatch-copy">
-                This dashboard is still showing an older cached Sofabaton tools card than the backend release now running in Home Assistant.
-                Refresh or reopen the dashboard/browser so the updated card is loaded before using these tools again.
+                This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant.
+                Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.
               </div>
               <div class="version-mismatch-versions">
                 <div class="version-mismatch-row">
