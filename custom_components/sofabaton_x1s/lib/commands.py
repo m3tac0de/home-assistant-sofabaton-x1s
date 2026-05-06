@@ -336,13 +336,20 @@ def parse_command_burst_frame(
         and len(payload) > 8
         and payload[:6] == b"\x01\x00\x01\x01\x00\x01"
     )
+    is_prefixed_single_layout = (
+        opcode_family(opcode) == FAMILY_DEVBTNS
+        and len(payload) > 9
+        and payload[:6] == b"\x01\x00\x01\x01\x00\x01"
+        and payload[6] == 0x01
+    )
     is_single_layout = (
         opcode == OP_DEVBTN_SINGLE
         or (
-            opcode_family(opcode) in (FAMILY_DEVBTNS, 0x0D)
+            opcode_family(opcode) == 0x0D
             and len(payload) > 7
             and payload[:6] == b"\x01\x00\x01\x01\x00\x01"
         )
+        or is_prefixed_single_layout
     )
     if is_single_layout:
         device_id = payload[3]
@@ -661,7 +668,7 @@ def _decode_label(label_bytes: bytes) -> str:
 def _matches_control_block(block: bytes) -> bool:
     if len(block) != 7:
         return False
-    if block[0] in (0x03, 0x0D):
+    if block[0] in (0x03, 0x0A, 0x0D, 0x1C, 0x20):
         return True
     if block[:5] == b"\x00\x00\x00\x00\x00":
         return True
@@ -715,6 +722,60 @@ def _iter_fixed_width_utf16_records(data: bytes, dev_id: int) -> Iterator[Comman
     yield from records
 
 
+def _iter_fixed_width_ascii_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
+    """Yield records for packed X1 ASCII command tables without 0xFF separators.
+
+    Older X1 single-page bursts can concatenate ASCII records directly with no
+    ``0xFF`` delimiters. They are record-structured but not truly fixed width:
+
+        [dev_id] [command_id] [fmt] [4x 0x00] [2-byte control] [ASCII label padded] [command_id]
+
+    The amount of zero-padding can vary slightly between records, so detect
+    structural record starts and slice from one start to the next instead of
+    assuming an exact stride length.
+    """
+
+    target = dev_id & 0xFF
+    header_size = 9
+    starts = [
+        idx
+        for idx in range(0, len(data) - header_size + 1)
+        if data[idx] == target
+        and data[idx + 2] in (0x03, 0x0A, 0x0D, 0x1A, 0x1C, 0x20)
+        and data[idx + 3 : idx + 7] == b"\x00" * 4
+    ]
+
+    if not starts or starts[0] != 0:
+        return
+
+    records: list[CommandRecord] = []
+    boundaries = starts[1:] + [len(data)]
+    for start, end in zip(starts, boundaries):
+        block = data[start:end]
+        if (
+            len(block) < header_size + 2
+            or block[0] != target
+            or block[3:7] != b"\x00" * 4
+            or block[-1] != block[1]
+        ):
+            return
+
+        label = _decode_label(block[header_size:-1])
+        if not label:
+            return
+
+        records.append(
+            CommandRecord(
+                dev_id=target,
+                command_id=block[1],
+                control=block[2:9],
+                label=label,
+            )
+        )
+
+    yield from records
+
+
 def _split_command_chunks(data: bytes, dev_id: int) -> Iterator[bytes]:
     """Split assembled command payloads on real record separators only.
 
@@ -730,7 +791,7 @@ def _split_command_chunks(data: bytes, dev_id: int) -> Iterator[bytes]:
     for idx in range(0, len(data) - 7):
         if data[idx] != 0xFF or data[idx + 1] != target:
             continue
-        if data[idx + 3] not in (0x03, 0x0A, 0x0D, 0x1A, 0x1C):
+        if data[idx + 3] not in (0x03, 0x0A, 0x0D, 0x1A, 0x1C, 0x20):
             continue
         if data[idx + 4 : idx + 8] != b"\x00" * 4:
             continue
@@ -756,6 +817,10 @@ def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
     target = dev_id & 0xFF
     if b"\xff" not in data:
         fixed_width_records = tuple(_iter_fixed_width_utf16_records(data, dev_id))
+        if fixed_width_records:
+            yield from fixed_width_records
+            return
+        fixed_width_records = tuple(_iter_fixed_width_ascii_records(data, dev_id))
         if fixed_width_records:
             yield from fixed_width_records
             return

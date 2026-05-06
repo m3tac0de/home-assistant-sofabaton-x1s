@@ -26,6 +26,7 @@ _ensure_stub_package("custom_components.sofabaton_x1s.lib", ROOT / "custom_compo
 from custom_components.sofabaton_x1s.lib.commands import (
     DeviceButtonAssembler,
     DeviceCommandAssembler,
+    iter_command_records,
     parse_button_burst_frame,
     parse_command_burst_frame,
 )
@@ -452,6 +453,32 @@ def test_parse_command_burst_frame_treats_x1_page_with_matching_dev_and_cmd_as_n
     assert parsed.first_command_id == 0x07
     assert parsed.format_marker == 0x1A
     assert parsed.data_start == 3
+
+
+def test_parse_command_burst_frame_does_not_misclassify_single_page_x1_header_as_single() -> None:
+    raw = bytes.fromhex(
+        "a5 5a f7 5d 01 00 01 01 00 01 06 09 01 0a 00 00 00 00 4e 21 44 69 6d 20 74 68 65 20 6c "
+        "69 67 68 74 73 20 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 09 02 0a 00 00 00 00 "
+        "4e 22 43 6c 6f 73 65 20 74 68 65 20 63 75 72 74 61 69 6e 73 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 02 09 03 0a 00 00 00 00 4e 23 4c 69 67 68 74 20 74 65 73 74 65 72 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 03 09 04 0a 00 00 00 00 4e 24 43 6f 6d 6d 61 6e 64 20 "
+        "34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04 09 05 0a 00 00 00 00 4e "
+        "25 74 65 73 74 20 66 61 76 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 05 09 06 0a 00 00 00 00 4e 26 43 6f 6d 6d 61 6e 64 20 36 20 68 65 79 20 68 6f 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 06 4a"
+    )
+
+    parsed = parse_command_burst_frame(0xF75D, raw, hub_version=HUB_VERSION_X1)
+
+    assert parsed is not None
+    assert parsed.layout_kind == "x1_classic"
+    assert parsed.role == "header"
+    assert parsed.device_id == 0x09
+    assert parsed.total_frames == 1
+    assert parsed.total_commands == 6
+    assert parsed.first_command_id == 0x01
+    assert parsed.format_marker == 0x0A
+    assert parsed.data_start == 7
 
 
 def test_x1_wifi_header_variant_uses_header_device_and_frame_count() -> None:
@@ -1881,6 +1908,124 @@ def test_parse_device_commands_handles_x2_wifi_fixed_width_capture() -> None:
         18: "Command 8 Long Press",
         19: "Command 9 Long Press",
         20: "Command 10 Long Press",
+    }
+
+
+def test_parse_device_commands_handles_x2_utf16be_records_with_format_0x20() -> None:
+    frames_hex = (
+        "a5 5a d9 5d 01 00 01 01 00 02 06 02 01 20 00 00 00 00 00 00 00 4c 00 69 00 67 00 68 00 74 00 73 00 20 00 54 00 6f 00 67 00 67 00 6c 00 65 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 02 20 00 00 00 00 00 00 00 4c 00 69 00 67 00 68 00 74 00 73 00 20 00 4e 00 65 00 78 00 74 00 20 00 53 00 63 00 65 00 6e 00 65 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 03 20 00 00 00 00 00 00 00 4c 00 69 00 67 00 68 00 74 00 73 00 20 00 42 00 72 00 69 00 67 00 68 00 74 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff b9",
+        "a5 5a d5 5d 01 00 02 02 04 20 00 00 00 00 00 00 00 4c 00 69 00 67 00 68 00 74 00 73 00 20 00 44 00 69 00 6d 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 05 20 00 00 00 00 00 00 00 4c 00 69 00 67 00 68 00 74 00 73 00 20 00 42 00 72 00 69 00 67 00 68 00 74 00 65 00 72 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff 02 06 20 00 00 00 00 00 00 00 4c 00 69 00 67 00 68 00 74 00 73 00 20 00 44 00 69 00 6d 00 6d 00 65 00 72 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff f6",
+    )
+
+    frames = [bytes.fromhex(block) for block in frames_hex]
+    assembler = DeviceCommandAssembler()
+    completed: list[tuple[int, bytes]] = []
+
+    for raw in frames:
+        opcode = int.from_bytes(raw[2:4], "big")
+        completed.extend(assembler.feed(opcode, raw, hub_version=HUB_VERSION_X2))
+
+    assert len(completed) == 1
+
+    assembled_dev_id, assembled_payload = completed[0]
+    assert assembled_dev_id == 0x02
+
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X2)
+    parsed = proxy.parse_device_commands(assembled_payload, assembled_dev_id)
+
+    assert parsed == {
+        1: "Lights Toggle",
+        2: "Lights Next Scene",
+        3: "Lights Bright",
+        4: "Lights Dim",
+        5: "Lights Brighter",
+        6: "Lights Dimmer",
+    }
+
+
+def test_parse_device_commands_handles_x1_single_page_fixed_width_ascii_records() -> None:
+    opcode = 0xF75D
+
+    def _x1_ascii_record(cmd_id: int, control_lo: int, label: str) -> bytes:
+        return (
+            bytes([0x09, cmd_id, 0x0A, 0x00, 0x00, 0x00, 0x00, 0x4E, control_lo])
+            + label.encode("ascii").ljust(30, b"\x00")
+            + bytes([cmd_id])
+        )
+
+    payload = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x06]) + b"".join(
+        [
+            _x1_ascii_record(0x01, 0x21, "Dim the lights 1"),
+            _x1_ascii_record(0x02, 0x22, "Close the curtains"),
+            _x1_ascii_record(0x03, 0x23, "Light tester"),
+            _x1_ascii_record(0x04, 0x24, "Command 4"),
+            _x1_ascii_record(0x05, 0x25, "test fav"),
+            _x1_ascii_record(0x06, 0x26, "Command 6 hey ho"),
+        ]
+    )
+    raw = b"\xA5\x5A" + opcode.to_bytes(2, "big") + payload + b"\x00"
+    parsed_frame = parse_command_burst_frame(opcode, raw, hub_version=HUB_VERSION_X1)
+
+    assert parsed_frame is not None
+    assert parsed_frame.layout_kind == "x1_classic"
+    assert parsed_frame.data_start == 7
+    assembled_payload = payload[parsed_frame.data_start :]
+    assert len(assembled_payload) == 240
+    assert assembled_payload[:10] == bytes.fromhex("09 01 0a 00 00 00 00 4e 21 44")
+    records = list(iter_command_records(assembled_payload, 0x09))
+    assert [record.command_id for record in records] == [1, 2, 3, 4, 5, 6]
+    assert [record.label for record in records] == [
+        "Dim the lights 1",
+        "Close the curtains",
+        "Light tester",
+        "Command 4",
+        "test fav",
+        "Command 6 hey ho",
+    ]
+
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1)
+    parsed = proxy.parse_device_commands(assembled_payload, 0x09)
+
+    assert parsed == {
+        1: "Dim the lights 1",
+        2: "Close the curtains",
+        3: "Light tester",
+        4: "Command 4",
+        5: "test fav",
+        6: "Command 6 hey ho",
+    }
+
+
+def test_parse_device_commands_handles_x1_single_page_packed_ascii_records_from_live_burst() -> None:
+    raw = bytes.fromhex(
+        "a5 5a f7 5d 01 00 01 01 00 01 06 09 01 0a 00 00 00 00 4e 21 44 69 6d 20 74 68 65 20 6c "
+        "69 67 68 74 73 20 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 01 09 02 0a 00 00 00 00 "
+        "4e 22 43 6c 6f 73 65 20 74 68 65 20 63 75 72 74 61 69 6e 73 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 02 09 03 0a 00 00 00 00 4e 23 4c 69 67 68 74 20 74 65 73 74 65 72 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 03 09 04 0a 00 00 00 00 4e 24 43 6f 6d 6d 61 6e 64 20 "
+        "34 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04 09 05 0a 00 00 00 00 4e "
+        "25 74 65 73 74 20 66 61 76 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 05 09 06 0a 00 00 00 00 4e 26 43 6f 6d 6d 61 6e 64 20 36 20 68 65 79 20 68 6f 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 06 4a"
+    )
+
+    parsed_frame = parse_command_burst_frame(0xF75D, raw, hub_version=HUB_VERSION_X1)
+
+    assert parsed_frame is not None
+    assert parsed_frame.layout_kind == "x1_classic"
+    assert parsed_frame.data_start == 7
+
+    payload = raw[4:-1]
+    assembled_payload = payload[parsed_frame.data_start :]
+
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1)
+    assert proxy.parse_device_commands(assembled_payload, 0x09) == {
+        1: "Dim the lights 1",
+        2: "Close the curtains",
+        3: "Light tester",
+        4: "Command 4",
+        5: "test fav",
+        6: "Command 6 hey ho",
     }
 
 

@@ -112,6 +112,11 @@ payload[16:]  = fixed-width label region
 Notes:
 - On X1S/X2, labels in this layout are observed as UTF-16BE.
 - Targeted requests of the form `[dev_lo, cmd_lo]` return this layout.
+- Some one-page X1 header bursts share the same first six bytes
+  (`01 00 01 01 00 01`) but are not targeted single-command replies.
+  The practical discriminator is `payload[6]`:
+  - targeted single-command reply: `0x01`
+  - one-page X1 command header: total command count
 
 #### WiFi input-config refresh layout (`0xCD0D` and related family `0x0D`)
 
@@ -152,6 +157,16 @@ Observed X1 continuation-page variants:
 - standard page form: `payload[3] = device id`, `payload[4] = first command id`
 - duplicated-device form: `payload[3] = payload[4] = device id`, then command
   tuple starts at `payload[5]`
+
+Observed record-stream behavior:
+- many bursts use `0xFF` before follow-on records, but that byte is not a
+  universal record separator
+- X1S/X2 UTF-16BE labels can legitimately contain raw `0xFF` bytes as text data
+- some X1 one-page bursts contain multiple ASCII command records with no `0xFF`
+  separators at all
+- consumers should treat family `0x5D` as an assembled byte stream first and
+  recover command boundaries from validated record-start patterns, not from page
+  boundaries alone
 
 ### Activity keymap / favorite rows (family `0x3D`)
 

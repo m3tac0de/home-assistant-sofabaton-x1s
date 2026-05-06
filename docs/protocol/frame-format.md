@@ -123,3 +123,15 @@ For paged response families such as `REQ_COMMANDS`, `REQ_BUTTONS`, and
 set of complete records. In observed traffic, page boundaries can split records
 or rows, so clients should often concatenate page bodies for a burst before
 performing record-level decoding.
+
+For `REQ_COMMANDS` specifically, do not assume that command records are always
+separated by a dedicated delimiter byte. Observed traffic includes:
+- UTF-16BE command labels that legitimately contain raw `0xFF` bytes
+- X1 one-page ASCII bursts that contain several command records back-to-back
+  with no `0xFF` separators at all
+
+The safest model is:
+- use header metadata to identify the burst
+- concatenate page bodies in order
+- then recover record boundaries from the record structure itself rather than
+  from page boundaries or bare delimiter bytes alone

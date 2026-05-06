@@ -77,6 +77,7 @@ Observed control-block behavior:
   data
 - virtual/IP devices often use mostly-zero control blocks
 - format markers observed in this family include `0x03`, `0x0D`, `0x1A`, and `0x1C`
+- `0x0A` and `0x20` are also observed as command-format markers on some devices
 
 ### Label encodings
 
@@ -89,6 +90,13 @@ Observed command-label encodings:
   (for example `U+00FF`), so consumers must not split records on bare `0xFF`
   unless a full record separator pattern is present
 
+Observed separator behavior:
+- many X1S/X2 bursts use `0xFF` before follow-on records
+- some X1 bursts do not use `0xFF` separators at all
+- absence of `0xFF` does not imply that the page contains only one command
+- some X1 single-page bursts pack multiple ASCII command records back-to-back
+  with no explicit separator bytes
+
 ### Paging behavior
 
 Observed paging behavior:
@@ -96,6 +104,25 @@ Observed paging behavior:
 - non-header pages should be treated primarily as continuations of the current
   command burst, not as self-contained command lists
 - record decoding is safest after concatenating the page bodies for the burst
+
+Observed X1 packed-record behavior:
+- some one-page X1 command bursts are a contiguous ASCII record stream
+- those records are structurally delimited by repeated
+  `[dev_id, command_id, fmt, 0x00, 0x00, 0x00, 0x00, ...]` starts rather than
+  by `0xFF`
+- the amount of zero padding inside the record can vary slightly, so consumers
+  should not assume a fixed record width even when the page has no `0xFF`
+  separators
+
+Observed single-page X1 header quirk:
+- some one-page X1 header bursts begin with the same early prefix as targeted
+  single-command replies: `01 00 01 01 00 01`
+- the distinguishing byte is the next one:
+  - targeted single-command reply: `payload[6] == 0x01`
+  - one-page X1 command header: `payload[6] == total_command_count`, which can
+    be greater than `1`
+- consumers should not classify a frame as a targeted single-command response
+  from the shared prefix alone
 
 ### Input-config refresh labels (`0x020C -> 0xCD0D`)
 
