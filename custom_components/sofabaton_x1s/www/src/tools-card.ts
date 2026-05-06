@@ -277,6 +277,7 @@ class SofabatonControlPanelCard extends LitElement {
       error: this._snapshot.loadError,
       hub,
       hass: this._snapshot.hass,
+      integrationVersion: this._snapshot.toolsFrontendVersionExpected,
     });
 
     if (this._snapshot.selectedTab === "settings") {

@@ -7,6 +7,7 @@ export function renderHubTab(params: {
   error: string | null;
   hub: ControlPanelHubState | null;
   hass: HassLike | null;
+  integrationVersion: string | null;
 }) {
   if (params.loading) return html`<div class="cache-state">Loading…</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -16,6 +17,7 @@ export function renderHubTab(params: {
   const proxyOn = proxyClientConnected(params.hass, params.hub);
   const haActive = connected || proxyOn;
   const haFullyActive = connected && proxyOn;
+  const integrationVersion = String(params.integrationVersion ?? "").trim() || "unknown";
   const row = (kind: "version" | "ip" | "activities" | "devices", label: string, value: unknown) => html`
     <div class="hub-row">
       <span class="hub-row-icon">${hubIcon(kind, "hub-row-icon-svg")}</span>
@@ -25,40 +27,51 @@ export function renderHubTab(params: {
   `;
 
   return html`
-    <div class="tab-panel scrollable">
-      <div class="hub-hero">
-        <div class="hub-ident hub-ident--hero">
-          <div class="hub-ident-name">${params.hub.name || "Unknown"}</div>
+    <div class="hub-tab-layout">
+      <div class="tab-panel scrollable">
+        <div class="hub-hero">
+          <div class="hub-ident hub-ident--hero">
+            <div class="hub-ident-name">${params.hub.name || "Unknown"}</div>
+          </div>
+          <div class="hub-connection-strip" role="img" aria-label="Hub connection status">
+            <div class="hub-connection-node hub-connection-node--hub${connected ? " is-active" : ""}">
+              <span class="hub-connection-node-icon hub-connection-node-icon--hub">
+                ${hubIcon("hero", "hub-hero-icon")}
+              </span>
+            </div>
+            <div class="hub-connection-link${connected ? " is-active" : ""}"><span class="hub-connection-link-line"></span></div>
+            <div class="hub-connection-node hub-connection-node--ha${haActive ? " is-active" : ""}${haFullyActive ? " is-bridged" : ""}">
+              <span class="hub-connection-node-icon hub-connection-node-icon--mdi">
+                <ha-icon icon="mdi:home-assistant"></ha-icon>
+              </span>
+            </div>
+            <div class="hub-connection-link${proxyOn ? " is-active" : ""}"><span class="hub-connection-link-line"></span></div>
+            <div class="hub-connection-node hub-connection-node--app${proxyOn ? " is-active" : ""}">
+              <span class="hub-connection-node-icon hub-connection-node-icon--mdi">
+                <ha-icon icon="mdi:tablet-cellphone"></ha-icon>
+              </span>
+            </div>
+          </div>
         </div>
-        <div class="hub-connection-strip" role="img" aria-label="Hub connection status">
-          <div class="hub-connection-node hub-connection-node--hub${connected ? " is-active" : ""}">
-            <span class="hub-connection-node-icon hub-connection-node-icon--hub">
-              ${hubIcon("hero", "hub-hero-icon")}
-            </span>
-          </div>
-          <div class="hub-connection-link${connected ? " is-active" : ""}"><span class="hub-connection-link-line"></span></div>
-          <div class="hub-connection-node hub-connection-node--ha${haActive ? " is-active" : ""}${haFullyActive ? " is-bridged" : ""}">
-            <span class="hub-connection-node-icon hub-connection-node-icon--mdi">
-              <ha-icon icon="mdi:home-assistant"></ha-icon>
-            </span>
-          </div>
-          <div class="hub-connection-link${proxyOn ? " is-active" : ""}"><span class="hub-connection-link-line"></span></div>
-          <div class="hub-connection-node hub-connection-node--app${proxyOn ? " is-active" : ""}">
-            <span class="hub-connection-node-icon hub-connection-node-icon--mdi">
-              <ha-icon icon="mdi:tablet-cellphone"></ha-icon>
-            </span>
-          </div>
+        <div class="hub-badges">
+          <span class="hub-conn-badge ${connected ? "hub-conn-badge--on" : "hub-conn-badge--off"}">${connected ? "Hub connected" : "Hub not connected"}</span>
+          <span class="hub-proxy-badge ${proxyOn ? "hub-proxy-badge--on" : "hub-proxy-badge--off"}">${proxyOn ? "App connected" : "App not connected"}</span>
+        </div>
+        <div class="hub-info-list">
+          ${params.hub.version ? row("version", "Version", `Sofabaton ${params.hub.version}`) : null}
+          ${params.hub.ip_address ? row("ip", "IP Address", params.hub.ip_address) : null}
+          ${row("activities", "Activities", Number(params.hub.activity_count || 0))}
+          ${row("devices", "Devices", Number(params.hub.device_count || 0))}
         </div>
       </div>
-      <div class="hub-badges">
-        <span class="hub-conn-badge ${connected ? "hub-conn-badge--on" : "hub-conn-badge--off"}">${connected ? "Hub connected" : "Hub not connected"}</span>
-        <span class="hub-proxy-badge ${proxyOn ? "hub-proxy-badge--on" : "hub-proxy-badge--off"}">${proxyOn ? "App connected" : "App not connected"}</span>
-      </div>
-      <div class="hub-info-list">
-        ${params.hub.version ? row("version", "Version", `Sofabaton ${params.hub.version}`) : null}
-        ${params.hub.ip_address ? row("ip", "IP Address", params.hub.ip_address) : null}
-        ${row("activities", "Activities", Number(params.hub.activity_count || 0))}
-        ${row("devices", "Devices", Number(params.hub.device_count || 0))}
+      <div class="panel-sticky-footer">
+        <div class="bottom-dock-status">
+          <span>${hubIcon("version", "hub-row-icon-svg")}</span>
+          <span>
+            Integration version
+            <span class="dock-status-value">${integrationVersion}</span>
+          </span>
+        </div>
       </div>
     </div>
   `;

@@ -618,6 +618,30 @@ var cardStyles = i`
   .hub-row-value, .setting-title, .entity-name, .cache-state-title { color: var(--primary-text-color); }
   .hub-row-label { font-size: 13px; font-weight: 700; color: color-mix(in srgb, var(--primary-text-color) 88%, var(--secondary-text-color)); }
   .hub-row-value { font-size: 13px; font-weight: 700; text-align: right; word-break: break-word; }
+  .hub-tab-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .hub-tab-layout > .tab-panel { flex: 1; }
+  .panel-sticky-footer { flex-shrink: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }
+  .bottom-dock-status {
+    width: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px 16px;
+    color: var(--secondary-text-color);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.35;
+    text-align: center;
+  }
+  .dock-status-value {
+    color: var(--primary-text-color);
+    font-size: 13px;
+    font-weight: 700;
+    font-family: "SF Mono", "Fira Code", Consolas, monospace;
+  }
   .setting-title { font-size: 14px; font-weight: 700; }
   .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .setting-tile { min-height: 132px; display: flex; flex-direction: column; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: linear-gradient(180deg, color-mix(in srgb, var(--card-background-color, #fff) 92%, white), var(--card-background-color, #fff)); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02); overflow: hidden; }
@@ -1538,6 +1562,7 @@ function renderHubTab(params) {
   const proxyOn = proxyClientConnected(params.hass, params.hub);
   const haActive = connected || proxyOn;
   const haFullyActive = connected && proxyOn;
+  const integrationVersion = String(params.integrationVersion ?? "").trim() || "unknown";
   const row = (kind, label, value) => b2`
     <div class="hub-row">
       <span class="hub-row-icon">${hubIcon(kind, "hub-row-icon-svg")}</span>
@@ -1546,40 +1571,51 @@ function renderHubTab(params) {
     </div>
   `;
   return b2`
-    <div class="tab-panel scrollable">
-      <div class="hub-hero">
-        <div class="hub-ident hub-ident--hero">
-          <div class="hub-ident-name">${params.hub.name || "Unknown"}</div>
+    <div class="hub-tab-layout">
+      <div class="tab-panel scrollable">
+        <div class="hub-hero">
+          <div class="hub-ident hub-ident--hero">
+            <div class="hub-ident-name">${params.hub.name || "Unknown"}</div>
+          </div>
+          <div class="hub-connection-strip" role="img" aria-label="Hub connection status">
+            <div class="hub-connection-node hub-connection-node--hub${connected ? " is-active" : ""}">
+              <span class="hub-connection-node-icon hub-connection-node-icon--hub">
+                ${hubIcon("hero", "hub-hero-icon")}
+              </span>
+            </div>
+            <div class="hub-connection-link${connected ? " is-active" : ""}"><span class="hub-connection-link-line"></span></div>
+            <div class="hub-connection-node hub-connection-node--ha${haActive ? " is-active" : ""}${haFullyActive ? " is-bridged" : ""}">
+              <span class="hub-connection-node-icon hub-connection-node-icon--mdi">
+                <ha-icon icon="mdi:home-assistant"></ha-icon>
+              </span>
+            </div>
+            <div class="hub-connection-link${proxyOn ? " is-active" : ""}"><span class="hub-connection-link-line"></span></div>
+            <div class="hub-connection-node hub-connection-node--app${proxyOn ? " is-active" : ""}">
+              <span class="hub-connection-node-icon hub-connection-node-icon--mdi">
+                <ha-icon icon="mdi:tablet-cellphone"></ha-icon>
+              </span>
+            </div>
+          </div>
         </div>
-        <div class="hub-connection-strip" role="img" aria-label="Hub connection status">
-          <div class="hub-connection-node hub-connection-node--hub${connected ? " is-active" : ""}">
-            <span class="hub-connection-node-icon hub-connection-node-icon--hub">
-              ${hubIcon("hero", "hub-hero-icon")}
-            </span>
-          </div>
-          <div class="hub-connection-link${connected ? " is-active" : ""}"><span class="hub-connection-link-line"></span></div>
-          <div class="hub-connection-node hub-connection-node--ha${haActive ? " is-active" : ""}${haFullyActive ? " is-bridged" : ""}">
-            <span class="hub-connection-node-icon hub-connection-node-icon--mdi">
-              <ha-icon icon="mdi:home-assistant"></ha-icon>
-            </span>
-          </div>
-          <div class="hub-connection-link${proxyOn ? " is-active" : ""}"><span class="hub-connection-link-line"></span></div>
-          <div class="hub-connection-node hub-connection-node--app${proxyOn ? " is-active" : ""}">
-            <span class="hub-connection-node-icon hub-connection-node-icon--mdi">
-              <ha-icon icon="mdi:tablet-cellphone"></ha-icon>
-            </span>
-          </div>
+        <div class="hub-badges">
+          <span class="hub-conn-badge ${connected ? "hub-conn-badge--on" : "hub-conn-badge--off"}">${connected ? "Hub connected" : "Hub not connected"}</span>
+          <span class="hub-proxy-badge ${proxyOn ? "hub-proxy-badge--on" : "hub-proxy-badge--off"}">${proxyOn ? "App connected" : "App not connected"}</span>
+        </div>
+        <div class="hub-info-list">
+          ${params.hub.version ? row("version", "Version", `Sofabaton ${params.hub.version}`) : null}
+          ${params.hub.ip_address ? row("ip", "IP Address", params.hub.ip_address) : null}
+          ${row("activities", "Activities", Number(params.hub.activity_count || 0))}
+          ${row("devices", "Devices", Number(params.hub.device_count || 0))}
         </div>
       </div>
-      <div class="hub-badges">
-        <span class="hub-conn-badge ${connected ? "hub-conn-badge--on" : "hub-conn-badge--off"}">${connected ? "Hub connected" : "Hub not connected"}</span>
-        <span class="hub-proxy-badge ${proxyOn ? "hub-proxy-badge--on" : "hub-proxy-badge--off"}">${proxyOn ? "App connected" : "App not connected"}</span>
-      </div>
-      <div class="hub-info-list">
-        ${params.hub.version ? row("version", "Version", `Sofabaton ${params.hub.version}`) : null}
-        ${params.hub.ip_address ? row("ip", "IP Address", params.hub.ip_address) : null}
-        ${row("activities", "Activities", Number(params.hub.activity_count || 0))}
-        ${row("devices", "Devices", Number(params.hub.device_count || 0))}
+      <div class="panel-sticky-footer">
+        <div class="bottom-dock-status">
+          <span>${hubIcon("version", "hub-row-icon-svg")}</span>
+          <span>
+            Integration version
+            <span class="dock-status-value">${integrationVersion}</span>
+          </span>
+        </div>
       </div>
     </div>
   `;
@@ -4500,7 +4536,8 @@ var SofabatonControlPanelCard = class extends i4 {
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
       hub,
-      hass: this._snapshot.hass
+      hass: this._snapshot.hass,
+      integrationVersion: this._snapshot.toolsFrontendVersionExpected
     });
     if (this._snapshot.selectedTab === "settings") {
       activeTab = renderSettingsTab({

@@ -67,6 +67,30 @@ export const cardStyles = css`
   .hub-row-value, .setting-title, .entity-name, .cache-state-title { color: var(--primary-text-color); }
   .hub-row-label { font-size: 13px; font-weight: 700; color: color-mix(in srgb, var(--primary-text-color) 88%, var(--secondary-text-color)); }
   .hub-row-value { font-size: 13px; font-weight: 700; text-align: right; word-break: break-word; }
+  .hub-tab-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .hub-tab-layout > .tab-panel { flex: 1; }
+  .panel-sticky-footer { flex-shrink: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }
+  .bottom-dock-status {
+    width: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px 16px;
+    color: var(--secondary-text-color);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.35;
+    text-align: center;
+  }
+  .dock-status-value {
+    color: var(--primary-text-color);
+    font-size: 13px;
+    font-weight: 700;
+    font-family: "SF Mono", "Fira Code", Consolas, monospace;
+  }
   .setting-title { font-size: 14px; font-weight: 700; }
   .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .setting-tile { min-height: 132px; display: flex; flex-direction: column; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: linear-gradient(180deg, color-mix(in srgb, var(--card-background-color, #fff) 92%, white), var(--card-background-color, #fff)); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.02); overflow: hidden; }
