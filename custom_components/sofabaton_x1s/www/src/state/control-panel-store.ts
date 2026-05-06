@@ -22,6 +22,44 @@ import {
   selectedHub,
 } from "../shared/utils/control-panel-selectors";
 
+const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
+const VALID_TABS = new Set<TabId>(["hub", "settings", "wifi_commands", "cache", "logs"]);
+
+interface PersistedViewState {
+  selectedHubEntryId?: string | null;
+  selectedTab?: TabId;
+}
+
+interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+function viewStateStorage(): StorageLike | null {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  } catch (_error) {
+    // Ignore storage access failures.
+  }
+  return null;
+}
+
+function readPersistedViewState(): PersistedViewState {
+  const storage = viewStateStorage();
+  if (!storage) return {};
+  try {
+    const parsed = JSON.parse(storage.getItem(VIEW_STATE_STORAGE_KEY) || "{}") as PersistedViewState;
+    const selectedHubEntryId = String(parsed?.selectedHubEntryId ?? "").trim() || null;
+    const selectedTab = VALID_TABS.has(parsed?.selectedTab as TabId) ? parsed.selectedTab : undefined;
+    return {
+      selectedHubEntryId,
+      ...(selectedTab ? { selectedTab } : {}),
+    };
+  } catch (_error) {
+    return {};
+  }
+}
+
 function normalizeLoadedFrontendVersion(value: unknown): string {
   const version = String(value ?? "").trim();
   return version || "dev";
@@ -86,6 +124,7 @@ export class ControlPanelStore {
     this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
     this._snapshot = {
       ...INITIAL_SNAPSHOT,
+      ...readPersistedViewState(),
       toolsFrontendVersionLoaded: this._loadedFrontendVersion,
     };
   }
@@ -175,6 +214,7 @@ export class ControlPanelStore {
       externalHubCommandBusy: false,
       externalHubCommandLabel: null,
     };
+    this.persistViewState();
     this.unsubscribeLogs();
     this.emit();
     void this.loadControlPanelState().finally(() => {
@@ -190,6 +230,7 @@ export class ControlPanelStore {
       logsStickToBottom: nextTab === "logs" ? true : this._snapshot.logsStickToBottom,
       logsScrollBehavior: nextTab === "logs" ? "auto" : this._snapshot.logsScrollBehavior,
     };
+    this.persistViewState();
     if (nextTab === "logs") void this.syncLogsFeed();
     else this.unsubscribeLogs();
     this.emit();
@@ -538,6 +579,7 @@ export class ControlPanelStore {
     const hubs = this._snapshot.state?.hubs ?? [];
     if (!hubs.length) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
+      this.persistViewState();
       return;
     }
     if (!hubs.some((hub) => hub.entry_id === this._snapshot.selectedHubEntryId)) {
@@ -546,11 +588,28 @@ export class ControlPanelStore {
     if (this._snapshot.selectedTab === "cache" && !persistentCacheEnabled(this._snapshot)) {
       this._snapshot = { ...this._snapshot, selectedTab: "settings" };
     }
+    this.persistViewState();
   }
 
   private api() {
     if (!this._snapshot.hass) throw new Error("Home Assistant context is unavailable");
     return new ControlPanelApi(this._snapshot.hass);
+  }
+
+  private persistViewState() {
+    const storage = viewStateStorage();
+    if (!storage) return;
+    try {
+      storage.setItem(
+        VIEW_STATE_STORAGE_KEY,
+        JSON.stringify({
+          selectedHubEntryId: this._snapshot.selectedHubEntryId,
+          selectedTab: this._snapshot.selectedTab,
+        } satisfies PersistedViewState),
+      );
+    } catch (_error) {
+      // Ignore storage access failures.
+    }
   }
 
   private _isHubCommandBusy() {

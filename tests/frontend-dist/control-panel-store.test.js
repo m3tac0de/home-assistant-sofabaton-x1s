@@ -1,5 +1,5 @@
 // tests/frontend/control-panel-store.test.ts
-import test from "node:test";
+import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 // custom_components/sofabaton_x1s/www/src/shared/api/control-panel-api.ts
@@ -1299,6 +1299,30 @@ function connectionFingerprint(hass) {
 }
 
 // custom_components/sofabaton_x1s/www/src/state/control-panel-store.ts
+var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
+var VALID_TABS = /* @__PURE__ */ new Set(["hub", "settings", "wifi_commands", "cache", "logs"]);
+function viewStateStorage() {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  } catch (_error) {
+  }
+  return null;
+}
+function readPersistedViewState() {
+  const storage = viewStateStorage();
+  if (!storage) return {};
+  try {
+    const parsed = JSON.parse(storage.getItem(VIEW_STATE_STORAGE_KEY) || "{}");
+    const selectedHubEntryId = String(parsed?.selectedHubEntryId ?? "").trim() || null;
+    const selectedTab = VALID_TABS.has(parsed?.selectedTab) ? parsed.selectedTab : void 0;
+    return {
+      selectedHubEntryId,
+      ...selectedTab ? { selectedTab } : {}
+    };
+  } catch (_error) {
+    return {};
+  }
+}
 function normalizeLoadedFrontendVersion(value) {
   const version = String(value ?? "").trim();
   return version || "dev";
@@ -1352,6 +1376,7 @@ var ControlPanelStore = class {
     this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
     this._snapshot = {
       ...INITIAL_SNAPSHOT,
+      ...readPersistedViewState(),
       toolsFrontendVersionLoaded: this._loadedFrontendVersion
     };
   }
@@ -1419,6 +1444,7 @@ var ControlPanelStore = class {
       externalHubCommandBusy: false,
       externalHubCommandLabel: null
     };
+    this.persistViewState();
     this.unsubscribeLogs();
     this.emit();
     void this.loadControlPanelState().finally(() => {
@@ -1433,6 +1459,7 @@ var ControlPanelStore = class {
       logsStickToBottom: nextTab === "logs" ? true : this._snapshot.logsStickToBottom,
       logsScrollBehavior: nextTab === "logs" ? "auto" : this._snapshot.logsScrollBehavior
     };
+    this.persistViewState();
     if (nextTab === "logs") void this.syncLogsFeed();
     else this.unsubscribeLogs();
     this.emit();
@@ -1749,6 +1776,7 @@ var ControlPanelStore = class {
     const hubs = this._snapshot.state?.hubs ?? [];
     if (!hubs.length) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
+      this.persistViewState();
       return;
     }
     if (!hubs.some((hub) => hub.entry_id === this._snapshot.selectedHubEntryId)) {
@@ -1757,10 +1785,25 @@ var ControlPanelStore = class {
     if (this._snapshot.selectedTab === "cache" && !persistentCacheEnabled(this._snapshot)) {
       this._snapshot = { ...this._snapshot, selectedTab: "settings" };
     }
+    this.persistViewState();
   }
   api() {
     if (!this._snapshot.hass) throw new Error("Home Assistant context is unavailable");
     return new ControlPanelApi(this._snapshot.hass);
+  }
+  persistViewState() {
+    const storage = viewStateStorage();
+    if (!storage) return;
+    try {
+      storage.setItem(
+        VIEW_STATE_STORAGE_KEY,
+        JSON.stringify({
+          selectedHubEntryId: this._snapshot.selectedHubEntryId,
+          selectedTab: this._snapshot.selectedTab
+        })
+      );
+    } catch (_error) {
+    }
   }
   _isHubCommandBusy() {
     return Boolean(
@@ -1773,6 +1816,7 @@ var ControlPanelStore = class {
 };
 
 // tests/frontend/control-panel-store.test.ts
+var VIEW_STATE_STORAGE_KEY2 = "sofabaton_x1s:tools_card:view_state:v1";
 var baseState = {
   persistent_cache_enabled: true,
   tools_frontend_version: "dev",
@@ -1805,6 +1849,53 @@ var baseContents = {
     }
   ]
 };
+var MemoryStorage = class {
+  constructor() {
+    this.values = /* @__PURE__ */ new Map();
+  }
+  getItem(key) {
+    return this.values.has(key) ? this.values.get(key) ?? null : null;
+  }
+  setItem(key, value) {
+    this.values.set(key, String(value));
+  }
+  removeItem(key) {
+    this.values.delete(key);
+  }
+  clear() {
+    this.values.clear();
+  }
+};
+var originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+var originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+function installStorage() {
+  const storage = new MemoryStorage();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    writable: true,
+    value: { localStorage: storage }
+  });
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    writable: true,
+    value: storage
+  });
+  return storage;
+}
+function restoreGlobal(name, descriptor) {
+  if (descriptor) {
+    Object.defineProperty(globalThis, name, descriptor);
+    return;
+  }
+  delete globalThis[name];
+}
+beforeEach(() => {
+  installStorage();
+});
+afterEach(() => {
+  restoreGlobal("window", originalWindowDescriptor);
+  restoreGlobal("localStorage", originalLocalStorageDescriptor);
+});
 function createHass(overrides = {}) {
   const handlers = overrides.handlers ?? {};
   return {
@@ -1850,6 +1941,103 @@ test("loadState keeps cache tab unavailable when persistent cache is disabled", 
   store.selectTab("cache");
   assert.equal(store.snapshot.selectedTab, "settings");
   assert.equal(store.snapshot.state?.persistent_cache_enabled, false);
+});
+test("loadState restores the most recent hub and tab from local storage", async () => {
+  globalThis.localStorage?.setItem(
+    VIEW_STATE_STORAGE_KEY2,
+    JSON.stringify({
+      selectedHubEntryId: "hub-2",
+      selectedTab: "logs"
+    })
+  );
+  const store = new ControlPanelStore(() => void 0, {
+    loadedFrontendVersion: "dev"
+  });
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({
+          ...baseState,
+          hubs: [
+            ...baseState.hubs,
+            {
+              entry_id: "hub-2",
+              name: "Bedroom",
+              activity_count: 1,
+              device_count: 1,
+              settings: {
+                proxy_enabled: false,
+                hex_logging_enabled: false,
+                wifi_device_enabled: false
+              }
+            }
+          ]
+        })
+      },
+      subscribe: async () => () => void 0
+    })
+  );
+  await store.loadState();
+  assert.equal(store.snapshot.selectedHubEntryId, "hub-2");
+  assert.equal(store.snapshot.selectedTab, "logs");
+});
+test("loadState falls back to the first available hub when the saved hub no longer exists", async () => {
+  globalThis.localStorage?.setItem(
+    VIEW_STATE_STORAGE_KEY2,
+    JSON.stringify({
+      selectedHubEntryId: "missing-hub",
+      selectedTab: "settings"
+    })
+  );
+  const store = new ControlPanelStore(() => void 0, {
+    loadedFrontendVersion: "dev"
+  });
+  store.connected();
+  store.setHass(createHass());
+  await store.loadState();
+  assert.equal(store.snapshot.selectedHubEntryId, "hub-1");
+  assert.equal(
+    JSON.parse(globalThis.localStorage?.getItem(VIEW_STATE_STORAGE_KEY2) || "{}").selectedHubEntryId,
+    "hub-1"
+  );
+});
+test("selectHub and selectTab persist the updated view state", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({
+          ...baseState,
+          hubs: [
+            ...baseState.hubs,
+            {
+              entry_id: "hub-2",
+              name: "Bedroom",
+              activity_count: 1,
+              device_count: 1,
+              settings: {
+                proxy_enabled: false,
+                hex_logging_enabled: false,
+                wifi_device_enabled: false
+              }
+            }
+          ]
+        })
+      }
+    })
+  );
+  await store.loadState();
+  store.selectHub("hub-2");
+  store.selectTab("wifi_commands");
+  assert.deepEqual(
+    JSON.parse(globalThis.localStorage?.getItem(VIEW_STATE_STORAGE_KEY2) || "{}"),
+    {
+      selectedHubEntryId: "hub-2",
+      selectedTab: "wifi_commands"
+    }
+  );
 });
 test("loadState keeps tools card unblocked when frontend version matches backend", async () => {
   const { store } = createStore();

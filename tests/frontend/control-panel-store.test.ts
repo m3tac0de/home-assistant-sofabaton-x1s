@@ -1,7 +1,9 @@
-import test from "node:test";
+import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { ControlPanelStore } from "../../custom_components/sofabaton_x1s/www/src/state/control-panel-store";
 import type { HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+
+const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 
 const baseState = {
   persistent_cache_enabled: true,
@@ -36,6 +38,73 @@ const baseContents = {
     },
   ],
 };
+
+interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+  clear(): void;
+}
+
+class MemoryStorage implements StorageLike {
+  private readonly values = new Map<string, string>();
+
+  getItem(key: string) {
+    return this.values.has(key) ? this.values.get(key) ?? null : null;
+  }
+
+  setItem(key: string, value: string) {
+    this.values.set(key, String(value));
+  }
+
+  removeItem(key: string) {
+    this.values.delete(key);
+  }
+
+  clear() {
+    this.values.clear();
+  }
+}
+
+type TestGlobals = typeof globalThis & {
+  window?: { localStorage?: StorageLike };
+  localStorage?: StorageLike;
+};
+
+const originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+const originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+
+function installStorage() {
+  const storage = new MemoryStorage();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    writable: true,
+    value: { localStorage: storage },
+  });
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    writable: true,
+    value: storage,
+  });
+  return storage;
+}
+
+function restoreGlobal(name: "window" | "localStorage", descriptor?: PropertyDescriptor) {
+  if (descriptor) {
+    Object.defineProperty(globalThis, name, descriptor);
+    return;
+  }
+  delete (globalThis as TestGlobals)[name];
+}
+
+beforeEach(() => {
+  installStorage();
+});
+
+afterEach(() => {
+  restoreGlobal("window", originalWindowDescriptor);
+  restoreGlobal("localStorage", originalLocalStorageDescriptor);
+});
 
 function createHass(overrides: {
   handlers?: Record<string, (message: Record<string, unknown>) => unknown | Promise<unknown>>;
@@ -93,6 +162,112 @@ test("loadState keeps cache tab unavailable when persistent cache is disabled", 
 
   assert.equal(store.snapshot.selectedTab, "settings");
   assert.equal(store.snapshot.state?.persistent_cache_enabled, false);
+});
+
+test("loadState restores the most recent hub and tab from local storage", async () => {
+  globalThis.localStorage?.setItem(
+    VIEW_STATE_STORAGE_KEY,
+    JSON.stringify({
+      selectedHubEntryId: "hub-2",
+      selectedTab: "logs",
+    }),
+  );
+  const store = new ControlPanelStore(() => undefined, {
+    loadedFrontendVersion: "dev",
+  });
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({
+          ...baseState,
+          hubs: [
+            ...baseState.hubs,
+            {
+              entry_id: "hub-2",
+              name: "Bedroom",
+              activity_count: 1,
+              device_count: 1,
+              settings: {
+                proxy_enabled: false,
+                hex_logging_enabled: false,
+                wifi_device_enabled: false,
+              },
+            },
+          ],
+        }),
+      },
+      subscribe: async () => () => undefined,
+    }),
+  );
+
+  await store.loadState();
+
+  assert.equal(store.snapshot.selectedHubEntryId, "hub-2");
+  assert.equal(store.snapshot.selectedTab, "logs");
+});
+
+test("loadState falls back to the first available hub when the saved hub no longer exists", async () => {
+  globalThis.localStorage?.setItem(
+    VIEW_STATE_STORAGE_KEY,
+    JSON.stringify({
+      selectedHubEntryId: "missing-hub",
+      selectedTab: "settings",
+    }),
+  );
+  const store = new ControlPanelStore(() => undefined, {
+    loadedFrontendVersion: "dev",
+  });
+  store.connected();
+  store.setHass(createHass());
+
+  await store.loadState();
+
+  assert.equal(store.snapshot.selectedHubEntryId, "hub-1");
+  assert.equal(
+    JSON.parse(globalThis.localStorage?.getItem(VIEW_STATE_STORAGE_KEY) || "{}").selectedHubEntryId,
+    "hub-1",
+  );
+});
+
+test("selectHub and selectTab persist the updated view state", async () => {
+  const { store } = createStore();
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => ({
+          ...baseState,
+          hubs: [
+            ...baseState.hubs,
+            {
+              entry_id: "hub-2",
+              name: "Bedroom",
+              activity_count: 1,
+              device_count: 1,
+              settings: {
+                proxy_enabled: false,
+                hex_logging_enabled: false,
+                wifi_device_enabled: false,
+              },
+            },
+          ],
+        }),
+      },
+    }),
+  );
+  await store.loadState();
+
+  store.selectHub("hub-2");
+  store.selectTab("wifi_commands");
+
+  assert.deepEqual(
+    JSON.parse(globalThis.localStorage?.getItem(VIEW_STATE_STORAGE_KEY) || "{}"),
+    {
+      selectedHubEntryId: "hub-2",
+      selectedTab: "wifi_commands",
+    },
+  );
 });
 
 test("loadState keeps tools card unblocked when frontend version matches backend", async () => {

@@ -961,6 +961,30 @@ function hubIcon(kind, classes = "") {
 }
 
 // custom_components/sofabaton_x1s/www/src/state/control-panel-store.ts
+var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
+var VALID_TABS = /* @__PURE__ */ new Set(["hub", "settings", "wifi_commands", "cache", "logs"]);
+function viewStateStorage() {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  } catch (_error) {
+  }
+  return null;
+}
+function readPersistedViewState() {
+  const storage = viewStateStorage();
+  if (!storage) return {};
+  try {
+    const parsed = JSON.parse(storage.getItem(VIEW_STATE_STORAGE_KEY) || "{}");
+    const selectedHubEntryId = String(parsed?.selectedHubEntryId ?? "").trim() || null;
+    const selectedTab = VALID_TABS.has(parsed?.selectedTab) ? parsed.selectedTab : void 0;
+    return {
+      selectedHubEntryId,
+      ...selectedTab ? { selectedTab } : {}
+    };
+  } catch (_error) {
+    return {};
+  }
+}
 function normalizeLoadedFrontendVersion(value) {
   const version = String(value ?? "").trim();
   return version || "dev";
@@ -1014,6 +1038,7 @@ var ControlPanelStore = class {
     this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
     this._snapshot = {
       ...INITIAL_SNAPSHOT,
+      ...readPersistedViewState(),
       toolsFrontendVersionLoaded: this._loadedFrontendVersion
     };
   }
@@ -1081,6 +1106,7 @@ var ControlPanelStore = class {
       externalHubCommandBusy: false,
       externalHubCommandLabel: null
     };
+    this.persistViewState();
     this.unsubscribeLogs();
     this.emit();
     void this.loadControlPanelState().finally(() => {
@@ -1095,6 +1121,7 @@ var ControlPanelStore = class {
       logsStickToBottom: nextTab === "logs" ? true : this._snapshot.logsStickToBottom,
       logsScrollBehavior: nextTab === "logs" ? "auto" : this._snapshot.logsScrollBehavior
     };
+    this.persistViewState();
     if (nextTab === "logs") void this.syncLogsFeed();
     else this.unsubscribeLogs();
     this.emit();
@@ -1411,6 +1438,7 @@ var ControlPanelStore = class {
     const hubs = this._snapshot.state?.hubs ?? [];
     if (!hubs.length) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
+      this.persistViewState();
       return;
     }
     if (!hubs.some((hub) => hub.entry_id === this._snapshot.selectedHubEntryId)) {
@@ -1419,10 +1447,25 @@ var ControlPanelStore = class {
     if (this._snapshot.selectedTab === "cache" && !persistentCacheEnabled(this._snapshot)) {
       this._snapshot = { ...this._snapshot, selectedTab: "settings" };
     }
+    this.persistViewState();
   }
   api() {
     if (!this._snapshot.hass) throw new Error("Home Assistant context is unavailable");
     return new ControlPanelApi(this._snapshot.hass);
+  }
+  persistViewState() {
+    const storage = viewStateStorage();
+    if (!storage) return;
+    try {
+      storage.setItem(
+        VIEW_STATE_STORAGE_KEY,
+        JSON.stringify({
+          selectedHubEntryId: this._snapshot.selectedHubEntryId,
+          selectedTab: this._snapshot.selectedTab
+        })
+      );
+    } catch (_error) {
+    }
   }
   _isHubCommandBusy() {
     return Boolean(
