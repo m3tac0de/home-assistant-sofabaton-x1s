@@ -6,7 +6,7 @@
     "build:tools-card": "node ./scripts/build-tools-card.mjs",
     "build:remote-card": "node ./scripts/build-remote-card.mjs",
     "build:frontend-tests": "node ./scripts/build-frontend-tests.mjs",
-    "test:frontend": "npm run build:frontend-tests && node --test tests/frontend-dist/control-panel-store.test.js",
+    "test:frontend": "npm run build:frontend-tests && node --test tests/frontend-dist",
     "test:playwright": "playwright test",
     "test:playwright:update": "playwright test --update-snapshots",
     "test:playwright:remote": "playwright test tests/playwright/remote-card.spec.js"

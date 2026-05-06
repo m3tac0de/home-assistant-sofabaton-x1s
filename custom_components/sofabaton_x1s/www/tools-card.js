@@ -1812,6 +1812,35 @@ var i6 = e4(class extends i5 {
   }
 });
 
+// custom_components/sofabaton_x1s/www/src/tabs/wifi-commands-state.ts
+function findRunningWifiDevice(devices, selectedDeviceKey, selectedSyncStatus, selectedDeviceName = "") {
+  const runningDevice = devices.find((device) => String(device?.status || "") === "running");
+  if (runningDevice) return runningDevice;
+  const deviceKey = String(selectedDeviceKey || "").trim();
+  if (deviceKey && String(selectedSyncStatus || "") === "running") {
+    return {
+      device_key: deviceKey,
+      device_name: selectedDeviceName,
+      status: "running"
+    };
+  }
+  return null;
+}
+function shouldFinalizeWifiHubLoad({
+  entryId,
+  entityId,
+  deviceListLoaded
+}) {
+  return Boolean(String(entryId || "").trim()) && Boolean(String(entityId || "").trim()) && deviceListLoaded;
+}
+function selectedDeviceOwnsPendingSync({
+  selectedDeviceKey,
+  commandSyncRunning,
+  commandSyncDeviceKey
+}) {
+  return commandSyncRunning && String(commandSyncDeviceKey || "").trim() !== "" && String(selectedDeviceKey || "").trim() === String(commandSyncDeviceKey || "").trim();
+}
+
 // custom_components/sofabaton_x1s/www/src/tabs/wifi-commands-tab.ts
 var SLOT_COUNT = 10;
 var INPUT_ICON = "mdi:video-input-hdmi";
@@ -1948,6 +1977,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
     this._syncState = this._defaultSyncState();
     this._commandSyncLoading = false;
     this._commandSyncRunning = false;
+    this._commandSyncDeviceKey = null;
     this._commandSyncPollTimer = null;
     this._activeCommandSlot = null;
     this._activeCommandModal = null;
@@ -2242,7 +2272,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
     remoteUnavailable,
     syncRunning
   }) {
-    const externallyLocked = this._hubCommandLocked() && !this._commandSyncRunning;
+    const externallyLocked = this._hubCommandLocked() && !this._selectedDeviceOwnsPendingSync();
     return b2`
       <div class="tab-panel">
         <div class="detail-view">
@@ -2867,7 +2897,9 @@ var SofabatonWifiCommandsTab = class extends i4 {
       this._syncState = this._defaultSyncState();
     }
     if (this._configLoadedForEntryId === entryId && !this._deviceListLoading && !this._commandConfigLoading && !this._commandSyncLoading) return;
-    await this._loadWifiDevices(true);
+    const entityId = String(this._entityId() || "").trim();
+    const deviceListLoaded = await this._loadWifiDevices(true);
+    if (!shouldFinalizeWifiHubLoad({ entryId, entityId, deviceListLoaded })) return;
     if (this._selectedDeviceKey) {
       await this._loadCommandConfigFromBackend(true);
       await this._loadCommandSyncProgress(true);
@@ -2913,10 +2945,31 @@ var SofabatonWifiCommandsTab = class extends i4 {
     await this.refreshControlPanelState?.();
   }
   _hubCommandLocked() {
-    return Boolean(this.hubCommandBusy);
+    return Boolean(this.hubCommandBusy || this._runningWifiDevice());
   }
   _effectiveHubCommandLabel() {
+    const runningDevice = this._runningWifiDevice();
+    if (runningDevice) {
+      const deviceName = String(runningDevice.device_name || "").trim();
+      return deviceName ? `Syncing ${deviceName}\u2026` : "Syncing Wifi Device\u2026";
+    }
     return String(this.hubCommandBusyLabel || "").trim() || "Hub command in progress\u2026";
+  }
+  _runningWifiDevice() {
+    const selectedDevice = this._selectedWifiDevice();
+    return findRunningWifiDevice(
+      this._wifiDevices,
+      this._selectedDeviceKey,
+      this._syncState.status,
+      selectedDevice?.device_name || ""
+    );
+  }
+  _selectedDeviceOwnsPendingSync() {
+    return selectedDeviceOwnsPendingSync({
+      selectedDeviceKey: this._selectedDeviceKey,
+      commandSyncRunning: this._commandSyncRunning,
+      commandSyncDeviceKey: this._commandSyncDeviceKey
+    });
   }
   _defaultSyncState() {
     return {
@@ -3086,8 +3139,8 @@ var SofabatonWifiCommandsTab = class extends i4 {
   }
   async _loadWifiDevices(force = false) {
     const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS) return;
-    if (this._deviceListLoading && !force) return;
+    if (!entityId || !this.hass?.callWS) return false;
+    if (this._deviceListLoading && !force) return false;
     this._deviceListLoading = true;
     try {
       const result = await this.hass.callWS({
@@ -3109,6 +3162,9 @@ var SofabatonWifiCommandsTab = class extends i4 {
         this._commandsData = this._normalizeCommandsForStorage([]);
         this._syncState = this._defaultSyncState();
       }
+      return true;
+    } catch (_error) {
+      return false;
     } finally {
       this._deviceListLoading = false;
     }
@@ -3753,6 +3809,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
       sync_needed: true
     };
     this._commandSyncRunning = true;
+    this._commandSyncDeviceKey = deviceKey;
     this._wifiDevices = this._wifiDevices.map(
       (device) => device.device_key === deviceKey ? {
         ...device,
@@ -3777,6 +3834,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
       );
     } finally {
       this._commandSyncRunning = false;
+      this._commandSyncDeviceKey = null;
       await this._loadWifiDevices(true);
       await this._loadCommandSyncProgress(true);
       await this._refreshControlPanelState();
@@ -3852,6 +3910,7 @@ SofabatonWifiCommandsTab.properties = {
   _syncState: { state: true },
   _commandSyncLoading: { state: true },
   _commandSyncRunning: { state: true },
+  _commandSyncDeviceKey: { state: true },
   _activeCommandSlot: { state: true },
   _activeCommandModal: { state: true },
   _confirmClearSlot: { state: true },
