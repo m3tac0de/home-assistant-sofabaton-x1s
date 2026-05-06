@@ -225,8 +225,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     _deletingDeviceKey: { state: true },
     _creatingDevice: { state: true },
     _maxWifiDevices: { state: true },
-    _copyingDebugConfig: { state: true },
-    _debugCopyMessage: { state: true },
   };
 
   static styles = css`
@@ -251,7 +249,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     .list-header-copy { min-width: 0; }
     .list-header-copy .acc-title { display: block; }
     .list-header-copy .section-subtitle { margin-top: 8px; }
-    .debug-copy-note { margin-top: 8px; color: var(--secondary-text-color); font-size: 12px; line-height: 1.4; }
     .list-header-action { grid-column: 2; grid-row: 1; align-self: start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     .device-list { display: grid; gap: 10px; }
     .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: 18px; padding: 10px 14px; background: var(--ha-card-background, var(--card-background-color)); text-align: left; display: flex; align-items: center; gap: 14px; cursor: pointer; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
@@ -642,10 +639,6 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _deletingDeviceKey: string | null = null;
   private _creatingDevice = false;
   private _maxWifiDevices = 5;
-  private _copyingDebugConfig = false;
-  private _debugCopyMessage = "";
-  private _debugCopyMessageTimer: number | null = null;
-
   connectedCallback() {
     super.connectedCallback();
     void this._ensureLoadedForCurrentHub();
@@ -654,10 +647,6 @@ class SofabatonWifiCommandsTab extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._clearPollTimer();
-    if (this._debugCopyMessageTimer != null) {
-      window.clearTimeout(this._debugCopyMessageTimer);
-      this._debugCopyMessageTimer = null;
-    }
   }
 
   protected updated(changed: Map<string, unknown>) {
@@ -779,9 +768,6 @@ class SofabatonWifiCommandsTab extends LitElement {
                 <div class="detail-title">${selectedDevice.device_name}</div>
               </div>
               <div class="detail-title-actions">
-                <button class="list-action-btn" ?disabled=${this._copyingDebugConfig} @click=${this._copyCommandConfigDebug}>
-                  ${this._copyingDebugConfig ? "Copying…" : "Copy Debug"}
-                </button>
                 ${this._renderSyncActionButton({ remoteUnavailable, syncRunning, externallyLocked })}
               </div>
             </div>
@@ -792,7 +778,6 @@ class SofabatonWifiCommandsTab extends LitElement {
                 Your hub may be miss-versioned. Click here to fix it.
               </button>
             `}
-            ${this._debugCopyMessage ? html`<div class="debug-copy-note">${this._debugCopyMessage}</div>` : nothing}
             ${remoteUnavailable ? nothing : html`
               <div class="command-grid">
                 ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
@@ -876,12 +861,8 @@ class SofabatonWifiCommandsTab extends LitElement {
             <div class="list-header-copy">
               <div class="acc-title">WIFI DEVICES</div>
               <div class="section-subtitle">Choose a Wifi Device to edit its command slots, or add a new one.</div>
-              ${this._debugCopyMessage ? html`<div class="debug-copy-note">${this._debugCopyMessage}</div>` : nothing}
             </div>
             <div class="list-header-action">
-              <button class="list-action-btn" ?disabled=${this._copyingDebugConfig} @click=${this._copyCommandConfigDebug}>
-                ${this._copyingDebugConfig ? "Copying…" : "Copy Debug"}
-              </button>
               <button class="detail-sync-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
                 Add Wifi Device
               </button>
@@ -2414,54 +2395,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     const classes = `detail-sync-btn${!disabled && this._syncState.sync_needed ? " sync-btn-primary" : ""}`;
     return html`<button class=${classes} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>${label}</button>`;
   }
-
-  private _setDebugCopyMessage(message: string) {
-    this._debugCopyMessage = message;
-    if (this._debugCopyMessageTimer != null) window.clearTimeout(this._debugCopyMessageTimer);
-    this._debugCopyMessageTimer = window.setTimeout(() => {
-      this._debugCopyMessageTimer = null;
-      this._debugCopyMessage = "";
-    }, 8000);
-  }
-
-  private async _writeTextToClipboard(text: string) {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return;
-    }
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    textarea.setAttribute("readonly", "true");
-    textarea.style.position = "fixed";
-    textarea.style.top = "-9999px";
-    textarea.style.left = "-9999px";
-    document.body.appendChild(textarea);
-    textarea.select();
-    try {
-      document.execCommand("copy");
-    } finally {
-      document.body.removeChild(textarea);
-    }
-  }
-
-  private _copyCommandConfigDebug = async () => {
-    const entityId = String(this._entityId() || "").trim();
-    if (!entityId || !this.hass?.callWS || this._copyingDebugConfig) return;
-    this._copyingDebugConfig = true;
-    this._debugCopyMessage = "";
-    try {
-      const payload = await this.hass.callWS<Record<string, unknown>>({
-        type: "sofabaton_x1s/command_config/export",
-        entity_id: entityId,
-      });
-      await this._writeTextToClipboard(JSON.stringify(payload, null, 2));
-      this._setDebugCopyMessage("Debug config copied. Paste it into the GitHub issue.");
-    } catch (error) {
-      this._setDebugCopyMessage(String((error as Error)?.message || "Unable to copy debug config"));
-    } finally {
-      this._copyingDebugConfig = false;
-    }
-  };
 
   private _selectWifiDevice(deviceKey: string) {
     this._selectedDeviceKey = String(deviceKey || "").trim();
