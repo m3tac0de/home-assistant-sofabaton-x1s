@@ -1602,7 +1602,6 @@ def test_clear_entity_cache_resets_all(monkeypatch) -> None:
     assert ent_lo not in proxy._commands_complete
     assert ent_lo not in proxy._pending_button_requests
 
-
 def test_partial_commands_still_trigger_full_fetch(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
