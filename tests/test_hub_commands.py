@@ -588,11 +588,11 @@ def test_async_initial_sync_fetches_banner_first_and_persists_cache(monkeypatch)
         return (info, True)
 
     def _get_activities(*, force_refresh=True):
-        calls.append("activities")
+        calls.append(f"activities:{force_refresh}")
         return ({}, False)
 
-    def _get_devices():
-        calls.append("devices")
+    def _get_devices(*, force_refresh=False):
+        calls.append(f"devices:{force_refresh}")
         return ({}, False)
 
     async def _get_store():
@@ -610,7 +610,7 @@ def test_async_initial_sync_fetches_banner_first_and_persists_cache(monkeypatch)
 
     loop.run_until_complete(hub._async_initial_sync())
 
-    assert calls == ["banner", "activities", "devices"]
+    assert calls == ["banner", "devices:True", "activities:True"]
     assert hub.banner_model == "X2"
     assert hub.production_batch == "20221120"
     assert hub.hub_firmware_version == 8

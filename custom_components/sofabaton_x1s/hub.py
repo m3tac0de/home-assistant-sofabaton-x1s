@@ -256,9 +256,12 @@ class SofabatonHub:
         self.version = next_version
         self.mdns_txt = runtime_txt
         self.mac = runtime_txt.get("MAC") or runtime_txt.get("mac") or None
-        self._proxy.update_discovery_identity(
-            mdns_txt=self.mdns_txt,
-            hub_version=self.version,
+        await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.update_discovery_identity,
+                mdns_txt=self.mdns_txt,
+                hub_version=self.version,
+            )
         )
 
         config_entries = getattr(self.hass, "config_entries", None)
@@ -653,16 +656,9 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_hub(self.entry_id))
         await self._async_persist_cache_if_enabled()
 
-        acts, acts_ready = await self.hass.async_add_executor_job(partial(self._proxy.get_activities, force_refresh=True))
-        self._log.debug(
-            "[%s] initial_sync: got activities ready=%s count=%s",
-            self.entry_id,
-            acts_ready,
-            len(acts) if acts else 0,
+        devs, devs_ready = await self.hass.async_add_executor_job(
+            partial(self._proxy.get_devices, force_refresh=True)
         )
-        self.activities_ready = acts_ready
-
-        devs, devs_ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
         self._log.debug(
             "[%s] initial_sync: got devices ready=%s count=%s",
             self.entry_id,
@@ -676,6 +672,17 @@ class SofabatonHub:
             self._bump_cache_generation()
             await self._async_reconcile_deployed_wifi_device_ids()
             async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+
+        acts, acts_ready = await self.hass.async_add_executor_job(
+            partial(self._proxy.get_activities, force_refresh=True)
+        )
+        self._log.debug(
+            "[%s] initial_sync: got activities ready=%s count=%s",
+            self.entry_id,
+            acts_ready,
+            len(acts) if acts else 0,
+        )
+        self.activities_ready = acts_ready
 
         if acts_ready:
             if self._replace_activities(acts):

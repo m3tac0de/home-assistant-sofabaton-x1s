@@ -420,6 +420,51 @@ def test_start_mdns_stops_on_bad_service_type(monkeypatch) -> None:
     assert proxy._adv_started is False
 
 
+def test_start_mdns_stops_on_non_unique_name(monkeypatch) -> None:
+    registered = []
+
+    class NonUniqueNameException(Exception):
+        pass
+
+    class DummyServiceInfo:
+        def __init__(self, *, type_, name, addresses, port, properties, server):
+            self.type = type_
+            self.name = name
+            self.addresses = addresses
+            self.port = port
+            self.properties = properties
+            self.server = server
+
+    class DummyZeroconf:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def register_service(self, info):
+            raise NonUniqueNameException("duplicate")
+
+        def close(self):
+            pass
+
+    class DummyIPVersion:
+        V4Only = object()
+
+    zc_module = types.ModuleType("zeroconf")
+    zc_module.BadTypeInNameException = Exception
+    zc_module.NonUniqueNameException = NonUniqueNameException
+    zc_module.IPVersion = DummyIPVersion
+    zc_module.ServiceInfo = DummyServiceInfo
+    zc_module.Zeroconf = DummyZeroconf
+    monkeypatch.setitem(sys.modules, "zeroconf", zc_module)
+    x1_proxy_module = sys.modules["custom_components.sofabaton_x1s.lib.x1_proxy"]
+    monkeypatch.setattr(x1_proxy_module, "_route_local_ip", lambda _ip: "127.0.0.1")
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=True, diag_dump=False, diag_parse=False)
+    proxy._start_mdns()
+
+    assert registered == []
+    assert proxy._adv_started is False
+
+
 def test_start_mdns_advertises_x1_service_for_x2_hub(monkeypatch) -> None:
     registered = []
 
@@ -494,6 +539,17 @@ def test_start_discovery_waits_for_banner_identity(monkeypatch) -> None:
     monkeypatch.setattr(proxy.transport, "start_notify_listener", lambda: calls.append("notify"))
 
     proxy._start_discovery()
+
+    assert calls == []
+
+
+def test_notify_hub_state_does_not_start_discovery_directly(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=True, diag_dump=False, diag_parse=False)
+    calls: list[str] = []
+
+    monkeypatch.setattr(proxy, "_start_discovery", lambda: calls.append("start"))
+
+    proxy._notify_hub_state(True)
 
     assert calls == []
 

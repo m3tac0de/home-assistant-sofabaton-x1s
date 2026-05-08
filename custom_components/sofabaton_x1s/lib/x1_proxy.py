@@ -858,7 +858,12 @@ class X1Proxy:
 
         return ({}, False)
 
-    def get_devices(self) -> tuple[dict[int, dict], bool]:
+    def get_devices(self, *, force_refresh: bool = False) -> tuple[dict[int, dict], bool]:
+        if force_refresh:
+            if self.can_issue_commands():
+                self.enqueue_cmd(OP_REQ_DEVICES, expects_burst=True, burst_kind="devices")
+            return ({}, False)
+
         if self.state.devices:
             return ({k: v.copy() for k, v in self.state.devices.items()}, True)
 
@@ -4467,7 +4472,7 @@ class X1Proxy:
     # mDNS advertisement
     # ---------------------------------------------------------------------
     def _start_mdns(self) -> None:
-        from zeroconf import BadTypeInNameException, IPVersion, ServiceInfo, Zeroconf
+        from zeroconf import BadTypeInNameException, IPVersion, NonUniqueNameException, ServiceInfo, Zeroconf
 
         ip_bytes = socket.inet_aton(_route_local_ip(self.real_hub_ip))
         service_type = mdns_service_type_for_props(self.mdns_txt)
@@ -4502,6 +4507,12 @@ class X1Proxy:
                 service_type,
             )
             return False
+        except NonUniqueNameException:
+            self._log.warning(
+                "[mDNS] service name %s is already in use; advertisement will not be started",
+                info.name,
+            )
+            return False
         self._mdns_infos.append(info)
         self._log.info(
             "[mDNS] registered %s on %s:%d (HVER=%s)",
@@ -4521,8 +4532,6 @@ class X1Proxy:
     
     def _notify_hub_state(self, connected: bool) -> None:
         self._hub_connected = connected
-        if connected and self._proxy_enabled and not self._adv_started:
-            self._start_discovery()
         for cb in self._hub_state_listeners:
             try:
                 cb(connected)
