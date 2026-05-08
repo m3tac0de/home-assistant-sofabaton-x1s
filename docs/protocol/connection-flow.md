@@ -257,13 +257,69 @@ frame and opens a TCP connection **to** the app.
 ### 2.4 CONNECT_READY_BROADCAST
 
 Immediately after a proxy establishes the TCP session with the app, it broadcasts a
-fixed 12-byte beacon to port `8100` on the subnet broadcast address:
+12-byte beacon to port `8100` on the subnet broadcast address:
 
 ```
-CONNECT_READY_BROADCAST: A5 5A 07 C4 E2 6A 44 86 1B 45 00 40
+X1 example:  A5 5A 07 C4 CB 38 35 39 68 4B 00 EE
+X1S example: A5 5A 07 C4 E2 6A 44 86 1B 45 00 40
 ```
 
-This tells the app that the hub connection is now live.
+Observed structure:
+
+```
+ Byte   Size  Value
+    0     1   0xA5 (sync 0)
+    1     1   0x5A (sync 1)
+    2     1   0x07
+    3     1   0xC4
+    4     6   CALL_ME hint
+   10     1   0x00
+   11     1   Checksum (sum8 of all preceding bytes)
+```
+
+The beacon reuses the same **CALL_ME hint** observed in discovery:
+
+- X1: `MAC[0:5] + 0x4B`
+- X1S: `MAC[0:5] + 0x45`
+- X2: full `MAC[0:6]`
+
+This appears to signal that the hub connection is live, but current testing suggests
+it is **not required** for successful operation of the official app. Removing it did
+not change connection behavior in observed X1 testing.
+
+### 2.5 Discovery-path name query
+
+When the user changes hubs through the app's discovery overlay, an additional
+application-level query may appear that is not normally seen when reconnecting
+directly to the previously selected hub:
+
+```
+Client -> Hub: OP_0032
+Hub    -> Client: OP_0631 <UTF-8 hub name>
+```
+
+Observed X1 example:
+
+```
+Request:  A5 5A 00 32 31
+Response: A5 5A 06 31 58 31 20 48 55 42 BE
+```
+
+The response payload is a UTF-8 hub name (`X1 HUB` in the observed sample) plus a
+trailing checksum byte.
+
+### 2.6 X1 default-name quirk
+
+Observed X1 behavior in the official app:
+
+- if the hub advertises the default name `X1 HUB`, the app may open the
+  "name your hub" dialog when connecting through the discovery-driven hub switch flow
+- the same hub can still connect normally when the app reconnects directly to the
+  last-used hub without discovery
+- changing the X1 to a non-default name avoids the observed rename prompt
+
+This appears to be an app quirk tied to the default X1 name rather than a transport
+or framing error in discovery or banner handling.
 
 ---
 
@@ -311,7 +367,7 @@ PROXY                                APP
    |                                     |
    |-- TCP connect -------------------- >|  (proxy connects to app IP:port from CALL_ME)
    |                                     |
-   |-- CONNECT_READY_BROADCAST (bcast) ->|  (UDP broadcast to subnet:8100)
+   |-- CONNECT_READY_BROADCAST (bcast) ->|  (optional/observed UDP broadcast to subnet:8100)
    |                                     |
    |  … proxy relays all hub traffic …   |
 ```

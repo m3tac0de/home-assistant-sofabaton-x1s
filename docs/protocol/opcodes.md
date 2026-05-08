@@ -290,6 +290,8 @@ Observed text encoding:
 | `0x0160` | `ACK_READY` | `H->A` | Hub ready for next command |
 | `0x0242` | `PING2_ACK` | `H->A` | Keepalive reply on X1S/X2 |
 | family `0x02` | `BANNER` | `H->A` | Hub identity/banner; observed full opcodes include `0x1A02` (X1), `0x1D02` (X1S), `0x1502` (X2) |
+| `0x0032` | `REQ_HUB_NAME?` | `A->H` | Observed during discovery-driven hub switching; app appears to ask for the current hub name |
+| family `0x31` | `HUB_NAME?` | `H->A` | Observed reply to `0x0032`; payload is UTF-8 hub name plus checksum. Example X1 reply opcode: `0x0631` |
 | `0x0359` | `WIFI_FW` | `H->A` | WiFi firmware string |
 | `0x112F` | `INFO_BANNER` | `H->A` | Additional version/build data |
 
