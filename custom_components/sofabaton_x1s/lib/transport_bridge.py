@@ -12,7 +12,12 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from ..logging_utils import HubLogger, get_hub_logger
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
-from .notify_demuxer import BROADCAST_LISTEN_PORT, get_notify_demuxer, _broadcast_ip
+from .notify_demuxer import (
+    BROADCAST_LISTEN_PORT,
+    build_connect_ready_beacon,
+    get_notify_demuxer,
+    _broadcast_ip,
+)
 
 log = logging.getLogger("x1proxy.transport")
 
@@ -464,20 +469,7 @@ class TransportBridge:
             return
 
     def _emit_connect_ready_beacon(self, app_ip: str) -> None:
-        dest_ip = _broadcast_ip(app_ip)
-        s: Optional[socket.socket] = None
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-            s.sendto(CONNECT_READY_BROADCAST, (dest_ip, BROADCAST_LISTEN_PORT))
-        except OSError:
-            self._log.exception("[UDP] failed to broadcast connect beacon to %s", dest_ip)
-        finally:
-            if s is not None:
-                try:
-                    s.close()
-                except Exception:
-                    pass
+        return
 
     def _bridge_forever(self) -> None:
         app_to_hub = bytearray()
@@ -792,5 +784,4 @@ class TransportBridge:
             get_notify_demuxer().unregister_proxy(self.proxy_id)
             self._notify_registered = False
 
-CONNECT_READY_BROADCAST = bytes.fromhex("a55a07c4e26a44861b450040")
 

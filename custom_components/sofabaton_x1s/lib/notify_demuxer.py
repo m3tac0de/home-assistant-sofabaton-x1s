@@ -74,6 +74,16 @@ class NotifyRegistration:
     call_me_hint: bytes
 
 
+def build_connect_ready_beacon(mdns_txt: Dict[str, str]) -> bytes:
+    """Build the UDP post-connect readiness beacon emitted by physical hubs."""
+
+    mac_bytes = NotifyDemuxer._extract_mac_bytes(mdns_txt)
+    hub_version = classify_hub_version(mdns_txt)
+    _device_id, call_me_hint = NotifyDemuxer._build_device_identifiers(mac_bytes, hub_version)
+    frame = bytes([SYNC0, SYNC1, 0x07, 0xC4]) + call_me_hint + b"\x00"
+    return frame + bytes([_sum8(frame)])
+
+
 class NotifyDemuxer:
     """Listen for NOTIFY_ME broadcasts and respond for registered proxies."""
 
@@ -350,7 +360,8 @@ class NotifyDemuxer:
 
         return None
 
-    def _extract_mac_bytes(self, mdns_txt: Dict[str, str]) -> bytes:
+    @staticmethod
+    def _extract_mac_bytes(mdns_txt: Dict[str, str]) -> bytes:
         try:
             mac_raw = (
                 mdns_txt.get("MAC")
@@ -372,9 +383,8 @@ class NotifyDemuxer:
 
         return mac_bytes
 
-    def _build_device_identifiers(
-        self, mac_bytes: bytes, hub_version: str
-    ) -> tuple[bytes, bytes]:
+    @staticmethod
+    def _build_device_identifiers(mac_bytes: bytes, hub_version: str) -> tuple[bytes, bytes]:
         """Return the device id used in NOTIFY_ME replies and the CALL_ME hint."""
 
         required_prefix_byte = b"\xc2"
