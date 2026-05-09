@@ -100,6 +100,8 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ## 🔧 Installation
 
+⚠️ **Make sure the Sofabaton app is not connected to the hub during installation.**
+
 ### Option 1 – HACS (recommended)
 
 1. Open **HACS**
