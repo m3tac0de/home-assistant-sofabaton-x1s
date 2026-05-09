@@ -101,7 +101,7 @@ Hub → Client: CATALOG_ROW_DEVICE rows (0xD50B) + MARKER (0x0C3D) + more rows
 ```
 
 The hub may also proactively push `ACK_READY (0x0160)` frames between response
-segments to indicate it is ready for more commands.
+segments to indicate a material state change has taken place. Clients typically respond by refreshing the Activity list to learn the running Activity.
 
 When the official app opens the version screen, an additional exchange is commonly
 observed:
@@ -190,9 +190,7 @@ Representative observed replies:
    30     1   Checksum (sum8 of all preceding bytes)
 ```
 
-The observed X1 reply name matches the earlier TCP banner text exactly (`X1 HUB test`);
-the final byte `0x2D` is therefore best interpreted as the trailing checksum, not as a
-literal hyphen in the name.
+The observed X1 reply name matches the earlier TCP banner text exactly (`X1 HUB test`).
 
 **X2 reply (26 bytes total in observed sample):**
 

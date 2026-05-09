@@ -14,13 +14,13 @@ In the **Sofabaton Control Panel** card, open the **Wifi Commands** tab. Up to *
 > - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
 > - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
 
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/ecd17007-3645-4ea6-ad28-53b1287370aa" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/c225a472-7a22-4dbb-91dd-5a23df1fbc3f" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/e42ac6b9-d5c0-421c-a8c6-930bb3bfe441" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/8b9aff1f-3df5-4889-ae02-bbdc336c74cd" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/cbc0a2e1-635b-4b7c-804d-e0e67051b643" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/16015586-a4c4-4f7c-99b8-51d5af71b35c" />
 <img height="180" alt="image" src="https://github.com/user-attachments/assets/262c8dfa-fd0d-48fc-9be4-3543ed11e6a8" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/bb737cf5-1d8e-41bd-95ea-b003e191b7d6" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/0fb3629a-dd97-4ccd-ab1b-caed75014a84" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/25c80081-205d-4560-9803-e18935d8aed6" />
+<img height="180" alt="image" src="https://github.com/user-attachments/assets/007289f9-a8e2-404e-9d45-ebabc1b6269e" />
 
 ## How this works
 
