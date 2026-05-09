@@ -122,8 +122,9 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ## 📋 Entities you’ll get
 
-- **Remote**: `remote.<hub>_remote`  
-  Used for automations (`remote.send_command`). Unavailable while the official app is connected to the proxy.
+- **Remote**:
+   - `remote.<hub>_remote`  
+     Used for automations (`remote.send_command`). Unavailable while the official app is connected to the proxy.
 
 - **Select**:
   - `select.<hub>_activity`  
@@ -185,11 +186,10 @@ The Control Panel card is the central management UI for the integration. Its mai
 - **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.
 - **Logs** — live streaming of hub log output for real-time diagnostics.
 
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/1577a745-058a-4951-aa9f-9ae217d45465" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/f435ea51-dbfa-4f79-8a41-1ae240872431" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/a6470a7e-7ee9-48e7-8c18-3a75ece218f8" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/7fae9569-484a-4eb6-9d58-edae9541d876" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/2d9ac19d-17a4-4d7d-afa4-5173ce814f85" />
+<img height="250" alt="image" src="https://github.com/user-attachments/assets/f39b3178-b12b-468a-b0f2-5ead3d69c10e" />
+<img height="250" alt="image" src="https://github.com/user-attachments/assets/e42ac6b9-d5c0-421c-a8c6-930bb3bfe441" />
+<img height="250" alt="image" src="https://github.com/user-attachments/assets/a9382371-32a9-4e29-84b7-e208091888a1" />
+<img height="250" alt="image" src="https://github.com/user-attachments/assets/dcf8407c-a1a2-4d96-b5f3-c961521cbd0b" />
 
 ---
 
@@ -208,13 +208,11 @@ Configure up to 5 Wifi Devices per hub (10 command slots each) via the **Control
 
 Full setup guide → [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/ecd17007-3645-4ea6-ad28-53b1287370aa" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/c225a472-7a22-4dbb-91dd-5a23df1fbc3f" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/cbc0a2e1-635b-4b7c-804d-e0e67051b643" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/16015586-a4c4-4f7c-99b8-51d5af71b35c" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/262c8dfa-fd0d-48fc-9be4-3543ed11e6a8" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/bb737cf5-1d8e-41bd-95ea-b003e191b7d6" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/0fb3629a-dd97-4ccd-ab1b-caed75014a84" />
+<img height="250" alt="image" src="https://github.com/user-attachments/assets/e42ac6b9-d5c0-421c-a8c6-930bb3bfe441" />
+<img height="250" alt="image" src="https://github.com/user-attachments/assets/8b9aff1f-3df5-4889-ae02-bbdc336c74cd" />
+<img height="250" alt="image" src="https://github.com/user-attachments/assets/cbc0a2e1-635b-4b7c-804d-e0e67051b643" />
+<img height="250" alt="image" src="https://github.com/user-attachments/assets/16015586-a4c4-4f7c-99b8-51d5af71b35c" />
+<img height="250" alt="image" src="https://github.com/user-attachments/assets/262c8dfa-fd0d-48fc-9be4-3543ed11e6a8" />
 
 ---
 
