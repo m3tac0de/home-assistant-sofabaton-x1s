@@ -23,7 +23,7 @@ import {
 } from "../shared/utils/control-panel-selectors";
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-const VALID_TABS = new Set<TabId>(["hub", "settings", "wifi_commands", "cache", "logs"]);
+const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "cache", "logs"]);
 
 interface PersistedViewState {
   selectedHubEntryId?: string | null;
@@ -80,7 +80,7 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   loading: false,
   loadError: null,
   selectedHubEntryId: null,
-  selectedTab: "hub",
+  selectedTab: "settings",
   openSection: "activities",
   openEntity: null,
   staleData: false,

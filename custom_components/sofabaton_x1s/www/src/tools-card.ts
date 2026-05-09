@@ -5,7 +5,6 @@ import { ControlPanelStore } from "./state/control-panel-store";
 import { persistentCacheEnabled, proxyClientConnected, selectedHub, selectedHubCache } from "./shared/utils/control-panel-selectors";
 import { renderHubPicker } from "./components/hub-picker";
 import { renderTabBar } from "./components/tab-bar";
-import { renderHubTab } from "./tabs/hub-tab";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
@@ -232,8 +231,10 @@ class SofabatonControlPanelCard extends LitElement {
           </div>
           <div class="card-body">
             <div class="version-mismatch-state">
-              <div class="version-mismatch-icon"><ha-icon icon="mdi:alert"></ha-icon></div>
-              <div class="version-mismatch-title">Refresh required to update the Sofabaton Control Panel card</div>
+              <div class="version-mismatch-header">
+                <div class="version-mismatch-icon"><ha-icon icon="mdi:alert-circle"></ha-icon></div>
+                <div class="version-mismatch-title">Refresh required to update the Sofabaton Control Panel card</div>
+              </div>
               <div class="version-mismatch-copy">
                 This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant.
                 Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.
@@ -272,28 +273,21 @@ class SofabatonControlPanelCard extends LitElement {
     const sharedHubCommandLabel = this._snapshot.externalHubCommandLabel
       || (this._snapshot.refreshBusy ? "Refreshing cache…" : null)
       || (this._snapshot.pendingActionKey ? "Hub command in progress…" : null);
-    let activeTab = renderHubTab({
+    let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
       hub,
       hass: this._snapshot.hass,
       integrationVersion: this._snapshot.toolsFrontendVersionExpected,
+      persistentCacheEnabled: cacheEnabled,
+      hubCommandBusy: sharedHubCommandBusy,
+      pendingSettingKey: this._snapshot.pendingSettingKey,
+      pendingActionKey: this._snapshot.pendingActionKey,
+      onToggleSetting: (setting, enabled) => this.handleSettingToggle(setting, enabled),
+      onRunAction: (action) => this.handleAction(action),
     });
 
-    if (this._snapshot.selectedTab === "settings") {
-      activeTab = renderSettingsTab({
-        loading: this._snapshot.loading,
-        error: this._snapshot.loadError,
-        hub,
-        hass: this._snapshot.hass,
-        persistentCacheEnabled: cacheEnabled,
-        hubCommandBusy: sharedHubCommandBusy,
-        pendingSettingKey: this._snapshot.pendingSettingKey,
-        pendingActionKey: this._snapshot.pendingActionKey,
-        onToggleSetting: (setting, enabled) => this.handleSettingToggle(setting, enabled),
-        onRunAction: (action) => this.handleAction(action),
-      });
-    } else if (this._snapshot.selectedTab === "logs") {
+    if (this._snapshot.selectedTab === "logs") {
       activeTab = renderLogsTab({
         lines: this._snapshot.logsLines,
         loading: this._snapshot.logsLoading,

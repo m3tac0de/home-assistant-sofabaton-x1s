@@ -367,6 +367,10 @@ class SofabatonWifiCommandsTab extends LitElement {
     .sync-message { font-size: 13px; line-height: 1.4; }
     .sync-doc-link { color: var(--primary-color); font-weight: 600; text-decoration: none; }
     .sync-doc-link:hover { text-decoration: underline; }
+    .list-view .sticky-footer { border-top: none; }
+    .wifi-docs-bar { display: flex; justify-content: center; padding: 7px 16px 6px; border-bottom: 1px solid var(--divider-color); }
+    .wifi-docs-link { font-size: 12px; font-weight: 500; color: var(--primary-color); text-decoration: none; opacity: 0.85; }
+    .wifi-docs-link:hover { opacity: 1; text-decoration: underline; }
     .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
     .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .version-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
@@ -643,26 +647,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     this.renderRoot
       .querySelectorAll<HTMLElement>("ha-selector[data-hide-action-type='1']")
       .forEach((element) => this._hideUiActionTypeSelector(element));
-    if (changed.has("_createDeviceModalOpen") && this._createDeviceModalOpen) {
-      this._focusInputAfterRender("#sb-new-device-name");
-    }
-    if (changed.has("_activeCommandModal") && this._activeCommandModal === "details") {
-      this._focusInputAfterRender("#sb-command-display-name");
-    }
-  }
-
-  private _focusInputAfterRender(selector: string) {
-    requestAnimationFrame(() => {
-      const field = this.renderRoot.querySelector<HTMLElement>(selector) as (HTMLElement & { shadowRoot?: ShadowRoot | null }) | null;
-      if (field) {
-        field.focus();
-        if (field instanceof HTMLInputElement) {
-          field.select();
-          return;
-        }
-        field.shadowRoot?.querySelector<HTMLInputElement>("input")?.select();
-      }
-    });
   }
 
   private _useLegacyTextField() {
@@ -906,6 +890,9 @@ class SofabatonWifiCommandsTab extends LitElement {
           ` : html`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
         </div>
         <div class="sticky-footer">
+          <div class="wifi-docs-bar">
+            <a class="wifi-docs-link" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noreferrer noopener">Wifi Commands documentation</a>
+          </div>
           ${this._renderStatusDock(this._listDockLabel(canAdd), this._listDockTone(canAdd))}
         </div>
       </div>

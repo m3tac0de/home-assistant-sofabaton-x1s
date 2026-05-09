@@ -7,8 +7,7 @@ export function renderTabBar(params: {
   onSelect: (tabId: TabId) => void;
 }) {
   const tabs: Array<{ id: TabId; label: string; shortLabel?: string; disabled: boolean; pushRight?: boolean }> = [
-    { id: "hub", label: "Hub", disabled: false },
-    { id: "settings", label: "Settings", disabled: false },
+    { id: "settings", label: "Hub", disabled: false },
     { id: "wifi_commands", label: "Wifi Commands", shortLabel: "Wifi", disabled: false },
     { id: "cache", label: "Cache", disabled: !params.persistentCacheEnabled },
     { id: "logs", label: "Logs", disabled: false, pushRight: true },

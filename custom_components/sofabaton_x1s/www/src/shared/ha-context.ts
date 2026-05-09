@@ -1,4 +1,4 @@
-export type TabId = "hub" | "settings" | "wifi_commands" | "cache" | "logs";
+export type TabId = "settings" | "wifi_commands" | "cache" | "logs";
 export type SectionId = "activities" | "devices";
 export type SettingKey =
   | "persistent_cache"

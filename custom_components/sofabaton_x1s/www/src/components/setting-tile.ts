@@ -6,7 +6,6 @@ export function renderSettingTile(params: {
   classes?: string;
   control: unknown;
   footerLabel?: string;
-  footerClass?: string;
   onClick?: () => void;
 }) {
   return html`
@@ -28,16 +27,16 @@ export function renderSettingTile(params: {
       }}
       @click=${params.onClick ?? nothing}
     >
-      <div class="setting-tile-content">
-        <div class="setting-tile-header">
-          <div class="setting-title">${params.title}</div>
-          ${params.control}
+      <div class="setting-tile-body">
+        <div class="setting-title">
+          ${params.title}
+          ${params.footerLabel
+            ? html`<span class="setting-global-tag">${params.footerLabel}</span>`
+            : nothing}
         </div>
         <div class="setting-description">${params.description}</div>
       </div>
-      ${params.footerLabel
-        ? html`<div class="setting-tile-footer ${params.footerClass ?? ""}">${params.footerLabel}</div>`
-        : nothing}
+      <div class="setting-tile-control">${params.control}</div>
     </div>
   `;
 }
