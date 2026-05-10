@@ -16,6 +16,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
@@ -60,6 +61,12 @@ from .roku_listener import async_get_roku_listener
 _LOGGER = logging.getLogger(__name__)
 _WIFI_NAME_RE = re.compile(r"^(?:[^\W_]|[ +&.'()_-])+$", re.UNICODE)
 _WIFI_NAME_ASCII_RE = re.compile(r"^[A-Za-z0-9 ]+$")
+_FRONTEND_URL_BASE = f"/{DOMAIN}/www"
+_TOOLS_CARD_FILENAME = "tools-card.js"
+_REMOTE_CARD_FILENAME = "remote-card.js"
+_CARD_LOADER_FILENAME = "card-loader.js"
+_COMMUNITY_REMOTE_CARD_DIRNAME = "sofabaton-virtual-remote"
+_LOVELACE_STORAGE_MODE = "storage"
 
 
 def _hub_supports_unicode_wifi_names(hub: SofabatonHub) -> bool:
@@ -96,6 +103,203 @@ def _inspect_frontend_dir(frontend_dir: Path) -> tuple[str, bool, list[str]]:
         return abs_path, False, []
 
     return abs_path, True, [entry.name for entry in frontend_dir.iterdir()]
+
+
+def _frontend_resource_path(filename: str) -> str:
+    return f"{_FRONTEND_URL_BASE}/{filename}"
+
+
+def _frontend_resource_url(filename: str, version: str | None = None) -> str:
+    path = _frontend_resource_path(filename)
+    normalized_version = str(version or "").strip()
+    if not normalized_version:
+        return path
+    return f"{path}?v={normalized_version}"
+
+
+def _frontend_loader_url(
+    version: str | None,
+    inject_remote_card: bool,
+    *,
+    remote_version: str | None = None,
+) -> str:
+    base_url = _frontend_resource_url(_CARD_LOADER_FILENAME, version)
+    separator = "&" if "?" in base_url else "?"
+    remote_flag = "1" if inject_remote_card else "0"
+    remote_query = ""
+    normalized_remote_version = str(remote_version or "").strip()
+    if normalized_remote_version:
+        remote_query = f"&remote_v={normalized_remote_version}"
+    return f"{base_url}{separator}inject_remote={remote_flag}{remote_query}"
+
+
+def _resource_url_path(url: str) -> str:
+    return urlparse(str(url or "")).path
+
+
+def _remote_card_community_dir(hass: HomeAssistant) -> Path:
+    return Path(hass.config.path("www", "community", _COMMUNITY_REMOTE_CARD_DIRNAME))
+
+
+async def _async_has_community_remote_card(hass: HomeAssistant) -> bool:
+    community_card_dir = _remote_card_community_dir(hass)
+    return await hass.async_add_executor_job(
+        lambda: community_card_dir.exists() and community_card_dir.is_dir()
+    )
+
+
+def _get_lovelace_resource_mode(hass: HomeAssistant) -> str | None:
+    lovelace = hass.data.get("lovelace")
+    if not lovelace:
+        return None
+    mode = getattr(lovelace, "resource_mode", None)
+    if mode is None:
+        mode = getattr(lovelace, "mode", None)
+    normalized = str(mode or "").strip().lower()
+    return normalized or None
+
+
+def _build_frontend_module_specs(
+    *,
+    tools_version: str,
+    remote_version: str,
+    include_remote_card: bool,
+) -> list[dict[str, str]]:
+    modules = [
+        {
+            "name": "Sofabaton Control Panel",
+            "filename": _TOOLS_CARD_FILENAME,
+            "version": str(tools_version or "").strip(),
+        },
+    ]
+    if include_remote_card:
+        modules.append(
+            {
+                "name": "Sofabaton Virtual Remote",
+                "filename": _REMOTE_CARD_FILENAME,
+                "version": str(remote_version or "").strip(),
+            }
+        )
+    return modules
+
+
+async def _async_get_remote_card_version(hass: HomeAssistant) -> str:
+    source_path = Path(__file__).parent / "www" / "src" / "remote-card.ts"
+    try:
+        source = await hass.async_add_executor_job(source_path.read_text, "utf-8")
+    except FileNotFoundError as err:
+        _LOGGER.warning("[%s] Failed to read remote card version source: %s", DOMAIN, err)
+        return ""
+
+    match = re.search(r'const\s+CARD_VERSION\s*=\s*"([^"]+)"', source)
+    if not match:
+        _LOGGER.warning("[%s] Failed to parse remote card version from %s", DOMAIN, source_path)
+        return ""
+    return str(match.group(1)).strip()
+
+
+async def _async_sync_lovelace_resources(
+    hass: HomeAssistant,
+    modules: list[dict[str, str]],
+) -> None:
+    lovelace = hass.data.get("lovelace")
+    resources = getattr(lovelace, "resources", None)
+    if lovelace is None or resources is None:
+        return
+
+    desired_by_path = {
+        _frontend_resource_path(module["filename"]): {
+            **module,
+            "url": _frontend_resource_url(module["filename"], module["version"]),
+        }
+        for module in modules
+    }
+    existing_resources = [
+        resource for resource in resources.async_items()
+        if str(resource.get("url", "")).startswith(_FRONTEND_URL_BASE)
+    ]
+    existing_by_path: dict[str, list[dict[str, Any]]] = {}
+    for resource in existing_resources:
+        existing_by_path.setdefault(_resource_url_path(resource.get("url", "")), []).append(resource)
+
+    for resource_path, module in desired_by_path.items():
+        matches = existing_by_path.pop(resource_path, [])
+        keep = matches[0] if matches else None
+        if keep is None:
+            _LOGGER.info(
+                "[%s] Registering %s resource: %s",
+                DOMAIN,
+                module["name"],
+                module["url"],
+            )
+            await resources.async_create_item({"res_type": "module", "url": module["url"]})
+        else:
+            current_url = str(keep.get("url", ""))
+            current_type = str(keep.get("res_type", ""))
+            if current_url != module["url"] or current_type != "module":
+                _LOGGER.info(
+                    "[%s] Updating %s resource to %s",
+                    DOMAIN,
+                    module["name"],
+                    module["url"],
+                )
+                await resources.async_update_item(
+                    keep.get("id"),
+                    {"res_type": "module", "url": module["url"]},
+                )
+            for duplicate in matches[1:]:
+                await resources.async_delete_item(duplicate.get("id"))
+
+    for stale_resources in existing_by_path.values():
+        for resource in stale_resources:
+            _LOGGER.info("[%s] Removing stale frontend resource: %s", DOMAIN, resource.get("url"))
+            await resources.async_delete_item(resource.get("id"))
+
+
+async def _async_register_storage_mode_resources(
+    hass: HomeAssistant,
+    modules: list[dict[str, str]],
+    *,
+    retry_delay_seconds: float = 5.0,
+) -> None:
+    lovelace = hass.data.get("lovelace")
+    resources = getattr(lovelace, "resources", None)
+    if lovelace is None or resources is None:
+        return
+
+    if not getattr(resources, "loaded", False):
+        _LOGGER.debug(
+            "[%s] Lovelace resources not loaded yet; retrying frontend resource registration in %.1f seconds",
+            DOMAIN,
+            retry_delay_seconds,
+        )
+
+        async def _retry(_now: Any) -> None:
+            await _async_register_storage_mode_resources(
+                hass,
+                modules,
+                retry_delay_seconds=retry_delay_seconds,
+            )
+
+        async_call_later(hass, retry_delay_seconds, _retry)
+        return
+
+    await _async_sync_lovelace_resources(hass, modules)
+
+
+async def _async_unregister_lovelace_resources(hass: HomeAssistant) -> None:
+    lovelace = hass.data.get("lovelace")
+    resources = getattr(lovelace, "resources", None)
+    if lovelace is None or resources is None:
+        return
+
+    existing_resources = [
+        resource for resource in resources.async_items()
+        if str(resource.get("url", "")).startswith(_FRONTEND_URL_BASE)
+    ]
+    for resource in existing_resources:
+        _LOGGER.info("[%s] Removing frontend resource during unload: %s", DOMAIN, resource.get("url"))
+        await resources.async_delete_item(resource.get("id"))
 
 
 def _resolve_roku_listen_port(hass: HomeAssistant, entry_id: str) -> int:
@@ -809,18 +1013,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         hass.data[DOMAIN]["stop_listener_registered"] = True
 
     if not hass.data[DOMAIN].get("frontend_registered"):
-        community_card_dir = Path(
-            hass.config.path("www", "community", "sofabaton-virtual-remote")
-        )
-        community_card_exists = await hass.async_add_executor_job(
-            lambda: community_card_dir.exists() and community_card_dir.is_dir()
-        )
+        community_card_exists = await _async_has_community_remote_card(hass)
         inject_remote_card = not community_card_exists
         if community_card_exists:
             _LOGGER.info(
-                "[%s] Community remote card found at %s; only injecting power tools card",
+                "[%s] Community remote card found at %s; bundled remote card will not be registered",
                 DOMAIN,
-                community_card_dir,
+                _remote_card_community_dir(hass),
             )
 
         frontend_dir = Path(__file__).parent / "www"
@@ -844,16 +1043,28 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 ]
             )
 
-            # 4. Inject JS URLs
-            version_suffix = await _async_get_integration_version(hass)
-            js_version = f"?v={version_suffix}" if version_suffix else ""
-            js_files = [f"card-loader.js{js_version}"]
-            for js_file in js_files:
-                remote_flag = "1" if inject_remote_card else "0"
-                separator = "&" if "?" in js_file else "?"
-                url = f"/{DOMAIN}/www/{js_file}{separator}inject_remote={remote_flag}"
-                _LOGGER.info("[%s] Adding extra JS URL: %s", DOMAIN, url)
-                frontend.add_extra_js_url(hass, url)
+            tools_version = await _async_get_integration_version(hass)
+            remote_version = await _async_get_remote_card_version(hass)
+            module_specs = _build_frontend_module_specs(
+                tools_version=tools_version,
+                remote_version=remote_version,
+                include_remote_card=inject_remote_card,
+            )
+
+            if _get_lovelace_resource_mode(hass) == _LOVELACE_STORAGE_MODE:
+                _LOGGER.info(
+                    "[%s] Registering Lovelace frontend resources in storage mode",
+                    DOMAIN,
+                )
+                await _async_register_storage_mode_resources(hass, module_specs)
+            else:
+                loader_url = _frontend_loader_url(
+                    tools_version,
+                    inject_remote_card,
+                    remote_version=remote_version,
+                )
+                _LOGGER.info("[%s] Adding fallback loader script: %s", DOMAIN, loader_url)
+                frontend.add_extra_js_url(hass, loader_url)
 
             hass.data[DOMAIN]["frontend_registered"] = True
         else:
@@ -1055,6 +1266,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "sync_command_config")
             #hass.services.async_remove(DOMAIN, "create_ip_button")
             async_teardown_diagnostics(hass)
+            if hass.data[DOMAIN].get("frontend_registered"):
+                if _get_lovelace_resource_mode(hass) == _LOVELACE_STORAGE_MODE:
+                    await _async_unregister_lovelace_resources(hass)
+                hass.data[DOMAIN]["frontend_registered"] = False
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
             await _async_persist_hub_cache(hass, hub)

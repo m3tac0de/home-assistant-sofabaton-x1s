@@ -156,6 +156,10 @@ def _install_homeassistant_stubs() -> None:
     entity_registry.async_get = lambda hass=None: None
     sys.modules.setdefault("homeassistant.helpers.entity_registry", entity_registry)
 
+    event = types.ModuleType("homeassistant.helpers.event")
+    event.async_call_later = lambda hass, delay, action: None
+    sys.modules.setdefault("homeassistant.helpers.event", event)
+
     entity = types.ModuleType("homeassistant.helpers.entity")
 
     class DeviceInfo(dict):  # pragma: no cover - only used as stub

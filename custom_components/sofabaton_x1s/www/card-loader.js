@@ -1,6 +1,7 @@
 const LOADER_URL = new URL(import.meta.url, window.location.href);
 const VERSION = LOADER_URL.searchParams.get("v") || "dev";
 const INJECT_REMOTE = LOADER_URL.searchParams.get("inject_remote") !== "0";
+const REMOTE_VERSION = LOADER_URL.searchParams.get("remote_v") || VERSION;
 const LOAD_CACHE_KEY = "__sofabaton_card_loader_module_cache__";
 const BOOT_CACHE_KEY = "__sofabaton_card_loader_boot_cache__";
 const BOOT_CACHE_ID = `${VERSION}:${INJECT_REMOTE ? "remote" : "tools-only"}`;
@@ -8,6 +9,12 @@ const BOOT_CACHE_ID = `${VERSION}:${INJECT_REMOTE ? "remote" : "tools-only"}`;
 function withVersion(url) {
   const u = new URL(url, window.location.href);
   u.searchParams.set("v", VERSION);
+  return u.toString();
+}
+
+function withRemoteVersion(url) {
+  const u = new URL(url, window.location.href);
+  u.searchParams.set("v", REMOTE_VERSION);
   return u.toString();
 }
 
@@ -66,7 +73,7 @@ function queueRebuild() {
 
 async function boot() {
   if (INJECT_REMOTE) {
-    const remoteUrl = withVersion("/sofabaton_x1s/www/remote-card.js");
+    const remoteUrl = withRemoteVersion("/sofabaton_x1s/www/remote-card.js");
     await loadModuleScript(remoteUrl);
   }
 
