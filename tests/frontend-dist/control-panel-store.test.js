@@ -1300,7 +1300,7 @@ function connectionFingerprint(hass) {
 
 // custom_components/sofabaton_x1s/www/src/state/control-panel-store.ts
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-var VALID_TABS = /* @__PURE__ */ new Set(["hub", "settings", "wifi_commands", "cache", "logs"]);
+var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "cache", "logs"]);
 function viewStateStorage() {
   try {
     if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -1341,7 +1341,7 @@ var INITIAL_SNAPSHOT = {
   loading: false,
   loadError: null,
   selectedHubEntryId: null,
-  selectedTab: "hub",
+  selectedTab: "settings",
   openSection: "activities",
   openEntity: null,
   staleData: false,
