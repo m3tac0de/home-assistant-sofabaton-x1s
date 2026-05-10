@@ -222,6 +222,27 @@ class SofabatonControlPanelCard extends LitElement {
     });
   }
 
+  private renderBackendUnavailable(height: number) {
+    return html`
+      <ha-card>
+        <div class="card-inner" style=${`height:${height}px`}>
+          <div class="card-header">
+            <span class="card-title">Sofabaton Control Panel</span>
+          </div>
+          <div class="card-body">
+            <div class="backend-unavailable-state">
+              <div class="backend-unavailable-icon"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
+              <div class="backend-unavailable-title">Backend not available</div>
+              <div class="backend-unavailable-copy">
+                Waiting for the Sofabaton X1S integration to finish starting…
+              </div>
+            </div>
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+
   private renderVersionMismatch(height: number) {
     return html`
       <ha-card>
@@ -264,6 +285,9 @@ class SofabatonControlPanelCard extends LitElement {
     const height = Number(this._config.card_height ?? 600);
     if (this._snapshot.toolsFrontendVersionMismatch) {
       return this.renderVersionMismatch(height);
+    }
+    if (this._snapshot.backendUnavailable) {
+      return this.renderBackendUnavailable(height);
     }
     const sharedHubCommandBusy = Boolean(
       this._snapshot.refreshBusy ||

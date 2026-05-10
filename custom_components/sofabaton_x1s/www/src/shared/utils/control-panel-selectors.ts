@@ -97,6 +97,26 @@ export function buttonName(buttonId: number) {
   return BUTTON_NAMES[buttonId] ?? `Button ${buttonId}`;
 }
 
+export function isBackendUnavailableError(error: unknown, hass: HassLike | null): boolean {
+  if (hass && (hass as { connected?: boolean }).connected === false) return true;
+  if (!error) return false;
+  const candidate = error as Record<string, unknown>;
+  const code = String(
+    candidate.code ?? (candidate.error as Record<string, unknown> | undefined)?.code ?? "",
+  ).toLowerCase();
+  if (code === "unknown_command" || code === "not_found" || code === "connection_lost" || code === "disconnected") {
+    return true;
+  }
+  const message = String(
+    candidate.message
+      ?? (candidate.error as Record<string, unknown> | undefined)?.message
+      ?? (error instanceof Error ? error.message : ""),
+  );
+  if (/unknown[_\s-]?command/i.test(message)) return true;
+  if (/connection.*(lost|closed)|disconnected|websocket.*closed/i.test(message)) return true;
+  return false;
+}
+
 export function formatError(error: unknown): string {
   if (!error) return "Unknown error";
   if (typeof error === "string") return error;

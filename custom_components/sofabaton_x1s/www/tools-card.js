@@ -1,4 +1,4 @@
-// node_modules/@lit/reactive-element/css-tag.js
+// ../../../node_modules/@lit/reactive-element/css-tag.js
 var t = globalThis;
 var e = t.ShadowRoot && (void 0 === t.ShadyCSS || t.ShadyCSS.nativeShadow) && "adoptedStyleSheets" in Document.prototype && "replace" in CSSStyleSheet.prototype;
 var s = /* @__PURE__ */ Symbol();
@@ -43,7 +43,7 @@ var c = e ? (t4) => t4 : (t4) => t4 instanceof CSSStyleSheet ? ((t5) => {
   return r(e5);
 })(t4) : t4;
 
-// node_modules/@lit/reactive-element/reactive-element.js
+// ../../../node_modules/@lit/reactive-element/reactive-element.js
 var { is: i2, defineProperty: e2, getOwnPropertyDescriptor: h, getOwnPropertyNames: r2, getOwnPropertySymbols: o2, getPrototypeOf: n2 } = Object;
 var a = globalThis;
 var c2 = a.trustedTypes;
@@ -265,7 +265,7 @@ var y = class extends HTMLElement {
 };
 y.elementStyles = [], y.shadowRootOptions = { mode: "open" }, y[d("elementProperties")] = /* @__PURE__ */ new Map(), y[d("finalized")] = /* @__PURE__ */ new Map(), p?.({ ReactiveElement: y }), (a.reactiveElementVersions ?? (a.reactiveElementVersions = [])).push("2.1.2");
 
-// node_modules/lit-html/lit-html.js
+// ../../../node_modules/lit-html/lit-html.js
 var t2 = globalThis;
 var i3 = (t4) => t4;
 var s2 = t2.trustedTypes;
@@ -520,7 +520,7 @@ var D = (t4, i7, s4) => {
   return h3._$AI(t4), h3;
 };
 
-// node_modules/lit-element/lit-element.js
+// ../../../node_modules/lit-element/lit-element.js
 var s3 = globalThis;
 var i4 = class extends y {
   constructor() {
@@ -700,6 +700,11 @@ var cardStyles = i`
   .version-mismatch-row + .version-mismatch-row { border-left: 1px solid color-mix(in srgb, var(--error-color, #db4437) 18%, var(--divider-color)); }
   .version-mismatch-label { font-size: 10px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase; color: var(--secondary-text-color); }
   .version-mismatch-value { font-size: 18px; font-weight: 700; font-family: "SF Mono", "Fira Code", Consolas, monospace; color: var(--primary-text-color); word-break: break-word; }
+  .backend-unavailable-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 24px 32px; text-align: center; }
+  .backend-unavailable-icon { color: var(--secondary-text-color); display: inline-flex; }
+  .backend-unavailable-icon ha-icon { --mdc-icon-size: 40px; }
+  .backend-unavailable-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
+  .backend-unavailable-copy { font-size: 13px; line-height: 1.6; color: var(--secondary-text-color); max-width: 320px; }
   .stale-banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--warning-color, #ff9800) 30%, transparent); }
   .stale-banner-text { flex: 1; }
   .stale-banner-btn { background: none; border: 1px solid var(--divider-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--primary-text-color); }
@@ -879,6 +884,23 @@ function deviceCommands(hub, deviceId) {
 function buttonName(buttonId) {
   return BUTTON_NAMES[buttonId] ?? `Button ${buttonId}`;
 }
+function isBackendUnavailableError(error, hass) {
+  if (hass && hass.connected === false) return true;
+  if (!error) return false;
+  const candidate = error;
+  const code = String(
+    candidate.code ?? candidate.error?.code ?? ""
+  ).toLowerCase();
+  if (code === "unknown_command" || code === "not_found" || code === "connection_lost" || code === "disconnected") {
+    return true;
+  }
+  const message = String(
+    candidate.message ?? candidate.error?.message ?? (error instanceof Error ? error.message : "")
+  );
+  if (/unknown[_\s-]?command/i.test(message)) return true;
+  if (/connection.*(lost|closed)|disconnected|websocket.*closed/i.test(message)) return true;
+  return false;
+}
 function formatError(error) {
   if (!error) return "Unknown error";
   if (typeof error === "string") return error;
@@ -1001,6 +1023,8 @@ function hubIcon(kind, classes = "") {
 }
 
 // custom_components/sofabaton_x1s/www/src/state/control-panel-store.ts
+var BACKEND_RETRY_MIN_MS = 2e3;
+var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "cache", "logs"]);
 function viewStateStorage() {
@@ -1042,6 +1066,7 @@ var INITIAL_SNAPSHOT = {
   toolsFrontendVersionMismatch: false,
   loading: false,
   loadError: null,
+  backendUnavailable: false,
   selectedHubEntryId: null,
   selectedTab: "settings",
   openSection: "activities",
@@ -1075,6 +1100,8 @@ var ControlPanelStore = class {
     this._lastObservedGenerations = cacheGenerationSnapshot(null);
     this._lastHassFingerprint = "";
     this._lastConnectionFingerprint = "";
+    this._backendRetryTimer = null;
+    this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
     this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
     this._snapshot = {
       ...INITIAL_SNAPSHOT,
@@ -1089,6 +1116,8 @@ var ControlPanelStore = class {
     this._isConnected = true;
     if (this._snapshot.hass && !this._snapshot.state && !this._loadingStatePromise) {
       void this.loadState();
+    } else if (this._snapshot.backendUnavailable) {
+      this._scheduleBackendRetry();
     }
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -1101,7 +1130,42 @@ var ControlPanelStore = class {
       externalHubCommandBusy: false,
       externalHubCommandLabel: null
     };
+    this._clearBackendRetry();
     this.unsubscribeLogs();
+  }
+  _clearBackendRetry() {
+    if (this._backendRetryTimer) {
+      clearTimeout(this._backendRetryTimer);
+      this._backendRetryTimer = null;
+    }
+    this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
+  }
+  _scheduleBackendRetry() {
+    if (!this._isConnected) return;
+    if (this._backendRetryTimer) return;
+    const delay = this._backendRetryDelay;
+    this._backendRetryDelay = Math.min(BACKEND_RETRY_MAX_MS, Math.round(delay * 1.5));
+    this._backendRetryTimer = setTimeout(() => {
+      this._backendRetryTimer = null;
+      if (!this._isConnected || !this._snapshot.backendUnavailable) return;
+      void this.loadState({ silent: true });
+    }, delay);
+  }
+  _markBackendUnavailable() {
+    const wasUnavailable = this._snapshot.backendUnavailable;
+    this._snapshot = {
+      ...this._snapshot,
+      backendUnavailable: true,
+      loadError: null,
+      logsError: null
+    };
+    if (!wasUnavailable) this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
+    this._scheduleBackendRetry();
+  }
+  _clearBackendUnavailable() {
+    if (!this._snapshot.backendUnavailable) return;
+    this._snapshot = { ...this._snapshot, backendUnavailable: false };
+    this._clearBackendRetry();
   }
   setHass(hass) {
     const previousHass = this._snapshot.hass;
@@ -1209,8 +1273,14 @@ var ControlPanelStore = class {
         this.applyControlPanelState(state);
         this._snapshot = { ...this._snapshot, contents };
         this.syncSelection();
+        this._clearBackendUnavailable();
       } catch (error) {
-        this._snapshot = { ...this._snapshot, loadError: formatError(error) };
+        if (isBackendUnavailableError(error, this._snapshot.hass)) {
+          this._markBackendUnavailable();
+        } else {
+          this._snapshot = { ...this._snapshot, loadError: formatError(error), backendUnavailable: false };
+          this._clearBackendRetry();
+        }
       } finally {
         this._loadingStatePromise = null;
         this._snapshot = { ...this._snapshot, loading: false, staleData: false };
@@ -1222,10 +1292,20 @@ var ControlPanelStore = class {
     return this._loadingStatePromise;
   }
   async loadControlPanelState() {
-    const state = await this.api().loadState();
-    this.applyControlPanelState(state);
-    this.syncSelection();
-    this.emit();
+    try {
+      const state = await this.api().loadState();
+      this.applyControlPanelState(state);
+      this.syncSelection();
+      this._clearBackendUnavailable();
+      this.emit();
+    } catch (error) {
+      if (isBackendUnavailableError(error, this._snapshot.hass)) {
+        this._markBackendUnavailable();
+        this.emit();
+        return;
+      }
+      throw error;
+    }
   }
   async loadCacheContents() {
     const contents = await this.api().loadCacheContents();
@@ -1354,6 +1434,12 @@ var ControlPanelStore = class {
       await this.loadHubLogs(entryId, { preserveLines: true });
     } catch (error) {
       if (this._snapshot.logsSubscribedEntryId !== entryId) return;
+      if (isBackendUnavailableError(error, this._snapshot.hass)) {
+        this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
+        this._markBackendUnavailable();
+        this.emit();
+        return;
+      }
       this._snapshot = {
         ...this._snapshot,
         logsError: formatError(error),
@@ -1389,11 +1475,16 @@ var ControlPanelStore = class {
       };
     } catch (error) {
       if (seq !== this._logsLoadSeq) return;
-      this._snapshot = {
-        ...this._snapshot,
-        logsError: formatError(error),
-        logsLoadedEntryId: entryId
-      };
+      if (isBackendUnavailableError(error, this._snapshot.hass)) {
+        this._snapshot = { ...this._snapshot, logsLoadedEntryId: entryId };
+        this._markBackendUnavailable();
+      } else {
+        this._snapshot = {
+          ...this._snapshot,
+          logsError: formatError(error),
+          logsLoadedEntryId: entryId
+        };
+      }
     } finally {
       if (seq !== this._logsLoadSeq) return;
       this._snapshot = { ...this._snapshot, logsLoading: false };
@@ -1862,7 +1953,7 @@ function renderLogsTab(params) {
   });
 }
 
-// node_modules/lit-html/directive.js
+// ../../../node_modules/lit-html/directive.js
 var e4 = (t4) => (...e5) => ({ _$litDirective$: t4, values: e5 });
 var i5 = class {
   constructor(t4) {
@@ -1881,12 +1972,12 @@ var i5 = class {
   }
 };
 
-// node_modules/lit-html/directive-helpers.js
+// ../../../node_modules/lit-html/directive-helpers.js
 var { I: t3 } = j;
 var m2 = {};
 var p3 = (o5, t4 = m2) => o5._$AH = t4;
 
-// node_modules/lit-html/directives/keyed.js
+// ../../../node_modules/lit-html/directives/keyed.js
 var i6 = e4(class extends i5 {
   constructor() {
     super(...arguments), this.key = A;
@@ -4534,6 +4625,26 @@ var SofabatonControlPanelCard = class extends i4 {
       behavior: "smooth"
     });
   }
+  renderBackendUnavailable(height) {
+    return b2`
+      <ha-card>
+        <div class="card-inner" style=${`height:${height}px`}>
+          <div class="card-header">
+            <span class="card-title">Sofabaton Control Panel</span>
+          </div>
+          <div class="card-body">
+            <div class="backend-unavailable-state">
+              <div class="backend-unavailable-icon"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
+              <div class="backend-unavailable-title">Backend not available</div>
+              <div class="backend-unavailable-copy">
+                Waiting for the Sofabaton X1S integration to finish starting…
+              </div>
+            </div>
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
   renderVersionMismatch(height) {
     return b2`
       <ha-card>
@@ -4575,6 +4686,9 @@ var SofabatonControlPanelCard = class extends i4 {
     const height = Number(this._config.card_height ?? 600);
     if (this._snapshot.toolsFrontendVersionMismatch) {
       return this.renderVersionMismatch(height);
+    }
+    if (this._snapshot.backendUnavailable) {
+      return this.renderBackendUnavailable(height);
     }
     const sharedHubCommandBusy = Boolean(
       this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey

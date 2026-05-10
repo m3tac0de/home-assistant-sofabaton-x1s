@@ -17,10 +17,14 @@ import {
   formatError,
   formatLogEntry,
   hassFingerprint,
+  isBackendUnavailableError,
   persistentCacheEnabled,
   proxyClientConnected,
   selectedHub,
 } from "../shared/utils/control-panel-selectors";
+
+const BACKEND_RETRY_MIN_MS = 2000;
+const BACKEND_RETRY_MAX_MS = 10000;
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "cache", "logs"]);
@@ -79,6 +83,7 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   toolsFrontendVersionMismatch: false,
   loading: false,
   loadError: null,
+  backendUnavailable: false,
   selectedHubEntryId: null,
   selectedTab: "settings",
   openSection: "activities",
@@ -115,6 +120,8 @@ export class ControlPanelStore {
   private _lastObservedGenerations = cacheGenerationSnapshot(null);
   private _lastHassFingerprint = "";
   private _lastConnectionFingerprint = "";
+  private _backendRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private _backendRetryDelay = BACKEND_RETRY_MIN_MS;
   private readonly _loadedFrontendVersion: string;
 
   constructor(
@@ -137,6 +144,8 @@ export class ControlPanelStore {
     this._isConnected = true;
     if (this._snapshot.hass && !this._snapshot.state && !this._loadingStatePromise) {
       void this.loadState();
+    } else if (this._snapshot.backendUnavailable) {
+      this._scheduleBackendRetry();
     }
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -150,7 +159,46 @@ export class ControlPanelStore {
       externalHubCommandBusy: false,
       externalHubCommandLabel: null,
     };
+    this._clearBackendRetry();
     this.unsubscribeLogs();
+  }
+
+  private _clearBackendRetry() {
+    if (this._backendRetryTimer) {
+      clearTimeout(this._backendRetryTimer);
+      this._backendRetryTimer = null;
+    }
+    this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
+  }
+
+  private _scheduleBackendRetry() {
+    if (!this._isConnected) return;
+    if (this._backendRetryTimer) return;
+    const delay = this._backendRetryDelay;
+    this._backendRetryDelay = Math.min(BACKEND_RETRY_MAX_MS, Math.round(delay * 1.5));
+    this._backendRetryTimer = setTimeout(() => {
+      this._backendRetryTimer = null;
+      if (!this._isConnected || !this._snapshot.backendUnavailable) return;
+      void this.loadState({ silent: true });
+    }, delay);
+  }
+
+  private _markBackendUnavailable() {
+    const wasUnavailable = this._snapshot.backendUnavailable;
+    this._snapshot = {
+      ...this._snapshot,
+      backendUnavailable: true,
+      loadError: null,
+      logsError: null,
+    };
+    if (!wasUnavailable) this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
+    this._scheduleBackendRetry();
+  }
+
+  private _clearBackendUnavailable() {
+    if (!this._snapshot.backendUnavailable) return;
+    this._snapshot = { ...this._snapshot, backendUnavailable: false };
+    this._clearBackendRetry();
   }
 
   setHass(hass: HassLike) {
@@ -283,8 +331,14 @@ export class ControlPanelStore {
         this.applyControlPanelState(state);
         this._snapshot = { ...this._snapshot, contents };
         this.syncSelection();
+        this._clearBackendUnavailable();
       } catch (error) {
-        this._snapshot = { ...this._snapshot, loadError: formatError(error) };
+        if (isBackendUnavailableError(error, this._snapshot.hass)) {
+          this._markBackendUnavailable();
+        } else {
+          this._snapshot = { ...this._snapshot, loadError: formatError(error), backendUnavailable: false };
+          this._clearBackendRetry();
+        }
       } finally {
         this._loadingStatePromise = null;
         this._snapshot = { ...this._snapshot, loading: false, staleData: false };
@@ -297,10 +351,20 @@ export class ControlPanelStore {
   }
 
   async loadControlPanelState() {
-    const state = await this.api().loadState();
-    this.applyControlPanelState(state);
-    this.syncSelection();
-    this.emit();
+    try {
+      const state = await this.api().loadState();
+      this.applyControlPanelState(state);
+      this.syncSelection();
+      this._clearBackendUnavailable();
+      this.emit();
+    } catch (error) {
+      if (isBackendUnavailableError(error, this._snapshot.hass)) {
+        this._markBackendUnavailable();
+        this.emit();
+        return;
+      }
+      throw error;
+    }
   }
 
   async loadCacheContents() {
@@ -443,6 +507,12 @@ export class ControlPanelStore {
       await this.loadHubLogs(entryId, { preserveLines: true });
     } catch (error) {
       if (this._snapshot.logsSubscribedEntryId !== entryId) return;
+      if (isBackendUnavailableError(error, this._snapshot.hass)) {
+        this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
+        this._markBackendUnavailable();
+        this.emit();
+        return;
+      }
       this._snapshot = {
         ...this._snapshot,
         logsError: formatError(error),
@@ -480,11 +550,16 @@ export class ControlPanelStore {
       };
     } catch (error) {
       if (seq !== this._logsLoadSeq) return;
-      this._snapshot = {
-        ...this._snapshot,
-        logsError: formatError(error),
-        logsLoadedEntryId: entryId,
-      };
+      if (isBackendUnavailableError(error, this._snapshot.hass)) {
+        this._snapshot = { ...this._snapshot, logsLoadedEntryId: entryId };
+        this._markBackendUnavailable();
+      } else {
+        this._snapshot = {
+          ...this._snapshot,
+          logsError: formatError(error),
+          logsLoadedEntryId: entryId,
+        };
+      }
     } finally {
       if (seq !== this._logsLoadSeq) return;
       this._snapshot = { ...this._snapshot, logsLoading: false };

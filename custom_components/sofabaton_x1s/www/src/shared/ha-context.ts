@@ -103,6 +103,7 @@ export interface ControlPanelSnapshot {
   toolsFrontendVersionMismatch: boolean;
   loading: boolean;
   loadError: string | null;
+  backendUnavailable: boolean;
   selectedHubEntryId: string | null;
   selectedTab: TabId;
   openSection: SectionId | null;
