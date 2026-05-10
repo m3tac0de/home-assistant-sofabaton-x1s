@@ -1097,6 +1097,7 @@ var ControlPanelStore = class {
     this._refreshGraceUntil = 0;
     this._logsUnsub = null;
     this._logsLoadSeq = 0;
+    this._logsSubscribeSeq = 0;
     this._lastObservedGenerations = cacheGenerationSnapshot(null);
     this._lastHassFingerprint = "";
     this._lastConnectionFingerprint = "";
@@ -1131,7 +1132,7 @@ var ControlPanelStore = class {
       externalHubCommandLabel: null
     };
     this._clearBackendRetry();
-    this.unsubscribeLogs();
+    void this.unsubscribeLogs();
   }
   _clearBackendRetry() {
     if (this._backendRetryTimer) {
@@ -1211,11 +1212,12 @@ var ControlPanelStore = class {
       externalHubCommandLabel: null
     };
     this.persistViewState();
-    this.unsubscribeLogs();
     this.emit();
-    void this.loadControlPanelState().finally(() => {
-      if (this._snapshot.selectedTab === "logs") void this.syncLogsFeed();
-    });
+    void (async () => {
+      await this.unsubscribeLogs();
+      await this.loadControlPanelState();
+      if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
+    })();
   }
   selectTab(tabId) {
     const nextTab = tabId === "cache" && !persistentCacheEnabled(this._snapshot) ? "settings" : tabId;
@@ -1227,7 +1229,7 @@ var ControlPanelStore = class {
     };
     this.persistViewState();
     if (nextTab === "logs") void this.syncLogsFeed();
-    else this.unsubscribeLogs();
+    else void this.unsubscribeLogs();
     this.emit();
   }
   toggleSection(sectionId) {
@@ -1408,7 +1410,7 @@ var ControlPanelStore = class {
   async syncLogsFeed() {
     const hub = selectedHub(this._snapshot);
     if (!this._isConnected || this._snapshot.selectedTab !== "logs" || !hub) {
-      this.unsubscribeLogs();
+      await this.unsubscribeLogs();
       return;
     }
     const entryId = hub.entry_id;
@@ -1418,22 +1420,27 @@ var ControlPanelStore = class {
       void this.loadHubLogs(entryId);
     }
     if (this._snapshot.logsSubscribedEntryId === entryId) return;
-    this.unsubscribeLogs();
+    await this.unsubscribeLogs();
+    const subscribeSeq = ++this._logsSubscribeSeq;
     this._snapshot = { ...this._snapshot, logsSubscribedEntryId: entryId };
     this.emit();
     try {
       const unsubscribe = await this.api().subscribeLogs(entryId, (payload) => {
+        if (subscribeSeq !== this._logsSubscribeSeq) return;
         if (this._snapshot.logsSubscribedEntryId !== entryId) return;
         this.handleHubLogMessage(entryId, payload);
       });
-      if (this._snapshot.logsSubscribedEntryId !== entryId) {
-        unsubscribe();
+      if (subscribeSeq !== this._logsSubscribeSeq) {
+        try {
+          unsubscribe();
+        } catch {
+        }
         return;
       }
       this._logsUnsub = unsubscribe;
       await this.loadHubLogs(entryId, { preserveLines: true });
     } catch (error) {
-      if (this._snapshot.logsSubscribedEntryId !== entryId) return;
+      if (subscribeSeq !== this._logsSubscribeSeq) return;
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
         this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
         this._markBackendUnavailable();
@@ -1515,10 +1522,16 @@ var ControlPanelStore = class {
     void _formatted;
     this.emit();
   }
-  unsubscribeLogs() {
-    this._logsUnsub?.();
+  async unsubscribeLogs() {
+    this._logsSubscribeSeq++;
+    const unsub = this._logsUnsub;
     this._logsUnsub = null;
     this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+    }
   }
   applyControlPanelState(state) {
     const expectedVersion = normalizeExpectedFrontendVersion(state?.tools_frontend_version);

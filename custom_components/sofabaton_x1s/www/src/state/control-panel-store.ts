@@ -117,6 +117,7 @@ export class ControlPanelStore {
   private _refreshGraceUntil = 0;
   private _logsUnsub: (() => void) | null = null;
   private _logsLoadSeq = 0;
+  private _logsSubscribeSeq = 0;
   private _lastObservedGenerations = cacheGenerationSnapshot(null);
   private _lastHassFingerprint = "";
   private _lastConnectionFingerprint = "";
@@ -160,7 +161,7 @@ export class ControlPanelStore {
       externalHubCommandLabel: null,
     };
     this._clearBackendRetry();
-    this.unsubscribeLogs();
+    void this.unsubscribeLogs();
   }
 
   private _clearBackendRetry() {
@@ -263,11 +264,12 @@ export class ControlPanelStore {
       externalHubCommandLabel: null,
     };
     this.persistViewState();
-    this.unsubscribeLogs();
     this.emit();
-    void this.loadControlPanelState().finally(() => {
-      if (this._snapshot.selectedTab === "logs") void this.syncLogsFeed();
-    });
+    void (async () => {
+      await this.unsubscribeLogs();
+      await this.loadControlPanelState();
+      if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
+    })();
   }
 
   selectTab(tabId: TabId) {
@@ -280,7 +282,7 @@ export class ControlPanelStore {
     };
     this.persistViewState();
     if (nextTab === "logs") void this.syncLogsFeed();
-    else this.unsubscribeLogs();
+    else void this.unsubscribeLogs();
     this.emit();
   }
 
@@ -477,7 +479,7 @@ export class ControlPanelStore {
   async syncLogsFeed() {
     const hub = selectedHub(this._snapshot);
     if (!this._isConnected || this._snapshot.selectedTab !== "logs" || !hub) {
-      this.unsubscribeLogs();
+      await this.unsubscribeLogs();
       return;
     }
 
@@ -490,23 +492,25 @@ export class ControlPanelStore {
 
     if (this._snapshot.logsSubscribedEntryId === entryId) return;
 
-    this.unsubscribeLogs();
+    await this.unsubscribeLogs();
+    const subscribeSeq = ++this._logsSubscribeSeq;
     this._snapshot = { ...this._snapshot, logsSubscribedEntryId: entryId };
     this.emit();
 
     try {
       const unsubscribe = await this.api().subscribeLogs(entryId, (payload) => {
+        if (subscribeSeq !== this._logsSubscribeSeq) return;
         if (this._snapshot.logsSubscribedEntryId !== entryId) return;
         this.handleHubLogMessage(entryId, payload);
       });
-      if (this._snapshot.logsSubscribedEntryId !== entryId) {
-        unsubscribe();
+      if (subscribeSeq !== this._logsSubscribeSeq) {
+        try { unsubscribe(); } catch { /* ignore */ }
         return;
       }
       this._logsUnsub = unsubscribe;
       await this.loadHubLogs(entryId, { preserveLines: true });
     } catch (error) {
-      if (this._snapshot.logsSubscribedEntryId !== entryId) return;
+      if (subscribeSeq !== this._logsSubscribeSeq) return;
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
         this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
         this._markBackendUnavailable();
@@ -592,10 +596,17 @@ export class ControlPanelStore {
     this.emit();
   }
 
-  private unsubscribeLogs() {
-    this._logsUnsub?.();
+  private async unsubscribeLogs() {
+    this._logsSubscribeSeq++;
+    const unsub = this._logsUnsub;
     this._logsUnsub = null;
     this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+      /* ignore — the backend may already be gone */
+    }
   }
 
   private applyControlPanelState(state: ControlPanelSnapshot["state"]) {
