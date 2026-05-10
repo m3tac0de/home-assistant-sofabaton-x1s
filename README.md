@@ -6,7 +6,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 
 ---
 [![HACS Badge](https://img.shields.io/badge/HACS-Default-green.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-0.5.7-blue)  
+![Version](https://img.shields.io/badge/version-0.5.8-blue)  
 ## Start here
 
 - 🚀 **Quick start**: install + add your hub
