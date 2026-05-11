@@ -989,15 +989,17 @@ class SofabatonHub:
     async def async_dump_ir_commands(
         self,
         device_id: int,
+        command_id: int | None = None,
         *,
         wait_timeout: float = 10.0,
     ) -> dict[str, Any] | None:
-        """Dump raw IR command blob pages for a device via 0x020C [dev, ff]."""
+        """Dump raw command blob pages for a device via 0x020C [dev, item]."""
 
         return await self.hass.async_add_executor_job(
             partial(
                 self._proxy.request_ir_command_dump,
                 device_id,
+                command_id=command_id,
                 timeout=wait_timeout,
             )
         )

@@ -26,6 +26,7 @@ _ensure_stub_package("custom_components.sofabaton_x1s.lib", ROOT / "custom_compo
 from custom_components.sofabaton_x1s.lib.commands import (
     DeviceButtonAssembler,
     DeviceCommandAssembler,
+    extract_ir_dump_blob,
     iter_command_records,
     parse_button_burst_frame,
     parse_command_burst_frame,
@@ -1314,7 +1315,7 @@ def test_parse_command_burst_frame_recognizes_x1s_input_refresh_layout() -> None
 def test_parse_ir_command_dump_frame_extracts_page_metadata() -> None:
     page_one_payload = bytes.fromhex(
         "01 00 01 3a 00 02 0b 01 0d 00 00 00 00 17 18 00 50 00 6f 00 77 00 65 00 72 00 20 00 6f 00 66 00 66"
-    ) + (b"\x00" * 40)
+    ) + (b"\x00" * 40) + bytes.fromhex("01 20 00 10 01 00 94 70 00 00 23 6a")
     page_two_payload = bytes.fromhex("01 00 02 3a 00 00 02 7f 00 00 02 00")
 
     parsed_page_one = parse_ir_command_dump_frame(0xFA0D, _build_ir_dump_frame(0xFA0D, page_one_payload))
@@ -1334,6 +1335,129 @@ def test_parse_ir_command_dump_frame_extracts_page_metadata() -> None:
     assert parsed_page_two.page_no == 2
     assert parsed_page_two.device_id is None
     assert parsed_page_two.label is None
+
+
+def test_parse_ir_command_dump_frame_uses_page_one_command_id_for_single_probe() -> None:
+    page_one_payload = bytes.fromhex(
+        "01 00 01 01 00 02 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74"
+    ) + (b"\x00" * 24) + bytes.fromhex("01 30 00 10 01 00 94 70 00 00 23 6a")
+    page_two_payload = bytes.fromhex("01 00 02 3c 00 00 02 63 00 00 06 55")
+
+    parsed_page_one = parse_ir_command_dump_frame(0xFA0D, _build_ir_dump_frame(0xFA0D, page_one_payload))
+    parsed_page_two = parse_ir_command_dump_frame(0xA10D, _build_ir_dump_frame(0xA10D, page_two_payload))
+
+    assert parsed_page_one is not None
+    assert parsed_page_one.response_index == 1
+    assert parsed_page_one.command_id == 2
+    assert parsed_page_one.label == "Exit"
+
+    assert parsed_page_two is not None
+    assert parsed_page_two.response_index == 1
+    assert parsed_page_two.command_id == 1
+
+
+def test_parse_ir_command_dump_frame_accepts_fixed_page_one_blob_offset_and_multi_page_numbers() -> None:
+    page_one_payload = bytes.fromhex(
+        "02 00 01 79 00 04 03 02 0d 00 00 00 00 17 13 00 50 00 6f 00 77 00 65 00 72 00 20 00 6f 00 6e 00"
+    ) + (b"\x00" * 40) + bytes.fromhex("03 20 00 00 00 00 95 2a 00 00 0d 03")
+    page_three_payload = bytes.fromhex("02 00 03 aa bb cc dd")
+
+    parsed_page_one = parse_ir_command_dump_frame(0xFA0D, _build_ir_dump_frame(0xFA0D, page_one_payload))
+    parsed_page_three = parse_ir_command_dump_frame(0x910D, _build_ir_dump_frame(0x910D, page_three_payload))
+
+    assert parsed_page_one is not None
+    assert parsed_page_one.command_id == 2
+    assert parsed_page_one.total_commands == 0x79
+    assert parsed_page_one.total_pages == 4
+    assert parsed_page_one.label == "Power on"
+    assert extract_ir_dump_blob(page_one_payload, parsed_page_one.page_no) == bytes.fromhex(
+        "03 20 00 00 00 00 95 2a 00 00 0d 03"
+    )
+
+    assert parsed_page_three is not None
+    assert parsed_page_three.page_no == 3
+    assert extract_ir_dump_blob(page_three_payload, parsed_page_three.page_no) == bytes.fromhex("aa bb cc dd")
+
+
+def test_parse_ir_command_dump_frame_accepts_denon_continuation_opcodes() -> None:
+    page_two_payload = bytes.fromhex("01 00 02 46 00 00 00 d3 00 00 07 63")
+    page_four_payload = bytes.fromhex("01 00 04 00 01 da 00 00 01 6a 00 00")
+
+    parsed_page_two = parse_ir_command_dump_frame(0x610D, _build_ir_dump_frame(0x610D, page_two_payload))
+    parsed_page_four = parse_ir_command_dump_frame(0x930D, _build_ir_dump_frame(0x930D, page_four_payload))
+
+    assert parsed_page_two is not None
+    assert parsed_page_two.response_index == 1
+    assert parsed_page_two.page_no == 2
+    assert extract_ir_dump_blob(page_two_payload, parsed_page_two.page_no) == bytes.fromhex(
+        "46 00 00 00 d3 00 00 07 63"
+    )
+
+    assert parsed_page_four is not None
+    assert parsed_page_four.response_index == 1
+    assert parsed_page_four.page_no == 4
+    assert extract_ir_dump_blob(page_four_payload, parsed_page_four.page_no) == bytes.fromhex(
+        "00 01 da 00 00 01 6a 00 00"
+    )
+
+
+def test_parse_ir_command_dump_frame_extracts_x1_ascii_label_and_blob_offset() -> None:
+    payload = bytes.fromhex(
+        "01 00 01 01 00 04 01 03 0d 00 00 00 00 17 13 "
+        "50 6f 77 65 72 20 6f 6e "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "03 20 00 00 00 00 95 2a 00 00 0d 03"
+    )
+    parsed = parse_ir_command_dump_frame(0xFA0D, _build_ir_dump_frame(0xFA0D, payload))
+
+    assert parsed is not None
+    assert parsed.command_id == 3
+    assert parsed.device_id == 1
+    assert parsed.total_commands == 1
+    assert parsed.total_pages == 4
+    assert parsed.label == "Power on"
+    assert extract_ir_dump_blob(payload, parsed.page_no) == bytes.fromhex(
+        "03 20 00 00 00 00 95 2a 00 00 0d 03"
+    )
+
+
+@pytest.mark.parametrize(
+    ("payload_hex", "expected_label"),
+    [
+        (
+            "01 00 01 19 00 02 01 01 0d 00 00 00 00 00 39 00 42 00 72 00 69 00 67 00 68 00 74 00 6e 00 65 00 73 00 73",
+            "Brightness",
+        ),
+        (
+            "02 00 01 19 00 02 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74",
+            "Exit",
+        ),
+        (
+            "06 00 01 19 00 02 01 06 0d 00 00 00 00 00 92 00 50 00 6c 00 61 00 79",
+            "Play",
+        ),
+        (
+            "09 00 01 19 00 02 01 09 0d 00 00 00 00 04 31 00 53 00 65 00 74 00 74 00 69 00 6e 00 67",
+            "Setting",
+        ),
+        (
+            "0a 00 01 19 00 02 01 0a 0d 00 00 00 00 01 e2 00 53 00 6f 00 75 00 6e 00 64",
+            "Sound",
+        ),
+    ],
+)
+def test_parse_ir_command_dump_frame_extracts_structured_label(
+    payload_hex: str, expected_label: str
+) -> None:
+    payload = (
+        bytes.fromhex(payload_hex)
+        + (b"\x00" * 24)
+        + bytes.fromhex("01 20 00 10 01 00 94 70 00 00 23 6a")
+    )
+    parsed = parse_ir_command_dump_frame(0xFA0D, _build_ir_dump_frame(0xFA0D, payload))
+
+    assert parsed is not None
+    assert parsed.label == expected_label
 
 
 @pytest.mark.parametrize(

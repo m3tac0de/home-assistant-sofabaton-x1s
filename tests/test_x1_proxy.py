@@ -1376,10 +1376,11 @@ def test_ir_dump_family_frames_collect_structured_pages() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
     handler = DeviceButtonFamilyHandler()
 
-    proxy._burst.start("ir_dump:11", now=0.0)
-    proxy._ir_dump_pending[0x0B] = {
+    proxy._burst.start("ir_dump:11:255", now=0.0)
+    proxy._ir_dump_pending[(0x0B, 0xFF)] = {
         "event": threading.Event(),
         "device_id": 0x0B,
+        "requested_command_id": None,
         "total_commands": None,
         "commands": {},
         "burst_finished": False,
@@ -1387,7 +1388,7 @@ def test_ir_dump_family_frames_collect_structured_pages() -> None:
 
     page_one_payload = bytes.fromhex(
         "01 00 01 3a 00 02 0b 01 0d 00 00 00 00 17 18 00 50 00 6f 00 77 00 65 00 72 00 20 00 6f 00 66 00 66"
-    ) + (b"\x00" * 40)
+    ) + (b"\x00" * 40) + bytes.fromhex("01 20 00 10 01 00 94 70 00 00 23 6a")
     page_two_payload = bytes.fromhex("01 00 02 3a 00 00 02 7f 00 00 02 00")
 
     page_one_raw = bytes.fromhex("a5 5a fa 0d") + page_one_payload
@@ -1410,10 +1411,11 @@ def test_ir_dump_family_frames_collect_structured_pages() -> None:
             )
         )
 
-    proxy._on_ir_dump_burst_end("ir_dump:11")
-    result = proxy._build_ir_dump_result(proxy._ir_dump_pending[0x0B])
+    proxy._on_ir_dump_burst_end("ir_dump:11:255")
+    result = proxy._build_ir_dump_result(proxy._ir_dump_pending[(0x0B, 0xFF)])
 
     assert result["device_id"] == 0x0B
+    assert result["requested_command_id"] is None
     assert result["total_commands"] == 0x3A
     assert result["received_command_count"] == 1
     assert result["complete"] is False
@@ -1426,6 +1428,8 @@ def test_ir_dump_family_frames_collect_structured_pages() -> None:
             "expected_page_count": 2,
             "page_count": 2,
             "complete": True,
+            "ir_blob_hex": "01 20 00 10 01 00 94 70 00 00 23 6a 3a 00 00 02 7f 00 00 02 00",
+            "ir_blob_byte_count": 21,
             "pages": [
                 {
                     "page_no": 1,
@@ -1433,6 +1437,9 @@ def test_ir_dump_family_frames_collect_structured_pages() -> None:
                     "opcode_hex": "0xFA0D",
                     "payload_hex": page_one_payload.hex(" "),
                     "frame_hex": page_one_raw.hex(" "),
+                    "ir_blob_hex": "01 20 00 10 01 00 94 70 00 00 23 6a",
+                    "ir_blob_byte_count": 12,
+                    "label_field_hex": "17 18",
                 },
                 {
                     "page_no": 2,
@@ -1440,10 +1447,66 @@ def test_ir_dump_family_frames_collect_structured_pages() -> None:
                     "opcode_hex": "0x910D",
                     "payload_hex": page_two_payload.hex(" "),
                     "frame_hex": page_two_raw.hex(" "),
+                    "ir_blob_hex": "3a 00 00 02 7f 00 00 02 00",
+                    "ir_blob_byte_count": 9,
+                    "label_field_hex": None,
                 },
             ],
         }
     ]
+
+
+def test_ir_dump_single_command_probe_maps_pages_back_to_requested_command() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    handler = DeviceButtonFamilyHandler()
+
+    proxy._burst.start("ir_dump:1:2", now=0.0)
+    proxy._ir_dump_pending[(0x01, 0x02)] = {
+        "event": threading.Event(),
+        "device_id": 0x01,
+        "requested_command_id": 0x02,
+        "total_commands": None,
+        "commands": {},
+        "response_index_to_command_id": {},
+        "burst_finished": False,
+    }
+
+    page_one_payload = bytes.fromhex(
+        "01 00 01 01 00 02 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74"
+    ) + (b"\x00" * 24) + bytes.fromhex("01 30 00 10 01 00 94 70 00 00 23 6a")
+    page_two_payload = bytes.fromhex("01 00 02 3c 00 00 02 63 00 00 06 55")
+
+    page_one_raw = bytes.fromhex("a5 5a fa 0d") + page_one_payload
+    page_one_raw += bytes([sum(page_one_raw) & 0xFF])
+    page_two_raw = bytes.fromhex("a5 5a a1 0d") + page_two_payload
+    page_two_raw += bytes([sum(page_two_raw) & 0xFF])
+
+    for opcode, payload, raw in (
+        (0xFA0D, page_one_payload, page_one_raw),
+        (0xA10D, page_two_payload, page_two_raw),
+    ):
+        handler.handle(
+            FrameContext(
+                proxy=proxy,
+                opcode=opcode,
+                direction="H->A",
+                payload=payload,
+                raw=raw,
+                name=f"OP_{opcode:04X}",
+            )
+        )
+
+    proxy._on_ir_dump_burst_end("ir_dump:1:2")
+    result = proxy._build_ir_dump_result(proxy._ir_dump_pending[(0x01, 0x02)])
+
+    assert result["device_id"] == 0x01
+    assert result["requested_command_id"] == 0x02
+    assert result["total_commands"] == 1
+    assert result["received_command_count"] == 1
+    assert result["complete"] is True
+    assert result["commands"][0]["command_id"] == 2
+    assert result["commands"][0]["label"] == "Exit"
+    assert result["commands"][0]["page_count"] == 2
 
 
 def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:

@@ -18,6 +18,8 @@ from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import (
     DeviceButtonAssembler,
     DeviceCommandAssembler,
+    extract_ir_dump_blob,
+    extract_ir_dump_label_field,
     parse_button_burst_frame,
     parse_command_burst_frame,
     parse_ir_command_dump_frame,
@@ -74,6 +76,7 @@ from .protocol_const import (
     OP_ACTIVITY_ASSIGN_FINALIZE,
     OP_ACTIVITY_CONFIRM,
     OP_REQ_BUTTONS,
+    OP_REQ_BLOB,
     OP_REQ_COMMANDS,
     OP_REQ_IPCMD_SYNC,
     OP_REQ_DEVICES,
@@ -344,7 +347,7 @@ class X1Proxy:
         # lookups for the same device (different commands) can be queued.
         self._pending_command_requests: dict[int, set[int]] = {}
         self._ir_dump_lock = threading.Lock()
-        self._ir_dump_pending: dict[int, dict[str, Any]] = {}
+        self._ir_dump_pending: dict[tuple[int, int], dict[str, Any]] = {}
         self._commands_complete: set[int] = set()
         self._pending_macro_requests: set[int] = set()
         self._macros_complete: set[int] = set()
@@ -786,57 +789,90 @@ class X1Proxy:
     def request_ir_command_dump(
         self,
         device_id: int,
+        command_id: int | None = None,
         *,
         timeout: float = 10.0,
     ) -> dict[str, Any] | None:
-        """Request the raw 0x020C [dev, ff] IR blob dump for a device."""
+        """Request the raw 0x020C [dev, item] blob dump for a device."""
 
         if not self.can_issue_commands():
             self._log.info("[CMD] request_ir_command_dump ignored: proxy client is connected")
             return None
 
         dev_lo = device_id & 0xFF
+        cmd_lo = 0xFF if command_id is None else (command_id & 0xFF)
+        request_key = (dev_lo, cmd_lo)
         event: threading.Event
         should_send = False
 
         with self._ir_dump_lock:
-            pending = self._ir_dump_pending.get(dev_lo)
+            pending = self._ir_dump_pending.get(request_key)
             if pending is not None and not pending["event"].is_set():
                 event = pending["event"]
             else:
                 event = threading.Event()
-                self._ir_dump_pending[dev_lo] = {
+                self._ir_dump_pending[request_key] = {
                     "event": event,
                     "device_id": dev_lo,
+                    "requested_command_id": None if cmd_lo == 0xFF else cmd_lo,
                     "total_commands": None,
                     "commands": {},
+                    "response_index_to_command_id": {},
                     "burst_finished": False,
                 }
                 should_send = True
 
         if should_send:
             ok = self.enqueue_cmd(
-                0x020C,
-                bytes([dev_lo, 0xFF]),
+                OP_REQ_BLOB,
+                bytes([dev_lo, cmd_lo]),
                 expects_burst=True,
-                burst_kind=f"ir_dump:{dev_lo}",
+                burst_kind=f"ir_dump:{dev_lo}:{cmd_lo}",
             )
             if not ok:
                 with self._ir_dump_lock:
-                    active = self._ir_dump_pending.get(dev_lo)
+                    active = self._ir_dump_pending.get(request_key)
                     if active is not None and active["event"] is event:
-                        self._ir_dump_pending.pop(dev_lo, None)
+                        self._ir_dump_pending.pop(request_key, None)
                 return None
 
         event.wait(timeout)
 
         with self._ir_dump_lock:
-            pending = self._ir_dump_pending.pop(dev_lo, None)
+            pending = self._ir_dump_pending.pop(request_key, None)
 
         if pending is None:
             return None
 
         return self._build_ir_dump_result(pending)
+
+    def _get_active_ir_dump_pending(
+        self,
+        *,
+        device_id: int | None = None,
+        burst_kind: str | None = None,
+    ) -> tuple[tuple[int, int], dict[str, Any]] | tuple[None, None]:
+        if burst_kind and burst_kind.startswith("ir_dump:"):
+            parts = burst_kind.split(":")
+            if len(parts) >= 3:
+                try:
+                    key = (int(parts[1]) & 0xFF, int(parts[2]) & 0xFF)
+                except ValueError:
+                    key = None
+                if key is not None:
+                    pending = self._ir_dump_pending.get(key)
+                    if pending is not None:
+                        return key, pending
+
+        if device_id is None:
+            return None, None
+
+        dev_lo = device_id & 0xFF
+        for key, pending in self._ir_dump_pending.items():
+            if key[0] == dev_lo and not pending["event"].is_set():
+                return key, pending
+
+        return None, None
 
     def request_activity_mapping(self, act_id: int) -> bool:
         if not self.can_issue_commands():
@@ -933,20 +969,17 @@ class X1Proxy:
     def _record_ir_dump_frame(self, parsed, raw_frame: bytes) -> None:
         pending: dict[str, Any] | None = None
         pending_dev_id: int | None = parsed.device_id
+        payload = raw_frame[4:-1]
+        ir_blob = extract_ir_dump_blob(payload, parsed.page_no)
+        label_field = extract_ir_dump_label_field(payload) if parsed.page_no == 1 else None
 
         with self._ir_dump_lock:
-            if pending_dev_id is not None:
-                pending = self._ir_dump_pending.get(pending_dev_id & 0xFF)
-
-            if pending is None:
-                burst_kind = str(self._burst.kind or "")
-                if burst_kind.startswith("ir_dump:"):
-                    try:
-                        pending_dev_id = int(burst_kind.split(":", 1)[1]) & 0xFF
-                    except ValueError:
-                        pending_dev_id = None
-                    if pending_dev_id is not None:
-                        pending = self._ir_dump_pending.get(pending_dev_id)
+            _request_key, pending = self._get_active_ir_dump_pending(
+                device_id=pending_dev_id,
+                burst_kind=str(self._burst.kind or ""),
+            )
+            if pending is not None and pending_dev_id is None:
+                pending_dev_id = int(pending.get("device_id", 0)) & 0xFF
 
             if pending is None:
                 return
@@ -954,11 +987,16 @@ class X1Proxy:
             if parsed.total_commands and pending.get("total_commands") is None:
                 pending["total_commands"] = parsed.total_commands
 
+            response_index_map = pending.setdefault("response_index_to_command_id", {})
+            if parsed.is_page_one:
+                response_index_map[parsed.response_index] = parsed.command_id
+
+            effective_command_id = response_index_map.get(parsed.response_index, parsed.command_id)
             commands = pending.setdefault("commands", {})
             command_entry = commands.setdefault(
-                parsed.command_id,
+                effective_command_id,
                 {
-                    "command_id": parsed.command_id,
+                    "command_id": effective_command_id,
                     "device_id": pending_dev_id,
                     "label": None,
                     "format_marker": None,
@@ -980,19 +1018,34 @@ class X1Proxy:
                 "page_no": parsed.page_no,
                 "opcode": parsed.opcode,
                 "opcode_hex": f"0x{parsed.opcode:04X}",
-                "payload_hex": raw_frame[4:-1].hex(" "),
+                "payload_hex": payload.hex(" "),
                 "frame_hex": raw_frame.hex(" "),
+                "ir_blob_hex": ir_blob.hex(" ") if ir_blob is not None else None,
+                "ir_blob_byte_count": len(ir_blob) if ir_blob is not None else None,
+                "_ir_blob_bytes": ir_blob,
+                "label_field_hex": label_field.hex(" ") if label_field is not None else None,
             }
 
     def _build_ir_dump_result(self, pending: dict[str, Any]) -> dict[str, Any]:
         commands_out: list[dict[str, Any]] = []
         total_commands = pending.get("total_commands")
+        requested_command_id = pending.get("requested_command_id")
 
         for command_id in sorted(pending.get("commands", {})):
             record = pending["commands"][command_id]
-            page_items = [record["pages"][page_no] for page_no in sorted(record.get("pages", {}))]
+            raw_page_items = [record["pages"][page_no] for page_no in sorted(record.get("pages", {}))]
+            blob_parts = [
+                bytes(page["_ir_blob_bytes"])
+                for page in raw_page_items
+                if page.get("_ir_blob_bytes") is not None
+            ]
+            page_items = [
+                {k: v for k, v in page.items() if not k.startswith("_")}
+                for page in raw_page_items
+            ]
             expected_page_count = record.get("expected_page_count") or max((page["page_no"] for page in page_items), default=0)
             complete = bool(expected_page_count) and len(page_items) >= expected_page_count
+            ir_blob = b"".join(blob_parts)
 
             commands_out.append(
                 {
@@ -1003,17 +1056,27 @@ class X1Proxy:
                     "expected_page_count": expected_page_count,
                     "page_count": len(page_items),
                     "complete": complete,
+                    "ir_blob_hex": ir_blob.hex(" ") if ir_blob else None,
+                    "ir_blob_byte_count": len(ir_blob),
                     "pages": page_items,
                 }
             )
 
         overall_complete = bool(pending.get("burst_finished"))
-        if total_commands is not None:
+        if requested_command_id is None and total_commands is not None:
             overall_complete = overall_complete and len(commands_out) >= int(total_commands)
-        overall_complete = overall_complete and all(command["complete"] for command in commands_out)
+        if requested_command_id is None:
+            overall_complete = overall_complete and all(command["complete"] for command in commands_out)
+        else:
+            requested_entry = next(
+                (command for command in commands_out if command["command_id"] == requested_command_id),
+                None,
+            )
+            overall_complete = overall_complete and bool(requested_entry and requested_entry["complete"])
 
         return {
             "device_id": pending.get("device_id"),
+            "requested_command_id": requested_command_id,
             "total_commands": total_commands,
             "received_command_count": len(commands_out),
             "complete": overall_complete,
@@ -3878,7 +3941,7 @@ class X1Proxy:
                 device_id & 0xFF,
                 command_id,
             )
-            self._send_cmd_frame(0x020C, bytes([device_id & 0xFF, command_id & 0xFF]))
+            self._send_cmd_frame(OP_REQ_BLOB, bytes([device_id & 0xFF, command_id & 0xFF]))
             if not self._wait_for_wifi_input_refresh(
                 device_id=device_id,
                 command_id=command_id,
@@ -4749,16 +4812,16 @@ class X1Proxy:
 
     def _on_ir_dump_burst_end(self, key: str) -> None:
         parts = key.split(":")
-        if len(parts) < 2 or parts[0] != "ir_dump":
+        if len(parts) < 3 or parts[0] != "ir_dump":
             return
 
         try:
-            dev_lo = int(parts[1]) & 0xFF
+            request_key = (int(parts[1]) & 0xFF, int(parts[2]) & 0xFF)
         except ValueError:
             return
 
         with self._ir_dump_lock:
-            pending = self._ir_dump_pending.get(dev_lo)
+            pending = self._ir_dump_pending.get(request_key)
             if pending is None:
                 return
             pending["burst_finished"] = True

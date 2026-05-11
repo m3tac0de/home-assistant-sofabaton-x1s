@@ -120,6 +120,7 @@ class IrCommandDumpFrame:
 
     opcode: int
     family: int
+    response_index: int
     command_id: int
     page_no: int
     device_id: int | None
@@ -456,7 +457,7 @@ def parse_command_burst_frame(
 
 
 def _looks_like_ir_dump_opcode(opcode: int) -> bool:
-    return opcode_family(opcode) in (0x0D, 0x0E) and ((opcode >> 8) & 0xFF) in (0x91, 0xA1, 0xFA)
+    return opcode_family(opcode) in (0x0D, 0x0E)
 
 
 def _looks_reasonable_ir_dump_label(text: str) -> bool:
@@ -468,16 +469,83 @@ def _looks_reasonable_ir_dump_label(text: str) -> bool:
     return all(ch.isprintable() and ch not in "\r\n\t" for ch in stripped)
 
 
+_IR_DUMP_LABEL_START = 15
+_IR_DUMP_PAGE_ONE_BLOB_START_X1 = 43
+_IR_DUMP_PAGE_ONE_BLOB_START_X1S = 73
+
+
+def _page_one_uses_ascii_label_layout(payload: bytes) -> bool:
+    """Return True when page 1 uses the compact X1 ASCII label slot."""
+
+    if len(payload) <= _IR_DUMP_LABEL_START:
+        return False
+    return payload[_IR_DUMP_LABEL_START] != 0
+
+
+def _ir_dump_page_one_blob_start(payload: bytes) -> int:
+    """Return the fixed page-1 blob start for the observed hub layout."""
+
+    if _page_one_uses_ascii_label_layout(payload):
+        return _IR_DUMP_PAGE_ONE_BLOB_START_X1
+    return _IR_DUMP_PAGE_ONE_BLOB_START_X1S
+
+
+def extract_ir_dump_blob(payload: bytes, page_no: int) -> bytes | None:
+    """Return the IR-specific blob portion of an 0x020C dump page payload."""
+
+    if page_no == 1:
+        blob_start = _ir_dump_page_one_blob_start(payload)
+        if len(payload) <= blob_start:
+            return None
+        return payload[blob_start:]
+
+    if page_no >= 2:
+        return payload[3:] if len(payload) > 3 else b""
+
+    return None
+
+
+def extract_ir_dump_label_field(payload: bytes) -> bytes | None:
+    """Return the 2-byte metadata field immediately before the page-1 label."""
+
+    return payload[13:15] if len(payload) >= 15 else None
+
+
 def _extract_ir_dump_label(payload: bytes) -> str | None:
-    if len(payload) < 12:
+    if len(payload) <= _IR_DUMP_LABEL_START:
         return None
 
-    window_end = min(len(payload), 112)
-    for offset in range(9, min(window_end, 25)):
-        candidate = _decode_label(payload[offset:window_end]).strip()
-        if _looks_reasonable_ir_dump_label(candidate):
-            return candidate
-    return None
+    # Page-1 dump records are structured, not heuristic:
+    # - bytes 13..14 are a 2-byte metadata field
+    # - byte 15 onward is a fixed-width label slot
+    # - X1 uses an ASCII slot ending at byte 43
+    # - X1S/X2 use a UTF-16BE slot ending at byte 73
+    blob_start = _ir_dump_page_one_blob_start(payload)
+    if len(payload) <= blob_start:
+        return None
+
+    label_bytes = payload[_IR_DUMP_LABEL_START:blob_start]
+
+    if _page_one_uses_ascii_label_layout(payload):
+        label_bytes = label_bytes.split(b"\x00", 1)[0].rstrip(b"\x00")
+        if not label_bytes:
+            return None
+        try:
+            candidate = label_bytes.decode("latin-1").strip()
+        except UnicodeDecodeError:
+            return None
+        return candidate if _looks_reasonable_ir_dump_label(candidate) else None
+
+    label_bytes = label_bytes.rstrip(b"\x00")
+    if not label_bytes or len(label_bytes) % 2:
+        return None
+
+    try:
+        candidate = label_bytes.decode("utf-16-be").strip()
+    except UnicodeDecodeError:
+        return None
+
+    return candidate if _looks_reasonable_ir_dump_label(candidate) else None
 
 
 def parse_ir_command_dump_frame(opcode: int, raw_frame: bytes) -> IrCommandDumpFrame | None:
@@ -490,18 +558,22 @@ def parse_ir_command_dump_frame(opcode: int, raw_frame: bytes) -> IrCommandDumpF
     if len(payload) < 4:
         return None
 
-    command_id = payload[0]
+    response_index = payload[0]
     page_no = payload[2]
-    if command_id == 0 or page_no not in (1, 2):
+    if response_index == 0 or page_no == 0:
         return None
 
+    command_id = response_index
     device_id: int | None = None
     total_commands: int | None = None
     total_pages: int | None = None
     format_marker: int | None = None
     label: str | None = None
 
-    if page_no == 1 and len(payload) >= 9 and payload[7] == command_id:
+    if page_no == 1 and len(payload) >= 9:
+        command_id = payload[7]
+        if command_id == 0:
+            return None
         device_id = payload[6]
         total_commands = payload[3] if payload[3] else None
         total_pages = payload[5] if payload[5] else None
@@ -511,6 +583,7 @@ def parse_ir_command_dump_frame(opcode: int, raw_frame: bytes) -> IrCommandDumpF
     return IrCommandDumpFrame(
         opcode=opcode,
         family=opcode_family(opcode),
+        response_index=response_index,
         command_id=command_id,
         page_no=page_no,
         device_id=device_id,

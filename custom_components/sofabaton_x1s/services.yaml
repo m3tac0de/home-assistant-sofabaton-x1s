@@ -19,7 +19,7 @@ fetch_device_commands:
 
 dump_ir_commands:
   name: Dump raw IR commands
-  description: Requests 0x020C [device_id, ff] and returns the parsed raw IR command pages for the selected device.
+  description: Requests 0x020C [device_id, command_id] and returns the parsed raw command blob pages for the selected device. Leave command_id empty to request all blob records with ff.
   fields:
     device:
       name: Sofabaton hub
@@ -29,8 +29,17 @@ dump_ir_commands:
           integration: sofabaton_x1s
     device_id:
       name: Device id
-      description: Hub device id to dump via 0x020C [device_id, ff].
+      description: Hub device id to dump via 0x020C [device_id, command_id].
       required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    command_id:
+      name: Command id
+      description: Optional item id to probe via 0x020C [device_id, command_id]. Omit to request all records with ff.
+      required: false
       selector:
         number:
           min: 1

@@ -58,6 +58,7 @@ OP_REQ_DEVICES = 0x000A  # yields CATALOG_ROW_DEVICE rows (0xD50B)
 OP_REQ_ACTIVITIES = 0x003A  # yields CATALOG_ROW_ACTIVITY rows (0xD53B)
 OP_REQ_BUTTONS = 0x023C  # payload: [act_lo, 0xFF]
 OP_REQ_COMMANDS = 0x025C  # payload: [dev_lo, cmd] (1-byte) or [dev_lo, 0xFF] for full list
+OP_REQ_BLOB = 0x020C  # payload: [dev_lo, item_lo] or [dev_lo, 0xFF] for full blob/object dump
 OP_REQ_ACTIVATE = 0x023F  # payload: [id_lo, key_code] (activity or device ID)
 OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites mapping (X1)
 OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
@@ -158,6 +159,7 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_DEVICES: "REQ_DEVICES",
     OP_REQ_BUTTONS: "REQ_BUTTONS",
     OP_REQ_COMMANDS: "REQ_COMMANDS",
+    OP_REQ_BLOB: "REQ_BLOB",
     OP_REQ_ACTIVATE: "REQ_ACTIVATE",
     OP_REQ_ACTIVITY_MAP: "REQ_ACTIVITY_MAP",
     OP_DELETE_DEVICE: "DELETE_DEVICE",
@@ -292,6 +294,7 @@ __all__ = [
     "OP_REQ_ACTIVITIES",
     "OP_REQ_BUTTONS",
     "OP_REQ_COMMANDS",
+    "OP_REQ_BLOB",
     "OP_REQ_ACTIVATE",
     "OP_REQ_ACTIVITY_MAP",
     "OP_DELETE_DEVICE",

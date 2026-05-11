@@ -1306,9 +1306,20 @@ async def _async_handle_dump_ir_commands(call: ServiceCall):
     if device_id < 1 or device_id > 255:
         raise ValueError("device_id must be between 1 and 255")
 
-    result = await hub.async_dump_ir_commands(device_id=device_id)
+    raw_command_id = call.data.get("command_id")
+    command_id: int | None = None
+    if raw_command_id is not None:
+        command_id = int(raw_command_id)
+        if command_id < 1 or command_id > 255:
+            raise ValueError("command_id must be between 1 and 255")
+
+    result = await hub.async_dump_ir_commands(device_id=device_id, command_id=command_id)
     if result is None:
-        raise ValueError(f"Hub did not respond to IR dump request for device {device_id}")
+        if command_id is None:
+            raise ValueError(f"Hub did not respond to IR dump request for device {device_id}")
+        raise ValueError(
+            f"Hub did not respond to IR dump request for device {device_id}, command {command_id}"
+        )
     return result
 
 

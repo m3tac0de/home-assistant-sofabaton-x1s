@@ -117,9 +117,16 @@ class _FakeHub:
         self.calls.append(payload)
         return payload
 
-    async def async_dump_ir_commands(self, *, device_id: int, wait_timeout: float = 10.0):
+    async def async_dump_ir_commands(
+        self,
+        *,
+        device_id: int,
+        command_id: int | None = None,
+        wait_timeout: float = 10.0,
+    ):
         payload = {
             "device_id": device_id,
+            "requested_command_id": command_id,
             "wait_timeout": wait_timeout,
             "commands": [],
             "complete": False,
@@ -497,6 +504,22 @@ def test_dump_ir_commands_validates_device_id(monkeypatch) -> None:
         )
 
 
+def test_dump_ir_commands_validates_command_id(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    with pytest.raises(ValueError, match="command_id must be between 1 and 255"):
+        asyncio.run(
+            integration._async_handle_dump_ir_commands(
+                _FakeCall({"device_id": 11, "command_id": 0})
+            )
+        )
+
+
 def test_dump_ir_commands_returns_action_payload(monkeypatch) -> None:
     hub = _FakeHub()
 
@@ -513,6 +536,31 @@ def test_dump_ir_commands_returns_action_payload(monkeypatch) -> None:
 
     assert result == {
         "device_id": 11,
+        "requested_command_id": None,
+        "wait_timeout": 10.0,
+        "commands": [],
+        "complete": False,
+    }
+    assert hub.calls[-1] == result
+
+
+def test_dump_ir_commands_accepts_single_command_probe(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    result = asyncio.run(
+        integration._async_handle_dump_ir_commands(
+            _FakeCall({"device_id": 11, "command_id": 9})
+        )
+    )
+
+    assert result == {
+        "device_id": 11,
+        "requested_command_id": 9,
         "wait_timeout": 10.0,
         "commands": [],
         "complete": False,
