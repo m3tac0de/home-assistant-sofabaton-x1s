@@ -48,12 +48,14 @@ Devices are managed in the **Wifi Commands** tab of the Control Panel card. Each
 Each Wifi Device can have a dedicated **Power ON** command and a **Power OFF** command.
 
 The hub treats the Wifi Device as a real device, and will trigger power commands whenever an Activity change requires it.  
-The commands are called in the startup and shutdown sequences of any Activity that has a command assigned from the Wifi Device.
+The commands are called in the startup and shutdown sequences of any Activity that has a command assigned from the Wifi Device.  
+A single Power ON and Power OFF command may be assigned per Wifi Device. The Wifi Commands UI enforces this.
 
 ## Input control
 
 One or more commands in a Wifi Device can be designated as **INPUTS** and assigned an Activity.  
-These commands are called whenever the Activity is started, as part of its startup sequence.
+These commands are called whenever the Activity is started, as part of its startup sequence.  
+Each Wifi Device may assign a single INPUT per Activity. The Wifi Commands UI enforces this.
 
 ## Configuration
 
@@ -91,7 +93,7 @@ state _changing away_ from that value rather than on a specific command name.
 ```yaml
 trigger:
   - platform: state
-    entity_id: sensor.<hub>_wifi_commands   # i.e. sensor.livingroom_wifi_commands
+    entity_id: sensor.<hub>_wifi_commands # i.e. sensor.livingroom_wifi_commands
     not_to: "Waiting for button press"
 action:
   - variables:
