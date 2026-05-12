@@ -1342,6 +1342,14 @@ class DeviceButtonFamilyHandler(BaseFrameHandler):
             if parsed_ir_dump is not None:
                 frame.proxy._record_ir_dump_frame(parsed_ir_dump, frame.raw)
                 frame.proxy._burst.last_ts = time.monotonic() + frame.proxy._burst.response_grace
+                parts = burst_kind.split(":")
+                if len(parts) >= 3:
+                    try:
+                        request_key = (int(parts[1]) & 0xFF, int(parts[2]) & 0xFF)
+                    except ValueError:
+                        request_key = None
+                    if request_key is not None:
+                        frame.proxy.try_finish_ir_dump_burst(request_key)
                 return
 
         parsed = parse_command_burst_frame(

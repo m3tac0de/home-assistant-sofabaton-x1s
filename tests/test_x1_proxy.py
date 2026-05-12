@@ -1,6 +1,7 @@
 """Tests for x1_proxy helpers."""
 import threading
 import sys
+import time
 import types
 
 from custom_components.sofabaton_x1s.const import (
@@ -1509,6 +1510,114 @@ def test_ir_dump_single_command_probe_maps_pages_back_to_requested_command() -> 
     assert result["commands"][0]["page_count"] == 2
 
 
+def test_ir_dump_single_command_finishes_burst_immediately_when_complete() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    handler = DeviceButtonFamilyHandler()
+
+    proxy._burst.start("ir_dump:1:2", now=0.0)
+    proxy._ir_dump_pending[(0x01, 0x02)] = {
+        "event": threading.Event(),
+        "device_id": 0x01,
+        "requested_command_id": 0x02,
+        "total_commands": None,
+        "commands": {},
+        "response_index_to_command_id": {},
+        "burst_finished": False,
+    }
+
+    page_one_payload = bytes.fromhex(
+        "01 00 01 01 00 02 01 02 0d 00 00 00 00 00 79 00 45 00 78 00 69 00 74"
+    ) + (b"\x00" * 24) + bytes.fromhex("01 30 00 10 01 00 94 70 00 00 23 6a")
+    page_two_payload = bytes.fromhex("01 00 02 3c 00 00 02 63 00 00 06 55")
+
+    page_one_raw = bytes.fromhex("a5 5a fa 0d") + page_one_payload
+    page_one_raw += bytes([sum(page_one_raw) & 0xFF])
+    page_two_raw = bytes.fromhex("a5 5a a1 0d") + page_two_payload
+    page_two_raw += bytes([sum(page_two_raw) & 0xFF])
+
+    handler.handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=0xFA0D,
+            direction="H->A",
+            payload=page_one_payload,
+            raw=page_one_raw,
+            name="OP_FA0D",
+        )
+    )
+    assert proxy._burst.active is True
+
+    handler.handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=0xA10D,
+            direction="H->A",
+            payload=page_two_payload,
+            raw=page_two_raw,
+            name="OP_A10D",
+        )
+    )
+
+    assert proxy._burst.active is False
+    assert proxy._ir_dump_pending[(0x01, 0x02)]["burst_finished"] is True
+    assert proxy._ir_dump_pending[(0x01, 0x02)]["event"].is_set() is True
+
+
+def test_request_ir_command_dump_uses_idle_timeout_not_fixed_wall_clock(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _enqueue_cmd(_opcode, _payload=b"", **_kwargs):
+        def _complete_later() -> None:
+            time.sleep(0.05)
+            with proxy._ir_dump_lock:
+                pending = proxy._ir_dump_pending[(0x02, 0xFF)]
+                pending["total_commands"] = 1
+                pending["last_progress_ts"] = time.monotonic()
+                pending["commands"][1] = {
+                    "command_id": 1,
+                    "device_id": 0x02,
+                    "label": "Power",
+                    "format_marker": 0x0D,
+                    "expected_page_count": 1,
+                    "pages": {
+                        1: {
+                            "page_no": 1,
+                            "opcode": 0xFA0D,
+                            "opcode_hex": "0xFA0D",
+                            "payload_hex": "",
+                            "frame_hex": "",
+                            "ir_blob_hex": "01 02 03",
+                            "ir_blob_byte_count": 3,
+                            "_ir_blob_bytes": b"\x01\x02\x03",
+                            "label_field_hex": None,
+                        }
+                    },
+                }
+            time.sleep(0.13)
+            with proxy._ir_dump_lock:
+                pending = proxy._ir_dump_pending[(0x02, 0xFF)]
+                pending["burst_finished"] = True
+                pending["event"].set()
+
+        threading.Thread(target=_complete_later, daemon=True).start()
+        return True
+
+    monkeypatch.setattr(proxy, "enqueue_cmd", _enqueue_cmd)
+
+    started = time.monotonic()
+    result = proxy.request_ir_command_dump(0x02, timeout=0.10)
+    elapsed = time.monotonic() - started
+
+    assert result is not None
+    assert result["device_id"] == 0x02
+    assert result["total_commands"] == 1
+    assert result["received_command_count"] == 1
+    assert result["complete"] is True
+    assert elapsed >= 0.15
+
+
 def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1",
@@ -1601,18 +1710,44 @@ def test_wait_for_roku_ack_timeout() -> None:
     assert proxy.wait_for_roku_ack(0x0112, first_byte=0xC6, timeout=0.01) is False
 
 
+def test_wait_for_roku_ack_any_ignores_stale_ack_when_not_before_is_set() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    stale_ts = time.monotonic()
+    with proxy._roku_ack_lock:
+        proxy._roku_ack_events.append((0x0103, b"\x00", stale_ts))
+        proxy._roku_ack_event.set()
+
+    not_before = time.monotonic() + 0.02
+
+    def _fresh_ack() -> None:
+        time.sleep(0.03)
+        proxy.notify_roku_ack(0x0103, b"\x00")
+
+    threading.Thread(target=_fresh_ack, daemon=True).start()
+
+    matched = proxy.wait_for_roku_ack_any([(0x0103, 0x00)], timeout=0.2, not_before=not_before)
+
+    assert matched == (0x0103, b"\x00")
+    with proxy._roku_ack_lock:
+        assert any(op == 0x0103 and payload == b"\x00" and ts == stale_ts for op, payload, ts in proxy._roku_ack_events)
+
+
 def test_send_roku_step_uses_fallback_ack() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
     sent: list[tuple[int, bytes]] = []
     proxy._send_cmd_frame = lambda opcode, payload: sent.append((opcode, payload))  # type: ignore[method-assign]
+    wait_not_before: list[float | None] = []
 
     def _wait_any(
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         assert candidates == [(0x013E, 0xAB), (0x0103, None)]
+        wait_not_before.append(not_before)
         return 0x0103, b"\x0c"
 
     proxy.wait_for_roku_ack_any = _wait_any  # type: ignore[method-assign]
@@ -1628,6 +1763,7 @@ def test_send_roku_step_uses_fallback_ack() -> None:
 
     assert ok is True
     assert sent
+    assert wait_not_before and wait_not_before[0] is not None
 
 
 def test_ensure_commands_for_activity_without_favorites_does_nothing(monkeypatch) -> None:
@@ -2212,7 +2348,7 @@ def test_add_device_to_activity_discards_stale_members_before_refresh(monkeypatc
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], bytes([candidates[0][1] if candidates[0][1] is not None else 0x00])),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], bytes([candidates[0][1] if candidates[0][1] is not None else 0x00])),
     )
 
     result = proxy.add_device_to_activity(101, 9)
@@ -2282,7 +2418,7 @@ def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> N
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], bytes([candidates[0][1] if candidates[0][1] is not None else 0x00])),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], bytes([candidates[0][1] if candidates[0][1] is not None else 0x00])),
     )
 
     result = proxy.add_device_to_activity(101, 5)
@@ -2358,6 +2494,7 @@ def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         attempts["count"] += 1
         if attempts["count"] == 1:
@@ -2434,6 +2571,7 @@ def test_add_device_to_activity_x2_uses_same_assignment_flow_as_x1s(monkeypatch)
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         ack_calls.append(candidates)
         first_opcode, first_byte = candidates[0]
@@ -2494,7 +2632,12 @@ def test_add_device_to_activity_rejects_activity_inputs_error_ack(monkeypatch) -
     monkeypatch.setattr(proxy, "wait_for_macro_payload", lambda _act, _button, timeout=5.0: macro_payload)
     monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: False)
 
-    def _wait_for_roku_ack_any(candidates: list[tuple[int, int | None]], *, timeout: float = 5.0):
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+        not_before: float | None = None,
+    ):
         if candidates == [(0x0103, None)]:
             return 0x0103, b"\xff"
         first_opcode, first_byte = candidates[0]
@@ -2548,7 +2691,7 @@ def test_add_device_to_activity_x1_does_not_send_finalize_stage(monkeypatch) -> 
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], bytes([candidates[0][1] if candidates[0][1] is not None else 0x00])),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], bytes([candidates[0][1] if candidates[0][1] is not None else 0x00])),
     )
 
     result = proxy.add_device_to_activity(101, 6)
@@ -2652,7 +2795,7 @@ def test_delete_device_uses_x1s_finalize_opcode_for_activity_confirmation(monkey
         return True
 
     monkeypatch.setattr(proxy, "request_activities", _request_activities)
-    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", lambda candidates, timeout=5.0: (0x0103, b"\x00"))
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", lambda candidates, timeout=5.0, not_before=None: (0x0103, b"\x00"))
 
     result = proxy.delete_device(0x04)
 
@@ -2669,7 +2812,7 @@ def test_delete_device_uses_120_second_delete_ack_timeout(monkeypatch) -> None:
 
     observed: dict[str, float] = {}
 
-    def _wait_for_roku_ack_any(candidates, *, timeout=5.0):
+    def _wait_for_roku_ack_any(candidates, *, timeout=5.0, not_before=None):
         observed["timeout"] = timeout
         return 0x0103, b"\x00"
 
@@ -2683,7 +2826,7 @@ def test_delete_device_requires_delete_ack(monkeypatch) -> None:
 
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: None)
-    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", lambda candidates, timeout=5.0: None)
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", lambda candidates, timeout=5.0, not_before=None: None)
 
     requested = {"count": 0}
 
@@ -2747,6 +2890,7 @@ def test_command_to_favorite_replays_sequence(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         ack_calls.append(candidates)
         first_opcode, first_byte = candidates[0]
@@ -2818,6 +2962,7 @@ def test_command_to_favorite_x1s_replays_sequence(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         ack_calls.append(candidates)
         first_opcode, first_byte = candidates[0]
@@ -2872,6 +3017,7 @@ def test_command_to_favorite_can_skip_refresh_after_write(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         first_opcode, first_byte = candidates[0]
         return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
@@ -3048,6 +3194,7 @@ def test_command_to_favorite_x1_does_not_pin_ack_first_byte(monkeypatch) -> None
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         ack_calls.append(candidates)
         return 0x013E, b""
@@ -3081,6 +3228,7 @@ def test_command_to_favorite_x1s_does_not_pin_ack_first_byte(monkeypatch) -> Non
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         ack_calls.append(candidates)
         first_opcode, _first_byte = candidates[0]
@@ -3107,6 +3255,7 @@ def test_command_to_favorite_requires_all_acks(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         attempts["count"] += 1
         if attempts["count"] == 1:
@@ -3664,7 +3813,7 @@ def _make_add_device_to_activity_mocks(proxy, monkeypatch, *, members=(1,)):
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (
+        lambda candidates, timeout=5.0, not_before=None: (
             candidates[0][0],
             bytes([candidates[0][1] if candidates[0][1] is not None else 0x00]),
         ),

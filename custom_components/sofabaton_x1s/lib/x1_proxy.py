@@ -389,7 +389,7 @@ class X1Proxy:
         self._pending_roku_event = threading.Event()
         self._pending_roku_lock = threading.Lock()
         self._roku_ack_lock = threading.Lock()
-        self._roku_ack_events: deque[tuple[int, bytes]] = deque()
+        self._roku_ack_events: deque[tuple[int, bytes, float]] = deque()
         self._roku_ack_event = threading.Event()
         self._x2_remote_sync_id_lock = threading.Lock()
         self._x2_remote_sync_id: bytes | None = None
@@ -574,9 +574,14 @@ class X1Proxy:
                 attempt,
                 total_attempts,
             )
+            send_ts = time.monotonic()
             self._send_family_frame(family, payload)
 
-            matched = self.wait_for_roku_ack_any(candidates, timeout=timeout)
+            matched = self.wait_for_roku_ack_any(
+                candidates,
+                timeout=timeout,
+                not_before=send_ts,
+            )
             if matched is not None:
                 matched_opcode, _matched_payload = matched
                 if matched_opcode != ack_opcode:
@@ -814,6 +819,7 @@ class X1Proxy:
             if pending is not None and not pending["event"].is_set():
                 event = pending["event"]
             else:
+                now = time.monotonic()
                 event = threading.Event()
                 self._ir_dump_pending[request_key] = {
                     "event": event,
@@ -822,6 +828,8 @@ class X1Proxy:
                     "total_commands": None,
                     "commands": {},
                     "response_index_to_command_id": {},
+                    "started_ts": now,
+                    "last_progress_ts": now,
                     "burst_finished": False,
                 }
                 should_send = True
@@ -840,7 +848,27 @@ class X1Proxy:
                         self._ir_dump_pending.pop(request_key, None)
                 return None
 
-        event.wait(timeout)
+        idle_timeout = max(float(timeout), 0.1)
+        hard_timeout = 120.0 if cmd_lo == 0xFF else max(idle_timeout * 3.0, 30.0)
+        hard_deadline = time.monotonic() + hard_timeout
+
+        while True:
+            remaining = hard_deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            if event.wait(min(0.25, remaining)):
+                break
+
+            with self._ir_dump_lock:
+                live_pending = self._ir_dump_pending.get(request_key)
+                if live_pending is None:
+                    break
+                last_progress = float(
+                    live_pending.get("last_progress_ts", live_pending.get("started_ts", 0.0))
+                )
+
+            if time.monotonic() - last_progress >= idle_timeout:
+                break
 
         with self._ir_dump_lock:
             pending = self._ir_dump_pending.pop(request_key, None)
@@ -850,11 +878,18 @@ class X1Proxy:
 
         return self._build_ir_dump_result(pending)
 
-    def play_ir_blob(self, blob: bytes, *, inter_frame_delay: float = 0.08) -> bool:
+    def play_ir_blob(
+        self,
+        blob: bytes,
+        *,
+        inter_frame_delay: float = 0.08,
+        ack_timeout: float = 1.0,
+        final_ack_timeout: float = 0.25,
+    ) -> bool:
         """Send a raw IR blob to the hub for one-shot playback (mirrors the app's "Test").
 
         The blob argument is the exact byte sequence returned by REQ_BLOBS for a
-        single command. Its trailing 1-byte checksum is stripped before sending.
+        single command and is replayed as-is.
         Returns True on success; False if the proxy is not in a state to issue
         commands or the blob is too short to be valid.
         """
@@ -867,7 +902,31 @@ class X1Proxy:
             self._log.warning("[PLAY_BLOB] blob too short or wrong type: %r", type(blob))
             return False
 
-        body = bytes(blob[:-1])  # strip blob's own trailing sum8 byte
+        source_blob = bytes(blob)
+        body = self._normalize_play_blob(source_blob)
+        ok, rejected = self._play_ir_blob_body(
+            body,
+            inter_frame_delay=inter_frame_delay,
+            ack_timeout=ack_timeout,
+            final_ack_timeout=final_ack_timeout,
+        )
+        if ok:
+            return True
+        return False
+
+    def _play_ir_blob_body(
+        self,
+        body: bytes,
+        *,
+        inter_frame_delay: float,
+        ack_timeout: float,
+        final_ack_timeout: float,
+    ) -> tuple[bool, bool]:
+        """Play one normalized blob body.
+
+        Returns ``(ok, rejected)`` where ``rejected`` is true only when the hub
+        explicitly NACKs playback with ``0x0103/0x0C``.
+        """
 
         # Total wire bytes after the 13B first-chunk header / 3B continuation prefaces.
         first_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_FIRST_CHUNK_OVERHEAD  # 237
@@ -883,6 +942,10 @@ class X1Proxy:
             "[PLAY_BLOB] sending %dB blob in %d frame(s)", body_len, total_frames,
         )
 
+        # Ignore any stale ACKs already queued from prior traffic; playback must
+        # pace itself only on ACKs caused by the chunks we are about to send.
+        self.clear_roku_acks()
+
         # Frame 1: 3B preface [01 00 01] + 10B sub-header [01 00 <X> 00*7] + blob slice
         x_byte = total_frames & 0xFF
         offset = 0
@@ -892,7 +955,22 @@ class X1Proxy:
             bytes([0x01, 0x00, 0x01, 0x01, 0x00, x_byte, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
             + first_slice
         )
+        send_ts = time.monotonic()
         self._send_family_play_frame(first_payload)
+        first_candidates = [(0x0103, 0x00)]
+        if total_frames == 1:
+            first_candidates.append((0x0103, 0x0C))
+        first_ack = self.wait_for_roku_ack_any(first_candidates, timeout=ack_timeout, not_before=send_ts)
+        if first_ack is None:
+            self._log.warning("[PLAY_BLOB] timeout waiting for chunk ack seq=1/%d", total_frames)
+            return False, False
+        if first_ack[1][:1] == b"\x0c":
+            self._log.warning(
+                "[PLAY_BLOB] chunk rejected seq=1/%d %s",
+                total_frames,
+                self._play_blob_tail_diagnostics(body),
+            )
+            return False, True
 
         # Continuation frames: 3B preface [01 00 <seq>] + blob slice
         for seq in range(2, total_frames + 1):
@@ -901,14 +979,122 @@ class X1Proxy:
             cont_slice = body[offset : offset + cont_cap]
             offset += len(cont_slice)
             cont_payload = bytes([0x01, 0x00, seq & 0xFF]) + cont_slice
+            send_ts = time.monotonic()
             self._send_family_play_frame(cont_payload)
+            candidates = [(0x0103, 0x00)]
+            if seq == total_frames:
+                candidates.append((0x0103, 0x0C))
+            chunk_ack = self.wait_for_roku_ack_any(candidates, timeout=ack_timeout, not_before=send_ts)
+            if chunk_ack is None:
+                self._log.warning(
+                    "[PLAY_BLOB] timeout waiting for chunk ack seq=%d/%d",
+                    seq,
+                    total_frames,
+                )
+                return False, False
+            if chunk_ack[1][:1] == b"\x0c":
+                self._log.warning(
+                    "[PLAY_BLOB] chunk rejected seq=%d/%d %s",
+                    seq,
+                    total_frames,
+                    self._play_blob_tail_diagnostics(body),
+                )
+                return False, True
 
-        return True
+        # A late 0x0103/0x0C after a successful final 0x00 indicates the hub
+        # rejected playback after processing the last chunk.
+        completion_ack = self.wait_for_roku_ack_any(
+            [(0x0103, 0x0C)],
+            timeout=final_ack_timeout,
+            not_before=send_ts,
+        )
+        if completion_ack is not None:
+            self._log.warning(
+                "[PLAY_BLOB] hub reported playback failure after final chunk %s",
+                self._play_blob_tail_diagnostics(body),
+            )
+            return False, True
+
+        return True, False
 
     def _send_family_play_frame(self, payload: bytes) -> None:
         """Send one family-0x0F playback frame, encoding payload length into the opcode high byte."""
         opcode = ((len(payload) & 0xFF) << 8) | (FAMILY_PLAY_BLOB & 0xFF)
         self._send_cmd_frame(opcode, payload)
+
+    def _normalize_play_blob(self, blob: bytes) -> bytes:
+        """Normalize blob variants before replay.
+
+        Most learned/raw command blobs can be replayed exactly as dumped.
+        Some single-frame database-style blobs (observed on X1 Denon test
+        commands) embed a human-readable descriptor ending with ``CHECKSUM:``
+        text and require the final blob byte to be recomputed before the hub
+        accepts playback.
+        Some long X1 database-style blobs require a different final-byte
+        rewrite based on ``sum8(blob[:-1]) + 5``.
+
+        """
+        if len(blob) < 2:
+            return blob
+        if b"CHECKSUM:" in blob:
+            checksum_byte = (sum(blob[:-1]) + 2) & 0xFF
+            if checksum_byte == blob[-1]:
+                return blob
+            normalized = blob[:-1] + bytes([checksum_byte])
+            self._log.info(
+                "[PLAY_BLOB] normalized descriptor blob checksum old=0x%02X new=0x%02X",
+                blob[-1],
+                checksum_byte,
+            )
+            return normalized
+
+        # Observed on long multi-frame X1 database-style blobs such as Denon
+        # "Mode movie", "8", and "CBL/SAT". Keep the heuristic narrow so we
+        # do not perturb unrelated learned/raw blobs.
+        if blob.startswith(b"\x00\x00\x03\x20") and len(blob) >= 512:
+            checksum_byte = (sum(blob[:-1]) + 5) & 0xFF
+            if checksum_byte == blob[-1]:
+                return blob
+            normalized = blob[:-1] + bytes([checksum_byte])
+            self._log.info(
+                "[PLAY_BLOB] normalized X1 long blob tail old=0x%02X new=0x%02X",
+                blob[-1],
+                checksum_byte,
+            )
+            return normalized
+
+        return blob
+
+    def _play_blob_tail_diagnostics(self, blob: bytes) -> str:
+        """Return compact checksum candidates for blob-tail replay failures."""
+        if not blob:
+            return "len=0"
+
+        body = blob[:-1]
+        sum8 = sum(body) & 0xFF
+        xor8 = 0
+        for value in body:
+            xor8 ^= value
+
+        def _crc8_maxim(data: bytes) -> int:
+            crc = 0x00
+            for byte in data:
+                crc ^= byte
+                for _ in range(8):
+                    if crc & 0x01:
+                        crc = ((crc >> 1) ^ 0x8C) & 0xFF
+                    else:
+                        crc = (crc >> 1) & 0xFF
+            return crc & 0xFF
+
+        last_words = " ".join(f"{value:02x}" for value in blob[-8:])
+        return (
+            f"len={len(blob)} last=0x{blob[-1]:02X} "
+            f"sum=0x{sum8:02X} plus1=0x{((sum8 + 1) & 0xFF):02X} "
+            f"plus2=0x{((sum8 + 2) & 0xFF):02X} negsum=0x{((0x100 - sum8) & 0xFF):02X} "
+            f"xor=0x{xor8:02X} crc8_maxim=0x{_crc8_maxim(body):02X} "
+            f"tail8=[{last_words}]"
+        )
 
     def _get_active_ir_dump_pending(
         self,
@@ -1050,6 +1236,7 @@ class X1Proxy:
 
             if parsed.total_commands and pending.get("total_commands") is None:
                 pending["total_commands"] = parsed.total_commands
+            pending["last_progress_ts"] = time.monotonic()
 
             response_index_map = pending.setdefault("response_index_to_command_id", {})
             if parsed.is_page_one:
@@ -1146,6 +1333,42 @@ class X1Proxy:
             "complete": overall_complete,
             "commands": commands_out,
         }
+
+    def _ir_dump_snapshot_complete(self, pending: dict[str, Any]) -> bool:
+        requested_command_id = pending.get("requested_command_id")
+        commands: dict[int, dict[str, Any]] = pending.get("commands", {})
+        total_commands = pending.get("total_commands")
+
+        def _command_complete(record: dict[str, Any]) -> bool:
+            expected_page_count = record.get("expected_page_count")
+            if not expected_page_count:
+                return False
+            pages = record.get("pages", {})
+            return len(pages) >= int(expected_page_count)
+
+        if requested_command_id is not None:
+            record = commands.get(int(requested_command_id))
+            return bool(record and _command_complete(record))
+
+        if total_commands is None:
+            return False
+        if len(commands) < int(total_commands):
+            return False
+        return all(_command_complete(record) for record in commands.values())
+
+    def try_finish_ir_dump_burst(self, request_key: tuple[int, int]) -> bool:
+        with self._ir_dump_lock:
+            pending = self._ir_dump_pending.get(request_key)
+            if pending is None:
+                return False
+            if not self._ir_dump_snapshot_complete(pending):
+                return False
+
+        return self._burst.finish(
+            f"ir_dump:{request_key[0]}:{request_key[1]}",
+            can_issue=self.can_issue_commands,
+            sender=self._send_cmd_frame,
+        )
 
     def get_buttons_for_entity(self, ent_id: int, *, fetch_if_missing: bool = True) -> tuple[list[int], bool]:
         ent_lo = ent_id & 0xFF
@@ -2161,8 +2384,13 @@ class X1Proxy:
 
     def notify_roku_ack(self, opcode: int, payload: bytes) -> None:
         with self._roku_ack_lock:
-            self._roku_ack_events.append((opcode, payload))
+            self._roku_ack_events.append((opcode, payload, time.monotonic()))
             self._roku_ack_event.set()
+
+    def clear_roku_acks(self) -> None:
+        with self._roku_ack_lock:
+            self._roku_ack_events.clear()
+            self._roku_ack_event.clear()
 
     def wait_for_roku_ack(
         self,
@@ -2170,16 +2398,19 @@ class X1Proxy:
         *,
         first_byte: int | None = None,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> bool:
         deadline = time.monotonic() + timeout
         while True:
             with self._roku_ack_lock:
-                for ack_opcode, ack_payload in self._roku_ack_events:
+                for ack_opcode, ack_payload, ack_ts in self._roku_ack_events:
                     if ack_opcode != opcode:
+                        continue
+                    if not_before is not None and ack_ts < not_before:
                         continue
                     if first_byte is not None and (not ack_payload or ack_payload[0] != (first_byte & 0xFF)):
                         continue
-                    self._roku_ack_events.remove((ack_opcode, ack_payload))
+                    self._roku_ack_events.remove((ack_opcode, ack_payload, ack_ts))
                     if not self._roku_ack_events:
                         self._roku_ack_event.clear()
                     self._log.info(
@@ -2205,17 +2436,20 @@ class X1Proxy:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         deadline = time.monotonic() + timeout
         while True:
             with self._roku_ack_lock:
-                for ack_opcode, ack_payload in self._roku_ack_events:
+                for ack_opcode, ack_payload, ack_ts in self._roku_ack_events:
                     for want_opcode, want_first_byte in candidates:
                         if ack_opcode != want_opcode:
                             continue
+                        if not_before is not None and ack_ts < not_before:
+                            continue
                         if want_first_byte is not None and (not ack_payload or ack_payload[0] != (want_first_byte & 0xFF)):
                             continue
-                        self._roku_ack_events.remove((ack_opcode, ack_payload))
+                        self._roku_ack_events.remove((ack_opcode, ack_payload, ack_ts))
                         if not self._roku_ack_events:
                             self._roku_ack_event.clear()
                         self._log.info(
@@ -2801,8 +3035,9 @@ class X1Proxy:
                 else OP_ACTIVITY_CONFIRM
             )
             self._log.info("[DELETE] confirming updated activity act=0x%02X", act_lo)
+            send_ts = time.monotonic()
             self._send_cmd_frame(confirm_opcode, confirm_payload)
-            if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0) is None:
+            if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
                 self._log.warning("[DELETE] missing ACK after activity confirm act=0x%02X", act_lo)
                 return None
 
@@ -2896,8 +3131,9 @@ class X1Proxy:
                 member & 0xFF,
                 include_flag,
             )
+            send_ts = time.monotonic()
             self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
-            if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0) is None:
+            if self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
                 self._log.warning(
                     "[ACTIVITY_ASSIGN] missing ACK after 0x024F dev=0x%02X include=0x%02X",
                     member & 0xFF,
@@ -2960,10 +3196,12 @@ class X1Proxy:
             if self.diag_dump:
                 self._log.info("[ACTIVITY_ASSIGN] save macro payload %s", updated_payload.hex(" "))
 
+            send_ts = time.monotonic()
             self._send_family_frame(0x12, updated_payload)
             macro_ack = self.wait_for_roku_ack_any(
                 [(0x0112, macro_button)],
                 timeout=5.0,
+                not_before=send_ts,
             )
 
             if macro_ack is None:
@@ -3108,9 +3346,10 @@ class X1Proxy:
         """
         act_lo = activity_id & 0xFF
         self.start_roku_create()
+        send_ts = time.monotonic()
         self._send_family_frame(FAMILY_FAV_ORDER_REQ, bytes([act_lo]))
         # FavoritesOrderHandler fires synthetic ack 0xFF63 with first byte = act_lo
-        result = self.wait_for_roku_ack_any([(0xFF63, act_lo)], timeout=5.0)
+        result = self.wait_for_roku_ack_any([(0xFF63, act_lo)], timeout=5.0, not_before=send_ts)
         if result is None:
             self._log.warning("[FAV_ORDER] timeout waiting for hub response act=0x%02X", act_lo)
             return None
@@ -3424,9 +3663,12 @@ class X1Proxy:
                 map_step,
                 attempt,
             )
+            send_ts = time.monotonic()
             self._send_family_frame(0x3E, map_payload)
             map_ack = self.wait_for_roku_ack_any(
-                [(0x013E, None), (0x0103, None)], timeout=7.5
+                [(0x013E, None), (0x0103, None)],
+                timeout=7.5,
+                not_before=send_ts,
             )
             if map_ack is not None:
                 log.info("[WIFI][STEP] %s acked via 0x%04X", map_step, map_ack[0])
@@ -4043,8 +4285,9 @@ class X1Proxy:
                 "[WIFI][STEP] input-config-finalize tx opcode=0x%04X expect_ack=0x0103 first_byte=* attempt=1/1",
                 finalize_opcode,
             )
+            send_ts = time.monotonic()
             self._send_cmd_frame(finalize_opcode, finalize_payload)
-            ack = self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0)
+            ack = self.wait_for_roku_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts)
             if ack is None:
                 self._log.warning(
                     "[WIFI][STEP] input-config-finalize failed waiting ack=0x0103 first_byte=*"

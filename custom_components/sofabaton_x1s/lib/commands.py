@@ -472,6 +472,12 @@ def _looks_reasonable_ir_dump_label(text: str) -> bool:
 _IR_DUMP_LABEL_START = 15
 _IR_DUMP_PAGE_ONE_BLOB_START_X1 = 43
 _IR_DUMP_PAGE_ONE_BLOB_START_X1S = 73
+_IR_DUMP_PAGE_ONE_BLOB_PREFIXES = (
+    b"\x01\x20\x00\x10",
+    b"\x01\x30\x00\x10",
+    b"\x03\x20\x00\x00",
+    b"\x01\x00\x00\x00",
+)
 
 
 def _page_one_uses_ascii_label_layout(payload: bytes) -> bool:
@@ -487,6 +493,12 @@ def _ir_dump_page_one_blob_start(payload: bytes) -> int:
 
     if _page_one_uses_ascii_label_layout(payload):
         return _IR_DUMP_PAGE_ONE_BLOB_START_X1
+
+    for prefix in _IR_DUMP_PAGE_ONE_BLOB_PREFIXES:
+        idx = payload.find(prefix, _IR_DUMP_LABEL_START)
+        if idx != -1:
+            return idx
+
     return _IR_DUMP_PAGE_ONE_BLOB_START_X1S
 
 

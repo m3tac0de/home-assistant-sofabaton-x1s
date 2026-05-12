@@ -198,6 +198,124 @@ def _build_x1s_singleframe() -> bytes:
 X1S_SINGLEFRAME_WIRE: list[bytes] = [_build_x1s_singleframe()]
 
 
+# X1 hub, database-style Denon command blobs with embedded CHECKSUM text.
+DENON_DB_POWER_ON_WIRE: list[bytes] = [
+    _hx("""
+        a5 5a 55 0f 01 00 01 01 00 01 00 00 00 00 00 00 00 00 00 00 39 00 00 11
+        00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30 30 20 43 30 3a 38
+        34 20 43 31 3a 35 30 20 43 32 3a 30 20 44 3a 34 20 53 3a 31 20 46 3a 36
+        20 43 48 45 43 4b 53 55 4d 3a 33 33 00 00 00 00 c3 eb
+    """),
+]
+
+DENON_DB_NAV_UP_WIRE: list[bytes] = [
+    _hx("""
+        a5 5a 57 0f 01 00 01 01 00 01 00 00 00 00 00 00 00 00 00 00 3b 00 00 11
+        00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30 30 20 43 30 3a 38
+        34 20 43 31 3a 35 30 20 43 32 3a 30 20 44 3a 34 20 53 3a 31 20 46 3a 32
+        37 20 43 48 45 43 4b 53 55 4d 3a 32 34 30 00 00 00 00 28 b7
+    """),
+]
+
+
+# X1 hub, long multi-frame Denon "Mode movie" capture from the app's test flow.
+X1_MODE_MOVIE_APP_WIRE: list[bytes] = [
+    _hx("""
+        a5 5a fa 0f 01 00 01 01 00 04 00 00 00 00 00 00 00 00 00 03 20 00 00 00
+        00 94 cf 00 00 0d 05 00 00 06 aa 00 00 01 6c 00 00 01 d8 00 00 01 6c 00
+        00 01 d8 00 00 01 6c 00 00 05 20 00 00 01 6c 00 00 01 d8 00 00 01 6c 00
+        00 05 20 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 05 20 00 00 01 6c 00
+        00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 05 20 00 00 01 86 00
+        00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00 01 86 00
+        00 05 06 00 00 01 86 00 00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00
+        00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00
+        00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00
+        00 05 06 00 00 01 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00 01 86 00
+        00 01 be 00 00 01 86 00 00 01 be 00 00 01 1a
+    """),
+    _hx("""
+        a5 5a fa 0f 01 00 02 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00 01 86
+        00 00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00 01 86
+        00 00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00 01 86
+        00 00 01 be 00 00 01 86 00 00 05 06 00 00 01 86 00 00 01 be 00 00 01 86
+        00 00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00 01 86
+        00 00 01 be 00 00 01 86 00 00 05 06 00 00 01 86 00 00 01 be 00 00 01 86
+        00 00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00 01 86
+        00 00 05 06 00 00 01 86 00 01 1f 9e 00 00 0d 02 00 00 06 c4 00 00 01 6c
+        00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 05 20 00 00 01 6c
+        00 00 01 d8 00 00 01 6c 00 00 05 20 00 00 01 6c 00 00 01 d8 00 00 01 6c
+        00 00 05 20 00 00 01 6c 00 00 01 d8 00 00 5a
+    """),
+    _hx("""
+        a5 5a fa 0f 01 00 03 01 6c 00 00 01 d8 00 00 01 6c 00 00 05 20 00 00 01
+        6c 00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 05 20 00 00 01
+        6c 00 00 05 20 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01
+        6c 00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01
+        6c 00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01
+        6c 00 00 05 20 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 05 20 00 00 01
+        6c 00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01
+        6c 00 00 05 20 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01
+        6c 00 00 05 20 00 00 01 6c 00 00 01 d8 00 00 01 6c 00 00 01 d8 00 00 01
+        6c 00 00 05 20 00 00 01 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00 01
+        86 00 00 01 be 00 00 01 86 00 00 01 be 00 32
+    """),
+    _hx("""
+        a5 5a 57 0f 01 00 04 00 01 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00
+        01 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00 01 86 00 00 01 be 00 00
+        01 86 00 00 01 be 00 00 01 86 00 00 01 be 00 00 01 86 00 00 05 06 00 00
+        01 86 00 00 05 06 00 00 01 86 00 01 1f 9e 00 00 00 00 70 c5
+    """),
+]
+
+X1_CBLSAT_APP_WIRE: list[bytes] = [
+    _hx("""
+        a5 5a fa 0f 01 00 01 01 00 04 00 00 00 00 00 00 00 00 00 03 20 00 00 00
+        00 94 cf 00 00 0d 03 00 00 06 ac 00 00 01 84 00 00 01 c0 00 00 01 84 00
+        00 01 c0 00 00 01 84 00 00 05 08 00 00 01 84 00 00 01 c0 00 00 01 84 00
+        00 05 08 00 00 01 84 00 00 01 c0 00 00 01 84 00 00 05 08 00 00 01 84 00
+        00 01 c0 00 00 01 84 00 00 01 c0 00 00 01 84 00 00 05 08 00 00 01 84 00
+        00 01 c0 00 00 01 84 00 00 01 c0 00 00 01 84 00 00 05 08 00 00 01 84 00
+        00 05 22 00 00 01 6a 00 00 01 da 00 00 01 6a 00 00 01 da 00 00 01 6a 00
+        00 01 da 00 00 01 6a 00 00 01 da 00 00 01 6a 00 00 01 da 00 00 01 6a 00
+        00 01 da 00 00 01 6a 00 00 01 da 00 00 01 6a 00 00 01 da 00 00 01 6a 00
+        00 05 22 00 00 01 6a 00 00 01 da 00 00 01 6a 00 00 05 22 00 00 01 6a 00
+        00 01 da 00 00 01 6a 00 00 01 da 00 00 01 34
+    """),
+    _hx("""
+        a5 5a fa 0f 01 00 02 6a 00 00 01 da 00 00 01 6a 00 00 05 22 00 00 01 6a
+        00 00 05 22 00 00 01 6a 00 00 01 da 00 00 01 6a 00 00 01 da 00 00 01 6a
+        00 00 05 22 00 00 01 6a 00 00 01 da 00 00 01 6a 00 00 05 22 00 00 01 6a
+        00 00 05 22 00 00 01 6a 00 00 01 da 00 00 01 6a 00 00 05 22 00 00 01 6a
+        00 00 01 da 00 00 01 6a 00 00 01 da 00 00 01 6a 00 00 01 da 00 00 01 6a
+        00 00 01 da 00 00 01 6a 00 00 05 22 00 00 01 6a 00 00 05 22 00 00 01 6a
+        00 00 05 22 00 00 01 84 00 00 01 c0 00 00 01 84 00 00 05 08 00 00 01 84
+        00 00 01 c0 00 00 01 84 00 01 1f a1 00 00 0d 01 00 00 06 ac 00 00 01 84
+        00 00 01 c0 00 00 01 85 00 00 01 c0 00 00 01 84 00 00 05 08 00 00 01 84
+        00 00 01 c0 00 00 01 84 00 00 05 08 00 00 01 84 00 00 01 c0 00 00 01 84
+        00 00 05 08 00 00 01 84 00 00 01 c0 00 00 db
+    """),
+    _hx("""
+        a5 5a fa 0f 01 00 03 01 84 00 00 01 c0 00 00 01 84 00 00 05 08 00 00 01
+        84 00 00 01 c0 00 00 01 84 00 00 01 c0 00 00 01 84 00 00 05 08 00 00 01
+        84 00 00 05 08 00 00 01 84 00 00 01 c0 00 00 01 84 00 00 01 c0 00 00 01
+        84 00 00 01 c0 00 00 01 84 00 00 01 c0 00 00 01 84 00 00 01 c0 00 00 01
+        84 00 00 01 c0 00 00 01 84 00 00 01 c0 00 00 01 84 00 00 01 c0 00 00 01
+        84 00 00 05 08 00 00 01 84 00 00 01 c0 00 00 01 84 00 00 05 08 00 00 01
+        84 00 00 01 c0 00 00 01 84 00 00 01 c0 00 00 01 84 00 00 01 c0 00 00 01
+        84 00 00 05 08 00 00 01 84 00 00 05 08 00 00 01 84 00 00 01 c0 00 00 01
+        84 00 00 01 c0 00 00 01 84 00 00 05 22 00 00 01 6a 00 00 01 da 00 00 01
+        6a 00 00 05 22 00 00 01 6a 00 00 05 22 00 00 01 6a 00 00 01 da 00 00 01
+        6a 00 00 05 22 00 00 01 6a 00 00 01 da 00 e4
+    """),
+    _hx("""
+        a5 5a 57 0f 01 00 04 00 01 6a 00 00 01 da 00 00 01 6a 00 00 01 da 00 00
+        01 6a 00 00 01 da 00 00 01 6a 00 00 05 22 00 00 01 6a 00 00 05 22 00 00
+        01 6a 00 00 05 22 00 00 01 6a 00 00 01 da 00 00 01 6a 00 00 05 22 00 00
+        01 6a 00 00 01 da 00 00 01 6a 00 01 1f bb 00 00 00 00 be 14
+    """),
+]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -218,15 +336,13 @@ def _reconstruct_blob(frames: list[bytes]) -> bytes:
     """Strip per-chunk overhead from each frame and re-glue the blob.
 
     Frame 1 strips the 13-byte preface+sub-header. Continuations strip the 3-byte
-    preface only. A dummy trailing byte (0x00) is appended to stand in for the
-    blob's own sum8 — ``play_ir_blob`` will strip it back off before chunking,
-    so its actual value is irrelevant for round-trip testing.
+    preface only.
     """
     parts: list[bytes] = []
     for idx, wire in enumerate(frames):
         _, payload = _split_frame(wire)
         parts.append(payload[13:] if idx == 0 else payload[3:])
-    return b"".join(parts) + b"\x00"
+    return b"".join(parts)
 
 
 def _expected_frames(frames: list[bytes]) -> list[tuple[int, bytes]]:
@@ -241,6 +357,13 @@ def _capture_sends(proxy: X1Proxy, monkeypatch) -> list[tuple[int, bytes]]:
     sent: list[tuple[int, bytes]] = []
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _wait_for_roku_ack_any(candidates, *, timeout=5.0, not_before=None):
+        if candidates == [(0x0103, 0x0C)]:
+            return None
+        return 0x0103, b"\x00"
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
     return sent
 
 
@@ -253,6 +376,8 @@ CAPTURES = {
     "denon_multi_x1": DENON_MULTI_WIRE,
     "x1s_5frame": X1S_5FRAME_WIRE,
     "x1s_singleframe": X1S_SINGLEFRAME_WIRE,
+    "denon_db_power_on_x1": DENON_DB_POWER_ON_WIRE,
+    "denon_db_nav_up_x1": DENON_DB_NAV_UP_WIRE,
 }
 
 
@@ -349,3 +474,158 @@ def test_play_ir_blob_rejects_invalid_input(bad_input, monkeypatch) -> None:
 
     assert proxy.play_ir_blob(bad_input) is False
     assert sent == []
+
+
+def test_play_ir_blob_waits_for_per_chunk_ack(monkeypatch) -> None:
+    blob = _reconstruct_blob(DENON_MULTI_WIRE)
+    proxy = _new_proxy()
+    sent: list[tuple[int, bytes]] = []
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _wait_for_roku_ack_any(candidates, *, timeout=5.0, not_before=None):
+        ack_calls.append(list(candidates))
+        if candidates == [(0x0103, 0x0C)]:
+            return None
+        return 0x0103, b"\x00"
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    ok = proxy.play_ir_blob(blob, inter_frame_delay=0.0)
+
+    assert ok is True
+    assert len(sent) == 4
+    assert ack_calls[:3] == [[(0x0103, 0x00)]] * 3
+    assert ack_calls[3] == [(0x0103, 0x00), (0x0103, 0x0C)]
+    assert ack_calls[-1] == [(0x0103, 0x0C)]
+
+
+def test_play_ir_blob_rejects_failure_ack_on_final_chunk(monkeypatch) -> None:
+    blob = _reconstruct_blob(SONY_POWER_ON_WIRE)
+    proxy = _new_proxy()
+    sent: list[tuple[int, bytes]] = []
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _wait_for_roku_ack_any(candidates, *, timeout=5.0, not_before=None):
+        ack_calls.append(list(candidates))
+        if candidates == [(0x0103, 0x00)]:
+            return 0x0103, b"\x00"
+        if candidates == [(0x0103, 0x00), (0x0103, 0x0C)]:
+            return 0x0103, b"\x0c"
+        raise AssertionError(f"unexpected candidates: {candidates!r}")
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    ok = proxy.play_ir_blob(blob, inter_frame_delay=0.0)
+
+    assert ok is False
+    assert len(sent) == 2
+    assert ack_calls == [
+        [(0x0103, 0x00)],
+        [(0x0103, 0x00), (0x0103, 0x0C)],
+    ]
+
+
+def test_play_ir_blob_rejects_late_failure_ack_after_final_success(monkeypatch) -> None:
+    blob = _reconstruct_blob(SONY_POWER_ON_WIRE)
+    proxy = _new_proxy()
+    sent: list[tuple[int, bytes]] = []
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _wait_for_roku_ack_any(candidates, *, timeout=5.0, not_before=None):
+        ack_calls.append(list(candidates))
+        if candidates == [(0x0103, 0x00)]:
+            return 0x0103, b"\x00"
+        if candidates == [(0x0103, 0x00), (0x0103, 0x0C)]:
+            return 0x0103, b"\x00"
+        if candidates == [(0x0103, 0x0C)]:
+            return 0x0103, b"\x0c"
+        raise AssertionError(f"unexpected candidates: {candidates!r}")
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    ok = proxy.play_ir_blob(blob, inter_frame_delay=0.0)
+
+    assert ok is False
+    assert len(sent) == 2
+    assert ack_calls == [
+        [(0x0103, 0x00)],
+        [(0x0103, 0x00), (0x0103, 0x0C)],
+        [(0x0103, 0x0C)],
+    ]
+
+
+def test_play_ir_blob_fails_when_chunk_ack_is_missing(monkeypatch) -> None:
+    blob = _reconstruct_blob(SONY_POWER_ON_WIRE)
+    proxy = _new_proxy()
+    sent: list[tuple[int, bytes]] = []
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    ack_count = 0
+
+    def _wait_for_roku_ack_any(candidates, *, timeout=5.0, not_before=None):
+        nonlocal ack_count
+        ack_count += 1
+        if candidates == [(0x0103, 0x0C)]:
+            return None
+        return None if ack_count == 2 else (0x0103, b"\x00")
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    ok = proxy.play_ir_blob(blob, inter_frame_delay=0.0)
+
+    assert ok is False
+    assert len(sent) == 2
+
+
+def test_normalize_play_blob_keeps_descriptor_rule() -> None:
+    proxy = _new_proxy()
+
+    normalized = proxy._normalize_play_blob(_reconstruct_blob(DENON_DB_POWER_ON_WIRE)[:-1] + b"\x7b")
+
+    assert normalized == _reconstruct_blob(DENON_DB_POWER_ON_WIRE)
+
+
+def test_normalize_play_blob_x1_long_rule_matches_mode_movie_capture() -> None:
+    proxy = _new_proxy()
+    dumped = _reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)[:-1] + b"\x35"
+
+    normalized = proxy._normalize_play_blob(dumped)
+
+    assert normalized == _reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)
+
+
+def test_normalize_play_blob_x1_long_rule_matches_cblsat_capture() -> None:
+    proxy = _new_proxy()
+    dumped = _reconstruct_blob(X1_CBLSAT_APP_WIRE)[:-1] + b"\x69"
+
+    normalized = proxy._normalize_play_blob(dumped)
+
+    assert normalized == _reconstruct_blob(X1_CBLSAT_APP_WIRE)
+
+
+@pytest.mark.parametrize(
+    "dumped_blob,wire_frames",
+    [
+        (_reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)[:-1] + b"\x35", X1_MODE_MOVIE_APP_WIRE),
+        (_reconstruct_blob(X1_CBLSAT_APP_WIRE)[:-1] + b"\x69", X1_CBLSAT_APP_WIRE),
+    ],
+)
+def test_play_ir_blob_rewrites_long_x1_dump_to_app_capture(dumped_blob: bytes, wire_frames: list[bytes], monkeypatch) -> None:
+    proxy = _new_proxy()
+    sent = _capture_sends(proxy, monkeypatch)
+
+    ok = proxy.play_ir_blob(dumped_blob, inter_frame_delay=0.0)
+
+    assert ok is True
+    assert sent == _expected_frames(wire_frames)
