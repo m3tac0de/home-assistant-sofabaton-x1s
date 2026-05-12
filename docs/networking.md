@@ -18,7 +18,7 @@ sequenceDiagram
     rect rgb(240, 255, 240)
         Note over Hub, HA: Connect
         HA->>Hub: UDP 8102 (CALL_ME)
-        Hub->>HA: TCP [base .. base+31] (Connect back to Proxy)
+        Hub->>HA: TCP 8200..8231 (Connect back to Proxy)
     end
 
     rect rgb(255, 245, 230)
@@ -63,7 +63,7 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 ### Connect flow
 
 1. **CALL_ME over UDP**: Home Assistant sends a short "call me" packet to the hub's advertised UDP port (usually `8102`).
-2. **TCP connect-back**: The hub opens a TCP session back to Home Assistant on the proxy's listen port. The integration tries up to 32 sequential TCP ports starting from the configured base port, so multiple hubs can coexist without clashes.
+2. **TCP connect-back**: The hub opens a TCP session back to Home Assistant on the proxy's listen port. The integration tries up to 32 sequential TCP ports starting from the configured base port (8200 by default), so multiple hubs can coexist without clashes.
 
 ### Optional / Wifi Commands
 
@@ -164,11 +164,15 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 | Hub network   | HA host       | UDP      | 5353                 | mDNS `_x1hub._udp.local.` hub advert.         | Hub discovery by integration for X1(S)|
 | Hub network   | HA host       | UDP      | 5353                 | mDNS `_sofabaton_hub._udp.local.` hub advert. | Hub discovery by integration for X2   |
 | HA host       | Hub network   | UDP      | 8102                 | `CALL_ME` from proxy to hub                   | Hub connect flow                      |
-| Hub network   | HA host       | TCP      | base .. base+31      | Hub connects back to proxy                    | Hub control and status                |
-| Hub network   | HA host       | TCP      | 8060                 | Hub makes HTTP requests back to integration   | Wifi Commands feature                 |
+| Hub network   | HA host       | TCP      | 8200-8231*           | Hub connects back to proxy                    | Hub control and status                |
+| Hub network   | HA host       | TCP      | 8060**               | Hub makes HTTP requests back to integration   | Wifi Commands feature                 |
 | HA host       | App network   | UDP      | 5353                 | mDNS `_x1hub._udp.local.` to app              | Sofabaton Android app (blue arrow)    |
 | App network   | HA host       | UDP      | 8102                 | iOS broadcast discovery to proxy              | Sofabaton iOS app (red arrow)         |
 | HA host       | App network   | UDP      | 8100                 | iOS broadcast reply from proxy                | Sofabaton iOS app (red arrow)         |
-| App network   | HA host       | UDP      | 8102                 | `CALL_ME` from app to proxy                   | iOS and Android app                   |
+| App network   | HA host       | UDP      | 8102***              | `CALL_ME` from app to proxy                   | iOS and Android app                   |
 | HA host       | App network   | TCP      | 8100–8110            | Proxy connects back to app                    | iOS and Android app                   |
+
+* Ports can be changed in the integration's configuration.
+** Ports can be changed in the integration's configuration but doing so breaks X1 compatibility.
+*** Ports can be changed in the integration's configuration but doing so breaks iOS compatibility.
 ```
