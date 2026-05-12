@@ -1004,6 +1004,22 @@ class SofabatonHub:
             )
         )
 
+    async def async_play_ir_blob(
+        self,
+        blob: bytes,
+        *,
+        inter_frame_delay: float = 0.08,
+    ) -> bool:
+        """Stream a raw IR blob to the hub for one-shot playback (no persistence)."""
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.play_ir_blob,
+                blob,
+                inter_frame_delay=inter_frame_delay,
+            )
+        )
+
     async def async_create_wifi_device(
         self,
         device_name: str = "Home Assistant",

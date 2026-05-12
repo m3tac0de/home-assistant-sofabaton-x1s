@@ -269,6 +269,15 @@ FAMILY_FAV_DELETE = 0x10      # A→H: delete a single favorite from an activity
 FAMILY_FAV_ORDER_REQ = 0x62   # A→H: request current favorites ordering (opcode 0x0162)
 FAMILY_FAV_ORDER_RESP = 0x63  # H→A: hub returns current favorites ordering (opcode variable)
 
+# IR blob playback (mirrors app "Test" feature)
+# Sent as one or more frames in family 0x0F. Each frame's opcode_hi is the
+# payload length (so the first/middle full chunks are OP_FA0F = 250B payload,
+# and the final frame uses (remaining_len << 8) | 0x0F).
+FAMILY_PLAY_BLOB = 0x0F
+PLAY_BLOB_MAX_PAYLOAD = 0xFA          # 250B — full-chunk payload size
+PLAY_BLOB_FIRST_CHUNK_OVERHEAD = 13   # 3B preface + 10B sub-header
+PLAY_BLOB_CONT_CHUNK_OVERHEAD = 3     # 3B preface only on continuation frames
+
 
 def group_known_opcodes_by_family() -> dict[int, list[str]]:
     """Return a mapping of low-byte opcode families to names defined here."""

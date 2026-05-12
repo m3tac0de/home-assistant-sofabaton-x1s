@@ -1193,6 +1193,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _async_handle_dump_ir_commands,
             supports_response=SupportsResponse.OPTIONAL,
         )
+    if not hass.services.has_service(DOMAIN, "play_ir_blob"):
+        hass.services.async_register(DOMAIN, "play_ir_blob", _async_handle_play_ir_blob)
     if not hass.services.has_service(DOMAIN, "create_wifi_device"):
         hass.services.async_register(DOMAIN, "create_wifi_device", _async_handle_create_wifi_device)
     if not hass.services.has_service(DOMAIN, "device_to_activity"):
@@ -1255,6 +1257,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not _get_hubs(hass.data[DOMAIN]):
             hass.services.async_remove(DOMAIN, "fetch_device_commands")
             hass.services.async_remove(DOMAIN, "dump_ir_commands")
+            hass.services.async_remove(DOMAIN, "play_ir_blob")
             hass.services.async_remove(DOMAIN, "create_wifi_device")
             hass.services.async_remove(DOMAIN, "device_to_activity")
             hass.services.async_remove(DOMAIN, "delete_device")
@@ -1321,6 +1324,31 @@ async def _async_handle_dump_ir_commands(call: ServiceCall):
             f"Hub did not respond to IR dump request for device {device_id}, command {command_id}"
         )
     return result
+
+
+async def _async_handle_play_ir_blob(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_play_ir_blob")
+
+    raw_blob = call.data.get("blob")
+    if not isinstance(raw_blob, str) or not raw_blob.strip():
+        raise ValueError("blob is required and must be a hex string")
+
+    try:
+        blob_bytes = bytes.fromhex(re.sub(r"\s+", "", raw_blob))
+    except ValueError as err:
+        raise ValueError(f"blob must be valid hex: {err}") from err
+
+    if len(blob_bytes) < 11:
+        raise ValueError("blob is too short to be a valid IR command")
+
+    ok = await hub.async_play_ir_blob(blob_bytes)
+    if not ok:
+        raise HomeAssistantError("Hub is not ready to play IR blob (proxy client connected?)")
 
 
 async def _async_handle_create_wifi_device(call: ServiceCall):

@@ -87,6 +87,10 @@ from .protocol_const import (
     OP_WIFI_FW,
     FAMILY_FAV_DELETE,
     FAMILY_FAV_ORDER_REQ,
+    FAMILY_PLAY_BLOB,
+    PLAY_BLOB_MAX_PAYLOAD,
+    PLAY_BLOB_FIRST_CHUNK_OVERHEAD,
+    PLAY_BLOB_CONT_CHUNK_OVERHEAD,
     SYNC0,
     SYNC1,
 )
@@ -845,6 +849,66 @@ class X1Proxy:
             return None
 
         return self._build_ir_dump_result(pending)
+
+    def play_ir_blob(self, blob: bytes, *, inter_frame_delay: float = 0.08) -> bool:
+        """Send a raw IR blob to the hub for one-shot playback (mirrors the app's "Test").
+
+        The blob argument is the exact byte sequence returned by REQ_BLOBS for a
+        single command. Its trailing 1-byte checksum is stripped before sending.
+        Returns True on success; False if the proxy is not in a state to issue
+        commands or the blob is too short to be valid.
+        """
+
+        if not self.can_issue_commands():
+            self._log.info("[PLAY_BLOB] ignored: proxy client is connected")
+            return False
+
+        if not isinstance(blob, (bytes, bytearray)) or len(blob) < 11:
+            self._log.warning("[PLAY_BLOB] blob too short or wrong type: %r", type(blob))
+            return False
+
+        body = bytes(blob[:-1])  # strip blob's own trailing sum8 byte
+
+        # Total wire bytes after the 13B first-chunk header / 3B continuation prefaces.
+        first_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_FIRST_CHUNK_OVERHEAD  # 237
+        cont_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_CONT_CHUNK_OVERHEAD    # 247
+        body_len = len(body)
+        if body_len <= first_cap:
+            total_frames = 1
+        else:
+            extra = body_len - first_cap
+            total_frames = 1 + (extra + cont_cap - 1) // cont_cap
+
+        self._log.info(
+            "[PLAY_BLOB] sending %dB blob in %d frame(s)", body_len, total_frames,
+        )
+
+        # Frame 1: 3B preface [01 00 01] + 10B sub-header [01 00 <X> 00*7] + blob slice
+        x_byte = total_frames & 0xFF
+        offset = 0
+        first_slice = body[offset : offset + first_cap]
+        offset += len(first_slice)
+        first_payload = (
+            bytes([0x01, 0x00, 0x01, 0x01, 0x00, x_byte, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+            + first_slice
+        )
+        self._send_family_play_frame(first_payload)
+
+        # Continuation frames: 3B preface [01 00 <seq>] + blob slice
+        for seq in range(2, total_frames + 1):
+            if inter_frame_delay > 0:
+                time.sleep(inter_frame_delay)
+            cont_slice = body[offset : offset + cont_cap]
+            offset += len(cont_slice)
+            cont_payload = bytes([0x01, 0x00, seq & 0xFF]) + cont_slice
+            self._send_family_play_frame(cont_payload)
+
+        return True
+
+    def _send_family_play_frame(self, payload: bytes) -> None:
+        """Send one family-0x0F playback frame, encoding payload length into the opcode high byte."""
+        opcode = ((len(payload) & 0xFF) << 8) | (FAMILY_PLAY_BLOB & 0xFF)
+        self._send_cmd_frame(opcode, payload)
 
     def _get_active_ir_dump_pending(
         self,
