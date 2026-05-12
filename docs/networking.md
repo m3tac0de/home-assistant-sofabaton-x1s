@@ -3,55 +3,44 @@
 This integration acts as a proxy between your Sofabaton hub(s) and the official app. The network path is split in two segments so you can size firewall rules and container interfaces correctly.
 
 ```mermaid
-graph LR
-    subgraph VLAN_HUB [Hub network / VLAN]
-      Hub[Sofabaton Hub]
+%%{init: { 'theme': 'default', 'sequence': { 'messageMargin': 10, 'boxMargin': 5, 'noteMargin': 5, 'mirrorActors': false }}}%%
+sequenceDiagram
+    autonumber
+    participant Hub as Sofabaton Hub
+    participant HA as Home Assistant (Proxy)
+    participant App as Sofabaton App
+
+    rect rgb(230, 245, 255)
+        Note over Hub, HA: Discovery
+        Hub->>HA: UDP 5353 (mDNS: _x1hub._udp.local <br/> _sofabaton_hub._udp.local)
     end
 
-    subgraph VLAN_HA [Home Assistant host]
-      HA[Home Assistant<br>Sofabaton X1 proxy]
+    rect rgb(240, 255, 240)
+        Note over Hub, HA: Connect
+        HA->>Hub: UDP 8102 (CALL_ME)
+        Hub->>HA: TCP [base .. base+31] (Connect back to Proxy)
     end
 
-    subgraph VLAN_APP [App network / VLAN]
-      App[Sofabaton App]
+    rect rgb(230, 245, 255)
+        Note over HA, App: Discovery
+        HA->>App: UDP 5353 (mDNS: _x1hub._udp.local)
     end
 
-    %% Hub <-> Proxy (Segment 1)
-    Hub -->|UDP 5353<br>mDNS _x1hub._udp.local.<br>_sofabaton_hub._udp.local.| HA
-    HA -->|UDP 8102<br>CALL_ME| Hub
-    Hub -->|TCP base .. base+31<br>connect back to proxy| HA
-    Hub -->|TCP 8060<br>HTTP callbacks| HA
+    rect rgb(255, 245, 230)
+        Note over App, HA: Broadcast Discovery
+        App-->>HA: UDP 8102 (NOTIFY_ME)
+        HA-->>App: UDP 8100 (NOTIFY)
+    end
 
-    %% App discovery via mDNS
-    HA -->|UDP 5353<br>mDNS _x1hub._udp.local.| App
-
-    %% iOS specific UDP broadcast discovery
-    App -->|UDP 8102<br>broadcast iOS discovery| HA
-    HA -->|UDP 8100<br>broadcast reply to app| App
-
-    %% App connect and control
-    App -->|UDP 8102<br>CALL_ME| HA
-    HA -->|TCP 8100 .. 8110<br>connect back to app| App
-
-    %% linkStyle indexes are 0-based in order of the edges above
-    %% 0: Hub->HA mDNS
-    %% 1: HA->Hub CALL_ME
-    %% 2: Hub->HA TCP
-    %% 3: HA->App mDNS
-    %% 4: App->HA iOS broadcast
-    %% 5: HA->App iOS reply
-    %% 6: App->HA CALL_ME
-    %% 7: HA->App TCP 8100-8110
-
-    linkStyle 4 stroke:#0000ff,stroke-width:2px;
-    linkStyle 5 stroke:#ff0000,stroke-width:2px;
-    linkStyle 6 stroke:#ff0000,stroke-width:2px;
+    rect rgb(240, 255, 240)
+        Note over App, HA: Connect
+        App->>HA: UDP 8102 (CALL_ME)
+        HA->>App: TCP 8100..8110 (Connect back to App)
+    end
 ```
 
 ```markdown
-RED ARROWS : You need these for your Sofabaton iOS app
-BLUE ARROW : You need this for your Sofabaton Android app
-OTHER ARROWS : Needed for everybody
+Broadcast Discovery is optional for Android clients.
 ```
 
 ## Segment 1 – Hub ↔ Integration
