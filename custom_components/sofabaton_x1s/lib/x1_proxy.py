@@ -1021,29 +1021,111 @@ class X1Proxy:
         opcode = ((len(payload) & 0xFF) << 8) | (FAMILY_PLAY_BLOB & 0xFF)
         self._send_cmd_frame(opcode, payload)
 
+    @staticmethod
+    def _looks_like_descriptive_play_blob(blob: bytes) -> bool:
+        """Return True for human-readable protocol-descriptor replay blobs.
+
+        Observed descriptor blobs share a compact one-frame-friendly header and
+        then embed ASCII fields beginning with ``P:`` (for example ``DenonK``,
+        ``Sony12``, or ``NEC``).
+        """
+        return (
+            len(blob) >= 16
+            and blob[0:2] == b"\x00\x00"
+            and blob[4:8] == b"\x00\x00\x11\x00"
+            and blob[8:10] == b"\x94\x70"
+            and blob[10:12] == b"P:"
+        )
+
+    @staticmethod
+    def _looks_like_x1_database_capture_blob(blob: bytes) -> bool:
+        """Return True for observed non-descriptor X1/X1S database-style blobs."""
+        return (
+            len(blob) >= 16
+            and blob[0:2] == b"\x00\x00"
+            and blob[4:8] == b"\x00\x00\x00\x00"
+            and blob[8:10] in (b"\x9c\x40", b"\x94\xcf", b"\x94\x74")
+        )
+
+    @staticmethod
+    def _extract_single_frame_play_blob(payload: bytes) -> bytes | None:
+        """Extract a complete single-frame replay blob body from a family-0x0F payload.
+
+        Single-frame replay requests use the first-chunk layout:
+        ``01 00 01 01 00 <total_frames> 00 00 00 00 00 00 00`` + blob bytes.
+        For now we only decode descriptive blobs when the entire replay body is
+        present in that one frame.
+        """
+        if len(payload) < 13:
+            return None
+        if payload[0:3] != b"\x01\x00\x01":
+            return None
+        if payload[3:5] != b"\x01\x00":
+            return None
+        if payload[5] != 0x01:
+            return None
+        if payload[6:13] != b"\x00\x00\x00\x00\x00\x00\x00":
+            return None
+        blob = payload[13:]
+        return blob or None
+
+    @staticmethod
+    def _descriptive_play_blob_text(blob: bytes) -> str | None:
+        """Return the human-readable descriptor string from a descriptive blob."""
+        if not X1Proxy._looks_like_descriptive_play_blob(blob):
+            return None
+        declared_len = int.from_bytes(blob[2:4], "big")
+        if declared_len <= 0:
+            return None
+        text_end = 10 + declared_len
+        if text_end > len(blob):
+            return None
+        try:
+            return blob[10:text_end].decode("ascii").rstrip("\x00")
+        except UnicodeDecodeError:
+            return None
+
     def _normalize_play_blob(self, blob: bytes) -> bytes:
         """Normalize blob variants before replay.
 
-        Most learned/raw command blobs can be replayed exactly as dumped.
-        Some single-frame database-style blobs (observed on X1 Denon test
-        commands) embed a human-readable descriptor ending with ``CHECKSUM:``
-        text and require the final blob byte to be recomputed before the hub
-        accepts playback.
-        Some long X1 database-style blobs require a different final-byte
-        rewrite based on ``sum8(blob[:-1]) + 5``.
+        Replay blobs currently fall into two broad classes:
+        - descriptive blobs: compact ASCII protocol descriptors such as
+          ``P:DenonK ...`` / ``P:Sony12 ...`` / ``P:NEC ...``
+        - captured/database blobs: opaque timing/codeset bodies that may span
+          multiple family-0x0F frames
+
+        Most learned/raw blobs can be replayed exactly as dumped. For the
+        validated blob subfamilies below, the replay tail is rewritten before
+        playback:
+
+            tail = (sum8(blob[:-1]) + total_frames + 1) & 0xFF
+
+        Validated today on:
+        - DenonK-style descriptive blobs that contain embedded ``CHECKSUM:``
+          text fields
+        - non-descriptor X1 database-style blobs such as the observed long
+          Denon / Samsung command replays
+
+        Other descriptive subtypes (for example ``Sony12`` or ``NEC``) are now
+        recognized conceptually but are not yet normalized here until their
+        replay-tail behavior is confirmed from replay captures.
 
         """
         if len(blob) < 2:
             return blob
-        if b"CHECKSUM:" in blob:
-            checksum_byte = (sum(blob[:-1]) + 2) & 0xFF
+
+        total_frames = self._play_blob_total_frames(len(blob))
+
+        if self._looks_like_descriptive_play_blob(blob) and b"CHECKSUM:" in blob:
+            checksum_byte = (sum(blob[:-1]) + total_frames + 1) & 0xFF
             if checksum_byte == blob[-1]:
                 return blob
             normalized = blob[:-1] + bytes([checksum_byte])
             self._log.info(
-                "[PLAY_BLOB] normalized descriptor blob checksum old=0x%02X new=0x%02X",
+                "[PLAY_BLOB] normalized descriptor blob tail old=0x%02X new=0x%02X frames=%d",
                 blob[-1],
                 checksum_byte,
+                total_frames,
             )
             return normalized
 
@@ -1057,13 +1139,7 @@ class X1Proxy:
         #
         # Keep the heuristic narrow to blobs with the X1 database-style header:
         #   00 00 <declared_len_be16> 00 00 00 00 9c40|94cf ...
-        if (
-            len(blob) >= 16
-            and blob[0:2] == b"\x00\x00"
-            and blob[4:8] == b"\x00\x00\x00\x00"
-            and blob[8:10] in (b"\x9c\x40", b"\x94\xcf", b"\x94\x74")
-        ):
-            total_frames = self._play_blob_total_frames(len(blob))
+        if self._looks_like_x1_database_capture_blob(blob):
             checksum_byte = (sum(blob[:-1]) + total_frames + 1) & 0xFF
             if checksum_byte == blob[-1]:
                 return blob
@@ -5413,6 +5489,13 @@ class X1Proxy:
                     fam,
                     "" if fam_name is None else f" ({fam_name})",
                 )
+
+            if direction == "A→H" and fam == FAMILY_PLAY_BLOB:
+                blob = self._extract_single_frame_play_blob(payload)
+                if blob is not None:
+                    descriptor_text = self._descriptive_play_blob_text(blob)
+                    if descriptor_text is not None:
+                        self._log.info("[PLAY_BLOB] descriptor %s", descriptor_text)
 
             context = FrameContext(
                 proxy=self,

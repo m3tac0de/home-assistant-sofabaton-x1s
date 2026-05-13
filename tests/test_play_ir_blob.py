@@ -18,10 +18,12 @@ back ``(opcode, payload)`` — same form the proxy emits.
 
 from __future__ import annotations
 
+import logging
 import re
 
 import pytest
 
+from custom_components.sofabaton_x1s.lib.commands import build_denonk_ir_blob
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 
@@ -216,6 +218,17 @@ DENON_DB_NAV_UP_WIRE: list[bytes] = [
         37 20 43 48 45 43 4b 53 55 4d 3a 32 34 30 00 00 00 00 28 b7
     """),
 ]
+
+
+SONY12_DESCRIPTOR_BLOB = _hx("""
+    00 00 00 1f 00 00 11 00 94 70 50 3a 53 6f 6e 79 31 32 20 52 3a 34 30 30 30
+    30 20 44 3a 31 20 46 3a 31 38 20 4d 55 4c 3a 32 00 00 00 00 79
+""")
+
+NEC_DESCRIPTOR_BLOB = _hx("""
+    00 00 00 1c 00 00 11 00 94 70 50 3a 4e 45 43 20 52 3a 33 38 34 30 30 20 44
+    3a 30 20 53 3a 32 30 36 20 46 3a 31 31 00 00 00 00 56
+""")
 
 
 # X1 hub, long multi-frame Denon "Mode movie" capture from the app's test flow.
@@ -646,6 +659,59 @@ def test_normalize_play_blob_keeps_descriptor_rule() -> None:
     normalized = proxy._normalize_play_blob(_reconstruct_blob(DENON_DB_POWER_ON_WIRE)[:-1] + b"\x7b")
 
     assert normalized == _reconstruct_blob(DENON_DB_POWER_ON_WIRE)
+
+
+def test_descriptor_shape_detection_is_not_tied_to_checksum_field() -> None:
+    proxy = _new_proxy()
+
+    assert proxy._looks_like_descriptive_play_blob(_reconstruct_blob(DENON_DB_POWER_ON_WIRE)) is True
+    assert proxy._looks_like_descriptive_play_blob(SONY12_DESCRIPTOR_BLOB) is True
+    assert proxy._looks_like_descriptive_play_blob(NEC_DESCRIPTOR_BLOB) is True
+    assert proxy._looks_like_descriptive_play_blob(_reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)) is False
+
+
+def test_normalize_play_blob_leaves_unvalidated_descriptor_families_unchanged() -> None:
+    proxy = _new_proxy()
+
+    assert proxy._normalize_play_blob(SONY12_DESCRIPTOR_BLOB) == SONY12_DESCRIPTOR_BLOB
+    assert proxy._normalize_play_blob(NEC_DESCRIPTOR_BLOB) == NEC_DESCRIPTOR_BLOB
+
+
+def test_descriptive_play_blob_text_extracts_ascii_descriptor() -> None:
+    proxy = _new_proxy()
+
+    assert proxy._descriptive_play_blob_text(SONY12_DESCRIPTOR_BLOB) == "P:Sony12 R:40000 D:1 F:18 MUL:2"
+    assert proxy._descriptive_play_blob_text(NEC_DESCRIPTOR_BLOB) == "P:NEC R:38400 D:0 S:206 F:11"
+
+
+def test_extract_single_frame_play_blob_unwraps_first_chunk_payload() -> None:
+    proxy = _new_proxy()
+    payload = bytes.fromhex("01 00 01 01 00 01 00 00 00 00 00 00 00") + SONY12_DESCRIPTOR_BLOB
+
+    assert proxy._extract_single_frame_play_blob(payload) == SONY12_DESCRIPTOR_BLOB
+
+
+def test_log_frames_logs_descriptive_play_blob_from_app(caplog) -> None:
+    proxy = _new_proxy()
+    payload = bytes.fromhex("01 00 01 01 00 01 00 00 00 00 00 00 00") + SONY12_DESCRIPTOR_BLOB
+    opcode = (len(payload) << 8) | 0x0F
+    raw = bytes.fromhex("a5 5a") + opcode.to_bytes(2, "big") + payload + b"\x00"
+
+    with caplog.at_level(logging.INFO):
+        proxy._log_frames("A→H", [(opcode, raw, payload, 1, 1)])
+
+    assert "descriptor P:Sony12 R:40000 D:1 F:18 MUL:2" in caplog.text
+
+
+def test_play_ir_blob_replays_synthesized_denonk_descriptor(monkeypatch) -> None:
+    proxy = _new_proxy()
+    sent = _capture_sends(proxy, monkeypatch)
+
+    blob = build_denonk_ir_blob(device=4, subdevice=1, function=27)
+    ok = proxy.play_ir_blob(blob, inter_frame_delay=0.0)
+
+    assert ok is True
+    assert sent == _expected_frames(DENON_DB_NAV_UP_WIRE)
 
 
 def test_normalize_play_blob_x1_long_rule_matches_mode_movie_capture() -> None:

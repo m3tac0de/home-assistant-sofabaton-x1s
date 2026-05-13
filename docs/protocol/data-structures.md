@@ -415,25 +415,66 @@ Observed behavior:
   checksum/tail byte
 - the blob body itself is replayed across one or more family-`0x0F` pages
 
+### Two broad blob classes
+
+Current captures support a useful first split:
+
+1. Descriptive blobs
+2. Captured/database blobs
+
+#### Descriptive blobs
+
+These embed a human-readable ASCII protocol description inside the blob body.
+Observed examples include:
+
+```text
+P:DenonK R:37000 C0:84 C1:50 C2:0 D:4 S:1 F:5 CHECKSUM:17
+P:Sony12 R:40000 D:1 F:18 MUL:2
+P:NEC R:38400 D:0 S:206 F:11
+```
+
+Observed behavior:
+- the blob begins with a compact descriptor-style header such as:
+
+```
+00 00 <declared_len_be16> 00 00 11 00 94 70 ...
+```
+
+- the ASCII text begins with `P:` and then carries protocol-specific fields
+- different descriptive protocols expose different field sets
+- `CHECKSUM:` is **not** what makes a blob descriptive; it is just one field
+  used by some descriptor families such as `DenonK`
+
+#### Captured/database blobs
+
+These are opaque binary replay bodies rather than self-describing ASCII
+protocol records.
+
+Observed examples include:
+
+```
+00 00 <declared_len_be16> 00 00 00 00 94 cf ...
+00 00 <declared_len_be16> 00 00 00 00 9c 40 ...
+00 00 <declared_len_be16> 00 00 00 00 94 74 ...
+```
+
+Observed behavior:
+- these commonly contain pulse/codeset data rather than text
+- they may be one-frame or multi-frame replays
+- page boundaries are transport artifacts; the replay source is still the
+  assembled blob body
+
 ### Trailing-byte normalization
 
 Observed `dump_ir_blob` / replay behavior is not uniform across all blob
 families. Some dumped blobs replay successfully as-is, while others require the
 final blob byte to be rewritten before the hub accepts playback.
 
-Validated observed rules:
+Validated observed replay-tail rule so far:
 
-1. Descriptor/database blobs containing literal ASCII `CHECKSUM:` text:
-
-```
-tail = (sum8(blob[:-1]) + 2) & 0xFF
-```
-
-Observed on short one-frame database-style command blobs such as Denon
-`Power on` and `Navigate up`.
-
-2. Non-descriptor database-style replay blobs with headers such as
-`9c40`, `94cf`, or `9474`:
+1. `DenonK`-style descriptive blobs containing embedded `CHECKSUM:` text
+2. Non-descriptor X1/X1S database-style blobs with headers such as `9c40`,
+   `94cf`, or `9474`
 
 ```
 tail = (sum8(blob[:-1]) + total_frames + 1) & 0xFF
@@ -453,6 +494,12 @@ Examples validated from captures:
 - 4-frame replay blobs: `sum8 + 5`
 - 3-frame replay blobs: `sum8 + 4`
 - 1-frame replay blobs: `sum8 + 2`
+
+Important scope note:
+- not every descriptive protocol has been validated yet
+- descriptive families such as `Sony12` and `NEC` are observed, but their
+  replay-tail rewrite behavior should not be assumed without matching replay
+  captures
 
 Client guidance:
 - do not assume the trailing byte returned by a blob-dump flow is always the

@@ -1,4 +1,4 @@
-"""Helpers for assembling and parsing device-command bursts."""
+"""Helpers for assembling, parsing, and synthesizing command payloads."""
 
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -478,6 +478,87 @@ _IR_DUMP_PAGE_ONE_BLOB_PREFIXES = (
     b"\x03\x20\x00\x00",
     b"\x01\x00\x00\x00",
 )
+
+
+def _sum8(data: bytes) -> int:
+    return sum(data) & 0xFF
+
+
+def denonk_checksum(c0: int, c1: int, c2: int, d: int, s: int, f: int) -> int:
+    """Return the observed Sofabaton ``CHECKSUM:`` value for ``P:DenonK`` blobs.
+
+    The checksum is not the transport/frame checksum and is distinct from the
+    trailing replay-tail byte. It is derived from the protocol parameter nibbles
+    in the same order Sofabaton serializes them into its text descriptor.
+    """
+
+    values = (c0, c1, c2, d, s, f)
+    if any(v < 0 for v in values):
+        raise ValueError("DenonK fields must be non-negative")
+    if any(v > 0xFF for v in (c0, c1, c2, d, s)):
+        raise ValueError("DenonK C0/C1/C2/D/S fields must fit in one byte")
+    if f > 0xFFF:
+        raise ValueError("DenonK function must fit in 12 bits")
+
+    nibbles = [
+        c0 & 0x0F,
+        (c0 >> 4) & 0x0F,
+        c1 & 0x0F,
+        (c1 >> 4) & 0x0F,
+        c2 & 0x0F,
+        d & 0x0F,
+        s & 0x0F,
+        f & 0x0F,
+        (f >> 4) & 0x0F,
+        (f >> 8) & 0x0F,
+    ]
+    parity_even = nibbles[0] ^ nibbles[2] ^ nibbles[4] ^ nibbles[6] ^ nibbles[8]
+    parity_odd = nibbles[1] ^ nibbles[3] ^ nibbles[5] ^ nibbles[7] ^ nibbles[9]
+    return (((parity_odd << 4) | parity_even) ^ 0x66) & 0xFF
+
+
+def build_denonk_ir_blob(
+    *,
+    carrier_hz: int = 37000,
+    c0: int = 84,
+    c1: int = 50,
+    c2: int = 0,
+    device: int,
+    subdevice: int,
+    function: int,
+) -> bytes:
+    """Build a replay-ready ``P:DenonK`` Sofabaton descriptor blob.
+
+    This synthesizes the human-readable one-frame descriptor family observed in
+    ``dump_ir_blob`` responses. The returned bytes are the blob body expected by
+    ``play_ir_blob`` (that is: without the outer ``a5 5a`` frame header, but
+    including the replay-normalized trailing tail byte).
+
+    Note that the final byte produced here targets successful playback. It is
+    distinct from the trailing byte seen in some raw ``dump_ir_blob`` captures,
+    which Sofabaton rewrites before replay.
+    """
+
+    if carrier_hz <= 0:
+        raise ValueError("carrier_hz must be positive")
+
+    embedded_checksum = denonk_checksum(c0, c1, c2, device, subdevice, function)
+    descriptor = (
+        f"P:DenonK "
+        f"R:{carrier_hz} "
+        f"C0:{c0} C1:{c1} C2:{c2} "
+        f"D:{device} S:{subdevice} F:{function} "
+        f"CHECKSUM:{embedded_checksum}"
+    ).encode("ascii")
+
+    blob = (
+        b"\x00\x00"
+        + len(descriptor).to_bytes(2, "big")
+        + b"\x00\x00\x11\x00\x94\x70"
+        + descriptor
+        + b"\x00\x00\x00\x00"
+    )
+    return blob + bytes([(_sum8(blob) + 2) & 0xFF])
 
 
 def _page_one_uses_ascii_label_layout(payload: bytes) -> bool:
@@ -1098,6 +1179,8 @@ __all__ = [
     "DeviceButtonAssembler",
     "DeviceCommandAssembler",
     "IrCommandDumpFrame",
+    "build_denonk_ir_blob",
+    "denonk_checksum",
     "iter_command_records",
     "parse_ir_command_dump_frame",
     "parse_button_burst_frame",

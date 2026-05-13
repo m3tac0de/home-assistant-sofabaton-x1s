@@ -1,4 +1,5 @@
 import logging
+import re
 import sys
 import types
 from pathlib import Path
@@ -26,6 +27,8 @@ _ensure_stub_package("custom_components.sofabaton_x1s.lib", ROOT / "custom_compo
 from custom_components.sofabaton_x1s.lib.commands import (
     DeviceButtonAssembler,
     DeviceCommandAssembler,
+    build_denonk_ir_blob,
+    denonk_checksum,
     extract_ir_dump_blob,
     iter_command_records,
     parse_button_burst_frame,
@@ -131,6 +134,10 @@ def _build_x1_page_frame(
     frame_wo_checksum = prefix + payload
     checksum = sum(frame_wo_checksum) & 0xFF
     return frame_wo_checksum + bytes([checksum])
+
+
+def _hx(text: str) -> bytes:
+    return bytes.fromhex(re.sub(r"\s+", "", text))
 
 
 def _build_ir_dump_frame(opcode: int, payload: bytes) -> bytes:
@@ -2652,3 +2659,66 @@ a5 5a 49 5d 01 00 29 03 79 0d 00 00 00 00 2e 77 00 56 00 6f 00 6c 00 75 00 6d 00
     }
 
     assert parsed == expected
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        (dict(c0=84, c1=50, c2=0, d=4, s=1, f=5), 17),
+        (dict(c0=84, c1=50, c2=0, d=4, s=1, f=368), 86),
+        (dict(c0=84, c1=50, c2=0, d=4, s=1, f=369), 70),
+        (dict(c0=84, c1=50, c2=0, d=4, s=1, f=370), 118),
+        (dict(c0=84, c1=50, c2=0, d=4, s=1, f=720), 108),
+    ],
+)
+def test_denonk_checksum_matches_observed_samples(fields, expected) -> None:
+    assert denonk_checksum(
+        fields["c0"],
+        fields["c1"],
+        fields["c2"],
+        fields["d"],
+        fields["s"],
+        fields["f"],
+    ) == expected
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_blob"),
+    [
+        (
+            dict(device=4, subdevice=1, function=5),
+            _hx(
+                """
+                00 00 00 39 00 00 11 00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30
+                30 20 43 30 3a 38 34 20 43 31 3a 35 30 20 43 32 3a 30 20 44 3a 34 20 53 3a
+                31 20 46 3a 35 20 43 48 45 43 4b 53 55 4d 3a 31 37 00 00 00 00 87
+                """
+            ),
+        ),
+        (
+            dict(device=4, subdevice=1, function=368),
+            _hx(
+                """
+                00 00 00 3b 00 00 11 00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30
+                30 20 43 30 3a 38 34 20 43 31 3a 35 30 20 43 32 3a 30 20 44 3a 34 20 53 3a
+                31 20 46 3a 33 36 38 20 43 48 45 43 4b 53 55 4d 3a 38 36 00 00 00 00 28
+                """
+            ),
+        ),
+        (
+            dict(device=4, subdevice=1, function=369),
+            _hx(
+                """
+                00 00 00 3b 00 00 11 00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30
+                30 20 43 30 3a 38 34 20 43 31 3a 35 30 20 43 32 3a 30 20 44 3a 34 20 53 3a
+                31 20 46 3a 33 36 39 20 43 48 45 43 4b 53 55 4d 3a 37 30 00 00 00 00 83
+                """
+            ),
+        ),
+    ],
+)
+def test_build_denonk_ir_blob_matches_observed_descriptor(kwargs, expected_blob) -> None:
+    generated = build_denonk_ir_blob(**kwargs)
+
+    assert generated[:-1] == expected_blob[:-1]
+    assert generated[-1] == ((sum(generated[:-1]) + 2) & 0xFF)
