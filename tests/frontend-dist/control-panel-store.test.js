@@ -1215,6 +1215,38 @@ function selectedHub(snapshot) {
 function persistentCacheEnabled(snapshot) {
   return !!snapshot.state?.persistent_cache_enabled;
 }
+function deviceClassIcon(deviceClass) {
+  switch (String(deviceClass || "").trim().toLowerCase()) {
+    case "ir":
+      return "mdi:remote";
+    case "bluetooth":
+      return "mdi:bluetooth";
+    case "wifi_roku":
+    case "wifi_hue":
+    case "wifi_mqtt":
+    case "wifi_ip":
+      return "mdi:wifi";
+    default:
+      return "mdi:radio-tower";
+  }
+}
+function isBackendUnavailableError(error, hass) {
+  if (hass && hass.connected === false) return true;
+  if (!error) return false;
+  const candidate = error;
+  const code = String(
+    candidate.code ?? candidate.error?.code ?? ""
+  ).toLowerCase();
+  if (code === "unknown_command" || code === "not_found" || code === "connection_lost" || code === "disconnected") {
+    return true;
+  }
+  const message = String(
+    candidate.message ?? candidate.error?.message ?? (error instanceof Error ? error.message : "")
+  );
+  if (/unknown[_\s-]?command/i.test(message)) return true;
+  if (/connection.*(lost|closed)|disconnected|websocket.*closed/i.test(message)) return true;
+  return false;
+}
 function formatError(error) {
   if (!error) return "Unknown error";
   if (typeof error === "string") return error;
@@ -1299,6 +1331,8 @@ function connectionFingerprint(hass) {
 }
 
 // custom_components/sofabaton_x1s/www/src/state/control-panel-store.ts
+var BACKEND_RETRY_MIN_MS = 2e3;
+var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "cache", "logs"]);
 function viewStateStorage() {
@@ -1340,6 +1374,7 @@ var INITIAL_SNAPSHOT = {
   toolsFrontendVersionMismatch: false,
   loading: false,
   loadError: null,
+  backendUnavailable: false,
   selectedHubEntryId: null,
   selectedTab: "settings",
   openSection: "activities",
@@ -1370,9 +1405,12 @@ var ControlPanelStore = class {
     this._refreshGraceUntil = 0;
     this._logsUnsub = null;
     this._logsLoadSeq = 0;
+    this._logsSubscribeSeq = 0;
     this._lastObservedGenerations = cacheGenerationSnapshot(null);
     this._lastHassFingerprint = "";
     this._lastConnectionFingerprint = "";
+    this._backendRetryTimer = null;
+    this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
     this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
     this._snapshot = {
       ...INITIAL_SNAPSHOT,
@@ -1387,6 +1425,8 @@ var ControlPanelStore = class {
     this._isConnected = true;
     if (this._snapshot.hass && !this._snapshot.state && !this._loadingStatePromise) {
       void this.loadState();
+    } else if (this._snapshot.backendUnavailable) {
+      this._scheduleBackendRetry();
     }
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -1399,7 +1439,42 @@ var ControlPanelStore = class {
       externalHubCommandBusy: false,
       externalHubCommandLabel: null
     };
-    this.unsubscribeLogs();
+    this._clearBackendRetry();
+    void this.unsubscribeLogs();
+  }
+  _clearBackendRetry() {
+    if (this._backendRetryTimer) {
+      clearTimeout(this._backendRetryTimer);
+      this._backendRetryTimer = null;
+    }
+    this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
+  }
+  _scheduleBackendRetry() {
+    if (!this._isConnected) return;
+    if (this._backendRetryTimer) return;
+    const delay = this._backendRetryDelay;
+    this._backendRetryDelay = Math.min(BACKEND_RETRY_MAX_MS, Math.round(delay * 1.5));
+    this._backendRetryTimer = setTimeout(() => {
+      this._backendRetryTimer = null;
+      if (!this._isConnected || !this._snapshot.backendUnavailable) return;
+      void this.loadState({ silent: true });
+    }, delay);
+  }
+  _markBackendUnavailable() {
+    const wasUnavailable = this._snapshot.backendUnavailable;
+    this._snapshot = {
+      ...this._snapshot,
+      backendUnavailable: true,
+      loadError: null,
+      logsError: null
+    };
+    if (!wasUnavailable) this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
+    this._scheduleBackendRetry();
+  }
+  _clearBackendUnavailable() {
+    if (!this._snapshot.backendUnavailable) return;
+    this._snapshot = { ...this._snapshot, backendUnavailable: false };
+    this._clearBackendRetry();
   }
   setHass(hass) {
     const previousHass = this._snapshot.hass;
@@ -1445,11 +1520,12 @@ var ControlPanelStore = class {
       externalHubCommandLabel: null
     };
     this.persistViewState();
-    this.unsubscribeLogs();
     this.emit();
-    void this.loadControlPanelState().finally(() => {
-      if (this._snapshot.selectedTab === "logs") void this.syncLogsFeed();
-    });
+    void (async () => {
+      await this.unsubscribeLogs();
+      await this.loadControlPanelState();
+      if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
+    })();
   }
   selectTab(tabId) {
     const nextTab = tabId === "cache" && !persistentCacheEnabled(this._snapshot) ? "settings" : tabId;
@@ -1461,7 +1537,7 @@ var ControlPanelStore = class {
     };
     this.persistViewState();
     if (nextTab === "logs") void this.syncLogsFeed();
-    else this.unsubscribeLogs();
+    else void this.unsubscribeLogs();
     this.emit();
   }
   toggleSection(sectionId) {
@@ -1507,8 +1583,14 @@ var ControlPanelStore = class {
         this.applyControlPanelState(state);
         this._snapshot = { ...this._snapshot, contents };
         this.syncSelection();
+        this._clearBackendUnavailable();
       } catch (error) {
-        this._snapshot = { ...this._snapshot, loadError: formatError(error) };
+        if (isBackendUnavailableError(error, this._snapshot.hass)) {
+          this._markBackendUnavailable();
+        } else {
+          this._snapshot = { ...this._snapshot, loadError: formatError(error), backendUnavailable: false };
+          this._clearBackendRetry();
+        }
       } finally {
         this._loadingStatePromise = null;
         this._snapshot = { ...this._snapshot, loading: false, staleData: false };
@@ -1520,10 +1602,20 @@ var ControlPanelStore = class {
     return this._loadingStatePromise;
   }
   async loadControlPanelState() {
-    const state = await this.api().loadState();
-    this.applyControlPanelState(state);
-    this.syncSelection();
-    this.emit();
+    try {
+      const state = await this.api().loadState();
+      this.applyControlPanelState(state);
+      this.syncSelection();
+      this._clearBackendUnavailable();
+      this.emit();
+    } catch (error) {
+      if (isBackendUnavailableError(error, this._snapshot.hass)) {
+        this._markBackendUnavailable();
+        this.emit();
+        return;
+      }
+      throw error;
+    }
   }
   async loadCacheContents() {
     const contents = await this.api().loadCacheContents();
@@ -1626,7 +1718,7 @@ var ControlPanelStore = class {
   async syncLogsFeed() {
     const hub = selectedHub(this._snapshot);
     if (!this._isConnected || this._snapshot.selectedTab !== "logs" || !hub) {
-      this.unsubscribeLogs();
+      await this.unsubscribeLogs();
       return;
     }
     const entryId = hub.entry_id;
@@ -1636,22 +1728,33 @@ var ControlPanelStore = class {
       void this.loadHubLogs(entryId);
     }
     if (this._snapshot.logsSubscribedEntryId === entryId) return;
-    this.unsubscribeLogs();
+    await this.unsubscribeLogs();
+    const subscribeSeq = ++this._logsSubscribeSeq;
     this._snapshot = { ...this._snapshot, logsSubscribedEntryId: entryId };
     this.emit();
     try {
       const unsubscribe = await this.api().subscribeLogs(entryId, (payload) => {
+        if (subscribeSeq !== this._logsSubscribeSeq) return;
         if (this._snapshot.logsSubscribedEntryId !== entryId) return;
         this.handleHubLogMessage(entryId, payload);
       });
-      if (this._snapshot.logsSubscribedEntryId !== entryId) {
-        unsubscribe();
+      if (subscribeSeq !== this._logsSubscribeSeq) {
+        try {
+          unsubscribe();
+        } catch {
+        }
         return;
       }
       this._logsUnsub = unsubscribe;
       await this.loadHubLogs(entryId, { preserveLines: true });
     } catch (error) {
-      if (this._snapshot.logsSubscribedEntryId !== entryId) return;
+      if (subscribeSeq !== this._logsSubscribeSeq) return;
+      if (isBackendUnavailableError(error, this._snapshot.hass)) {
+        this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
+        this._markBackendUnavailable();
+        this.emit();
+        return;
+      }
       this._snapshot = {
         ...this._snapshot,
         logsError: formatError(error),
@@ -1687,11 +1790,16 @@ var ControlPanelStore = class {
       };
     } catch (error) {
       if (seq !== this._logsLoadSeq) return;
-      this._snapshot = {
-        ...this._snapshot,
-        logsError: formatError(error),
-        logsLoadedEntryId: entryId
-      };
+      if (isBackendUnavailableError(error, this._snapshot.hass)) {
+        this._snapshot = { ...this._snapshot, logsLoadedEntryId: entryId };
+        this._markBackendUnavailable();
+      } else {
+        this._snapshot = {
+          ...this._snapshot,
+          logsError: formatError(error),
+          logsLoadedEntryId: entryId
+        };
+      }
     } finally {
       if (seq !== this._logsLoadSeq) return;
       this._snapshot = { ...this._snapshot, logsLoading: false };
@@ -1722,10 +1830,16 @@ var ControlPanelStore = class {
     void _formatted;
     this.emit();
   }
-  unsubscribeLogs() {
-    this._logsUnsub?.();
+  async unsubscribeLogs() {
+    this._logsSubscribeSeq++;
+    const unsub = this._logsUnsub;
     this._logsUnsub = null;
     this._snapshot = { ...this._snapshot, logsSubscribedEntryId: null };
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+    }
   }
   applyControlPanelState(state) {
     const expectedVersion = normalizeExpectedFrontendVersion(state?.tools_frontend_version);
@@ -2186,4 +2300,14 @@ test("refreshForHub uses entity_id when a matching remote entity exists", async 
   assert.equal(messages.length, 1);
   assert.equal(messages[0].entity_id, "remote.living_room");
   assert.equal(messages[0].entry_id, void 0);
+});
+test("deviceClassIcon maps known cache device classes to the expected icons", () => {
+  assert.equal(deviceClassIcon("ir"), "mdi:remote");
+  assert.equal(deviceClassIcon("bluetooth"), "mdi:bluetooth");
+  assert.equal(deviceClassIcon("wifi_roku"), "mdi:wifi");
+  assert.equal(deviceClassIcon("wifi_hue"), "mdi:wifi");
+  assert.equal(deviceClassIcon("wifi_mqtt"), "mdi:wifi");
+  assert.equal(deviceClassIcon("wifi_ip"), "mdi:wifi");
+  assert.equal(deviceClassIcon("something_else"), "mdi:radio-tower");
+  assert.equal(deviceClassIcon(void 0), "mdi:radio-tower");
 });

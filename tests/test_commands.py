@@ -2720,5 +2720,4 @@ def test_denonk_checksum_matches_observed_samples(fields, expected) -> None:
 def test_build_denonk_ir_blob_matches_observed_descriptor(kwargs, expected_blob) -> None:
     generated = build_denonk_ir_blob(**kwargs)
 
-    assert generated[:-1] == expected_blob[:-1]
-    assert generated[-1] == ((sum(generated[:-1]) + 2) & 0xFF)
+    assert generated == expected_blob[:-1]

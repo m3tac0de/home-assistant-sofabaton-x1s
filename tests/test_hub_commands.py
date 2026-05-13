@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import custom_components.sofabaton_x1s.hub as hub_module
 from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
+from custom_components.sofabaton_x1s.lib.commands import build_descriptive_ir_blob_body
 
 
 class FakeHass:
@@ -104,6 +105,73 @@ def test_activity_fetch_clears_inflight_after_favorite_labels(monkeypatch):
     hub.activities_ready = True
     hub.devices_ready = True
     assert hub.get_index_state() == "ready"
+
+    loop.close()
+
+
+def test_async_fetch_blob_normalizes_tail_and_descriptor(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub._proxy.state.devices[11] = {"device_class": "IR"}
+    blob_body = build_descriptive_ir_blob_body("P:Sony12 R:40000 D:1 F:18 MUL:2")
+    replay_tail = (sum(blob_body) + 2) & 0xFF
+
+    async def _dump_ir_commands(*, device_id: int, command_id: int | None = None, wait_timeout: float = 10.0):
+        return {
+            "device_id": device_id,
+            "requested_command_id": command_id,
+            "total_commands": 1,
+            "received_command_count": 1,
+            "complete": True,
+            "commands": [
+                {
+                    "command_id": 18,
+                    "device_id": device_id,
+                    "label": "Input",
+                    "ir_blob_hex": (blob_body + bytes([replay_tail])).hex(" "),
+                }
+            ],
+        }
+
+    monkeypatch.setattr(hub, "async_dump_ir_commands", _dump_ir_commands)
+
+    result = loop.run_until_complete(hub.async_fetch_blob(device_id=11))
+
+    assert result == {
+        "device_id": 11,
+        "requested_command_id": None,
+        "total_commands": 1,
+        "received_command_count": 1,
+        "complete": True,
+        "commands": [
+            {
+                "command_label": "Input",
+                "device_id": 11,
+                "command_id": 18,
+                "device_class": "IR",
+                "blob_kind": "descriptive",
+                "command_blob": blob_body.hex(" "),
+                "parsed_blob": "P:Sony12 R:40000 D:1 F:18 MUL:2",
+                "replay_tail_checksum": replay_tail,
+                "command_checksum": replay_tail,
+            }
+        ],
+    }
 
     loop.close()
 

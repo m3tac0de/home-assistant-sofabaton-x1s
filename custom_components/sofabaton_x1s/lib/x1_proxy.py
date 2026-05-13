@@ -18,8 +18,10 @@ from .frame_handlers import FrameContext, frame_handler_registry
 from .commands import (
     DeviceButtonAssembler,
     DeviceCommandAssembler,
+    descriptive_play_blob_text,
     extract_ir_dump_blob,
     extract_ir_dump_label_field,
+    looks_like_descriptive_play_blob,
     parse_button_burst_frame,
     parse_command_burst_frame,
     parse_ir_command_dump_frame,
@@ -894,10 +896,11 @@ class X1Proxy:
         ack_timeout: float = 1.0,
         final_ack_timeout: float = 0.25,
     ) -> bool:
-        """Send a raw IR blob to the hub for one-shot playback (mirrors the app's "Test").
+        """Send a canonical IR blob body to the hub for one-shot playback.
 
-        The blob argument is the exact byte sequence returned by REQ_BLOBS for a
-        single command and is replayed as-is.
+        ``blob`` must be the replay body without the final replay-tail checksum
+        byte. This is the canonical form returned by ``fetch_blob`` and also
+        the body form synthesized from descriptive descriptors.
         Returns True on success; False if the proxy is not in a state to issue
         commands or the blob is too short to be valid.
         """
@@ -906,14 +909,14 @@ class X1Proxy:
             self._log.info("[PLAY_BLOB] ignored: proxy client is connected")
             return False
 
-        if not isinstance(blob, (bytes, bytearray)) or len(blob) < 11:
+        if not isinstance(blob, (bytes, bytearray)) or len(blob) < 10:
             self._log.warning("[PLAY_BLOB] blob too short or wrong type: %r", type(blob))
             return False
 
-        source_blob = bytes(blob)
-        body = self._normalize_play_blob(source_blob)
+        blob_body = bytes(blob)
+        payload = self._finalize_play_blob_body(blob_body)
         ok, rejected = self._play_ir_blob_body(
-            body,
+            payload,
             inter_frame_delay=inter_frame_delay,
             ack_timeout=ack_timeout,
             final_ack_timeout=final_ack_timeout,
@@ -924,19 +927,19 @@ class X1Proxy:
 
     def _play_ir_blob_body(
         self,
-        body: bytes,
+        payload: bytes,
         *,
         inter_frame_delay: float,
         ack_timeout: float,
         final_ack_timeout: float,
     ) -> tuple[bool, bool]:
-        """Play one normalized blob body.
+        """Play one finalized blob payload (including replay-tail checksum).
 
         Returns ``(ok, rejected)`` where ``rejected`` is true only when the hub
         explicitly NACKs playback with ``0x0103/0x0C``.
         """
 
-        body_len = len(body)
+        body_len = len(payload)
         total_frames = self._play_blob_total_frames(body_len)
         # Total wire bytes after the 13B first-chunk header / 3B continuation prefaces.
         first_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_FIRST_CHUNK_OVERHEAD  # 237
@@ -953,7 +956,7 @@ class X1Proxy:
         # Frame 1: 3B preface [01 00 01] + 10B sub-header [01 00 <X> 00*7] + blob slice
         x_byte = total_frames & 0xFF
         offset = 0
-        first_slice = body[offset : offset + first_cap]
+        first_slice = payload[offset : offset + first_cap]
         offset += len(first_slice)
         first_payload = (
             bytes([0x01, 0x00, 0x01, 0x01, 0x00, x_byte, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
@@ -972,7 +975,7 @@ class X1Proxy:
             self._log.warning(
                 "[PLAY_BLOB] chunk rejected seq=1/%d %s",
                 total_frames,
-                self._play_blob_tail_diagnostics(body),
+                self._play_blob_tail_diagnostics(payload),
             )
             return False, True
 
@@ -980,7 +983,7 @@ class X1Proxy:
         for seq in range(2, total_frames + 1):
             if inter_frame_delay > 0:
                 time.sleep(inter_frame_delay)
-            cont_slice = body[offset : offset + cont_cap]
+            cont_slice = payload[offset : offset + cont_cap]
             offset += len(cont_slice)
             cont_payload = bytes([0x01, 0x00, seq & 0xFF]) + cont_slice
             send_ts = time.monotonic()
@@ -1001,7 +1004,7 @@ class X1Proxy:
                     "[PLAY_BLOB] chunk rejected seq=%d/%d %s",
                     seq,
                     total_frames,
-                    self._play_blob_tail_diagnostics(body),
+                    self._play_blob_tail_diagnostics(payload),
                 )
                 return False, True
 
@@ -1016,7 +1019,7 @@ class X1Proxy:
         if completion_ack is not None:
             self._log.warning(
                 "[PLAY_BLOB] hub reported playback failure after final chunk %s",
-                self._play_blob_tail_diagnostics(body),
+                self._play_blob_tail_diagnostics(payload),
             )
             return False, True
 
@@ -1029,19 +1032,8 @@ class X1Proxy:
 
     @staticmethod
     def _looks_like_descriptive_play_blob(blob: bytes) -> bool:
-        """Return True for human-readable protocol-descriptor replay blobs.
-
-        Observed descriptor blobs share a compact one-frame-friendly header and
-        then embed ASCII fields beginning with ``P:`` (for example ``DenonK``,
-        ``Sony12``, or ``NEC``).
-        """
-        return (
-            len(blob) >= 16
-            and blob[0:2] == b"\x00\x00"
-            and blob[4:8] == b"\x00\x00\x11\x00"
-            and blob[8:10] == b"\x94\x70"
-            and blob[10:12] == b"P:"
-        )
+        """Return True for human-readable protocol-descriptor replay blobs."""
+        return looks_like_descriptive_play_blob(blob)
 
     @staticmethod
     def _looks_like_x1_database_capture_blob(blob: bytes) -> bool:
@@ -1078,87 +1070,14 @@ class X1Proxy:
     @staticmethod
     def _descriptive_play_blob_text(blob: bytes) -> str | None:
         """Return the human-readable descriptor string from a descriptive blob."""
-        if not X1Proxy._looks_like_descriptive_play_blob(blob):
-            return None
-        declared_len = int.from_bytes(blob[2:4], "big")
-        if declared_len <= 0:
-            return None
-        text_end = 10 + declared_len
-        if text_end > len(blob):
-            return None
-        try:
-            return blob[10:text_end].decode("ascii").rstrip("\x00")
-        except UnicodeDecodeError:
-            return None
+        return descriptive_play_blob_text(blob)
 
-    def _normalize_play_blob(self, blob: bytes) -> bytes:
-        """Normalize blob variants before replay.
+    def _finalize_play_blob_body(self, blob_body: bytes) -> bytes:
+        """Append the replay-tail checksum to a canonical blob body."""
 
-        Replay blobs currently fall into two broad classes:
-        - descriptive blobs: compact ASCII protocol descriptors such as
-          ``P:DenonK ...`` / ``P:Sony12 ...`` / ``P:NEC ...``
-        - captured/database blobs: opaque timing/codeset bodies that may span
-          multiple family-0x0F frames
-
-        Most learned/raw blobs can be replayed exactly as dumped. For the
-        validated blob subfamilies below, the replay tail is rewritten before
-        playback:
-
-            tail = (sum8(blob[:-1]) + total_frames + 1) & 0xFF
-
-        Validated today on:
-        - DenonK-style descriptive blobs that contain embedded ``CHECKSUM:``
-          text fields
-        - non-descriptor X1 database-style blobs such as the observed long
-          Denon / Samsung command replays
-
-        Other descriptive subtypes (for example ``Sony12`` or ``NEC``) are now
-        recognized conceptually but are not yet normalized here until their
-        replay-tail behavior is confirmed from replay captures.
-
-        """
-        if len(blob) < 2:
-            return blob
-
-        total_frames = self._play_blob_total_frames(len(blob))
-
-        if self._looks_like_descriptive_play_blob(blob) and b"CHECKSUM:" in blob:
-            checksum_byte = (sum(blob[:-1]) + total_frames + 1) & 0xFF
-            if checksum_byte == blob[-1]:
-                return blob
-            normalized = blob[:-1] + bytes([checksum_byte])
-            self._log.info(
-                "[PLAY_BLOB] normalized descriptor blob tail old=0x%02X new=0x%02X frames=%d",
-                blob[-1],
-                checksum_byte,
-                total_frames,
-            )
-            return normalized
-
-        # Observed on non-descriptor X1 database-style blobs. The trailing blob
-        # byte is derived from the body sum plus an offset tied to the number
-        # of family-0x0F frames used to replay the blob.
-        #
-        # Validated on:
-        # - long multi-frame X1 blobs such as Denon "Mode movie", "8", CBL/SAT
-        # - short single-frame X1 blobs such as "OK", "volume up", "volume down"
-        #
-        # Keep the heuristic narrow to blobs with the X1 database-style header:
-        #   00 00 <declared_len_be16> 00 00 00 00 9c40|94cf ...
-        if self._looks_like_x1_database_capture_blob(blob):
-            checksum_byte = (sum(blob[:-1]) + total_frames + 1) & 0xFF
-            if checksum_byte == blob[-1]:
-                return blob
-            normalized = blob[:-1] + bytes([checksum_byte])
-            self._log.info(
-                "[PLAY_BLOB] normalized X1 long blob tail old=0x%02X new=0x%02X frames=%d",
-                blob[-1],
-                checksum_byte,
-                total_frames,
-            )
-            return normalized
-
-        return blob
+        total_frames = self._play_blob_total_frames(len(blob_body))
+        checksum_byte = (sum(blob_body) + total_frames + 1) & 0xFF
+        return blob_body + bytes([checksum_byte])
 
     def _play_blob_total_frames(self, body_len: int) -> int:
         """Return the number of family-0x0F frames needed for a blob body."""

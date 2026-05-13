@@ -1,6 +1,7 @@
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { ControlPanelStore } from "../../custom_components/sofabaton_x1s/www/src/state/control-panel-store";
+import { deviceClassIcon } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import type { HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
@@ -438,4 +439,15 @@ test("refreshForHub uses entity_id when a matching remote entity exists", async 
   assert.equal(messages.length, 1);
   assert.equal(messages[0].entity_id, "remote.living_room");
   assert.equal(messages[0].entry_id, undefined);
+});
+
+test("deviceClassIcon maps known cache device classes to the expected icons", () => {
+  assert.equal(deviceClassIcon("ir"), "mdi:remote");
+  assert.equal(deviceClassIcon("bluetooth"), "mdi:bluetooth");
+  assert.equal(deviceClassIcon("wifi_roku"), "mdi:wifi");
+  assert.equal(deviceClassIcon("wifi_hue"), "mdi:wifi");
+  assert.equal(deviceClassIcon("wifi_mqtt"), "mdi:wifi");
+  assert.equal(deviceClassIcon("wifi_ip"), "mdi:wifi");
+  assert.equal(deviceClassIcon("something_else"), "mdi:radio-tower");
+  assert.equal(deviceClassIcon(undefined), "mdi:radio-tower");
 });

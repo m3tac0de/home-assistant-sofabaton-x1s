@@ -45,6 +45,7 @@ from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_log
 from .logging_utils import get_hub_logger
 from .cache_store import PersistentCacheStore
 from .lib.protocol_const import ButtonName
+from .lib.commands import descriptive_play_blob_text, looks_like_descriptive_play_blob, split_play_blob_tail
 from .lib.x1_proxy import X1Proxy
 from .command_config import (
     COMMAND_BRAND_PREFIX,
@@ -838,6 +839,25 @@ class SofabatonHub:
 
         return None
 
+    def _get_cached_device_class(self, device_id: int) -> str | None:
+        dev_lo = device_id & 0xFF
+        device = self.devices.get(dev_lo)
+        if isinstance(device, dict):
+            device_class = str(device.get("device_class") or "").strip()
+            if device_class:
+                return device_class
+
+        for source in (self._proxy.state.devices, self._proxy.state.ip_devices):
+            if not isinstance(source, dict):
+                continue
+            cached_device = source.get(dev_lo)
+            if isinstance(cached_device, dict):
+                device_class = str(cached_device.get("device_class") or "").strip()
+                if device_class:
+                    return device_class
+
+        return None
+
     def _build_cache_activity_list(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         favorites = self._build_cache_activity_favorites()
         macros_raw = data.get("activity_macros", {})
@@ -1027,6 +1047,64 @@ class SofabatonHub:
                 timeout=wait_timeout,
             )
         )
+
+    async def async_fetch_blob(
+        self,
+        device_id: int,
+        command_id: int | None = None,
+        *,
+        wait_timeout: float = 10.0,
+    ) -> dict[str, Any] | None:
+        """Fetch normalized command blobs suitable for ``play_ir_blob`` input."""
+
+        result = await self.async_dump_ir_commands(
+            device_id=device_id,
+            command_id=command_id,
+            wait_timeout=wait_timeout,
+        )
+        if result is None:
+            return None
+
+        commands_out: list[dict[str, Any]] = []
+        for command in result.get("commands", []):
+            blob_hex = str(command.get("ir_blob_hex") or "").strip()
+            blob_bytes = bytes.fromhex(blob_hex) if blob_hex else b""
+            blob_body = b""
+            replay_tail_checksum: int | None = None
+            blob_kind = "raw"
+            parsed_blob: str | None = None
+
+            if blob_bytes:
+                blob_body, replay_tail_checksum = split_play_blob_tail(blob_bytes)
+                if looks_like_descriptive_play_blob(blob_body):
+                    blob_kind = "descriptive"
+                    parsed_blob = descriptive_play_blob_text(blob_body)
+
+            command_device_id = command.get("device_id")
+            normalized_device_id = int(command_device_id) if command_device_id is not None else device_id
+
+            commands_out.append(
+                {
+                    "command_label": command.get("label"),
+                    "device_id": normalized_device_id,
+                    "command_id": command.get("command_id"),
+                    "device_class": self._get_cached_device_class(normalized_device_id),
+                    "blob_kind": blob_kind,
+                    "command_blob": blob_body.hex(" ") if blob_body else None,
+                    "parsed_blob": parsed_blob,
+                    "replay_tail_checksum": replay_tail_checksum,
+                    "command_checksum": replay_tail_checksum,
+                }
+            )
+
+        return {
+            "device_id": result.get("device_id"),
+            "requested_command_id": result.get("requested_command_id"),
+            "total_commands": result.get("total_commands"),
+            "received_command_count": result.get("received_command_count"),
+            "complete": result.get("complete"),
+            "commands": commands_out,
+        }
 
     async def async_play_ir_blob(
         self,

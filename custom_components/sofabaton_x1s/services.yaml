@@ -19,7 +19,7 @@ fetch_device_commands:
 
 play_ir_blob:
   name: Play IR blob (Test)
-  description: Streams a raw IR command blob to the hub for one-shot playback, mirroring the official app's Test feature. The blob is the exact byte sequence returned by dump_ir_commands for a single command. No data is persisted on the hub.
+  description: Streams a canonical command blob body to the hub for one-shot playback, mirroring the official app's Test feature. Accepts either a raw blob body without the final replay-tail checksum byte or a descriptive protocol string such as P:Sony12 R:40000 D:1 F:18 MUL:2. No data is persisted on the hub.
   fields:
     device:
       name: Sofabaton hub
@@ -28,12 +28,41 @@ play_ir_blob:
         device:
           integration: sofabaton_x1s
     blob:
-      name: Blob (hex)
-      description: Hex string of the IR command blob. Whitespace and newlines are ignored.
+      name: Blob or descriptor
+      description: Hex string of the canonical blob body without the final replay-tail checksum byte, or a descriptive protocol string beginning with P:. Whitespace and newlines are ignored for hex input.
       required: true
       selector:
         text:
           multiline: true
+
+fetch_blob:
+  name: Fetch normalized blob
+  description: Requests 0x020C [device_id, command_id] and returns normalized command blob records. Each record includes the canonical blob body without the final replay-tail checksum byte, the removed checksum byte for debugging, and parsed descriptor text when the blob is descriptive.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    device_id:
+      name: Device id
+      description: Hub device id to fetch via 0x020C [device_id, command_id].
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    command_id:
+      name: Command id
+      description: Optional item id to probe via 0x020C [device_id, command_id]. Omit to request all records with ff.
+      required: false
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
 
 dump_ir_commands:
   name: Dump raw IR commands

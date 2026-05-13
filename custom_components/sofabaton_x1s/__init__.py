@@ -56,6 +56,7 @@ from .command_config import (
     wifi_device_requires_listener,
 )
 from .cache_store import PersistentCacheStore
+from .lib.commands import build_descriptive_ir_blob_body
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
@@ -1193,6 +1194,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _async_handle_dump_ir_commands,
             supports_response=SupportsResponse.OPTIONAL,
         )
+    if not hass.services.has_service(DOMAIN, "fetch_blob"):
+        hass.services.async_register(
+            DOMAIN,
+            "fetch_blob",
+            _async_handle_fetch_blob,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
     if not hass.services.has_service(DOMAIN, "play_ir_blob"):
         hass.services.async_register(DOMAIN, "play_ir_blob", _async_handle_play_ir_blob)
     if not hass.services.has_service(DOMAIN, "create_wifi_device"):
@@ -1257,6 +1265,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if not _get_hubs(hass.data[DOMAIN]):
             hass.services.async_remove(DOMAIN, "fetch_device_commands")
             hass.services.async_remove(DOMAIN, "dump_ir_commands")
+            hass.services.async_remove(DOMAIN, "fetch_blob")
             hass.services.async_remove(DOMAIN, "play_ir_blob")
             hass.services.async_remove(DOMAIN, "create_wifi_device")
             hass.services.async_remove(DOMAIN, "device_to_activity")
@@ -1326,6 +1335,35 @@ async def _async_handle_dump_ir_commands(call: ServiceCall):
     return result
 
 
+async def _async_handle_fetch_blob(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_fetch_blob")
+
+    device_id = int(call.data["device_id"])
+    if device_id < 1 or device_id > 255:
+        raise ValueError("device_id must be between 1 and 255")
+
+    raw_command_id = call.data.get("command_id")
+    command_id: int | None = None
+    if raw_command_id is not None:
+        command_id = int(raw_command_id)
+        if command_id < 1 or command_id > 255:
+            raise ValueError("command_id must be between 1 and 255")
+
+    result = await hub.async_fetch_blob(device_id=device_id, command_id=command_id)
+    if result is None:
+        if command_id is None:
+            raise ValueError(f"Hub did not respond to blob fetch request for device {device_id}")
+        raise ValueError(
+            f"Hub did not respond to blob fetch request for device {device_id}, command {command_id}"
+        )
+    return result
+
+
 async def _async_handle_play_ir_blob(call: ServiceCall):
     hass = call.hass
     hub = await _async_resolve_hub_from_call(hass, call)
@@ -1336,14 +1374,21 @@ async def _async_handle_play_ir_blob(call: ServiceCall):
 
     raw_blob = call.data.get("blob")
     if not isinstance(raw_blob, str) or not raw_blob.strip():
-        raise ValueError("blob is required and must be a hex string")
+        raise ValueError("blob is required and must be a hex string or descriptor string")
 
-    try:
-        blob_bytes = bytes.fromhex(re.sub(r"\s+", "", raw_blob))
-    except ValueError as err:
-        raise ValueError(f"blob must be valid hex: {err}") from err
+    blob_text = raw_blob.strip()
+    if blob_text.startswith("P:"):
+        try:
+            blob_bytes = build_descriptive_ir_blob_body(blob_text)
+        except ValueError as err:
+            raise ValueError(f"blob descriptor is invalid: {err}") from err
+    else:
+        try:
+            blob_bytes = bytes.fromhex(re.sub(r"\s+", "", raw_blob))
+        except ValueError as err:
+            raise ValueError(f"blob must be valid hex: {err}") from err
 
-    if len(blob_bytes) < 11:
+    if len(blob_bytes) < 10:
         raise ValueError("blob is too short to be a valid IR command")
 
     ok = await hub.async_play_ir_blob(blob_bytes)

@@ -73,6 +73,22 @@ export function hubDevices(hub: CacheHubState | null) {
   return sortByName(hub?.devices_list ?? []);
 }
 
+export function deviceClassIcon(deviceClass?: string | null) {
+  switch (String(deviceClass || "").trim().toLowerCase()) {
+    case "ir":
+      return "mdi:remote";
+    case "bluetooth":
+      return "mdi:bluetooth";
+    case "wifi_roku":
+    case "wifi_hue":
+    case "wifi_mqtt":
+    case "wifi_ip":
+      return "mdi:wifi";
+    default:
+      return "mdi:radio-tower";
+  }
+}
+
 export function activityFavorites(hub: CacheHubState | null, activityId: number) {
   const rows = hub?.activity_favorites?.[String(activityId)] ?? [];
   return sortById(rows);

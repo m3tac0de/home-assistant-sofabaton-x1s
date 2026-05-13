@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 import importlib
+from custom_components.sofabaton_x1s.lib.commands import build_descriptive_ir_blob_body
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
 
@@ -133,6 +134,36 @@ class _FakeHub:
         }
         self.calls.append(payload)
         return payload
+
+    async def async_fetch_blob(
+        self,
+        *,
+        device_id: int,
+        command_id: int | None = None,
+        wait_timeout: float = 10.0,
+    ):
+        payload = {
+            "device_id": device_id,
+            "requested_command_id": command_id,
+            "wait_timeout": wait_timeout,
+            "commands": [],
+            "complete": False,
+        }
+        self.calls.append(payload)
+        return payload
+
+    async def async_play_ir_blob(
+        self,
+        blob: bytes,
+        *,
+        inter_frame_delay: float = 0.08,
+    ):
+        payload = {
+            "blob": blob,
+            "inter_frame_delay": inter_frame_delay,
+        }
+        self.calls.append(payload)
+        return True
 
     async def async_request_favorites_order(self, activity_id: int):
         self.calls.append({"activity_id": activity_id, "kind": "request_favorites_order"})
@@ -566,6 +597,103 @@ def test_dump_ir_commands_accepts_single_command_probe(monkeypatch) -> None:
         "complete": False,
     }
     assert hub.calls[-1] == result
+
+
+def test_fetch_blob_validates_device_id(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    with pytest.raises(ValueError, match="device_id must be between 1 and 255"):
+        asyncio.run(
+            integration._async_handle_fetch_blob(
+                _FakeCall({"device_id": 0})
+            )
+        )
+
+
+def test_fetch_blob_validates_command_id(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    with pytest.raises(ValueError, match="command_id must be between 1 and 255"):
+        asyncio.run(
+            integration._async_handle_fetch_blob(
+                _FakeCall({"device_id": 11, "command_id": 0})
+            )
+        )
+
+
+def test_fetch_blob_returns_action_payload(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    result = asyncio.run(
+        integration._async_handle_fetch_blob(
+            _FakeCall({"device_id": 11})
+        )
+    )
+
+    assert result == {
+        "device_id": 11,
+        "requested_command_id": None,
+        "wait_timeout": 10.0,
+        "commands": [],
+        "complete": False,
+    }
+    assert hub.calls[-1] == result
+
+
+def test_play_ir_blob_accepts_hex_blob_body(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+
+    result = asyncio.run(
+        integration._async_handle_play_ir_blob(
+            _FakeCall({"blob": "00 00 00 1f 00 00 11 00 94 70 50 3a 53 6f 6e 79 31 32 20 52 3a 34 30 30 30 30 20 44 3a 31 20 46 3a 31 38 20 4d 55 4c 3a 32 00 00 00 00"})
+        )
+    )
+
+    assert result is None
+    assert hub.calls[-1]["blob"] == bytes.fromhex(
+        "00 00 00 1f 00 00 11 00 94 70 50 3a 53 6f 6e 79 31 32 20 52 3a 34 30 30 30 30 20 44 3a 31 20 46 3a 31 38 20 4d 55 4c 3a 32 00 00 00 00"
+    )
+
+
+def test_play_ir_blob_accepts_descriptor_string(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+    monkeypatch.setattr(integration, "_raise_if_sync_in_progress", lambda *args, **kwargs: None)
+
+    descriptor = "P:Sony12 R:40000 D:1 F:18 MUL:2"
+    result = asyncio.run(
+        integration._async_handle_play_ir_blob(
+            _FakeCall({"blob": descriptor})
+        )
+    )
+
+    assert result is None
+    assert hub.calls[-1]["blob"] == build_descriptive_ir_blob_body(descriptor)
 
 
 def test_get_favorites_returns_explicit_fav_ids(monkeypatch) -> None:

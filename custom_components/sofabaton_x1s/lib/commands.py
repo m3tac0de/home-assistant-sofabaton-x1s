@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Iterator, List, Tuple
+import re
+from typing import Any, Dict, Iterable, Iterator, List, Tuple
 
 from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 from .protocol_const import (
@@ -484,6 +485,107 @@ def _sum8(data: bytes) -> int:
     return sum(data) & 0xFF
 
 
+def looks_like_descriptive_play_blob(blob: bytes) -> bool:
+    """Return True for human-readable protocol-descriptor replay blobs."""
+
+    return (
+        len(blob) >= 16
+        and blob[0:2] == b"\x00\x00"
+        and blob[4:8] == b"\x00\x00\x11\x00"
+        and blob[8:10] == b"\x94\x70"
+        and blob[10:12] == b"P:"
+    )
+
+
+def descriptive_play_blob_text(blob: bytes) -> str | None:
+    """Return the human-readable descriptor text from a descriptive blob body."""
+
+    if not looks_like_descriptive_play_blob(blob):
+        return None
+    declared_len = int.from_bytes(blob[2:4], "big")
+    if declared_len <= 0:
+        return None
+    text_end = 10 + declared_len
+    if text_end > len(blob):
+        return None
+    try:
+        return blob[10:text_end].decode("ascii").rstrip("\x00")
+    except UnicodeDecodeError:
+        return None
+
+
+def split_play_blob_tail(blob: bytes) -> tuple[bytes, int]:
+    """Return ``(blob_body, replay_tail_checksum)`` for a stored replay blob."""
+
+    if not isinstance(blob, (bytes, bytearray)) or len(blob) < 2:
+        raise ValueError("blob is too short to contain a replay-tail checksum")
+    data = bytes(blob)
+    return data[:-1], data[-1]
+
+
+def _parse_descriptor_fields(descriptor: str) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for token in descriptor.split():
+        if ":" not in token:
+            continue
+        key, value = token.split(":", 1)
+        if key:
+            fields[key] = value
+    return fields
+
+
+def _canonicalize_denonk_descriptor(descriptor: str) -> str:
+    fields = _parse_descriptor_fields(descriptor)
+    if fields.get("P") != "DenonK":
+        return descriptor
+    if "CHECKSUM" in fields:
+        return descriptor
+
+    missing = [key for key in ("R", "C0", "C1", "C2", "D", "S", "F") if key not in fields]
+    if missing:
+        raise ValueError(f"DenonK descriptor is missing required field(s): {', '.join(missing)}")
+
+    try:
+        carrier_hz = int(fields["R"], 10)
+        c0 = int(fields["C0"], 10)
+        c1 = int(fields["C1"], 10)
+        c2 = int(fields["C2"], 10)
+        device = int(fields["D"], 10)
+        subdevice = int(fields["S"], 10)
+        function = int(fields["F"], 10)
+    except ValueError as err:
+        raise ValueError(f"DenonK descriptor fields must be decimal integers: {err}") from err
+
+    checksum = denonk_checksum(c0, c1, c2, device, subdevice, function)
+    return (
+        f"P:DenonK "
+        f"R:{carrier_hz} "
+        f"C0:{c0} C1:{c1} C2:{c2} "
+        f"D:{device} S:{subdevice} F:{function} "
+        f"CHECKSUM:{checksum}"
+    )
+
+
+def build_descriptive_ir_blob_body(descriptor: str) -> bytes:
+    """Build a descriptive replay-blob body without the final replay-tail byte."""
+
+    text = re.sub(r"\s+", " ", str(descriptor or "").strip())
+    if not text:
+        raise ValueError("descriptor text is required")
+    if not text.startswith("P:"):
+        raise ValueError("descriptor text must start with 'P:'")
+
+    text = _canonicalize_denonk_descriptor(text)
+    descriptor_bytes = text.encode("ascii")
+    return (
+        b"\x00\x00"
+        + len(descriptor_bytes).to_bytes(2, "big")
+        + b"\x00\x00\x11\x00\x94\x70"
+        + descriptor_bytes
+        + b"\x00\x00\x00\x00"
+    )
+
+
 def denonk_checksum(c0: int, c1: int, c2: int, d: int, s: int, f: int) -> int:
     """Return the observed Sofabaton ``CHECKSUM:`` value for ``P:DenonK`` blobs.
 
@@ -527,16 +629,12 @@ def build_denonk_ir_blob(
     subdevice: int,
     function: int,
 ) -> bytes:
-    """Build a replay-ready ``P:DenonK`` Sofabaton descriptor blob.
+    """Build a canonical ``P:DenonK`` Sofabaton descriptor blob body.
 
     This synthesizes the human-readable one-frame descriptor family observed in
-    ``dump_ir_blob`` responses. The returned bytes are the blob body expected by
-    ``play_ir_blob`` (that is: without the outer ``a5 5a`` frame header, but
-    including the replay-normalized trailing tail byte).
-
-    Note that the final byte produced here targets successful playback. It is
-    distinct from the trailing byte seen in some raw ``dump_ir_blob`` captures,
-    which Sofabaton rewrites before replay.
+    ``dump_ir_blob`` responses. The returned bytes are the canonical replay
+    body expected by ``play_ir_blob``: no outer ``a5 5a`` frame header and no
+    final replay-tail checksum byte.
     """
 
     if carrier_hz <= 0:
@@ -549,16 +647,8 @@ def build_denonk_ir_blob(
         f"C0:{c0} C1:{c1} C2:{c2} "
         f"D:{device} S:{subdevice} F:{function} "
         f"CHECKSUM:{embedded_checksum}"
-    ).encode("ascii")
-
-    blob = (
-        b"\x00\x00"
-        + len(descriptor).to_bytes(2, "big")
-        + b"\x00\x00\x11\x00\x94\x70"
-        + descriptor
-        + b"\x00\x00\x00\x00"
     )
-    return blob + bytes([(_sum8(blob) + 2) & 0xFF])
+    return build_descriptive_ir_blob_body(descriptor)
 
 
 def _page_one_uses_ascii_label_layout(payload: bytes) -> bool:
@@ -1179,10 +1269,14 @@ __all__ = [
     "DeviceButtonAssembler",
     "DeviceCommandAssembler",
     "IrCommandDumpFrame",
+    "build_descriptive_ir_blob_body",
     "build_denonk_ir_blob",
+    "descriptive_play_blob_text",
     "denonk_checksum",
     "iter_command_records",
+    "looks_like_descriptive_play_blob",
     "parse_ir_command_dump_frame",
     "parse_button_burst_frame",
     "parse_command_burst_frame",
+    "split_play_blob_tail",
 ]

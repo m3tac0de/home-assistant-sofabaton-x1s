@@ -403,6 +403,12 @@ def _reconstruct_blob(frames: list[bytes]) -> bytes:
     return b"".join(parts)
 
 
+def _canonical_blob_body(frames: list[bytes]) -> bytes:
+    """Return the canonical blob body expected by ``play_ir_blob``."""
+
+    return _reconstruct_blob(frames)[:-1]
+
+
 def _expected_frames(frames: list[bytes]) -> list[tuple[int, bytes]]:
     return [_split_frame(w) for w in frames]
 
@@ -443,7 +449,7 @@ CAPTURES = {
 def test_play_ir_blob_matches_capture(name: str, monkeypatch) -> None:
     wire_frames = CAPTURES[name]
     expected = _expected_frames(wire_frames)
-    blob = _reconstruct_blob(wire_frames)
+    blob = _canonical_blob_body(wire_frames)
 
     proxy = _new_proxy()
     sent = _capture_sends(proxy, monkeypatch)
@@ -470,7 +476,7 @@ def test_play_ir_blob_matches_capture(name: str, monkeypatch) -> None:
     ],
 )
 def test_subheader_x_equals_frame_count(name: str, expected_x: int, monkeypatch) -> None:
-    blob = _reconstruct_blob(CAPTURES[name])
+    blob = _canonical_blob_body(CAPTURES[name])
     proxy = _new_proxy()
     sent = _capture_sends(proxy, monkeypatch)
 
@@ -490,7 +496,7 @@ def test_subheader_x_equals_frame_count(name: str, expected_x: int, monkeypatch)
 
 @pytest.mark.parametrize("name", list(CAPTURES.keys()))
 def test_chunk_sequence_and_family(name: str, monkeypatch) -> None:
-    blob = _reconstruct_blob(CAPTURES[name])
+    blob = _canonical_blob_body(CAPTURES[name])
     proxy = _new_proxy()
     sent = _capture_sends(proxy, monkeypatch)
 
@@ -535,7 +541,7 @@ def test_play_ir_blob_rejects_invalid_input(bad_input, monkeypatch) -> None:
 
 
 def test_play_ir_blob_waits_for_per_chunk_ack(monkeypatch) -> None:
-    blob = _reconstruct_blob(DENON_MULTI_WIRE)
+    blob = _canonical_blob_body(DENON_MULTI_WIRE)
     proxy = _new_proxy()
     sent: list[tuple[int, bytes]] = []
     ack_calls: list[list[tuple[int, int | None]]] = []
@@ -562,7 +568,7 @@ def test_play_ir_blob_waits_for_per_chunk_ack(monkeypatch) -> None:
 
 
 def test_play_ir_blob_rejects_failure_ack_on_final_chunk(monkeypatch) -> None:
-    blob = _reconstruct_blob(SONY_POWER_ON_WIRE)
+    blob = _canonical_blob_body(SONY_POWER_ON_WIRE)
     proxy = _new_proxy()
     sent: list[tuple[int, bytes]] = []
     ack_calls: list[list[tuple[int, int | None]]] = []
@@ -591,7 +597,7 @@ def test_play_ir_blob_rejects_failure_ack_on_final_chunk(monkeypatch) -> None:
 
 
 def test_play_ir_blob_rejects_late_failure_ack_after_final_success(monkeypatch) -> None:
-    blob = _reconstruct_blob(SONY_POWER_ON_WIRE)
+    blob = _canonical_blob_body(SONY_POWER_ON_WIRE)
     proxy = _new_proxy()
     sent: list[tuple[int, bytes]] = []
     ack_calls: list[list[tuple[int, int | None]]] = []
@@ -629,7 +635,7 @@ def test_play_ir_blob_rejects_late_failure_ack_after_final_success(monkeypatch) 
 
 
 def test_play_ir_blob_fails_when_chunk_ack_is_missing(monkeypatch) -> None:
-    blob = _reconstruct_blob(SONY_POWER_ON_WIRE)
+    blob = _canonical_blob_body(SONY_POWER_ON_WIRE)
     proxy = _new_proxy()
     sent: list[tuple[int, bytes]] = []
 
@@ -653,12 +659,12 @@ def test_play_ir_blob_fails_when_chunk_ack_is_missing(monkeypatch) -> None:
     assert len(sent) == 2
 
 
-def test_normalize_play_blob_keeps_descriptor_rule() -> None:
+def test_finalize_play_blob_body_keeps_descriptor_rule() -> None:
     proxy = _new_proxy()
 
-    normalized = proxy._normalize_play_blob(_reconstruct_blob(DENON_DB_POWER_ON_WIRE)[:-1] + b"\x7b")
+    finalized = proxy._finalize_play_blob_body(_canonical_blob_body(DENON_DB_POWER_ON_WIRE))
 
-    assert normalized == _reconstruct_blob(DENON_DB_POWER_ON_WIRE)
+    assert finalized == _reconstruct_blob(DENON_DB_POWER_ON_WIRE)
 
 
 def test_descriptor_shape_detection_is_not_tied_to_checksum_field() -> None:
@@ -670,11 +676,14 @@ def test_descriptor_shape_detection_is_not_tied_to_checksum_field() -> None:
     assert proxy._looks_like_descriptive_play_blob(_reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)) is False
 
 
-def test_normalize_play_blob_leaves_unvalidated_descriptor_families_unchanged() -> None:
+def test_finalize_play_blob_body_uses_general_tail_rule_for_descriptors() -> None:
     proxy = _new_proxy()
 
-    assert proxy._normalize_play_blob(SONY12_DESCRIPTOR_BLOB) == SONY12_DESCRIPTOR_BLOB
-    assert proxy._normalize_play_blob(NEC_DESCRIPTOR_BLOB) == NEC_DESCRIPTOR_BLOB
+    sony_body = SONY12_DESCRIPTOR_BLOB[:-1]
+    nec_body = NEC_DESCRIPTOR_BLOB[:-1]
+
+    assert proxy._finalize_play_blob_body(sony_body) == sony_body + bytes([(sum(sony_body) + 2) & 0xFF])
+    assert proxy._finalize_play_blob_body(nec_body) == nec_body + bytes([(sum(nec_body) + 2) & 0xFF])
 
 
 def test_descriptive_play_blob_text_extracts_ascii_descriptor() -> None:
@@ -714,22 +723,22 @@ def test_play_ir_blob_replays_synthesized_denonk_descriptor(monkeypatch) -> None
     assert sent == _expected_frames(DENON_DB_NAV_UP_WIRE)
 
 
-def test_normalize_play_blob_x1_long_rule_matches_mode_movie_capture() -> None:
+def test_finalize_play_blob_body_x1_long_rule_matches_mode_movie_capture() -> None:
     proxy = _new_proxy()
-    dumped = _reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)[:-1] + b"\x35"
+    dumped = _reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)[:-1]
 
-    normalized = proxy._normalize_play_blob(dumped)
+    finalized = proxy._finalize_play_blob_body(dumped)
 
-    assert normalized == _reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)
+    assert finalized == _reconstruct_blob(X1_MODE_MOVIE_APP_WIRE)
 
 
-def test_normalize_play_blob_x1_long_rule_matches_cblsat_capture() -> None:
+def test_finalize_play_blob_body_x1_long_rule_matches_cblsat_capture() -> None:
     proxy = _new_proxy()
-    dumped = _reconstruct_blob(X1_CBLSAT_APP_WIRE)[:-1] + b"\x69"
+    dumped = _reconstruct_blob(X1_CBLSAT_APP_WIRE)[:-1]
 
-    normalized = proxy._normalize_play_blob(dumped)
+    finalized = proxy._finalize_play_blob_body(dumped)
 
-    assert normalized == _reconstruct_blob(X1_CBLSAT_APP_WIRE)
+    assert finalized == _reconstruct_blob(X1_CBLSAT_APP_WIRE)
 
 
 @pytest.mark.parametrize(
@@ -743,7 +752,7 @@ def test_normalize_play_blob_x1_long_rule_matches_cblsat_capture() -> None:
 def test_normalize_play_blob_x1_singleframe_rule_matches_capture(dumped_blob: bytes, wire_frames: list[bytes]) -> None:
     proxy = _new_proxy()
 
-    normalized = proxy._normalize_play_blob(dumped_blob)
+    normalized = proxy._finalize_play_blob_body(dumped_blob[:-1])
 
     assert normalized == _reconstruct_blob(wire_frames)
 
@@ -759,7 +768,7 @@ def test_play_ir_blob_rewrites_long_x1_dump_to_app_capture(dumped_blob: bytes, w
     proxy = _new_proxy()
     sent = _capture_sends(proxy, monkeypatch)
 
-    ok = proxy.play_ir_blob(dumped_blob, inter_frame_delay=0.0)
+    ok = proxy.play_ir_blob(dumped_blob[:-1], inter_frame_delay=0.0)
 
     assert ok is True
     assert sent == _expected_frames(wire_frames)
