@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Any, Dict
 
 # Frame markers used by the hub protocol
 SYNC0, SYNC1 = 0xA5, 0x5A
@@ -295,6 +295,67 @@ FAMILY_NAMES: Dict[int, str] = {
 }
 
 
+DEVICE_CLASS_IR = "ir"
+DEVICE_CLASS_BLUETOOTH = "bluetooth"
+DEVICE_CLASS_WIFI_HUE = "wifi_hue"
+DEVICE_CLASS_WIFI_ROKU = "wifi_roku"
+DEVICE_CLASS_WIFI_IP = "wifi_ip"
+DEVICE_CLASS_WIFI_MQTT = "wifi_mqtt"
+
+DEVICE_CLASS_CODE_BLUETOOTH = 0x03
+DEVICE_CLASS_CODE_WIFI_ROKU = 0x0A
+DEVICE_CLASS_CODE_IR = 0x0D
+DEVICE_CLASS_CODE_WIFI_HUE = 0x1A
+DEVICE_CLASS_CODE_WIFI_IP = 0x1C
+DEVICE_CLASS_CODE_WIFI_MQTT = 0x20
+
+DEVICE_CLASS_BY_CODE: Dict[int, str] = {
+    DEVICE_CLASS_CODE_BLUETOOTH: DEVICE_CLASS_BLUETOOTH,
+    DEVICE_CLASS_CODE_WIFI_ROKU: DEVICE_CLASS_WIFI_ROKU,
+    DEVICE_CLASS_CODE_IR: DEVICE_CLASS_IR,
+    DEVICE_CLASS_CODE_WIFI_HUE: DEVICE_CLASS_WIFI_HUE,
+    DEVICE_CLASS_CODE_WIFI_IP: DEVICE_CLASS_WIFI_IP,
+    DEVICE_CLASS_CODE_WIFI_MQTT: DEVICE_CLASS_WIFI_MQTT,
+}
+
+DEVICE_CLASS_ALIASES: Dict[str, str] = {
+    "bt": DEVICE_CLASS_BLUETOOTH,
+    "bluetooth": DEVICE_CLASS_BLUETOOTH,
+    "device_type_bluetooth": DEVICE_CLASS_BLUETOOTH,
+    "hue": DEVICE_CLASS_WIFI_HUE,
+    "ip": DEVICE_CLASS_WIFI_IP,
+    "ir": DEVICE_CLASS_IR,
+    "roku": DEVICE_CLASS_WIFI_ROKU,
+    "mqtt": DEVICE_CLASS_WIFI_MQTT,
+    "virtual_http": DEVICE_CLASS_WIFI_IP,
+    "wifi/hue": DEVICE_CLASS_WIFI_HUE,
+    "wifi/ip": DEVICE_CLASS_WIFI_IP,
+    "wifi/mqtt": DEVICE_CLASS_WIFI_MQTT,
+    "wifi/roku": DEVICE_CLASS_WIFI_ROKU,
+    "wifi_hue": DEVICE_CLASS_WIFI_HUE,
+    "wifi_ip": DEVICE_CLASS_WIFI_IP,
+    "wifi_mqtt": DEVICE_CLASS_WIFI_MQTT,
+    "wifi_roku": DEVICE_CLASS_WIFI_ROKU,
+}
+
+
+def classify_device_class_code(device_class_code: Any) -> str | None:
+    """Map an observed device-class code to a stable normalized string."""
+
+    try:
+        code = int(device_class_code) & 0xFF
+    except (TypeError, ValueError):
+        return None
+    return DEVICE_CLASS_BY_CODE.get(code)
+
+
+def normalize_device_class(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    return DEVICE_CLASS_ALIASES.get(text, text)
+
+
 def opcode_family_name(opcode: int) -> str | None:
     """Return a human-friendly name for an opcode family, if known."""
 
@@ -320,6 +381,22 @@ __all__ = [
     "SYNC1",
     "ButtonName",
     "BUTTONNAME_BY_CODE",
+    "DEVICE_CLASS_IR",
+    "DEVICE_CLASS_BLUETOOTH",
+    "DEVICE_CLASS_WIFI_HUE",
+    "DEVICE_CLASS_WIFI_ROKU",
+    "DEVICE_CLASS_WIFI_IP",
+    "DEVICE_CLASS_WIFI_MQTT",
+    "DEVICE_CLASS_CODE_BLUETOOTH",
+    "DEVICE_CLASS_CODE_WIFI_ROKU",
+    "DEVICE_CLASS_CODE_IR",
+    "DEVICE_CLASS_CODE_WIFI_HUE",
+    "DEVICE_CLASS_CODE_WIFI_IP",
+    "DEVICE_CLASS_CODE_WIFI_MQTT",
+    "DEVICE_CLASS_BY_CODE",
+    "DEVICE_CLASS_ALIASES",
+    "classify_device_class_code",
+    "normalize_device_class",
     "OP_REQ_BANNER",
     "OP_REQ_DEVICES",
     "OP_REQ_ACTIVITIES",

@@ -75,6 +75,7 @@ from .protocol_const import (
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
     OP_KEYMAP_EXTRA,
+    classify_device_class_code,
     opcode_family,
 )
 if TYPE_CHECKING:
@@ -639,6 +640,8 @@ class CatalogDeviceHandler(BaseFrameHandler):
         row_idx = payload[0] if len(payload) >= 1 else None
         expected_rows = payload[3] if len(payload) >= 4 and payload[3] > 0 else None
         dev_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
+        device_class_code = payload[10] if len(payload) > 10 else None
+        device_class = classify_device_class_code(device_class_code)
         name_bytes_raw = raw[36 : 36 + 60]
         device_label = name_bytes_raw.decode("utf-16be").strip("\x00")
         brand_bytes_raw = raw[96 : 96 + 60]
@@ -649,17 +652,24 @@ class CatalogDeviceHandler(BaseFrameHandler):
                 row_idx=row_idx,
                 expected_rows=expected_rows,
                 dev_id=dev_id,
-                device={"brand": brand_label, "name": device_label},
+                device={
+                    "brand": brand_label,
+                    "name": device_label,
+                    "device_class": device_class,
+                    "device_class_code": device_class_code,
+                },
             )
             if not accepted:
                 return
             proxy._burst.start("devices", now=now)
             proxy._log.info(
-                "[DEV] #%s/%s id=0x%04X (%d) brand='%s' name='%s'",
+                "[DEV] #%s/%s id=0x%04X (%d) class=%s/0x%02X brand='%s' name='%s'",
                 row_idx,
                 expected_rows if expected_rows is not None else "?",
                 dev_id,
                 dev_id,
+                device_class or "?",
+                device_class_code or 0,
                 brand_label,
                 device_label,
             )
@@ -681,6 +691,8 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
         row_idx = payload[0] if payload else None
         expected_rows = payload[3] if len(payload) >= 4 and payload[3] > 0 else None
         dev_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
+        device_class_code = payload[10] if len(payload) > 10 else None
+        device_class = classify_device_class_code(device_class_code)
 
         name_bytes = payload[32:62]
         device_label = name_bytes.split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
@@ -693,17 +705,24 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
                 row_idx=row_idx,
                 expected_rows=expected_rows,
                 dev_id=dev_id,
-                device={"brand": brand_label, "name": device_label},
+                device={
+                    "brand": brand_label,
+                    "name": device_label,
+                    "device_class": device_class,
+                    "device_class_code": device_class_code,
+                },
             )
             if not accepted:
                 return
             proxy._burst.start("devices", now=now)
             proxy._log.info(
-                "[DEV] #%s/%s id=0x%04X (%d) brand='%s' name='%s'",
+                "[DEV] #%s/%s id=0x%04X (%d) class=%s/0x%02X brand='%s' name='%s'",
                 row_idx,
                 expected_rows if expected_rows is not None else "?",
                 dev_id,
                 dev_id,
+                device_class or "?",
+                device_class_code or 0,
                 brand_label,
                 device_label,
             )

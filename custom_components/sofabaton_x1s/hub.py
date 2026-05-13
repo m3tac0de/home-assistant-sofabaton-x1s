@@ -913,6 +913,15 @@ class SofabatonHub:
         ip_devices_raw = data.get("ip_devices", {})
         commands_raw = data.get("commands", {})
 
+        def _device_meta_for(device_id: int) -> dict[str, Any]:
+            for source in (devices_raw, ip_devices_raw):
+                if not isinstance(source, dict):
+                    continue
+                meta = source.get(str(device_id))
+                if isinstance(meta, dict):
+                    return meta
+            return {}
+
         device_ids: set[int] = set()
         for raw_map in (devices_raw, ip_devices_raw, commands_raw):
             if not isinstance(raw_map, dict):
@@ -926,14 +935,18 @@ class SofabatonHub:
         devices_list: list[dict[str, Any]] = []
         for device_id in sorted(dev_id for dev_id in device_ids if 1 <= dev_id <= 255):
             commands = commands_raw.get(str(device_id), {})
-            devices_list.append(
-                {
-                    "id": device_id,
-                    "name": self._get_cached_device_name(device_id) or f"Device {device_id}",
-                    "command_count": len(commands) if isinstance(commands, dict) else 0,
-                    "has_commands": bool(commands) if isinstance(commands, dict) else False,
-                }
-            )
+            device_meta = _device_meta_for(device_id)
+            row = {
+                "id": device_id,
+                "name": self._get_cached_device_name(device_id) or f"Device {device_id}",
+                "command_count": len(commands) if isinstance(commands, dict) else 0,
+                "has_commands": bool(commands) if isinstance(commands, dict) else False,
+            }
+            if device_meta.get("device_class") is not None:
+                row["device_class"] = device_meta.get("device_class")
+            if device_meta.get("device_class_code") is not None:
+                row["device_class_code"] = device_meta.get("device_class_code")
+            devices_list.append(row)
 
         return devices_list
 

@@ -5,7 +5,70 @@ from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Optional
 
 from .commands import iter_command_records
-from .protocol_const import BUTTONNAME_BY_CODE
+from .protocol_const import (
+    BUTTONNAME_BY_CODE,
+    DEVICE_CLASS_WIFI_IP,
+    classify_device_class_code,
+    normalize_device_class,
+)
+
+
+def normalize_device_entry(
+    device: dict[str, Any] | None,
+    *,
+    default_class: str | None = None,
+    default_class_code: int | None = None,
+) -> dict[str, Any]:
+    """Return a cache-safe device row with normalized type metadata."""
+
+    source = dict(device) if isinstance(device, dict) else {}
+
+    brand = str(source.get("brand") or source.get("brand_name") or "").strip()
+    name = str(source.get("name") or source.get("device_name") or source.get("label") or "").strip()
+    device_class = normalize_device_class(
+        source.get("device_class", source.get("device_type"))
+    )
+
+    raw_class_code = source.get("device_class_code", source.get("device_type_code"))
+    try:
+        device_class_code = int(raw_class_code) & 0xFF
+    except (TypeError, ValueError):
+        device_class_code = None
+
+    if device_class_code is None and default_class_code is not None:
+        device_class_code = int(default_class_code) & 0xFF
+
+    if device_class is None and default_class is not None:
+        device_class = normalize_device_class(default_class)
+
+    if device_class is None and device_class_code is not None:
+        device_class = classify_device_class_code(device_class_code)
+
+    if brand:
+        source["brand"] = brand
+    else:
+        source.pop("brand", None)
+
+    if name:
+        source["name"] = name
+    else:
+        source.pop("name", None)
+
+    if device_class is not None:
+        source["device_class"] = device_class
+    else:
+        source.pop("device_class", None)
+
+    if device_class_code is not None:
+        source["device_class_code"] = device_class_code
+    else:
+        source.pop("device_class_code", None)
+
+    # Strip the temporary field names so exported cache only emits the new schema.
+    source.pop("device_type", None)
+    source.pop("device_type_code", None)
+
+    return source
 
 class ActivityCache:
     def __init__(self) -> None:
@@ -374,7 +437,15 @@ class ActivityCache:
         button_name: str | None = None,
     ) -> None:
         brand = "Virtual HTTP"
-        self.devices[device_id & 0xFF] = {"brand": brand, "name": name}
+        self.devices[device_id & 0xFF] = normalize_device_entry(
+            {
+                **(self.devices.get(device_id & 0xFF, {})),
+                "brand": brand,
+                "name": name,
+            },
+            default_class=DEVICE_CLASS_WIFI_IP,
+            default_class_code=0x1C,
+        )
         if button_id is not None:
             self.buttons.setdefault(device_id & 0xFF, set()).add(button_id)
         meta: Dict[str, Any] = {

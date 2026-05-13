@@ -134,8 +134,14 @@ def test_try_finish_devices_burst_ends_burst_once_snapshot_is_complete() -> None
     assert finished is True
     assert proxy._burst.active is False
     assert proxy.state.devices == {
-        0x01: {"brand": "Denon", "name": "AVR"},
-        0x02: {"brand": "Sony", "name": "TV"},
+        0x01: {
+            "brand": "Denon",
+            "name": "AVR",
+        },
+        0x02: {
+            "brand": "Sony",
+            "name": "TV",
+        },
     }
 
 
@@ -151,6 +157,61 @@ def test_ghost_device_row_is_ignored_without_request_in_flight() -> None:
 
     assert accepted is False
     assert proxy.state.devices == {}
+
+
+def test_import_cache_state_normalizes_legacy_and_current_device_class_metadata() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy.import_cache_state(
+        {
+            "devices": {
+                "7": {
+                    "brand": "m3tac0de",
+                    "name": "Living Room Roku",
+                    "device_type_code": "10",
+                    "device_type": "wifi_roku",
+                }
+            }
+        }
+    )
+
+    assert proxy.state.devices == {
+        0x07: {
+            "brand": "m3tac0de",
+            "name": "Living Room Roku",
+            "device_class": "wifi_roku",
+            "device_class_code": 0x0A,
+        }
+    }
+    assert proxy.export_cache_state()["devices"]["7"] == {
+        "brand": "m3tac0de",
+        "name": "Living Room Roku",
+        "device_class": "wifi_roku",
+        "device_class_code": 0x0A,
+    }
+
+
+def test_import_cache_state_normalizes_mqtt_device_class_code() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy.import_cache_state(
+        {
+            "devices": {
+                "2": {
+                    "name": "Home Assistant",
+                    "device_class_code": 0x20,
+                }
+            }
+        }
+    )
+
+    assert proxy.state.devices == {
+        0x02: {
+            "name": "Home Assistant",
+            "device_class": "wifi_mqtt",
+            "device_class_code": 0x20,
+        }
+    }
 
 
 def test_try_finish_activity_map_burst_ends_matching_burst() -> None:
@@ -675,6 +736,7 @@ def test_create_wifi_device_replays_sequence(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         ack_waits.append(candidates)
         first_opcode = candidates[0][0]
@@ -688,7 +750,12 @@ def test_create_wifi_device_replays_sequence(monkeypatch) -> None:
     result = proxy.create_wifi_device(commands=["Launch One"])
 
     assert result == {"device_id": 0x07, "status": "success"}
-    assert proxy.state.devices[0x07] == {"brand": "m3tac0de", "name": "Home Assistant"}
+    assert proxy.state.devices[0x07] == {
+        "brand": "m3tac0de",
+        "name": "Home Assistant",
+        "device_class": "wifi_roku",
+        "device_class_code": 0x0A,
+    }
     assert sent
     # first frame is the create-device head family
     assert (sent[0][0] & 0xFF) == 0x07
@@ -715,7 +782,7 @@ def test_create_wifi_device_can_assign_power_on_and_power_off_commands(monkeypat
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
 
     sent: list[tuple[int, bytes]] = []
@@ -756,7 +823,7 @@ def test_create_wifi_device_can_mix_assigned_and_cleared_power_commands(monkeypa
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
 
     sent: list[tuple[int, bytes]] = []
@@ -787,7 +854,7 @@ def test_create_wifi_device_skips_second_stage_when_power_is_unset(monkeypatch) 
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
 
     sent: list[tuple[int, bytes]] = []
@@ -812,6 +879,7 @@ def test_create_wifi_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         first_opcode = candidates[0][0]
         return first_opcode, b"\x00"
@@ -825,7 +893,12 @@ def test_create_wifi_device_uses_custom_name_brand_and_ip(monkeypatch) -> None:
     result = proxy.create_wifi_device(device_name="Living Room Roku", commands=["My Cmd"])
 
     assert result == {"device_id": 0x07, "status": "success"}
-    assert proxy.state.devices[0x07] == {"brand": "m3tac0de", "name": "Living Room Roku"}
+    assert proxy.state.devices[0x07] == {
+        "brand": "m3tac0de",
+        "name": "Living Room Roku",
+        "device_class": "wifi_roku",
+        "device_class_code": 0x0A,
+    }
     create_payload = sent[0][1]
     finalize_payload = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x08)
 
@@ -868,6 +941,7 @@ def test_create_wifi_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         first_opcode = candidates[0][0]
         return first_opcode, b"\x00"
@@ -881,7 +955,12 @@ def test_create_wifi_device_x1s_uses_utf16_name_fields(monkeypatch) -> None:
     result = proxy.create_wifi_device(device_name="Living Room Roku", commands=["My Cmd"], request_port=8765)
 
     assert result == {"device_id": 0x09, "status": "success"}
-    assert proxy.state.devices[0x09] == {"brand": "m3tac0de", "name": "Living Room Roku"}
+    assert proxy.state.devices[0x09] == {
+        "brand": "m3tac0de",
+        "name": "Living Room Roku",
+        "device_class": "wifi_ip",
+        "device_class_code": 0x1C,
+    }
     create_payload = sent[0][1]
     define_payload = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x0E)
     finalize_payload = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x08)
@@ -936,6 +1015,7 @@ def test_create_wifi_device_x1s_accepts_command_definitions_with_press_type(monk
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         first_opcode = candidates[0][0]
         return first_opcode, b"\x00"
@@ -1635,6 +1715,7 @@ def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         first_opcode = candidates[0][0]
         return first_opcode, b"\x00"
@@ -1647,7 +1728,12 @@ def test_create_wifi_device_uses_custom_app_commands(monkeypatch) -> None:
     result = proxy.create_wifi_device(commands=["Lights On", "Lights Off"])
 
     assert result == {"device_id": 0x07, "status": "success"}
-    assert proxy.state.devices[0x07] == {"brand": "m3tac0de", "name": "Home Assistant"}
+    assert proxy.state.devices[0x07] == {
+        "brand": "m3tac0de",
+        "name": "Home Assistant",
+        "device_class": "wifi_roku",
+        "device_class_code": 0x0A,
+    }
     define_payloads = [payload for opcode, payload in sent if (opcode & 0xFF) == 0x0E]
 
     assert len(define_payloads) == 2
@@ -1680,6 +1766,7 @@ def test_create_wifi_device_without_custom_commands_defines_no_slots(monkeypatch
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         first_opcode = candidates[0][0]
         return first_opcode, b"\x00"
@@ -1692,7 +1779,12 @@ def test_create_wifi_device_without_custom_commands_defines_no_slots(monkeypatch
     result = proxy.create_wifi_device()
 
     assert result == {"device_id": 0x07, "status": "success"}
-    assert proxy.state.devices[0x07] == {"brand": "m3tac0de", "name": "Home Assistant"}
+    assert proxy.state.devices[0x07] == {
+        "brand": "m3tac0de",
+        "name": "Home Assistant",
+        "device_class": "wifi_roku",
+        "device_class_code": 0x0A,
+    }
     define_slots = [payload[0] for opcode, payload in sent if (opcode & 0xFF) == 0x0E]
     assert define_slots == []
 

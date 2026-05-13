@@ -309,8 +309,8 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
     keybinding_button_id = 0xB7
 
     hub.activities[act_id] = {"name": "Movies", "active": True}
-    hub.devices[dev_id] = {"name": "Denon"}
-    hub._proxy.state.devices[dev_id] = {"name": "Denon"}
+    hub.devices[dev_id] = {"name": "Denon", "device_class": "ir", "device_class_code": 0x0D}
+    hub._proxy.state.devices[dev_id] = {"name": "Denon", "device_class": "ir", "device_class_code": 0x0D}
     hub._proxy.state.commands[dev_id] = {0x06: "Power", 0x07: "Volume Up"}
     hub._proxy.state.activity_favorite_slots[act_id] = [
         {"button_id": 0x01, "device_id": dev_id, "command_id": 0x06, "source": "activity_map"}
@@ -354,6 +354,8 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
         {
             "id": dev_id,
             "name": "Denon",
+            "device_class": "ir",
+            "device_class_code": 0x0D,
             "command_count": 2,
             "has_commands": True,
         }

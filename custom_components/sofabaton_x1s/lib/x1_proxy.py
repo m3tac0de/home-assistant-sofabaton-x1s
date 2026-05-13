@@ -29,6 +29,8 @@ from .macros import MacroAssembler, parse_macro_burst_frame
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
+    DEVICE_CLASS_WIFI_IP,
+    DEVICE_CLASS_WIFI_ROKU,
     OPNAMES,
     opcode_family,
     opcode_family_name,
@@ -96,7 +98,11 @@ from .protocol_const import (
     SYNC0,
     SYNC1,
 )
-from .state_helpers import ActivityCache, BurstScheduler
+from .state_helpers import (
+    ActivityCache,
+    BurstScheduler,
+    normalize_device_entry,
+)
 from .transport_bridge import TransportBridge
 
 # ============================================================================
@@ -1593,7 +1599,9 @@ class X1Proxy:
 
         devices = data.get("devices", {})
         self.state.devices = {
-            int(k) & 0xFF: dict(v) for k, v in devices.items() if isinstance(v, dict)
+            int(k) & 0xFF: normalize_device_entry(v)
+            for k, v in devices.items()
+            if isinstance(v, dict)
         }
 
         buttons = data.get("buttons", {})
@@ -2030,8 +2038,7 @@ class X1Proxy:
 
         self._device_pending_rows[row_idx] = {
             "id": dev_id & 0xFF,
-            "brand": str(device.get("brand", "")),
-            "name": str(device.get("name", "")),
+            **normalize_device_entry(device),
         }
         return True
 
@@ -2040,10 +2047,14 @@ class X1Proxy:
         committed: dict[int, dict[str, Any]] = {}
         for _row_idx, row in ordered_rows:
             dev_id = int(row["id"]) & 0xFF
-            committed[dev_id] = {
-                "brand": row["brand"],
-                "name": row["name"],
-            }
+            committed[dev_id] = normalize_device_entry(
+                {
+                    "brand": row.get("brand"),
+                    "name": row.get("name"),
+                    "device_class": row.get("device_class"),
+                    "device_class_code": row.get("device_class_code"),
+                }
+            )
         self.state.devices = committed
 
     def _on_devices_burst_end(self, key: str) -> None:
@@ -3957,9 +3968,21 @@ class X1Proxy:
         return result
 
 
-    def _cache_created_wifi_device(self, *, device_id: int, device_name: str, brand_name: str) -> None:
+    def _cache_created_wifi_device(
+        self,
+        *,
+        device_id: int,
+        device_name: str,
+        brand_name: str,
+        device_class: str,
+        device_class_code: int,
+    ) -> None:
         dev_lo = device_id & 0xFF
-        self.state.devices[dev_lo] = {"brand": brand_name, "name": device_name}
+        self.state.devices[dev_lo] = normalize_device_entry(
+            {"brand": brand_name, "name": device_name},
+            default_class=device_class,
+            default_class_code=device_class_code,
+        )
 
     def _build_wifi_power_config_payload(
         self,
@@ -4746,6 +4769,8 @@ class X1Proxy:
             device_id=device_id,
             device_name=device_name,
             brand_name=brand_name,
+            device_class=DEVICE_CLASS_WIFI_ROKU,
+            device_class_code=0x0A,
         )
 
         if not self._apply_wifi_power_configuration(
@@ -4892,6 +4917,8 @@ class X1Proxy:
             device_id=device_id,
             device_name=device_name,
             brand_name=brand_name,
+            device_class=DEVICE_CLASS_WIFI_IP,
+            device_class_code=0x1C,
         )
 
         if not self._apply_virtual_ip_wifi_power_configuration(
