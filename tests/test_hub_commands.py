@@ -3149,6 +3149,63 @@ def test_cache_activity_ids_can_fall_back_to_auxiliary_ids_without_catalog():
     loop.close()
 
 
+def test_cache_device_ids_can_fall_back_to_command_only_ids_without_catalog():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    ids = hub._cache_device_ids({"commands": {"5": {"1": "Power"}, "6": {"2": "Mute"}}})
+
+    assert ids == [5, 6]
+
+    loop.close()
+
+
+def test_cache_device_ids_hide_stale_command_only_ids_when_catalog_exists():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub.devices = {1: {"name": "TV"}}
+
+    ids = hub._cache_device_ids(
+        {
+            "devices": {"1": {"name": "TV"}},
+            "commands": {"1": {"1": "Power"}, "9": {"2": "Ghost command"}},
+        }
+    )
+
+    assert ids == [1]
+
+    loop.close()
+
+
 def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

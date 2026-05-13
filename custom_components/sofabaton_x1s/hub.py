@@ -908,6 +908,27 @@ class SofabatonHub:
 
         return favorites_by_activity
 
+    def _cache_device_ids(self, data: dict[str, Any]) -> list[int]:
+        catalog_ids: set[int] = set()
+        catalog_ids.update(int(dev_id) & 0xFF for dev_id in self.devices.keys())
+
+        for source in (self._proxy.state.devices, self._proxy.state.ip_devices):
+            if not isinstance(source, dict):
+                continue
+            catalog_ids.update(int(dev_id) & 0xFF for dev_id in source.keys())
+
+        device_ids: set[int] = set(catalog_ids)
+        commands_raw = data.get("commands", {})
+        if isinstance(commands_raw, dict):
+            for device_id in commands_raw:
+                try:
+                    device_ids.add(int(device_id) & 0xFF)
+                except (TypeError, ValueError):
+                    continue
+
+        visible_ids = catalog_ids if catalog_ids else device_ids
+        return sorted(device_id for device_id in visible_ids if 1 <= device_id <= 255)
+
     def _build_cache_devices_list(self, data: dict[str, Any]) -> list[dict[str, Any]]:
         devices_raw = data.get("devices", {})
         ip_devices_raw = data.get("ip_devices", {})
@@ -922,18 +943,8 @@ class SofabatonHub:
                     return meta
             return {}
 
-        device_ids: set[int] = set()
-        for raw_map in (devices_raw, ip_devices_raw, commands_raw):
-            if not isinstance(raw_map, dict):
-                continue
-            for device_id in raw_map:
-                try:
-                    device_ids.add(int(device_id) & 0xFF)
-                except (TypeError, ValueError):
-                    continue
-
         devices_list: list[dict[str, Any]] = []
-        for device_id in sorted(dev_id for dev_id in device_ids if 1 <= dev_id <= 255):
+        for device_id in self._cache_device_ids(data):
             commands = commands_raw.get(str(device_id), {})
             device_meta = _device_meta_for(device_id)
             row = {
