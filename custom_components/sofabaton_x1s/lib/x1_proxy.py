@@ -928,15 +928,11 @@ class X1Proxy:
         explicitly NACKs playback with ``0x0103/0x0C``.
         """
 
+        body_len = len(body)
+        total_frames = self._play_blob_total_frames(body_len)
         # Total wire bytes after the 13B first-chunk header / 3B continuation prefaces.
         first_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_FIRST_CHUNK_OVERHEAD  # 237
         cont_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_CONT_CHUNK_OVERHEAD    # 247
-        body_len = len(body)
-        if body_len <= first_cap:
-            total_frames = 1
-        else:
-            extra = body_len - first_cap
-            total_frames = 1 + (extra + cont_cap - 1) // cont_cap
 
         self._log.info(
             "[PLAY_BLOB] sending %dB blob in %d frame(s)", body_len, total_frames,
@@ -1048,22 +1044,45 @@ class X1Proxy:
             )
             return normalized
 
-        # Observed on long multi-frame X1 database-style blobs such as Denon
-        # "Mode movie", "8", and "CBL/SAT". Keep the heuristic narrow so we
-        # do not perturb unrelated learned/raw blobs.
-        if blob.startswith(b"\x00\x00\x03\x20") and len(blob) >= 512:
-            checksum_byte = (sum(blob[:-1]) + 5) & 0xFF
+        # Observed on non-descriptor X1 database-style blobs. The trailing blob
+        # byte is derived from the body sum plus an offset tied to the number
+        # of family-0x0F frames used to replay the blob.
+        #
+        # Validated on:
+        # - long multi-frame X1 blobs such as Denon "Mode movie", "8", CBL/SAT
+        # - short single-frame X1 blobs such as "OK", "volume up", "volume down"
+        #
+        # Keep the heuristic narrow to blobs with the X1 database-style header:
+        #   00 00 <declared_len_be16> 00 00 00 00 9c40|94cf ...
+        if (
+            len(blob) >= 16
+            and blob[0:2] == b"\x00\x00"
+            and blob[4:8] == b"\x00\x00\x00\x00"
+            and blob[8:10] in (b"\x9c\x40", b"\x94\xcf", b"\x94\x74")
+        ):
+            total_frames = self._play_blob_total_frames(len(blob))
+            checksum_byte = (sum(blob[:-1]) + total_frames + 1) & 0xFF
             if checksum_byte == blob[-1]:
                 return blob
             normalized = blob[:-1] + bytes([checksum_byte])
             self._log.info(
-                "[PLAY_BLOB] normalized X1 long blob tail old=0x%02X new=0x%02X",
+                "[PLAY_BLOB] normalized X1 long blob tail old=0x%02X new=0x%02X frames=%d",
                 blob[-1],
                 checksum_byte,
+                total_frames,
             )
             return normalized
 
         return blob
+
+    def _play_blob_total_frames(self, body_len: int) -> int:
+        """Return the number of family-0x0F frames needed for a blob body."""
+        first_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_FIRST_CHUNK_OVERHEAD  # 237
+        cont_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_CONT_CHUNK_OVERHEAD    # 247
+        if body_len <= first_cap:
+            return 1
+        extra = body_len - first_cap
+        return 1 + (extra + cont_cap - 1) // cont_cap
 
     def _play_blob_tail_diagnostics(self, blob: bytes) -> str:
         """Return compact checksum candidates for blob-tail replay failures."""

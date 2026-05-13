@@ -366,6 +366,103 @@ slot.
 
 ---
 
+## IR blob replay bodies (family `0x0F`)
+
+The app's "Test" flow replays raw IR blobs through family `0x0F` frames. These
+blobs are not self-describing rows like `REQ_COMMANDS` or `REQ_BUTTONS`; they
+are opaque byte bodies that the hub consumes as one-shot replay data.
+
+### Replay frame layout
+
+Observed replay payload structure:
+
+- first page of a replay burst:
+
+```
+payload[0:3]   = 01 00 seq
+payload[3:13]  = 01 00 total_frames 00 00 00 00 00 00 00
+payload[13:]   = first blob slice
+```
+
+- continuation/final replay page:
+
+```
+payload[0:3]   = 01 00 seq
+payload[3:]    = continuation blob slice
+```
+
+Observed behavior:
+- `seq` is 1-based
+- `total_frames` is present only on the first page
+- the opcode high byte equals the payload length for that page
+- page boundaries are transport artifacts; the replay source is the assembled
+  blob body
+
+### Declared-length header in dumped blobs
+
+Many dumped replay blobs begin with a small blob-local header. Two observed
+families are:
+
+```
+00 00 <declared_len_be16> 00 00 00 00 94 cf ...
+00 00 <declared_len_be16> 00 00 00 00 9c 40 ...
+00 00 <declared_len_be16> 00 00 00 00 94 74 ...
+```
+
+Observed behavior:
+- the first four bytes are commonly `00 00 <len_hi> <len_lo>`
+- for those blobs, the declared body length often excludes the final trailing
+  checksum/tail byte
+- the blob body itself is replayed across one or more family-`0x0F` pages
+
+### Trailing-byte normalization
+
+Observed `dump_ir_blob` / replay behavior is not uniform across all blob
+families. Some dumped blobs replay successfully as-is, while others require the
+final blob byte to be rewritten before the hub accepts playback.
+
+Validated observed rules:
+
+1. Descriptor/database blobs containing literal ASCII `CHECKSUM:` text:
+
+```
+tail = (sum8(blob[:-1]) + 2) & 0xFF
+```
+
+Observed on short one-frame database-style command blobs such as Denon
+`Power on` and `Navigate up`.
+
+2. Non-descriptor database-style replay blobs with headers such as
+`9c40`, `94cf`, or `9474`:
+
+```
+tail = (sum8(blob[:-1]) + total_frames + 1) & 0xFF
+```
+
+Where:
+- `sum8(blob[:-1])` is the 8-bit sum of every blob byte except the final tail
+  byte
+- `total_frames` is the number of family-`0x0F` pages required to replay the
+  blob
+
+Observed on:
+- long multi-frame X1 command blobs
+- short single-frame database-style blobs
+
+Examples validated from captures:
+- 4-frame replay blobs: `sum8 + 5`
+- 3-frame replay blobs: `sum8 + 4`
+- 1-frame replay blobs: `sum8 + 2`
+
+Client guidance:
+- do not assume the trailing byte returned by a blob-dump flow is always the
+  replay-ready value
+- if a blob family matches one of the validated classes above, normalize the
+  final byte before replay
+- if the hub returns `0x0103/0x0C`, treat the replay frame as rejected
+
+---
+
 ## WiFi/IP command definition payload (`0x0ED3`)
 
 Observed payload structure:

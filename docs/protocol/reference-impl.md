@@ -34,5 +34,6 @@ All paths are relative to `custom_components/sofabaton_x1s/lib/`.
 | Keymap state replacement | `state_helpers.py` | `ActivityCache.replace_keymap_rows()` |
 | In-memory state cache | `state_helpers.py` | `ActivityCache` class |
 | Burst scheduling | `state_helpers.py` | `BurstScheduler` class |
+| IR blob replay and replay-tail normalization | `x1_proxy.py` | `play_ir_blob()`, `_play_ir_blob_body()`, `_normalize_play_blob()`, `_play_blob_total_frames()` |
 | High-level proxy API | `x1_proxy.py` | `X1Proxy` class |
 | mDNS advertisement (proxy mode) | `x1_proxy.py` | `_start_mdns()` method |

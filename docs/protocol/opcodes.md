@@ -39,6 +39,28 @@ This document describes observed wire behavior. Implementation notes belong in
 | `0x012E` | `X2_REMOTE_LIST` | `[0x00]` | X2 observed | Request connected remote list |
 | `0x0464` | `X2_REMOTE_SYNC` | `[remote_id:3][0x01]` | X2 observed | Force sync for one remote |
 
+### IR blob playback (family `0x0F`)
+
+Observed one-shot IR playback uses family `0x0F` frames sent `A->H`. The high
+byte is the payload length, so the full opcode varies with frame size.
+
+Observed roles:
+
+| Role | Notes | Representative examples |
+|------|-------|-------------------------|
+| Single-frame playback | One replay frame carrying the entire blob | `0x550F`, `0x570F`, `0x6C0F`, `0xEC0F` |
+| First page of a multi-frame replay burst | Starts a replay burst and carries total-frame metadata | `0xFA0F` |
+| Intermediate replay page | Carries additional blob bytes | `0xFA0F` |
+| Final replay page | Last data-bearing replay page | `0x570F`, `0x5D0F`, `0x9E0F`, `0xF00F` |
+
+Observed semantics:
+- this is the family used by the app's "Test" flow for IR playback
+- the replay source is a blob body, not a catalog row or command label
+- for one-frame replays the app still uses the same family-specific preface as
+  the first page of a multi-frame burst
+- clients should treat the high byte as a payload-length field, not as a stable
+  semantic opcode identifier
+
 ### WiFi/IP device provisioning and refresh
 
 | Opcode   | Name | Payload shape | Purpose |
@@ -294,6 +316,13 @@ Observed text encoding:
 | family `0x31` | `HUB_NAME?` | `H->A` | Observed reply to `0x0032`; payload is UTF-8 hub name plus checksum. Example X1 reply opcode: `0x0631` |
 | `0x0359` | `WIFI_FW` | `H->A` | WiFi firmware string |
 | `0x112F` | `INFO_BANNER` | `H->A` | Additional version/build data |
+
+Observed family-`0x0103` playback semantics:
+- during family-`0x0F` IR playback, `0x0103` is the per-frame acknowledgment
+- `payload[0] == 0x00` means the replay frame was accepted
+- `payload[0] == 0x0C` means the hub rejected the replay frame
+- `0x0103/0x0C` is observed both on single-frame failures and on the final page
+  of multi-frame replay bursts
 
 Observed family-`0x02` banner semantics:
 - `payload[7]` = model code (`0x01` X1, `0x02` X1S, `0x03` X2)
