@@ -31,6 +31,7 @@ from .protocol_const import (
     ButtonName,
     OPNAMES,
     opcode_family,
+    opcode_family_name,
     opcode_hi,
     opcode_lo,
     OP_ACK_READY,
@@ -73,6 +74,7 @@ from .protocol_const import (
     OP_REQ_ACTIVITY_MAP,
     OP_REQ_BANNER,
     OP_DELETE_DEVICE,
+    OP_STATUS_ACK,
     OP_ACTIVITY_ASSIGN_FINALIZE,
     OP_ACTIVITY_CONFIRM,
     OP_REQ_BUTTONS,
@@ -999,10 +1001,11 @@ class X1Proxy:
 
         # A late 0x0103/0x0C after a successful final 0x00 indicates the hub
         # rejected playback after processing the last chunk.
-        completion_ack = self.wait_for_roku_ack_any(
+        completion_ack = self._wait_for_roku_ack_any_impl(
             [(0x0103, 0x0C)],
             timeout=final_ack_timeout,
             not_before=send_ts,
+            log_timeout=False,
         )
         if completion_ack is not None:
             self._log.warning(
@@ -2405,6 +2408,20 @@ class X1Proxy:
         with self._roku_ack_lock:
             self._roku_ack_events.append((opcode, payload, time.monotonic()))
             self._roku_ack_event.set()
+        name = OPNAMES.get(opcode, f"OP_{opcode:04X}")
+        if opcode == OP_STATUS_ACK:
+            status = payload[0] if payload else None
+            if status == 0x00:
+                detail = "accepted"
+            elif status == 0x0C:
+                detail = "rejected"
+            elif status is None:
+                detail = "empty-payload"
+            else:
+                detail = f"status=0x{status:02X}"
+            self._log.info("[ACK] %s (0x%04X) payload=%s %s", name, opcode, payload.hex(" "), detail)
+            return
+        self._log.info("[ACK] %s (0x%04X) payload=%s", name, opcode, payload.hex(" "))
 
     def clear_roku_acks(self) -> None:
         with self._roku_ack_lock:
@@ -2432,11 +2449,6 @@ class X1Proxy:
                     self._roku_ack_events.remove((ack_opcode, ack_payload, ack_ts))
                     if not self._roku_ack_events:
                         self._roku_ack_event.clear()
-                    self._log.info(
-                        "[ACK] opcode=0x%04X payload=%s",
-                        ack_opcode,
-                        ack_payload.hex(" "),
-                    )
                     return True
                 self._roku_ack_event.clear()
 
@@ -2450,12 +2462,13 @@ class X1Proxy:
                 return False
             self._roku_ack_event.wait(min(remaining, 0.2))
 
-    def wait_for_roku_ack_any(
+    def _wait_for_roku_ack_any_impl(
         self,
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
         not_before: float | None = None,
+        log_timeout: bool,
     ) -> tuple[int, bytes] | None:
         deadline = time.monotonic() + timeout
         while True:
@@ -2471,11 +2484,6 @@ class X1Proxy:
                         self._roku_ack_events.remove((ack_opcode, ack_payload, ack_ts))
                         if not self._roku_ack_events:
                             self._roku_ack_event.clear()
-                        self._log.info(
-                            "[ACK] opcode=0x%04X payload=%s",
-                            ack_opcode,
-                            ack_payload.hex(" "),
-                        )
                         return ack_opcode, ack_payload
                 self._roku_ack_event.clear()
 
@@ -2484,9 +2492,24 @@ class X1Proxy:
                 wanted = ", ".join(
                     f"0x{op:04X}/{('*' if first is None else f'0x{first:02X}') }" for op, first in candidates
                 )
-                self._log.warning("[ACK] timeout waiting any in [%s]", wanted)
+                if log_timeout:
+                    self._log.warning("[ACK] timeout waiting any in [%s]", wanted)
                 return None
             self._roku_ack_event.wait(min(remaining, 0.2))
+
+    def wait_for_roku_ack_any(
+        self,
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+        not_before: float | None = None,
+    ) -> tuple[int, bytes] | None:
+        return self._wait_for_roku_ack_any_impl(
+            candidates,
+            timeout=timeout,
+            not_before=not_before,
+            log_timeout=True,
+        )
 
     def cache_macro_payload(self, activity_id: int, button_id: int, payload: bytes) -> None:
         key = (activity_id & 0xFF, button_id & 0xFF)
@@ -5381,12 +5404,14 @@ class X1Proxy:
                 )
 
             if op not in OPNAMES and parsed_macro is None:
+                fam_name = opcode_family_name(op)
                 self._log.debug(
-                    "[FRAME %s] unknown opcode 0x%04X hi=0x%02X family(lo)=0x%02X",
+                    "[FRAME %s] unknown opcode 0x%04X hi=0x%02X family(lo)=0x%02X%s",
                     direction,
                     op,
                     hi,
                     fam,
+                    "" if fam_name is None else f" ({fam_name})",
                 )
 
             context = FrameContext(

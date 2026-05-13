@@ -524,7 +524,6 @@ class RokuAckHandler(BaseFrameHandler):
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
         proxy.notify_roku_ack(frame.opcode, frame.payload)
-        proxy._log.info("[ACK] opcode=0x%04X payload=%s", frame.opcode, frame.payload.hex(" "))
 
 
 

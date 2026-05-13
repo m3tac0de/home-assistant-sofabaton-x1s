@@ -76,6 +76,7 @@ OP_FINALIZE_DEVICE = 0x4677
 OP_DEVICE_SAVE_HEAD = 0x8D5D  # hub assigns device id
 OP_SAVE_COMMIT = 0x6501
 ACK_SUCCESS = 0x0301
+OP_STATUS_ACK = 0x0103  # H→A generic status/ack frame; payload[0] carries the status byte
 
 # IP command synchronization (existing devices)
 OP_REQ_IPCMD_SYNC = 0x0C02
@@ -182,6 +183,7 @@ OPNAMES: Dict[int, str] = {
     OP_IPCMD_ROW_C: "IPCMD_ROW_C",
     OP_IPCMD_ROW_D: "IPCMD_ROW_D",
     ACK_SUCCESS: "ACK_SUCCESS",
+    OP_STATUS_ACK: "STATUS_ACK",
     OP_ACK_READY: "ACK_READY",
     OP_MARKER: "REQ_BUTTONS_MARKER_X1S_X2",
     OP_CATALOG_ROW_DEVICE: "CATALOG_ROW_DEVICE",
@@ -258,6 +260,7 @@ def opcode_family(opcode: int) -> int:
 
 
 # Known opcode families (low byte) grouped by semantic row/page type
+FAMILY_STATUS_ACK = 0x03  # generic status / ack responses
 FAMILY_DEV_ROW = 0x0B  # device catalog rows (OP_CATALOG_ROW_DEVICE, OP_X1_DEVICE)
 FAMILY_ACT_ROW = 0x3B  # activity catalog rows (OP_CATALOG_ROW_ACTIVITY, OP_X1_ACTIVITY)
 FAMILY_MACROS = 0x13  # macro pages (OP_MACROS_A1/B1/A2/B2)
@@ -277,6 +280,25 @@ FAMILY_PLAY_BLOB = 0x0F
 PLAY_BLOB_MAX_PAYLOAD = 0xFA          # 250B — full-chunk payload size
 PLAY_BLOB_FIRST_CHUNK_OVERHEAD = 13   # 3B preface + 10B sub-header
 PLAY_BLOB_CONT_CHUNK_OVERHEAD = 3     # 3B preface only on continuation frames
+
+FAMILY_NAMES: Dict[int, str] = {
+    FAMILY_STATUS_ACK: "STATUS_ACK",
+    FAMILY_DEV_ROW: "DEVICE_ROW",
+    FAMILY_PLAY_BLOB: "PLAY_BLOB",
+    FAMILY_FAV_DELETE: "FAV_DELETE",
+    FAMILY_MACROS: "MACROS",
+    FAMILY_KEYMAP: "KEYMAP",
+    FAMILY_ACT_ROW: "ACTIVITY_ROW",
+    FAMILY_DEVBTNS: "COMMANDS",
+    FAMILY_FAV_ORDER_REQ: "FAV_ORDER_REQ",
+    FAMILY_FAV_ORDER_RESP: "FAV_ORDER_RESP",
+}
+
+
+def opcode_family_name(opcode: int) -> str | None:
+    """Return a human-friendly name for an opcode family, if known."""
+
+    return FAMILY_NAMES.get(opcode_family(opcode))
 
 
 def group_known_opcodes_by_family() -> dict[int, list[str]]:
@@ -321,6 +343,7 @@ __all__ = [
     "OP_DEVICE_SAVE_HEAD",
     "OP_SAVE_COMMIT",
     "ACK_SUCCESS",
+    "OP_STATUS_ACK",
     "OP_REQ_IPCMD_SYNC",
     "OP_IPCMD_ROW_A",
     "OP_IPCMD_ROW_B",
@@ -382,6 +405,9 @@ __all__ = [
     "opcode_hi",
     "opcode_lo",
     "opcode_family",
+    "opcode_family_name",
+    "FAMILY_NAMES",
+    "FAMILY_STATUS_ACK",
     "FAMILY_DEV_ROW",
     "FAMILY_ACT_ROW",
     "FAMILY_MACROS",
