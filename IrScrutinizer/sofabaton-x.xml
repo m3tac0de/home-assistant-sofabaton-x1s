@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sofabaton X-series IR Export Format for IrScrutinizer
+  =====================================================
+
+  Format reverse-engineered from a Denon AVR "Menu" capture.
+
+  Wire format:
+    [6-byte fixed header]   00 00 03 20 00 00
+    [4-byte BE uint]        carrier frequency in Hz
+    [N x 4-byte BE uint]    alternating mark/space durations in microseconds,
+                            walking each <girr:flash>/<girr:gap> in order
+                            (intro -> repeat -> ending), preserving whatever
+                            structure the Girr signal carries.
+    [4-byte BE uint]        00 00 00 00 (terminator)
+
+  Each <girr:gap> at the end of the intro and end of the repeat naturally
+  becomes the inter-burst gap (typically ~73ms for Denon). The exporter
+  doesn't need to inject artificial trailer gaps — Girr already has them.
+
+  Output is a hex string with spaces, ready to paste into the Sofabaton HA
+  integration's raw-IR injection.
+
+  TODO when more captures are available:
+    - Verify the 6-byte header (0x0320) is truly fixed and not length-encoded.
+    - Verify format is protocol-agnostic (currently confirmed against Denon).
+-->
+
+<exportformats:exportformat xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                            xmlns:exportformats="http://www.harctoolbox.org/exportformats"
+                            xsi:schemaLocation="http://www.harctoolbox.org/exportformats http://www.harctoolbox.org/schemas/exportformats.xsd"
+                            name="Sofabaton X-series"
+                            extension="sbx"
+                            multiSignal="false"
+                            simpleSequence="false">
+
+    <exportformats:documentation>
+        <div>
+            Export format for the Sofabaton X-series hub family (X1/X1S/X1Pro), suitable
+            for injection via the <a href="https://github.com/m3tac0de/home-assistant-sofabaton-x1s/">Home Assistant integration</a>.
+
+            The output is a single hex string (bytes separated by spaces) representing the
+            Sofabaton-native IR blob. The signal's intro, repeat, and ending sequences are
+            emitted in order, preserving the structure of the source signal (so e.g. a
+            Denon "double-burst" code keeps both halves).
+        </div>
+    </exportformats:documentation>
+
+    <xsl:stylesheet xmlns:girr="http://www.harctoolbox.org/Girr"
+                    xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+                    version="1.0">
+
+        <xsl:output method="text"/>
+
+        <!-- Fixed 6-byte file header observed on every capture so far.
+             If we later learn 0x0320 varies, swap this for a computed value. -->
+        <xsl:param name="HEADER">00 00 03 20 00 00</xsl:param>
+
+        <!-- 4-byte terminator after the last burst. -->
+        <xsl:param name="TERMINATOR">00 00 00 00</xsl:param>
+
+        <!-- Entry point: emit the first signal of the first command of the
+             first remote in the Girr document. multiSignal=false means
+             IrScrutinizer hands us exactly one command at a time. -->
+        <xsl:template match="/girr:remotes">
+            <xsl:apply-templates select="girr:remote[1]/girr:commandSet[1]/girr:command[1]/girr:raw[1]"/>
+        </xsl:template>
+
+        <xsl:template match="girr:raw">
+            <!-- Header -->
+            <xsl:value-of select="$HEADER"/>
+            <xsl:text> </xsl:text>
+
+            <!-- Carrier frequency in Hz, as one 4-byte BE word -->
+            <xsl:call-template name="sb-word">
+                <xsl:with-param name="value" select="number(@frequency)"/>
+            </xsl:call-template>
+
+            <!-- Body: every flash/gap in document order, in μs, as 4-byte BE words -->
+            <xsl:apply-templates select="girr:intro/girr:flash | girr:intro/girr:gap
+                                       | girr:repeat/girr:flash | girr:repeat/girr:gap
+                                       | girr:ending/girr:flash | girr:ending/girr:gap"/>
+
+            <!-- Terminator -->
+            <xsl:value-of select="$TERMINATOR"/>
+            <xsl:text>&#10;</xsl:text>
+        </xsl:template>
+
+        <xsl:template match="girr:flash | girr:gap">
+            <xsl:call-template name="sb-word">
+                <xsl:with-param name="value" select="round(number(.))"/>
+            </xsl:call-template>
+        </xsl:template>
+
+        <!-- Emit one 32-bit big-endian unsigned int as "XX XX XX XX " (note trailing space). -->
+        <xsl:template name="sb-word">
+            <xsl:param name="value"/>
+            <xsl:call-template name="sb-byte">
+                <xsl:with-param name="value" select="floor($value div 16777216)"/>
+            </xsl:call-template>
+            <xsl:text> </xsl:text>
+            <xsl:call-template name="sb-byte">
+                <xsl:with-param name="value" select="floor($value div 65536) mod 256"/>
+            </xsl:call-template>
+            <xsl:text> </xsl:text>
+            <xsl:call-template name="sb-byte">
+                <xsl:with-param name="value" select="floor($value div 256) mod 256"/>
+            </xsl:call-template>
+            <xsl:text> </xsl:text>
+            <xsl:call-template name="sb-byte">
+                <xsl:with-param name="value" select="$value mod 256"/>
+            </xsl:call-template>
+            <xsl:text> </xsl:text>
+        </xsl:template>
+
+        <!-- Two lowercase hex digits with no separator. Sofabaton captures we've
+             seen use lowercase; we match that. -->
+        <xsl:template name="sb-byte">
+            <xsl:param name="value"/>
+            <xsl:variable name="hex-chars">0123456789abcdef</xsl:variable>
+            <xsl:value-of select="substring($hex-chars, floor($value div 16) + 1, 1)"/>
+            <xsl:value-of select="substring($hex-chars, ($value mod 16) + 1, 1)"/>
+        </xsl:template>
+
+        <!-- Suppress anything else in the Girr tree (ccf, parameters, etc.) -->
+        <xsl:template match="girr:ccf"/>
+        <xsl:template match="girr:parameters"/>
+
+    </xsl:stylesheet>
+</exportformats:exportformat>

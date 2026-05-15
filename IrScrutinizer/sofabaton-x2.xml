@@ -1,0 +1,475 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Sofabaton X2 IR Export Format for IrScrutinizer
+  ================================================
+
+  Emits Sofabaton X2's "descriptive ASCII" representation of a decoded IR
+  signal as a single line per command:
+
+    P:<proto> R:<freq> <params> [extra fields...]
+
+  Examples:
+    P:DenonK R:37000 C0:84 C1:50 C2:0 D:4 S:1 F:949 CHECKSUM:42
+    P:NEC R:38400 D:0 S:206 F:38
+    P:Sony12 R:40000 D:1 F:46 MUL:2
+    P:Logitech R:38000 D:11 D_CHECKSUM:4 F:125 F_CHECKSUM:130
+
+  The exporter only emits output for signals IrScrutinizer has successfully
+  decoded against a known protocol. For raw/undecoded signals, use the
+  separate "Sofabaton X-series" exporter, which the X2 hub also accepts.
+
+  Protocol naming convention: the X2 uses the IrScrutinizer/IrpTransmogrifier
+  protocol name with hyphens stripped (e.g., Denon-K -> DenonK,
+  Samsung-SMT-G -> SamsungSMTG). NEC variant suffixes are also stripped
+  (NEC1/NEC2 -> NEC, NECx1/NECx2 -> NECx).
+-->
+
+<exportformats:exportformat xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                            xmlns:exportformats="http://www.harctoolbox.org/exportformats"
+                            xsi:schemaLocation="http://www.harctoolbox.org/exportformats http://www.harctoolbox.org/schemas/exportformats.xsd"
+                            name="Sofabaton X2" extension="sbx2" multiSignal="true" simpleSequence="false">
+
+    <exportformats:documentation>
+        <div>
+            Export format for the Sofabaton X2 hub. Emits one line of descriptive
+            ASCII per command, in the form "P:protocol R:freq params...".
+            For codes IrScrutinizer cannot decode against a known protocol,
+            use the "Sofabaton X-series" exporter instead (the X2 accepts that
+            raw format too).
+        </div>
+    </exportformats:documentation>
+
+    <xsl:stylesheet xmlns:girr="http://www.harctoolbox.org/Girr"
+                    xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
+
+        <xsl:output method="text"/>
+
+        <!-- =====================================================
+             Top-level: walk every command in the Girr document
+             ===================================================== -->
+        <xsl:template match="/girr:remotes">
+            <xsl:apply-templates select=".//girr:command"/>
+        </xsl:template>
+
+        <xsl:template match="girr:command">
+            <xsl:variable name="proto" select="girr:parameters/@protocol"/>
+            <xsl:variable name="x2proto">
+                <xsl:call-template name="map-protocol-name">
+                    <xsl:with-param name="irp" select="$proto"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:choose>
+                <xsl:when test="string-length($x2proto) > 0">
+                    <xsl:call-template name="emit-command">
+                        <xsl:with-param name="x2proto" select="$x2proto"/>
+                    </xsl:call-template>
+                </xsl:when>
+                <xsl:otherwise>
+                    <!-- Skip: not a protocol the X2 understands as ASCII.
+                         User should use the X-series exporter for these. -->
+                </xsl:otherwise>
+            </xsl:choose>
+        </xsl:template>
+
+        <!-- =====================================================
+             Protocol name mapping: IrScrutinizer/IRP -> X2
+             Return empty string for protocols not supported.
+             ===================================================== -->
+        <xsl:template name="map-protocol-name">
+            <xsl:param name="irp"/>
+            <xsl:choose>
+                <xsl:when test="$irp = 'NEC1' or $irp = 'NEC2' or $irp = 'NEC'">NEC</xsl:when>
+                <xsl:when test="$irp = 'NECx1' or $irp = 'NECx2' or $irp = 'NECx'">NECx</xsl:when>
+                <xsl:when test="$irp = 'Sony12'">Sony12</xsl:when>
+                <xsl:when test="$irp = 'Sony15'">Sony15</xsl:when>
+                <xsl:when test="$irp = 'Sony20'">Sony20</xsl:when>
+                <xsl:when test="$irp = 'RC5'">RC5</xsl:when>
+                <xsl:when test="$irp = 'RC6'">RC6</xsl:when>
+                <xsl:when test="$irp = 'RC6-6-20'">RC6620</xsl:when>
+                <xsl:when test="$irp = 'Denon-K'">DenonK</xsl:when>
+                <xsl:when test="$irp = 'Kaseikyo'">Kaseikyo</xsl:when>
+                <xsl:when test="$irp = 'Panasonic'">Panasonic</xsl:when>
+                <xsl:when test="$irp = 'Logitech'">Logitech</xsl:when>
+                <xsl:when test="$irp = 'Bose'">Bose</xsl:when>
+                <xsl:when test="$irp = 'JVC'">JVC</xsl:when>
+                <xsl:when test="$irp = 'Sharp'">Sharp3</xsl:when>
+                <xsl:when test="$irp = 'Sharp{1}' or $irp = 'Sharp{2}'">Sharp3</xsl:when>
+                <xsl:when test="$irp = 'Samsung20'">Samsung20</xsl:when>
+                <xsl:when test="$irp = 'Samsung32'">Samsung32</xsl:when>
+                <xsl:when test="$irp = 'Samsung36'">Samsung36</xsl:when>
+                <xsl:when test="$irp = 'Samsung-SMT-G'">SamsungSMTG</xsl:when>
+                <xsl:when test="$irp = 'DirecTV' or $irp = 'DirecTV_P0' or $irp = 'DirecTV_P1' or $irp = 'DirecTV_P2' or $irp = 'DirecTV_P3' or $irp = 'DirecTV_P4' or $irp = 'DirecTV_P5'">DirecTV1</xsl:when>
+                <xsl:otherwise></xsl:otherwise>
+            </xsl:choose>
+        </xsl:template>
+
+        <!-- =====================================================
+             Per-protocol command emission
+             ===================================================== -->
+        <xsl:template name="emit-command">
+            <xsl:param name="x2proto"/>
+            <xsl:variable name="freq" select="girr:raw[1]/@frequency"/>
+            <xsl:variable name="D" select="girr:parameters/girr:parameter[@name='D']/@value"/>
+            <xsl:variable name="S" select="girr:parameters/girr:parameter[@name='S']/@value"/>
+            <xsl:variable name="F" select="girr:parameters/girr:parameter[@name='F']/@value"/>
+            <xsl:variable name="T" select="girr:parameters/girr:parameter[@name='T']/@value"/>
+            <xsl:variable name="E" select="girr:parameters/girr:parameter[@name='E']/@value"/>
+            <xsl:variable name="M" select="girr:parameters/girr:parameter[@name='M']/@value"/>
+            <xsl:variable name="N" select="girr:parameters/girr:parameter[@name='N']/@value"/>
+
+            <xsl:text>P:</xsl:text>
+            <xsl:value-of select="$x2proto"/>
+            <xsl:text> R:</xsl:text>
+            <xsl:value-of select="$freq"/>
+
+            <xsl:choose>
+                <xsl:when test="$x2proto = 'DenonK'">
+                    <xsl:text> C0:84 C1:50 C2:0 D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> CHECKSUM:</xsl:text>
+                    <xsl:call-template name="sb-denonk-checksum">
+                        <xsl:with-param name="D" select="number($D)"/>
+                        <xsl:with-param name="S" select="number($S)"/>
+                        <xsl:with-param name="F" select="number($F)"/>
+                    </xsl:call-template>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'Panasonic'">
+                    <xsl:text> C0:2 C1:32 D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> CHECKSUM:</xsl:text>
+                    <xsl:call-template name="sb-panasonic-checksum">
+                        <xsl:with-param name="D" select="number($D)"/>
+                        <xsl:with-param name="S" select="number($S)"/>
+                        <xsl:with-param name="F" select="number($F)"/>
+                    </xsl:call-template>
+                    <xsl:text> MUL:1</xsl:text>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'Kaseikyo'">
+                    <xsl:variable name="X">
+                        <xsl:call-template name="sb-kaseikyo-X">
+                            <xsl:with-param name="M" select="number($M)"/>
+                            <xsl:with-param name="N" select="number($N)"/>
+                        </xsl:call-template>
+                    </xsl:variable>
+                    <xsl:variable name="C">
+                        <xsl:call-template name="sb-kaseikyo-C">
+                            <xsl:with-param name="D" select="number($D)"/>
+                            <xsl:with-param name="S" select="number($S)"/>
+                            <xsl:with-param name="F" select="number($F)"/>
+                            <xsl:with-param name="E" select="number($E)"/>
+                        </xsl:call-template>
+                    </xsl:variable>
+                    <xsl:text> M:</xsl:text><xsl:value-of select="$M"/>
+                    <xsl:text> N:</xsl:text><xsl:value-of select="$N"/>
+                    <xsl:text> X:</xsl:text><xsl:value-of select="$X"/>
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> E:</xsl:text><xsl:value-of select="$E"/>
+                    <xsl:text> C:</xsl:text><xsl:value-of select="$C"/>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'Bose'">
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> F_CHECKSUM:</xsl:text>
+                    <xsl:call-template name="sb-not8">
+                        <xsl:with-param name="v" select="number($F)"/>
+                    </xsl:call-template>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'Logitech'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> D_CHECKSUM:</xsl:text>
+                    <xsl:call-template name="sb-not4">
+                        <xsl:with-param name="v" select="number($D)"/>
+                    </xsl:call-template>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> F_CHECKSUM:</xsl:text>
+                    <xsl:call-template name="sb-not8">
+                        <xsl:with-param name="v" select="number($F)"/>
+                    </xsl:call-template>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'DirecTV1'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> CHECKSUM:</xsl:text>
+                    <xsl:call-template name="sb-directv-checksum">
+                        <xsl:with-param name="F" select="number($F)"/>
+                    </xsl:call-template>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'Samsung36'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
+                    <xsl:text> E:</xsl:text><xsl:value-of select="$E"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> CHECKSUM:</xsl:text>
+                    <xsl:call-template name="sb-not8">
+                        <xsl:with-param name="v" select="number($F)"/>
+                    </xsl:call-template>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'SamsungSMTG'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'NEC' or $x2proto = 'NECx'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'Sony12' or $x2proto = 'Sony15'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> MUL:2</xsl:text>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'Sony20'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> MUL:2</xsl:text>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'RC5'">
+                    <xsl:text> CHECKSUM:1 T:</xsl:text>
+                    <xsl:choose>
+                        <xsl:when test="$T"><xsl:value-of select="$T"/></xsl:when>
+                        <xsl:otherwise>0</xsl:otherwise>
+                    </xsl:choose>
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> MUL:1</xsl:text>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'RC6'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> MUL:1</xsl:text>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'RC6620'">
+                    <xsl:text> C0:1 M:6 T:</xsl:text>
+                    <xsl:choose>
+                        <xsl:when test="$T"><xsl:value-of select="$T"/></xsl:when>
+                        <xsl:otherwise>0</xsl:otherwise>
+                    </xsl:choose>
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'JVC'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'Sharp3'">
+                    <!-- Sharp's IRP has two paired halves: (D, F, 1:2) and (D, ~F, 2:2).
+                         The X2 represents the captured half via C0 (0 or 1). When
+                         exporting from a Girr decode, we use the C0 parameter from
+                         the decoded signal if present, otherwise default to 0 (first
+                         half). Note that if IrScrutinizer canonicalizes both halves
+                         to a single Sharp decode, the C0 distinction may be lost,
+                         and the exporter will emit C0:0 by default. -->
+                    <xsl:variable name="C0" select="girr:parameters/girr:parameter[@name='C0']/@value"/>
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                    <xsl:text> C0:</xsl:text>
+                    <xsl:choose>
+                        <xsl:when test="$C0"><xsl:value-of select="$C0"/></xsl:when>
+                        <xsl:otherwise>0</xsl:otherwise>
+                    </xsl:choose>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'Samsung20'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                </xsl:when>
+
+                <xsl:when test="$x2proto = 'Samsung32'">
+                    <xsl:text> D:</xsl:text><xsl:value-of select="$D"/>
+                    <xsl:text> S:</xsl:text><xsl:value-of select="$S"/>
+                    <xsl:text> F:</xsl:text><xsl:value-of select="$F"/>
+                </xsl:when>
+            </xsl:choose>
+
+            <xsl:text>&#10;</xsl:text>
+        </xsl:template>
+
+        <!-- =====================================================
+             Inline the helper templates (no external imports for
+             an export format file; everything must be self-contained).
+             ===================================================== -->
+
+        <xsl:template name="sb-xor">
+            <xsl:param name="a"/>
+            <xsl:param name="b"/>
+            <xsl:param name="bit" select="0"/>
+            <xsl:param name="acc" select="0"/>
+            <xsl:choose>
+                <xsl:when test="$a = 0 and $b = 0">
+                    <xsl:value-of select="$acc"/>
+                </xsl:when>
+                <xsl:otherwise>
+                    <xsl:variable name="abit" select="$a mod 2"/>
+                    <xsl:variable name="bbit" select="$b mod 2"/>
+                    <xsl:variable name="xbit">
+                        <xsl:choose>
+                            <xsl:when test="$abit = $bbit">0</xsl:when>
+                            <xsl:otherwise>1</xsl:otherwise>
+                        </xsl:choose>
+                    </xsl:variable>
+                    <xsl:variable name="pow2">
+                        <xsl:call-template name="sb-pow2">
+                            <xsl:with-param name="n" select="$bit"/>
+                        </xsl:call-template>
+                    </xsl:variable>
+                    <xsl:call-template name="sb-xor">
+                        <xsl:with-param name="a" select="floor($a div 2)"/>
+                        <xsl:with-param name="b" select="floor($b div 2)"/>
+                        <xsl:with-param name="bit" select="$bit + 1"/>
+                        <xsl:with-param name="acc" select="$acc + $xbit * $pow2"/>
+                    </xsl:call-template>
+                </xsl:otherwise>
+            </xsl:choose>
+        </xsl:template>
+
+        <xsl:template name="sb-pow2">
+            <xsl:param name="n"/>
+            <xsl:choose>
+                <xsl:when test="$n = 0">1</xsl:when>
+                <xsl:otherwise>
+                    <xsl:variable name="rest">
+                        <xsl:call-template name="sb-pow2">
+                            <xsl:with-param name="n" select="$n - 1"/>
+                        </xsl:call-template>
+                    </xsl:variable>
+                    <xsl:value-of select="$rest * 2"/>
+                </xsl:otherwise>
+            </xsl:choose>
+        </xsl:template>
+
+        <xsl:template name="sb-not8">
+            <xsl:param name="v"/>
+            <xsl:value-of select="255 - ($v mod 256)"/>
+        </xsl:template>
+
+        <xsl:template name="sb-not4">
+            <xsl:param name="v"/>
+            <xsl:value-of select="15 - ($v mod 16)"/>
+        </xsl:template>
+
+        <xsl:template name="sb-denonk-checksum">
+            <xsl:param name="D"/>
+            <xsl:param name="S"/>
+            <xsl:param name="F"/>
+            <xsl:variable name="a" select="($D * 16) mod 256"/>
+            <xsl:variable name="b" select="$S mod 256"/>
+            <xsl:variable name="c" select="($F * 16) mod 256"/>
+            <xsl:variable name="d" select="floor($F div 16) mod 256"/>
+            <xsl:variable name="ab">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$a"/>
+                    <xsl:with-param name="b" select="$b"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:variable name="abc">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$ab"/>
+                    <xsl:with-param name="b" select="$c"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:variable name="abcd">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$abc"/>
+                    <xsl:with-param name="b" select="$d"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:value-of select="$abcd mod 256"/>
+        </xsl:template>
+
+        <xsl:template name="sb-panasonic-checksum">
+            <xsl:param name="D"/>
+            <xsl:param name="S"/>
+            <xsl:param name="F"/>
+            <xsl:variable name="ds">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$D mod 256"/>
+                    <xsl:with-param name="b" select="$S mod 256"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:call-template name="sb-xor">
+                <xsl:with-param name="a" select="$ds"/>
+                <xsl:with-param name="b" select="$F mod 256"/>
+            </xsl:call-template>
+        </xsl:template>
+
+        <xsl:template name="sb-directv-checksum">
+            <xsl:param name="F"/>
+            <xsl:variable name="b6" select="floor($F div 64) mod 4"/>
+            <xsl:variable name="b4" select="floor($F div 16) mod 4"/>
+            <xsl:variable name="b2" select="floor($F div 4)  mod 4"/>
+            <xsl:variable name="b0" select="$F mod 4"/>
+            <xsl:value-of select="(7 * $b6 + 5 * $b4 + 3 * $b2 + $b0) mod 16"/>
+        </xsl:template>
+
+        <xsl:template name="sb-kaseikyo-X">
+            <xsl:param name="M"/>
+            <xsl:param name="N"/>
+            <xsl:variable name="mn">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$M mod 256"/>
+                    <xsl:with-param name="b" select="$N mod 256"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:variable name="hi" select="floor($mn div 16) mod 16"/>
+            <xsl:variable name="lo" select="$mn mod 16"/>
+            <xsl:call-template name="sb-xor">
+                <xsl:with-param name="a" select="$hi"/>
+                <xsl:with-param name="b" select="$lo"/>
+            </xsl:call-template>
+        </xsl:template>
+
+        <xsl:template name="sb-kaseikyo-C">
+            <xsl:param name="D"/>
+            <xsl:param name="S"/>
+            <xsl:param name="F"/>
+            <xsl:param name="E"/>
+            <xsl:variable name="ds">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$D mod 256"/>
+                    <xsl:with-param name="b" select="$S mod 256"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:variable name="dsf">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$ds"/>
+                    <xsl:with-param name="b" select="$F mod 256"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:variable name="chksum">
+                <xsl:call-template name="sb-xor">
+                    <xsl:with-param name="a" select="$dsf"/>
+                    <xsl:with-param name="b" select="($E * 16) mod 256"/>
+                </xsl:call-template>
+            </xsl:variable>
+            <xsl:variable name="hi" select="floor($chksum div 16) mod 16"/>
+            <xsl:variable name="lo" select="$chksum mod 16"/>
+            <xsl:call-template name="sb-xor">
+                <xsl:with-param name="a" select="$hi"/>
+                <xsl:with-param name="b" select="$lo"/>
+            </xsl:call-template>
+        </xsl:template>
+
+    </xsl:stylesheet>
+</exportformats:exportformat>
