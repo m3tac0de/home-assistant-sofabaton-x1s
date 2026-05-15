@@ -52,8 +52,9 @@
 
         <xsl:output method="text"/>
 
-        <!-- Fixed 6-byte file header observed on every capture so far.
-             If we later learn 0x0320 varies, swap this for a computed value. -->
+        <!-- Fixed 6-byte file header observed on various captures.
+             This appears to be TVMao SDK formateParam, likely indicating remote protocol.
+		     The header used is for the DenonK protocol but has been observed to work generally. -->
         <xsl:param name="HEADER">00 00 03 20 00 00</xsl:param>
 
         <!-- 4-byte terminator after the last burst. -->
