@@ -170,7 +170,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
     VIEW_STATE_STORAGE_KEY,
     JSON.stringify({
       selectedHubEntryId: "hub-2",
-      selectedTab: "logs",
+      selectedTab: "blobs",
     }),
   );
   const store = new ControlPanelStore(() => undefined, {
@@ -205,7 +205,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
   await store.loadState();
 
   assert.equal(store.snapshot.selectedHubEntryId, "hub-2");
-  assert.equal(store.snapshot.selectedTab, "logs");
+  assert.equal(store.snapshot.selectedTab, "blobs");
 });
 
 test("loadState falls back to the first available hub when the saved hub no longer exists", async () => {

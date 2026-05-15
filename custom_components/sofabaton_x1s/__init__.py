@@ -780,6 +780,112 @@ async def _ws_control_panel_run_action(
     connection.send_result(msg["id"], {"ok": True})
 
 
+def _parse_play_ir_blob_input(raw_blob: Any) -> bytes:
+    if not isinstance(raw_blob, str) or not raw_blob.strip():
+        raise ValueError("blob is required and must be a hex string or descriptor string")
+
+    blob_text = raw_blob.strip()
+    if blob_text.startswith("P:"):
+        try:
+            return build_descriptive_ir_blob_body(blob_text)
+        except ValueError as err:
+            raise ValueError(f"blob descriptor is invalid: {err}") from err
+
+    try:
+        blob_bytes = bytes.fromhex(re.sub(r"\s+", "", raw_blob))
+    except ValueError as err:
+        raise ValueError(f"blob must be valid hex: {err}") from err
+
+    if len(blob_bytes) < 10:
+        raise ValueError("blob is too short to be a valid IR command")
+    return blob_bytes
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/blobs/fetch",
+        vol.Required("entry_id"): str,
+        vol.Required("device_id"): vol.All(int, vol.Range(min=1, max=255)),
+        vol.Optional("command_id"): vol.All(int, vol.Range(min=1, max=255)),
+    }
+)
+@websocket_api.async_response
+async def _ws_fetch_blob(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    try:
+        _raise_if_sync_in_progress(hub, "_ws_fetch_blob")
+        result = await hub.async_fetch_blob(
+            device_id=int(msg["device_id"]),
+            command_id=int(msg["command_id"]) if msg.get("command_id") is not None else None,
+        )
+        if result is None:
+            command_id = msg.get("command_id")
+            if command_id is None:
+                connection.send_error(
+                    msg["id"],
+                    "no_response",
+                    f"Hub did not respond to blob fetch request for device {int(msg['device_id'])}",
+                )
+            else:
+                connection.send_error(
+                    msg["id"],
+                    "no_response",
+                    (
+                        "Hub did not respond to blob fetch request for device "
+                        f"{int(msg['device_id'])}, command {int(command_id)}"
+                    ),
+                )
+            return
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_id", str(err))
+        return
+
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/blobs/play",
+        vol.Required("entry_id"): str,
+        vol.Required("blob"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_play_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    try:
+        _raise_if_sync_in_progress(hub, "_ws_play_ir_blob")
+        blob_bytes = _parse_play_ir_blob_input(msg.get("blob"))
+        ok = await hub.async_play_ir_blob(blob_bytes)
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_blob", str(err))
+        return
+
+    if not ok:
+        connection.send_error(
+            msg["id"],
+            "unavailable",
+            "Hub is not ready to play IR blob (proxy client connected?)",
+        )
+        return
+
+    connection.send_result(msg["id"], {"ok": True})
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): f"{DOMAIN}/logs/get",
@@ -970,6 +1076,8 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_get_control_panel_state)
     websocket_api.async_register_command(hass, _ws_control_panel_set_setting)
     websocket_api.async_register_command(hass, _ws_control_panel_run_action)
+    websocket_api.async_register_command(hass, _ws_fetch_blob)
+    websocket_api.async_register_command(hass, _ws_play_ir_blob)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache)
@@ -1372,24 +1480,7 @@ async def _async_handle_play_ir_blob(call: ServiceCall):
 
     _raise_if_sync_in_progress(hub, "_async_handle_play_ir_blob")
 
-    raw_blob = call.data.get("blob")
-    if not isinstance(raw_blob, str) or not raw_blob.strip():
-        raise ValueError("blob is required and must be a hex string or descriptor string")
-
-    blob_text = raw_blob.strip()
-    if blob_text.startswith("P:"):
-        try:
-            blob_bytes = build_descriptive_ir_blob_body(blob_text)
-        except ValueError as err:
-            raise ValueError(f"blob descriptor is invalid: {err}") from err
-    else:
-        try:
-            blob_bytes = bytes.fromhex(re.sub(r"\s+", "", raw_blob))
-        except ValueError as err:
-            raise ValueError(f"blob must be valid hex: {err}") from err
-
-    if len(blob_bytes) < 10:
-        raise ValueError("blob is too short to be a valid IR command")
+    blob_bytes = _parse_play_ir_blob_input(call.data.get("blob"))
 
     ok = await hub.async_play_ir_blob(blob_bytes)
     if not ok:

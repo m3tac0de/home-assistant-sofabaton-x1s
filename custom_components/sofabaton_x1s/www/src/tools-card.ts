@@ -8,6 +8,7 @@ import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
+import "./tabs/blobs-tab";
 import "./tabs/wifi-commands-tab";
 
 const TOOLS_TYPE = "sofabaton-control-panel";
@@ -329,6 +330,20 @@ class SofabatonControlPanelCard extends LitElement {
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-wifi-commands-tab>
+      `;
+    } else if (this._snapshot.selectedTab === "blobs") {
+      activeTab = html`
+        <sofabaton-blobs-tab
+          .loading=${this._snapshot.loading}
+          .error=${this._snapshot.loadError}
+          .hub=${hub}
+          .cacheHub=${cacheHub}
+          .hass=${this._snapshot.hass}
+          .persistentCacheEnabled=${cacheEnabled}
+          .hubCommandBusy=${sharedHubCommandBusy}
+          .hubCommandBusyLabel=${sharedHubCommandLabel}
+          .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
+        ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {
       activeTab = renderCacheTab({

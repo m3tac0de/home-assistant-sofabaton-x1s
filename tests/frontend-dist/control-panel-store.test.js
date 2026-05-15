@@ -32,6 +32,21 @@ var ControlPanelApi = class {
       action
     });
   }
+  fetchBlob(entryId, deviceId, commandId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/blobs/fetch",
+      entry_id: entryId,
+      device_id: deviceId,
+      ...commandId != null ? { command_id: commandId } : {}
+    });
+  }
+  playIrBlob(entryId, blob) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/blobs/play",
+      entry_id: entryId,
+      blob
+    });
+  }
   refreshCatalog(entryId, kind) {
     return this.hass.callWS({
       type: "sofabaton_x1s/catalog/refresh",
@@ -1334,7 +1349,7 @@ function connectionFingerprint(hass) {
 var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "cache", "logs"]);
+var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "blobs", "cache", "logs"]);
 function viewStateStorage() {
   try {
     if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -2061,7 +2076,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
     VIEW_STATE_STORAGE_KEY2,
     JSON.stringify({
       selectedHubEntryId: "hub-2",
-      selectedTab: "logs"
+      selectedTab: "blobs"
     })
   );
   const store = new ControlPanelStore(() => void 0, {
@@ -2094,7 +2109,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
   );
   await store.loadState();
   assert.equal(store.snapshot.selectedHubEntryId, "hub-2");
-  assert.equal(store.snapshot.selectedTab, "logs");
+  assert.equal(store.snapshot.selectedTab, "blobs");
 });
 test("loadState falls back to the first available hub when the saved hub no longer exists", async () => {
   globalThis.localStorage?.setItem(

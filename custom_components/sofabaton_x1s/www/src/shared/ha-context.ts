@@ -1,4 +1,4 @@
-export type TabId = "settings" | "wifi_commands" | "cache" | "logs";
+export type TabId = "settings" | "wifi_commands" | "blobs" | "cache" | "logs";
 export type SectionId = "activities" | "devices";
 export type SettingKey =
   | "persistent_cache"
@@ -104,6 +104,31 @@ export interface ControlPanelLogLine {
 
 export interface LogsResponse {
   lines: ControlPanelLogLine[];
+}
+
+export interface BlobFetchCommandResult {
+  command_label?: string | null;
+  device_id: number;
+  command_id?: number | null;
+  device_class?: string | null;
+  blob_kind?: string | null;
+  command_blob?: string | null;
+  parsed_blob?: string | null;
+  replay_tail_checksum?: number | null;
+  command_checksum?: number | null;
+}
+
+export interface BlobFetchResponse {
+  device_id: number;
+  requested_command_id?: number | null;
+  total_commands?: number | null;
+  received_command_count?: number | null;
+  complete?: boolean;
+  commands: BlobFetchCommandResult[];
+}
+
+export interface BlobPlayResponse {
+  ok: boolean;
 }
 
 export interface ControlPanelSnapshot {

@@ -1,6 +1,8 @@
 import type {
   CacheContentsResponse,
   ControlPanelStateResponse,
+  BlobFetchResponse,
+  BlobPlayResponse,
   HassLike,
   HubAction,
   LogsResponse,
@@ -37,6 +39,23 @@ export class ControlPanelApi {
       type: "sofabaton_x1s/control_panel/run_action",
       entry_id: entryId,
       action,
+    });
+  }
+
+  fetchBlob(entryId: string, deviceId: number, commandId?: number | null) {
+    return this.hass.callWS<BlobFetchResponse>({
+      type: "sofabaton_x1s/blobs/fetch",
+      entry_id: entryId,
+      device_id: deviceId,
+      ...(commandId != null ? { command_id: commandId } : {}),
+    });
+  }
+
+  playIrBlob(entryId: string, blob: string) {
+    return this.hass.callWS<BlobPlayResponse>({
+      type: "sofabaton_x1s/blobs/play",
+      entry_id: entryId,
+      blob,
     });
   }
 
