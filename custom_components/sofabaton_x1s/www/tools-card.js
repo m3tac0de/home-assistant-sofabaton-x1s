@@ -791,6 +791,15 @@ var ControlPanelApi = class {
       blob
     });
   }
+  persistIrBlob(entryId, deviceId, commandName, blob) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/blobs/persist",
+      entry_id: entryId,
+      device_id: deviceId,
+      command_name: commandName,
+      blob
+    });
+  }
   refreshCatalog(entryId, kind) {
     return this.hass.callWS({
       type: "sofabaton_x1s/catalog/refresh",
@@ -2035,6 +2044,7 @@ var SofabatonBlobsTab = class extends i4 {
     this.hub = null;
     this.cacheHub = null;
     this.setHubCommandBusy = null;
+    this.refreshControlPanelState = null;
     this.hubCommandBusy = false;
     this.hubCommandBusyLabel = null;
     this.loading = false;
@@ -2049,6 +2059,13 @@ var SofabatonBlobsTab = class extends i4 {
     this._testLoading = false;
     this._testError = "";
     this._testSuccess = "";
+    this._saveDeviceIdInput = "";
+    this._saveCommandName = "";
+    this._saveBlobInput = "";
+    this._saveLoading = false;
+    this._saveError = "";
+    this._saveSuccess = "";
+    this._saveResult = null;
     this._loadedEntryId = "";
     this._openSection = "fetch";
     this._runFetch = async () => {
@@ -2082,6 +2099,33 @@ var SofabatonBlobsTab = class extends i4 {
         this._testError = formatError(error);
       } finally {
         this._testLoading = false;
+        this._setSharedBusy(false);
+      }
+    };
+    this._runSave = async () => {
+      const entryId = String(this.hub?.entry_id || "").trim();
+      const deviceId = Number.parseInt(String(this._saveDeviceIdInput || "").trim(), 10);
+      if (!entryId || this._busy() || proxyClientConnected(this.hass, this.hub)) return;
+      if (!Number.isInteger(deviceId) || deviceId < 1 || deviceId > 255) return;
+      if (!String(this._saveCommandName || "").trim() || !String(this._saveBlobInput || "").trim()) return;
+      this._saveLoading = true;
+      this._saveError = "";
+      this._saveSuccess = "";
+      this._saveResult = null;
+      this._setSharedBusy(true, "Saving blob\u2026");
+      try {
+        this._saveResult = await this._api().persistIrBlob(
+          entryId,
+          deviceId,
+          this._saveCommandName,
+          this._saveBlobInput
+        );
+        await this._refreshControlPanelState();
+        this._saveSuccess = `Saved command ${this._saveResult.command_name} as id ${this._saveResult.command_id} on device ${this._saveResult.device_id}.`;
+      } catch (error) {
+        this._saveError = formatError(error);
+      } finally {
+        this._saveLoading = false;
         this._setSharedBusy(false);
       }
     };
@@ -2247,6 +2291,11 @@ var SofabatonBlobsTab = class extends i4 {
     `;
   }
   _renderSaveSection(isOpen) {
+    const proxyConnected = proxyClientConnected(this.hass, this.hub);
+    const busy = this._busy();
+    const parsedDeviceId = Number.parseInt(String(this._saveDeviceIdInput || "").trim(), 10);
+    const deviceIdValid = Number.isInteger(parsedDeviceId) && parsedDeviceId >= 1 && parsedDeviceId <= 255;
+    const canSubmit = !busy && !proxyConnected && deviceIdValid && String(this._saveCommandName || "").trim() !== "" && String(this._saveBlobInput || "").trim() !== "";
     return b2`
       <div class="accordion-section${isOpen ? " open" : ""}" id="acc-save">
         <div class="acc-header" @click=${() => this._toggleSection("save")}>
@@ -2259,11 +2308,65 @@ var SofabatonBlobsTab = class extends i4 {
           <div class="blob-section-content">
           <div>
             <div class="blob-section-title">Save</div>
-            <div class="blob-section-subtitle">Coming soon.</div>
+            <div class="blob-section-subtitle">Add a new command to an existing IR device by saving a canonical blob body or descriptor string onto the hub.</div>
           </div>
-          <div class="save-placeholder">
-            Blob saving is planned for a later release. This first version focuses on fetching a blob from the hub and testing a blob directly.
+          ${proxyConnected ? this._renderStatus(
+      "warning",
+      "mdi:access-point-network-off",
+      "Blob saving is unavailable while the Sofabaton app is connected through the proxy."
+    ) : A}
+          ${this._renderStatus(
+      "warning",
+      "mdi:infrared",
+      "Save currently targets existing IR devices. Enter the hub device id and the new command name."
+    )}
+          <div class="control-grid">
+            <input
+              class="text-input"
+              type="number"
+              min="1"
+              max="255"
+              .value=${this._saveDeviceIdInput}
+              .disabled=${busy || proxyConnected}
+              placeholder="Device id"
+              @input=${(event) => {
+      this._saveDeviceIdInput = String(event.currentTarget.value || "");
+      this._saveError = "";
+      this._saveSuccess = "";
+      this._saveResult = null;
+    }}
+            />
+            <input
+              class="text-input"
+              type="text"
+              .value=${this._saveCommandName}
+              .disabled=${busy || proxyConnected}
+              placeholder="Command name"
+              @input=${(event) => {
+      this._saveCommandName = String(event.currentTarget.value || "");
+      this._saveError = "";
+      this._saveSuccess = "";
+      this._saveResult = null;
+    }}
+            />
           </div>
+          <textarea
+            class="test-textarea"
+            .value=${this._saveBlobInput}
+            .disabled=${busy || proxyConnected}
+            placeholder="Paste blob hex here, or enter a descriptor such as P:Sony12 R:40000 D:1 F:18 MUL:2"
+            @input=${(event) => {
+      this._saveBlobInput = String(event.currentTarget.value || "");
+      this._saveError = "";
+      this._saveSuccess = "";
+      this._saveResult = null;
+    }}
+          ></textarea>
+          <div>
+            <button class="section-action primary" ?disabled=${!canSubmit} @click=${this._runSave}>${this._saveLoading ? "Saving\u2026" : "Save"}</button>
+          </div>
+          ${this._saveError ? this._renderStatus("error", "mdi:alert-circle-outline", this._saveError) : A}
+          ${this._saveSuccess ? this._renderStatus("success", "mdi:check-circle-outline", this._saveSuccess) : A}
           </div>
         </div>
         ` : A}
@@ -2291,6 +2394,13 @@ var SofabatonBlobsTab = class extends i4 {
     this._testLoading = false;
     this._testError = "";
     this._testSuccess = "";
+    this._saveDeviceIdInput = "";
+    this._saveCommandName = "";
+    this._saveBlobInput = "";
+    this._saveLoading = false;
+    this._saveError = "";
+    this._saveSuccess = "";
+    this._saveResult = null;
   }
   _normalizeSelections() {
     const deviceOptions = this._deviceOptions();
@@ -2356,7 +2466,7 @@ var SofabatonBlobsTab = class extends i4 {
     this._openSection = this._openSection === section ? null : section;
   }
   _busy() {
-    return Boolean(this.hubCommandBusy || this._fetchLoading || this._testLoading);
+    return Boolean(this.hubCommandBusy || this._fetchLoading || this._testLoading || this._saveLoading);
   }
   _api() {
     if (!this.hass) throw new Error("Home Assistant context is unavailable");
@@ -2365,12 +2475,16 @@ var SofabatonBlobsTab = class extends i4 {
   _setSharedBusy(busy, label) {
     this.setHubCommandBusy?.(busy, label ?? null);
   }
+  async _refreshControlPanelState() {
+    await this.refreshControlPanelState?.();
+  }
 };
 SofabatonBlobsTab.properties = {
   hass: { attribute: false },
   hub: { attribute: false },
   cacheHub: { attribute: false },
   setHubCommandBusy: { attribute: false },
+  refreshControlPanelState: { attribute: false },
   hubCommandBusy: { type: Boolean },
   hubCommandBusyLabel: { type: String },
   loading: { type: Boolean },
@@ -2385,6 +2499,13 @@ SofabatonBlobsTab.properties = {
   _testLoading: { state: true },
   _testError: { state: true },
   _testSuccess: { state: true },
+  _saveDeviceIdInput: { state: true },
+  _saveCommandName: { state: true },
+  _saveBlobInput: { state: true },
+  _saveLoading: { state: true },
+  _saveError: { state: true },
+  _saveSuccess: { state: true },
+  _saveResult: { state: true },
   _loadedEntryId: { state: true },
   _openSection: { state: true }
 };
@@ -2569,13 +2690,27 @@ SofabatonBlobsTab.styles = i`
       cursor: default;
       background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 80%, transparent);
     }
-    .save-placeholder {
-      border: 1px dashed color-mix(in srgb, var(--primary-text-color) 16%, var(--divider-color));
+    .text-input {
+      box-sizing: border-box;
+      width: 100%;
+      border: 1px solid var(--divider-color);
       border-radius: 14px;
-      padding: 14px;
-      color: var(--secondary-text-color);
-      line-height: 1.55;
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent);
+      background: var(--ha-card-background, var(--card-background-color));
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.4;
+      padding: 12px 14px;
+    }
+    .text-input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 35%, transparent);
+    }
+    .text-input:disabled {
+      opacity: 0.7;
+      cursor: default;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 80%, transparent);
     }
     @media (max-width: 760px) {
       .chevron { display: none; }
@@ -5375,6 +5510,7 @@ var SofabatonControlPanelCard = class extends i4 {
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
+          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {

@@ -96,6 +96,13 @@ def _validate_wifi_name_for_hub(hub: SofabatonHub, value: Any, *, field_name: st
     return text
 
 
+def _validate_ir_command_name(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("command_name is required")
+    return text
+
+
 def _inspect_frontend_dir(frontend_dir: Path) -> tuple[str, bool, list[str]]:
     """Resolve and inspect the packaged frontend directory."""
 
@@ -888,6 +895,56 @@ async def _ws_play_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any])
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/blobs/persist",
+        vol.Required("entry_id"): str,
+        vol.Required("device_id"): vol.All(int, vol.Range(min=1, max=255)),
+        vol.Required("command_name"): str,
+        vol.Required("blob"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_persist_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    try:
+        _raise_if_sync_in_progress(hub, "_ws_persist_ir_blob")
+        blob_bytes = _parse_play_ir_blob_input(msg.get("blob"))
+        command_name = _validate_ir_command_name(msg.get("command_name"))
+        result = await hub.async_persist_ir_blob(
+            device_id=int(msg["device_id"]),
+            command_name=command_name,
+            blob=blob_bytes,
+        )
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+    except ValueError as err:
+        message = str(err)
+        if "device_id" in message:
+            error_code = "invalid_id"
+        elif "command_name" in message:
+            error_code = "invalid_name"
+        else:
+            error_code = "invalid_blob"
+        connection.send_error(msg["id"], error_code, message)
+        return
+
+    if result is None:
+        connection.send_error(
+            msg["id"],
+            "unavailable",
+            "Hub is not ready to persist IR blob (proxy client connected?)",
+        )
+        return
+
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/logs/get",
         vol.Required("entry_id"): str,
         vol.Optional("limit", default=250): vol.All(int, vol.Range(min=1, max=1000)),
@@ -1078,6 +1135,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_control_panel_run_action)
     websocket_api.async_register_command(hass, _ws_fetch_blob)
     websocket_api.async_register_command(hass, _ws_play_ir_blob)
+    websocket_api.async_register_command(hass, _ws_persist_ir_blob)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache)
@@ -1311,6 +1369,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     if not hass.services.has_service(DOMAIN, "play_ir_blob"):
         hass.services.async_register(DOMAIN, "play_ir_blob", _async_handle_play_ir_blob)
+    if not hass.services.has_service(DOMAIN, "persist_ir_blob"):
+        hass.services.async_register(
+            DOMAIN,
+            "persist_ir_blob",
+            _async_handle_persist_ir_blob,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
     if not hass.services.has_service(DOMAIN, "create_wifi_device"):
         hass.services.async_register(DOMAIN, "create_wifi_device", _async_handle_create_wifi_device)
     if not hass.services.has_service(DOMAIN, "device_to_activity"):
@@ -1375,6 +1440,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "dump_ir_commands")
             hass.services.async_remove(DOMAIN, "fetch_blob")
             hass.services.async_remove(DOMAIN, "play_ir_blob")
+            hass.services.async_remove(DOMAIN, "persist_ir_blob")
             hass.services.async_remove(DOMAIN, "create_wifi_device")
             hass.services.async_remove(DOMAIN, "device_to_activity")
             hass.services.async_remove(DOMAIN, "delete_device")
@@ -1485,6 +1551,31 @@ async def _async_handle_play_ir_blob(call: ServiceCall):
     ok = await hub.async_play_ir_blob(blob_bytes)
     if not ok:
         raise HomeAssistantError("Hub is not ready to play IR blob (proxy client connected?)")
+
+
+async def _async_handle_persist_ir_blob(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_persist_ir_blob")
+
+    device_id = int(call.data["device_id"])
+    if device_id < 1 or device_id > 255:
+        raise ValueError("device_id must be between 1 and 255")
+
+    command_name = _validate_ir_command_name(call.data.get("command_name"))
+    blob_bytes = _parse_play_ir_blob_input(call.data.get("blob"))
+
+    result = await hub.async_persist_ir_blob(
+        device_id=device_id,
+        command_name=command_name,
+        blob=blob_bytes,
+    )
+    if result is None:
+        raise HomeAssistantError("Hub is not ready to persist IR blob (proxy client connected?)")
+    return result
 
 
 async def _async_handle_create_wifi_device(call: ServiceCall):

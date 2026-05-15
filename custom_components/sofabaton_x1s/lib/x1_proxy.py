@@ -925,6 +925,189 @@ class X1Proxy:
             return True
         return False
 
+    @staticmethod
+    def _next_available_command_id(existing_command_ids: list[int]) -> int:
+        used = {int(command_id) & 0xFF for command_id in existing_command_ids if 1 <= int(command_id) <= 255}
+        for candidate in range(1, 256):
+            if candidate not in used:
+                return candidate
+        raise ValueError("device already uses all 255 command ids")
+
+    def _persist_ir_label_slot_bytes(self, command_name: str) -> bytes:
+        text = str(command_name or "").strip()
+        if not text:
+            raise ValueError("command_name is required")
+
+        if self.hub_version == HUB_VERSION_X1:
+            # X1 save pages reserve 28 bytes for the command label. This is
+            # smaller than the 30-byte command-list label slot used by 0x5D.
+            encoded = text.encode("latin-1", errors="ignore")[:28]
+            if not encoded:
+                raise ValueError("command_name must contain at least one encodable character")
+            return encoded.ljust(28, b"\x00")
+
+        # X1S/X2 save pages use the wider UTF-16BE label slot observed in
+        # 0x06/0x0E page-1 captures. The fixed slot ends at byte 73, so the
+        # encoded name occupies bytes 15..72 (58 bytes total).
+        encoded = text.encode("utf-16-be", errors="ignore")[:58]
+        if not encoded:
+            raise ValueError("command_name must contain at least one encodable character")
+        return encoded.ljust(58, b"\x00")
+
+    def _build_persist_ir_blob_payloads(
+        self,
+        *,
+        device_id: int,
+        command_name: str,
+        blob: bytes,
+    ) -> list[bytes]:
+        if not isinstance(blob, (bytes, bytearray)) or len(blob) < 2:
+            raise ValueError("blob is too short to persist")
+
+        blob_body = bytes(blob)
+        label_slot = self._persist_ir_label_slot_bytes(command_name)
+        page_one_prefix = bytearray(
+            [
+                0x01,
+                0x00,
+                0x01,
+                0x01,
+                0x00,
+                0x00,  # filled with total_pages below
+                device_id & 0xFF,
+                0x00,
+                0x0D,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+            ]
+        )
+        first_cap = PLAY_BLOB_MAX_PAYLOAD - len(page_one_prefix) - len(label_slot)
+        cont_cap = PLAY_BLOB_MAX_PAYLOAD - 3
+        if first_cap <= 0 or cont_cap <= 0:
+            raise ValueError("invalid persist_ir_blob page sizing")
+
+        logical_record_len = len(blob_body) + 1
+        total_pages = 1
+        if logical_record_len > first_cap:
+            remaining = logical_record_len - first_cap
+            total_pages += (remaining + cont_cap - 1) // cont_cap
+        if total_pages > 0xFF:
+            raise ValueError("blob requires too many persist pages")
+
+        page_one_prefix[5] = total_pages & 0xFF
+        persist_checksum = (
+            sum(bytes(page_one_prefix))
+            + sum(label_slot)
+            + sum(blob_body)
+            - 2
+        ) & 0xFF
+        blob_bytes = blob_body + bytes([persist_checksum])
+
+        payloads: list[bytes] = []
+        offset = 0
+        first_slice = blob_bytes[offset : offset + first_cap]
+        offset += len(first_slice)
+        page_one = bytearray(page_one_prefix)
+        page_one.extend(label_slot)
+        page_one.extend(first_slice)
+        payloads.append(bytes(page_one))
+
+        for page_no in range(2, total_pages + 1):
+            cont_slice = blob_bytes[offset : offset + cont_cap]
+            offset += len(cont_slice)
+            payloads.append(bytes([0x01, 0x00, page_no & 0xFF]) + cont_slice)
+
+        return payloads
+
+    def persist_ir_blob(
+        self,
+        *,
+        device_id: int,
+        command_name: str,
+        blob: bytes,
+        inter_frame_delay: float = 0.08,
+        ack_timeout: float = 5.0,
+    ) -> dict[str, Any] | None:
+        """Persist a new IR command blob onto an existing device.
+
+        This uploads family ``0x0E`` save pages containing the raw blob body and
+        the save-specific trailing checksum observed in successful app captures.
+        """
+
+        if not self.can_issue_commands():
+            self._log.info("[PERSIST_IR_BLOB] ignored: proxy client is connected")
+            return None
+
+        if not isinstance(blob, (bytes, bytearray)) or len(blob) < 10:
+            self._log.warning("[PERSIST_IR_BLOB] blob too short or wrong type: %r", type(blob))
+            return None
+
+        dev_lo = device_id & 0xFF
+        device_commands = self.state.commands.get(dev_lo, {})
+        existing_command_ids = (
+            sorted(int(command_id) & 0xFF for command_id in device_commands.keys())
+            if isinstance(device_commands, dict)
+            else []
+        )
+        command_id = self._next_available_command_id(existing_command_ids)
+        blob_payloads = self._build_persist_ir_blob_payloads(
+            device_id=dev_lo,
+            command_name=command_name,
+            blob=bytes(blob),
+        )
+
+        self._log.info(
+            "[PERSIST_IR_BLOB] uploading dev=0x%02X new_command_id=0x%02X pages=%d blob=%dB",
+            dev_lo,
+            command_id,
+            len(blob_payloads),
+            len(bytes(blob)) + 1,
+        )
+        self.clear_roku_acks()
+
+        for page_index, payload in enumerate(blob_payloads, start=1):
+            if page_index > 1 and inter_frame_delay > 0:
+                time.sleep(inter_frame_delay)
+            send_ts = time.monotonic()
+            self._send_family_frame(0x0E, payload)
+            ack = self.wait_for_roku_ack_any([(0x0103, None)], timeout=ack_timeout, not_before=send_ts)
+            if ack is None:
+                self._log.warning(
+                    "[PERSIST_IR_BLOB] timeout waiting for page ack seq=%d/%d dev=0x%02X",
+                    page_index,
+                    len(blob_payloads),
+                    dev_lo,
+                )
+                return None
+            if ack[1][:1] == b"\x0c":
+                self._log.warning(
+                    "[PERSIST_IR_BLOB] page rejected seq=%d/%d dev=0x%02X %s",
+                    page_index,
+                    len(blob_payloads),
+                    dev_lo,
+                    self._play_blob_tail_diagnostics(
+                        self._finalize_play_blob_body(bytes(blob))
+                    ),
+                )
+                return None
+
+        if not isinstance(device_commands, dict):
+            device_commands = {}
+            self.state.commands[dev_lo] = device_commands
+        device_commands[command_id] = str(command_name or "").strip() or f"Command {command_id}"
+        self._commands_complete.add(dev_lo)
+        return {
+            "status": "success",
+            "device_id": dev_lo,
+            "command_id": command_id,
+            "command_name": device_commands[command_id],
+            "page_count": len(blob_payloads),
+        }
+
     def _play_ir_blob_body(
         self,
         payload: bytes,

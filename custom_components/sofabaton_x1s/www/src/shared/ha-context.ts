@@ -131,6 +131,14 @@ export interface BlobPlayResponse {
   ok: boolean;
 }
 
+export interface BlobPersistResponse {
+  status: string;
+  device_id: number;
+  command_id: number;
+  command_name: string;
+  page_count?: number | null;
+}
+
 export interface ControlPanelSnapshot {
   hass: HassLike | null;
   state: ControlPanelStateResponse | null;

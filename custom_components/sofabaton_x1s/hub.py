@@ -44,7 +44,7 @@ from .const import (
 from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
 from .logging_utils import get_hub_logger
 from .cache_store import PersistentCacheStore
-from .lib.protocol_const import ButtonName
+from .lib.protocol_const import ButtonName, DEVICE_CLASS_IR
 from .lib.commands import descriptive_play_blob_text, looks_like_descriptive_play_blob, split_play_blob_tail
 from .lib.x1_proxy import X1Proxy
 from .command_config import (
@@ -1030,6 +1030,53 @@ class SofabatonHub:
 
         await self._async_wait_for_command_fetch_complete(ent_id, timeout=wait_timeout)
 
+    async def async_fetch_single_device_command(
+        self,
+        ent_id: int,
+        command_id: int,
+        *,
+        wait_timeout: float = 10.0,
+        force_refresh: bool = False,
+    ) -> dict[int, str]:
+        """Fetch metadata for a single command on a device.
+
+        This is narrower than :meth:`async_fetch_device_commands`: it verifies
+        one command slot without reloading the entire device command catalog.
+        """
+
+        ent_lo = ent_id & 0xFF
+        cmd_lo = command_id & 0xFF
+        commands = self._proxy.state.commands.setdefault(ent_lo, {})
+        previous_label = None
+        if force_refresh:
+            previous_label = commands.pop(cmd_lo, None)
+
+        self._commands_in_flight.add(ent_id)
+        async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+
+        try:
+            cached, ready = await self.hass.async_add_executor_job(
+                partial(
+                    self._proxy.get_single_command_for_entity,
+                    ent_id,
+                    cmd_lo,
+                    fetch_if_missing=True,
+                )
+            )
+            if ready:
+                return cached
+
+            return await self._async_wait_for_single_command_ready(
+                ent_id,
+                cmd_lo,
+                timeout=wait_timeout,
+            )
+        finally:
+            if force_refresh and previous_label is not None and cmd_lo not in commands:
+                commands[cmd_lo] = previous_label
+            self._commands_in_flight.discard(ent_id)
+            async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+
     async def async_dump_ir_commands(
         self,
         device_id: int,
@@ -1121,6 +1168,63 @@ class SofabatonHub:
                 inter_frame_delay=inter_frame_delay,
             )
         )
+
+    async def async_persist_ir_blob(
+        self,
+        *,
+        device_id: int,
+        command_name: str,
+        blob: bytes,
+        inter_frame_delay: float = 0.08,
+        wait_timeout: float = 10.0,
+    ) -> dict[str, Any] | None:
+        """Persist a new IR command blob onto an existing device."""
+
+        device_class = self._get_cached_device_class(device_id)
+        if device_class is not None and device_class != DEVICE_CLASS_IR:
+            raise HomeAssistantError(
+                f"persist_ir_blob only supports IR devices; device {device_id} is {device_class}"
+            )
+
+        # Always refresh command occupancy immediately before persist so the
+        # selected command slot comes from an authoritative REQ_COMMANDS view.
+        await self.async_fetch_device_commands(device_id, wait_timeout=wait_timeout)
+
+        result = await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.persist_ir_blob,
+                device_id=device_id,
+                command_name=command_name,
+                blob=blob,
+                inter_frame_delay=inter_frame_delay,
+            )
+        )
+        if result is None:
+            return None
+
+        try:
+            command_id = result.get("command_id")
+            if isinstance(command_id, int):
+                await self.async_fetch_single_device_command(
+                    device_id,
+                    command_id,
+                    wait_timeout=wait_timeout,
+                    force_refresh=True,
+                )
+            else:
+                await self.async_fetch_device_commands(
+                    device_id,
+                    wait_timeout=wait_timeout,
+                )
+        except Exception:
+            self._log.debug(
+                "[BLOBS] persist_ir_blob refresh failed for device %s",
+                device_id,
+                exc_info=True,
+            )
+
+        await self._async_persist_cache_if_enabled()
+        return result
 
     async def async_create_wifi_device(
         self,
@@ -1499,6 +1603,32 @@ class SofabatonHub:
             self.entry_id,
             ent_id & 0xFF,
         )
+
+    async def _async_wait_for_single_command_ready(
+        self,
+        ent_id: int,
+        command_id: int,
+        *,
+        timeout: float = 10.0,
+    ) -> dict[int, str]:
+        deadline = monotonic() + timeout
+        while monotonic() < deadline:
+            commands, ready = self._proxy.get_single_command_for_entity(
+                ent_id,
+                command_id,
+                fetch_if_missing=False,
+            )
+            if ready:
+                return commands
+            await asyncio.sleep(0.05)
+
+        self._log.debug(
+            "[%s] timed out waiting for command 0x%02X on 0x%02X",
+            self.entry_id,
+            command_id & 0xFF,
+            ent_id & 0xFF,
+        )
+        return {}
 
     def _reset_entity_cache(
         self,

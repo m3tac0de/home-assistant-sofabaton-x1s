@@ -35,6 +35,39 @@ play_ir_blob:
         text:
           multiline: true
 
+persist_ir_blob:
+  name: Persist IR blob
+  description: Adds a new command to an existing IR device by staging the current command ids, uploading a canonical command blob body, and saving it on the hub. Accepts either a raw blob body without the final replay-tail checksum byte or a descriptive protocol string beginning with P:.
+  fields:
+    device:
+      name: Sofabaton hub
+      required: true
+      selector:
+        device:
+          integration: sofabaton_x1s
+    device_id:
+      name: Device id
+      description: Existing IR device id that should receive the new command.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 255
+          mode: box
+    command_name:
+      name: Command name
+      description: Label to save on the hub for the new command.
+      required: true
+      selector:
+        text:
+    blob:
+      name: Blob or descriptor
+      description: Hex string of the canonical blob body without the final replay-tail checksum byte, or a descriptive protocol string beginning with P:. Whitespace and newlines are ignored for hex input.
+      required: true
+      selector:
+        text:
+          multiline: true
+
 fetch_blob:
   name: Fetch normalized blob
   description: Requests 0x020C [device_id, command_id] and returns normalized command blob records. Each record includes the canonical blob body without the final replay-tail checksum byte, the removed checksum byte for debugging, and parsed descriptor text when the blob is descriptive.
