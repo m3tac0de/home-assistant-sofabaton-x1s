@@ -14,27 +14,25 @@ signals to the descriptive `P:` form. Descriptive strings exist only because
 the cloud catalog ships them down to the hub when a user adds a known device
 from Sofabaton's catalog.
 
-This was confirmed by exhausting the decompiled APK for protocol-name strings
-(none found) and for `P:` / `CHECKSUM:` / `D_CHECKSUM` / `F_CHECKSUM` literals
-(none found). The descriptive-format generator lives on Sofabaton's servers,
+The descriptive-format generator lives on Sofabaton's servers,
 not in any client we can inspect.
 
 ## Implications for validation
 
 Because the hub cannot itself convert a raw capture into the descriptive form,
 we have **no paired-capture path**. We cannot point an IR receiver at a
-physical button and obtain both an IrScrutinizer IRP decode *and* an X2
+physical button and obtain both an IrScrutinizer IRP decode _and_ an X2
 descriptive string for the same emission. Every descriptive string we see was
 matched in Sofabaton's database to "this remote/this button" — and we
-correlate it to an IrScrutinizer decode only by *separately* looking up the
+correlate it to an IrScrutinizer decode only by _separately_ looking up the
 same remote model in IrScrutinizer's protocol/parameter database, hoping the
 two databases agree on the capture.
 
-The honest end-to-end validation for the exporter is therefore:
+The end-to-end validation for the exporter is therefore:
 
 1. Take an IrScrutinizer/Pronto source signal.
 2. Run it through the exporter to produce a descriptive string.
-3. Push the string to the hub via `persist_ir_blob`.
+3. Push the string to the hub via `Save Blob`.
 4. Confirm the **physical device actually responds**.
 
 Byte-equal matching against a known-good descriptive string from the cloud
@@ -46,7 +44,7 @@ protocol names + parameter names to the X2 tokens and field set. We build it
 empirically:
 
 1. Capture a known-protocol signal on the X2 hub (or fetch one via the HA
-   integration's `fetch_blob` action / proxy logs).
+   integration's `Fetch Blob`).
 2. Decode the same source signal in IrScrutinizer to obtain its IRP form.
 3. Diff the two representations. Record:
    - Token name on the X2 side (e.g. `Sharp` vs current XSL guess `Sharp3`).
@@ -134,7 +132,7 @@ D=16     F=116       C0=2
 That matches the X2's `D:16 F:116 C0:2` exactly. So **Sharp2's `D` and `F`
 are the raw wire-bit fields**, not bit-reversed.
 
-IrScrutinizer's `D=1, F=23` for the same signal are a *different* convention.
+IrScrutinizer's `D=1, F=23` for the same signal are a _different_ convention.
 `D=1` is the 5-bit reverse of 16 (`10000 ↔ 00001`). `F=23 = 0010111` is the
 7-bit reverse of `116 = 1110100`. So IrScrutinizer is using LSB-first /
 bit-reversed reporting, while the X2 reports the MSB-first packed value.
@@ -246,6 +244,7 @@ P:Panasonic R:37000 C0:2 C1:32 D:128 S:0 F:79 CHECKSUM:207 MUL:1
 ```
 
 Checksum is `D ⊕ S ⊕ F` (matches `sb-panasonic-checksum`):
+
 - 128 ⊕ 0 ⊕ 74 = 0xCA = 202 ✓
 - 128 ⊕ 0 ⊕ 79 = 0xCF = 207 ✓
 
