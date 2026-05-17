@@ -97,8 +97,11 @@ export const cardStyles = css`
   .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
   .accordion-section:first-child { border-top: none; }
   .accordion-section.open { flex: 1; }
-  .acc-header { flex-shrink: 0; height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 16px; cursor: pointer; user-select: none; transition: background-color 120ms ease; }
+  .acc-header { flex-shrink: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 16px; cursor: pointer; user-select: none; transition: background-color 120ms ease; }
   .acc-header:hover { background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color))); }
+  .acc-header-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; transition: color 120ms ease; }
+  .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
+  .accordion-section.open .acc-header-icon { color: var(--primary-color); }
   .acc-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color); }
   .badge, .id-badge { border: 1px solid var(--divider-color); border-radius: 999px; }
   .badge { font-size: 11px; padding: 1px 7px; }

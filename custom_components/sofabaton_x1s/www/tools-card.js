@@ -648,8 +648,11 @@ var cardStyles = i`
   .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
   .accordion-section:first-child { border-top: none; }
   .accordion-section.open { flex: 1; }
-  .acc-header { flex-shrink: 0; height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 16px; cursor: pointer; user-select: none; transition: background-color 120ms ease; }
+  .acc-header { flex-shrink: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 16px; cursor: pointer; user-select: none; transition: background-color 120ms ease; }
   .acc-header:hover { background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color))); }
+  .acc-header-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; transition: color 120ms ease; }
+  .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
+  .accordion-section.open .acc-header-icon { color: var(--primary-color); }
   .acc-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color); }
   .badge, .id-badge { border: 1px solid var(--divider-color); border-radius: 999px; }
   .badge { font-size: 11px; padding: 1px 7px; }
@@ -1057,7 +1060,7 @@ function hubIcon(kind, classes = "") {
   }
   const icon = {
     activities: "mdi:play-circle-outline",
-    devices: "mdi:remote",
+    devices: "mdi:audio-video",
     ip: "mdi:router-wireless",
     version: "mdi:cog-outline"
   }[kind];
@@ -1886,6 +1889,7 @@ function renderAccordionSection(params) {
   return b2`
     <div class="accordion-section${params.isOpen ? " open" : ""}" id=${`acc-${params.sectionId}`}>
       <div class="acc-header" @click=${params.onToggle}>
+        ${params.icon ? b2`<span class="acc-header-icon"><ha-icon icon=${params.icon}></ha-icon></span>` : null}
         <span class="acc-title">${params.title}</span>
         <span class="badge">${params.count}</span>
         <span class="flex-spacer"></span>
@@ -1979,8 +1983,8 @@ function renderCacheTab(params) {
     <div class="tab-panel">
       ${params.staleData ? b2`<div class="stale-banner"><span class="stale-banner-text">Cache was updated externally. Refresh to see latest data.</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>Refresh</button></div>` : null}
       <div class="cache-panel">
-        ${renderAccordionSection({ sectionId: "activities", title: "Activities", count: activities.length, isOpen: params.openSection === "activities", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("activities"), onRefresh: () => params.onRefreshSection("activities"), body: activities.map(renderActivity) })}
-        ${renderAccordionSection({ sectionId: "devices", title: "Devices", count: devices.length, isOpen: params.openSection === "devices", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("devices"), onRefresh: () => params.onRefreshSection("devices"), body: devices.map(renderDevice) })}
+        ${renderAccordionSection({ sectionId: "activities", title: "Activities", icon: "mdi:play-circle-outline", count: activities.length, isOpen: params.openSection === "activities", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("activities"), onRefresh: () => params.onRefreshSection("activities"), body: activities.map(renderActivity) })}
+        ${renderAccordionSection({ sectionId: "devices", title: "Devices", icon: "mdi:audio-video", count: devices.length, isOpen: params.openSection === "devices", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("devices"), onRefresh: () => params.onRefreshSection("devices"), body: devices.map(renderDevice) })}
       </div>
     </div>
   `;
@@ -2235,8 +2239,9 @@ var SofabatonBlobsTab = class extends i4 {
       if (this._saveFlashTimer) clearTimeout(this._saveFlashTimer);
       this._saveFlashTimer = setTimeout(() => {
         this._saveFlash = false;
+        this._saveSuccess = "";
         this._saveFlashTimer = null;
-      }, 1800);
+      }, 3e3);
     }
   }
   updated(changed) {
@@ -2247,6 +2252,16 @@ var SofabatonBlobsTab = class extends i4 {
     if (this.loading) return b2`<div class="state">Loading…</div>`;
     if (this.error) return b2`<div class="state error">${this.error}</div>`;
     if (!this.hub) return b2`<div class="state">No hubs found.</div>`;
+    if (proxyClientConnected(this.hass, this.hub)) {
+      return b2`
+        <div class="tab-panel">
+          <div class="blocked-state">
+            <div class="blocked-state-title">Blobs unavailable</div>
+            <div class="blocked-state-sub">Blobs cannot be used while the Sofabaton app is connected to the hub through the proxy.</div>
+          </div>
+        </div>
+      `;
+    }
     return b2`
       <div class="tab-panel">
         <div class="blob-panel">
@@ -2399,11 +2414,6 @@ var SofabatonBlobsTab = class extends i4 {
         <div class="acc-body" id="acc-body-test">
           <div class="blob-section-content">
           <div class="blob-section-subtitle">${this._testSubtitleText()}</div>
-          ${proxyConnected ? this._renderStatus(
-      "warning",
-      "mdi:access-point-network-off",
-      "Blob playback is unavailable while the Sofabaton app is connected through the proxy."
-    ) : A}
           ${this._renderBlobTextarea({
       value: this._testBlobInput,
       disabled: busy || proxyConnected,
@@ -2430,7 +2440,6 @@ var SofabatonBlobsTab = class extends i4 {
     })}
           </div>
           ${this._testError ? this._renderStatus("error", "mdi:alert-circle-outline", this._testError) : A}
-          ${this._testSuccess ? this._renderStatus("success", "mdi:check-circle-outline", this._testSuccess) : A}
           </div>
         </div>
         ` : A}
@@ -2458,11 +2467,6 @@ var SofabatonBlobsTab = class extends i4 {
         <div class="acc-body" id="acc-body-save">
           <div class="blob-section-content">
           <div class="blob-section-subtitle">${this._saveSubtitleText()}</div>
-          ${proxyConnected ? this._renderStatus(
-      "warning",
-      "mdi:access-point-network-off",
-      "Blob saving is unavailable while the Sofabaton app is connected through the proxy."
-    ) : A}
           ${irDeviceOptions.length === 0 && !proxyConnected ? this._renderStatus(
       "warning",
       "mdi:refresh-circle",
@@ -2513,9 +2517,14 @@ var SofabatonBlobsTab = class extends i4 {
       }),
       onClick: () => void this._runSave()
     })}
+            ${this._saveSuccess ? b2`
+                  <div class="section-status success inline-status" role="status" aria-live="polite">
+                    <span class="status-icon"><ha-icon icon="mdi:check-circle-outline"></ha-icon></span>
+                    <span>${this._saveSuccess}</span>
+                  </div>
+                ` : A}
           </div>
           ${this._saveError ? this._renderStatus("error", "mdi:alert-circle-outline", this._saveError) : A}
-          ${this._saveSuccess ? this._renderStatus("success", "mdi:check-circle-outline", this._saveSuccess) : A}
           </div>
         </div>
         ` : A}
@@ -2848,6 +2857,27 @@ SofabatonBlobsTab.styles = i`
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
     .state.error { color: var(--error-color, #db4437); }
+    .blocked-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 24px 16px;
+      text-align: center;
+      color: var(--secondary-text-color);
+      line-height: 1.6;
+    }
+    .blocked-state-title {
+      color: var(--primary-text-color);
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .blocked-state-sub {
+      max-width: 340px;
+      font-size: 13px;
+    }
     .blob-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: -16px; }
     .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
     .accordion-section:first-child { border-top: none; }
@@ -2886,6 +2916,15 @@ SofabatonBlobsTab.styles = i`
       color: #2e7d32;
       border-color: color-mix(in srgb, #2e7d32 30%, var(--divider-color));
       background: color-mix(in srgb, #2e7d32 5%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .section-status.inline-status {
+      padding: 6px 12px;
+      font-size: 12px;
+      animation: blobInlineStatusIn 180ms ease-out;
+    }
+    @keyframes blobInlineStatusIn {
+      from { opacity: 0; transform: translateX(-6px); }
+      to   { opacity: 1; transform: translateX(0); }
     }
     .section-status.warning {
       border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 35%, var(--divider-color));
@@ -6009,7 +6048,7 @@ var SofabatonControlPanelCard = class extends i4 {
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
-          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
+          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {

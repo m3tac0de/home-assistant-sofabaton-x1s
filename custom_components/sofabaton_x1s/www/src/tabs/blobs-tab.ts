@@ -57,6 +57,27 @@ class SofabatonBlobsTab extends LitElement {
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
     .state.error { color: var(--error-color, #db4437); }
+    .blocked-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 24px 16px;
+      text-align: center;
+      color: var(--secondary-text-color);
+      line-height: 1.6;
+    }
+    .blocked-state-title {
+      color: var(--primary-text-color);
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .blocked-state-sub {
+      max-width: 340px;
+      font-size: 13px;
+    }
     .blob-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: -16px; }
     .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
     .accordion-section:first-child { border-top: none; }
@@ -95,6 +116,15 @@ class SofabatonBlobsTab extends LitElement {
       color: #2e7d32;
       border-color: color-mix(in srgb, #2e7d32 30%, var(--divider-color));
       background: color-mix(in srgb, #2e7d32 5%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .section-status.inline-status {
+      padding: 6px 12px;
+      font-size: 12px;
+      animation: blobInlineStatusIn 180ms ease-out;
+    }
+    @keyframes blobInlineStatusIn {
+      from { opacity: 0; transform: translateX(-6px); }
+      to   { opacity: 1; transform: translateX(0); }
     }
     .section-status.warning {
       border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 35%, var(--divider-color));
@@ -580,12 +610,16 @@ class SofabatonBlobsTab extends LitElement {
         this._testFlashTimer = null;
       }, 1800);
     } else {
+      // Inline success banner + button green-flash both auto-dismiss after 3s
+      // (per UX spec). Save uses a longer window than Test because the banner
+      // carries identifying detail (device + command id) that's worth reading.
       this._saveFlash = true;
       if (this._saveFlashTimer) clearTimeout(this._saveFlashTimer);
       this._saveFlashTimer = setTimeout(() => {
         this._saveFlash = false;
+        this._saveSuccess = "";
         this._saveFlashTimer = null;
-      }, 1800);
+      }, 3000);
     }
   }
 
@@ -598,6 +632,16 @@ class SofabatonBlobsTab extends LitElement {
     if (this.loading) return html`<div class="state">Loading…</div>`;
     if (this.error) return html`<div class="state error">${this.error}</div>`;
     if (!this.hub) return html`<div class="state">No hubs found.</div>`;
+    if (proxyClientConnected(this.hass, this.hub)) {
+      return html`
+        <div class="tab-panel">
+          <div class="blocked-state">
+            <div class="blocked-state-title">Blobs unavailable</div>
+            <div class="blocked-state-sub">Blobs cannot be used while the Sofabaton app is connected to the hub through the proxy.</div>
+          </div>
+        </div>
+      `;
+    }
 
     return html`
       <div class="tab-panel">
@@ -767,13 +811,6 @@ class SofabatonBlobsTab extends LitElement {
         <div class="acc-body" id="acc-body-test">
           <div class="blob-section-content">
           <div class="blob-section-subtitle">${this._testSubtitleText()}</div>
-          ${proxyConnected
-            ? this._renderStatus(
-                "warning",
-                "mdi:access-point-network-off",
-                "Blob playback is unavailable while the Sofabaton app is connected through the proxy.",
-              )
-            : nothing}
           ${this._renderBlobTextarea({
             value: this._testBlobInput,
             disabled: busy || proxyConnected,
@@ -801,9 +838,6 @@ class SofabatonBlobsTab extends LitElement {
           </div>
           ${this._testError
             ? this._renderStatus("error", "mdi:alert-circle-outline", this._testError)
-            : nothing}
-          ${this._testSuccess
-            ? this._renderStatus("success", "mdi:check-circle-outline", this._testSuccess)
             : nothing}
           </div>
         </div>
@@ -839,13 +873,6 @@ class SofabatonBlobsTab extends LitElement {
         <div class="acc-body" id="acc-body-save">
           <div class="blob-section-content">
           <div class="blob-section-subtitle">${this._saveSubtitleText()}</div>
-          ${proxyConnected
-            ? this._renderStatus(
-                "warning",
-                "mdi:access-point-network-off",
-                "Blob saving is unavailable while the Sofabaton app is connected through the proxy.",
-              )
-            : nothing}
           ${irDeviceOptions.length === 0 && !proxyConnected
             ? this._renderStatus(
                 "warning",
@@ -898,12 +925,17 @@ class SofabatonBlobsTab extends LitElement {
               }),
               onClick: () => void this._runSave(),
             })}
+            ${this._saveSuccess
+              ? html`
+                  <div class="section-status success inline-status" role="status" aria-live="polite">
+                    <span class="status-icon"><ha-icon icon="mdi:check-circle-outline"></ha-icon></span>
+                    <span>${this._saveSuccess}</span>
+                  </div>
+                `
+              : nothing}
           </div>
           ${this._saveError
             ? this._renderStatus("error", "mdi:alert-circle-outline", this._saveError)
-            : nothing}
-          ${this._saveSuccess
-            ? this._renderStatus("success", "mdi:check-circle-outline", this._saveSuccess)
             : nothing}
           </div>
         </div>

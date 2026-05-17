@@ -281,7 +281,7 @@ export function hubIcon(kind: "hero" | "activities" | "devices" | "ip" | "versio
   }
   const icon = {
     activities: "mdi:play-circle-outline",
-    devices: "mdi:remote",
+    devices: "mdi:audio-video",
     ip: "mdi:router-wireless",
     version: "mdi:cog-outline",
   }[kind];

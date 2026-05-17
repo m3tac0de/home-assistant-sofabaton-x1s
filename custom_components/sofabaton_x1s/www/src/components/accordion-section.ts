@@ -3,6 +3,7 @@ import { html } from "lit";
 export function renderAccordionSection(params: {
   sectionId: string;
   title: string;
+  icon?: string;
   count: number;
   isOpen: boolean;
   disabled: boolean;
@@ -14,6 +15,7 @@ export function renderAccordionSection(params: {
   return html`
     <div class="accordion-section${params.isOpen ? " open" : ""}" id=${`acc-${params.sectionId}`}>
       <div class="acc-header" @click=${params.onToggle}>
+        ${params.icon ? html`<span class="acc-header-icon"><ha-icon icon=${params.icon}></ha-icon></span>` : null}
         <span class="acc-title">${params.title}</span>
         <span class="badge">${params.count}</span>
         <span class="flex-spacer"></span>

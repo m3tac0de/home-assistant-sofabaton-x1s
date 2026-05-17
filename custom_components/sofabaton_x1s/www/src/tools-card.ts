@@ -343,7 +343,7 @@ class SofabatonControlPanelCard extends LitElement {
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
-          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
+          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {
