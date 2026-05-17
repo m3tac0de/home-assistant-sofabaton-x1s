@@ -409,6 +409,126 @@
       }
     });
 
+    // ── ha-select + mwc-list-item ───────────────────────────────────────────────
+    // Used by the Save view to pick the target IR device. Mirrors ha-textfield's
+    // appearance so a select and a textfield in the same row align visually.
+    customElements.define("mwc-list-item", class extends HTMLElement {
+      _value = "";
+      get value()  { return this._value; }
+      set value(v) { this._value = String(v ?? ""); }
+      connectedCallback() {
+        if (this.shadowRoot) return;
+        const s = this.attachShadow({ mode: "open" });
+        s.innerHTML = `
+          <style>
+            :host { display: block; padding: 8px 12px; cursor: pointer; font-size: 14px; }
+            :host(:hover) { background: rgba(0,0,0,0.04); }
+          </style>
+          <slot></slot>`;
+      }
+    });
+
+    customElements.define("ha-select", class extends HTMLElement {
+      _value    = "";
+      _label    = "";
+      _disabled = false;
+      _select   = null;
+      _labelEl  = null;
+      _items    = [];
+
+      get value()    { return this._select ? this._select.value : this._value; }
+      set value(v)   { this._value = String(v ?? ""); if (this._select) this._select.value = this._value; }
+      get label()    { return this._label; }
+      set label(v)   { this._label = String(v ?? ""); if (this._labelEl) this._labelEl.textContent = this._label; }
+      get disabled() { return this._disabled; }
+      set disabled(v){ this._disabled = Boolean(v); if (this._select) this._select.disabled = this._disabled; }
+
+      connectedCallback() {
+        if (this.shadowRoot) return;
+        const s = this.attachShadow({ mode: "open" });
+        s.innerHTML = `
+          <style>
+            :host { display: block; }
+            .label { font-size:12px; color:var(--secondary-text-color,#727272);
+                     margin-bottom:4px; font-weight:600; }
+            select { display:block; width:100%; padding:8px 10px; box-sizing:border-box;
+                     border:1px solid var(--divider-color,#e0e0e0); border-radius:8px;
+                     font:inherit; font-size:14px;
+                     background:var(--ha-card-background,#fff); color:inherit; }
+            select:focus { outline:2px solid var(--primary-color,#03a9f4); border-color:transparent; }
+          </style>
+          <div class="label"></div>
+          <select></select>`;
+        this._labelEl = s.querySelector(".label");
+        this._select  = s.querySelector("select");
+        this._labelEl.textContent = this._label;
+        this._select.disabled = this._disabled;
+        this._syncOptions();
+        this._select.addEventListener("change", () => {
+          this._value = this._select.value;
+          this.dispatchEvent(new CustomEvent("selected", {
+            detail: { value: this._value }, bubbles: true, composed: true,
+          }));
+          this.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+        });
+        // Re-scan slotted items whenever children mutate
+        const mo = new MutationObserver(() => this._syncOptions());
+        mo.observe(this, { childList: true, subtree: true, characterData: true });
+      }
+
+      _syncOptions() {
+        if (!this._select) return;
+        const items = [...this.querySelectorAll("mwc-list-item, ha-dropdown-item")];
+        this._select.innerHTML = '<option value="" disabled hidden>Select one</option>'
+          + items.map(it => `<option value="${(it.value ?? "")}">${it.textContent}</option>`).join("");
+        // Restore selection
+        this._select.value = this._value;
+      }
+    });
+
+    // ── ha-textarea ──────────────────────────────────────────────────────────────
+    // Used by the blobs tab for the Test / Save blob bodies.
+    customElements.define("ha-textarea", class extends HTMLElement {
+      _value     = "";
+      _label     = "";
+      _input     = null;
+      _labelEl   = null;
+
+      get value()  { return this._input ? this._input.value : this._value; }
+      set value(v) { this._value = String(v ?? ""); if (this._input) this._input.value = this._value; }
+      get label()  { return this._label; }
+      set label(v) { this._label = String(v ?? ""); if (this._labelEl) this._labelEl.textContent = this._label; }
+
+      connectedCallback() {
+        if (this.shadowRoot) return;
+        const s = this.attachShadow({ mode: "open" });
+        s.innerHTML = `
+          <style>
+            :host { display: block; }
+            .label { font-size:12px; color:var(--secondary-text-color,#727272);
+                     margin-bottom:4px; font-weight:600; }
+            textarea { display:block; width:100%; min-height:120px; padding:10px 12px; box-sizing:border-box;
+                       border:1px solid var(--divider-color,#e0e0e0); border-radius:8px;
+                       font:inherit; font-size:13px; line-height:1.5;
+                       background:var(--ha-card-background,#fff); color:inherit;
+                       resize:vertical; }
+            textarea:focus { outline:2px solid var(--primary-color,#03a9f4); border-color:transparent; }
+          </style>
+          <div class="label"></div>
+          <textarea></textarea>`;
+        this._labelEl = s.querySelector(".label");
+        this._input   = s.querySelector("textarea");
+        this._labelEl.textContent = this._label;
+        this._input.value         = this._value;
+        this._input.addEventListener("input", () =>
+          this.dispatchEvent(new Event("input", { bubbles: true, composed: true })));
+        this._input.addEventListener("change", () => {
+          this._value = this._input.value;
+          this.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+        });
+      }
+    });
+
     // ── ha-selector ──────────────────────────────────────────────────────────────
     // Minimal stub — shadow DOM only, so Lit's light-DOM Parts are never touched.
     // Renders a functional <select> for "select" type, a placeholder for others
@@ -491,7 +611,7 @@
 
   <!-- Card bundle — runs after stubs module above.
        The ?v= bust forces browsers to skip cache when the file is updated. -->
-  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=13"></script>
+  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=27"></script>
 
   <!-- Harness logic — runs after both modules above -->
   <script type="module">
@@ -577,7 +697,7 @@
     // tools_frontend_version must match the ?v= cache-bust on the script tag.
     // The store compares this against LOADED_TOOLS_FRONTEND_VERSION (read from the
     // script URL's ?v= param) and sets toolsFrontendVersionMismatch if they differ.
-    const TOOLS_FRONTEND_VERSION = "13";
+    const TOOLS_FRONTEND_VERSION = "27";
 
     const BASE_STATE = {
       persistent_cache_enabled: true,
@@ -599,9 +719,9 @@
           { id: 104, name: "Good Night",      favorite_count: 1, macro_count: 0 },
         ],
         devices_list: [
-          { id: 1, name: "Television",         command_count: 6  },
-          { id: 2, name: "Soundbar",           command_count: 4  },
-          { id: 7, name: "WiFi Remote Device", command_count: 12 },
+          { id: 1, name: "Television",         command_count: 6,  device_class: "ir"   },
+          { id: 2, name: "Soundbar",           command_count: 4,  device_class: "ir"   },
+          { id: 7, name: "WiFi Remote Device", command_count: 12, device_class: "wifi" },
         ],
         commands: {
           "1": { "10": "Power Toggle", "11": "Volume Up",   "12": "Volume Down",
@@ -1376,6 +1496,168 @@
         },
         wifiDevices: [],
         postLoad: card => clickTab(card, "Wifi Commands"),
+      },
+
+      // ── E: Blobs ─────────────────────────────────────────────────────────────────
+
+      {
+        id: 30, group: "Blobs",
+        label: "30. Empty (no command picked)",
+        states: STATES_CONNECTED,
+        postLoad: card => clickTab(card, "Blobs"),
+      },
+      {
+        id: 31, group: "Blobs",
+        label: "31. Cache disabled",
+        states: STATES_CONNECTED,
+        state: { ...BASE_STATE, persistent_cache_enabled: false },
+        contents: { ...BASE_CONTENTS, enabled: false },
+        postLoad: card => clickTab(card, "Blobs"),
+      },
+      {
+        id: 32, group: "Blobs",
+        label: "32. Fetch result",
+        states: STATES_CONNECTED,
+        handlers: {
+          "sofabaton_x1s/blobs/fetch": (msg) => ({
+            device_id: Number(msg.device_id ?? 1),
+            requested_command_id: Number(msg.command_id ?? 10),
+            total_commands: 1,
+            received_command_count: 1,
+            complete: true,
+            commands: [{
+              command_label: "Power Toggle",
+              device_id: Number(msg.device_id ?? 1),
+              command_id: Number(msg.command_id ?? 10),
+              device_class: "IR",
+              blob_kind: "ir",
+              command_blob: "AAEC003F00FE00FE00FE0042EE",
+              parsed_blob: "P:Sony12 R:40000 D:1 F:18 MUL:2",
+              replay_tail_checksum: 0x1234,
+              command_checksum: 0xABCD,
+            }],
+          }),
+        },
+        postLoad: async (card) => {
+          await clickTab(card, "Blobs");
+          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
+          if (!tab) return;
+          await tab.updateComplete;
+          tab._selectedDeviceId = 1;
+          tab._selectedCommandId = 10;
+          tab.requestUpdate();
+          await tab.updateComplete;
+          await tab._runFetch();
+          await tab.updateComplete;
+        },
+      },
+      {
+        id: 33, group: "Blobs",
+        label: "33. Test section open",
+        states: STATES_CONNECTED,
+        postLoad: async (card) => {
+          await clickTab(card, "Blobs");
+          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
+          if (!tab) return;
+          tab._openSection = "test";
+          tab._testBlobInput = "P:Sony12 R:40000 D:1 F:18 MUL:2";
+          tab.requestUpdate();
+          await tab.updateComplete;
+        },
+      },
+      {
+        id: 34, group: "Blobs",
+        label: "34. Save section open",
+        states: STATES_CONNECTED,
+        postLoad: async (card) => {
+          await clickTab(card, "Blobs");
+          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
+          if (!tab) return;
+          tab._openSection = "save";
+          tab._saveDeviceIdInput = "1";
+          tab._saveCommandName = "Custom Power";
+          tab._saveBlobInput = "P:Sony12 R:40000 D:1 F:18 MUL:2";
+          tab.requestUpdate();
+          await tab.updateComplete;
+        },
+      },
+      {
+        id: 35, group: "Blobs",
+        label: "35. Test error state",
+        states: STATES_CONNECTED,
+        handlers: {
+          "sofabaton_x1s/blobs/play": () => Promise.reject(new Error("invalid blob: bad protocol descriptor")),
+        },
+        postLoad: async (card) => {
+          await clickTab(card, "Blobs");
+          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
+          if (!tab) return;
+          tab._openSection = "test";
+          tab._testBlobInput = "garbage";
+          tab.requestUpdate();
+          await tab.updateComplete;
+          await tab._runTest();
+          await tab.updateComplete;
+        },
+      },
+      {
+        id: 36, group: "Blobs",
+        label: "36. Save success flash",
+        states: STATES_CONNECTED,
+        handlers: {
+          "sofabaton_x1s/blobs/persist": (msg) => ({
+            status: "ok",
+            device_id: Number(msg.device_id ?? 1),
+            command_id: 99,
+            command_name: String(msg.command_name ?? "Custom"),
+            page_count: 1,
+          }),
+        },
+        postLoad: async (card) => {
+          await clickTab(card, "Blobs");
+          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
+          if (!tab) return;
+          tab._openSection = "save";
+          tab._saveDeviceIdInput = "1";
+          tab._saveCommandName = "Custom Power";
+          tab._saveBlobInput = "P:Sony12 R:40000 D:1 F:18 MUL:2";
+          tab.requestUpdate();
+          await tab.updateComplete;
+          await tab._runSave();
+          await tab.updateComplete;
+        },
+      },
+      {
+        id: 38, group: "Blobs",
+        label: "38. X2 hub (descriptor hints)",
+        states: {
+          "remote.living_room": {
+            state: "on",
+            attributes: { ...STATES_CONNECTED["remote.living_room"].attributes, hub_version: "X2" },
+          },
+        },
+        state: { ...BASE_STATE, hubs: [{ ...HUB_1, version: "X2" }] },
+        postLoad: async (card) => {
+          await clickTab(card, "Blobs");
+          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
+          if (!tab) return;
+          tab._openSection = "test";
+          tab.requestUpdate();
+          await tab.updateComplete;
+        },
+      },
+      {
+        id: 37, group: "Blobs",
+        label: "37. Proxy connected (Test/Save blocked)",
+        states: STATES_PROXY,
+        postLoad: async (card) => {
+          await clickTab(card, "Blobs");
+          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
+          if (!tab) return;
+          tab._openSection = "test";
+          tab.requestUpdate();
+          await tab.updateComplete;
+        },
       },
     ];
 
