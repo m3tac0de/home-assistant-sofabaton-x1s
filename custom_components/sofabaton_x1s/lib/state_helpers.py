@@ -4,7 +4,14 @@ import time
 from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Optional
 
-from .commands import iter_command_records
+from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from .commands import (
+    COMMAND_RECORD_STRIDE_X1,
+    COMMAND_RECORD_STRIDE_X1S_X2,
+    KEYMAP_RECORD_SIZE,
+    iter_command_records_from_assembled,
+    iter_keymap_records,
+)
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     DEVICE_CLASS_WIFI_IP,
@@ -111,26 +118,40 @@ class ActivityCache:
         return self.activities.get(act_id & 0xFF, {}).get("name")
 
     def replace_keymap_rows(self, act_lo: int, row_stream: bytes) -> None:
-        """Replace the physical-button view for ``act_lo`` from an assembled row stream."""
+        """Replace the physical-button view for ``act_lo`` from an assembled row stream.
+
+        Record-walking uses :func:`commands.iter_keymap_records`, which
+        encodes the documented 18-byte fixed-stride layout. The activity-id
+        filter inside the iterator subsumes the previous explicit
+        ``act != act_lo`` early-return in ``_parse_keymap_record``.
+
+        A short trailing fragment shorter than 18 bytes that looks like a
+        valid record start is right-padded with zeros and processed via the
+        usual record classifier. That compatibility fallback is preserved
+        because some hub firmwares have been observed to truncate the final
+        record.
+        """
 
         self.buttons[act_lo] = set()
         self.button_details.pop(act_lo, None)
 
         favorites_allowed = True
-        record_size = 18
-        usable = len(row_stream) - (len(row_stream) % record_size)
 
-        for start in range(0, usable, record_size):
-            record = row_stream[start : start + record_size]
+        for record in iter_keymap_records(row_stream, expected_activity_id=act_lo):
             favorites_allowed, _ = self._parse_keymap_record(
                 act_lo,
-                record,
+                record.raw,
                 favorites_allowed=favorites_allowed,
             )
 
+        usable = len(row_stream) - (len(row_stream) % KEYMAP_RECORD_SIZE)
         remainder = row_stream[usable:]
-        if len(remainder) >= 2 and remainder[0] == act_lo and remainder[1] in BUTTONNAME_BY_CODE:
-            padded = remainder + b"\x00" * (record_size - len(remainder))
+        if (
+            len(remainder) >= 2
+            and remainder[0] == act_lo
+            and remainder[1] in BUTTONNAME_BY_CODE
+        ):
+            padded = remainder + b"\x00" * (KEYMAP_RECORD_SIZE - len(remainder))
             self._parse_keymap_record(
                 act_lo,
                 padded,
@@ -418,9 +439,43 @@ class ActivityCache:
 
         return list(self.activity_macros.get(act_lo & 0xFF, []))
 
-    def parse_device_commands(self, payload: bytes, dev_id: int) -> Dict[int, str]:
+    def parse_device_commands(
+        self,
+        payload: bytes,
+        dev_id: int,
+        *,
+        hub_version: str,
+        count: int | None = None,
+    ) -> Dict[int, str]:
+        """Parse an assembled REQ_COMMANDS body into a ``{command_id: label}``.
+
+        Uses the assembled fixed-stride schema parser
+         :func:`commands.iter_command_records_from_assembled`
+        
+        
+
+        ``count`` may be supplied explicitly (e.g. from the page-1 header's
+        ``total_commands`` field). If omitted, it is inferred from
+        ``len(payload) // stride`` — correct for well-formed real wire data
+        (always a clean multiple of the stride) and graceful for slightly
+        malformed inputs because the parser silently stops at truncated
+        records.
+        """
+
+        stride = (
+            COMMAND_RECORD_STRIDE_X1
+            if hub_version == HUB_VERSION_X1
+            else COMMAND_RECORD_STRIDE_X1S_X2
+        )
+        effective_count = count if count is not None else len(payload) // stride
+
         commands_found: Dict[int, str] = {}
-        for record in iter_command_records(payload, dev_id):
+        for record in iter_command_records_from_assembled(
+            payload,
+            count=effective_count,
+            dev_id=dev_id,
+            hub_version=hub_version,
+        ):
             if record.command_id not in commands_found and record.label:
                 commands_found[record.command_id] = record.label
         return commands_found

@@ -1,8 +1,7 @@
 # Sofabaton Hub Protocol Reference
 
-> Disclaimer: this documentation is based on reverse-engineering of an
-> undocumented protocol. It is unofficial and may become inaccurate as firmware
-> changes.
+> This documentation reflects observed protocol behavior and may become
+> inaccurate as firmware changes.
 
 This directory documents the Sofabaton X1, X1S, and X2 hub protocol at the wire
 level. The goal is that a client can be implemented from these documents without

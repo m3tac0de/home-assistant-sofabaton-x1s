@@ -1,9 +1,8 @@
 from custom_components.sofabaton_x1s.lib import transport_bridge
-from custom_components.sofabaton_x1s.lib.notify_demuxer import BROADCAST_LISTEN_PORT
 from custom_components.sofabaton_x1s.lib.transport_bridge import TransportBridge
 
 
-def test_connect_beacon_targets_broadcast_port(monkeypatch):
+def test_connect_beacon_is_intentionally_disabled(monkeypatch):
     sent = []
 
     class FakeSocket:
@@ -32,10 +31,7 @@ def test_connect_beacon_targets_broadcast_port(monkeypatch):
     )
     bridge._emit_connect_ready_beacon("192.168.2.15")
 
-    assert sent
-    payload, addr = sent[0]
-    assert payload == bytes.fromhex("a55a07c4cb383539684b00ee")
-    assert addr == ("192.168.2.255", BROADCAST_LISTEN_PORT)
+    assert sent == []
 
 
 def test_notify_listener_stops_when_connecting(monkeypatch):

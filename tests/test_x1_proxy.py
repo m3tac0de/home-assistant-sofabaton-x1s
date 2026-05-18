@@ -468,6 +468,7 @@ def test_start_mdns_stops_on_bad_service_type(monkeypatch) -> None:
 
     zc_module = types.ModuleType("zeroconf")
     zc_module.BadTypeInNameException = BadTypeInNameException
+    zc_module.NonUniqueNameException = Exception
     zc_module.IPVersion = DummyIPVersion
     zc_module.ServiceInfo = DummyServiceInfo
     zc_module.Zeroconf = DummyZeroconf
@@ -555,6 +556,7 @@ def test_start_mdns_advertises_x1_service_for_x2_hub(monkeypatch) -> None:
 
     zc_module = types.ModuleType("zeroconf")
     zc_module.BadTypeInNameException = Exception
+    zc_module.NonUniqueNameException = Exception
     zc_module.IPVersion = DummyIPVersion
     zc_module.ServiceInfo = DummyServiceInfo
     zc_module.Zeroconf = DummyZeroconf
@@ -1066,7 +1068,7 @@ def test_create_wifi_device_x1s_can_assign_power_on_and_power_off_commands(monke
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
 
@@ -1112,7 +1114,7 @@ def test_create_wifi_device_x1s_without_power_commands_skips_power_edit_flow(mon
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
 
@@ -1141,7 +1143,7 @@ def test_create_wifi_device_x1_can_assign_input_commands(monkeypatch) -> None:
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.2.77")
     monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
@@ -1193,7 +1195,7 @@ def test_create_wifi_device_x1_six_inputs_uses_fa46_plus_2246_commit(monkeypatch
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "192.168.2.77")
     monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: True)
@@ -1251,7 +1253,7 @@ def test_create_wifi_device_x1s_can_assign_input_commands(monkeypatch) -> None:
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
 
@@ -1325,7 +1327,7 @@ def test_create_wifi_device_x1s_five_inputs_uses_fa46_plus_7046_commit(monkeypat
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
 
@@ -1379,7 +1381,7 @@ def test_create_wifi_device_x1s_six_inputs_uses_fa46_plus_a046(monkeypatch) -> N
     monkeypatch.setattr(
         proxy,
         "wait_for_roku_ack_any",
-        lambda candidates, timeout=5.0: (candidates[0][0], b"\x00"),
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], b"\x00"),
     )
     monkeypatch.setattr(proxy, "get_routed_local_ip", lambda: "10.0.0.7")
 
@@ -2831,6 +2833,7 @@ def test_delete_device_replays_delete_and_confirms_impacted_activities(monkeypat
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         ack_calls.append(candidates)
         return 0x0103, b"\x00"
@@ -3378,6 +3381,7 @@ def test_command_to_button_replays_sequence(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         ack_calls.append(candidates)
         first_opcode, first_byte = candidates[0]
@@ -3440,6 +3444,7 @@ def test_command_to_button_with_long_press(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         first_opcode, first_byte = candidates[0]
         return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
@@ -3483,6 +3488,7 @@ def test_command_to_button_can_skip_refresh_after_write(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         first_opcode, first_byte = candidates[0]
         return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
@@ -3518,6 +3524,7 @@ def test_command_to_button_requires_all_acks(monkeypatch) -> None:
         candidates: list[tuple[int, int | None]],
         *,
         timeout: float = 5.0,
+        not_before: float | None = None,
     ) -> tuple[int, bytes] | None:
         attempts["count"] += 1
         if attempts["count"] == 1:

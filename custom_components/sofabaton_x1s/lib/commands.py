@@ -1,4 +1,4 @@
-"""Helpers for assembling, parsing, and synthesizing command payloads."""
+﻿"""Helpers for assembling, parsing, and synthesizing command payloads."""
 
 from __future__ import annotations
 from dataclasses import dataclass, field
@@ -147,6 +147,116 @@ class _ButtonBurst:
         return len(self.frames)
 
 
+# ---------------------------------------------------------------------------
+# Fixed-width REQ_BUTTONS / keymap record iterator.
+#
+# Each assembled keymap record is 18 bytes; bursts are walked at fixed stride
+# after page assembly.
+# ---------------------------------------------------------------------------
+
+#: Size in bytes of one REQ_BUTTONS / keymap record.
+KEYMAP_RECORD_SIZE = 18
+
+
+@dataclass(slots=True, frozen=True)
+class KeymapRecord:
+    """One 18-byte keymap record from an assembled REQ_BUTTONS concat buffer.
+
+    Field layout (offsets within ``raw``):
+
+    =====  =====================================================================
+    Off.   Meaning
+    =====  =====================================================================
+    0      Activity id (matches the burst's activity).
+    1      Button or favorite id. If this value is a known hardware button code
+           (``BUTTONNAME_BY_CODE``), the record describes a button-to-command
+           binding; otherwise it is interpreted as an activity-favorite slot.
+    2      Device id that the bound command targets.
+    9      Command id within that device.
+    10-17  Optional long-press extension. Present iff::
+
+               raw[10] != 0 and raw[11:15] == b"\\x00\\x00\\x00\\x00"
+                              and raw[15] == 0x4E
+
+           When present, ``raw[10]`` is the long-press device id and
+           ``raw[17]`` is the long-press command id.
+    =====  =====================================================================
+
+    Bytes 3-8, 16 and the slot occupied by the long-press marker when not in
+    long-press shape, are not used by the integration. This dataclass exposes
+    the raw 18 bytes so callers that need to inspect them retain full access.
+    """
+
+    raw: bytes
+
+    @property
+    def activity_id(self) -> int:
+        return self.raw[0]
+
+    @property
+    def button_id(self) -> int:
+        return self.raw[1]
+
+    @property
+    def device_id(self) -> int:
+        return self.raw[2]
+
+    @property
+    def command_id(self) -> int:
+        return self.raw[9]
+
+    @property
+    def has_long_press(self) -> bool:
+        return (
+            len(self.raw) >= 18
+            and self.raw[10] != 0
+            and self.raw[11:15] == b"\x00\x00\x00\x00"
+            and self.raw[15] == 0x4E
+        )
+
+    @property
+    def long_press_device_id(self) -> int | None:
+        return self.raw[10] if self.has_long_press else None
+
+    @property
+    def long_press_command_id(self) -> int | None:
+        return self.raw[17] if self.has_long_press else None
+
+
+def iter_keymap_records(
+    concat: bytes,
+    *,
+    expected_activity_id: int | None = None,
+) -> Iterator[KeymapRecord]:
+    """Yield :class:`KeymapRecord` objects from an assembled keymap buffer.
+
+    ``concat`` is the post-assembly buffer produced by
+    :class:`DeviceButtonAssembler` â€” i.e., the concatenated row stream with
+    per-frame transport headers already stripped. The iterator walks the
+    buffer in 18-byte strides; trailing bytes shorter than one record are
+    ignored.
+
+    When ``expected_activity_id`` is provided, records whose
+    :attr:`KeymapRecord.activity_id` does not match are silently skipped.
+    The assembler keys bursts by activity id, so mismatches normally only
+    occur on malformed firmware data; this guard mirrors the existing
+    behavior of ``StateHelpers._parse_keymap_record`` which returns early on
+    activity-id mismatch.
+
+    Note this iterator deliberately does **not** emit a padded short-tail
+    record for trailing fragments shorter than 18 bytes. The integration has
+    historically tolerated such fragments when they look like a valid record
+    start; that fallback behavior remains in ``state_helpers`` for now.
+    """
+
+    usable = len(concat) - (len(concat) % KEYMAP_RECORD_SIZE)
+    for start in range(0, usable, KEYMAP_RECORD_SIZE):
+        record = KeymapRecord(raw=bytes(concat[start : start + KEYMAP_RECORD_SIZE]))
+        if expected_activity_id is not None and record.activity_id != expected_activity_id:
+            continue
+        yield record
+
+
 @dataclass(slots=True, frozen=True)
 class ButtonBurstFrame:
     """Structured metadata extracted from a family-0x3D button frame."""
@@ -173,6 +283,158 @@ class ButtonBurstFrame:
     @property
     def is_marker(self) -> bool:
         return self.role == "marker"
+
+
+# ---------------------------------------------------------------------------
+# Fixed-width REQ_COMMANDS record iterator.
+#
+# Reference layout for an assembled REQ_COMMANDS burst:
+#
+#     concat = page1_body || page2_body || ... || pageN_body
+#       where pageK_body = raw_frame[7 : 7 + (raw_frame[2] - 3)]
+#     concat[3] = N (record count)
+#     concat[4 + i*stride : 4 + (i+1)*stride] = record i
+#
+# stride is 40 on X1 (ASCII), 70 on X1S/X2 (UTF-16BE). The label slot lives at
+# record-offset 9 with length 30 (X1) or 60 (X1S/X2). Encoding is selected
+# from the hub model, not from byte-pattern heuristics.
+#
+# The integration's existing assembler (`DeviceCommandAssembler`) strips
+# `parsed.data_start` bytes per frame before concatenating. For page-1
+# headers that's 7, for page-2+ pages it's 3. The 4-byte difference equals
+# the page-1 preamble + count byte kept in `concat[0..3]`.
+#
+# Therefore, when the integration calls the new iterator on its post-assembly
+# body, the body already starts at what the app sees as `concat[4]`. The
+# record count must be supplied separately (by the caller, who has it as
+# `parsed.total_commands`).
+# ---------------------------------------------------------------------------
+
+
+#: Per-record stride in the assembled body. 40 bytes on X1 (ASCII labels),
+#: 70 bytes on X1S/X2 (UTF-16BE labels).
+COMMAND_RECORD_STRIDE_X1 = 40
+COMMAND_RECORD_STRIDE_X1S_X2 = 70
+
+#: Per-record byte offsets common to both X1 and X1S/X2 layouts.
+COMMAND_RECORD_LABEL_OFFSET = 9
+COMMAND_RECORD_LABEL_LEN_X1 = 30
+COMMAND_RECORD_LABEL_LEN_X1S_X2 = 60
+
+
+def _stride_and_label_len(hub_version: str | None) -> tuple[int, int, str]:
+    """Return (stride, label_len, encoding) for the hub model.
+
+    Encoding is the literal codec name accepted by ``bytes.decode``.
+    """
+
+    if hub_version == HUB_VERSION_X1:
+        return (
+            COMMAND_RECORD_STRIDE_X1,
+            COMMAND_RECORD_LABEL_LEN_X1,
+            "ascii",
+        )
+    if hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
+        return (
+            COMMAND_RECORD_STRIDE_X1S_X2,
+            COMMAND_RECORD_LABEL_LEN_X1S_X2,
+            "utf-16-be",
+        )
+    raise ValueError(
+        f"iter_command_records_from_assembled: unknown hub_version={hub_version!r}; "
+        "expected one of HUB_VERSION_X1 / HUB_VERSION_X1S / HUB_VERSION_X2."
+    )
+
+
+def _decode_schema_label(label_bytes: bytes, encoding: str) -> str:
+    """Decode a fixed-width command label slot.
+
+    The full slot is decoded under the selected encoding, then null padding
+    and surrounding whitespace are removed. There is no embedded length
+    prefix or terminator scan.
+    """
+
+    if encoding == "ascii":
+        # ASCII path: decode strict bytes, strip nulls and whitespace.
+        try:
+            decoded = label_bytes.decode("ascii", errors="ignore")
+        except Exception:
+            decoded = ""
+        return decoded.rstrip("\x00").strip()
+
+    # UTF-16BE path: pad to even length defensively (real slots are always
+    # even on X1S/X2, but a malformed fixture could pass an odd length).
+    raw = label_bytes
+    if len(raw) % 2:
+        raw = raw[:-1]
+    try:
+        decoded = raw.decode("utf-16-be", errors="ignore")
+    except Exception:
+        decoded = ""
+    return decoded.rstrip("\x00").strip()
+
+
+def iter_command_records_from_assembled(
+    body: bytes,
+    *,
+    count: int,
+    dev_id: int,
+    hub_version: str,
+) -> Iterator[CommandRecord]:
+    """Yield :class:`CommandRecord` objects from an assembled REQ_COMMANDS body.
+
+    ``body`` is the post-assembly buffer produced by
+    :class:`DeviceCommandAssembler` â€” the per-frame transport headers and the
+    page-1 preamble (page metadata + count byte) are already stripped, so
+    ``body[0]`` is the first byte of the first record.
+
+    ``count`` is required; it should be the value the parser captured in
+    :attr:`CommandBurstFrame.total_commands` (the count byte from the
+    assembled header). Inference from ``len(body) // stride`` is deliberately
+    not done: a body that contains trailing padding or has been truncated
+    mid-record would silently miscount.
+
+    ``hub_version`` selects stride (40 X1 / 70 X1S/X2) and label encoding
+    (ASCII X1 / UTF-16BE X1S/X2). Unknown hub versions raise ``ValueError``.
+
+    Records beyond what ``body`` can supply are silently skipped â€” this is
+    a tolerant choice for truncated-burst scenarios; the caller can detect
+    by comparing returned record count to the requested ``count``.
+
+    Per-record layout (offsets within the 40 or 70 byte stride):
+
+    - ``[0]``         device id
+    - ``[1]``         command id
+    - ``[2]``         code type / format marker
+    - ``[3..8]``      fid (6 bytes; treated as opaque control bytes here)
+    - ``[9..label_end]``  label slot (30 or 60 bytes)
+    - ``[stride-1]``  sort id (== command id on observed fixtures)
+
+    The yielded :class:`CommandRecord` retains the existing field set:
+    ``dev_id`` is taken from record byte 0, ``command_id`` from byte 1, and
+    ``control`` is the 7 bytes at record[2..9] for consistency with existing
+    CommandRecord callers.
+    """
+
+    stride, label_len, encoding = _stride_and_label_len(hub_version)
+    label_end = COMMAND_RECORD_LABEL_OFFSET + label_len
+
+    for i in range(count):
+        start = i * stride
+        end = start + stride
+        if end > len(body):
+            return  # truncated body; caller can detect via returned-count diff
+        record = body[start:end]
+
+        label_bytes = record[COMMAND_RECORD_LABEL_OFFSET:label_end]
+        label = _decode_schema_label(label_bytes, encoding)
+
+        yield CommandRecord(
+            dev_id=record[0],
+            command_id=record[1],
+            control=bytes(record[2 : COMMAND_RECORD_LABEL_OFFSET]),
+            label=label,
+        )
 
 
 def _button_hub_line(hub_version: str | None) -> str:
@@ -221,7 +483,13 @@ def parse_button_burst_frame(
     *,
     hub_version: str | None = None,
 ) -> ButtonBurstFrame | None:
-    """Return parsed family metadata for a button-burst frame."""
+    """Return parsed family metadata for a button-burst frame.
+
+    REQ_BUTTONS pages assemble into a counted fixed-width row stream. Marker
+    variants are treated as ordinary pages for assembly purposes, so the low
+    byte identifies the family while the high byte remains payload-length
+    metadata only.
+    """
 
     if len(raw_frame) < 7:
         return None
@@ -340,7 +608,17 @@ def parse_command_burst_frame(
     *,
     hub_version: str | None = None,
 ) -> CommandBurstFrame | None:
-    """Return parsed family metadata for a command-burst frame."""
+    """Return parsed family metadata for a command-burst frame.
+
+    REQ_COMMANDS pages assemble into counted fixed-width records: 40-byte
+    rows on X1 and 70-byte rows on X1S/X2, with the label slot beginning at
+    offset 9. Labels are decoded from the hub model's expected encoding and
+    ``0xFF`` bytes inside the slot are treated as data, not delimiters.
+
+    The existing magic-byte sniffing below detects per-frame layout variants.
+    A future fully post-assembly path can replace that heuristic with the
+    fixed-width record walk used elsewhere in the module.
+    """
 
     if len(raw_frame) < 7:
         return None
@@ -943,325 +1221,6 @@ class DeviceButtonAssembler:
         return completed
 
 
-def _decode_label(label_bytes: bytes) -> str:
-    raw = label_bytes
-    trimmed = label_bytes
-    if trimmed.startswith(b"\x00\x00\x00\x00"):
-        trimmed = trimmed[4:]
-
-    trimmed = trimmed.rstrip(b"\x00")
-    if not trimmed:
-        return ""
-
-    if len(trimmed) >= 4 and all(trimmed[i] == 0 for i in range(1, len(trimmed), 4)):
-        try:
-            utf32_label = trimmed.decode("utf-32-le").strip("\x00")
-            if utf32_label:
-                return utf32_label
-        except UnicodeDecodeError:
-            pass
-
-    without_nulls = bytes(b for b in trimmed if b)
-    try:
-        ascii_label = without_nulls.decode("ascii").strip()
-        if ascii_label:
-            return ascii_label
-    except UnicodeDecodeError:
-        pass
-
-    # Modern hubs sometimes send labels as plain ASCII instead of UTF-16.
-    if b"\x00" not in trimmed:
-        try:
-            ascii_label = trimmed.decode("ascii").strip()
-            if ascii_label:
-                return ascii_label
-        except UnicodeDecodeError:
-            pass
-
-    if len(trimmed) % 2:
-        trimmed += b"\x00"
-
-    try:
-        utf_label = trimmed.decode("utf-16-be").strip("\x00")
-        if utf_label:
-            return utf_label
-    except UnicodeDecodeError:
-        pass
-
-    try:
-        return trimmed.decode("latin-1", errors="ignore").strip("\x00")
-    except UnicodeDecodeError:
-        pass
-
-    # Final safety net: if decoding still failed but there are printable ASCII
-    # bytes present (common with short, zero-padded labels), build a label from
-    # those bytes to avoid dropping an otherwise valid record.
-    visible = bytes(b for b in raw if 32 <= b <= 126)
-    if visible:
-        try:
-            return visible.decode("ascii", errors="ignore").strip()
-        except Exception:
-            pass
-
-    return ""
-
-
-def _matches_control_block(block: bytes) -> bool:
-    if len(block) != 7:
-        return False
-    if block[0] in (0x03, 0x0A, 0x0D, 0x1C, 0x20):
-        return True
-    if block[:5] == b"\x00\x00\x00\x00\x00":
-        return True
-    return block[:6] == b"\x1a\x00\x00\x00\x00\x17"
-
-
-def _iter_fixed_width_utf16_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
-    """Yield records for the X2 wifi fixed-width UTF-16 command layout.
-
-    Some X2 wifi devices return command pages as tightly packed 70-byte records:
-
-        [dev_id] [command_id] [0x1C] [7x 0x00] [UTF-16-BE label padded] [command_id]
-
-    There are no ``0xFF`` separators between records, so the generic chunk-based
-    parser treats the whole payload as one label. Detect that shape explicitly
-    and only accept it when every record in the payload matches the pattern.
-    """
-
-    target = dev_id & 0xFF
-    record_size = 70
-    header_size = 10
-
-    if len(data) < record_size * 2 or len(data) % record_size:
-        return
-
-    records: list[CommandRecord] = []
-    for start in range(0, len(data), record_size):
-        block = data[start : start + record_size]
-        if (
-            len(block) != record_size
-            or block[0] != target
-            or block[2] != 0x1C
-            or block[3:10] != b"\x00" * 7
-            or block[-1] != block[1]
-        ):
-            return
-
-        label = _decode_label(block[header_size:-1])
-        if not label:
-            return
-
-        records.append(
-            CommandRecord(
-                dev_id=target,
-                command_id=block[1],
-                control=block[2:10],
-                label=label,
-            )
-        )
-
-    yield from records
-
-
-def _iter_fixed_width_ascii_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
-    """Yield records for packed X1 ASCII command tables without 0xFF separators.
-
-    Older X1 single-page bursts can concatenate ASCII records directly with no
-    ``0xFF`` delimiters. They are record-structured but not truly fixed width:
-
-        [dev_id] [command_id] [fmt] [4x 0x00] [2-byte control] [ASCII label padded] [command_id]
-
-    The amount of zero-padding can vary slightly between records, so detect
-    structural record starts and slice from one start to the next instead of
-    assuming an exact stride length.
-    """
-
-    target = dev_id & 0xFF
-    header_size = 9
-    starts = [
-        idx
-        for idx in range(0, len(data) - header_size + 1)
-        if data[idx] == target
-        and data[idx + 2] in (0x03, 0x0A, 0x0D, 0x1A, 0x1C, 0x20)
-        and data[idx + 3 : idx + 7] == b"\x00" * 4
-    ]
-
-    if not starts or starts[0] != 0:
-        return
-
-    records: list[CommandRecord] = []
-    boundaries = starts[1:] + [len(data)]
-    for start, end in zip(starts, boundaries):
-        block = data[start:end]
-        if (
-            len(block) < header_size + 2
-            or block[0] != target
-            or block[3:7] != b"\x00" * 4
-            or block[-1] != block[1]
-        ):
-            return
-
-        label = _decode_label(block[header_size:-1])
-        if not label:
-            return
-
-        records.append(
-            CommandRecord(
-                dev_id=target,
-                command_id=block[1],
-                control=block[2:9],
-                label=label,
-            )
-        )
-
-    yield from records
-
-
-def _split_command_chunks(data: bytes, dev_id: int) -> Iterator[bytes]:
-    """Split assembled command payloads on real record separators only.
-
-    Modern hubs prefix follow-on records with ``0xFF`` before the next
-    ``<dev_id> <command_id> <fmt>`` tuple. Some Unicode labels can legitimately
-    contain ``0xFF`` bytes (for example U+00FF in UTF-16BE), so a plain
-    ``data.split(b"\\xFF")`` corrupts those labels and invents fake records.
-    """
-
-    target = dev_id & 0xFF
-    separators: list[int] = []
-
-    for idx in range(0, len(data) - 7):
-        if data[idx] != 0xFF or data[idx + 1] != target:
-            continue
-        if data[idx + 3] not in (0x03, 0x0A, 0x0D, 0x1A, 0x1C, 0x20):
-            continue
-        if data[idx + 4 : idx + 8] != b"\x00" * 4:
-            continue
-        separators.append(idx)
-
-    # Older command streams commonly terminate the final record with a bare
-    # 0xFF byte. Preserve the old split semantics for that trailing delimiter
-    # without treating 0x00 0xFF inside UTF-16BE labels as a separator.
-    if data.endswith(b"\xFF"):
-        separators.append(len(data) - 1)
-
-    start = 0
-    for sep in separators:
-        if sep > start:
-            yield data[start:sep]
-        start = sep + 1
-
-    if start < len(data):
-        yield data[start:]
-
-
-def iter_command_records(data: bytes, dev_id: int) -> Iterator[CommandRecord]:
-    target = dev_id & 0xFF
-    if b"\xff" not in data:
-        fixed_width_records = tuple(_iter_fixed_width_utf16_records(data, dev_id))
-        if fixed_width_records:
-            yield from fixed_width_records
-            return
-        fixed_width_records = tuple(_iter_fixed_width_ascii_records(data, dev_id))
-        if fixed_width_records:
-            yield from fixed_width_records
-            return
-
-    chunks: Iterable[bytes] = _split_command_chunks(data, dev_id)
-
-    for chunk in chunks:
-        if len(chunk) < 9:
-            continue
-
-        if chunk[0] == 0x04 and chunk[3:7] == b"\x00\x00\x00\x00":
-            control_block = chunk[3:10] if len(chunk) >= 10 else chunk[3:]
-            label_bytes = chunk[9:] if len(chunk) > 9 else b""
-            label = _decode_label(label_bytes)
-            if not label:
-                if any(32 <= b <= 126 for b in label_bytes):
-                    try:
-                        label = bytes(b for b in label_bytes if 32 <= b <= 126).decode(
-                            "ascii", errors="ignore"
-                        ).strip()
-                    except Exception:
-                        label = ""
-            if label:
-                yield CommandRecord(chunk[2], chunk[1], control_block, label)
-                continue
-
-        candidates = [i for i in range(len(chunk) - 1) if chunk[i] == target]
-        if not candidates:
-            candidates = [0]
-
-        best_record: CommandRecord | None = None
-
-        for idx in candidates:
-            has_target = chunk[idx] == target
-            if has_target and idx > 0 and chunk[idx - 1] == 0x04:
-                command_index = idx - 1
-            else:
-                command_index = idx + 1 if has_target else idx
-            if command_index >= len(chunk):
-                continue
-
-            command_id = chunk[command_index]
-            control_start = command_index + 1
-            control_block = chunk[control_start : control_start + 7]
-
-            label_start = None
-            matched_control = len(control_block) == 7 and _matches_control_block(control_block)
-            if matched_control:
-                label_start = control_start + 7
-                if control_block[:5] == b"\x00\x00\x00\x00\x00":
-                    label_start -= 1
-            else:
-                label_start = command_index + 8
-
-            if label_start >= len(chunk):
-                continue
-
-            # Some hubs send labels that are misaligned by one byte, leaving the
-            # text prefixed with the last byte of the control block. Detect the
-            # offset and realign before decoding.
-            if (
-                label_start % 2
-                and label_start + 1 < len(chunk)
-                and chunk[label_start + 1] == 0x00
-                and not (32 <= chunk[label_start] <= 126)
-            ):
-                label_start += 1
-
-            label = _decode_label(chunk[label_start:])
-            if not label:
-                # Preserve records that clearly contain ASCII text even if the
-                # primary decoding heuristics could not resolve the label (e.g.
-                # short, zero-padded labels).
-                label_bytes = chunk[label_start:]
-                if any(32 <= b <= 126 for b in label_bytes):
-                    try:
-                        label = bytes(b for b in label_bytes if 32 <= b <= 126).decode(
-                            "ascii", errors="ignore"
-                        ).strip()
-                    except Exception:
-                        continue
-                else:
-                    continue
-
-            if len(control_block) < 7:
-                control_block = chunk[control_start:label_start]
-
-            record = CommandRecord(target, command_id, control_block, label)
-            if matched_control:
-                yield record
-                break
-
-            if best_record is None:
-                best_record = record
-        else:
-            # Exhausted candidates without yielding
-            if best_record:
-                yield best_record
-
-
 __all__ = [
     "ButtonBurstFrame",
     "CommandRecord",
@@ -1269,11 +1228,19 @@ __all__ = [
     "DeviceButtonAssembler",
     "DeviceCommandAssembler",
     "IrCommandDumpFrame",
+    "KEYMAP_RECORD_SIZE",
+    "KeymapRecord",
     "build_descriptive_ir_blob_body",
     "build_denonk_ir_blob",
     "descriptive_play_blob_text",
     "denonk_checksum",
-    "iter_command_records",
+    "COMMAND_RECORD_LABEL_LEN_X1",
+    "COMMAND_RECORD_LABEL_LEN_X1S_X2",
+    "COMMAND_RECORD_LABEL_OFFSET",
+    "COMMAND_RECORD_STRIDE_X1",
+    "COMMAND_RECORD_STRIDE_X1S_X2",
+    "iter_command_records_from_assembled",
+    "iter_keymap_records",
     "looks_like_descriptive_play_blob",
     "parse_ir_command_dump_frame",
     "parse_button_burst_frame",

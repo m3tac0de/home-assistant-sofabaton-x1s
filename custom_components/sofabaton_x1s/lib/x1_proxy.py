@@ -5498,7 +5498,16 @@ class X1Proxy:
         self._app_devices_retry_sent = False
 
     def parse_device_commands(self, payload: bytes, dev_id: int) -> Dict[int, str]:
-        return self.state.parse_device_commands(payload, dev_id)
+        """Parse an assembled REQ_COMMANDS body using the fixed-width schema.
+
+        Forwards ``self.hub_version`` so
+        :meth:`StateHelpers.parse_device_commands` selects the correct
+        stride and label encoding.
+        """
+
+        return self.state.parse_device_commands(
+            payload, dev_id, hub_version=self.hub_version
+        )
 
     # ---------------------------------------------------------------------
     # Structured frame logs

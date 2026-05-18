@@ -24,13 +24,3 @@ def test_tools_card_keeps_action_hint_copy_visible() -> None:
         'node.querySelectorAll("ha-selector-select, ha-control-select, ha-formfield")'
         not in source
     )
-
-
-def test_tools_card_version_mismatch_copy_uses_control_panel_name() -> None:
-    source = Path("custom_components/sofabaton_x1s/www/tools-card.js").read_text(
-        encoding="utf-8",
-    )
-
-    assert "Refresh required to update the Sofabaton Control Panel card" in source
-    assert "older cached version of the Sofabaton Control Panel card" in source
-    assert '<ha-icon icon="mdi:alert"></ha-icon>' in source

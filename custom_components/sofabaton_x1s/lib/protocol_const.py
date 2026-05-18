@@ -7,6 +7,20 @@ from typing import Any, Dict
 # Frame markers used by the hub protocol
 SYNC0, SYNC1 = 0xA5, 0x5A
 
+# Frame invariant: opcode_hi == payload_length
+# ---------------------------------------------
+# The byte at offset [2] (which is also the high byte of the 16-bit BE opcode)
+# equals the number of payload bytes between the opcode and the checksum.
+# Total frame length is therefore always `5 + (opcode >> 8)`.
+#
+# Companion-client framing relies on this directly instead of
+# sync-scanning. Every opcode in this file obeys the invariant; if you
+# add a new opcode constant whose high byte does not match the payload size in
+# the comment, suspect the comment first.
+#
+# Example: OP_REQ_BUTTONS = 0x023C carries a 2-byte payload [act_lo, 0xFF];
+# the frame is 7 bytes total: A5 5A 02 3C XX XX SUM.
+
 
 class ButtonName:
     """Enumeration of known Sofabaton button codes."""
@@ -52,7 +66,7 @@ BUTTONNAME_BY_CODE = {
 }
 
 
-# A→H requests (from app/client to hub)
+# A→H requests (from client to hub)
 OP_REQ_BANNER = 0x0001  # yields family-0x02 banner reply with model/batch/hub-fw
 OP_REQ_DEVICES = 0x000A  # yields CATALOG_ROW_DEVICE rows (0xD50B)
 OP_REQ_ACTIVITIES = 0x003A  # yields CATALOG_ROW_ACTIVITY rows (0xD53B)
@@ -63,6 +77,12 @@ OP_REQ_ACTIVATE = 0x023F  # payload: [id_lo, key_code] (activity or device ID)
 OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites mapping (X1)
 OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
 OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
+# NOTE: opcode_hi=0x00 contradicts the documented 1-byte payload (frame
+# invariant says payload length == opcode_hi). Two possibilities:
+#   - The actual opcode is 0x0123 (1-byte payload) and was mis-recorded, or
+#   - The payload is empty and the "[0x01]" in this comment is wrong.
+# The X2 variant OP_FIND_REMOTE_X2 = 0x0323 correctly has a 3-byte payload.
+# Worth verifying against a captured X1/X1S buzzer frame.
 OP_FIND_REMOTE_X2 = 0x0323  # payload: [0x00, 0x00, 0x08] observed on X2 hubs
 OP_REMOTE_SYNC = 0x0064  # payload: empty; force remote<->hub sync on X1/X1S
 OP_X2_REMOTE_LIST = 0x012E  # payload: [0x00]; request connected remotes on X2
@@ -75,8 +95,35 @@ OP_PREPARE_SAVE = 0x4102  # payload triggers save transaction start
 OP_FINALIZE_DEVICE = 0x4677
 OP_DEVICE_SAVE_HEAD = 0x8D5D  # hub assigns device id
 OP_SAVE_COMMIT = 0x6501
+# ACK family — dispatch by opcode-lo only
+# ----------------------------------------
+# ACK dispatch reads
+# opcode-lo and ignores opcode-hi entirely when classifying ACKs.
+# Because of the opcode-hi == payload-length invariant, `0x0103`, `0x0203`,
+# `0x0303`, etc. are all the **same** "status ack" family with progressively
+# larger payloads — only the payload-0 byte is the verdict.
+#
+# Success/failure rule (binary):
+#   payload[0] == 0x00  →  success
+#   payload[0] != 0x00  →  failure
+#
+# Other ACK / event opcode-lo families observed in the dispatcher:
+#   0x15  batch-resume cursor: `cursor = BE(payload[1..4]) - 1`, re-emit
+#   0x3E  bare progression ack (no status byte; just "advance")
+#   0x42  PING2 ack family (status byte at payload offset 1)
+#   0x45  one-shot status return (status byte at payload offset 1)
+#   0x57  one-shot status return (status byte at payload offset 2)
+#   0x60  ACK_READY family — posts "activity_update" event globally
+#   0x67  OTA-update push event from hub
+#
+# `ACK_SUCCESS = 0x0301` and `OP_STATUS_ACK = 0x0103` are both opcode-lo 0x03;
+# they are the same family with different payload widths. The naming is
+# retained for backward compatibility but the dispatcher logic should treat
+# any opcode with low byte 0x03 as a status frame.
 ACK_SUCCESS = 0x0301
 OP_STATUS_ACK = 0x0103  # H→A generic status/ack frame; payload[0] carries the status byte
+# Status-ack family identifier (low byte). Use `opcode & 0xFF == FAMILY_STATUS_ACK`.
+FAMILY_STATUS_ACK = 0x03
 
 # IP command synchronization (existing devices)
 OP_REQ_IPCMD_SYNC = 0x0C02

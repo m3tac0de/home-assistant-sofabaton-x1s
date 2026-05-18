@@ -64,8 +64,7 @@ Requests the raw `0x020C [device_id, command_id]` dump flow and returns the
 parsed page structure for the selected device.
 Leave `command_id` empty to request the full blob snapshot for that device.
 
-This action returns data and is mainly useful for reverse-engineering and
-low-level troubleshooting.
+This action returns data and is mainly useful for low-level troubleshooting.
 
 | Parameter | Type | Required | Description |
 | --------- | ---- | :------: | ----------- |
@@ -155,8 +154,8 @@ Tip: the returned `command_blob` value is the canonical input for
 
 ## `sofabaton_x1s.play_ir_blob`
 
-Streams one canonical IR blob body to the hub for one-shot playback, mirroring
-the official app's **Test** flow. Nothing is persisted on the hub.
+Streams one canonical IR blob body to the hub for one-shot playback.
+Nothing is persisted on the hub.
 
 Input can be either:
 - a hex string containing the canonical blob body without the final replay-tail

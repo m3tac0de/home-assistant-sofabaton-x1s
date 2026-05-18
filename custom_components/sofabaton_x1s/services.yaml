@@ -19,7 +19,7 @@ fetch_device_commands:
 
 play_ir_blob:
   name: Play IR blob (Test)
-  description: Streams a canonical command blob body to the hub for one-shot playback, mirroring the official app's Test feature. Accepts either a raw blob body without the final replay-tail checksum byte or a descriptive protocol string such as P:Sony12 R:40000 D:1 F:18 MUL:2. No data is persisted on the hub.
+  description: Streams a canonical command blob body to the hub for one-shot playback. Accepts either a raw blob body without the final replay-tail checksum byte or a descriptive protocol string such as P:Sony12 R:40000 D:1 F:18 MUL:2. No data is persisted on the hub.
   fields:
     device:
       name: Sofabaton hub

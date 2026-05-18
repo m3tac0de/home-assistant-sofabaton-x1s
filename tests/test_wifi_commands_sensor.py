@@ -32,7 +32,9 @@ def _install_missing_sensor_stubs() -> None:
     event_mod = types.ModuleType("homeassistant.helpers.event")
     event_mod.async_track_time_interval = lambda *args, **kwargs: (lambda: None)
     event_mod.async_call_later = lambda *args, **kwargs: (lambda: None)
-    sys.modules.setdefault("homeassistant.helpers.event", event_mod)
+    # Replace this stub unconditionally so earlier test modules cannot leave us
+    # with a partial helper that misses async_track_time_interval.
+    sys.modules["homeassistant.helpers.event"] = event_mod
 
     dt_mod = types.ModuleType("homeassistant.util.dt")
     dt_mod.utcnow = lambda: SimpleNamespace(timestamp=lambda: 0)
