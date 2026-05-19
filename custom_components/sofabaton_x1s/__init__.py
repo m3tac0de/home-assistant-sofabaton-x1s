@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -269,13 +270,16 @@ async def _async_register_storage_mode_resources(
     modules: list[dict[str, str]],
     *,
     retry_delay_seconds: float = 5.0,
-) -> None:
+) -> bool:
+    domain_data = hass.data.setdefault(DOMAIN, {})
     lovelace = hass.data.get("lovelace")
     resources = getattr(lovelace, "resources", None)
     if lovelace is None or resources is None:
-        return
+        domain_data["storage_resources_registration_pending"] = False
+        return False
 
     if not getattr(resources, "loaded", False):
+        domain_data["storage_resources_registration_pending"] = True
         _LOGGER.debug(
             "[%s] Lovelace resources not loaded yet; retrying frontend resource registration in %.1f seconds",
             DOMAIN,
@@ -290,9 +294,12 @@ async def _async_register_storage_mode_resources(
             )
 
         async_call_later(hass, retry_delay_seconds, _retry)
-        return
+        return False
 
     await _async_sync_lovelace_resources(hass, modules)
+    domain_data["storage_resources_registered"] = True
+    domain_data["storage_resources_registration_pending"] = False
+    return True
 
 
 async def _async_unregister_lovelace_resources(hass: HomeAssistant) -> None:
@@ -1179,16 +1186,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         hass.bus.async_listen_once("homeassistant_stop", _async_handle_hass_stop)
         hass.data[DOMAIN]["stop_listener_registered"] = True
 
-    if not hass.data[DOMAIN].get("frontend_registered"):
-        community_card_exists = await _async_has_community_remote_card(hass)
-        inject_remote_card = not community_card_exists
-        if community_card_exists:
-            _LOGGER.info(
-                "[%s] Community remote card found at %s; bundled remote card will not be registered",
-                DOMAIN,
-                _remote_card_community_dir(hass),
-            )
-
+    if not hass.data[DOMAIN].get("frontend_bootstrap_registered"):
         frontend_dir = Path(__file__).parent / "www"
         abs_path, frontend_dir_exists, contents = await hass.async_add_executor_job(
             _inspect_frontend_dir, frontend_dir
@@ -1210,30 +1208,23 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 ]
             )
 
-            tools_version = await _async_get_integration_version(hass)
-            remote_version = await _async_get_remote_card_version(hass)
-            module_specs = _build_frontend_module_specs(
-                tools_version=tools_version,
-                remote_version=remote_version,
-                include_remote_card=inject_remote_card,
-            )
-
-            if _get_lovelace_resource_mode(hass) == _LOVELACE_STORAGE_MODE:
-                _LOGGER.info(
-                    "[%s] Registering Lovelace frontend resources in storage mode",
-                    DOMAIN,
+            if _get_lovelace_resource_mode(hass) != _LOVELACE_STORAGE_MODE:
+                module_specs = await _async_build_frontend_module_specs(hass)
+                tools_module = next(
+                    module for module in module_specs if module["filename"] == _TOOLS_CARD_FILENAME
                 )
-                await _async_register_storage_mode_resources(hass, module_specs)
-            else:
+                remote_modules = [
+                    module for module in module_specs if module["filename"] == _REMOTE_CARD_FILENAME
+                ]
                 loader_url = _frontend_loader_url(
-                    tools_version,
-                    inject_remote_card,
-                    remote_version=remote_version,
+                    tools_module["version"],
+                    bool(remote_modules),
+                    remote_version=remote_modules[0]["version"] if remote_modules else "",
                 )
                 _LOGGER.info("[%s] Adding fallback loader script: %s", DOMAIN, loader_url)
                 frontend.add_extra_js_url(hass, loader_url)
 
-            hass.data[DOMAIN]["frontend_registered"] = True
+            hass.data[DOMAIN]["frontend_bootstrap_registered"] = True
         else:
             _LOGGER.error("[%s] FRONTEND DIR MISSING: Expected at %s", DOMAIN, abs_path)
 
@@ -1297,6 +1288,50 @@ async def _async_get_integration_version(hass: HomeAssistant) -> str:
 
     version = manifest.get("version")
     return str(version) if version else ""
+
+
+async def _async_build_frontend_module_specs(hass: HomeAssistant) -> list[dict[str, str]]:
+    community_card_exists = await _async_has_community_remote_card(hass)
+    include_remote_card = not community_card_exists
+    if community_card_exists:
+        _LOGGER.info(
+            "[%s] Community remote card found at %s; bundled remote card will not be registered",
+            DOMAIN,
+            _remote_card_community_dir(hass),
+        )
+
+    tools_version = await _async_get_integration_version(hass)
+    remote_version = await _async_get_remote_card_version(hass)
+    return _build_frontend_module_specs(
+        tools_version=tools_version,
+        remote_version=remote_version,
+        include_remote_card=include_remote_card,
+    )
+
+
+async def _async_ensure_storage_mode_frontend_resources(hass: HomeAssistant) -> None:
+    if _get_lovelace_resource_mode(hass) != _LOVELACE_STORAGE_MODE:
+        return
+
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    lock = domain_data.get("storage_resources_lock")
+    if not isinstance(lock, asyncio.Lock):
+        lock = asyncio.Lock()
+        domain_data["storage_resources_lock"] = lock
+
+    async with lock:
+        if (
+            domain_data.get("storage_resources_registered")
+            or domain_data.get("storage_resources_registration_pending")
+        ):
+            return
+
+        _LOGGER.info(
+            "[%s] Registering Lovelace frontend resources in storage mode",
+            DOMAIN,
+        )
+        module_specs = await _async_build_frontend_module_specs(hass)
+        await _async_register_storage_mode_resources(hass, module_specs)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -1409,6 +1444,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await _async_ensure_storage_mode_frontend_resources(hass)
     return True
 
 
@@ -1452,10 +1488,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "sync_command_config")
             #hass.services.async_remove(DOMAIN, "create_ip_button")
             async_teardown_diagnostics(hass)
-            if hass.data[DOMAIN].get("frontend_registered"):
-                if _get_lovelace_resource_mode(hass) == _LOVELACE_STORAGE_MODE:
+            if _get_lovelace_resource_mode(hass) == _LOVELACE_STORAGE_MODE:
+                if hass.data[DOMAIN].get("storage_resources_registered"):
                     await _async_unregister_lovelace_resources(hass)
-                hass.data[DOMAIN]["frontend_registered"] = False
+                hass.data[DOMAIN]["storage_resources_registered"] = False
         async_disable_hex_logging_capture(hass, entry.entry_id)
         if hub is not None:
             await _async_persist_hub_cache(hass, hub)
