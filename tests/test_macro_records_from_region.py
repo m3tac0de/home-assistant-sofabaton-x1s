@@ -20,8 +20,10 @@ from custom_components.sofabaton_x1s.lib.macros import (
     MACRO_KEY_BEAN_START,
     MACRO_LABEL_LEN_X1,
     MACRO_LABEL_LEN_X1S_X2,
+    MACRO_WRITE_PAGE_BODY_CHUNK,
     MacroKeyEntry,
     MacroRecord,
+    build_macro_save_payload,
     parse_macro_record_from_region,
     parse_macro_records_from_burst,
 )
@@ -322,3 +324,108 @@ def test_macro_key_entry_fid_round_trips_through_6_byte_be() -> None:
     assert record is not None
     assert len(record.key_sequence) == 1
     assert record.key_sequence[0].fid == fid
+
+
+# ---------------------------------------------------------------------------
+# build_macro_save_payload — body invariants the hub enforces
+# ---------------------------------------------------------------------------
+
+
+def test_build_payload_multi_page_inner_body_checksum_is_consistent() -> None:
+    """Phase 3.6 regression: total_pages and the inner-body checksum must
+    agree with the final body bytes.
+
+    The earlier bug computed the checksum with ``total_pages=1`` baked in,
+    then the paged splitter overwrote ``body[1:3]`` to ``00 02`` without
+    recomputing — producing a one-off checksum the hub rejected with
+    ``STATUS_ACK payload=0c``.
+    """
+
+    # 20 rows on X1S → inner_body = 20*10 + 67 = 267 bytes → 2 pages.
+    key_sequence = [
+        MacroKeyEntry(device_id=d, key_id=0xC6, fid=0, duration=0, delay=0xFF)
+        for d in range(1, 21)
+    ]
+    payload = build_macro_save_payload(
+        activity_id=0x65,
+        key_id=0xC6,
+        key_sequence=key_sequence,
+        label="POWER_ON",
+        hub_version=HUB_VERSION_X1S,
+    )
+    inner_body = payload[3:]  # strip [0x01][outer_seq_be]
+
+    assert len(inner_body) == 20 * 10 + 67 == 267
+    # total_pages must reflect the actual chunk count.
+    expected_pages = (len(inner_body) + MACRO_WRITE_PAGE_BODY_CHUNK - 1) // MACRO_WRITE_PAGE_BODY_CHUNK
+    assert expected_pages == 2
+    assert inner_body[1:3] == expected_pages.to_bytes(2, "big")
+    # Checksum is sum of the body bytes excluding the checksum slot itself.
+    assert inner_body[-1] == sum(inner_body[:-1]) & 0xFF
+
+
+def test_build_payload_single_page_inner_body_checksum_is_consistent() -> None:
+    """Single-page macros must also have a self-consistent checksum.
+
+    Cross-checks that the same builder invariant holds in the common case
+    that doesn't hit the paging path.
+    """
+
+    key_sequence = [
+        MacroKeyEntry(device_id=d, key_id=0xC7, fid=0, duration=0, delay=0xFF)
+        for d in range(1, 6)
+    ]
+    payload = build_macro_save_payload(
+        activity_id=0x65,
+        key_id=0xC7,
+        key_sequence=key_sequence,
+        label="POWER_OFF",
+        hub_version=HUB_VERSION_X1S,
+    )
+    inner_body = payload[3:]
+
+    assert inner_body[1:3] == b"\x00\x01"
+    assert inner_body[-1] == sum(inner_body[:-1]) & 0xFF
+
+
+def test_label_slot_bytes_round_trip_through_parse_build_parse() -> None:
+    """Phase 3.5 regression: the raw label-slot bytes must survive
+    parse → build → parse byte-for-byte.
+
+    Real X1S/X2 hubs put non-zero metadata in the trailing portion of the
+    label slot (e.g. ``37 37 00 00 35 35`` after ``POWER_ON``). The old
+    builder re-encoded the slot from the decoded label string, wiping
+    those bytes and triggering a hub rejection on the next save.
+    """
+
+    label_slot = bytearray(MACRO_LABEL_LEN_X1S_X2)
+    encoded_label = "POWER_ON".encode("utf-16-be")
+    label_slot[: len(encoded_label)] = encoded_label
+    label_slot[-6:] = bytes.fromhex("37 37 00 00 35 35")
+
+    key_beans = [_key_bean(device_id=0x01, key_id=0xC6, fid=0, duration=0, delay=0xFF)]
+    region = (
+        bytes([0xC6, len(key_beans)])
+        + b"".join(key_beans)
+        + bytes(label_slot)
+        + bytes([_MACRO_REGION_TERMINATOR])
+    )
+
+    record = parse_macro_record_from_region(
+        region, activity_id=0x65, hub_version=HUB_VERSION_X1S
+    )
+    assert record is not None
+    assert record.raw_label_slot == bytes(label_slot)
+
+    rebuilt_payload = build_macro_save_payload(
+        activity_id=record.activity_id,
+        key_id=record.key_id,
+        key_sequence=record.key_sequence,
+        label=record.label,
+        hub_version=HUB_VERSION_X1S,
+        label_slot=record.raw_label_slot,
+    )
+
+    # The rebuilt inner body's last 61 bytes are [label_slot(60)][checksum(1)].
+    rebuilt_body = rebuilt_payload[3:]
+    assert rebuilt_body[-(MACRO_LABEL_LEN_X1S_X2 + 1) : -1] == bytes(label_slot)

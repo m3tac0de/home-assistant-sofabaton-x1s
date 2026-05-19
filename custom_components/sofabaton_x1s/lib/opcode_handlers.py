@@ -192,11 +192,6 @@ class MacroHandler(BaseFrameHandler):
         activity_hint = proxy._macro_assembler._last_activity_id
         burst_key = "macros" if activity_hint is None else f"macros:{activity_hint & 0xFF}"
 
-        if len(frame.payload) >= 8 and frame.payload[2] == 0x01 and frame.payload[5] in (0x01, 0x02):
-            req_activity_id = frame.payload[6] & 0xFF
-            req_button_id = frame.payload[7] & 0xFF
-            proxy.cache_macro_payload(req_activity_id, req_button_id, frame.payload)
-
         if proxy._burst.active and proxy._burst.kind and proxy._burst.kind.startswith("macros"):
             proxy._burst.last_ts = now + proxy._burst.response_grace
             if proxy._burst.kind == "macros":
@@ -220,9 +215,12 @@ class MacroHandler(BaseFrameHandler):
                 record_boundaries=boundaries,
                 hub_version=proxy.hub_version,
             ):
-                # Match the legacy filter: skip auto-generated "POWER_*"
-                # labels (the integration historically suppresses these to
-                # avoid clutter in the activity-macros UI).
+                # Surface every assembled record (including POWER_*) for
+                # read-modify-write callers like add_device_to_activity.
+                proxy.cache_macro_record(record)
+
+                # Suppress auto-generated POWER_* macros from the activity
+                # UI list.
                 if not record.label or record.label.upper().startswith("POWER_"):
                     continue
                 macros.append({"command_id": record.key_id, "label": record.label})

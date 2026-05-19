@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
@@ -306,12 +306,19 @@ class MacroRecord:
     ``activity_id`` is supplied by the caller (the assembler keys bursts
     by activity_id; the byte that holds it in the wire format lives in the
     page-1 preamble the assembler strips before producing the region).
+
+    ``raw_label_slot`` preserves the on-wire label-slot bytes verbatim
+    (30 bytes on X1, 60 on X1S/X2). Real hubs leave non-zero metadata in
+    the trailing portion of the slot (e.g. ``37 37 00 00 35 35`` after a
+    ``POWER_ON`` label). The integration must round-trip those bytes when
+    re-saving the macro, otherwise the hub rejects the write.
     """
 
     activity_id: int
     key_id: int           # which activity button this macro is bound to
     label: str
     key_sequence: tuple[MacroKeyEntry, ...]
+    raw_label_slot: bytes = b""
 
 
 def _stride_label_len_for_macros(hub_version: str | None) -> tuple[int, str]:
@@ -349,6 +356,45 @@ def _decode_macro_schema_label(label_bytes: bytes, encoding: str) -> str:
     except Exception:
         decoded = ""
     return decoded.rstrip("\x00").strip()
+
+
+def _encode_macro_schema_label(label: str, *, label_len: int, encoding: str) -> bytes:
+    """Encode one fixed-width macro label slot."""
+
+    try:
+        encoded = label.encode(encoding, errors="ignore")
+    except Exception:
+        encoded = b""
+    return encoded[:label_len].ljust(label_len, b"\x00")
+
+
+def _parse_macro_key_entry(bean: bytes) -> MacroKeyEntry:
+    """Parse one 10-byte MacroKeyBean payload."""
+
+    return MacroKeyEntry(
+        device_id=bean[0],
+        key_id=bean[1],
+        fid=int.from_bytes(bean[2:8], "big"),
+        duration=bean[8],
+        delay=bean[9],
+    )
+
+
+def _serialize_macro_key_entry(entry: MacroKeyEntry) -> bytes:
+    """Serialize one MacroKeyBean using canonical layout."""
+
+    if entry.is_delay_only:
+        return b"\xFF" * 9 + bytes([entry.delay & 0xFF])
+
+    fid = entry.fid
+    if entry.key_id in (0xC5, 0xC6, 0xC7):
+        fid = 0
+
+    return (
+        bytes([entry.device_id & 0xFF, entry.key_id & 0xFF])
+        + fid.to_bytes(6, "big")
+        + bytes([entry.duration & 0xFF, 0xFF])
+    )
 
 
 def parse_macro_record_from_region(
@@ -413,14 +459,82 @@ def parse_macro_record_from_region(
             )
         )
 
-    label = _decode_macro_schema_label(region[label_start:label_end], encoding)
+    label_slot_bytes = bytes(region[label_start:label_end])
+    label = _decode_macro_schema_label(label_slot_bytes, encoding)
 
     return MacroRecord(
         activity_id=activity_id,
         key_id=key_id,
         label=label,
         key_sequence=tuple(entries),
+        raw_label_slot=label_slot_bytes,
     )
+
+
+#: Maximum body chunk size carried per family-0x12 write page.
+MACRO_WRITE_PAGE_BODY_CHUNK = 247
+
+
+def build_macro_save_payload(
+    *,
+    activity_id: int,
+    key_id: int,
+    key_sequence: tuple[MacroKeyEntry, ...] | list[MacroKeyEntry],
+    label: str,
+    hub_version: str,
+    label_slot: bytes | None = None,
+    outer_sequence: int = 1,
+) -> bytes:
+    """Build one canonical macro-save payload matching.
+
+    Body layout: ``[0x01][total_pages_be][act_id][key_id][count] + Nx10 rows
+    + 30B (X1) or 60B (X1S/X2) label slot + 1B checksum``.
+
+    ``total_pages`` is computed from the final body length so the
+    checksum at ``body[-1]`` is always consistent with the bytes the
+    paged splitter will send. (The hub rejects writes whose declared
+    checksum disagrees with the sum of the body — the prior version
+    mutated ``body[1:3]`` after the checksum was computed, producing a
+    one-off mismatch on every multi-page macro.)
+
+    If ``label_slot`` is supplied (length must equal the hub's label slot
+    size), those bytes are written verbatim and ``label`` is ignored. This
+    matters for read-modify-write paths where the source hub stores
+    metadata in the trailing portion of the label slot (e.g. POWER_*
+    macros surface bytes like ``37 37 00 00 35 35`` after the encoded
+    name); dropping them causes the hub to reject the save with status
+    ``0x0c``.
+
+    If ``label_slot`` is omitted, the slot is built from ``label`` using
+    the hub's encoding (ASCII for X1, UTF-16BE for X1S/X2) with zero
+    padding.
+    """
+
+    label_len, encoding = _stride_label_len_for_macros(hub_version)
+    if label_slot is None:
+        slot_bytes = _encode_macro_schema_label(label, label_len=label_len, encoding=encoding)
+    elif len(label_slot) != label_len:
+        raise ValueError(
+            f"build_macro_save_payload: label_slot length {len(label_slot)} "
+            f"does not match expected slot length {label_len} for hub_version={hub_version!r}"
+        )
+    else:
+        slot_bytes = bytes(label_slot)
+
+    body = bytearray(
+        bytes([0x01, 0x00, 0x00])  # total_pages placeholder, set below
+        + bytes([activity_id & 0xFF, key_id & 0xFF, len(tuple(key_sequence)) & 0xFF])
+    )
+    for entry in key_sequence:
+        body.extend(_serialize_macro_key_entry(entry))
+    body.extend(slot_bytes)
+    body.append(0x00)  # checksum slot
+
+    total_pages = max(1, (len(body) + MACRO_WRITE_PAGE_BODY_CHUNK - 1) // MACRO_WRITE_PAGE_BODY_CHUNK)
+    body[1:3] = (total_pages & 0xFFFF).to_bytes(2, "big")
+    body[-1] = sum(body[:-1]) & 0xFF
+
+    return bytes([0x01]) + (outer_sequence & 0xFFFF).to_bytes(2, "big") + bytes(body)
 
 
 def parse_macro_records_from_burst(
@@ -467,6 +581,7 @@ __all__ = [
     "MacroBurstFrame",
     "MacroKeyEntry",
     "MacroRecord",
+    "build_macro_save_payload",
     "parse_macro_burst_frame",
     "parse_macro_record_from_region",
     "parse_macro_records_from_burst",
