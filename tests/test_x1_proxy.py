@@ -2401,6 +2401,118 @@ def test_build_macro_save_payload_without_embedded_label_uses_row_count_hint() -
     assert bytes([0x09, 0xC5]) in payload
 
 
+def test_build_paged_macro_save_payloads_matches_apk_multiframe_shape() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    oversized_payload = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 14 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "03 c5 00 00 00 00 00 00 0a ff "
+        "04 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 00 ff "
+        "04 c5 00 00 00 00 00 00 00 ff "
+        "03 c6 00 00 00 00 00 00 01 ff "
+        "02 c6 00 00 00 00 00 00 00 ff "
+        "02 c5 00 00 00 00 00 00 00 ff "
+        "08 c6 00 00 00 00 00 00 00 ff "
+        "08 c5 00 00 00 00 00 00 00 ff "
+        "09 c6 00 00 00 00 00 00 00 ff "
+        "09 c5 00 00 00 00 00 00 00 ff "
+        "0b c6 00 00 00 00 00 00 01 ff "
+        "0c c6 00 00 00 00 00 00 00 ff "
+        "0d c6 00 00 00 00 00 00 00 ff "
+        "0b c5 00 00 00 00 00 00 00 ff "
+        "0c c5 00 00 00 00 00 00 00 ff "
+        "0d c5 00 00 00 00 00 00 00 ff "
+        "0a c6 00 00 00 00 00 00 00 ff "
+        "0a c5 00 00 00 00 00 00 01 ff "
+        "00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 35 35 00 00 00 00 2f"
+    )
+
+    page_payloads = proxy._build_paged_macro_save_payloads(oversized_payload)
+
+    assert len(page_payloads) == 2
+    assert page_payloads[0][:9] == bytes.fromhex("01 00 01 01 00 02 65 c6 14")
+    assert len(page_payloads[0]) == 250
+    assert page_payloads[1][:3] == bytes.fromhex("01 00 02")
+    expected_body = bytearray(oversized_payload[3:])
+    expected_body[1:3] = bytes.fromhex("00 02")
+    rebuilt_body = b"".join(page_payload[3:] for page_payload in page_payloads)
+    assert rebuilt_body == bytes(expected_body)
+
+
+def test_send_paged_macro_save_waits_for_each_chunk_ack(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    oversized_payload = bytes.fromhex(
+        "01 00 01 01 00 01 65 c6 14 "
+        "01 c6 00 00 00 00 00 00 01 ff "
+        "03 c5 00 00 00 00 00 00 0a ff "
+        "04 c6 00 00 00 00 00 00 01 ff "
+        "01 c5 00 00 00 00 00 00 00 ff "
+        "04 c5 00 00 00 00 00 00 00 ff "
+        "03 c6 00 00 00 00 00 00 01 ff "
+        "02 c6 00 00 00 00 00 00 00 ff "
+        "02 c5 00 00 00 00 00 00 00 ff "
+        "08 c6 00 00 00 00 00 00 00 ff "
+        "08 c5 00 00 00 00 00 00 00 ff "
+        "09 c6 00 00 00 00 00 00 00 ff "
+        "09 c5 00 00 00 00 00 00 00 ff "
+        "0b c6 00 00 00 00 00 00 01 ff "
+        "0c c6 00 00 00 00 00 00 00 ff "
+        "0d c6 00 00 00 00 00 00 00 ff "
+        "0b c5 00 00 00 00 00 00 00 ff "
+        "0c c5 00 00 00 00 00 00 00 ff "
+        "0d c5 00 00 00 00 00 00 00 ff "
+        "0a c6 00 00 00 00 00 00 00 ff "
+        "0a c5 00 00 00 00 00 00 01 ff "
+        "00 50 00 4f 00 57 00 45 00 52 00 5f 00 4f 00 4e "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 35 35 00 00 00 00 2f"
+    )
+
+    sent_pages: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: sent_pages.append((family, payload)))
+
+    ack_calls: list[list[tuple[int, int | None]]] = []
+
+    def _wait_for_roku_ack_any(
+        candidates: list[tuple[int, int | None]],
+        *,
+        timeout: float = 5.0,
+        not_before: float | None = None,
+    ) -> tuple[int, bytes] | None:
+        ack_calls.append(candidates)
+        first_opcode, first_byte = candidates[0]
+        return first_opcode, bytes([first_byte if first_byte is not None else 0x00])
+
+    monkeypatch.setattr(proxy, "wait_for_roku_ack_any", _wait_for_roku_ack_any)
+
+    ack = proxy._send_paged_macro_save(payload=oversized_payload, macro_button=ButtonName.POWER_ON)
+
+    assert ack == (0x0112, b"\xc6")
+    assert [family for family, _payload in sent_pages] == [0x12, 0x12]
+    assert sent_pages[0][1][:9] == bytes.fromhex("01 00 01 01 00 02 65 c6 14")
+    assert sent_pages[1][1][:3] == bytes.fromhex("01 00 02")
+    assert ack_calls == [[(0x0103, None)], [(0x0112, 198), (0x0103, None)]]
+
+
 def test_add_device_to_activity_discards_stale_members_before_refresh(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -2688,8 +2800,8 @@ def test_add_device_to_activity_x2_uses_same_assignment_flow_as_x1s(monkeypatch)
         [(0x0103, None)],
         [(0x0103, None)],
         [(0x0103, None)],
-        [(0x0112, 198)],
-        [(0x0112, 199)],
+        [(0x0112, 198), (0x0103, None)],
+        [(0x0112, 199), (0x0103, None)],
     ]
 
 

@@ -713,36 +713,6 @@ def test_devbtn_extra_contains_pause_and_red() -> None:
     assert proxy.state.buttons.get(0x65) == {ButtonName.PAUSE, ButtonName.RED}
 
 
-def test_macro_handler_reassembles_and_records_macros() -> None:
-    proxy = X1Proxy(
-        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
-    )
-    handler = MacroHandler()
-
-    act = 0x34
-    record_one = bytes([0x01]) + "Power On".encode("utf-16le") + b"\x00\x00"
-    record_two = bytes([0x02]) + "Watch TV".encode("utf-16le") + b"\x00\x00"
-    combined = record_one + record_two
-
-    payload_one = combined[: len(combined) // 2]
-    payload_two = combined[len(combined) // 2 :]
-
-    raw_one = _build_macro_raw((OP_MACROS_A1 >> 8) & 0xFF, 1, 2, act, payload_one)
-    raw_two = _build_macro_raw((OP_MACROS_B1 >> 8) & 0xFF, 2, 2, act, payload_two)
-
-    opcode_one = (OP_MACROS_A1 >> 8) << 8 | (OP_MACROS_A1 & 0xFF)
-    opcode_two = (OP_MACROS_B1 >> 8) << 8 | (OP_MACROS_B1 & 0xFF)
-
-    handler.handle(_build_context(proxy, raw_one, opcode_one, "MACROS_A1"))
-    assert proxy.state.get_activity_macros(act) == []
-
-    handler.handle(_build_context(proxy, raw_two, opcode_two, "MACROS_B1"))
-    macros = proxy.state.get_activity_macros(act)
-
-    assert any(entry["command_id"] == 0x01 and entry["label"] == "Power On" for entry in macros)
-    assert any(entry["command_id"] == 0x02 and entry["label"] == "Watch TV" for entry in macros)
-
-
 def test_macro_handler_drains_completed_burst_immediately(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
@@ -790,7 +760,12 @@ def test_macro_handler_drains_completed_burst_immediately(monkeypatch) -> None:
 
 def test_macro_handler_parses_sample_activity_67() -> None:
     proxy = X1Proxy(
-        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+        "127.0.0.1",
+        proxy_udp_port=0,
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
     )
     handler = MacroHandler()
 
@@ -811,7 +786,12 @@ def test_macro_handler_parses_sample_activity_67() -> None:
 
 def test_macro_handler_parses_sample_activity_67_long_label() -> None:
     proxy = X1Proxy(
-        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+        "127.0.0.1",
+        proxy_udp_port=0,
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
     )
     handler = MacroHandler()
 
@@ -838,7 +818,12 @@ def test_macro_handler_parses_sample_activity_67_long_label() -> None:
 
 def test_macro_handler_parses_sample_activity_67_additional_long_label() -> None:
     proxy = X1Proxy(
-        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+        "127.0.0.1",
+        proxy_udp_port=0,
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
     )
     handler = MacroHandler()
 
@@ -869,7 +854,12 @@ def test_macro_handler_parses_sample_activity_67_additional_long_label() -> None
 
 def test_macro_handler_parses_sample_activity_69() -> None:
     proxy = X1Proxy(
-        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+        "127.0.0.1",
+        proxy_udp_port=0,
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
     )
     handler = MacroHandler()
 

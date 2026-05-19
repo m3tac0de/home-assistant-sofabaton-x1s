@@ -2901,6 +2901,77 @@ class X1Proxy:
     def _build_macro_record_chunk(self, *, device_id: int, command_id: int, input_index: int = 0) -> bytes:
         return bytes([device_id & 0xFF, command_id & 0xFF, 0, 0, 0, 0, 0, 0, input_index & 0xFF, 0xFF])
 
+    def _build_paged_macro_save_payloads(self, payload: bytes) -> list[bytes]:
+        """Split one family-0x12 macro-save body into app-shaped page payloads."""
+
+        if len(payload) < 4:
+            return [payload]
+
+        body = bytearray(payload[3:])
+        total_pages = max(1, (len(body) + 246) // 247)
+        if len(body) >= 3:
+            body[1:3] = total_pages.to_bytes(2, "big")
+
+        paged_payloads: list[bytes] = []
+        offset = 0
+        for seq in range(1, total_pages + 1):
+            chunk = body[offset : offset + 247]
+            offset += len(chunk)
+            paged_payloads.append(bytes([0x01]) + seq.to_bytes(2, "big") + bytes(chunk))
+        return paged_payloads
+
+    def _send_paged_macro_save(
+        self,
+        *,
+        payload: bytes,
+        macro_button: int,
+        ack_timeout: float = 5.0,
+    ) -> tuple[int, bytes] | None:
+        """Send one macro save using the APK's paged family-0x12 write layout."""
+
+        paged_payloads = self._build_paged_macro_save_payloads(payload)
+        self.clear_roku_acks()
+
+        last_ack: tuple[int, bytes] | None = None
+        for seq, page_payload in enumerate(paged_payloads, start=1):
+            page_opcode = ((len(page_payload) & 0xFF) << 8) | 0x12
+            self._log.info(
+                "[ACTIVITY_ASSIGN] save macro page seq=%d/%d opcode=0x%04X payload=%dB",
+                seq,
+                len(paged_payloads),
+                page_opcode,
+                len(page_payload),
+            )
+            if self.diag_dump:
+                self._log.info(
+                    "[ACTIVITY_ASSIGN] save macro page %d/%d payload %s",
+                    seq,
+                    len(paged_payloads),
+                    page_payload.hex(" "),
+                )
+
+            send_ts = time.monotonic()
+            self._send_family_frame(0x12, page_payload)
+            if seq < len(paged_payloads):
+                candidates = [(0x0103, None)]
+            else:
+                candidates = [(0x0112, macro_button), (0x0103, None)]
+            last_ack = self.wait_for_roku_ack_any(
+                candidates,
+                timeout=ack_timeout,
+                not_before=send_ts,
+            )
+            if last_ack is None:
+                self._log.warning(
+                    "[ACTIVITY_ASSIGN] missing ACK after macro save page seq=%d/%d button=0x%02X",
+                    seq,
+                    len(paged_payloads),
+                    macro_button,
+                )
+                return None
+
+        return last_ack
+
     def _build_macro_save_payload(
         self,
         source_payload: bytes,
@@ -3414,33 +3485,26 @@ class X1Proxy:
                 )
                 return None
 
-            save_opcode = ((len(updated_payload) & 0xFF) << 8) | 0x12
             row_count = updated_payload[8] if len(updated_payload) >= 9 else 0
+            page_payloads = self._build_paged_macro_save_payloads(updated_payload)
             self._log.info(
-                "[ACTIVITY_ASSIGN] save macro act=0x%02X button=0x%02X opcode=0x%04X payload=%dB rows=%d",
+                "[ACTIVITY_ASSIGN] save macro act=0x%02X button=0x%02X payload=%dB rows=%d pages=%d",
                 act_lo,
                 macro_button,
-                save_opcode,
                 len(updated_payload),
                 row_count,
+                len(page_payloads),
             )
             if self.diag_dump:
                 self._log.info("[ACTIVITY_ASSIGN] save macro payload %s", updated_payload.hex(" "))
 
-            send_ts = time.monotonic()
-            self._send_family_frame(0x12, updated_payload)
-            macro_ack = self.wait_for_roku_ack_any(
-                [(0x0112, macro_button)],
-                timeout=5.0,
-                not_before=send_ts,
+            macro_ack = self._send_paged_macro_save(
+                payload=updated_payload,
+                macro_button=macro_button,
+                ack_timeout=5.0,
             )
 
             if macro_ack is None:
-                self._log.warning(
-                    "[ACTIVITY_ASSIGN] missing ACK after macro save act=0x%02X button=0x%02X",
-                    act_lo,
-                    macro_button,
-                )
                 return None
 
             ack_opcode, ack_payload = macro_ack

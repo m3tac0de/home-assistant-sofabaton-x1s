@@ -231,7 +231,7 @@ def iter_keymap_records(
     """Yield :class:`KeymapRecord` objects from an assembled keymap buffer.
 
     ``concat`` is the post-assembly buffer produced by
-    :class:`DeviceButtonAssembler` â€” i.e., the concatenated row stream with
+    :class:`DeviceButtonAssembler` i.e., the concatenated row stream with
     per-frame transport headers already stripped. The iterator walks the
     buffer in 18-byte strides; trailing bytes shorter than one record are
     ignored.
