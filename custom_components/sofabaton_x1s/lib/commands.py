@@ -1,4 +1,4 @@
-﻿"""Helpers for assembling, parsing, and synthesizing command payloads."""
+"""Helpers for assembling, parsing, and synthesizing command payloads."""
 
 from __future__ import annotations
 from dataclasses import dataclass, field
