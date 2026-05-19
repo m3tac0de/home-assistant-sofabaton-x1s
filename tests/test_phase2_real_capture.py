@@ -46,7 +46,7 @@ def _assemble_reference(frames: list[bytes]) -> bytes:
     return b"".join(bodies)
 
 
-def test_real_x1_capture_against_apk_schema() -> None:
+def test_real_x1_capture_against_schema() -> None:
     frames = [bytes.fromhex(s.replace(" ", "")) for s in RAW_FRAMES_HEX]
 
     # Verify frame-format invariant on each frame
@@ -71,7 +71,7 @@ def test_real_x1_capture_against_apk_schema() -> None:
     print(f"\n--- strict 40-byte stride walk ---")
     count = concat[3] & 0xFF
     print(f"count from concat[3] = {count}")
-    apk_records = []
+    sch_records = []
     for i in range(count):
         start = 4 + i * 40
         end = start + 40
@@ -89,7 +89,7 @@ def test_real_x1_capture_against_apk_schema() -> None:
         marker = " " if (dev_id == 0x07 and cmd_id == i + 1) else " <<< MISALIGNED"
         print(f"  rec[{i}]: offset={start:4d} dev=0x{dev_id:02X} cmd=0x{cmd_id:02X} "
               f"sort=0x{sort_id:02X} label={safe_label}{marker}")
-        apk_records.append((dev_id, cmd_id, label))
+        sch_records.append((dev_id, cmd_id, label))
 
     # Now try an alternative interpretation: stride = 42 (40 record + 1 ff + ???)
     # Actually first let's measure stride empirically by finding `ff 07` separators.
