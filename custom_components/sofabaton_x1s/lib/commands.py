@@ -384,7 +384,7 @@ def iter_command_records_from_assembled(
     """Yield :class:`CommandRecord` objects from an assembled REQ_COMMANDS body.
 
     ``body`` is the post-assembly buffer produced by
-    :class:`DeviceCommandAssembler` â€” the per-frame transport headers and the
+    :class:`DeviceCommandAssembler` the per-frame transport headers and the
     page-1 preamble (page metadata + count byte) are already stripped, so
     ``body[0]`` is the first byte of the first record.
 
@@ -397,7 +397,7 @@ def iter_command_records_from_assembled(
     ``hub_version`` selects stride (40 X1 / 70 X1S/X2) and label encoding
     (ASCII X1 / UTF-16BE X1S/X2). Unknown hub versions raise ``ValueError``.
 
-    Records beyond what ``body`` can supply are silently skipped â€” this is
+    Records beyond what ``body`` can supply are silently skipped this is
     a tolerant choice for truncated-burst scenarios; the caller can detect
     by comparing returned record count to the requested ``count``.
 
