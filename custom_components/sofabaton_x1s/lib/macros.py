@@ -10,6 +10,8 @@ from .protocol_const import FAMILY_MACROS, opcode_family, opcode_hi
 @dataclass(slots=True)
 class _MacroBurst:
     total_frames: int | None = None
+    expected_records: int | None = None
+    record_starts_seen: int = 0
     frames: Dict[int, bytes] = field(default_factory=dict)
     activity_id: int | None = None
     record_start_frames: set = field(default_factory=set)
@@ -25,6 +27,11 @@ class MacroBurstFrame:
     start_command_id: int | None
     data_start: int
     payload_length_matches_hi: bool
+    #: Number of frames this individual record spans (1 for the common
+    #: single-frame case, 2+ when the record's body is too large to
+    #: fit in one frame). Distinct from ``total_fragments`` which is
+    #: the total *records* in the surrounding burst.
+    record_pages: int | None = None
 
     @property
     def is_record_start(self) -> bool:
@@ -82,9 +89,20 @@ def parse_macro_burst_frame(opcode: int, raw_frame: bytes) -> MacroBurstFrame | 
 
     p0, _, x, p3, _, y, a = payload[:7]
     if x == 0x01 and y in (0x01, 0x02) and a != 0x00:
+        # Two independent counts live in the record-start preamble:
+        # - payload[3] is the number of records in the surrounding burst
+        #   (1 for a single-record fetch, N when the hub returns N macros
+        #   at once).
+        # - payload[4..5] big-endian is the number of frames this
+        #   individual record spans. Records whose body is too large to
+        #   fit in one frame split across multiple frames; the trailing
+        #   frames arrive as continuations with no preamble of their own.
         total_fragments = p3 or None
         if total_fragments is not None and not (1 <= total_fragments <= 64):
             total_fragments = None
+        record_pages = int.from_bytes(payload[4:6], "big") or None
+        if record_pages is not None and not (1 <= record_pages <= 64):
+            record_pages = None
         return MacroBurstFrame(
             opcode=opcode,
             role="record_start",
@@ -94,6 +112,7 @@ def parse_macro_burst_frame(opcode: int, raw_frame: bytes) -> MacroBurstFrame | 
             start_command_id=payload[7] if len(payload) > 7 else None,
             data_start=7,
             payload_length_matches_hi=payload_len_matches_hi,
+            record_pages=record_pages,
         )
 
     return MacroBurstFrame(
@@ -105,6 +124,7 @@ def parse_macro_burst_frame(opcode: int, raw_frame: bytes) -> MacroBurstFrame | 
         start_command_id=None,
         data_start=7 if len(payload) > 7 else len(payload),
         payload_length_matches_hi=payload_len_matches_hi,
+        record_pages=None,
     )
 
 
@@ -124,24 +144,33 @@ class MacroAssembler:
 
     def _parse_header_from_payload(
         self, payload: bytes, *, opcode_hi: int | None = None
-    ) -> tuple[int | None, int | None, int | None, bytes, bool]:
-        """Return (activity_id, frame_no, total_frames, body, is_record_start).
+    ) -> tuple[int | None, int | None, int | None, int | None, bytes, bool]:
+        """Return (activity_id, frame_no, expected_records, record_pages, body, is_record_start).
 
         Record-start frames strip 7 bytes (``payload[7:]``). Continuation
         frames strip only 3 bytes (``payload[3:]``). The additional 4 bytes on
         continuation pages belong to the assembled macro data and are commonly
         absorbed into trailing padding; dropping them shifts later offsets and
         misaligns the label slot on multi-page macros.
+
+        ``expected_records`` is the burst-wide record count carried in
+        ``payload[3]`` (how many distinct macros the hub is sending in this
+        burst). ``record_pages`` is the per-record frame count carried in
+        ``payload[4..5]`` big-endian (how many frames this individual macro
+        spans). The assembler needs both to know when the burst is complete
+        even when one of the records is large enough to require continuation
+        frames of its own.
         """
 
         if len(payload) < 7:
-            return self._last_activity_id, 1, None, payload, False
+            return self._last_activity_id, 1, None, None, payload, False
 
         p0, _, x, p3, _, y, a = payload[:7]
 
         activity_id: int | None
         frame_no: int | None
-        total_frames: int | None
+        expected_records: int | None
+        record_pages: int | None
 
         # End the body at opcode_hi (the invariant-declared payload length)
         # when known, so 1-byte transcription drift in synthetic fixtures
@@ -152,51 +181,71 @@ class MacroAssembler:
         if x == 0x01 and y in (0x01, 0x02) and a != 0x00:
             activity_id = a
             frame_no = p0 or 1
-            total_frames = p3 or None
-            if total_frames is not None and not (1 <= total_frames <= 16):
-                total_frames = None
+            expected_records = p3 or None
+            if expected_records is not None and not (1 <= expected_records <= 64):
+                expected_records = None
+            record_pages = int.from_bytes(payload[4:6], "big") or None
+            if record_pages is not None and not (1 <= record_pages <= 64):
+                record_pages = None
             body = payload[7:body_end]
             is_record_start = True
         else:
             activity_id = self._last_activity_id
             frame_no = None
-            total_frames = None
+            expected_records = None
+            record_pages = None
             body = payload[3:body_end]
             is_record_start = False
 
-        return activity_id, frame_no, total_frames, body, is_record_start
+        return activity_id, frame_no, expected_records, record_pages, body, is_record_start
 
     def _process_fragment(
-        self, *, activity_id: int, frame_no: int, total_frames: int | None, body: bytes, is_record_start: bool
+        self,
+        *,
+        activity_id: int,
+        frame_no: int | None,
+        expected_records: int | None,
+        record_pages: int | None,
+        body: bytes,
+        is_record_start: bool,
     ) -> List[Tuple[int, bytes, List[int]]]:
         burst = self._get_buffer(activity_id)
         self._last_activity_id = activity_id
 
+        # Continuation frames belong to the most recent record but are tracked
+        # as their own frame entry so the assembler can count them against the
+        # expected per-record page total.
         if frame_no is None:
-            if not burst.frames:
-                frame_no = 1
-            else:
-                frame_no = max(burst.frames)
-                burst.frames[frame_no] += body
-                body = b""
+            frame_no = (max(burst.frames) + 1) if burst.frames else 1
 
         while frame_no in burst.frames and body:
             frame_no += 1
 
         if body:
             burst.frames[frame_no] = body
+
         if is_record_start:
             burst.record_start_frames.add(frame_no)
-        if total_frames is not None and burst.total_frames is None:
-            burst.total_frames = total_frames
-
-        max_frame_no = max(burst.frames)
-        contiguous = len(burst.frames) == max_frame_no and 1 in burst.frames
+            burst.record_starts_seen += 1
+            if record_pages is not None:
+                burst.total_frames = (burst.total_frames or 0) + record_pages
+            elif burst.total_frames is None:
+                burst.total_frames = burst.record_starts_seen
+            if burst.expected_records is None and expected_records is not None:
+                burst.expected_records = expected_records
 
         finished = False
-        if burst.total_frames and len(burst.frames) >= burst.total_frames:
+        if burst.expected_records is not None and burst.total_frames is not None:
+            if (
+                burst.record_starts_seen >= burst.expected_records
+                and len(burst.frames) >= burst.total_frames
+            ):
+                finished = True
+        elif burst.total_frames and len(burst.frames) >= burst.total_frames:
             finished = True
-        elif contiguous and (burst.total_frames is None or burst.total_frames <= max_frame_no):
+        elif burst.total_frames is None and len(burst.frames) >= 1:
+            # Unknown structure: accept after a single frame for the
+            # legacy single-frame, single-record case.
             finished = True
 
         if not finished:
@@ -226,15 +275,24 @@ class MacroAssembler:
             payload_bytes = raw[4:-1]
 
         opcode_hi = (opcode >> 8) & 0xFF
-        activity_id, frame_no, total_frames, body, is_record_start = self._parse_header_from_payload(
-            payload_bytes, opcode_hi=opcode_hi
-        )
+        (
+            activity_id,
+            frame_no,
+            expected_records,
+            record_pages,
+            body,
+            is_record_start,
+        ) = self._parse_header_from_payload(payload_bytes, opcode_hi=opcode_hi)
 
         if activity_id is None:
             return []
 
         return self._process_fragment(
-            activity_id=activity_id, frame_no=frame_no, total_frames=total_frames, body=body,
+            activity_id=activity_id,
+            frame_no=frame_no,
+            expected_records=expected_records,
+            record_pages=record_pages,
+            body=body,
             is_record_start=is_record_start,
         )
 
@@ -334,11 +392,22 @@ def _stride_label_len_for_macros(hub_version: str | None) -> tuple[int, str]:
     )
 
 
+#: Auto-generated activity macro labels that real hubs sometimes preface
+#: with extra binding bytes inside the label slot. When the decoder finds
+#: one of these substrings, the actual label is taken from that point on.
+_AUTO_GENERATED_LABEL_MARKERS: Tuple[str, ...] = ("POWER_ON", "POWER_OFF")
+
+
 def _decode_macro_schema_label(label_bytes: bytes, encoding: str) -> str:
     """Decode a fixed-width macro label slot.
 
     The entire slot is decoded under the chosen encoding, then null padding
     and surrounding whitespace are removed.
+
+    Some hubs occasionally store extra binding data at the start of an
+    auto-generated POWER_ON / POWER_OFF macro's label slot before the
+    label text itself. The decoder rebases on any such marker substring
+    so the surfaced label matches what the user-facing app shows.
     """
 
     if encoding == "ascii":
@@ -346,7 +415,7 @@ def _decode_macro_schema_label(label_bytes: bytes, encoding: str) -> str:
             decoded = label_bytes.decode("ascii", errors="ignore")
         except Exception:
             decoded = ""
-        return decoded.rstrip("\x00").strip()
+        return _trim_macro_label(decoded)
 
     raw = label_bytes
     if len(raw) % 2:
@@ -355,6 +424,16 @@ def _decode_macro_schema_label(label_bytes: bytes, encoding: str) -> str:
         decoded = raw.decode("utf-16-be", errors="ignore")
     except Exception:
         decoded = ""
+    return _trim_macro_label(decoded)
+
+
+def _trim_macro_label(decoded: str) -> str:
+    """Clean a decoded label string, rebasing on known marker substrings."""
+
+    for marker in _AUTO_GENERATED_LABEL_MARKERS:
+        idx = decoded.find(marker)
+        if idx >= 0:
+            return decoded[idx:].split("\x00", 1)[0].strip()
     return decoded.rstrip("\x00").strip()
 
 
@@ -381,7 +460,7 @@ def _parse_macro_key_entry(bean: bytes) -> MacroKeyEntry:
 
 
 def _serialize_macro_key_entry(entry: MacroKeyEntry) -> bytes:
-    """Serialize one MacroKeyBean using the correct layout."""
+    """Serialize one MacroKeyBean using canonical layout."""
 
     if entry.is_delay_only:
         return b"\xFF" * 9 + bytes([entry.delay & 0xFF])
@@ -485,27 +564,27 @@ def build_macro_save_payload(
     label_slot: bytes | None = None,
     outer_sequence: int = 1,
 ) -> bytes:
-    """Build one canonical macro-save payload.
+    """Build one canonical macro-save payload matching.
 
-    Body layout: [0x01][total_pages_be][act_id][key_id][count] + Nx10 rows
-    + 30B (X1) or 60B (X1S/X2) label slot + 1B checksum.
+    Body layout: ``[0x01][total_pages_be][act_id][key_id][count] + Nx10 rows
+    + 30B (X1) or 60B (X1S/X2) label slot + 1B checksum``.
 
-    total_pages is computed from the final body length so the
-    checksum at body[-1] is always consistent with the bytes the
+    ``total_pages`` is computed from the final body length so the
+    checksum at ``body[-1]`` is always consistent with the bytes the
     paged splitter will send. (The hub rejects writes whose declared
     checksum disagrees with the sum of the body — the prior version
-    mutated body[1:3] after the checksum was computed, producing a
+    mutated ``body[1:3]`` after the checksum was computed, producing a
     one-off mismatch on every multi-page macro.)
 
-    If label_slot is supplied (length must equal the hub's label slot
-    size), those bytes are written verbatim and label is ignored. This
+    If ``label_slot`` is supplied (length must equal the hub's label slot
+    size), those bytes are written verbatim and ``label`` is ignored. This
     matters for read-modify-write paths where the source hub stores
     metadata in the trailing portion of the label slot (e.g. POWER_*
-    macros surface bytes like 37 37 00 00 35 35 after the encoded
+    macros surface bytes like ``37 37 00 00 35 35`` after the encoded
     name); dropping them causes the hub to reject the save with status
-    0x0c.
+    ``0x0c``.
 
-    If label_slot is omitted, the slot is built from label using
+    If ``label_slot`` is omitted, the slot is built from ``label`` using
     the hub's encoding (ASCII for X1, UTF-16BE for X1S/X2) with zero
     padding.
     """

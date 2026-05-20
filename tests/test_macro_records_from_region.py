@@ -21,6 +21,7 @@ from custom_components.sofabaton_x1s.lib.macros import (
     MACRO_LABEL_LEN_X1,
     MACRO_LABEL_LEN_X1S_X2,
     MACRO_WRITE_PAGE_BODY_CHUNK,
+    MacroAssembler,
     MacroKeyEntry,
     MacroRecord,
     build_macro_save_payload,
@@ -429,3 +430,92 @@ def test_label_slot_bytes_round_trip_through_parse_build_parse() -> None:
     # The rebuilt inner body's last 61 bytes are [label_slot(60)][checksum(1)].
     rebuilt_body = rebuilt_payload[3:]
     assert rebuilt_body[-(MACRO_LABEL_LEN_X1S_X2 + 1) : -1] == bytes(label_slot)
+
+
+# ---------------------------------------------------------------------------
+# MacroAssembler — multi-page records and label-prefix metadata
+# ---------------------------------------------------------------------------
+
+
+def _frame_for(opcode_lo: int, payload: bytes) -> tuple[int, bytes, bytes]:
+    """Build (opcode, payload, raw_frame) for the assembler's ``feed``."""
+
+    opcode_hi = len(payload) & 0xFF
+    opcode = (opcode_hi << 8) | (opcode_lo & 0xFF)
+    raw = bytes([0xA5, 0x5A, opcode_hi, opcode_lo]) + payload + b"\x00"
+    return opcode, payload, raw
+
+
+def test_assembler_handles_record_that_spans_two_frames() -> None:
+    """A single-record fetch whose body needs two frames must be assembled.
+
+    The first frame's preamble advertises ``record_pages=2`` at
+    payload[4..5] big-endian; the assembler must wait for the continuation
+    frame before reporting the burst as complete, otherwise the parsed
+    region is truncated and any subsequent round-trip save corrupts the
+    on-hub macro.
+    """
+
+    # Build a 20-row macro: 6-byte preamble + 200 row bytes + 60 label slot
+    # + 1 checksum = 267-byte body. Page 1 carries body[0..246] (247 bytes);
+    # page 2 carries body[247..266] (20 bytes).
+    rows = b"".join(
+        bytes([d, 0xC6, 0, 0, 0, 0, 0, 0, 0, 0xFF]) for d in range(1, 21)
+    )
+    label_slot = "POWER_ON".encode("utf-16-be").ljust(MACRO_LABEL_LEN_X1S_X2, b"\x00")
+    body = (
+        bytes([0x01, 0x00, 0x02, 0x65, 0xC6, 0x14])  # preamble (act=0x65, count=20)
+        + rows
+        + label_slot
+        + b"\x00"  # checksum placeholder
+    )
+    body = body[:-1] + bytes([sum(body[:-1]) & 0xFF])
+    assert len(body) == 267
+
+    # Page 1: outer wrap [01][seq=0001] + body[0:247].
+    page1_payload = bytes([0x01, 0x00, 0x01]) + body[:247]
+    # Page 2: outer wrap [01][seq=0002] + body[247:267].
+    page2_payload = bytes([0x01, 0x00, 0x02]) + body[247:]
+
+    op1, _, raw1 = _frame_for(0x13, page1_payload)
+    op2, _, raw2 = _frame_for(0x13, page2_payload)
+
+    assembler = MacroAssembler()
+    assert assembler.feed(op1, page1_payload, raw1) == []  # not yet complete
+    completed = assembler.feed(op2, page2_payload, raw2)
+
+    assert len(completed) == 1
+    activity_id, region, boundaries = completed[0]
+    assert activity_id == 0x65
+    # The assembler strips the 7-byte preamble of frame 1 and the 3-byte
+    # outer wrap of frame 2. Combined region = body[4..end] = 263 bytes.
+    assert len(region) == 263
+    assert region[0] == 0xC6  # key_id
+    assert region[1] == 0x14  # count = 20
+
+
+def test_label_decoder_rebases_on_power_marker_prefix() -> None:
+    """When a POWER_* label is prefixed with extra binding bytes, the
+    decoder returns the label text from the marker onwards."""
+
+    # 60-byte slot: 20 bytes of row-shaped bytes the hub occasionally
+    # stores in the label slot prefix, then POWER_ON UTF-16BE, then nulls.
+    prefix = bytes.fromhex("0a c6 00 00 00 00 00 00 01 ff 0a c5 00 00 00 00 00 00 01 ff")
+    encoded_label = "POWER_ON".encode("utf-16-be")
+    label_slot = (prefix + encoded_label).ljust(MACRO_LABEL_LEN_X1S_X2, b"\x00")
+
+    key_beans = [_key_bean(device_id=0x01, key_id=0xC6, fid=0, duration=0, delay=0xFF)]
+    region = (
+        bytes([0xC6, len(key_beans)])
+        + b"".join(key_beans)
+        + label_slot
+        + bytes([_MACRO_REGION_TERMINATOR])
+    )
+
+    record = parse_macro_record_from_region(
+        region, activity_id=0x65, hub_version=HUB_VERSION_X1S
+    )
+    assert record is not None
+    assert record.label == "POWER_ON"
+    # The raw slot bytes are preserved verbatim for the save round-trip.
+    assert record.raw_label_slot == bytes(label_slot)

@@ -1099,8 +1099,8 @@ def test_create_wifi_device_x1s_can_assign_power_on_and_power_off_commands(monke
 
     assert on_payload[:19] == bytes.fromhex("01 00 01 01 00 01 09 c6 01 09 06 00 00 00 00 00 00 00 ff")
     assert off_payload[:19] == bytes.fromhex("01 00 01 01 00 01 09 c7 01 09 04 00 00 00 00 00 00 00 ff")
-    assert on_payload[19:79].startswith("POWER_ON".encode("utf-16le"))
-    assert off_payload[19:79].startswith("POWER_OFF".encode("utf-16le"))
+    assert on_payload[19:79].startswith("POWER_ON".encode("utf-16be"))
+    assert off_payload[19:79].startswith("POWER_OFF".encode("utf-16be"))
 
 
 def test_create_wifi_device_x1s_without_power_commands_skips_power_edit_flow(monkeypatch) -> None:
@@ -1430,6 +1430,77 @@ def test_create_wifi_device_x1s_six_inputs_uses_fa46_plus_a046(monkeypatch) -> N
 
     refresh_requests = [(opcode, payload) for opcode, payload in sent if opcode == 0x020C]
     assert refresh_requests == [(0x020C, bytes([0x09, i])) for i in range(1, 7)]
+
+
+def test_build_device_input_config_payload_x1_body_layout() -> None:
+    """Lock in the canonical body layout for X1 input-config writes.
+
+    Body layout: 8-byte header followed by 27-byte entries followed by
+    a 108-byte trailing region (control-key slots + favorite slots +
+    state byte + checksum). The inner-body checksum is computed over
+    the full final body so the per-page chunks pass hub validation.
+    """
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+    payload = proxy._build_device_input_config_payload(
+        device_id=0x0D,
+        commands=["TEST 1", "TEST 2"],
+        input_command_ids=[1, 2],
+    )
+
+    inner_body = payload[3:]
+    # 8B header + 2 entries * 27B + 108B trailing = 170B
+    assert len(inner_body) == 170
+    assert inner_body[:8] == bytes.fromhex("01 00 01 0d 01 02 00 00")
+    # First entry: keyID=1, fid=0x4E21 padded to 6B BE, ASCII label "TEST 1" padded to 20B
+    assert inner_body[8:14] == bytes.fromhex("01 00 00 00 00 4e")
+    assert inner_body[14:15] == bytes.fromhex("21")
+    assert inner_body[15:35] == b"TEST 1".ljust(20, b"\x00")
+    # Trailing 108B = 36B (control keys) + 70B (favorites) + 1B state + 1B checksum
+    trailing_start = 8 + 2 * 27
+    assert inner_body[trailing_start : trailing_start + 107] == bytes(107)
+    # Self-consistent checksum
+    assert inner_body[-1] == sum(inner_body[:-1]) & 0xFF
+
+
+def test_build_device_input_config_payload_x1s_body_layout() -> None:
+    """Lock in the canonical X1S/X2 body layout.
+
+    Same header shape as X1 but with 48-byte entries that carry a
+    per-entry ordinal at offset 7 and a 40-byte UTF-16BE label slot.
+    """
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    payload = proxy._build_device_input_config_payload(
+        device_id=0x09,
+        commands=["TEST 1", "TEST 2", "TEST 3"],
+        input_command_ids=[1, 2, 3],
+    )
+
+    inner_body = payload[3:]
+    # 8B header + 3 entries * 48B + 108B trailing = 260B
+    assert len(inner_body) == 260
+    # total_pages = ceil(260 / 247) = 2
+    assert inner_body[:8] == bytes.fromhex("01 00 02 09 01 03 00 00")
+    # First entry: keyID=1, fid=0 (6B BE), ordinal=1, UTF-16BE "TEST 1" padded to 40B
+    assert inner_body[8:15] == bytes.fromhex("01 00 00 00 00 00 00")
+    assert inner_body[15:16] == bytes.fromhex("01")
+    assert inner_body[16:28] == "TEST 1".encode("utf-16-be")
+    assert inner_body[28:56] == bytes(28)
+    # Self-consistent checksum
+    assert inner_body[-1] == sum(inner_body[:-1]) & 0xFF
 
 
 def test_x1s_input_refresh_frame_updates_command_cache() -> None:
@@ -2129,7 +2200,7 @@ def test_targeted_command_burst_end_only_drops_matching_pending() -> None:
 
 
 
-@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload).")
+@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload). See Phase 3.4.")
 def test_build_macro_save_payload_from_observed_power_on_payload() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -2156,7 +2227,7 @@ def test_build_macro_save_payload_from_observed_power_on_payload() -> None:
     assert bytes([0x06, 0xC5]) in payload
 
 
-@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload).")
+@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload). See 3.4.")
 def test_build_macro_save_payload_from_observed_power_off_payload() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -2181,7 +2252,7 @@ def test_build_macro_save_payload_from_observed_power_off_payload() -> None:
 
 
 
-@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload).")
+@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload). See Phase 3.4.")
 def test_build_macro_save_payload_keeps_compact_rows_when_len_divisible_by_20() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -2217,7 +2288,7 @@ def test_build_macro_save_payload_keeps_compact_rows_when_len_divisible_by_20() 
 
 
 
-@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload).")
+@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload). See Phase 3.4.")
 def test_build_macro_save_payload_filters_devices_by_activity_members() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -2251,7 +2322,7 @@ def test_build_macro_save_payload_filters_devices_by_activity_members() -> None:
 
 
 
-@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload).")
+@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload). See Phase 3.4.")
 def test_build_macro_save_payload_recomputes_trailing_token() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -2277,7 +2348,7 @@ def test_build_macro_save_payload_recomputes_trailing_token() -> None:
     assert payload[-1] != 0x97
 
 
-@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload).")
+@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload). See Phase 3.4.")
 def test_build_macro_save_payload_preserves_trailing_metadata_chunk() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -2310,7 +2381,7 @@ def test_build_macro_save_payload_preserves_trailing_metadata_chunk() -> None:
     assert bytes.fromhex("6a 71 00 00 00 00 00 00 0b") in payload
 
 
-@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload).")
+@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload). See Phase 3.4.")
 def test_build_macro_save_payload_drops_placeholder_rows_for_x2_snapshot() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -2345,7 +2416,7 @@ def test_build_macro_save_payload_drops_placeholder_rows_for_x2_snapshot() -> No
     assert bytes.fromhex("ff ff ff ff ff ff ff ff ff ff") not in payload
 
 
-@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload).")
+@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload). See Phase 3.4.")
 def test_build_macro_save_payload_accepts_utf16_macro_labels() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -2380,7 +2451,7 @@ def test_build_macro_save_payload_accepts_utf16_macro_labels() -> None:
     assert b"\x00P\x00O\x00W" in payload
 
 
-@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload).")
+@pytest.mark.xfail(strict=False, reason="Tests deleted snapshot-bytes parser (parse_macro_save_payload). See Phase 3.4.")
 def test_build_macro_save_payload_without_embedded_label_uses_row_count_hint() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
