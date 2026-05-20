@@ -3872,62 +3872,104 @@ def test_parse_activity_inputs_payloads_stops_at_null_slot() -> None:
 # _parse_activity_inputs_x1s
 # ---------------------------------------------------------------------------
 
-def _make_x1s_wifi_entry(slot_id: int, ordinal: int, name: str = "") -> bytes:
-    """Build a 48-byte X1S WiFi/custom-device ACTIVITY_INPUTS entry (sub_type=0x02)."""
-    name_utf16 = name.encode("utf-16-le")[:38]
-    name_padded = name_utf16.ljust(38, b"\x00")
-    return bytes([0x00, slot_id, 0, 0, 0, 0, 0, 0, ordinal, 0]) + name_padded
+def _make_x1s_input_entry(slot_id: int, ordinal: int, name: str = "", fid: int = 0) -> bytes:
+    """Build a 48-byte X1S/X2 ACTIVITY_INPUTS entry.
+
+    Layout: [slot_id(1)] [fid_be(6)] [ordinal(1)] [label_utf16be(40)].
+    """
+    fid_bytes = fid.to_bytes(6, "big")
+    name_utf16 = name.encode("utf-16-be")[:40]
+    label_slot = name_utf16.ljust(40, b"\x00")
+    return bytes([slot_id]) + fid_bytes + bytes([ordinal]) + label_slot
 
 
-def _make_x1s_ir_entry(slot_id: int, cmd_code: int, ordinal: int, name: str = "") -> bytes:
-    """Build a 36-byte X1S IR/RF-device ACTIVITY_INPUTS entry (sub_type=0x03)."""
-    name_utf16 = name.encode("utf-16-le")[:27]
-    name_padded = name_utf16.ljust(27, b"\x00")
-    return bytes([slot_id, 0, 0, 0, 0, (cmd_code >> 8) & 0xFF, cmd_code & 0xFF, ordinal, 0]) + name_padded
+def _make_x1s_input_page1_header(
+    device_id: int,
+    num_inputs: int,
+    *,
+    total_pages: int = 1,
+    source_type: int = 0x01,
+) -> bytes:
+    """Build the 11-byte page-1 header for an X1S/X2 ACTIVITY_INPUTS frame.
+
+    Layout: 3-byte page preamble (sub-opcode marker + page_no_be) +
+    8-byte record header ``[sentinel, total_pages_be(2), deviceid,
+    source_type, N, startpos, restartpos]``.
+    """
+    return (
+        bytes([0x01, 0x00, 0x01])           # marker + page_no_be = 1
+        + bytes([0x01])                     # sentinel
+        + total_pages.to_bytes(2, "big")
+        + bytes([
+            device_id & 0xFF,
+            source_type & 0xFF,
+            num_inputs & 0xFF,
+            0x00,                           # startposition
+            0x00,                           # restartposition
+        ])
+    )
 
 
-def _make_x1s_wifi_page1_header(device_id: int, num_inputs: int) -> bytes:
-    """Build the 10-byte page-1 header for X1S WiFi device (sub_type=0x02)."""
-    return bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x02, device_id & 0xFF, 0x01, num_inputs & 0xFF, 0x00])
+def _make_x1s_input_cont_header(page_no: int) -> bytes:
+    """Build the 3-byte continuation-page preamble for ACTIVITY_INPUTS."""
+    return bytes([0x01]) + page_no.to_bytes(2, "big")
 
 
-def _make_x1s_ir_page1_header(device_id: int, num_inputs: int) -> bytes:
-    """Build the 11-byte page-1 header for X1S IR device (sub_type=0x03)."""
-    return bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x03, device_id & 0xFF, 0x01, num_inputs & 0xFF, 0x00, 0x00])
-
-
-def test_parse_activity_inputs_x1s_wifi_single_page() -> None:
-    """WiFi device (sub_type=02, entry_size=48): parse 4 entries from one FA47 page."""
+def test_parse_activity_inputs_x1s_single_page() -> None:
+    """Parse 4 entries from a single FA47 page."""
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
-    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=4)
-    e1 = _make_x1s_wifi_entry(3, 1, "TEST 3")
-    e2 = _make_x1s_wifi_entry(4, 2, "TEST 4")
-    e3 = _make_x1s_wifi_entry(5, 3, "TEST 5")
-    e4 = _make_x1s_wifi_entry(6, 4, "TEST 6")
-    payload = header + e1 + e2 + e3 + e4 + bytes(250 - 10 - 4 * 48)
+    header = _make_x1s_input_page1_header(device_id=0x09, num_inputs=4)
+    entries_bytes = (
+        _make_x1s_input_entry(3, 1, "TEST 3")
+        + _make_x1s_input_entry(4, 2, "TEST 4")
+        + _make_x1s_input_entry(5, 3, "TEST 5")
+        + _make_x1s_input_entry(6, 4, "TEST 6")
+    )
+    payload = header + entries_bytes + bytes(250 - 11 - 4 * 48)
 
     entries = proxy._parse_activity_inputs_x1s([payload])
 
     assert entries == [(3, 1), (4, 2), (5, 3), (6, 4)]
 
 
-def test_parse_activity_inputs_x1s_wifi_stops_at_null_slot() -> None:
-    """Parsing halts when slot_id is 0x00 (end-of-list sentinel)."""
+def test_parse_activity_inputs_x1s_stops_at_null_slot() -> None:
+    """Parsing halts when ``slot_id`` is 0x00 even if N suggests more entries."""
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
-    header = _make_x1s_wifi_page1_header(device_id=0x0A, num_inputs=2)
-    e1 = _make_x1s_wifi_entry(3, 1, "TEST 3")
-    e2 = _make_x1s_wifi_entry(4, 2, "TEST 4")
-    terminator = bytes(48)  # slot_id=0 -> stop
-    payload = header + e1 + e2 + terminator
+    # Header claims 4 entries but only 2 are real; the third is a null sentinel.
+    header = _make_x1s_input_page1_header(device_id=0x0A, num_inputs=4)
+    payload = (
+        header
+        + _make_x1s_input_entry(3, 1, "TEST 3")
+        + _make_x1s_input_entry(4, 2, "TEST 4")
+        + bytes(48)
+        + _make_x1s_input_entry(5, 3, "should not surface")
+    )
 
     entries = proxy._parse_activity_inputs_x1s([payload])
 
     assert entries == [(3, 1), (4, 2)]
 
 
-def test_parse_activity_inputs_x1s_wifi_matches_real_capture() -> None:
+def test_parse_activity_inputs_x1s_respects_declared_count() -> None:
+    """Stops after N entries even if the body contains more 48-byte chunks."""
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    header = _make_x1s_input_page1_header(device_id=0x0B, num_inputs=2)
+    payload = (
+        header
+        + _make_x1s_input_entry(3, 1, "TEST 3")
+        + _make_x1s_input_entry(4, 2, "TEST 4")
+        + _make_x1s_input_entry(5, 3, "TEST 5 - past N")
+    )
+
+    entries = proxy._parse_activity_inputs_x1s([payload])
+
+    assert entries == [(3, 1), (4, 2)]
+
+
+def test_parse_activity_inputs_x1s_matches_real_wifi_capture() -> None:
     """Regression: captured X1S WiFi FA47 payload parses into all 4 entries."""
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -3945,36 +3987,23 @@ def test_parse_activity_inputs_x1s_wifi_matches_real_capture() -> None:
     assert entries == [(3, 1), (4, 2), (5, 3), (6, 4)]
 
 
-def test_parse_activity_inputs_x1s_ir_single_page() -> None:
-    """IR device (sub_type=03, entry_size=36): parse entries correctly."""
+def test_parse_activity_inputs_x1s_multi_page_uses_3byte_continuation_header() -> None:
+    """Continuation pages strip 3 bytes of page preamble and append directly."""
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
-    header = _make_x1s_ir_page1_header(device_id=0x03, num_inputs=3)
-    e1 = _make_x1s_ir_entry(0x33, 0x3310, 1, "Input aux1")
-    e2 = _make_x1s_ir_entry(0x34, 0x3311, 2, "Input aux2")
-    e3 = _make_x1s_ir_entry(0x35, 0x3667, 3, "Input bk")
-    payload = header + e1 + e2 + e3 + bytes(250 - 11 - 3 * 36)
-
-    entries = proxy._parse_activity_inputs_x1s([payload])
-
-    assert entries == [(0x33, 1), (0x34, 2), (0x35, 3)]
-
-
-def test_parse_activity_inputs_x1s_multi_page_uses_4byte_header() -> None:
-    """Subsequent FA47 pages for X1S carry a 4-byte header (not 3-byte like X1)."""
-    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
-
-    header1 = _make_x1s_ir_page1_header(device_id=0x03, num_inputs=7)
-    entries_p1 = b"".join(_make_x1s_ir_entry(0x30 + i, 0x3300 + i, i + 1, f"Input {i+1}") for i in range(5))
-    page1 = header1 + entries_p1 + bytes(250 - 11 - 5 * 36)
-
-    # X1S subsequent page: 4-byte header
-    header2 = bytes([0x01, 0x00, 0x02, 0x00])
-    entries_p2 = (
-        _make_x1s_ir_entry(0x35, 0x3305, 6, "Input 6")
-        + _make_x1s_ir_entry(0x36, 0x3306, 7, "Input 7")
+    # 7 entries × 48 = 336 bytes of entry data spread across two pages.
+    page1_header = _make_x1s_input_page1_header(device_id=0x03, num_inputs=7, total_pages=2)
+    page1_entry_bytes = b"".join(
+        _make_x1s_input_entry(0x30 + i, i + 1, f"Input {i+1}") for i in range(5)
     )
-    page2 = header2 + entries_p2 + bytes(100)
+    page1 = page1_header + page1_entry_bytes
+    # Last entry of page 1 spills into page 2 via concatenation.
+    page2_header = _make_x1s_input_cont_header(page_no=2)
+    page2_entry_bytes = (
+        _make_x1s_input_entry(0x35, 6, "Input 6")
+        + _make_x1s_input_entry(0x36, 7, "Input 7")
+    )
+    page2 = page2_header + page2_entry_bytes
 
     entries = proxy._parse_activity_inputs_x1s([page1, page2])
 
@@ -3984,18 +4013,43 @@ def test_parse_activity_inputs_x1s_multi_page_uses_4byte_header() -> None:
     assert entries[6] == (0x36, 7)
 
 
-def test_parse_activity_inputs_x1s_unknown_subtype_falls_back_to_36() -> None:
-    """An unknown sub_type defaults to entry_size=36 and logs a warning."""
+def test_parse_activity_inputs_x1s_matches_real_ir_capture() -> None:
+    """Regression: real 12-entry IR-device capture across 3 frames parses fully.
+
+    The capture was taken from an X1S hub responding to OP_REQ_ACTIVITY_INPUTS
+    for an IR/RF device with 12 input mappings; entry 11 deliberately spans
+    the page-2 → page-3 boundary, exercising the continuation-concat path.
+    """
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
-    unknown_header = bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0xFF, 0x05, 0x01, 0x02, 0x00, 0x00])
-    e1 = _make_x1s_ir_entry(0x10, 0x1011, 1, "Inp1")
-    e2 = _make_x1s_ir_entry(0x11, 0x1012, 2, "Inp2")
-    payload = unknown_header + e1 + e2
+    frame1 = bytes.fromhex(
+        "a5 5a fa 47 01 00 01 01 00 03 03 01 0c 00 00 33 00 00 00 00 33 10 01 00 49 00 6e 00 70 00 75 00 74 00 20 00 61 00 75 00 78 00 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 34 00 00 00 00 33 11 02 00 49 00 6e 00 70 00 75 00 74 00 20 00 61 00 75 00 78 00 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 35 00 00 00 00 36 67 03 00 49 00 6e 00 70 00 75 00 74 00 20 00 62 00 6b 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 36 00 00 00 00 36 68 04 00 49 00 6e 00 70 00 75 00 74 00 20 00 62 00 6c 00 75 00 2d 00 72 00 61 00 79 00 00 00 00 00 00 00 00 00 00 00 00 00 00 38 00 00 00 00 36 21 05 00 49 00 6e 00 70 00 75 00 74 00 20 00 63 00 62 00 6c 00 2f 00 73 00 61 00 74 00 00 00 00 00 00 00 00 00 00 00 00 00 a8"
+    )
+    frame2 = bytes.fromhex(
+        "a5 5a fa 47 01 00 02 00 39 00 00 00 00 33 12 06 00 49 00 6e 00 70 00 75 00 74 00 20 00 63 00 64 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3a 00 00 00 00 32 8b 07 00 49 00 6e 00 70 00 75 00 74 00 20 00 64 00 76 00 64 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3c 00 00 00 00 34 c4 08 00 49 00 6e 00 70 00 75 00 74 00 20 00 67 00 61 00 6d 00 65 00 31 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3d 00 00 00 00 34 c5 09 00 49 00 6e 00 70 00 75 00 74 00 20 00 67 00 61 00 6d 00 65 00 32 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 32 a5 0a 00 49 00 6e 00 70 00 75 00 74 00 20 00 6d 00 65 00 64 00 69 00 61 00 20 00 70 00 6c 00 61 00 79 00 65 00 72 00 00 00 00 45 00 00 00 00 32 11"
+    )
+    frame3 = bytes.fromhex(
+        "a5 5a c9 47 01 00 03 91 0b 00 49 00 6e 00 70 00 75 00 74 00 20 00 74 00 76 00 20 00 61 00 75 00 64 00 69 00 6f 00 00 00 00 00 00 00 00 00 00 00 00 46 00 00 00 00 28 08 0c 00 49 00 6e 00 70 00 75 00 74 00 61 00 75 00 78 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc d7"
+    )
 
-    entries = proxy._parse_activity_inputs_x1s([payload])
+    payloads = [frame[4:-1] for frame in (frame1, frame2, frame3)]
 
-    assert entries == [(0x10, 1), (0x11, 2)]
+    entries = proxy._parse_activity_inputs_x1s(payloads)
+
+    assert entries == [
+        (0x33, 1),
+        (0x34, 2),
+        (0x35, 3),
+        (0x36, 4),
+        (0x38, 5),
+        (0x39, 6),
+        (0x3A, 7),
+        (0x3C, 8),
+        (0x3D, 9),
+        (0x40, 10),
+        (0x45, 11),
+        (0x46, 12),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -4076,13 +4130,13 @@ def test_query_device_input_index_x1s_returns_embedded_ordinal(monkeypatch) -> N
     )
 
     # Device 9 has inputs TEST 3 (cmd=3, ord=1), TEST 4 (cmd=4, ord=2), TEST 5 (cmd=5, ord=3)
-    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=3)
+    header = _make_x1s_input_page1_header(device_id=0x09, num_inputs=3)
     page1 = (
         header
-        + _make_x1s_wifi_entry(3, 1, "TEST 3")
-        + _make_x1s_wifi_entry(4, 2, "TEST 4")
-        + _make_x1s_wifi_entry(5, 3, "TEST 5")
-        + bytes(250 - 10 - 3 * 48)
+        + _make_x1s_input_entry(3, 1, "TEST 3")
+        + _make_x1s_input_entry(4, 2, "TEST 4")
+        + _make_x1s_input_entry(5, 3, "TEST 5")
+        + bytes(250 - 11 - 3 * 48)
     )
 
     sent: list[tuple[int, bytes]] = []
@@ -4113,16 +4167,16 @@ def test_query_device_input_index_autodetects_x1s_payload_shape_when_hub_version
         hub_version=HUB_VERSION_X1,
     )
 
-    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=4)
+    header = _make_x1s_input_page1_header(device_id=0x09, num_inputs=4)
     page1 = (
         header
-        + _make_x1s_wifi_entry(3, 1, "TEST 3")
-        + _make_x1s_wifi_entry(4, 2, "TEST 4")
-        + _make_x1s_wifi_entry(5, 3, "TEST 5")
-        + _make_x1s_wifi_entry(6, 4, "TEST 6")
-        + bytes(250 - 10 - 4 * 48)
+        + _make_x1s_input_entry(3, 1, "TEST 3")
+        + _make_x1s_input_entry(4, 2, "TEST 4")
+        + _make_x1s_input_entry(5, 3, "TEST 5")
+        + _make_x1s_input_entry(6, 4, "TEST 6")
+        + bytes(250 - 11 - 4 * 48)
     )
-    page2 = bytes([0x01, 0x00, 0x02, 0x00]) + bytes(65)
+    page2 = _make_x1s_input_cont_header(page_no=2) + bytes(65)
 
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
 
@@ -4146,8 +4200,8 @@ def test_query_device_input_index_x1s_returns_none_when_not_found(monkeypatch) -
         hub_version=HUB_VERSION_X1S,
     )
 
-    header = _make_x1s_wifi_page1_header(device_id=0x09, num_inputs=1)
-    page1 = header + _make_x1s_wifi_entry(3, 1, "TEST 3") + bytes(200)
+    header = _make_x1s_input_page1_header(device_id=0x09, num_inputs=1)
+    page1 = header + _make_x1s_input_entry(3, 1, "TEST 3") + bytes(200)
 
     monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, data: None)
 

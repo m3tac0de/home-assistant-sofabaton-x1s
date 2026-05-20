@@ -177,6 +177,44 @@ def _wifi_command_label(command_spec: Any, idx: int) -> str:
     return str(command_spec or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
 
 
+# Position of the tail token block inside a CATALOG_ROW_ACTIVITY payload.
+# See the activity-row schema comment in ``opcode_handlers`` for details.
+_ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD = 152
+_ACTIVITY_ROW_TAIL_LEN = 60
+
+
+# ACTIVITY_INPUTS (0x47-family) schema for X1S/X2 hubs.
+#
+# Each frame's payload starts with a 3-byte page preamble; the page-1 frame
+# also carries an 8-byte record header before the first entry, while
+# continuation frames jump directly to more entry bytes.
+#
+#   payload (page 1):
+#     [0..2]    page preamble (one byte + total_pages_be)
+#     [3]       sentinel byte (typically 0x01)
+#     [4..5]    bArr[1..2] — overlaps total_pages_be
+#     [6]       device id
+#     [7]       source type
+#     [8]       N — number of entries
+#     [9..10]   start / restart position bytes
+#     [11..]    entries (stride 48)
+#
+#   payload (continuation): [0..2] page preamble; [3..] continues the
+#   concatenated entry stream from the previous page.
+#
+#   Each entry (48 bytes):
+#     [0]       slot id (== command id on the source device)
+#     [1..6]    fid (6-byte big-endian)
+#     [7]       1-based ordinal
+#     [8..47]   label slot, 40 bytes UTF-16BE, null-padded
+_X1S_INPUT_PAGE1_HEADER_SIZE = 11
+_X1S_INPUT_CONT_HEADER_SIZE = 3
+_X1S_INPUT_ENTRY_SIZE = 48
+_X1S_INPUT_SLOT_OFFSET = 0
+_X1S_INPUT_ORDINAL_OFFSET = 7
+_X1S_INPUT_COUNT_OFFSET = 8
+
+
 _ROKU_APP_SLOTS: list[tuple[int, int]] = [
     (0x18, 0x4E21),
     (0x19, 0x4E22),
@@ -2797,76 +2835,83 @@ class X1Proxy:
         return entries
 
     def _parse_activity_inputs_x1s(self, payloads: list[bytes]) -> list[tuple[int, int]]:
-        """Parse X1S/X2 0x47 frame payloads; return (slot_id, ordinal) pairs.
+        """Parse an X1S/X2 ACTIVITY_INPUTS burst into ``(slot_id, ordinal)`` pairs.
 
-        Page 1 carries an 11-byte header; subsequent pages carry a 4-byte header.
-        Entry size depends on sub-type byte (header[5]):
-          0x02 → 41 bytes (WiFi/custom device)
-          0x03 → 36 bytes (IR/RF device)
-        The 1-based ordinal for each input is embedded at chunk[7].
+        Schema (validated against real X1S WiFi *and* IR captures):
+
+        - Page 1 carries an 11-byte transport-and-record header before the
+          first entry: 3 bytes of page preamble + 8 bytes of record header
+          (device id, source type, entry count N, two position bytes).
+        - Continuation pages carry a 3-byte page preamble only; their payload
+          bytes after that header are a direct continuation of the entry
+          stream from the previous page.
+        - Entries are a fixed 48-byte stride. Each entry begins with the
+          slot id (byte 0), then a 6-byte fid, then the 1-based ordinal at
+          byte 7, then a 40-byte UTF-16BE label slot.
+        - The total entry count is supplied in the page-1 header so a
+          response that runs across multiple pages doesn't depend on a
+          ``slot_id == 0`` terminator to know when to stop.
+
+        Earlier revisions branched on ``page1[5]`` as a "sub_type" to choose
+        between a 48-byte and a 36-byte stride. That byte is actually the
+        low byte of the response's ``total_pages_be`` and varies with
+        payload size, not with the source kind. The 36-byte stride was an
+        artifact of that misidentification and silently failed on
+        IR-device responses after the first entry.
         """
+
         if not payloads:
             return []
 
         page1 = payloads[0]
-        if len(page1) < 10:
+        if len(page1) < _X1S_INPUT_PAGE1_HEADER_SIZE:
             return []
 
-        sub_type = page1[5] & 0xFF
-        if sub_type == 0x02:
-            first_header_size = 10
-            next_header_size = 4
-            entry_size = 48
-        elif sub_type == 0x03:
-            first_header_size = 11
-            next_header_size = 4
-            entry_size = 36
-        else:
-            self._log.warning(
-                "[INPUT_QUERY] X1S unknown sub_type=0x%02X in activity-inputs page1; using entry_size=36",
-                sub_type,
+        entry_count = page1[_X1S_INPUT_COUNT_OFFSET]
+        body = bytearray()
+        for i, payload in enumerate(payloads):
+            strip = (
+                _X1S_INPUT_PAGE1_HEADER_SIZE if i == 0
+                else _X1S_INPUT_CONT_HEADER_SIZE
             )
-            first_header_size = 11
-            next_header_size = 4
-            entry_size = 36
+            if len(payload) > strip:
+                body.extend(payload[strip:])
 
         entries: list[tuple[int, int]] = []
-        for i, payload in enumerate(payloads):
-            body = payload[first_header_size:] if i == 0 else payload[next_header_size:]
-            for offset in range(0, len(body), entry_size):
-                chunk = body[offset : offset + entry_size]
-                if len(chunk) < entry_size:
-                    break
-                if sub_type == 0x02:
-                    slot_id = chunk[1]
-                    ordinal = chunk[8]
-                else:
-                    slot_id = chunk[0]
-                    ordinal = chunk[7]
-                if slot_id == 0x00:
-                    break
-                entries.append((slot_id, ordinal))
+        for i in range(entry_count):
+            start = i * _X1S_INPUT_ENTRY_SIZE
+            chunk = body[start : start + _X1S_INPUT_ENTRY_SIZE]
+            if len(chunk) < _X1S_INPUT_ENTRY_SIZE:
+                break
+            slot_id = chunk[_X1S_INPUT_SLOT_OFFSET]
+            ordinal = chunk[_X1S_INPUT_ORDINAL_OFFSET]
+            if slot_id == 0x00:
+                break
+            entries.append((slot_id, ordinal))
         return entries
 
     def _payloads_look_like_x1s_activity_inputs(self, payloads: list[bytes]) -> bool:
-        """Return True when the first 0x47 payload matches the observed X1S/X2 layout."""
+        """Return True when the first 0x47 payload matches the X1S/X2 layout.
+
+        Used as a fallback discriminator when ``hub_version`` isn't known.
+        The check anchors on the fixed bytes of the page-1 record header; the
+        byte at ``page1[5]`` is the low byte of ``total_pages_be`` and varies
+        with the response size, so it is intentionally not constrained.
+        """
+
         if not payloads:
             return False
 
         page1 = payloads[0]
-        if len(page1) < 10:
+        if len(page1) < _X1S_INPUT_PAGE1_HEADER_SIZE:
             return False
 
-        # X1S/X2 page-1 headers observed so far look like:
-        #   01 00 01 01 00 <sub_type> <device_id> 01 <count> 00 00
-        # where sub_type 0x02 = WiFi/custom and 0x03 = IR/RF.
         return (
             page1[0] == 0x01
             and page1[1] == 0x00
             and page1[2] == 0x01
             and page1[3] == 0x01
             and page1[4] == 0x00
-            and page1[5] in (0x02, 0x03)
             and page1[7] == 0x01
         )
 
@@ -3210,10 +3255,23 @@ class X1Proxy:
         return targets
 
     def _clear_x1s_confirm_flag(self, payload: bytes) -> bytes:
+        """Return ``payload`` with the activity-row needs-confirm flag cleared.
+
+        The flag lives at the value byte of the final ``fc XX fc YY`` sub-token
+        pair inside the row's tail token block (see the activity-row schema
+        comment in ``opcode_handlers``). Setting it to ``0x00`` tells the hub
+        the user has acknowledged the impact of a device delete.
+        """
+
         mutable = bytearray(payload)
+        tail_start = _ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD
+        tail_end = min(len(mutable), tail_start + _ACTIVITY_ROW_TAIL_LEN)
+        if tail_end - tail_start < 4:
+            return bytes(mutable)
+
         marker_indexes = [
             idx
-            for idx in range(max(0, len(mutable) - 80), len(mutable) - 3)
+            for idx in range(tail_start, tail_end - 3)
             if mutable[idx] == 0xFC and mutable[idx + 2] == 0xFC
         ]
         if marker_indexes:

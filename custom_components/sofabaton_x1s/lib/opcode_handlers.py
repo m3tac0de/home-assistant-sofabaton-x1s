@@ -749,59 +749,74 @@ class X1CatalogDeviceHandler(BaseFrameHandler):
 
 
 
-def _decode_x1s_needs_confirm_flag(payload: bytes) -> bool:
-    """Extract X1S/X2 activity confirm flag from CATALOG_ROW_ACTIVITY payload.
+# --- X1S/X2 activity-row schema (CATALOG_ROW_ACTIVITY, 0xD53B) -------------
+#
+# The row body sits immediately after the 7-byte per-frame transport header.
+# All offsets below are absolute positions into the full frame (``raw``).
+#
+#   raw[35]       active-state byte (0x01 = active)
+#   raw[36..96)   primary name slot, 60 bytes UTF-16BE, null-padded
+#   raw[96..156)  secondary label slot (unused for activities; zero-filled)
+#   raw[156..216) tail token block: fc-prefixed sub-tokens encoding
+#                 wifi/ip, idle timeout, input/power modes, and the
+#                 needs-confirm flag, followed by zero padding.
+#
+# The previous label decoder scanned a 92-byte region with two byte-shift
+# candidates; the schema makes the slot exactly 60 bytes wide with a fixed
+# UTF-16BE encoding, so no shift heuristic is needed.
+ACTIVITY_ROW_LABEL_OFFSET = 36
+ACTIVITY_ROW_LABEL_LEN = 60
+ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD = 152
+ACTIVITY_ROW_TAIL_LEN = 60
 
-    Observed rows contain a tail marker pattern ``fc xx fc yy`` where ``yy``
-    flips to ``0x01`` for activities impacted by device delete.
+
+def _decode_x1s_needs_confirm_flag(payload: bytes) -> bool:
+    """Return ``True`` when an X1S/X2 activity row carries the confirm-needed flag.
+
+    Activity rows end in a 60-byte tail token block (see schema comment above)
+    composed of ``fc``-prefixed sub-tokens with trailing zero padding. The
+    confirm flag is encoded as the value byte of the final ``fc XX fc YY``
+    sub-token pair within that block; ``YY == 0x01`` means the activity was
+    impacted by a recent device delete and must be re-saved by the app.
+
+    No structured parse for this flag is exposed by the official app's row
+    parser, so we locate it by scanning the tail block for the trailing
+    ``fc XX fc YY`` pair. The scan is intentionally scoped to the schema's
+    tail region rather than an arbitrary window at the end of the payload.
     """
+
+    tail_start = ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD
+    tail_end = min(len(payload), tail_start + ACTIVITY_ROW_TAIL_LEN)
+    if tail_end - tail_start < 4:
+        return False
 
     marker_indexes = [
         idx
-        for idx in range(max(0, len(payload) - 80), len(payload) - 3)
+        for idx in range(tail_start, tail_end - 3)
         if payload[idx] == 0xFC and payload[idx + 2] == 0xFC
     ]
     if not marker_indexes:
         return False
 
     flag_index = marker_indexes[-1] + 3
-    return flag_index < len(payload) and payload[flag_index] == 0x01
+    return flag_index < tail_end and payload[flag_index] == 0x01
 
-def _decode_x1s_activity_label(label_bytes_raw: bytes) -> str:
-    """Decode first activity label from X1S CATALOG_ROW_ACTIVITY label region.
 
-    - Label is effectively UTF-16BE, but some hubs/frames appear shifted by 1 byte.
-    - Region may contain multiple labels separated by UTF-16 NULs; we want the first.
+def _decode_x1s_activity_label(label_bytes: bytes) -> str:
+    """Decode the activity name from the X1S/X2 row's fixed UTF-16BE slot.
+
+    ``label_bytes`` is the 60-byte slot from the row body (see schema comment
+    above). It is always UTF-16BE, null-padded to fill the slot; the first
+    null code unit terminates the visible label.
     """
 
-    def decode_shift(shift: int) -> str:
-        b = label_bytes_raw[shift:]
-        # keep even length for UTF-16
-        if len(b) % 2:
-            b = b[:-1]
-
-        s = b.decode("utf-16be", errors="ignore")
-
-        # Keep only the first NUL-terminated string (prevents duplicated labels)
-        s = s.split("\x00", 1)[0]
-
-        # Remove leading NUL/control chars (handles leading U+0000 / U+0001 etc.)
-        s = s.strip("\x00").strip()
-        while s and unicodedata.category(s[0]).startswith("C"):
-            s = s[1:].lstrip()
-
-        return s
-
-    candidates = (decode_shift(0), decode_shift(1))
-
-    def score(s: str) -> tuple[int, int]:
-        # Prefer strings that look like normal human labels (lots of Basic Latin chars/spaces)
-        basic_latin = sum(1 for ch in s if 0x20 <= ord(ch) <= 0x7E)
-        printable = sum(1 for ch in s if ch.isprintable())
-        return (basic_latin * 2 + printable, len(s))
-
-    best = max(candidates, key=score, default="")
-    return best
+    even_bytes = label_bytes[: len(label_bytes) & ~1]
+    text = even_bytes.decode("utf-16be", errors="ignore")
+    text = text.split("\x00", 1)[0]
+    text = text.strip()
+    while text and unicodedata.category(text[0]).startswith("C"):
+        text = text[1:].lstrip()
+    return text
 
 @register_handler(opcodes=(OP_CATALOG_ROW_ACTIVITY,), directions=("H→A",))
 class CatalogActivityHandler(BaseFrameHandler):
@@ -816,9 +831,10 @@ class CatalogActivityHandler(BaseFrameHandler):
         row_idx = payload[0] if len(payload) >= 1 else None
         # Start of a fresh activities list → reset 'active'
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
-        label_bytes_raw = raw[36:128]
-        activity_label = _decode_x1s_activity_label(label_bytes_raw)
-        # activity_label = label_bytes_raw.decode("utf-16be", errors="ignore").strip("\x00")
+        label_slot = raw[
+            ACTIVITY_ROW_LABEL_OFFSET : ACTIVITY_ROW_LABEL_OFFSET + ACTIVITY_ROW_LABEL_LEN
+        ]
+        activity_label = _decode_x1s_activity_label(label_slot)
         active_state_byte = raw[35] if len(raw) > 35 else 0
         is_active = active_state_byte == 0x01
         needs_confirm = _decode_x1s_needs_confirm_flag(payload)

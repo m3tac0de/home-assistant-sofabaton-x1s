@@ -47,6 +47,8 @@ from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     X1CatalogActivityHandler,
     X1CatalogDeviceHandler,
     X2RemoteListRowHandler,
+    _decode_x1s_activity_label,
+    _decode_x1s_needs_confirm_flag,
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
@@ -1196,6 +1198,85 @@ def test_catalog_activity_handler_decodes_utf16_labels() -> None:
                 if int(value["id"]) == (act_id & 0xFF)
             )
             assert row["name"] == expected_label
+
+
+def test_decode_x1s_activity_label_decodes_utf16be_slot() -> None:
+    slot = "Watch TV".encode("utf-16-be").ljust(60, b"\x00")
+    assert _decode_x1s_activity_label(slot) == "Watch TV"
+
+
+def test_decode_x1s_activity_label_truncates_at_first_null_codepoint() -> None:
+    # Slot is filled with two UTF-16BE strings separated by NUL; only the first wins.
+    first = "Watch Apple TV".encode("utf-16-be")
+    second = "Stale".encode("utf-16-be")
+    slot = (first + b"\x00\x00" + second).ljust(60, b"\x00")
+    assert _decode_x1s_activity_label(slot) == "Watch Apple TV"
+
+
+def test_decode_x1s_activity_label_returns_empty_for_zeroed_slot() -> None:
+    assert _decode_x1s_activity_label(b"\x00" * 60) == ""
+
+
+def test_decode_x1s_activity_label_handles_odd_length_safely() -> None:
+    # Defensive: short / odd-length input must not raise; the schema slot is 60B
+    # but a malformed frame might be shorter.
+    assert _decode_x1s_activity_label(b"\x00\x57\x00") == "W"
+
+
+def test_decode_x1s_needs_confirm_flag_true_at_tail_marker() -> None:
+    payload = bytearray(214)
+    # Tail region: payload[152..212). Place fc XX fc YY near the end of it.
+    payload[170:174] = bytes([0xFC, 0x01, 0xFC, 0x01])
+    assert _decode_x1s_needs_confirm_flag(bytes(payload)) is True
+
+
+def test_decode_x1s_needs_confirm_flag_false_when_cleared() -> None:
+    payload = bytearray(214)
+    payload[170:174] = bytes([0xFC, 0x00, 0xFC, 0x00])
+    assert _decode_x1s_needs_confirm_flag(bytes(payload)) is False
+
+
+def test_decode_x1s_needs_confirm_flag_ignores_markers_outside_tail() -> None:
+    # An fc XX fc YY pattern that lands BEFORE the tail region must not be
+    # interpreted as the confirm flag, even though the legacy "last 80 bytes"
+    # window would have caught it.
+    payload = bytearray(214)
+    payload[100:104] = bytes([0xFC, 0x01, 0xFC, 0x01])  # noise before tail
+    assert _decode_x1s_needs_confirm_flag(bytes(payload)) is False
+
+
+def test_decode_x1s_needs_confirm_flag_handles_short_payload() -> None:
+    # A truncated frame with no tail region should not raise; return False.
+    assert _decode_x1s_needs_confirm_flag(b"\x00" * 80) is False
+
+
+def test_clear_x1s_confirm_flag_zeroes_the_flag_only() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    payload = bytearray(214)
+    payload[170:174] = bytes([0xFC, 0x01, 0xFC, 0x01])
+    payload[42] = 0xAB  # canary inside label slot — must be preserved
+
+    cleared = proxy._clear_x1s_confirm_flag(bytes(payload))
+
+    assert cleared[173] == 0x00  # flag byte
+    assert cleared[170:173] == bytes([0xFC, 0x01, 0xFC])  # surrounding marker intact
+    assert cleared[42] == 0xAB
+    assert _decode_x1s_needs_confirm_flag(cleared) is False
+
+
+def test_clear_x1s_confirm_flag_leaves_markers_outside_tail_alone() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    payload = bytearray(214)
+    payload[100:104] = bytes([0xFC, 0x01, 0xFC, 0x01])  # outside the tail window
+
+    cleared = proxy._clear_x1s_confirm_flag(bytes(payload))
+
+    # Nothing in the tail to clear, and the out-of-region marker is untouched.
+    assert cleared[100:104] == bytes([0xFC, 0x01, 0xFC, 0x01])
 
 
 def test_activity_map_ignores_control_tuples_from_x1_tail() -> None:
