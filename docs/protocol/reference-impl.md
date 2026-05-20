@@ -26,17 +26,16 @@ All paths are relative to `custom_components/sofabaton_x1s/lib/`.
 | Activity catalog row parsing | `opcode_handlers.py` | `CatalogActivityHandler`, `X1CatalogActivityHandler` |
 | Frame metadata - command bursts | `commands.py` | `CommandBurstFrame`, `parse_command_burst_frame()` |
 | Multi-frame command burst reassembly | `commands.py` | `DeviceCommandAssembler` |
-| Command record decoding | `commands.py` | `iter_command_records()` |
+| Command record decoding | `commands.py`, `state_helpers.py` | `iter_command_records_from_assembled()`, `ActivityCache.parse_device_commands()` |
 | Frame metadata - IR blob dump pages | `commands.py` | `IrCommandDumpFrame`, `parse_ir_command_dump_frame()` |
 | IR blob dump assembly | `x1_proxy.py` | `request_ir_command_dump()`, `_record_ir_dump_frame()`, `_build_ir_dump_result()` |
 | IR blob save-page synthesis | `x1_proxy.py` | `_build_persist_ir_blob_payloads()`, `persist_ir_blob()` |
 | Descriptive IR blob helpers | `commands.py` | `build_descriptive_ir_blob_body()`, `build_denonk_ir_blob()`, `descriptive_play_blob_text()` |
 | Frame metadata - keymap bursts | `commands.py` | `ButtonBurstFrame`, `parse_button_burst_frame()` |
-| Keymap burst reassembly | `commands.py` | `DeviceButtonAssembler` |
+| Keymap burst reassembly | `commands.py`, `state_helpers.py` | `DeviceButtonAssembler`, `iter_keymap_records()`, `ActivityCache.replace_keymap_rows()` |
 | Frame metadata - macro bursts | `macros.py` | `MacroBurstFrame`, `parse_macro_burst_frame()` |
 | Macro burst reassembly | `macros.py` | `MacroAssembler` |
-| Macro record decoding | `macros.py` | `decode_macro_records()` |
-| Keymap state replacement | `state_helpers.py` | `ActivityCache.replace_keymap_rows()` |
+| Macro record decoding | `macros.py`, `opcode_handlers.py` | `parse_macro_record_from_region()`, `parse_macro_records_from_burst()`, `MacroHandler` |
 | In-memory state cache | `state_helpers.py` | `ActivityCache` class |
 | Burst scheduling | `state_helpers.py` | `BurstScheduler` class |
 | IR blob replay and replay-tail normalization | `x1_proxy.py` | `play_ir_blob()`, `_finalize_play_blob_body()`, `_play_ir_blob_body()`, `_play_blob_total_frames()` |

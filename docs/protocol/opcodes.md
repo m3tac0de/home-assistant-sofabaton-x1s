@@ -183,14 +183,12 @@ Observed X1 continuation-page variants:
   tuple starts at `payload[5]`
 
 Observed record-stream behavior:
-- many bursts use `0xFF` before follow-on records, but that byte is not a
-  universal record separator
+- family `0x5D` is safest to parse as one assembled byte stream per request
+- observed real-wire assembled bodies decode as fixed-width records:
+  - X1: 40-byte records with a 30-byte label slot at offset `9`
+  - X1S/X2: 70-byte records with a 60-byte label slot at offset `9`
 - X1S/X2 UTF-16BE labels can legitimately contain raw `0xFF` bytes as text data
-- some X1 one-page bursts contain multiple ASCII command records with no `0xFF`
-  separators at all
-- consumers should treat family `0x5D` as an assembled byte stream first and
-  recover command boundaries from validated record-start patterns, not from page
-  boundaries alone
+- page boundaries do not imply record boundaries
 
 ### Activity keymap / favorite rows (family `0x3D`)
 
@@ -279,6 +277,12 @@ Notes:
 - Some X1S empty power-macro records place a control byte before the visible
   `POWER_ON` / `POWER_OFF` text. Consumers should ignore leading control bytes
   before deciding whether a label is a built-in power macro.
+- after fragment assembly, each macro region is structured as:
+  - `macro_id`
+  - `entry_count`
+  - `entry_count` repeated 10-byte key entries
+  - trailing fixed-width label slot
+  - final trailing terminator byte
 
 ### Activity inputs (family `0x47`)
 

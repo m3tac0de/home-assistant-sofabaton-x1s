@@ -70,10 +70,24 @@ Observed stable fields:
 
 ## Command list records (`REQ_COMMANDS`, family `0x5D`)
 
-Command-list bursts return one or more command records per page. The exact page
-layout varies by hub line, but the repeated command unit has a consistent shape.
-The burst should be treated as a paged byte stream: page boundaries are not
-guaranteed to align to command-record boundaries.
+Command-list bursts should be treated as one assembled command-record stream per
+request. Page boundaries are transport artifacts and are not guaranteed to align
+to record boundaries.
+
+Observed assembled-record layouts:
+
+| Hub line | Record size | Label slot |
+|----------|-------------|------------|
+| X1 | 40 bytes | `record[9:39]`, ASCII / UTF-8-compatible |
+| X1S/X2 | 70 bytes | `record[9:69]`, UTF-16BE |
+
+Observed assembled-body behavior:
+- the page-1 header carries the command count for the burst
+- after page-local headers are stripped, the assembled body begins directly with
+  the first record byte
+- record decoding is safest after concatenating the page bodies for the burst
+- raw `0xFF` bytes can appear inside label data or at record tails, so page-local
+  delimiter scanning is not a safe primary parser strategy
 
 ### Repeated command unit
 
@@ -90,6 +104,7 @@ Observed control-block behavior:
 - virtual/IP devices often use mostly-zero control blocks
 - format markers observed in this family include `0x03`, `0x0D`, `0x1A`, and `0x1C`
 - `0x0A` and `0x20` are also observed as command-format markers on some devices
+- on strict fixed-width X1 captures, byte `39` is commonly `0xFF`
 
 ### Label encodings
 
@@ -102,29 +117,14 @@ Observed command-label encodings:
   (for example `U+00FF`), so consumers must not split records on bare `0xFF`
   unless a full record separator pattern is present
 
-Observed separator behavior:
-- many X1S/X2 bursts use `0xFF` before follow-on records
-- some X1 bursts do not use `0xFF` separators at all
-- absence of `0xFF` does not imply that the page contains only one command
-- some X1 single-page bursts pack multiple ASCII command records back-to-back
-  with no explicit separator bytes
-
 ### Paging behavior
 
 Observed paging behavior:
 - command records may span page boundaries
 - non-header pages should be treated primarily as continuations of the current
   command burst, not as self-contained command lists
-- record decoding is safest after concatenating the page bodies for the burst
-
-Observed X1 packed-record behavior:
-- some one-page X1 command bursts are a contiguous ASCII record stream
-- those records are structurally delimited by repeated
-  `[dev_id, command_id, fmt, 0x00, 0x00, 0x00, 0x00, ...]` starts rather than
-  by `0xFF`
-- the amount of zero padding inside the record can vary slightly, so consumers
-  should not assume a fixed record width even when the page has no `0xFF`
-  separators
+- after assembly, observed real-wire bursts can be decoded as fixed-width records
+  using the hub-family-specific stride above
 
 Observed single-page X1 header quirk:
 - some one-page X1 header bursts begin with the same early prefix as targeted
@@ -299,6 +299,38 @@ treated separately from user-defined macros.
 Observed label encodings:
 - X1: ASCII is common
 - X1S/X2: UTF-16BE is common
+
+### Assembled record layout
+
+Observed assembled macro regions have this structure:
+
+```
+byte 0        macro id
+byte 1        key-entry count
+byte 2..      repeated 10-byte key entries
+...           trailing fixed-width label slot
+last byte     trailing terminator / checksum-like byte
+```
+
+Observed key-entry layout:
+
+```
+byte 0        device id
+byte 1        key id
+byte 2..7     opaque 6-byte control / fid block
+byte 8        duration
+byte 9        delay
+```
+
+Observed label-slot sizes:
+- X1: 30 trailing bytes before the final terminator
+- X1S/X2: 60 trailing bytes before the final terminator
+
+Client guidance:
+- decode the label from the trailing fixed-width slot, not from the first
+  printable bytes encountered in the region
+- if the declared key-entry count would overlap the trailing label slot, clamp
+  to the entries that fit inside the region
 
 ### Empty power-macro variant on X1S
 
