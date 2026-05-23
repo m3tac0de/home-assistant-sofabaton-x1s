@@ -332,6 +332,60 @@ def _seal_body(body: bytearray) -> bytes:
     return bytes(body)
 
 
+def synthesize_command_code(command_id: int) -> int:
+    """Return the X1 synthetic command-code used by keymap/input writes."""
+
+    if command_id < 0 or command_id > 0xFF:
+        raise ValueError(f"command_id {command_id} out of byte range")
+    return 0x4E20 + (command_id & 0xFF)
+
+
+def build_macro_step_record(
+    *,
+    device_id: int,
+    command_id: int,
+    fid: int = 0,
+    duration: int = 0,
+    delay: int = 0xFF,
+) -> bytes:
+    """Build one 10-byte macro-step record for :func:`build_macro_step`."""
+
+    if device_id < 0 or device_id > 0xFF:
+        raise ValueError(f"device_id {device_id} out of byte range")
+    if command_id < 0 or command_id > 0xFF:
+        raise ValueError(f"command_id {command_id} out of byte range")
+    if fid < 0 or fid > 0xFFFFFFFFFFFF:
+        raise ValueError(f"fid {fid} out of 48-bit range")
+    if duration < 0 or duration > 0xFF:
+        raise ValueError(f"duration {duration} out of byte range")
+    if delay < 0 or delay > 0xFF:
+        raise ValueError(f"delay {delay} out of byte range")
+
+    return (
+        bytes([device_id & 0xFF, command_id & 0xFF])
+        + fid.to_bytes(6, "big")
+        + bytes([duration & 0xFF, delay & 0xFF])
+    )
+
+
+def build_x1_input_entry(
+    *,
+    command_id: int,
+    label: str,
+) -> bytes:
+    """Build one 27-byte X1 direct-input entry for :func:`build_inputs_step`."""
+
+    if command_id < 0 or command_id > 0xFF:
+        raise ValueError(f"command_id {command_id} out of byte range")
+    label_bytes = label.encode("ascii", errors="replace")[:20].ljust(20, b"\x00")
+    return (
+        bytes([command_id & 0xFF])
+        + b"\x00\x00\x00\x00"
+        + synthesize_command_code(command_id).to_bytes(2, "big")
+        + label_bytes
+    )
+
+
 #: Per-page payload capacity for IR-command pages. 250 bytes maxes out
 #: the opcode-hi byte (``0xFA``) which equals payload length on the wire.
 _IR_PAGE_FULL_PAYLOAD = 250
@@ -800,8 +854,11 @@ __all__ = [
     "build_device_update_step",
     "build_inputs_step",
     "build_ir_command_steps",
+    "build_macro_step_record",
     "build_macro_step",
     "build_remote_sync_step",
     "build_set_idle_behavior_step",
+    "build_x1_input_entry",
     "run_create_sequence",
+    "synthesize_command_code",
 ]

@@ -450,6 +450,254 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
     loop.close()
 
 
+def test_async_backup_device_includes_network_restore_profile_for_managed_device(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    async def _refresh_devices_snapshot(timeout_seconds: float = 15.0):
+        return {
+            9: {
+                "name": "Living Room Audio",
+                "brand": "m3-default-a1b2c3",
+                "device_class": "wifi_sonos",
+                "device_class_code": 0x1C,
+                "raw_body": None,
+            }
+        }
+
+    async def _wait_ready(*args, **kwargs):
+        return None
+
+    async def _fetch_blob(*, device_id: int, command_id: int | None = None, wait_timeout: float = 10.0):
+        return {
+            "device_id": device_id,
+            "requested_command_id": command_id,
+            "total_commands": 0,
+            "received_command_count": 0,
+            "complete": False,
+            "commands": [],
+        }
+
+    class _Store:
+        async def async_list_hub_devices(self, entry_id):
+            return [
+                {
+                    "device_key": "default",
+                    "device_name": "Living Room Audio",
+                    "commands": [
+                        {"name": "TV", "input_activity_id": "101"},
+                        {"name": "Bluetooth", "input_activity_id": ""},
+                    ],
+                    "power_on_command_id": 1,
+                    "power_off_command_id": 2,
+                    "deployed_device_id": 9,
+                    "deployed_commands_hash": "a1b2c3",
+                }
+            ]
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices_snapshot)
+    monkeypatch.setattr(hub, "_reset_entity_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(hub, "_async_wait_for_command_fetch_complete", _wait_ready)
+    monkeypatch.setattr(hub, "_async_wait_for_buttons_ready", _wait_ready)
+    monkeypatch.setattr(hub, "_async_wait_for_macros_ready", _wait_ready)
+    monkeypatch.setattr(hub, "async_fetch_blob", _fetch_blob)
+    monkeypatch.setattr(
+        hub_module,
+        "async_get_command_config_store",
+        lambda _hass: asyncio.sleep(0, result=_Store()),
+    )
+
+    hub._proxy.state.devices[9] = {
+        "name": "Living Room Audio",
+        "brand": "m3-default-a1b2c3",
+        "device_class": "wifi_sonos",
+        "device_class_code": 0x1C,
+    }
+
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_commands_for_entity",
+        lambda ent_id, fetch_if_missing=True: ({1: "TV", 2: "Bluetooth"}, True),
+    )
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_buttons_for_entity",
+        lambda ent_id, fetch_if_missing=True: ([], True),
+    )
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_macros_for_activity",
+        lambda ent_id, fetch_if_missing=True: ([], True),
+    )
+    monkeypatch.setattr(hub._proxy, "get_cached_macro_records", lambda ent_id: [])
+    monkeypatch.setattr(hub._proxy, "fetch_device_input_entries", lambda *args, **kwargs: [])
+
+    result = loop.run_until_complete(hub.async_backup_device(device_id=9))
+
+    assert result is not None
+    assert result["complete"] is True
+    assert result["commands"] == [
+        {
+            "command_id": 1,
+            "name": "TV",
+            "restore_data": {"transport": "network_callback", "slot_index": 0},
+        },
+        {
+            "command_id": 2,
+            "name": "Bluetooth",
+            "restore_data": {"transport": "network_callback", "slot_index": 1},
+        },
+    ]
+    assert result["restore_profile"] == {
+        "transport": "network_callback",
+        "source": "wifi_commands",
+        "device_key": "default",
+        "device_name": "Living Room Audio",
+        "slots": [
+            {"name": "TV", "input_activity_id": "101"},
+            {"name": "Bluetooth", "input_activity_id": ""},
+        ],
+        "power_on_command_id": 1,
+        "power_off_command_id": 2,
+        "input_command_ids": [1],
+    }
+
+    loop.close()
+
+
+@pytest.mark.parametrize(
+    ("device_class", "device_class_code"),
+    [
+        ("bluetooth", 0x03),
+        ("rf_433mhz", None),
+    ],
+)
+def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
+    monkeypatch,
+    device_class: str,
+    device_class_code: int | None,
+):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    async def _refresh_devices_snapshot(timeout_seconds: float = 15.0):
+        return {
+            7: {
+                "name": "Speaker",
+                "brand": "Brand",
+                "device_class": device_class,
+                "device_class_code": device_class_code,
+                "raw_body": None,
+            }
+        }
+
+    async def _wait_ready(*args, **kwargs):
+        return None
+
+    async def _dump_ir_commands(*, device_id: int, command_id: int | None = None, wait_timeout: float = 10.0):
+        return {
+            "device_id": device_id,
+            "requested_command_id": command_id,
+            "total_commands": 1,
+            "received_command_count": 1,
+            "complete": True,
+            "commands": [
+                {
+                    "command_id": 5,
+                    "device_id": device_id,
+                    "label": "Bluetooth",
+                    "ir_blob_hex": "aa bb cc dd",
+                    "pages": [
+                        {
+                            "payload_hex": "01 00 01 01 00 01 07 05 03 00 00 00 00 4e 25 42 6c 75 65 74 6f 6f 74 68",
+                        }
+                    ],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices_snapshot)
+    monkeypatch.setattr(hub, "_reset_entity_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(hub, "_async_wait_for_command_fetch_complete", _wait_ready)
+    monkeypatch.setattr(hub, "_async_wait_for_buttons_ready", _wait_ready)
+    monkeypatch.setattr(hub, "_async_wait_for_macros_ready", _wait_ready)
+    monkeypatch.setattr(hub, "async_dump_ir_commands", _dump_ir_commands)
+
+    hub._proxy.state.devices[7] = {
+        "name": "Speaker",
+        "brand": "Brand",
+        "device_class": device_class,
+        "device_class_code": device_class_code,
+    }
+
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_commands_for_entity",
+        lambda ent_id, fetch_if_missing=True: ({5: "Bluetooth"}, True),
+    )
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_buttons_for_entity",
+        lambda ent_id, fetch_if_missing=True: ([], True),
+    )
+    monkeypatch.setattr(
+        hub._proxy,
+        "get_macros_for_activity",
+        lambda ent_id, fetch_if_missing=True: ([], True),
+    )
+    monkeypatch.setattr(hub._proxy, "get_cached_macro_records", lambda ent_id: [])
+    monkeypatch.setattr(hub._proxy, "fetch_device_input_entries", lambda *args, **kwargs: [])
+
+    result = loop.run_until_complete(hub.async_backup_device(device_id=7))
+
+    assert result is not None
+    assert result["complete"] is True
+    assert result["commands"] == [
+        {
+            "command_id": 5,
+            "name": "Bluetooth",
+            "restore_data": {
+                "transport": "hub_code_record",
+                "library_type": 0x03,
+                "command_code": "00 00 00 00 4e 25",
+                "data_hex": "aa bb cc dd",
+            },
+        }
+    ]
+
+    loop.close()
+
+
 def test_async_backup_device_skips_macros_and_inputs_when_unconfigured(monkeypatch):
     """When the device row reports power/inputs are not configured, the
     backup flow must not call REQ_MACROS (the hub fabricates a synthetic

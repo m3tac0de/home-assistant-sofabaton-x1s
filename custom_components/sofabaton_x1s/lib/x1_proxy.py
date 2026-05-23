@@ -10,6 +10,7 @@ import struct
 import threading
 import time
 from collections import defaultdict, deque
+from dataclasses import replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
@@ -26,6 +27,19 @@ from .commands import (
     parse_command_burst_frame,
     parse_ir_command_dump_frame,
 )
+from .device_create import (
+    build_button_binding_step,
+    build_device_create_step,
+    build_device_update_step,
+    build_inputs_step,
+    build_macro_step,
+    build_macro_step_record,
+    build_remote_sync_step,
+    build_x1_input_entry,
+    run_create_sequence,
+    synthesize_command_code,
+)
+from .devices import device_config_from_backup
 from .macros import (
     MACRO_WRITE_PAGE_BODY_CHUNK,
     MacroAssembler,
@@ -38,9 +52,18 @@ from .macros import (
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
+    DEVICE_CLASS_BLUETOOTH,
+    DEVICE_CLASS_IR,
+    DEVICE_CLASS_RF_315,
+    DEVICE_CLASS_RF_433,
+    DEVICE_CLASS_WIFI_HUE,
     DEVICE_CLASS_WIFI_IP,
+    DEVICE_CLASS_WIFI_MQTT,
     DEVICE_CLASS_WIFI_ROKU,
+    DEVICE_CLASS_WIFI_SONOS,
+    known_public_device_classes,
     OPNAMES,
+    normalize_device_class,
     opcode_family,
     opcode_family_name,
     opcode_hi,
@@ -1122,11 +1145,14 @@ class X1Proxy:
         self,
         *,
         device_id: int,
+        command_id: int,
         command_name: str,
         blob: bytes,
     ) -> list[bytes]:
         if not isinstance(blob, (bytes, bytearray)) or len(blob) < 2:
             raise ValueError("blob is too short to persist")
+        if command_id < 1 or command_id > 0xFF:
+            raise ValueError(f"command_id {command_id} out of byte range")
 
         blob_body = bytes(blob)
         label_slot = self._persist_ir_label_slot_bytes(command_name)
@@ -1139,7 +1165,7 @@ class X1Proxy:
                 0x00,
                 0x00,  # filled with total_pages below
                 device_id & 0xFF,
-                0x00,
+                command_id & 0xFF,
                 0x0D,
                 0x00,
                 0x00,
@@ -1187,12 +1213,86 @@ class X1Proxy:
 
         return payloads
 
+    def _build_persist_command_record_payloads(
+        self,
+        *,
+        device_id: int,
+        command_id: int,
+        command_name: str,
+        library_type: int,
+        command_data: bytes,
+        command_code: int = 0,
+    ) -> list[bytes]:
+        if not isinstance(command_data, (bytes, bytearray)) or len(command_data) < 1:
+            raise ValueError("command_data is too short to persist")
+        if command_id < 1 or command_id > 0xFF:
+            raise ValueError(f"command_id {command_id} out of byte range")
+        if library_type < 0 or library_type > 0xFF:
+            raise ValueError(f"library_type {library_type} out of byte range")
+        if command_code < 0 or command_code > 0xFFFFFFFFFFFF:
+            raise ValueError(f"command_code {command_code} out of 48-bit range")
+
+        payload_data = bytes(command_data)
+        label_slot = self._persist_ir_label_slot_bytes(command_name)
+        page_one_prefix = bytearray(
+            [
+                0x01,
+                0x00,
+                0x01,
+                0x01,
+                0x00,
+                0x00,
+                device_id & 0xFF,
+                command_id & 0xFF,
+                library_type & 0xFF,
+            ]
+        )
+        page_one_prefix.extend(int(command_code).to_bytes(6, "big"))
+        first_cap = PLAY_BLOB_MAX_PAYLOAD - len(page_one_prefix) - len(label_slot)
+        cont_cap = PLAY_BLOB_MAX_PAYLOAD - 3
+        if first_cap <= 0 or cont_cap <= 0:
+            raise ValueError("invalid command-record page sizing")
+
+        logical_record_len = len(payload_data) + 1
+        total_pages = 1
+        if logical_record_len > first_cap:
+            remaining = logical_record_len - first_cap
+            total_pages += (remaining + cont_cap - 1) // cont_cap
+        if total_pages > 0xFF:
+            raise ValueError("command record requires too many persist pages")
+
+        page_one_prefix[5] = total_pages & 0xFF
+        persist_checksum = (
+            sum(bytes(page_one_prefix))
+            + sum(label_slot)
+            + sum(payload_data)
+            - 2
+        ) & 0xFF
+        sealed_data = payload_data + bytes([persist_checksum])
+
+        payloads: list[bytes] = []
+        offset = 0
+        first_slice = sealed_data[offset : offset + first_cap]
+        offset += len(first_slice)
+        page_one = bytearray(page_one_prefix)
+        page_one.extend(label_slot)
+        page_one.extend(first_slice)
+        payloads.append(bytes(page_one))
+
+        for page_no in range(2, total_pages + 1):
+            cont_slice = sealed_data[offset : offset + cont_cap]
+            offset += len(cont_slice)
+            payloads.append(bytes([0x01, 0x00, page_no & 0xFF]) + cont_slice)
+
+        return payloads
+
     def persist_ir_blob(
         self,
         *,
         device_id: int,
         command_name: str,
         blob: bytes,
+        command_id: int | None = None,
         inter_frame_delay: float = 0.08,
         ack_timeout: float = 5.0,
     ) -> dict[str, Any] | None:
@@ -1217,9 +1317,19 @@ class X1Proxy:
             if isinstance(device_commands, dict)
             else []
         )
-        command_id = self._next_available_command_id(existing_command_ids)
+        if command_id is None:
+            command_id = self._next_available_command_id(existing_command_ids)
+        else:
+            command_id = int(command_id) & 0xFF
+            if command_id < 1 or command_id > 0xFF:
+                raise ValueError(f"command_id {command_id} out of byte range")
+            if command_id in existing_command_ids:
+                raise ValueError(
+                    f"command_id {command_id} already exists on device {dev_lo}"
+                )
         blob_payloads = self._build_persist_ir_blob_payloads(
             device_id=dev_lo,
+            command_id=command_id,
             command_name=command_name,
             blob=bytes(blob),
         )
@@ -1271,6 +1381,724 @@ class X1Proxy:
             "command_name": device_commands[command_id],
             "page_count": len(blob_payloads),
         }
+
+    def persist_command_record(
+        self,
+        *,
+        device_id: int,
+        command_name: str,
+        library_type: int,
+        command_data: bytes,
+        command_code: int = 0,
+        command_id: int | None = None,
+        inter_frame_delay: float = 0.08,
+        ack_timeout: float = 5.0,
+    ) -> dict[str, Any] | None:
+        """Persist an opaque hub-owned command record onto an existing device."""
+
+        if not self.can_issue_commands():
+            self._log.info("[PERSIST_CMD] ignored: proxy client is connected")
+            return None
+
+        dev_lo = device_id & 0xFF
+        device_commands = self.state.commands.get(dev_lo, {})
+        existing_command_ids = (
+            sorted(int(existing_command_id) & 0xFF for existing_command_id in device_commands.keys())
+            if isinstance(device_commands, dict)
+            else []
+        )
+        if command_id is None:
+            command_id = self._next_available_command_id(existing_command_ids)
+        else:
+            command_id = int(command_id) & 0xFF
+            if command_id < 1 or command_id > 0xFF:
+                raise ValueError(f"command_id {command_id} out of byte range")
+            if command_id in existing_command_ids:
+                raise ValueError(
+                    f"command_id {command_id} already exists on device {dev_lo}"
+                )
+
+        payloads = self._build_persist_command_record_payloads(
+            device_id=dev_lo,
+            command_id=command_id,
+            command_name=command_name,
+            library_type=library_type,
+            command_data=bytes(command_data),
+            command_code=command_code,
+        )
+
+        self._log.info(
+            "[PERSIST_CMD] uploading dev=0x%02X new_command_id=0x%02X lib=0x%02X pages=%d data=%dB",
+            dev_lo,
+            command_id,
+            library_type & 0xFF,
+            len(payloads),
+            len(bytes(command_data)) + 1,
+        )
+        self.clear_roku_acks()
+
+        for page_index, payload in enumerate(payloads, start=1):
+            if page_index > 1 and inter_frame_delay > 0:
+                time.sleep(inter_frame_delay)
+            send_ts = time.monotonic()
+            self._send_family_frame(0x0E, payload)
+            ack = self.wait_for_roku_ack_any([(0x0103, None)], timeout=ack_timeout, not_before=send_ts)
+            if ack is None:
+                self._log.warning(
+                    "[PERSIST_CMD] timeout waiting for page ack seq=%d/%d dev=0x%02X",
+                    page_index,
+                    len(payloads),
+                    dev_lo,
+                )
+                return None
+            if ack[1][:1] == b"\x0c":
+                self._log.warning(
+                    "[PERSIST_CMD] page rejected seq=%d/%d dev=0x%02X lib=0x%02X",
+                    page_index,
+                    len(payloads),
+                    dev_lo,
+                    library_type & 0xFF,
+                )
+                return None
+
+        if not isinstance(device_commands, dict):
+            device_commands = {}
+            self.state.commands[dev_lo] = device_commands
+        device_commands[command_id] = str(command_name or "").strip() or f"Command {command_id}"
+        self._commands_complete.add(dev_lo)
+        return {
+            "status": "success",
+            "device_id": dev_lo,
+            "command_id": command_id,
+            "command_name": device_commands[command_id],
+            "page_count": len(payloads),
+            "library_type": library_type & 0xFF,
+        }
+
+    def _restore_device_class(self, device_block: dict[str, Any]) -> str | None:
+        """Return the normalized device class declared by a backup payload."""
+
+        return normalize_device_class(
+            device_block.get("device_class", device_block.get("device_class_code"))
+        )
+
+    def _restore_requires_x1_post_steps(self, payload: dict[str, Any]) -> bool:
+        """Return whether restore needs X1-shaped post-create writers.
+
+        Button bindings, macros, and direct-input writes currently use X1
+        frame builders. Command upload itself is strategy-specific and can
+        evolve independently.
+        """
+
+        for key in ("button_bindings", "macros", "inputs"):
+            value = payload.get(key)
+            if isinstance(value, list) and value:
+                return True
+        return False
+
+    def _restore_profile(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        profile = payload.get("restore_profile")
+        return dict(profile) if isinstance(profile, dict) else None
+
+    @staticmethod
+    def _command_restore_data(command_row: dict[str, Any]) -> dict[str, Any] | None:
+        restore_data = command_row.get("restore_data")
+        return dict(restore_data) if isinstance(restore_data, dict) else None
+
+    def _validate_restore_capabilities(
+        self,
+        *,
+        hub_version: str,
+        device_class: str | None,
+        payload: dict[str, Any],
+    ) -> None:
+        """Fail fast when the current restore path lacks a required writer."""
+
+        known_public_classes = set(known_public_device_classes())
+        restore_profile = self._restore_profile(payload)
+
+        if device_class in (
+            DEVICE_CLASS_WIFI_ROKU,
+            DEVICE_CLASS_WIFI_IP,
+            DEVICE_CLASS_WIFI_HUE,
+            DEVICE_CLASS_WIFI_MQTT,
+            DEVICE_CLASS_WIFI_SONOS,
+        ):
+            if (
+                not isinstance(restore_profile, dict)
+                or restore_profile.get("transport") != "network_callback"
+                or restore_profile.get("source") != "wifi_commands"
+            ):
+                raise ValueError(
+                    "restore_device only supports callback-backed network devices "
+                    "created by the Wifi Commands workflow; this backup does not "
+                    f"carry that managed restore profile for device_class={device_class}"
+                )
+            return
+
+        if device_class is not None and device_class not in known_public_classes:
+            raise ValueError(
+                "restore_device does not recognize "
+                f"device_class={device_class!r} in the public device registry"
+            )
+
+        if device_class in (DEVICE_CLASS_BLUETOOTH, DEVICE_CLASS_RF_315, DEVICE_CLASS_RF_433):
+            command_rows = payload.get("commands")
+            if not isinstance(command_rows, list) or not any(
+                isinstance(row, dict) for row in command_rows
+            ):
+                raise ValueError(
+                    "restore_device for "
+                    f"{device_class} devices needs command restore metadata "
+                    "(library_type/data_hex/button slot) in each command row"
+                )
+            validated_rows = 0
+            for row in command_rows:
+                if not isinstance(row, dict):
+                    continue
+                restore_data = self._command_restore_data(row)
+                if (
+                    not isinstance(restore_data, dict)
+                    or restore_data.get("transport") != "hub_code_record"
+                    or restore_data.get("library_type") is None
+                    or not str(restore_data.get("data_hex") or "").strip()
+                ):
+                    raise ValueError(
+                        "restore_device for "
+                        f"{device_class} devices needs command restore metadata "
+                        "(library_type/data_hex/button slot) in each command row"
+                    )
+                validated_rows += 1
+            if validated_rows == 0:
+                raise ValueError(
+                    "restore_device for "
+                    f"{device_class} devices needs command restore metadata "
+                    "(library_type/data_hex/button slot) in each command row"
+                )
+            return
+
+        if device_class != DEVICE_CLASS_IR:
+            raise ValueError(
+                "restore_device command replay is not implemented yet for "
+                f"device_class={device_class or 'unknown'}"
+            )
+
+        if hub_version != HUB_VERSION_X1 and self._restore_requires_x1_post_steps(payload):
+            raise ValueError(
+                "restore_device post-create replay is not implemented yet for "
+                f"hub_version={hub_version}; button bindings/macros/inputs still use X1 writers"
+            )
+
+    def _restore_ir_commands(
+        self,
+        *,
+        payload: dict[str, Any],
+        device_id: int,
+    ) -> tuple[dict[int, int], int]:
+        """Replay IR command blobs from a backup onto ``device_id``."""
+
+        command_rows = payload.get("commands")
+        if not isinstance(command_rows, list):
+            command_rows = []
+
+        command_id_map: dict[int, int] = {}
+        restored_commands = 0
+        allocated_command_ids: list[int] = []
+        for row in sorted(
+            (item for item in command_rows if isinstance(item, dict)),
+            key=lambda item: int(item.get("command_id", 0)),
+        ):
+            old_command_id = int(row.get("command_id", 0)) & 0xFF
+            blob_hex = row.get("blob_hex")
+            if old_command_id == 0 or not isinstance(blob_hex, str) or not blob_hex.strip():
+                continue
+            try:
+                blob = bytes.fromhex(blob_hex)
+            except ValueError as exc:
+                raise ValueError(
+                    f"invalid blob_hex for command_id {old_command_id}: {blob_hex!r}"
+                ) from exc
+
+            command_name = str(row.get("name") or f"Command {old_command_id}")
+            next_command_id = self._next_available_command_id(allocated_command_ids)
+            persisted = self.persist_ir_blob(
+                device_id=device_id,
+                command_id=next_command_id,
+                command_name=command_name,
+                blob=blob,
+            )
+            if persisted is None:
+                self._log.warning(
+                    "[RESTORE] failed persisting command old_cmd=0x%02X name=%r",
+                    old_command_id,
+                    command_name,
+                )
+                raise ValueError(
+                    f"failed to persist command old_cmd=0x{old_command_id:02X} name={command_name!r}"
+                )
+            new_command_id = int(persisted.get("command_id", 0)) & 0xFF
+            allocated_command_ids.append(new_command_id)
+            command_id_map[old_command_id] = new_command_id
+            restored_commands += 1
+
+        return command_id_map, restored_commands
+
+    def _restore_hub_code_record_commands(
+        self,
+        *,
+        payload: dict[str, Any],
+        device_id: int,
+    ) -> tuple[dict[int, int], int]:
+        """Replay opaque hub-owned command records for Bluetooth and RF devices."""
+
+        command_rows = payload.get("commands")
+        if not isinstance(command_rows, list):
+            command_rows = []
+
+        command_id_map: dict[int, int] = {}
+        restored_commands = 0
+        allocated_command_ids: list[int] = []
+        for row in sorted(
+            (item for item in command_rows if isinstance(item, dict)),
+            key=lambda item: int(item.get("command_id", 0)),
+        ):
+            old_command_id = int(row.get("command_id", 0)) & 0xFF
+            restore_data = self._command_restore_data(row)
+            if old_command_id == 0 or not isinstance(restore_data, dict):
+                continue
+
+            if restore_data.get("transport") != "hub_code_record":
+                raise ValueError(
+                    f"command_id {old_command_id} is missing hub_code_record restore data"
+                )
+
+            data_hex = str(restore_data.get("data_hex") or "").strip()
+            if not data_hex:
+                raise ValueError(
+                    f"command_id {old_command_id} is missing non-IR command data"
+                )
+            try:
+                command_data = bytes.fromhex(data_hex)
+            except ValueError as exc:
+                raise ValueError(
+                    f"invalid data_hex for command_id {old_command_id}: {data_hex!r}"
+                ) from exc
+
+            try:
+                library_type = int(restore_data.get("library_type")) & 0xFF
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"command_id {old_command_id} is missing a valid library_type"
+                ) from exc
+
+            raw_command_code = restore_data.get("command_code")
+            if raw_command_code is None:
+                command_code = 0
+            elif isinstance(raw_command_code, str):
+                try:
+                    command_code = int.from_bytes(bytes.fromhex(raw_command_code), "big")
+                except ValueError as exc:
+                    raise ValueError(
+                        f"invalid command_code for command_id {old_command_id}: {raw_command_code!r}"
+                    ) from exc
+            else:
+                command_code = int(raw_command_code)
+
+            command_name = str(row.get("name") or f"Command {old_command_id}")
+            next_command_id = self._next_available_command_id(allocated_command_ids)
+            persisted = self.persist_command_record(
+                device_id=device_id,
+                command_id=next_command_id,
+                command_name=command_name,
+                library_type=library_type,
+                command_data=command_data,
+                command_code=command_code,
+            )
+            if persisted is None:
+                raise ValueError(
+                    f"failed to persist non-IR command old_cmd=0x{old_command_id:02X} name={command_name!r}"
+                )
+            new_command_id = int(persisted.get("command_id", 0)) & 0xFF
+            allocated_command_ids.append(new_command_id)
+            command_id_map[old_command_id] = new_command_id
+            restored_commands += 1
+
+        return command_id_map, restored_commands
+
+    def _restore_commands_for_device_class(
+        self,
+        *,
+        payload: dict[str, Any],
+        device_id: int,
+        device_class: str | None,
+    ) -> tuple[dict[int, int], int]:
+        """Dispatch command replay to the correct device-class writer."""
+
+        if device_class == DEVICE_CLASS_IR:
+            return self._restore_ir_commands(payload=payload, device_id=device_id)
+        if device_class in (DEVICE_CLASS_BLUETOOTH, DEVICE_CLASS_RF_315, DEVICE_CLASS_RF_433):
+            return self._restore_hub_code_record_commands(
+                payload=payload,
+                device_id=device_id,
+            )
+
+        raise ValueError(
+            "restore_device command replay is not implemented yet for "
+            f"device_class={device_class or 'unknown'}"
+        )
+
+    def _restore_network_callback_device(
+        self,
+        *,
+        payload: dict[str, Any],
+        device_block: dict[str, Any],
+        wifi_commands_request_port: int,
+    ) -> dict[str, Any]:
+        """Restore a Wifi Commands managed callback device via the Wifi-device flow."""
+
+        restore_profile = self._restore_profile(payload) or {}
+        slots = restore_profile.get("slots")
+        if not isinstance(slots, list) or not slots:
+            raise ValueError("network callback restore profile is missing slot definitions")
+        if restore_profile.get("source") != "wifi_commands":
+            raise ValueError(
+                "network callback restore is reserved for Wifi Commands managed devices"
+            )
+
+        command_defs: list[dict[str, Any]] = []
+        for idx, slot in enumerate(slots[:10]):
+            if not isinstance(slot, dict):
+                continue
+            name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+            command_defs.append(
+                {
+                    "display_name": name,
+                    "trigger_name": name,
+                    "press_type": "short",
+                    "command_index": idx,
+                }
+            )
+        for idx, slot in enumerate(slots[:10]):
+            if not isinstance(slot, dict):
+                continue
+            name = str(slot.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+            command_defs.append(
+                {
+                    "display_name": f"{name} Long Press",
+                    "trigger_name": name,
+                    "press_type": "long",
+                    "command_index": idx,
+                }
+            )
+
+        max_command_id = len(command_defs) // 2
+
+        def _normalize_slot_ids(raw_values: Any) -> list[int] | None:
+            if raw_values is None:
+                return None
+            if not isinstance(raw_values, list):
+                raise ValueError("network callback restore profile input_command_ids must be a list")
+            normalized: list[int] = []
+            for raw_value in raw_values:
+                command_id = int(raw_value)
+                if command_id < 1 or command_id > max_command_id:
+                    raise ValueError(
+                        f"network callback restore profile command ids must be between 1 and {max_command_id}"
+                    )
+                normalized.append(command_id)
+            return normalized or None
+
+        def _normalize_slot_id(raw_value: Any, field_name: str) -> int | None:
+            if raw_value is None:
+                return None
+            command_id = int(raw_value)
+            if command_id < 1 or command_id > max_command_id:
+                raise ValueError(
+                    f"{field_name} must be between 1 and {max_command_id} for network callback restore"
+                )
+            return command_id
+
+        power_on_command_id = _normalize_slot_id(
+            restore_profile.get("power_on_command_id"),
+            "power_on_command_id",
+        )
+        power_off_command_id = _normalize_slot_id(
+            restore_profile.get("power_off_command_id"),
+            "power_off_command_id",
+        )
+        input_command_ids = _normalize_slot_ids(restore_profile.get("input_command_ids"))
+
+        device_name = str(
+            restore_profile.get("device_name")
+            or device_block.get("name")
+            or "Home Assistant"
+        ).strip() or "Home Assistant"
+        brand_name = str(device_block.get("brand") or "m3tac0de").strip() or "m3tac0de"
+
+        created = self.create_wifi_device(
+            device_name=device_name,
+            commands=command_defs,
+            request_port=wifi_commands_request_port,
+            brand_name=brand_name,
+            power_on_command_id=power_on_command_id,
+            power_off_command_id=power_off_command_id,
+            input_command_ids=input_command_ids,
+        )
+        if not created or created.get("device_id") is None:
+            raise ValueError("failed to create callback-backed network device")
+
+        restored_slot_count = min(len(slots), 10)
+        command_id_map = {str(idx): idx for idx in range(1, restored_slot_count + 1)}
+        return {
+            "status": "success",
+            "device_id": int(created["device_id"]) & 0xFF,
+            "restored_commands": restored_slot_count,
+            "restored_button_bindings": 0,
+            "restored_macros": 0,
+            "restored_inputs": len(input_command_ids or []),
+            "skipped_favorites": len(payload.get("favorite_slots") or []),
+            "command_id_map": command_id_map,
+        }
+
+    def restore_device(
+        self,
+        payload: dict[str, Any],
+        *,
+        wifi_commands_request_port: int = 8060,
+    ) -> dict[str, Any] | None:
+        """Restore a device from the payload returned by ``backup_device``."""
+
+        try:
+            if not self.can_issue_commands():
+                self._log.info("[RESTORE] restore_device ignored: proxy client is connected")
+                return None
+
+            if not isinstance(payload, dict):
+                raise ValueError("restore payload must be a dictionary")
+            if payload.get("kind") not in (None, "device_backup"):
+                raise ValueError("restore payload kind must be 'device_backup'")
+
+            device_block = payload.get("device")
+            if not isinstance(device_block, dict):
+                raise ValueError("restore payload must include a 'device' block")
+            device_class = self._restore_device_class(device_block)
+
+            self._validate_restore_capabilities(
+                hub_version=self.hub_version,
+                device_class=device_class,
+                payload=payload,
+            )
+
+            if device_class in (
+                DEVICE_CLASS_WIFI_ROKU,
+                DEVICE_CLASS_WIFI_IP,
+                DEVICE_CLASS_WIFI_HUE,
+                DEVICE_CLASS_WIFI_MQTT,
+                DEVICE_CLASS_WIFI_SONOS,
+            ):
+                return self._restore_network_callback_device(
+                    payload=payload,
+                    device_block=device_block,
+                    wifi_commands_request_port=wifi_commands_request_port,
+                )
+
+            create_config = device_config_from_backup(device_block, for_create=True)
+            committed_config = replace(
+                device_config_from_backup(device_block, for_create=False),
+                tail_marker=max(1, int(device_block.get("tail_marker", 1)) & 0xFF),
+            )
+
+            self.start_roku_create()
+            create_result = run_create_sequence(
+                self,
+                [build_device_create_step(create_config, hub_version=self.hub_version)],
+            )
+            if not create_result.success or create_result.assigned_device_id is None:
+                failed = (
+                    create_result.failed_step.label
+                    if create_result.failed_step is not None
+                    else "device-create"
+                )
+                self._log.warning("[RESTORE] create phase failed at step %s", failed)
+                return None
+
+            old_device_id = int(device_block.get("device_id", 0)) & 0xFF
+            new_device_id = create_result.assigned_device_id & 0xFF
+            self._log.info(
+                "[RESTORE] created device from backup old=0x%02X new=0x%02X",
+                old_device_id,
+                new_device_id,
+            )
+
+            # The hub can recycle low-byte device ids. Clear any stale local
+            # cache for the newly assigned id before we start allocating and
+            # writing command slots against it.
+            self.state.commands.pop(new_device_id, None)
+            self.state.buttons.pop(new_device_id, None)
+            self.state.button_details.pop(new_device_id, None)
+            self.clear_entity_cache(new_device_id, clear_buttons=True)
+
+            command_id_map, restored_commands = self._restore_commands_for_device_class(
+                payload=payload,
+                device_id=new_device_id,
+                device_class=device_class,
+            )
+
+            def _map_command_id(raw_command_id: Any) -> int | None:
+                try:
+                    old_command_id = int(raw_command_id) & 0xFF
+                except (TypeError, ValueError):
+                    return None
+                if old_command_id == 0:
+                    return None
+                return command_id_map.get(old_command_id)
+
+            post_steps = []
+
+            button_rows = payload.get("button_bindings")
+            if isinstance(button_rows, list):
+                for row in sorted(
+                    (item for item in button_rows if isinstance(item, dict)),
+                    key=lambda item: int(item.get("button_id", 0)),
+                ):
+                    new_command_id = _map_command_id(row.get("command_id"))
+                    button_id = int(row.get("button_id", 0)) & 0xFF
+                    if button_id == 0 or new_command_id is None:
+                        continue
+                    long_press_command_id = _map_command_id(row.get("long_press_command_id"))
+                    kwargs: dict[str, Any] = {
+                        "device_id": new_device_id,
+                        "button_id": button_id,
+                        "short_press_device_id": new_device_id,
+                        "short_press_button_code": synthesize_command_code(new_command_id),
+                        "short_press_button_id": new_command_id,
+                    }
+                    if long_press_command_id is not None:
+                        kwargs["long_press_device_id"] = new_device_id
+                        kwargs["long_press_button_code"] = synthesize_command_code(long_press_command_id)
+                        kwargs["long_press_button_id"] = long_press_command_id
+                    post_steps.append(build_button_binding_step(**kwargs))
+
+            macro_rows = payload.get("macros")
+            restored_macros = 0
+            if isinstance(macro_rows, list):
+                for row in sorted(
+                    (item for item in macro_rows if isinstance(item, dict)),
+                    key=lambda item: int(item.get("button_id", 0)),
+                ):
+                    button_id = int(row.get("button_id", 0)) & 0xFF
+                    if button_id == 0:
+                        continue
+                    step_records = bytearray()
+                    steps = row.get("steps")
+                    if isinstance(steps, list):
+                        for entry in steps:
+                            if not isinstance(entry, dict):
+                                continue
+                            mapped_command_id = _map_command_id(entry.get("command_id"))
+                            if mapped_command_id is None:
+                                continue
+                            step_records.extend(
+                                build_macro_step_record(
+                                    device_id=new_device_id,
+                                    command_id=mapped_command_id,
+                                    fid=int(entry.get("fid", 0)) & 0xFF,
+                                    duration=int(entry.get("duration", 0)) & 0xFF,
+                                    delay=int(entry.get("delay", 0xFF)) & 0xFF,
+                                )
+                            )
+                    post_steps.append(
+                        build_macro_step(
+                            device_id=new_device_id,
+                            key_id=button_id,
+                            label=str(row.get("name") or ""),
+                            step_records=bytes(step_records),
+                        )
+                    )
+                    restored_macros += 1
+
+            input_rows = payload.get("inputs")
+            restored_inputs = 0
+            input_mode = int(device_block.get("input_mode", 0)) & 0xFF
+            inputs_configured = bool(device_block.get("inputs_configured", input_mode != 0))
+            if input_mode == 2:
+                post_steps.append(
+                    build_inputs_step(
+                        device_id=new_device_id,
+                        source_type=2,
+                        source_count=0,
+                    )
+                )
+            elif inputs_configured and isinstance(input_rows, list):
+                ordered_inputs = sorted(
+                    (item for item in input_rows if isinstance(item, dict)),
+                    key=lambda item: int(item.get("input_index", 0)),
+                )
+                input_entries = bytearray()
+                for row in ordered_inputs:
+                    mapped_command_id = _map_command_id(row.get("command_id"))
+                    if mapped_command_id is None:
+                        continue
+                    input_entries.extend(
+                        build_x1_input_entry(
+                            command_id=mapped_command_id,
+                            label=str(row.get("name") or f"Input {mapped_command_id}"),
+                        )
+                    )
+                    restored_inputs += 1
+                if input_entries:
+                    post_steps.append(
+                        build_inputs_step(
+                            device_id=new_device_id,
+                            source_type=input_mode or 1,
+                            source_count=restored_inputs,
+                            entries=bytes(input_entries),
+                        )
+                    )
+
+            post_steps.append(
+                build_device_update_step(
+                    replace(committed_config, device_id=new_device_id),
+                    hub_version=self.hub_version,
+                )
+            )
+            post_steps.append(build_remote_sync_step())
+
+            self.start_roku_create()
+            post_result = run_create_sequence(self, post_steps)
+            if not post_result.success:
+                failed = (
+                    post_result.failed_step.label
+                    if post_result.failed_step is not None
+                    else "post-create"
+                )
+                self._log.warning("[RESTORE] finalize phase failed at step %s", failed)
+                return None
+
+            self.state.devices[new_device_id] = {
+                "name": str(device_block.get("name") or ""),
+                "brand": str(device_block.get("brand") or ""),
+                "device_class": device_class,
+                "device_class_code": int(device_block.get("device_class_code", 0)) & 0xFF,
+            }
+
+            favorite_rows = payload.get("favorite_slots")
+            skipped_favorites = len(favorite_rows) if isinstance(favorite_rows, list) else 0
+            return {
+                "status": "success",
+                "device_id": new_device_id,
+                "restored_commands": restored_commands,
+                "restored_button_bindings": sum(
+                    1 for step in post_steps if step.family == 0x3E
+                ),
+                "restored_macros": restored_macros,
+                "restored_inputs": restored_inputs,
+                "skipped_favorites": skipped_favorites,
+                "command_id_map": {str(old): new for old, new in sorted(command_id_map.items())},
+            }
+        except Exception:
+            self._log.exception("[RESTORE] restore_device failed")
+            raise
 
     def _play_ir_blob_body(
         self,

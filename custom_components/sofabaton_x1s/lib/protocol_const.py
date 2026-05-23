@@ -354,6 +354,9 @@ DEVICE_CLASS_WIFI_HUE = "wifi_hue"
 DEVICE_CLASS_WIFI_ROKU = "wifi_roku"
 DEVICE_CLASS_WIFI_IP = "wifi_ip"
 DEVICE_CLASS_WIFI_MQTT = "wifi_mqtt"
+DEVICE_CLASS_WIFI_SONOS = "wifi_sonos"
+DEVICE_CLASS_RF_315 = "rf_315mhz"
+DEVICE_CLASS_RF_433 = "rf_433mhz"
 
 DEVICE_CLASS_CODE_BLUETOOTH = 0x03
 DEVICE_CLASS_CODE_WIFI_ROKU = 0x0A
@@ -378,18 +381,48 @@ DEVICE_CLASS_ALIASES: Dict[str, str] = {
     "hue": DEVICE_CLASS_WIFI_HUE,
     "ip": DEVICE_CLASS_WIFI_IP,
     "ir": DEVICE_CLASS_IR,
+    "rf": DEVICE_CLASS_RF_433,
+    "rf/315": DEVICE_CLASS_RF_315,
+    "rf/433": DEVICE_CLASS_RF_433,
+    "rf315": DEVICE_CLASS_RF_315,
+    "rf315mhz": DEVICE_CLASS_RF_315,
+    "rf_315": DEVICE_CLASS_RF_315,
+    "rf_315mhz": DEVICE_CLASS_RF_315,
+    "rf433": DEVICE_CLASS_RF_433,
+    "rf433mhz": DEVICE_CLASS_RF_433,
+    "rf_433": DEVICE_CLASS_RF_433,
+    "rf_433mhz": DEVICE_CLASS_RF_433,
     "roku": DEVICE_CLASS_WIFI_ROKU,
+    "sonos": DEVICE_CLASS_WIFI_SONOS,
     "mqtt": DEVICE_CLASS_WIFI_MQTT,
+    "315": DEVICE_CLASS_RF_315,
+    "315mhz": DEVICE_CLASS_RF_315,
+    "433": DEVICE_CLASS_RF_433,
+    "433mhz": DEVICE_CLASS_RF_433,
     "virtual_http": DEVICE_CLASS_WIFI_IP,
     "wifi/hue": DEVICE_CLASS_WIFI_HUE,
     "wifi/ip": DEVICE_CLASS_WIFI_IP,
     "wifi/mqtt": DEVICE_CLASS_WIFI_MQTT,
     "wifi/roku": DEVICE_CLASS_WIFI_ROKU,
+    "wifi/sonos": DEVICE_CLASS_WIFI_SONOS,
     "wifi_hue": DEVICE_CLASS_WIFI_HUE,
     "wifi_ip": DEVICE_CLASS_WIFI_IP,
     "wifi_mqtt": DEVICE_CLASS_WIFI_MQTT,
     "wifi_roku": DEVICE_CLASS_WIFI_ROKU,
+    "wifi_sonos": DEVICE_CLASS_WIFI_SONOS,
 }
+
+PUBLIC_DEVICE_CLASSES: tuple[str, ...] = (
+    DEVICE_CLASS_IR,
+    DEVICE_CLASS_BLUETOOTH,
+    DEVICE_CLASS_WIFI_HUE,
+    DEVICE_CLASS_WIFI_ROKU,
+    DEVICE_CLASS_WIFI_IP,
+    DEVICE_CLASS_WIFI_MQTT,
+    DEVICE_CLASS_WIFI_SONOS,
+    DEVICE_CLASS_RF_315,
+    DEVICE_CLASS_RF_433,
+)
 
 
 def classify_device_class_code(device_class_code: Any) -> str | None:
@@ -407,6 +440,12 @@ def normalize_device_class(value: Any) -> str | None:
     if not text:
         return None
     return DEVICE_CLASS_ALIASES.get(text, text)
+
+
+def known_public_device_classes() -> tuple[str, ...]:
+    """Return the normalized public device classes we intentionally model."""
+
+    return PUBLIC_DEVICE_CLASSES
 
 
 def opcode_family_name(opcode: int) -> str | None:
@@ -440,6 +479,9 @@ __all__ = [
     "DEVICE_CLASS_WIFI_ROKU",
     "DEVICE_CLASS_WIFI_IP",
     "DEVICE_CLASS_WIFI_MQTT",
+    "DEVICE_CLASS_WIFI_SONOS",
+    "DEVICE_CLASS_RF_315",
+    "DEVICE_CLASS_RF_433",
     "DEVICE_CLASS_CODE_BLUETOOTH",
     "DEVICE_CLASS_CODE_WIFI_ROKU",
     "DEVICE_CLASS_CODE_IR",
@@ -448,7 +490,9 @@ __all__ = [
     "DEVICE_CLASS_CODE_WIFI_MQTT",
     "DEVICE_CLASS_BY_CODE",
     "DEVICE_CLASS_ALIASES",
+    "PUBLIC_DEVICE_CLASSES",
     "classify_device_class_code",
+    "known_public_device_classes",
     "normalize_device_class",
     "OP_REQ_BANNER",
     "OP_REQ_DEVICES",

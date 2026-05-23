@@ -70,10 +70,13 @@ from custom_components.sofabaton_x1s.lib.device_create import (
     build_device_update_step,
     build_inputs_step,
     build_ir_command_steps,
+    build_macro_step_record,
     build_macro_step,
     build_remote_sync_step,
     build_set_idle_behavior_step,
+    build_x1_input_entry,
     run_create_sequence,
+    synthesize_command_code,
 )
 from custom_components.sofabaton_x1s.lib.devices import DeviceConfig
 
@@ -371,6 +374,32 @@ def test_inputs_step_rejects_entry_length_mismatch() -> None:
             source_count=2,
             entries=b"\x00" * 27,  # only one entry-worth of bytes, but count=2
         )
+
+
+def test_synthesize_command_code_matches_x1_keymap_convention() -> None:
+    assert synthesize_command_code(0x01) == 0x4E21
+    assert synthesize_command_code(0x06) == 0x4E26
+
+
+def test_build_x1_input_entry_matches_observed_shape() -> None:
+    entry = build_x1_input_entry(command_id=0x02, label="Command 2")
+
+    assert len(entry) == 27
+    assert entry[:7] == bytes.fromhex("02 00 00 00 00 4e 22")
+    assert entry[7:] == b"Command 2".ljust(20, b"\x00")
+
+
+def test_build_macro_step_record_serializes_ten_byte_row() -> None:
+    record = build_macro_step_record(
+        device_id=0x0D,
+        command_id=0x12,
+        fid=0x4E32,
+        duration=0x01,
+        delay=0xFF,
+    )
+
+    assert len(record) == MACRO_STEP_RECORD_SIZE
+    assert record == bytes.fromhex("0d 12 00 00 00 00 4e 32 01 ff")
 
 
 # ---------------------------------------------------------------------------

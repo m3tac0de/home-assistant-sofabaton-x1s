@@ -44,7 +44,20 @@ from .const import (
 from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
 from .logging_utils import get_hub_logger
 from .cache_store import PersistentCacheStore
-from .lib.protocol_const import BUTTONNAME_BY_CODE, ButtonName, DEVICE_CLASS_IR
+from .lib.protocol_const import (
+    BUTTONNAME_BY_CODE,
+    ButtonName,
+    DEVICE_CLASS_BLUETOOTH,
+    DEVICE_CLASS_IR,
+    DEVICE_CLASS_RF_315,
+    DEVICE_CLASS_RF_433,
+    DEVICE_CLASS_WIFI_HUE,
+    DEVICE_CLASS_WIFI_IP,
+    DEVICE_CLASS_WIFI_MQTT,
+    DEVICE_CLASS_WIFI_ROKU,
+    DEVICE_CLASS_WIFI_SONOS,
+    normalize_device_class,
+)
 from .lib.commands import descriptive_play_blob_text, looks_like_descriptive_play_blob, split_play_blob_tail
 from .lib.devices import DeviceConfig, parse_device_record
 from .lib.x1_proxy import X1Proxy
@@ -64,6 +77,8 @@ _LOGGER = logging.getLogger(__name__)
 _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.DOWN, "left": ButtonName.LEFT, "right": ButtonName.RIGHT, "ok": ButtonName.OK, "back": ButtonName.BACK, "home": ButtonName.HOME, "menu": ButtonName.MENU, "volup": ButtonName.VOL_UP, "voldn": ButtonName.VOL_DOWN, "mute": ButtonName.MUTE, "chup": ButtonName.CH_UP, "chdn": ButtonName.CH_DOWN, "guide": ButtonName.GUIDE, "dvr": ButtonName.DVR, "play": ButtonName.PLAY, "exit": ButtonName.EXIT, "rew": ButtonName.REW, "pause": ButtonName.PAUSE, "fwd": ButtonName.FWD, "red": ButtonName.RED, "green": ButtonName.GREEN, "yellow": ButtonName.YELLOW, "blue": ButtonName.BLUE, "a": ButtonName.A, "b": ButtonName.B, "c": ButtonName.C}
 _WIFI_COMMAND_SLOT_COUNT = 10
 _WIFI_COMMAND_LONG_PRESS_OFFSET = 10
+_NETWORK_CALLBACK_TRANSPORT = "network_callback"
+_NETWORK_CALLBACK_PROFILE_SOURCE = "wifi_commands"
 
 
 def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
@@ -81,6 +96,17 @@ def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
     device_key, command_hash = suffix.split("-", 1)
     device_key = "".join(ch for ch in str(device_key).lower() if ch.isalnum())
     return (device_key or DEFAULT_WIFI_DEVICE_KEY), command_hash.strip()
+
+
+def _is_network_callback_device_class(device_class: Any) -> bool:
+    normalized = normalize_device_class(device_class)
+    return normalized in {
+        DEVICE_CLASS_WIFI_ROKU,
+        DEVICE_CLASS_WIFI_IP,
+        DEVICE_CLASS_WIFI_HUE,
+        DEVICE_CLASS_WIFI_MQTT,
+        DEVICE_CLASS_WIFI_SONOS,
+    }
 
 
 def get_hub_model(entry: ConfigEntry) -> str:
@@ -1154,6 +1180,38 @@ class SofabatonHub:
             "commands": commands_out,
         }
 
+    @staticmethod
+    def _build_hub_code_record_restore_data(command: dict[str, Any]) -> dict[str, Any] | None:
+        """Extract opaque command-record metadata from a raw 0x020C dump result."""
+
+        pages = command.get("pages")
+        if not isinstance(pages, list) or not pages:
+            return None
+        page_one = pages[0]
+        if not isinstance(page_one, dict):
+            return None
+
+        payload_hex = str(page_one.get("payload_hex") or "").strip()
+        if not payload_hex:
+            return None
+        try:
+            payload = bytes.fromhex(payload_hex)
+        except ValueError:
+            return None
+        if len(payload) < 15:
+            return None
+
+        data_hex = str(command.get("ir_blob_hex") or "").strip()
+        if not data_hex:
+            return None
+
+        return {
+            "transport": "hub_code_record",
+            "library_type": payload[8],
+            "command_code": payload[9:15].hex(" "),
+            "data_hex": data_hex,
+        }
+
     async def async_backup_device(
         self,
         device_id: int,
@@ -1247,10 +1305,21 @@ class SofabatonHub:
                 partial(self._proxy.get_macros_for_activity, dev_lo, fetch_if_missing=False)
             )
 
-        blob_result = await self.async_fetch_blob(
-            device_id=dev_lo,
-            wait_timeout=max(wait_timeout, 15.0),
+        normalized_device_class = normalize_device_class(
+            device_meta.get("device_class", device_meta.get("device_class_code"))
         )
+        raw_command_dump: dict[str, Any] | None = None
+        if normalized_device_class in (DEVICE_CLASS_BLUETOOTH, DEVICE_CLASS_RF_315, DEVICE_CLASS_RF_433):
+            raw_command_dump = await self.async_dump_ir_commands(
+                device_id=dev_lo,
+                wait_timeout=max(wait_timeout, 15.0),
+            )
+            blob_result = None
+        else:
+            blob_result = await self.async_fetch_blob(
+                device_id=dev_lo,
+                wait_timeout=max(wait_timeout, 15.0),
+            )
         if skip_inputs:
             input_entries: list[dict[str, int]] | None = []
         else:
@@ -1276,18 +1345,62 @@ class SofabatonHub:
                 command_id = int(command.get("command_id", 0)) & 0xFF
                 if command_id:
                     blob_by_command[command_id] = dict(command)
+        elif isinstance(raw_command_dump, dict):
+            blobs_complete = bool(raw_command_dump.get("complete"))
+            for command in raw_command_dump.get("commands", []):
+                if not isinstance(command, dict):
+                    continue
+                command_id = int(command.get("command_id", 0)) & 0xFF
+                if command_id:
+                    blob_by_command[command_id] = dict(command)
 
-        all_command_ids = sorted(set(label_map) | set(blob_by_command))
+        restore_profile = await self._async_build_network_restore_profile(
+            device_id=dev_lo,
+            device_meta=device_meta,
+        )
+        if restore_profile is not None:
+            blobs_complete = True
+
         command_rows: list[dict[str, Any]] = []
-        for command_id in all_command_ids:
-            blob_command = blob_by_command.get(command_id, {})
-            command_rows.append(
-                {
+        if restore_profile is not None:
+            slots = restore_profile.get("slots")
+            if isinstance(slots, list):
+                for idx, slot in enumerate(slots[:_WIFI_COMMAND_SLOT_COUNT], start=1):
+                    if not isinstance(slot, dict):
+                        continue
+                    command_rows.append(
+                        {
+                            "command_id": idx,
+                            "name": str(slot.get("name") or f"Command {idx}").strip() or f"Command {idx}",
+                            "restore_data": {
+                                "transport": _NETWORK_CALLBACK_TRANSPORT,
+                                "slot_index": idx - 1,
+                            },
+                        }
+                    )
+        else:
+            all_command_ids = sorted(set(label_map) | set(blob_by_command))
+            for command_id in all_command_ids:
+                blob_command = blob_by_command.get(command_id, {})
+                row = {
                     "command_id": command_id,
-                    "name": label_map.get(command_id) or blob_command.get("command_label"),
-                    "blob_hex": blob_command.get("command_blob"),
+                    "name": label_map.get(command_id)
+                    or blob_command.get("command_label")
+                    or blob_command.get("label"),
                 }
-            )
+                if normalized_device_class == DEVICE_CLASS_IR:
+                    row["blob_hex"] = blob_command.get("command_blob")
+                elif normalized_device_class in (
+                    DEVICE_CLASS_BLUETOOTH,
+                    DEVICE_CLASS_RF_315,
+                    DEVICE_CLASS_RF_433,
+                ):
+                    restore_data = self._build_hub_code_record_restore_data(blob_command)
+                    if restore_data is not None:
+                        row["restore_data"] = restore_data
+                else:
+                    row["blob_hex"] = blob_command.get("command_blob")
+                command_rows.append(row)
 
         input_rows: list[dict[str, Any]] = []
         if input_entries:
@@ -1380,7 +1493,7 @@ class SofabatonHub:
             ]
         )
 
-        return {
+        result = {
             "kind": "device_backup",
             "schema_version": 2,
             "captured_at": datetime.now(timezone.utc).isoformat(),
@@ -1404,6 +1517,115 @@ class SofabatonHub:
             "button_bindings": button_rows,
             "favorite_slots": favorite_rows,
             "macros": macro_rows,
+        }
+        if restore_profile is not None:
+            result["restore_profile"] = restore_profile
+        return result
+
+    async def async_restore_device(
+        self,
+        payload: dict[str, Any],
+        *,
+        wifi_commands_request_port: int = 8060,
+    ) -> dict[str, Any] | None:
+        """Restore a device from a ``backup_device`` payload."""
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.restore_device,
+                payload=payload,
+                wifi_commands_request_port=wifi_commands_request_port,
+            )
+        )
+
+    async def _async_build_network_restore_profile(
+        self,
+        *,
+        device_id: int,
+        device_meta: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Return a restore profile for managed callback-backed network devices."""
+
+        device_class = normalize_device_class(
+            device_meta.get("device_class", device_meta.get("device_class_code"))
+        )
+        if not _is_network_callback_device_class(device_class):
+            return None
+
+        store = await async_get_command_config_store(self.hass)
+        records = await store.async_list_hub_devices(self.entry_id)
+        if not records:
+            return None
+
+        dev_lo = device_id & 0xFF
+        managed_key, managed_hash = _parse_managed_wifi_brand(device_meta.get("brand", ""))
+
+        match: dict[str, Any] | None = None
+        deployed_matches = [
+            record
+            for record in records
+            if isinstance(record, dict) and record.get("deployed_device_id") == dev_lo
+        ]
+        if len(deployed_matches) == 1:
+            match = deployed_matches[0]
+        elif managed_key:
+            key_matches = [
+                record
+                for record in records
+                if isinstance(record, dict) and str(record.get("device_key") or "").strip() == managed_key
+            ]
+            if len(key_matches) == 1:
+                match = key_matches[0]
+        elif managed_hash:
+            hash_matches = [
+                record
+                for record in records
+                if isinstance(record, dict)
+                and (
+                    str(record.get("deployed_commands_hash") or "").strip() == managed_hash
+                    or str(record.get("commands_hash") or "").strip() == managed_hash
+                )
+            ]
+            if len(hash_matches) == 1:
+                match = hash_matches[0]
+
+        if not isinstance(match, dict):
+            return None
+
+        slots_raw = match.get("commands")
+        if not isinstance(slots_raw, list) or not slots_raw:
+            return None
+
+        slots: list[dict[str, Any]] = []
+        input_command_ids: list[int] = []
+        for idx, slot in enumerate(slots_raw[:_WIFI_COMMAND_SLOT_COUNT]):
+            if not isinstance(slot, dict):
+                continue
+            slot_copy = dict(slot)
+            slot_name = str(slot_copy.get("name") or f"Command {idx + 1}").strip() or f"Command {idx + 1}"
+            slot_copy["name"] = slot_name
+            slots.append(slot_copy)
+            if str(slot_copy.get("input_activity_id") or "").strip():
+                input_command_ids.append(idx + 1)
+
+        if not slots:
+            return None
+
+        return {
+            "transport": _NETWORK_CALLBACK_TRANSPORT,
+            "source": _NETWORK_CALLBACK_PROFILE_SOURCE,
+            "device_key": str(match.get("device_key") or DEFAULT_WIFI_DEVICE_KEY),
+            "device_name": str(match.get("device_name") or device_meta.get("name") or "").strip(),
+            "slots": slots,
+            "power_on_command_id": normalize_power_command_id(
+                match.get("power_on_command_id"),
+                max_command_id=len(slots),
+            ),
+            "power_off_command_id": normalize_power_command_id(
+                match.get("power_off_command_id"),
+                max_command_id=len(slots),
+            ),
+            "input_command_ids": input_command_ids or None,
         }
 
     def _build_device_block(

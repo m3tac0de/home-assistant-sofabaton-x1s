@@ -167,6 +167,18 @@ class _FakeHub:
         self.calls.append(payload)
         return payload
 
+    async def async_restore_device(
+        self,
+        payload: dict,
+    ):
+        result = {
+            "status": "success",
+            "device_id": 44,
+            "backup_kind": payload.get("kind"),
+        }
+        self.calls.append({"kind": "restore_device", "payload": payload})
+        return result
+
     async def async_play_ir_blob(
         self,
         blob: bytes,
@@ -707,6 +719,45 @@ def test_backup_device_returns_action_payload(monkeypatch) -> None:
         "complete": False,
     }
     assert hub.calls[-1] == result
+
+
+def test_restore_device_requires_backup_object(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    with pytest.raises(ValueError, match="backup must be an object payload returned by backup_device"):
+        asyncio.run(
+            integration._async_handle_restore_device(
+                _FakeCall({"backup": "not-a-dict"})
+            )
+        )
+
+
+def test_restore_device_returns_action_payload(monkeypatch) -> None:
+    hub = _FakeHub()
+
+    async def _resolve(hass, call):
+        return hub
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_call", _resolve)
+
+    backup = {"kind": "device_backup", "device": {"name": "TV"}}
+    result = asyncio.run(
+        integration._async_handle_restore_device(
+            _FakeCall({"backup": backup})
+        )
+    )
+
+    assert result == {
+        "status": "success",
+        "device_id": 44,
+        "backup_kind": "device_backup",
+    }
+    assert hub.calls[-1] == {"kind": "restore_device", "payload": backup}
 
 
 def test_play_ir_blob_accepts_hex_blob_body(monkeypatch) -> None:

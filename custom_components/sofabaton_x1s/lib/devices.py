@@ -22,7 +22,7 @@ existing CatalogDeviceHandler decode path).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Final
+from typing import Final, Mapping
 
 from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 
@@ -437,11 +437,74 @@ def parse_device_record(body: bytes, *, hub_version: str) -> DeviceConfig:
     )
 
 
+def device_config_from_backup(
+    device: Mapping[str, object],
+    *,
+    for_create: bool = False,
+) -> DeviceConfig:
+    """Build a :class:`DeviceConfig` from a ``backup_device`` payload block.
+
+    ``device`` is the ``payload["device"]`` dictionary returned by
+    :meth:`SofabatonHub.async_backup_device`. When ``for_create`` is true, the
+    returned config is shaped for a fresh create transaction: ``device_id`` is
+    set to ``0xFF``, ``record_kind`` to ``0``, and ``tail_marker`` to ``0`` so
+    the subsequent update/commit step can finalize the record with the
+    hub-assigned device id.
+    """
+
+    def _as_int(key: str, default: int = 0) -> int:
+        value = device.get(key, default)
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    code_id_raw = str(device.get("code_id_hex") or "")
+    code_id_hex = "".join(ch for ch in code_id_raw if ch not in " \t\r\n")
+    if len(code_id_hex) % 2:
+        code_id_hex = code_id_hex[:-1]
+    try:
+        code_id = bytes.fromhex(code_id_hex) if code_id_hex else b""
+    except ValueError:
+        code_id = b""
+
+    extras = device.get("extras")
+    extras_present = isinstance(extras, Mapping)
+
+    return DeviceConfig(
+        name=str(device.get("name") or ""),
+        brand=str(device.get("brand") or ""),
+        device_id=0xFF if for_create else (_as_int("device_id", 0xFF) & 0xFF),
+        record_kind=0 if for_create else (_as_int("record_kind", 0) & 0xFF),
+        icon=_as_int("icon", 1) & 0xFF,
+        sort=_as_int("sort", 0) & 0xFF,
+        code_type=_as_int("code_type", 0x0A) & 0xFF,
+        device_type=_as_int("device_type", 0x10) & 0xFF,
+        code_id=code_id,
+        hide=_as_int("hide", 0) & 0xFF,
+        input_flag=_as_int("input_flag", 0) & 0xFF,
+        channel=_as_int("channel", 0) & 0xFF,
+        power_state=_as_int("power_state", 0) & 0xFF,
+        ip_address=str(device.get("ip_address")) if device.get("ip_address") else None,
+        poll_time=_as_int("poll_time", -1),
+        input_mode=_as_int("input_mode", 0) & 0xFF,
+        power_mode=_as_int("power_mode", 0) & 0xFF,
+        power_style=_as_int("power_style", 2) & 0xFF,
+        share_mode=_as_int("share_mode", 0) & 0xFF,
+        tail_marker=0 if for_create else (_as_int("tail_marker", 1) & 0xFF),
+        extra_a=_as_int("a", 0) & 0xFF if isinstance(extras, Mapping) else 0,
+        extra_b=_as_int("b", 0) & 0xFF if isinstance(extras, Mapping) else 0,
+        extra_c=_as_int("c", 0) & 0xFF if isinstance(extras, Mapping) else 0,
+        extras_present=extras_present,
+    )
+
+
 __all__ = [
     "DEVICE_BODY_LEN_X1",
     "DEVICE_BODY_LEN_X1S_X2",
     "DEVICE_CODE_ID_LEN",
     "DeviceConfig",
     "build_device_create_payload",
+    "device_config_from_backup",
     "parse_device_record",
 ]

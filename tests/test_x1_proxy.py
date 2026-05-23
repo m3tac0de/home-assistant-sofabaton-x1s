@@ -3,6 +3,7 @@ import threading
 import sys
 import time
 import types
+from typing import Any
 
 import pytest
 
@@ -14,6 +15,9 @@ from custom_components.sofabaton_x1s.const import (
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     ButtonName,
+    DEVICE_CLASS_RF_315,
+    DEVICE_CLASS_RF_433,
+    DEVICE_CLASS_WIFI_SONOS,
     OP_FIND_REMOTE,
     OP_FIND_REMOTE_X2,
     OP_REMOTE_SYNC,
@@ -21,12 +25,15 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_X2_REMOTE_SYNC,
     OP_REQ_COMMANDS,
     OP_ACTIVITY_ASSIGN_FINALIZE,
+    known_public_device_classes,
+    normalize_device_class,
 )
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.macros import MacroRecord
 from custom_components.sofabaton_x1s.lib.opcode_handlers import ActivityMapHandler, DeviceButtonFamilyHandler
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
+import custom_components.sofabaton_x1s.lib.x1_proxy as x1_proxy_module
 
 
 def test_incomplete_activity_snapshot_preserves_committed_state() -> None:
@@ -238,6 +245,42 @@ def test_import_cache_state_normalizes_mqtt_device_class_code() -> None:
             "device_class": "wifi_mqtt",
             "device_class_code": 0x20,
         }
+    }
+
+
+def test_device_class_registry_normalizes_public_sonos_and_rf_aliases() -> None:
+    assert normalize_device_class("sonos") == DEVICE_CLASS_WIFI_SONOS
+    assert normalize_device_class("wifi/sonos") == DEVICE_CLASS_WIFI_SONOS
+    assert normalize_device_class("315") == DEVICE_CLASS_RF_315
+    assert normalize_device_class("rf_433") == DEVICE_CLASS_RF_433
+    assert "matter" not in known_public_device_classes()
+
+
+def test_import_cache_state_preserves_known_public_class_without_code_mapping() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy.import_cache_state(
+        {
+            "devices": {
+                "9": {
+                    "name": "Living Room",
+                    "device_type": "sonos",
+                },
+                "10": {
+                    "name": "Gate",
+                    "device_type": "433",
+                },
+            }
+        }
+    )
+
+    assert proxy.state.devices[0x09] == {
+        "name": "Living Room",
+        "device_class": DEVICE_CLASS_WIFI_SONOS,
+    }
+    assert proxy.state.devices[0x0A] == {
+        "name": "Gate",
+        "device_class": DEVICE_CLASS_RF_433,
     }
 
 
@@ -801,6 +844,451 @@ def test_create_wifi_device_replays_sequence(monkeypatch) -> None:
     frame_7746 = next(payload for opcode, payload in sent if (opcode & 0xFF) == 0x46)
     expected_token = (sum(frame_7746[:-1]) - 2) & 0xFF
     assert frame_7746[-1] == expected_token
+
+
+def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "start_roku_create", lambda: None)
+
+    sequence_calls: list[list[str]] = []
+
+    def _run_create_sequence(_proxy, steps):
+        step_list = list(steps)
+        sequence_calls.append([step.label for step in step_list])
+        if len(sequence_calls) == 1:
+            return types.SimpleNamespace(
+                success=True,
+                assigned_device_id=0x22,
+                failed_step=None,
+                failed_index=None,
+            )
+        return types.SimpleNamespace(
+            success=True,
+            assigned_device_id=0x22,
+            failed_step=None,
+            failed_index=None,
+        )
+
+    monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _run_create_sequence)
+
+    persisted_calls: list[tuple[int, int | None, str, bytes]] = []
+
+    def _persist_ir_blob(
+        *,
+        device_id: int,
+        command_name: str,
+        blob: bytes,
+        command_id: int | None = None,
+        **_kwargs,
+    ):
+        persisted_calls.append((device_id, command_id, command_name, blob))
+        return {
+            "status": "success",
+            "device_id": device_id,
+            "command_id": command_id if command_id is not None else len(persisted_calls),
+            "command_name": command_name,
+            "page_count": 1,
+        }
+
+    monkeypatch.setattr(proxy, "persist_ir_blob", _persist_ir_blob)
+
+    backup = {
+        "kind": "device_backup",
+        "device": {
+            "device_id": 11,
+            "name": "TV",
+            "brand": "Sony",
+            "device_class": "IR",
+            "device_class_code": 0x10,
+            "icon": 1,
+            "sort": 0,
+            "code_type": 0x10,
+            "device_type": 0x10,
+            "code_id_hex": "00 " * 15 + "00",
+            "hide": 0,
+            "input_flag": 0,
+            "channel": 0,
+            "power_state": 0,
+            "ip_address": None,
+            "poll_time": -1,
+            "input_mode": 1,
+            "inputs_configured": True,
+            "power_mode": 1,
+            "power_style": 3,
+            "power_configured": True,
+            "share_mode": 0,
+            "tail_marker": 1,
+            "extras": None,
+        },
+        "commands": [
+            {"command_id": 18, "name": "Input", "blob_hex": "00 01 02 03 04 05 06 07 08 09"},
+            {"command_id": 19, "name": "Power", "blob_hex": "10 11 12 13 14 15 16 17 18 19"},
+        ],
+        "inputs": [{"command_id": 18, "input_index": 1, "name": "Input"}],
+        "button_bindings": [
+            {
+                "button_id": 0x58,
+                "device_id": 11,
+                "command_id": 18,
+                "command_name": "Input",
+                "long_press_device_id": None,
+                "long_press_command_id": None,
+            }
+        ],
+        "macros": [
+            {
+                "button_id": 0xC6,
+                "name": "POWER_ON",
+                "steps": [
+                    {
+                        "device_id": 11,
+                        "command_id": 19,
+                        "fid": 0,
+                        "duration": 0,
+                        "delay": 0xFF,
+                    }
+                ],
+            }
+        ],
+        "favorite_slots": [],
+    }
+
+    result = proxy.restore_device(backup)
+
+    assert result == {
+        "status": "success",
+        "device_id": 0x22,
+        "restored_commands": 2,
+        "restored_button_bindings": 1,
+        "restored_macros": 1,
+        "restored_inputs": 1,
+        "skipped_favorites": 0,
+        "command_id_map": {"18": 1, "19": 2},
+    }
+    assert persisted_calls == [
+        (0x22, 1, "Input", bytes.fromhex("00 01 02 03 04 05 06 07 08 09")),
+        (0x22, 2, "Power", bytes.fromhex("10 11 12 13 14 15 16 17 18 19")),
+    ]
+    assert sequence_calls[0] == ["device-create"]
+    assert sequence_calls[1][-2:] == ["device-update", "remote-sync"]
+    assert any(label.startswith("button-binding btn=0x58") for label in sequence_calls[1])
+    assert any(label.startswith("macro key=0xC6") for label in sequence_calls[1])
+    assert any(label.startswith("inputs dev=0x22") for label in sequence_calls[1])
+
+
+def test_restore_device_rejects_bluetooth_until_backup_metadata_exists(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    backup = {
+        "kind": "device_backup",
+        "device": {
+            "device_id": 11,
+            "name": "Speaker",
+            "brand": "Denon",
+            "device_class": "bluetooth",
+            "device_class_code": 0x03,
+        },
+        "commands": [],
+        "button_bindings": [],
+        "macros": [],
+        "inputs": [],
+        "favorite_slots": [],
+    }
+
+    with pytest.raises(ValueError, match="command restore metadata"):
+        proxy.restore_device(backup)
+
+
+def test_restore_device_rejects_non_x1_post_steps_for_x1s(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    backup = {
+        "kind": "device_backup",
+        "device": {
+            "device_id": 11,
+            "name": "TV",
+            "brand": "Sony",
+            "device_class": "ir",
+            "device_class_code": 0x10,
+        },
+        "commands": [],
+        "button_bindings": [{"button_id": 0x58, "command_id": 1}],
+        "macros": [],
+        "inputs": [],
+        "favorite_slots": [],
+    }
+
+    with pytest.raises(ValueError, match="post-create replay is not implemented yet"):
+        proxy.restore_device(backup)
+
+
+@pytest.mark.parametrize(
+    ("device_class", "expected_message"),
+    [
+        ("wifi_sonos", "only supports callback-backed network devices"),
+        ("wifi_roku", "only supports callback-backed network devices"),
+    ],
+)
+def test_restore_device_reports_class_specific_capability_gaps(
+    monkeypatch,
+    device_class: str,
+    expected_message: str,
+) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    backup = {
+        "kind": "device_backup",
+        "device": {
+            "device_id": 11,
+            "name": "Device",
+            "brand": "Brand",
+            "device_class": device_class,
+        },
+        "commands": [],
+        "button_bindings": [],
+        "macros": [],
+        "inputs": [],
+        "favorite_slots": [],
+    }
+
+    with pytest.raises(ValueError, match=expected_message):
+        proxy.restore_device(backup)
+
+
+@pytest.mark.parametrize("device_class", ["bluetooth", "rf_433mhz"])
+def test_restore_device_replays_hub_code_records(monkeypatch, device_class: str) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    sequence_calls: list[list[str]] = []
+
+    def _run_create_sequence(_proxy, steps):
+        step_list = list(steps)
+        sequence_calls.append([step.label for step in step_list])
+        return types.SimpleNamespace(
+            success=True,
+            assigned_device_id=0x23,
+            failed_step=None,
+            failed_index=None,
+        )
+
+    monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _run_create_sequence)
+
+    persisted_calls: list[tuple[int, int | None, str, int, bytes, int]] = []
+
+    def _persist_command_record(
+        *,
+        device_id: int,
+        command_id: int | None = None,
+        command_name: str,
+        library_type: int,
+        command_data: bytes,
+        command_code: int = 0,
+        **_kwargs,
+    ):
+        persisted_calls.append(
+            (device_id, command_id, command_name, library_type, command_data, command_code)
+        )
+        return {
+            "status": "success",
+            "device_id": device_id,
+            "command_id": command_id if command_id is not None else len(persisted_calls),
+            "command_name": command_name,
+            "page_count": 1,
+            "library_type": library_type,
+        }
+
+    monkeypatch.setattr(proxy, "persist_command_record", _persist_command_record)
+
+    backup = {
+        "kind": "device_backup",
+        "device": {
+            "device_id": 11,
+            "name": "Speaker",
+            "brand": "Brand",
+            "device_class": device_class,
+        },
+        "commands": [
+            {
+                "command_id": 5,
+                "name": "Bluetooth",
+                "restore_data": {
+                    "transport": "hub_code_record",
+                    "library_type": 0x03,
+                    "command_code": "00 00 00 00 4e 25",
+                    "data_hex": "aa bb cc dd",
+                },
+            }
+        ],
+        "inputs": [],
+        "button_bindings": [],
+        "macros": [],
+        "favorite_slots": [],
+    }
+
+    result = proxy.restore_device(backup)
+
+    assert result == {
+        "status": "success",
+        "device_id": 0x23,
+        "restored_commands": 1,
+        "restored_button_bindings": 0,
+        "restored_macros": 0,
+        "restored_inputs": 0,
+        "skipped_favorites": 0,
+        "command_id_map": {"5": 1},
+    }
+    assert persisted_calls == [
+        (0x23, 1, "Bluetooth", 0x03, bytes.fromhex("aa bb cc dd"), 0x4E25),
+    ]
+    assert sequence_calls[0] == ["device-create"]
+    assert sequence_calls[1][-2:] == ["device-update", "remote-sync"]
+
+
+def test_restore_device_replays_managed_network_profile(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    create_calls: list[dict[str, Any]] = []
+
+    def _create_wifi_device(**kwargs):
+        create_calls.append(dict(kwargs))
+        return {"device_id": 0x31, "status": "success"}
+
+    monkeypatch.setattr(proxy, "create_wifi_device", _create_wifi_device)
+
+    backup = {
+        "kind": "device_backup",
+        "device": {
+            "device_id": 11,
+            "name": "Living Room Audio",
+            "brand": "m3-default-a1b2c3",
+            "device_class": "wifi_sonos",
+        },
+        "commands": [
+            {"command_id": 1, "name": "TV"},
+            {"command_id": 2, "name": "Bluetooth"},
+        ],
+        "inputs": [],
+        "button_bindings": [],
+        "favorite_slots": [],
+        "macros": [],
+        "restore_profile": {
+            "transport": "network_callback",
+            "source": "wifi_commands",
+            "device_key": "default",
+            "device_name": "Living Room Audio",
+            "slots": [
+                {"name": "TV", "input_activity_id": "101"},
+                {"name": "Bluetooth", "input_activity_id": ""},
+            ],
+            "power_on_command_id": 1,
+            "power_off_command_id": 2,
+            "input_command_ids": [1],
+        },
+    }
+
+    result = proxy.restore_device(backup, wifi_commands_request_port=8765)
+
+    assert result == {
+        "status": "success",
+        "device_id": 0x31,
+        "restored_commands": 2,
+        "restored_button_bindings": 0,
+        "restored_macros": 0,
+        "restored_inputs": 1,
+        "skipped_favorites": 0,
+        "command_id_map": {"1": 1, "2": 2},
+    }
+    assert create_calls == [
+        {
+            "device_name": "Living Room Audio",
+            "commands": [
+                {"display_name": "TV", "trigger_name": "TV", "press_type": "short", "command_index": 0},
+                {"display_name": "Bluetooth", "trigger_name": "Bluetooth", "press_type": "short", "command_index": 1},
+                {"display_name": "TV Long Press", "trigger_name": "TV", "press_type": "long", "command_index": 0},
+                {"display_name": "Bluetooth Long Press", "trigger_name": "Bluetooth", "press_type": "long", "command_index": 1},
+            ],
+            "request_port": 8765,
+            "brand_name": "m3-default-a1b2c3",
+            "power_on_command_id": 1,
+            "power_off_command_id": 2,
+            "input_command_ids": [1],
+        }
+    ]
+
+
+def test_build_persist_ir_blob_payloads_carries_selected_command_id() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    payloads = proxy._build_persist_ir_blob_payloads(
+        device_id=0x12,
+        command_id=0x07,
+        command_name="Input",
+        blob=bytes(range(10)),
+    )
+
+    assert payloads
+    assert payloads[0][:9] == bytes.fromhex("01 00 01 01 00 01 12 07 0d")
+
+
+def test_build_persist_command_record_payloads_carries_library_type_and_command_code() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    payloads = proxy._build_persist_command_record_payloads(
+        device_id=0x12,
+        command_id=0x07,
+        command_name="Bluetooth",
+        library_type=0x03,
+        command_data=bytes.fromhex("aa bb cc dd"),
+        command_code=0x4E25,
+    )
+
+    assert payloads
+    assert payloads[0][:15] == bytes.fromhex(
+        "01 00 01 01 00 01 12 07 03 00 00 00 00 4e 25"
+    )
 
 
 def test_create_wifi_device_can_assign_power_on_and_power_off_commands(monkeypatch) -> None:

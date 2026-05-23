@@ -1409,6 +1409,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _async_handle_backup_device,
             supports_response=SupportsResponse.OPTIONAL,
         )
+    if not hass.services.has_service(DOMAIN, "restore_device"):
+        hass.services.async_register(
+            DOMAIN,
+            "restore_device",
+            _async_handle_restore_device,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
     if not hass.services.has_service(DOMAIN, "play_ir_blob"):
         hass.services.async_register(DOMAIN, "play_ir_blob", _async_handle_play_ir_blob)
     if not hass.services.has_service(DOMAIN, "persist_ir_blob"):
@@ -1483,6 +1490,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "dump_ir_commands")
             hass.services.async_remove(DOMAIN, "fetch_blob")
             hass.services.async_remove(DOMAIN, "backup_device")
+            hass.services.async_remove(DOMAIN, "restore_device")
             hass.services.async_remove(DOMAIN, "play_ir_blob")
             hass.services.async_remove(DOMAIN, "persist_ir_blob")
             hass.services.async_remove(DOMAIN, "create_wifi_device")
@@ -1597,6 +1605,31 @@ async def _async_handle_backup_device(call: ServiceCall):
     result = await hub.async_backup_device(device_id=device_id)
     if result is None:
         raise ValueError(f"Hub did not return device data for device {device_id}")
+    return result
+
+
+async def _async_handle_restore_device(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    _raise_if_sync_in_progress(hub, "_async_handle_restore_device")
+
+    payload = call.data.get("backup")
+    if not isinstance(payload, dict):
+        raise ValueError("backup must be an object payload returned by backup_device")
+    wifi_commands_request_port = _resolve_roku_listen_port(hass, hub.entry_id)
+
+    try:
+        result = await hub.async_restore_device(
+            payload,
+            wifi_commands_request_port=wifi_commands_request_port,
+        )
+    except Exception as exc:
+        raise HomeAssistantError(f"restore_device failed: {exc}") from exc
+    if result is None:
+        raise HomeAssistantError("Hub did not accept the restore transaction")
     return result
 
 
