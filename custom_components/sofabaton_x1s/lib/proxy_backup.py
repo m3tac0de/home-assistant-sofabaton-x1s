@@ -14,8 +14,10 @@ The mixin owns no state of its own; all reads and writes go through
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
+from .protocol_const import OP_ERASE_CONFIGURATION
 from .state_helpers import normalize_device_entry
 
 
@@ -341,6 +343,135 @@ class CacheBackupMixin:
         self.state.activities.clear()
         self._activity_row_payloads.clear()
         self.state.set_hint(None)
+
+    def wipe_all_cached_state(self) -> None:
+        """Drop every per-entity cache so a fresh catalog poll is required.
+
+        Called by :meth:`erase_configuration` after the hub confirms it
+        has wiped its persistent tables. Everything keyed by device or
+        activity id is no longer valid; the next catalog request must
+        start from zero. The banner / hub-identity state is preserved
+        (the hub model didn't change) along with the proxy's transport
+        and listener wiring.
+        """
+
+        # Top-level name catalogs (parallel to clear_devices_catalog +
+        # clear_activities_catalog).
+        self.clear_devices_catalog()
+        self.clear_activities_catalog()
+
+        # Per-device detail surfaces.
+        self.state.commands.clear()
+        self.state.buttons.clear()
+        if hasattr(self.state, "button_details"):
+            self.state.button_details.clear()
+        if hasattr(self.state, "command_metadata"):
+            self.state.command_metadata.clear()
+        self.state.ip_buttons.clear()
+        self.state.ip_devices.clear()
+
+        # Per-activity detail surfaces.
+        self.state.activity_macros.clear()
+        self.state.activity_members.clear()
+        self.state.activity_favorite_slots.clear()
+        self.state.activity_keybinding_slots.clear()
+        self.state.activity_favorite_labels.clear()
+        self.state.activity_keybinding_labels.clear()
+        self.state.activity_command_refs.clear()
+
+        # Completion / pending sets.
+        self._commands_complete.clear()
+        self._macros_complete.clear()
+        self._activity_map_complete.clear()
+        self._pending_button_requests.clear()
+        self._pending_command_requests.clear()
+        self._pending_macro_requests.clear()
+        self._pending_activity_map_requests.clear()
+
+
+    def erase_configuration(
+        self,
+        *,
+        timeout: float = 120.0,
+        settle_seconds: float = 2.0,
+    ) -> bool:
+        """Wipe the hub's user-visible configuration tables (opcode ``0x001D``).
+
+        Sends the empty-payload erase frame, waits up to ``timeout``
+        seconds for any first response from the hub, then clears the
+        proxy's catalog mirrors and sleeps ``settle_seconds`` before
+        returning so callers can immediately issue follow-up requests.
+
+        Returns ``True`` on success, ``False`` when the hub disconnects
+        before any response arrives or when no response arrives within
+        ``timeout``.
+
+        The hub commonly drops the session after the ack. A
+        ``False`` return that's actually caused by a hub-initiated
+        disconnect *after* an ack would be a misreport; the wait loop
+        therefore requires the ack first and treats any later
+        disconnect as the expected post-erase behaviour. See
+        ``docs/protocol/erase.md`` for the wire layout.
+        """
+
+        if not self.can_issue_commands():
+            self._log.info(
+                "[ERASE] erase_configuration ignored: proxy client is connected"
+            )
+            return False
+
+        self.clear_ack_queue()
+        send_ts = time.monotonic()
+        self._log.info(
+            "[ERASE] sending opcode 0x%04X (timeout=%.0fs)",
+            OP_ERASE_CONFIGURATION,
+            timeout,
+        )
+        self._send_cmd_frame(OP_ERASE_CONFIGURATION, b"")
+
+        def _disconnected() -> bool:
+            # ``_hub_connected`` is updated by the transport bridge as
+            # frames arrive / connections drop. A drop arriving before
+            # any ack means the hub didn't even acknowledge the erase
+            # request; treat as failure.
+            return not getattr(self, "_hub_connected", True)
+
+        result = self.wait_for_any_response(
+            timeout=timeout,
+            not_before=send_ts,
+            disconnect_check=_disconnected,
+        )
+        if result is None:
+            if _disconnected():
+                self._log.warning(
+                    "[ERASE] hub disconnected before any ack -- treating as failure"
+                )
+            else:
+                self._log.warning(
+                    "[ERASE] no response within %.0fs -- treating as failure",
+                    timeout,
+                )
+            return False
+
+        ack_opcode, ack_payload = result
+        self._log.info(
+            "[ERASE] hub answered opcode=0x%04X payload_len=%d -- wiping local caches",
+            ack_opcode,
+            len(ack_payload),
+        )
+
+        # The persistent tables on the hub are now empty; everything
+        # we have cached locally is stale.
+        self.wipe_all_cached_state()
+
+        # The hub commonly cycles the session after the ack and needs
+        # a moment before answering anything new. A brief sleep here
+        # lets callers (e.g. the bundle-restore orchestrator) issue
+        # follow-up requests immediately without retry loops.
+        if settle_seconds > 0:
+            time.sleep(settle_seconds)
+
+        return True
 
 
 __all__ = ["CacheBackupMixin"]

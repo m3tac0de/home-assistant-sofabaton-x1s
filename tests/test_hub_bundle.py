@@ -605,22 +605,181 @@ def test_restore_activity_without_bundle_context_preserves_raw_duration(
     assert result["skipped_input_ordinals"] == 0
 
 
-def test_async_erase_configuration_raises_not_implemented() -> None:
-    """Replace-mode gate: erase raises with hub_version in message."""
-
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
-
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Sofabaton"
-    hub.version = HUB_VERSION_X1S
-
-    with pytest.raises(NotImplementedError, match=HUB_VERSION_X1S):
-        _run(hub.async_erase_configuration())
+# ---------------------------------------------------------------------------
+# Phase E: erase_configuration
+# ---------------------------------------------------------------------------
 
 
-def test_async_restore_backup_replace_mode_fails_fast_on_erase_stub() -> None:
-    """A bundle with activities triggers the erase stub before any wire writes."""
+def _erase_proxy(monkeypatch: pytest.MonkeyPatch) -> X1Proxy:
+    """X1Proxy variant configured for erase tests.
+
+    ``can_issue_commands`` returns True (no proxy client attached),
+    the cache state is initialised non-empty so we can prove the
+    wipe happens, and ``time.sleep`` is patched out so the
+    settle delay doesn't slow the suite.
+    """
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    # Seed something in every cache surface so we can verify the wipe
+    # actually touched all of them.
+    proxy.state.devices[0x01] = {"name": "TV"}
+    proxy.state.activities[0x65] = {"name": "Watch TV"}
+    proxy.state.commands[0x01] = {1: "POWER"}
+    proxy.state.buttons[0x01] = {0xC6}
+    proxy.state.ip_devices[0x02] = {"name": "Hue"}
+    proxy.state.ip_buttons[0x02] = {0xB0: {"name": "On"}}
+    proxy.state.activity_macros[0x65] = [{"button_id": 0xC6}]
+    proxy.state.activity_members[0x65] = {0x01, 0x02}
+    proxy.state.activity_favorite_slots[0x65] = [{"button_id": 0xA0}]
+    proxy.state.activity_keybinding_slots[0x65] = [{"button_id": 0xA1}]
+    proxy.state.activity_favorite_labels[0x65] = {(0x01, 1): "POWER"}
+    proxy.state.activity_keybinding_labels[0x65] = {(0x01, 1): "POWER"}
+    proxy.state.activity_command_refs[0x65] = {(0x01, 1)}
+    proxy._commands_complete.add(0x01)
+    proxy._macros_complete.add(0x65)
+    proxy._activity_map_complete.add(0x65)
+    proxy._hub_connected = True
+
+    # Skip the settle sleep so tests aren't slow.
+    import custom_components.sofabaton_x1s.lib.proxy_backup as proxy_backup_module
+
+    monkeypatch.setattr(proxy_backup_module.time, "sleep", lambda _s: None)
+    return proxy
+
+
+def test_erase_configuration_success_wipes_state_and_returns_true(
+    monkeypatch,
+) -> None:
+    """Happy path: hub answers, all per-entity caches drop, returns True."""
+
+    proxy = _erase_proxy(monkeypatch)
+
+    sent: list[tuple[int, bytes]] = []
+
+    def _send(opcode: int, payload: bytes) -> None:
+        sent.append((opcode, payload))
+        # Simulate the hub's reply landing on the ack queue right
+        # after the send. Any opcode/payload will do -- the resolver
+        # is fire-and-forget.
+        proxy.notify_ack(0x0103, b"\x00")
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", _send)
+
+    ok = proxy.erase_configuration(timeout=5.0, settle_seconds=0.0)
+
+    assert ok is True
+    assert sent == [(0x001D, b"")]
+    # Every seeded cache is now empty.
+    assert proxy.state.devices == {}
+    assert proxy.state.activities == {}
+    assert proxy.state.commands == {}
+    assert proxy.state.buttons == {}
+    assert proxy.state.ip_devices == {}
+    assert proxy.state.ip_buttons == {}
+    assert proxy.state.activity_macros == {}
+    assert proxy.state.activity_members == {}
+    assert proxy.state.activity_favorite_slots == {}
+    assert proxy.state.activity_keybinding_slots == {}
+    assert proxy.state.activity_favorite_labels == {}
+    assert proxy.state.activity_keybinding_labels == {}
+    assert proxy.state.activity_command_refs == {}
+    assert proxy._commands_complete == set()
+    assert proxy._macros_complete == set()
+    assert proxy._activity_map_complete == set()
+
+
+def test_erase_configuration_disconnect_before_ack_returns_false(
+    monkeypatch,
+) -> None:
+    """Hub drops the link before any frame comes back -- treated as failure."""
+
+    proxy = _erase_proxy(monkeypatch)
+
+    def _send(opcode: int, payload: bytes) -> None:
+        # Simulate the transport noticing a drop immediately after
+        # send, before any response arrived.
+        proxy._hub_connected = False
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", _send)
+
+    ok = proxy.erase_configuration(timeout=1.0, settle_seconds=0.0)
+
+    assert ok is False
+    # Caches NOT wiped on failure (the hub may or may not have wiped
+    # its own; the safe default is to keep ours until a successful
+    # erase).
+    assert proxy.state.devices == {0x01: {"name": "TV"}}
+    assert proxy.state.activities == {0x65: {"name": "Watch TV"}}
+
+
+def test_erase_configuration_timeout_returns_false(monkeypatch) -> None:
+    """No response within timeout -- returns False, caches preserved."""
+
+    proxy = _erase_proxy(monkeypatch)
+    # _send does nothing; no ack ever arrives; no disconnect either.
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda *a, **kw: None)
+
+    ok = proxy.erase_configuration(timeout=0.25, settle_seconds=0.0)
+
+    assert ok is False
+    assert proxy.state.devices == {0x01: {"name": "TV"}}
+
+
+def test_erase_configuration_post_ack_disconnect_is_tolerated(
+    monkeypatch,
+) -> None:
+    """A disconnect arriving AFTER the ack is the expected post-erase state.
+
+    The hub commonly cycles the session after acking the erase. As
+    long as the ack landed first, that disconnect must not be
+    misclassified as failure.
+    """
+
+    proxy = _erase_proxy(monkeypatch)
+
+    def _send(opcode: int, payload: bytes) -> None:
+        # Ack first...
+        proxy.notify_ack(0x0103, b"\x00")
+        # ...then the hub drops the session.
+        proxy._hub_connected = False
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", _send)
+
+    ok = proxy.erase_configuration(timeout=5.0, settle_seconds=0.0)
+
+    assert ok is True
+    assert proxy.state.devices == {}
+
+
+def test_erase_configuration_ignored_when_proxy_client_connected(
+    monkeypatch,
+) -> None:
+    """The mirrored-app guard prevents fighting an active client."""
+
+    proxy = _erase_proxy(monkeypatch)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: False)
+    monkeypatch.setattr(
+        proxy,
+        "_send_cmd_frame",
+        lambda *a, **kw: pytest.fail("send must not run when client is connected"),
+    )
+
+    ok = proxy.erase_configuration(timeout=5.0, settle_seconds=0.0)
+
+    assert ok is False
+    # Caches untouched.
+    assert proxy.state.devices == {0x01: {"name": "TV"}}
+
+
+def test_async_restore_backup_replace_mode_aborts_on_erase_failure() -> None:
+    """If erase fails (timeout/disconnect), restore_hub_bundle is never reached."""
 
     from custom_components.sofabaton_x1s.hub import SofabatonHub
 
@@ -631,8 +790,60 @@ def test_async_restore_backup_replace_mode_fails_fast_on_erase_stub() -> None:
     hub._proxy = MagicMock()
     hub._proxy.restore_hub_bundle = MagicMock(
         side_effect=AssertionError(
-            "restore_hub_bundle must not be reached in replace mode"
+            "restore_hub_bundle must not be reached when erase fails"
         )
+    )
+
+    # Replace the executor-job call with a direct fail.
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            # async_erase_configuration uses partial() so func is the
+            # partial; calling it returns False (simulated erase failure).
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy.erase_configuration = MagicMock(return_value=False)
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 4,
+        "devices": [],
+        "activities": [{"kind": "activity_backup"}],
+    }
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    with pytest.raises(HomeAssistantError, match="Hub erase failed"):
+        _run(hub.async_restore_backup(bundle))
+
+    hub._proxy.restore_hub_bundle.assert_not_called()
+    hub._proxy.erase_configuration.assert_called_once()
+
+
+def test_async_restore_backup_replace_mode_proceeds_when_erase_succeeds() -> None:
+    """Successful erase unblocks the bundle orchestrator."""
+
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Sofabaton"
+    hub.version = HUB_VERSION_X1S
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.erase_configuration = MagicMock(return_value=True)
+    hub._proxy.restore_hub_bundle = MagicMock(
+        return_value={
+            "status": "success",
+            "device_id_map": {},
+            "restored_devices": [],
+            "restored_activities": [],
+        }
     )
 
     bundle = {
@@ -642,7 +853,8 @@ def test_async_restore_backup_replace_mode_fails_fast_on_erase_stub() -> None:
         "activities": [{"kind": "activity_backup"}],
     }
 
-    with pytest.raises(NotImplementedError, match="not implemented for hub_version"):
-        _run(hub.async_restore_backup(bundle))
+    result = _run(hub.async_restore_backup(bundle))
 
-    hub._proxy.restore_hub_bundle.assert_not_called()
+    assert result["status"] == "success"
+    hub._proxy.erase_configuration.assert_called_once()
+    hub._proxy.restore_hub_bundle.assert_called_once()

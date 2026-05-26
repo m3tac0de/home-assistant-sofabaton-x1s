@@ -1846,21 +1846,35 @@ class SofabatonHub:
             "activities": activity_payloads,
         }
 
-    async def async_erase_configuration(self) -> None:
+    async def async_erase_configuration(
+        self,
+        *,
+        timeout: float = 120.0,
+        settle_seconds: float = 2.0,
+    ) -> bool:
         """Erase all hub configuration (devices, activities, favorites, macros).
 
-        Replace-mode bundle restores call this before recreating any
-        content. The per-hub-version wire sequence is not implemented
-        yet -- Phase D of the bundle-backup plan researches it and
-        Phase E lands the implementation; until then this stub raises
-        ``NotImplementedError`` so replace-mode restores fail fast
-        with a clear, version-specific error and zero side effects.
+        Drives opcode ``0x001D`` via the proxy. The opcode is identical
+        across X1, X1S, and X2 -- a single payload-less frame wipes the
+        entire user-visible configuration. See ``docs/protocol/erase.md``
+        for the wire layout and timing notes.
+
+        Returns ``True`` on success (the hub answered within
+        ``timeout``), ``False`` on a pre-ack disconnect or timeout.
+        After a successful erase the proxy's catalog mirrors have
+        been cleared and a brief settle delay has elapsed.
+
+        Used by :meth:`async_restore_backup` in replace mode (when the
+        bundle contains activities) -- erase must succeed before any
+        device or activity rewrites are issued.
         """
 
-        raise NotImplementedError(
-            f"hub erase is not implemented for hub_version={self.version!r}; "
-            "restoring a bundle that contains activities requires erase "
-            "support (see docs/protocol/bundle-backup-plan.md phases D/E)"
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.erase_configuration,
+                timeout=timeout,
+                settle_seconds=settle_seconds,
+            )
         )
 
     async def async_restore_backup(
@@ -1899,10 +1913,16 @@ class SofabatonHub:
 
         activities = payload.get("activities") or []
         if activities:
-            # Replace mode. Erase the hub first; the current stub
-            # raises NotImplementedError, which propagates to the
-            # caller with the hub_version in the message.
-            await self.async_erase_configuration()
+            # Replace mode. Erase the hub first so device ids reset
+            # to a known empty slate before the bundle's devices are
+            # rewritten.
+            erased = await self.async_erase_configuration()
+            if not erased:
+                raise HomeAssistantError(
+                    "Hub erase failed -- restore aborted before any wire writes. "
+                    "Check the hub is reachable and try again; if it persists, "
+                    "inspect the [ERASE] log lines for the specific failure mode."
+                )
 
         return await self.hass.async_add_executor_job(
             partial(

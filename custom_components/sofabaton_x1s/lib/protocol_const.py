@@ -77,6 +77,9 @@ OP_REQ_ACTIVATE = 0x023F  # payload: [id_lo, key_code] (activity or device ID)
 OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites mapping (X1)
 OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
 OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
+OP_ERASE_CONFIGURATION = 0x001D  # payload: empty; wipes all devices/activities/macros/favorites/inputs.
+# Identical across X1, X1S, X2. The hub commonly disconnects after the ack; clients
+# must reconnect and re-fetch the catalogs from scratch. See docs/protocol/erase.md.
 # NOTE: opcode_hi=0x00 contradicts the documented 1-byte payload (frame
 # invariant says payload length == opcode_hi). Two possibilities:
 #   - The actual opcode is 0x0123 (1-byte payload) and was mis-recorded, or
@@ -217,6 +220,7 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_ACTIVITY_MAP: "REQ_ACTIVITY_MAP",
     OP_DELETE_DEVICE: "DELETE_DEVICE",
     OP_FIND_REMOTE: "FIND_REMOTE",
+    OP_ERASE_CONFIGURATION: "ERASE_CONFIGURATION",
     OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
     OP_REMOTE_SYNC: "REMOTE_SYNC",
     OP_X2_REMOTE_LIST: "X2_REMOTE_LIST",

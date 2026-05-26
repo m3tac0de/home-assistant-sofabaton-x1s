@@ -1645,8 +1645,8 @@ async def _async_handle_restore_backup(call: ServiceCall):
 
     Accepts a ``hub_bundle`` payload (schema_version 4). Devices in
     the bundle are restored first; activities are restored second,
-    after the hub has been erased (currently a ``NotImplementedError``
-    stub -- see :meth:`SofabatonHub.async_erase_configuration`).
+    after the hub has been erased
+    (see :meth:`SofabatonHub.async_erase_configuration`).
     """
 
     hass = call.hass
@@ -1669,8 +1669,6 @@ async def _async_handle_restore_backup(call: ServiceCall):
             payload,
             wifi_commands_request_port=wifi_commands_request_port,
         )
-    except NotImplementedError as exc:
-        raise HomeAssistantError(str(exc)) from exc
     except ValueError as exc:
         raise HomeAssistantError(f"restore_backup validation failed: {exc}") from exc
     except Exception as exc:

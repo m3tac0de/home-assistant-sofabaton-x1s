@@ -171,6 +171,52 @@ class AckWaitersMixin:
             log_timeout=True,
         )
 
+    def wait_for_any_response(
+        self,
+        *,
+        timeout: float,
+        not_before: float,
+        poll_interval: float = 0.2,
+        disconnect_check=None,
+    ) -> tuple[int, bytes] | None:
+        """Wait for the next frame *of any opcode* arriving after ``not_before``.
+
+        Unlike :meth:`wait_for_ack_any` this does not filter by opcode --
+        the first queued frame whose timestamp is ``>= not_before`` is
+        consumed and returned. Intended for opcodes whose response
+        family the integration deliberately does not pin down (e.g.
+        the hub-erase opcode, which is treated as fire-and-forget once
+        any reply comes back).
+
+        ``disconnect_check`` is an optional zero-arg callable returning
+        ``True`` when the underlying transport has dropped *before* a
+        response arrived. When supplied and it returns ``True``, the
+        wait exits immediately with ``None`` so the caller can
+        distinguish "hub didn't answer" from "hub disconnected without
+        answering". ``poll_interval`` bounds how quickly that check
+        runs (defaults to 200 ms).
+        """
+
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._ack_queue_lock:
+                for ack_opcode, ack_payload, ack_ts in self._ack_queue:
+                    if ack_ts < not_before:
+                        continue
+                    self._ack_queue.remove((ack_opcode, ack_payload, ack_ts))
+                    if not self._ack_queue:
+                        self._ack_event.clear()
+                    return ack_opcode, ack_payload
+                self._ack_event.clear()
+
+            if disconnect_check is not None and disconnect_check():
+                return None
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None
+            self._ack_event.wait(min(remaining, poll_interval))
+
     def cache_macro_record(self, record: MacroRecord) -> None:
         """Store a fully-assembled :class:`MacroRecord` keyed by ``(activity_id, key_id)``."""
 
