@@ -24,9 +24,10 @@ from .commands import descriptive_play_blob_text, looks_like_descriptive_play_bl
 from .device_create import build_command_write_steps
 from .protocol_const import (
     FAMILY_PLAY_BLOB,
-    PLAY_BLOB_CONT_CHUNK_OVERHEAD,
-    PLAY_BLOB_FIRST_CHUNK_OVERHEAD,
+    PLAY_BLOB_BODY_HEADER_LEN,
+    PLAY_BLOB_CHUNK_SIZE,
     PLAY_BLOB_MAX_PAYLOAD,
+    PLAY_BLOB_PAGE_HEADER_LEN,
 )
 
 
@@ -49,11 +50,14 @@ class IrBlobMixin:
     ) -> bool:
         """Send a canonical IR blob body to the hub for one-shot playback.
 
-        ``blob`` must be the replay body without the final replay-tail checksum
-        byte. This is the canonical form returned by ``fetch_blob`` and also
-        the body form synthesized from descriptive descriptors.
-        Returns True on success; False if the proxy is not in a state to issue
-        commands or the blob is too short to be valid.
+        ``blob`` is the raw library_data the hub stores for this command —
+        the same bytes returned by ``fetch_blob`` and produced by the
+        descriptive-descriptor builder. The wire body buffer (header +
+        library_data + sum8) is constructed here and then chunked across
+        family-0x0F frames.
+
+        Returns True on success; False if the proxy is not in a state to
+        issue commands or the blob is too short to be valid.
         """
 
         if not self.can_issue_commands():
@@ -64,10 +68,9 @@ class IrBlobMixin:
             self._log.warning("[PLAY_BLOB] blob too short or wrong type: %r", type(blob))
             return False
 
-        blob_body = bytes(blob)
-        payload = self._finalize_play_blob_body(blob_body)
+        body_buffer = self._build_play_blob_body_buffer(bytes(blob))
         ok, rejected = self._play_ir_blob_body(
-            payload,
+            body_buffer,
             inter_frame_delay=inter_frame_delay,
             ack_timeout=ack_timeout,
             final_ack_timeout=final_ack_timeout,
@@ -350,67 +353,44 @@ class IrBlobMixin:
 
     def _play_ir_blob_body(
         self,
-        payload: bytes,
+        body_buffer: bytes,
         *,
         inter_frame_delay: float,
         ack_timeout: float,
         final_ack_timeout: float,
     ) -> tuple[bool, bool]:
-        """Play one finalized blob payload (including replay-tail checksum).
+        """Chunk a fully-built playback body buffer across family-0x0F frames.
 
-        Returns ``(ok, rejected)`` where ``rejected`` is true only when the hub
-        explicitly NACKs playback with ``0x0103/0x0C``.
+        ``body_buffer`` is the complete sealed body: 12-byte header,
+        library_data, and trailing sum8. Each wire frame carries a
+        ``PLAY_BLOB_CHUNK_SIZE``-byte (247B) slice of this buffer prefixed
+        with a 3-byte page header ``[0x01, 0x00, page_no_lo]``.
+
+        Returns ``(ok, rejected)`` where ``rejected`` is true only when the
+        hub explicitly NACKs playback with ``0x0103/0x0C``.
         """
 
-        body_len = len(payload)
+        body_len = len(body_buffer)
         total_frames = self._play_blob_total_frames(body_len)
-        # Total wire bytes after the 13B first-chunk header / 3B continuation prefaces.
-        first_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_FIRST_CHUNK_OVERHEAD  # 237
-        cont_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_CONT_CHUNK_OVERHEAD    # 247
 
         self._log.info(
-            "[PLAY_BLOB] sending %dB blob in %d frame(s)", body_len, total_frames,
+            "[PLAY_BLOB] sending %dB body in %d frame(s)", body_len, total_frames,
         )
 
         # Ignore any stale ACKs already queued from prior traffic; playback must
         # pace itself only on ACKs caused by the chunks we are about to send.
         self.clear_ack_queue()
 
-        # Frame 1: 3B preface [01 00 01] + 10B sub-header [01 00 <X> 00*7] + blob slice
-        x_byte = total_frames & 0xFF
-        offset = 0
-        first_slice = payload[offset : offset + first_cap]
-        offset += len(first_slice)
-        first_payload = (
-            bytes([0x01, 0x00, 0x01, 0x01, 0x00, x_byte, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
-            + first_slice
-        )
         send_ts = time.monotonic()
-        self._send_family_play_frame(first_payload)
-        first_candidates = [(0x0103, 0x00)]
-        if total_frames == 1:
-            first_candidates.append((0x0103, 0x0C))
-        first_ack = self.wait_for_ack_any(first_candidates, timeout=ack_timeout, not_before=send_ts)
-        if first_ack is None:
-            self._log.warning("[PLAY_BLOB] timeout waiting for chunk ack seq=1/%d", total_frames)
-            return False, False
-        if first_ack[1][:1] == b"\x0c":
-            self._log.warning(
-                "[PLAY_BLOB] chunk rejected seq=1/%d %s",
-                total_frames,
-                self._play_blob_tail_diagnostics(payload),
-            )
-            return False, True
-
-        # Continuation frames: 3B preface [01 00 <seq>] + blob slice
-        for seq in range(2, total_frames + 1):
-            if inter_frame_delay > 0:
+        for seq in range(1, total_frames + 1):
+            if seq > 1 and inter_frame_delay > 0:
                 time.sleep(inter_frame_delay)
-            cont_slice = payload[offset : offset + cont_cap]
-            offset += len(cont_slice)
-            cont_payload = bytes([0x01, 0x00, seq & 0xFF]) + cont_slice
+            slice_start = (seq - 1) * PLAY_BLOB_CHUNK_SIZE
+            slice_end = min(slice_start + PLAY_BLOB_CHUNK_SIZE, body_len)
+            body_slice = body_buffer[slice_start:slice_end]
+            frame_payload = bytes([0x01, 0x00, seq & 0xFF]) + body_slice
             send_ts = time.monotonic()
-            self._send_family_play_frame(cont_payload)
+            self._send_family_play_frame(frame_payload)
             candidates = [(0x0103, 0x00)]
             if seq == total_frames:
                 candidates.append((0x0103, 0x0C))
@@ -427,7 +407,7 @@ class IrBlobMixin:
                     "[PLAY_BLOB] chunk rejected seq=%d/%d %s",
                     seq,
                     total_frames,
-                    self._play_blob_tail_diagnostics(payload),
+                    self._play_blob_tail_diagnostics(body_buffer),
                 )
                 return False, True
 
@@ -442,7 +422,7 @@ class IrBlobMixin:
         if completion_ack is not None:
             self._log.warning(
                 "[PLAY_BLOB] hub reported playback failure after final chunk %s",
-                self._play_blob_tail_diagnostics(payload),
+                self._play_blob_tail_diagnostics(body_buffer),
             )
             return False, True
 
@@ -462,22 +442,23 @@ class IrBlobMixin:
     def _looks_like_x1_database_capture_blob(blob: bytes) -> bool:
         """Return True for observed non-descriptor X1/X1S database-style blobs."""
         return (
-            len(blob) >= 16
-            and blob[0:2] == b"\x00\x00"
-            and blob[4:8] == b"\x00\x00\x00\x00"
-            and blob[8:10] in (b"\x9c\x40", b"\x94\xcf", b"\x94\x74")
+            len(blob) >= 14
+            and blob[2:6] == b"\x00\x00\x00\x00"
+            and blob[6:8] in (b"\x9c\x40", b"\x94\xcf", b"\x94\x74")
         )
 
     @staticmethod
     def _extract_single_frame_play_blob(payload: bytes) -> bytes | None:
-        """Extract a complete single-frame replay blob body from a family-0x0F payload.
+        """Extract a complete single-frame replay library_data from a family-0x0F payload.
 
-        Single-frame replay requests use the first-chunk layout:
-        ``01 00 01 01 00 <total_frames> 00 00 00 00 00 00 00`` + blob bytes.
-        For now we only decode descriptive blobs when the entire replay body is
-        present in that one frame.
+        Single-frame replay requests use the layout:
+        ``[01 00 01] [01 00 <total_pages_be> 00 00 00 00 00 00 00 00 00]`` +
+        library_data + sum8. ``total_pages_be`` must be 1 for a single-frame
+        replay. Returns the embedded library_data (without the trailing sum8),
+        or None if the payload doesn't match.
         """
-        if len(payload) < 13:
+        preface_len = PLAY_BLOB_PAGE_HEADER_LEN + PLAY_BLOB_BODY_HEADER_LEN  # 15
+        if len(payload) < preface_len + 1:
             return None
         if payload[0:3] != b"\x01\x00\x01":
             return None
@@ -485,31 +466,55 @@ class IrBlobMixin:
             return None
         if payload[5] != 0x01:
             return None
-        if payload[6:13] != b"\x00\x00\x00\x00\x00\x00\x00":
+        if payload[6:preface_len] != b"\x00" * (preface_len - 6):
             return None
-        blob = payload[13:]
-        return blob or None
+        # Drop the trailing body sum8 byte to surface only library_data.
+        return payload[preface_len:-1] or None
 
     @staticmethod
     def _descriptive_play_blob_text(blob: bytes) -> str | None:
         """Return the human-readable descriptor string from a descriptive blob."""
         return descriptive_play_blob_text(blob)
 
-    def _finalize_play_blob_body(self, blob_body: bytes) -> bytes:
-        """Append the replay-tail checksum to a canonical blob body."""
+    def _build_play_blob_body_buffer(self, library_data: bytes) -> bytes:
+        """Return the fully sealed body buffer for a playback of ``library_data``.
 
-        total_frames = self._play_blob_total_frames(len(blob_body))
-        checksum_byte = (sum(blob_body) + total_frames + 1) & 0xFF
-        return blob_body + bytes([checksum_byte])
+        Layout::
+
+            body[0]     = 0x01
+            body[1..2]  = total_pages BE
+            body[3..5]  = 0x00 0x00 0x00
+            body[6..11] = 0x00 * 6
+            body[12..]  = library_data
+            body[-1]    = sum8(body[:-1])
+        """
+
+        body_len = PLAY_BLOB_BODY_HEADER_LEN + len(library_data) + 1
+        total_pages = (body_len + PLAY_BLOB_CHUNK_SIZE - 1) // PLAY_BLOB_CHUNK_SIZE
+        body = bytearray(body_len)
+        body[0] = 0x01
+        body[1] = (total_pages >> 8) & 0xFF
+        body[2] = total_pages & 0xFF
+        body[PLAY_BLOB_BODY_HEADER_LEN:PLAY_BLOB_BODY_HEADER_LEN + len(library_data)] = library_data
+        body[-1] = sum(body[:-1]) & 0xFF
+        return bytes(body)
+
+    def _finalize_play_blob_body(self, library_data: bytes) -> bytes:
+        """Return ``library_data`` with the trailing body sum8 byte appended.
+
+        Equivalent to slicing off the 12-byte body header from the sealed
+        body buffer built by :meth:`_build_play_blob_body_buffer`.
+        """
+
+        body_buffer = self._build_play_blob_body_buffer(bytes(library_data))
+        return body_buffer[PLAY_BLOB_BODY_HEADER_LEN:]
 
     def _play_blob_total_frames(self, body_len: int) -> int:
-        """Return the number of family-0x0F frames needed for a blob body."""
-        first_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_FIRST_CHUNK_OVERHEAD  # 237
-        cont_cap = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_CONT_CHUNK_OVERHEAD    # 247
-        if body_len <= first_cap:
-            return 1
-        extra = body_len - first_cap
-        return 1 + (extra + cont_cap - 1) // cont_cap
+        """Return the number of family-0x0F frames needed for a body buffer."""
+
+        if body_len <= 0:
+            return 0
+        return (body_len + PLAY_BLOB_CHUNK_SIZE - 1) // PLAY_BLOB_CHUNK_SIZE
 
     def _play_blob_tail_diagnostics(self, blob: bytes) -> str:
         """Return compact checksum candidates for blob-tail replay failures."""

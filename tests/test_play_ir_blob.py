@@ -1,9 +1,9 @@
 """Tests for play_ir_blob wire-format generation.
 
-Each fixture is a real capture of the official Sofabaton app's "Test" feature
-exchanging family-0x0F frames with a hub. We reconstruct the source blob from
-the captured frames, run it through ``X1Proxy.play_ir_blob``, and assert the
-generated frames match the originals byte-for-byte.
+Each fixture is a real wire capture of a hub exchanging family-0x0F frames.
+We reconstruct the source library_data from the captured frames, run it
+through ``X1Proxy.play_ir_blob``, and assert the generated frames match the
+originals byte-for-byte.
 
 Captures:
 - Sony POWER ON   — X1 hub, 2 frames (FA0F + 5D0F)
@@ -14,6 +14,16 @@ Captures:
 Fixtures store full frames as captured on the wire (magic + opcode + payload +
 sum8). ``_split_frame`` peels off the 4-byte header and 1-byte trailer to give
 back ``(opcode, payload)`` — same form the proxy emits.
+
+Wire payload layout per frame::
+
+    payload[0..2]   = page header [0x01, 0x00, page_no_lo]
+    payload[3..14]  = body header (frame 1 only): [0x01, 0x00, total_pages_be(2B),
+                       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+    payload[15..]   = body slice (library_data for frame 1, continuation for the rest)
+
+The final byte of the assembled body buffer is a sum8 over all preceding body
+bytes (header + library_data).
 """
 
 from __future__ import annotations
@@ -185,16 +195,17 @@ X1S_5FRAME_WIRE: list[bytes] = [
 # type out by hand. opcode_hi=0x6C ⇒ payload length 108, total frame size 113.
 def _build_x1s_singleframe() -> bytes:
     head = _hx("a5 5a 6c 0f")
-    preface_and_subheader = _hx("01 00 01 01 00 01 00 00 00 00 00 00 00")  # 13B
-    blob_head = _hx(
-        "00 00 00 50 00 00 10 00 94 70 1c 3a 40 62 21 df 0d 7f 8c 53 19 67 8c"
+    # 3B page header + 12B body header (pages=1, rest zeros).
+    preface_and_body_header = _hx("01 00 01 01 00 01 00 00 00 00 00 00 00 00 00")  # 15B
+    library_data_head = _hx(
+        "00 50 00 00 10 00 94 70 1c 3a 40 62 21 df 0d 7f 8c 53 19 67 8c"
         "61 32 71 ca 5b 95 0d 1d 69 fc 79 8c 00 e0 27 8c 00 dc c4 21 00 00 66"
         "6f 11 11 64 71 00 6f 54 67 11 77 7f 67 96 6f 61"
     )
-    blob_chk = _hx("45")  # blob's own trailing sum8 byte
+    body_chk = _hx("45")  # body's trailing sum8 byte
     frame_chk = _hx("06")  # frame's trailing sum8 byte
-    pad_len = 108 - len(preface_and_subheader) - len(blob_head) - len(blob_chk)
-    return head + preface_and_subheader + blob_head + (b"\x00" * pad_len) + blob_chk + frame_chk
+    pad_len = 108 - len(preface_and_body_header) - len(library_data_head) - len(body_chk)
+    return head + preface_and_body_header + library_data_head + (b"\x00" * pad_len) + body_chk + frame_chk
 
 
 X1S_SINGLEFRAME_WIRE: list[bytes] = [_build_x1s_singleframe()]
@@ -221,12 +232,12 @@ DENON_DB_NAV_UP_WIRE: list[bytes] = [
 
 
 SONY12_DESCRIPTOR_BLOB = _hx("""
-    00 00 00 1f 00 00 11 00 94 70 50 3a 53 6f 6e 79 31 32 20 52 3a 34 30 30 30
+    00 1f 00 00 11 00 94 70 50 3a 53 6f 6e 79 31 32 20 52 3a 34 30 30 30
     30 20 44 3a 31 20 46 3a 31 38 20 4d 55 4c 3a 32 00 00 00 00 79
 """)
 
 NEC_DESCRIPTOR_BLOB = _hx("""
-    00 00 00 1c 00 00 11 00 94 70 50 3a 4e 45 43 20 52 3a 33 38 34 30 30 20 44
+    00 1c 00 00 11 00 94 70 50 3a 4e 45 43 20 52 3a 33 38 34 30 30 20 44
     3a 30 20 53 3a 32 30 36 20 46 3a 31 31 00 00 00 00 56
 """)
 
@@ -391,20 +402,21 @@ def _split_frame(wire: bytes) -> tuple[int, bytes]:
 
 
 def _reconstruct_blob(frames: list[bytes]) -> bytes:
-    """Strip per-chunk overhead from each frame and re-glue the blob.
+    """Strip per-chunk overhead from each frame and re-glue the body content.
 
-    Frame 1 strips the 13-byte preface+sub-header. Continuations strip the 3-byte
-    preface only.
+    Frame 1 strips the 3-byte page header plus the 12-byte body header
+    (15 bytes total). Continuations strip the 3-byte page header only. The
+    concatenated result is ``library_data + trailing_sum8``.
     """
     parts: list[bytes] = []
     for idx, wire in enumerate(frames):
         _, payload = _split_frame(wire)
-        parts.append(payload[13:] if idx == 0 else payload[3:])
+        parts.append(payload[15:] if idx == 0 else payload[3:])
     return b"".join(parts)
 
 
 def _canonical_blob_body(frames: list[bytes]) -> bytes:
-    """Return the canonical blob body expected by ``play_ir_blob``."""
+    """Return the canonical library_data expected by ``play_ir_blob``."""
 
     return _reconstruct_blob(frames)[:-1]
 
@@ -478,19 +490,20 @@ def test_play_ir_blob_matches_capture(name: str, monkeypatch) -> None:
         ("x1s_singleframe", 1),
     ],
 )
-def test_subheader_x_equals_frame_count(name: str, expected_x: int, monkeypatch) -> None:
+def test_body_header_encodes_total_pages(name: str, expected_x: int, monkeypatch) -> None:
     blob = _canonical_blob_body(CAPTURES[name])
     proxy = _new_proxy()
     sent = _capture_sends(proxy, monkeypatch)
 
     proxy.play_ir_blob(blob, inter_frame_delay=0.0)
 
-    # Frame 1 layout: [01 00 01] [01 00 <X> 00 00 00 00 00 00 00] [blob...]
+    # Frame 1 layout: [01 00 01] [01 00 <X> 00 00 00 00 00 00 00 00 00] [library_data...]
     first_payload = sent[0][1]
     assert first_payload[:3] == b"\x01\x00\x01"
-    assert first_payload[3:5] == b"\x01\x00"
+    assert first_payload[3] == 0x01
+    assert first_payload[4] == 0x00
     assert first_payload[5] == expected_x
-    assert first_payload[6:13] == b"\x00\x00\x00\x00\x00\x00\x00"
+    assert first_payload[6:15] == b"\x00" * 9
 
 
 # ---------------------------------------------------------------------------
@@ -692,14 +705,17 @@ def test_descriptive_play_blob_text_extracts_ascii_descriptor() -> None:
 
 def test_extract_single_frame_play_blob_unwraps_first_chunk_payload() -> None:
     proxy = _new_proxy()
-    payload = bytes.fromhex("01 00 01 01 00 01 00 00 00 00 00 00 00") + SONY12_DESCRIPTOR_BLOB
+    # 15B preface = 3B page header + 12B body header (pages=1).
+    payload = bytes.fromhex("01 00 01 01 00 01 00 00 00 00 00 00 00 00 00") + SONY12_DESCRIPTOR_BLOB
 
-    assert proxy._extract_single_frame_play_blob(payload) == SONY12_DESCRIPTOR_BLOB
+    # SONY12_DESCRIPTOR_BLOB already carries its trailing body sum8 byte,
+    # so the extractor returns the library_data with that byte stripped.
+    assert proxy._extract_single_frame_play_blob(payload) == SONY12_DESCRIPTOR_BLOB[:-1]
 
 
 def test_log_frames_logs_descriptive_play_blob_from_app(caplog) -> None:
     proxy = _new_proxy()
-    payload = bytes.fromhex("01 00 01 01 00 01 00 00 00 00 00 00 00") + SONY12_DESCRIPTOR_BLOB
+    payload = bytes.fromhex("01 00 01 01 00 01 00 00 00 00 00 00 00 00 00") + SONY12_DESCRIPTOR_BLOB
     opcode = (len(payload) << 8) | 0x0F
     raw = bytes.fromhex("a5 5a") + opcode.to_bytes(2, "big") + payload + b"\x00"
 

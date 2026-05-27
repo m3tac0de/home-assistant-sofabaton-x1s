@@ -1,4 +1,4 @@
-export type TabId = "settings" | "wifi_commands" | "blobs" | "cache" | "logs";
+export type TabId = "settings" | "wifi_commands" | "blobs" | "backup" | "cache" | "logs";
 export type SectionId = "activities" | "devices";
 export type SettingKey =
   | "persistent_cache"
@@ -137,6 +137,72 @@ export interface BlobPersistResponse {
   command_id: number;
   command_name: string;
   page_count?: number | null;
+}
+
+export interface BackupBundleDeviceBlock {
+  device_id: number;
+  name?: string | null;
+  brand?: string | null;
+  device_class?: string | null;
+  device_class_code?: number | null;
+  entity_type?: string | null;
+}
+
+export interface BackupBundleDevicePayload {
+  kind?: string | null;
+  complete?: boolean;
+  device?: BackupBundleDeviceBlock | null;
+}
+
+export interface BackupBundleActivityPayload {
+  kind?: string | null;
+  complete?: boolean;
+  device?: BackupBundleDeviceBlock | null;
+  referenced_source_device_ids?: number[] | null;
+}
+
+export interface BackupBundlePayload {
+  kind: string;
+  schema_version: number;
+  captured_at?: string | null;
+  complete?: boolean | null;
+  hub?: {
+    entry_id?: string | null;
+    name?: string | null;
+    version?: string | null;
+  } | null;
+  devices: BackupBundleDevicePayload[];
+  activities: BackupBundleActivityPayload[];
+}
+
+export interface BackupOperationStartResponse {
+  operation_id: string;
+}
+
+export interface BackupRestoreResult {
+  status: string;
+  failed_at?: [string, number | null] | null;
+  device_id_map?: Record<string, number> | null;
+  restored_devices?: Array<Record<string, unknown>> | null;
+  restored_activities?: Array<Record<string, unknown>> | null;
+}
+
+export interface BackupProgressEvent {
+  operation_id: string;
+  kind: string;
+  entry_id: string;
+  status: string;
+  phase?: string | null;
+  mode?: string | null;
+  message?: string | null;
+  completed_steps?: number | null;
+  total_steps?: number | null;
+  current_device_id?: number | null;
+  current_activity_id?: number | null;
+  filename?: string | null;
+  backup?: BackupBundlePayload | null;
+  result?: BackupRestoreResult | null;
+  error?: string | null;
 }
 
 export interface ControlPanelSnapshot {

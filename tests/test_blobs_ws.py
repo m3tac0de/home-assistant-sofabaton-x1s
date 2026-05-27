@@ -120,7 +120,7 @@ def test_ws_play_ir_blob_accepts_hex_blob(monkeypatch):
               {
                   "id": 2,
                   "entry_id": "entry-1",
-                  "blob": "00 00 00 1f 00 00 11 00 94 70 50 3a 53 6f 6e 79 31 32 20 52 3a 34 30 30 30 30 20 44 3a 31 20 46 3a 31 38 20 4d 55 4c 3a 32 00 00 00 00",
+                  "blob": "00 1f 00 00 11 00 94 70 50 3a 53 6f 6e 79 31 32 20 52 3a 34 30 30 30 30 20 44 3a 31 20 46 3a 31 38 20 4d 55 4c 3a 32 00 00 00 00",
               },
           )
       )
@@ -130,7 +130,7 @@ def test_ws_play_ir_blob_accepts_hex_blob(monkeypatch):
     assert conn.error is None
     assert conn.result == (2, {"ok": True})
     assert hub.play_calls[-1][0] == bytes.fromhex(
-        "00 00 00 1f 00 00 11 00 94 70 50 3a 53 6f 6e 79 31 32 20 52 3a 34 30 30 30 30 20 44 3a 31 20 46 3a 31 38 20 4d 55 4c 3a 32 00 00 00 00"
+        "00 1f 00 00 11 00 94 70 50 3a 53 6f 6e 79 31 32 20 52 3a 34 30 30 30 30 20 44 3a 31 20 46 3a 31 38 20 4d 55 4c 3a 32 00 00 00 00"
     )
 
 
@@ -163,7 +163,9 @@ def test_ws_play_ir_blob_accepts_descriptor(monkeypatch):
     assert conn.error is None
     assert conn.result == (3, {"ok": True})
     assert isinstance(hub.play_calls[-1][0], bytes)
-    assert hub.play_calls[-1][0].startswith(b"\x00\x00")
+    # Descriptor library_data begins with a 2-byte BE descriptor-text length
+    # ("P:Sony12 R:40000 D:1 F:18 MUL:2" = 31 chars = 0x001F).
+    assert hub.play_calls[-1][0][:2] == b"\x00\x1f"
 
 
 def test_ws_play_ir_blob_reports_invalid_blob(monkeypatch):
@@ -261,7 +263,9 @@ def test_ws_persist_ir_blob_accepts_descriptor(monkeypatch):
     assert hub.persist_calls[-1][0] == 11
     assert hub.persist_calls[-1][1] == "New Command"
     assert isinstance(hub.persist_calls[-1][2], bytes)
-    assert hub.persist_calls[-1][2].startswith(b"\x00\x00")
+    # Descriptor library_data begins with a 2-byte BE descriptor-text length
+    # ("P:Sony12 R:40000 D:1 F:18 MUL:2" = 31 chars = 0x001F).
+    assert hub.persist_calls[-1][2][:2] == b"\x00\x1f"
 
 
 def test_ws_persist_ir_blob_reports_unavailable_when_hub_rejects(monkeypatch):

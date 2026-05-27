@@ -1439,10 +1439,12 @@ def test_parse_ir_command_dump_frame_accepts_denon_continuation_opcodes() -> Non
 
 
 def test_parse_ir_command_dump_frame_extracts_x1_ascii_label_and_blob_offset() -> None:
+    # X1 uses a 30-byte ASCII label slot: bytes [15..44] of the dump payload.
+    # Library_data follows starting at byte 45.
     payload = bytes.fromhex(
         "01 00 01 01 00 04 01 03 0d 00 00 00 00 17 13 "
         "50 6f 77 65 72 20 6f 6e "
-        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+        "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
         "03 20 00 00 00 00 95 2a 00 00 0d 03"
     )
     parsed = parse_ir_command_dump_frame(0xFA0D, _build_ir_dump_frame(0xFA0D, payload))
@@ -2808,7 +2810,7 @@ def test_denonk_checksum_matches_observed_samples(fields, expected) -> None:
             dict(device=4, subdevice=1, function=5),
             _hx(
                 """
-                00 00 00 39 00 00 11 00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30
+                00 39 00 00 11 00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30
                 30 20 43 30 3a 38 34 20 43 31 3a 35 30 20 43 32 3a 30 20 44 3a 34 20 53 3a
                 31 20 46 3a 35 20 43 48 45 43 4b 53 55 4d 3a 31 37 00 00 00 00 87
                 """
@@ -2818,7 +2820,7 @@ def test_denonk_checksum_matches_observed_samples(fields, expected) -> None:
             dict(device=4, subdevice=1, function=368),
             _hx(
                 """
-                00 00 00 3b 00 00 11 00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30
+                00 3b 00 00 11 00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30
                 30 20 43 30 3a 38 34 20 43 31 3a 35 30 20 43 32 3a 30 20 44 3a 34 20 53 3a
                 31 20 46 3a 33 36 38 20 43 48 45 43 4b 53 55 4d 3a 38 36 00 00 00 00 28
                 """
@@ -2828,7 +2830,7 @@ def test_denonk_checksum_matches_observed_samples(fields, expected) -> None:
             dict(device=4, subdevice=1, function=369),
             _hx(
                 """
-                00 00 00 3b 00 00 11 00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30
+                00 3b 00 00 11 00 94 70 50 3a 44 65 6e 6f 6e 4b 20 52 3a 33 37 30 30
                 30 20 43 30 3a 38 34 20 43 31 3a 35 30 20 43 32 3a 30 20 44 3a 34 20 53 3a
                 31 20 46 3a 33 36 39 20 43 48 45 43 4b 53 55 4d 3a 37 30 00 00 00 00 83
                 """

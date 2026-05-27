@@ -994,6 +994,9 @@ class RestoreMixin:
         payload: dict[str, Any],
         *,
         wifi_commands_request_port: int = 8060,
+        progress_callback=None,
+        progress_offset: int = 0,
+        progress_total_steps: int | None = None,
     ) -> dict[str, Any]:
         """Restore a ``hub_bundle`` payload onto the live hub.
 
@@ -1018,6 +1021,10 @@ class RestoreMixin:
         skipped. The caller surfaces the partial state to the user.
         """
 
+        def _progress(**progress_payload: Any) -> None:
+            if callable(progress_callback):
+                progress_callback(progress_payload)
+
         if not isinstance(payload, dict):
             raise ValueError("restore_hub_bundle payload must be a dict")
         if payload.get("kind") != "hub_bundle":
@@ -1037,6 +1044,8 @@ class RestoreMixin:
 
         devices = list(payload.get("devices") or [])
         activities = list(payload.get("activities") or [])
+        total_steps = int(progress_total_steps or (progress_offset + len(devices) + len(activities)))
+        completed_steps = int(progress_offset)
 
         device_id_map: dict[int, int] = {}
         command_id_maps: dict[int, dict[int, int]] = {}
@@ -1052,6 +1061,14 @@ class RestoreMixin:
                     "[RESTORE] bundle device payload has no source device_id; skipping"
                 )
                 continue
+            _progress(
+                status="running",
+                phase="device",
+                message=f"Restoring device {src_id}…",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+                current_device_id=src_id,
+            )
             bundle_devices_by_source_id[src_id] = device_payload
             result = self.restore_device(
                 payload=device_payload,
@@ -1085,6 +1102,15 @@ class RestoreMixin:
                     "restored_commands": result.get("restored_commands", 0),
                 }
             )
+            completed_steps += 1
+            _progress(
+                status="running",
+                phase="device",
+                message=f"Restored device {src_id}.",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+                current_device_id=src_id,
+            )
 
         restored_activities: list[dict[str, Any]] = []
         for activity_payload in activities:
@@ -1092,6 +1118,14 @@ class RestoreMixin:
                 continue
             activity_block = activity_payload.get("device") or {}
             src_act_id = int(activity_block.get("device_id", 0)) & 0xFF
+            _progress(
+                status="running",
+                phase="activity",
+                message=f"Restoring activity {src_act_id}…",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+                current_activity_id=src_act_id,
+            )
             try:
                 result = self.restore_activity(
                     payload=activity_payload,
@@ -1130,6 +1164,15 @@ class RestoreMixin:
                         "skipped_input_ordinals", 0
                     ),
                 }
+            )
+            completed_steps += 1
+            _progress(
+                status="running",
+                phase="activity",
+                message=f"Restored activity {src_act_id}.",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+                current_activity_id=src_act_id,
             )
 
         return {

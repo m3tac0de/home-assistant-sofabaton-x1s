@@ -69,6 +69,7 @@ from custom_components.sofabaton_x1s.lib.device_create import (
     run_create_sequence,
     synthesize_command_code,
 )
+from custom_components.sofabaton_x1s.lib.inputs import InputEntry, build_inputs_write
 from custom_components.sofabaton_x1s.lib.devices import DeviceConfig
 
 
@@ -675,6 +676,52 @@ def test_run_create_sequence_treats_any_nonzero_status_ack_as_rejection() -> Non
     assert result.rejected is True
     assert result.reject_payload == b"\x09"
     assert result.failed_step is step
+
+
+def test_run_create_sequence_pages_oversized_family_46_payloads() -> None:
+    entries = [
+        InputEntry(
+            key_id=0x33 + idx,
+            fid=0x0000_0000_4E33 + idx,
+            ordinal=idx + 1,
+            label=f"Input {idx + 1}",
+        )
+        for idx in range(12)
+    ]
+    payload = build_inputs_write(
+        hub_version=HUB_VERSION_X1,
+        device_id=0x05,
+        entries=entries,
+    )
+    step = _step(
+        "inputs",
+        FAMILY_INPUTS,
+        payload,
+        ACK_OPCODE_STATUS,
+        ack_first_byte=0,
+    )
+    proxy = _FakeProxy(
+        ack_script=[
+            (ACK_OPCODE_STATUS, b"\x00"),
+            (ACK_OPCODE_STATUS, b"\x00"),
+        ],
+    )
+
+    result = run_create_sequence(proxy, [step])
+
+    assert result.success is True
+    assert len(proxy.send_log) == 2
+
+    first_family, first_payload = proxy.send_log[0]
+    second_family, second_payload = proxy.send_log[1]
+    assert first_family == FAMILY_INPUTS
+    assert second_family == FAMILY_INPUTS
+    assert len(first_payload) == 250
+    assert len(second_payload) == 196
+    assert first_payload[:3] == bytes.fromhex("01 00 01")
+    assert second_payload[:3] == bytes.fromhex("01 00 02")
+    assert b"".join(sent_payload[3:] for _family, sent_payload in proxy.send_log) == payload[3:]
+    assert len(proxy.wait_calls) == 2
 
 
 # ---------------------------------------------------------------------------

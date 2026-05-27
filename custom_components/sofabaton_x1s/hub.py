@@ -1752,6 +1752,7 @@ class SofabatonHub:
         *,
         device_ids: list[int] | None = None,
         wait_timeout: float = 10.0,
+        progress_callback: Any = None,
     ) -> dict[str, Any]:
         """Build a ``hub_bundle`` payload covering the requested scope.
 
@@ -1766,7 +1767,18 @@ class SofabatonHub:
         the per-entity envelopes are no longer surfaced.
         """
 
+        def _progress(**payload: Any) -> None:
+            if callable(progress_callback):
+                progress_callback(payload)
+
         if device_ids is None:
+            _progress(
+                status="running",
+                phase="preparing",
+                message="Refreshing devices and activities from the hub…",
+                completed_steps=0,
+                total_steps=0,
+            )
             # Full-hub bundle: refresh both catalogs so the per-entity
             # backups operate against current state.
             await self._async_refresh_devices_snapshot(
@@ -1803,8 +1815,19 @@ class SofabatonHub:
             selected_device_ids = normalized
             selected_activity_ids = []
 
+        total_steps = len(selected_device_ids) + len(selected_activity_ids) + 1
+        completed_steps = 0
+
         device_payloads: list[dict[str, Any]] = []
         for dev_id in selected_device_ids:
+            _progress(
+                status="running",
+                phase="device",
+                message=f"Backing up device {dev_id}…",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+                current_device_id=dev_id,
+            )
             payload = await self.async_backup_device(
                 device_id=dev_id, wait_timeout=wait_timeout
             )
@@ -1813,9 +1836,26 @@ class SofabatonHub:
                     f"Hub did not return device data for device {dev_id}"
                 )
             device_payloads.append(payload)
+            completed_steps += 1
+            _progress(
+                status="running",
+                phase="device",
+                message=f"Backed up device {dev_id}.",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+                current_device_id=dev_id,
+            )
 
         activity_payloads: list[dict[str, Any]] = []
         for act_id in selected_activity_ids:
+            _progress(
+                status="running",
+                phase="activity",
+                message=f"Backing up activity {act_id}…",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+                current_activity_id=act_id,
+            )
             payload = await self.async_backup_activity(
                 activity_id=act_id, wait_timeout=wait_timeout
             )
@@ -1827,9 +1867,26 @@ class SofabatonHub:
                     f"Hub did not return activity data for activity {act_id}"
                 )
             activity_payloads.append(payload)
+            completed_steps += 1
+            _progress(
+                status="running",
+                phase="activity",
+                message=f"Backed up activity {act_id}.",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+                current_activity_id=act_id,
+            )
 
         complete = all(bool(p.get("complete")) for p in device_payloads) and all(
             bool(p.get("complete")) for p in activity_payloads
+        )
+        completed_steps += 1
+        _progress(
+            status="running",
+            phase="finalizing",
+            message="Finalizing backup bundle…",
+            completed_steps=completed_steps,
+            total_steps=total_steps,
         )
 
         return {
@@ -1844,6 +1901,7 @@ class SofabatonHub:
             },
             "devices": device_payloads,
             "activities": activity_payloads,
+            "_progress_total_steps": total_steps,
         }
 
     async def async_erase_configuration(
@@ -1882,6 +1940,8 @@ class SofabatonHub:
         payload: dict[str, Any],
         *,
         wifi_commands_request_port: int = 8060,
+        replace_mode: bool | None = None,
+        progress_callback: Any = None,
     ) -> dict[str, Any] | None:
         """Restore a ``hub_bundle`` payload onto the live hub.
 
@@ -1898,6 +1958,10 @@ class SofabatonHub:
         restore fails before any wire writes.
         """
 
+        def _progress(**progress_payload: Any) -> None:
+            if callable(progress_callback):
+                progress_callback(progress_payload)
+
         if not isinstance(payload, dict):
             raise ValueError("restore_backup expects a hub_bundle object")
         if payload.get("kind") != "hub_bundle":
@@ -1911,11 +1975,30 @@ class SofabatonHub:
                 "rejected -- no migrator is provided"
             )
 
-        activities = payload.get("activities") or []
-        if activities:
+        devices = list(payload.get("devices") or [])
+        activities = list(payload.get("activities") or [])
+        use_replace_mode = bool(activities) if replace_mode is None else bool(replace_mode)
+        total_steps = 1 + len(devices) + len(activities) + (1 if use_replace_mode else 0)
+        completed_steps = 1
+        _progress(
+            status="running",
+            phase="validation",
+            message="Validating restore bundle…",
+            completed_steps=completed_steps,
+            total_steps=total_steps,
+        )
+
+        if use_replace_mode:
             # Replace mode. Erase the hub first so device ids reset
             # to a known empty slate before the bundle's devices are
             # rewritten.
+            _progress(
+                status="running",
+                phase="erase",
+                message="Erasing the destination hub…",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+            )
             erased = await self.async_erase_configuration()
             if not erased:
                 raise HomeAssistantError(
@@ -1923,12 +2006,23 @@ class SofabatonHub:
                     "Check the hub is reachable and try again; if it persists, "
                     "inspect the [ERASE] log lines for the specific failure mode."
                 )
+            completed_steps += 1
+            _progress(
+                status="running",
+                phase="erase",
+                message="Destination hub erased.",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+            )
 
         return await self.hass.async_add_executor_job(
             partial(
                 self._proxy.restore_hub_bundle,
                 payload=payload,
                 wifi_commands_request_port=wifi_commands_request_port,
+                progress_callback=progress_callback,
+                progress_offset=completed_steps,
+                progress_total_steps=total_steps,
             )
         )
 

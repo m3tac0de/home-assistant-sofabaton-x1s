@@ -329,14 +329,23 @@ FAMILY_FAV_DELETE = 0x10      # A→H: delete a single favorite from an activity
 FAMILY_FAV_ORDER_REQ = 0x62   # A→H: request current favorites ordering (opcode 0x0162)
 FAMILY_FAV_ORDER_RESP = 0x63  # H→A: hub returns current favorites ordering (opcode variable)
 
-# IR blob playback (mirrors app "Test" feature)
-# Sent as one or more frames in family 0x0F. Each frame's opcode_hi is the
-# payload length (so the first/middle full chunks are OP_FA0F = 250B payload,
-# and the final frame uses (remaining_len << 8) | 0x0F).
+# IR blob playback.
+# Each frame carries a 247-byte slice of a single contiguous body buffer.
+# The body buffer is laid out as:
+#   body[0]     = 0x01
+#   body[1..2]  = total_pages BE
+#   body[3..5]  = 0x00 0x00 0x00
+#   body[6..11] = 0x00 * 6
+#   body[12..]  = library_data
+#   body[-1]    = sum8 over the preceding bytes
+# Every wire frame prepends a 3-byte page header [0x01, 0x00, page_no_lo] to
+# its slice. Frame opcode_hi is the resulting payload length (full chunks are
+# OP_FA0F = 250B payload).
 FAMILY_PLAY_BLOB = 0x0F
 PLAY_BLOB_MAX_PAYLOAD = 0xFA          # 250B — full-chunk payload size
-PLAY_BLOB_FIRST_CHUNK_OVERHEAD = 13   # 3B preface + 10B sub-header
-PLAY_BLOB_CONT_CHUNK_OVERHEAD = 3     # 3B preface only on continuation frames
+PLAY_BLOB_PAGE_HEADER_LEN = 3         # [0x01, 0x00, page_no_lo] preface per frame
+PLAY_BLOB_BODY_HEADER_LEN = 12        # body bytes preceding library_data
+PLAY_BLOB_CHUNK_SIZE = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_PAGE_HEADER_LEN  # 247B body slice per frame
 
 FAMILY_NAMES: Dict[int, str] = {
     FAMILY_STATUS_ACK: "STATUS_ACK",

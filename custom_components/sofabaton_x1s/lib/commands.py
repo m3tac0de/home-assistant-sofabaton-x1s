@@ -723,14 +723,21 @@ def _sum8(data: bytes) -> int:
 
 
 def looks_like_descriptive_play_blob(blob: bytes) -> bool:
-    """Return True for human-readable protocol-descriptor replay blobs."""
+    """Return True for human-readable protocol-descriptor replay blobs.
+
+    Descriptor library_data layout::
+
+        blob[0..1] = declared length BE (>= 1, == len of the ASCII descriptor)
+        blob[2..5] = 0x00 0x00 0x11 0x00
+        blob[6..7] = 0x94 0x70
+        blob[8..]  = ASCII descriptor starting with "P:" + four trailing nulls
+    """
 
     return (
-        len(blob) >= 16
-        and blob[0:2] == b"\x00\x00"
-        and blob[4:8] == b"\x00\x00\x11\x00"
-        and blob[8:10] == b"\x94\x70"
-        and blob[10:12] == b"P:"
+        len(blob) >= 14
+        and blob[2:6] == b"\x00\x00\x11\x00"
+        and blob[6:8] == b"\x94\x70"
+        and blob[8:10] == b"P:"
     )
 
 
@@ -739,14 +746,14 @@ def descriptive_play_blob_text(blob: bytes) -> str | None:
 
     if not looks_like_descriptive_play_blob(blob):
         return None
-    declared_len = int.from_bytes(blob[2:4], "big")
+    declared_len = int.from_bytes(blob[0:2], "big")
     if declared_len <= 0:
         return None
-    text_end = 10 + declared_len
+    text_end = 8 + declared_len
     if text_end > len(blob):
         return None
     try:
-        return blob[10:text_end].decode("ascii").rstrip("\x00")
+        return blob[8:text_end].decode("ascii").rstrip("\x00")
     except UnicodeDecodeError:
         return None
 
@@ -815,8 +822,7 @@ def build_descriptive_ir_blob_body(descriptor: str) -> bytes:
     text = _canonicalize_denonk_descriptor(text)
     descriptor_bytes = text.encode("ascii")
     return (
-        b"\x00\x00"
-        + len(descriptor_bytes).to_bytes(2, "big")
+        len(descriptor_bytes).to_bytes(2, "big")
         + b"\x00\x00\x11\x00\x94\x70"
         + descriptor_bytes
         + b"\x00\x00\x00\x00"

@@ -10,6 +10,7 @@ export function renderTabBar(params: {
     { id: "settings", label: "Hub", disabled: false },
     { id: "wifi_commands", label: "Wifi Commands", shortLabel: "Wifi", disabled: false },
     { id: "blobs", label: "Blobs", disabled: false },
+    { id: "backup", label: "Backup", disabled: false },
     { id: "cache", label: "Cache", disabled: !params.persistentCacheEnabled },
     { id: "logs", label: "Logs", disabled: false, pushRight: true },
   ];

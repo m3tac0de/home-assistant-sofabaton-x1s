@@ -27,7 +27,7 @@ const BACKEND_RETRY_MIN_MS = 2000;
 const BACKEND_RETRY_MAX_MS = 10000;
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "blobs", "cache", "logs"]);
+const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
 
 interface PersistedViewState {
   selectedHubEntryId?: string | null;

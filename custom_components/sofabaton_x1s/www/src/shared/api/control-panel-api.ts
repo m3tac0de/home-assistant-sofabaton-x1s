@@ -1,4 +1,8 @@
 import type {
+  BackupBundlePayload,
+  BackupOperationStartResponse,
+  BackupProgressEvent,
+  BackupRestoreResult,
   CacheContentsResponse,
   ControlPanelStateResponse,
   BlobFetchResponse,
@@ -68,6 +72,33 @@ export class ControlPanelApi {
       command_name: commandName,
       blob,
     });
+  }
+
+  startBackupExport(entryId: string, deviceIds?: number[] | null) {
+    return this.hass.callWS<BackupOperationStartResponse>({
+      type: "sofabaton_x1s/backup/export",
+      entry_id: entryId,
+      ...(deviceIds?.length ? { device_ids: deviceIds } : {}),
+    });
+  }
+
+  startBackupRestore(entryId: string, backup: BackupBundlePayload, mode: "replace" | "merge") {
+    return this.hass.callWS<BackupOperationStartResponse>({
+      type: "sofabaton_x1s/backup/restore",
+      entry_id: entryId,
+      backup,
+      mode,
+    });
+  }
+
+  subscribeBackupProgress(operationId: string, onMessage: (payload: BackupProgressEvent) => void) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error("Backup progress is unavailable without a websocket connection"));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/backup/progress_subscribe", operation_id: operationId },
+    );
   }
 
   refreshCatalog(entryId: string, kind: "activities" | "devices") {

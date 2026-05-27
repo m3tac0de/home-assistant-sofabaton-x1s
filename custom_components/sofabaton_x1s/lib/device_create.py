@@ -134,6 +134,10 @@ ACK_STATUS_BYTE_OK = 0x00
 # ---------------------------------------------------------------------------
 
 
+_PAGED_WRITE_OUTER_WRAPPER_LEN = 3
+_PAGED_WRITE_BODY_CHUNK = 247
+
+
 class _ProxyLike(Protocol):
     """Subset of :class:`X1Proxy` the sequencer needs."""
 
@@ -217,6 +221,33 @@ class CreateSequenceResult:
     reject_payload: bytes | None = None
 
 
+def _page_create_step_payloads(step: CreateStep) -> list[bytes]:
+    """Return one or more wire payloads for a create step.
+
+    Most create-step payloads already fit in one family frame. The
+    family-0x46 inputs writer is different: ``build_inputs_write``
+    returns the full canonical payload with ``total_pages`` already
+    populated in the body header, and callers rely on the transport
+    layer to split oversized bodies into 247-byte chunks with a fresh
+    3-byte ``[0x01][page_no_be]`` wrapper on each page.
+    """
+
+    if (
+        step.family != FAMILY_INPUTS
+        or len(step.payload) <= 250
+        or len(step.payload) <= _PAGED_WRITE_OUTER_WRAPPER_LEN
+    ):
+        return [step.payload]
+
+    body = step.payload[_PAGED_WRITE_OUTER_WRAPPER_LEN:]
+    payloads: list[bytes] = []
+    total_pages = max(1, (len(body) + _PAGED_WRITE_BODY_CHUNK - 1) // _PAGED_WRITE_BODY_CHUNK)
+    for seq in range(1, total_pages + 1):
+        chunk = body[(seq - 1) * _PAGED_WRITE_BODY_CHUNK : seq * _PAGED_WRITE_BODY_CHUNK]
+        payloads.append(bytes([0x01]) + seq.to_bytes(2, "big") + bytes(chunk))
+    return payloads
+
+
 def run_create_sequence(
     proxy: _ProxyLike,
     steps: Iterable[CreateStep],
@@ -267,22 +298,29 @@ def run_create_sequence(
         for reject_byte in step.ack_reject_first_bytes:
             candidates.append((step.ack_opcode, reject_byte & 0xFF))
 
-        attempts_left = max(1, int(step.retries) + 1)
         matched: tuple[int, bytes] | None = None
+        page_payloads = _page_create_step_payloads(step)
 
-        while attempts_left > 0:
-            attempts_left -= 1
-            send_ts = time.monotonic()
-            proxy._send_family_frame(step.family, step.payload)
-            matched = proxy.wait_for_ack_any(
-                candidates,
-                timeout=step.timeout,
-                not_before=send_ts,
-            )
-            if matched is not None:
+        for page_payload in page_payloads:
+            attempts_left = max(1, int(step.retries) + 1)
+            matched = None
+
+            while attempts_left > 0:
+                attempts_left -= 1
+                send_ts = time.monotonic()
+                proxy._send_family_frame(step.family, page_payload)
+                matched = proxy.wait_for_ack_any(
+                    candidates,
+                    timeout=step.timeout,
+                    not_before=send_ts,
+                )
+                if matched is not None:
+                    break
+                if attempts_left > 0 and step.retry_delay > 0:
+                    time.sleep(step.retry_delay)
+
+            if matched is None:
                 break
-            if attempts_left > 0 and step.retry_delay > 0:
-                time.sleep(step.retry_delay)
 
         if matched is None:
             return CreateSequenceResult(
