@@ -708,8 +708,8 @@ def _looks_reasonable_ir_dump_label(text: str) -> bool:
 
 
 _IR_DUMP_LABEL_START = 15
-_IR_DUMP_PAGE_ONE_BLOB_START_X1 = 43
-_IR_DUMP_PAGE_ONE_BLOB_START_X1S = 73
+_IR_DUMP_PAGE_ONE_BLOB_START_X1 = 45
+_IR_DUMP_PAGE_ONE_BLOB_START_X1S = 75
 _IR_DUMP_PAGE_ONE_BLOB_PREFIXES = (
     b"\x01\x20\x00\x10",
     b"\x01\x30\x00\x10",
