@@ -27,7 +27,7 @@ import sys
 import types
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from tests._stub_packages import ensure_stub_package
@@ -858,6 +858,87 @@ def test_async_restore_backup_replace_mode_proceeds_when_erase_succeeds() -> Non
     assert result["status"] == "success"
     hub._proxy.erase_configuration.assert_called_once()
     hub._proxy.restore_hub_bundle.assert_called_once()
+
+
+def test_async_restore_backup_replace_mode_restores_hub_name_from_bundle() -> None:
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Factory Default"
+    hub.version = HUB_VERSION_X1S
+    hub.async_set_hub_name = AsyncMock(return_value=True)
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.erase_configuration = MagicMock(return_value=True)
+    hub._proxy.restore_hub_bundle = MagicMock(
+        return_value={
+            "status": "success",
+            "device_id_map": {},
+            "restored_devices": [],
+            "restored_activities": [],
+        }
+    )
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 4,
+        "hub": {"name": "Living Room Hub"},
+        "devices": [],
+        "activities": [{"kind": "activity_backup"}],
+    }
+
+    result = _run(hub.async_restore_backup(bundle))
+
+    assert result["status"] == "success"
+    assert result["hub_name"] == "Living Room Hub"
+    assert result["hub_name_restored"] is True
+    hub.async_set_hub_name.assert_awaited_once_with("Living Room Hub")
+
+
+def test_async_restore_backup_merge_mode_skips_hub_name_restore() -> None:
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Factory Default"
+    hub.version = HUB_VERSION_X1S
+    hub.async_set_hub_name = AsyncMock(return_value=True)
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.erase_configuration = MagicMock(return_value=True)
+    hub._proxy.restore_hub_bundle = MagicMock(
+        return_value={
+            "status": "success",
+            "device_id_map": {},
+            "restored_devices": [],
+            "restored_activities": [],
+        }
+    )
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 4,
+        "hub": {"name": "Living Room Hub"},
+        "devices": [],
+        "activities": [{"kind": "activity_backup"}],
+    }
+
+    result = _run(hub.async_restore_backup(bundle, replace_mode=False))
+
+    assert result["status"] == "success"
+    assert "hub_name_restored" not in result
+    hub.async_set_hub_name.assert_not_awaited()
 
 
 def test_async_restore_backup_merge_mode_skips_erase_even_with_activities() -> None:

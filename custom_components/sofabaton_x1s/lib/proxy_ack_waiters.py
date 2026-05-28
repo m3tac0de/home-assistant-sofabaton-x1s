@@ -23,7 +23,12 @@ import time
 from .ack import AckOutcome, InputsBurstResult
 from .inputs import parse_inputs_burst
 from .macros import MacroRecord
-from .protocol_const import OP_REQ_ACTIVITY_INPUTS, OP_STATUS_ACK, OPNAMES
+from .protocol_const import (
+    FAMILY_KEY_SORT_REQ,
+    OP_REQ_ACTIVITY_INPUTS,
+    OP_STATUS_ACK,
+    OPNAMES,
+)
 
 
 class AckWaitersMixin:
@@ -39,6 +44,10 @@ class AckWaitersMixin:
         with self._macro_payload_lock:
             self._macro_payload_events.clear()
             self._macro_payload_event.clear()
+        with self._device_key_sort_lock:
+            self._device_key_sort_pending = None
+            self._device_key_sort_expected_pages = None
+            self._device_key_sort_pages.clear()
         with self._activity_inputs_lock:
             self._activity_inputs_seen = 0
             self._activity_inputs_last_ts = 0.0
@@ -171,6 +180,44 @@ class AckWaitersMixin:
             log_timeout=True,
         )
 
+    def wait_for_ack_family_low(
+        self,
+        family_low: int,
+        *,
+        timeout: float = 5.0,
+        not_before: float | None = None,
+    ) -> tuple[int, bytes] | None:
+        """Wait for the next queued frame whose opcode low byte matches.
+
+        Some hub responses use a variable-length payload whose size is
+        encoded in the opcode high byte, so callers cannot pin a single
+        16-bit opcode value ahead of time.
+        """
+
+        deadline = time.monotonic() + timeout
+        target_family = family_low & 0xFF
+        while True:
+            with self._ack_queue_lock:
+                for ack_opcode, ack_payload, ack_ts in self._ack_queue:
+                    if (ack_opcode & 0xFF) != target_family:
+                        continue
+                    if not_before is not None and ack_ts < not_before:
+                        continue
+                    self._ack_queue.remove((ack_opcode, ack_payload, ack_ts))
+                    if not self._ack_queue:
+                        self._ack_event.clear()
+                    return ack_opcode, ack_payload
+                self._ack_event.clear()
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self._log.warning(
+                    "[ACK] timeout waiting family(low)=0x%02X",
+                    target_family,
+                )
+                return None
+            self._ack_event.wait(min(remaining, 0.2))
+
     def wait_for_any_response(
         self,
         *,
@@ -265,6 +312,64 @@ class AckWaitersMixin:
             self._activity_inputs_seen += 1
             self._activity_inputs_last_ts = time.monotonic()
             self._activity_inputs_event.set()
+
+    def _try_handle_device_key_sort_payload(self, payload: bytes) -> bool:
+        """Assemble the hub's family-0x63 device key-sort response."""
+
+        with self._device_key_sort_lock:
+            pending_device_id = self._device_key_sort_pending
+            if pending_device_id is None:
+                return False
+            if len(payload) < 7:
+                return False
+
+            page_no = int.from_bytes(payload[1:3], "big")
+            chunk = bytes(payload[3:])
+            if page_no == 1:
+                if len(chunk) < 4 or chunk[0] != 0x01:
+                    return False
+                expected_pages = int.from_bytes(chunk[1:3], "big")
+                reported_device_id = chunk[3] & 0xFF
+                if reported_device_id != pending_device_id:
+                    self._log.warning(
+                        "[KEY_SORT] pending dev=0x%02X but hub replied for dev=0x%02X",
+                        pending_device_id,
+                        reported_device_id,
+                    )
+                    self._device_key_sort_pending = None
+                    self._device_key_sort_expected_pages = None
+                    self._device_key_sort_pages.clear()
+                    return False
+                self._device_key_sort_expected_pages = max(1, expected_pages)
+                self._device_key_sort_pages.clear()
+
+            expected_pages = self._device_key_sort_expected_pages
+            if not expected_pages:
+                return False
+
+            self._device_key_sort_pages[page_no] = chunk
+            if any(
+                page not in self._device_key_sort_pages
+                for page in range(1, expected_pages + 1)
+            ):
+                return True
+
+            assembled = b"".join(
+                self._device_key_sort_pages[page]
+                for page in range(1, expected_pages + 1)
+            )
+            device_id = assembled[3] & 0xFF if len(assembled) >= 4 else pending_device_id
+            msg_bytes = assembled[4:-1] if len(assembled) >= 5 else b""
+            self.state.device_key_sorts[device_id] = {
+                "device_id": device_id,
+                "msg_hex": msg_bytes.hex(" ").strip(),
+            }
+            self._device_key_sort_pending = None
+            self._device_key_sort_expected_pages = None
+            self._device_key_sort_pages.clear()
+
+        self.notify_ack(0xFF62, bytes([device_id]))
+        return True
 
     def wait_for_activity_inputs_burst(
         self,
@@ -413,6 +518,135 @@ class AckWaitersMixin:
             }
             for index, entry in enumerate(record.entries, start=1)
         ]
+
+    def fetch_device_input_record(
+        self,
+        device_id: int,
+        *,
+        timeout: float = 5.0,
+    ) -> dict[str, object] | None:
+        """Return the full parsed family-0x46 record for ``device_id``.
+
+        The backup flow uses this richer form on X1 so restore can
+        preserve the trailing control-key/favorite rows, which are not
+        represented in the simplified ``fetch_device_input_entries``
+        surface.
+        """
+
+        with self._activity_inputs_lock:
+            self._activity_inputs_payloads.clear()
+            self._activity_inputs_seen = 0
+            self._activity_inputs_last_ts = 0.0
+            self._activity_inputs_event.clear()
+            self._inputs_burst_reject_pending = False
+            self._activity_inputs_pending = True
+
+        try:
+            self._send_cmd_frame(OP_REQ_ACTIVITY_INPUTS, bytes([device_id & 0xFF]))
+            burst = self.wait_for_activity_inputs_burst(timeout=timeout)
+        finally:
+            with self._activity_inputs_lock:
+                self._activity_inputs_pending = False
+
+        if burst.outcome is AckOutcome.rejected:
+            self._log.info(
+                "[INPUT_QUERY] hub returned non-success status for dev=0x%02X; "
+                "treating as no inputs configured",
+                device_id & 0xFF,
+            )
+            return None
+        if burst.outcome is AckOutcome.timeout:
+            self._log.warning(
+                "[INPUT_QUERY] timeout waiting for full input record dev=0x%02X",
+                device_id & 0xFF,
+            )
+            return None
+
+        record = parse_inputs_burst(list(burst.payloads), hub_version=self.hub_version)
+        return {
+            "device_id": record.device_id & 0xFF,
+            "source_id_byte": record.source_id_byte & 0xFF,
+            "flag_a": record.flag_a & 0xFF,
+            "flag_b": record.flag_b & 0xFF,
+            "state_byte": record.state_byte & 0xFF,
+            "entries": [
+                {
+                    "command_id": entry.key_id & 0xFF,
+                    "input_index": (entry.ordinal or index) & 0xFF,
+                    "fid": entry.fid & 0xFFFFFFFFFFFF,
+                    "name": entry.label,
+                }
+                for index, entry in enumerate(record.entries, start=1)
+            ],
+            "control_keys": {
+                "input_list": record.control_keys.input_list.hex(" "),
+                "input_up": record.control_keys.input_up.hex(" "),
+                "input_down": record.control_keys.input_down.hex(" "),
+                "input_confirm": record.control_keys.input_confirm.hex(" "),
+            },
+            "favorites": [
+                slot.payload.hex(" ") for slot in record.favorites
+            ],
+        }
+
+    def fetch_device_key_sort(
+        self,
+        device_id: int,
+        *,
+        timeout: float = 5.0,
+    ) -> dict[str, int | str] | None:
+        """Return the hub's raw key-sort blob for ``device_id``."""
+
+        dev_lo = device_id & 0xFF
+        with self._device_key_sort_lock:
+            self.state.device_key_sorts.pop(dev_lo, None)
+            self._device_key_sort_pending = dev_lo
+            self._device_key_sort_expected_pages = None
+            self._device_key_sort_pages.clear()
+
+        send_ts = time.monotonic()
+        self._send_family_frame(FAMILY_KEY_SORT_REQ, bytes([dev_lo]))
+        # Accept either the family-0x63 paged reply (assembled into
+        # state.device_key_sorts and notified as 0xFF62) OR a STATUS_ACK
+        # from the hub. The hub replies with STATUS_ACK status=0x07 when
+        # the requested device has no key-sort blob configured -- mirror
+        # the inputs path and treat that as "device has no key-sort data"
+        # (empty msg_hex) rather than waiting out the full timeout.
+        result = self.wait_for_ack_any(
+            [(0xFF62, dev_lo), (OP_STATUS_ACK, None)],
+            timeout=timeout,
+            not_before=send_ts,
+        )
+        if result is None:
+            with self._device_key_sort_lock:
+                self._device_key_sort_pending = None
+                self._device_key_sort_expected_pages = None
+                self._device_key_sort_pages.clear()
+            self._log.warning(
+                "[KEY_SORT] timeout waiting for device sort dev=0x%02X",
+                dev_lo,
+            )
+            return None
+
+        ack_opcode, ack_payload = result
+        if ack_opcode == OP_STATUS_ACK:
+            status = ack_payload[0] if ack_payload else None
+            with self._device_key_sort_lock:
+                self._device_key_sort_pending = None
+                self._device_key_sort_expected_pages = None
+                self._device_key_sort_pages.clear()
+            self._log.info(
+                "[KEY_SORT] hub returned STATUS_ACK status=%s for dev=0x%02X; "
+                "treating as no key-sort data configured",
+                f"0x{status:02X}" if status is not None else "(empty)",
+                dev_lo,
+            )
+            return {"device_id": dev_lo, "msg_hex": ""}
+
+        cached = self.state.device_key_sorts.get(dev_lo)
+        if isinstance(cached, dict):
+            return dict(cached)
+        return {"device_id": dev_lo, "msg_hex": ""}
 
 
 __all__ = ["AckWaitersMixin"]

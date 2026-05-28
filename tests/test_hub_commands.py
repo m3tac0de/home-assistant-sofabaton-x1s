@@ -340,8 +340,27 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
     )
     monkeypatch.setattr(
         hub._proxy,
-        "fetch_device_input_entries",
-        lambda *args, **kwargs: [{"command_id": 18, "input_index": 1}],
+        "fetch_device_input_record",
+        lambda *args, **kwargs: {
+            "device_id": 11,
+            "source_id_byte": 1,
+            "flag_a": 0,
+            "flag_b": 0,
+            "state_byte": 0,
+            "entries": [{"command_id": 18, "input_index": 1, "fid": 0x1234, "name": "Input"}],
+            "control_keys": {
+                "input_list": "",
+                "input_up": "",
+                "input_down": "",
+                "input_confirm": "",
+            },
+            "favorites": [],
+        },
+    )
+    monkeypatch.setattr(
+        hub._proxy,
+        "fetch_device_key_sort",
+        lambda *args, **kwargs: {"device_id": 11, "msg_hex": "58 12"},
     )
 
     result = loop.run_until_complete(hub.async_backup_device(device_id=11))
@@ -355,6 +374,21 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
     assert result["inputs"] == [
         {"command_id": 18, "input_index": 1, "name": "Input"}
     ]
+    assert result["input_record"] == {
+        "device_id": 11,
+        "source_id_byte": 1,
+        "flag_a": 0,
+        "flag_b": 0,
+        "state_byte": 0,
+        "entries": [{"command_id": 18, "input_index": 1, "fid": 0x1234, "name": "Input"}],
+        "control_keys": {
+            "input_list": "",
+            "input_up": "",
+            "input_down": "",
+            "input_confirm": "",
+        },
+        "favorites": [],
+    }
     assert result["device"] == {
         "device_id": 11,
         "name": "TV",
@@ -443,6 +477,7 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
             ],
         },
     ]
+    assert result["key_sort"] == {"device_id": 11, "msg_hex": "58 12"}
     assert result["completeness"] == {
         "device": True,
         "commands": True,
@@ -450,6 +485,7 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "macros": True,
         "inputs": True,
         "blobs": True,
+        "key_sort": True,
     }
 
     loop.close()
@@ -562,6 +598,11 @@ def test_async_backup_device_returns_rich_schema_from_snapshot_raw_body(monkeypa
         hub._proxy,
         "fetch_device_input_entries",
         lambda *args, **kwargs: [],
+    )
+    monkeypatch.setattr(
+        hub._proxy,
+        "fetch_device_key_sort",
+        lambda *args, **kwargs: {"device_id": 6, "msg_hex": ""},
     )
 
     result = loop.run_until_complete(hub.async_backup_device(device_id=6))
@@ -681,6 +722,11 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
     )
     monkeypatch.setattr(hub._proxy, "get_cached_macro_records", lambda ent_id: [])
     monkeypatch.setattr(hub._proxy, "fetch_device_input_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        hub._proxy,
+        "fetch_device_key_sort",
+        lambda *args, **kwargs: {"device_id": 9, "msg_hex": ""},
+    )
 
     result = loop.run_until_complete(hub.async_backup_device(device_id=9))
 
@@ -801,6 +847,11 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
     )
     monkeypatch.setattr(hub._proxy, "get_cached_macro_records", lambda ent_id: [])
     monkeypatch.setattr(hub._proxy, "fetch_device_input_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        hub._proxy,
+        "fetch_device_key_sort",
+        lambda *args, **kwargs: {"device_id": 7, "msg_hex": ""},
+    )
 
     result = loop.run_until_complete(hub.async_backup_device(device_id=7))
 
@@ -935,6 +986,11 @@ def test_async_backup_device_skips_macros_and_inputs_when_unconfigured(monkeypat
 
     monkeypatch.setattr(hub._proxy, "get_macros_for_activity", _must_not_call_macros)
     monkeypatch.setattr(hub._proxy, "fetch_device_input_entries", _must_not_call_inputs)
+    monkeypatch.setattr(
+        hub._proxy,
+        "fetch_device_key_sort",
+        lambda *args, **kwargs: {"device_id": 2, "msg_hex": ""},
+    )
     monkeypatch.setattr(hub._proxy, "get_cached_macro_records", lambda ent_id: [])
 
     result = loop.run_until_complete(hub.async_backup_device(device_id=2))
@@ -947,6 +1003,7 @@ def test_async_backup_device_skips_macros_and_inputs_when_unconfigured(monkeypat
     # Completeness still True -- "empty by design" is a faithful capture.
     assert result["completeness"]["macros"] is True
     assert result["completeness"]["inputs"] is True
+    assert result["completeness"]["key_sort"] is True
 
     loop.close()
 

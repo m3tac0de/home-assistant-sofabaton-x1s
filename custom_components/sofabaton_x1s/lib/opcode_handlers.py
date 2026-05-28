@@ -20,6 +20,7 @@ from .protocol_const import (
     ButtonName,
     FAMILY_DEVBTNS,
     FAMILY_FAV_ORDER_RESP,
+    FAMILY_HUB_NAME_REPLY,
     FAMILY_MACROS,
     FAMILY_KEYMAP,
     OP_ACK_READY,
@@ -540,6 +541,15 @@ class CreateDeviceAckHandler(BaseFrameHandler):
 @register_handler(opcodes=(0x0103, 0x013E, 0x0112), directions=("H→A",))
 class GenericCreateAckHandler(BaseFrameHandler):
     """Capture Create-sequence ACK frames so replay can gate each next step."""
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        proxy.notify_ack(frame.opcode, frame.payload)
+
+
+@register_handler(opcode_families_low=(FAMILY_HUB_NAME_REPLY,), directions=("H→A",))
+class HubNameReplyHandler(BaseFrameHandler):
+    """Queue variable-length hub-name replies for synchronous waiters."""
 
     def handle(self, frame: FrameContext) -> None:
         proxy: X1Proxy = frame.proxy
@@ -1585,6 +1595,9 @@ class FavoritesOrderHandler(BaseFrameHandler):
     def handle(self, frame: FrameContext) -> None:
         proxy = frame.proxy
         payload = frame.payload
+
+        if proxy._try_handle_device_key_sort_payload(payload):
+            return
 
         # Minimum: 6-byte fixed header + 1 act_lo byte
         if len(payload) < 7:

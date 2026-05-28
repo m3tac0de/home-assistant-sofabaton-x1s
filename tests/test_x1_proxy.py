@@ -18,9 +18,11 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     DEVICE_CLASS_RF_315,
     DEVICE_CLASS_RF_433,
     DEVICE_CLASS_WIFI_SONOS,
+    FAMILY_HUB_NAME_REPLY,
     OP_FIND_REMOTE,
     OP_FIND_REMOTE_X2,
     OP_REMOTE_SYNC,
+    OP_SET_HUB_NAME,
     OP_X2_REMOTE_LIST,
     OP_X2_REMOTE_SYNC,
     OP_REQ_COMMANDS,
@@ -30,9 +32,14 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
 )
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.macros import MacroRecord
-from custom_components.sofabaton_x1s.lib.opcode_handlers import ActivityMapHandler, DeviceButtonFamilyHandler
+from custom_components.sofabaton_x1s.lib.opcode_handlers import (
+    ActivityMapHandler,
+    DeviceButtonFamilyHandler,
+    HubNameReplyHandler,
+)
 from custom_components.sofabaton_x1s.lib.ack import AckOutcome, InputsBurstResult, SendStepResult
 from custom_components.sofabaton_x1s.lib.state_helpers import ActivityCache
+from custom_components.sofabaton_x1s.lib.devices import parse_device_record
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 import custom_components.sofabaton_x1s.lib.x1_proxy as x1_proxy_module
 
@@ -247,6 +254,45 @@ def test_import_cache_state_normalizes_mqtt_device_class_code() -> None:
             "device_class_code": 0x20,
         }
     }
+
+
+def test_hub_name_reply_handler_queues_variable_length_family() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    payload = b"Living Room"
+    opcode = (len(payload) << 8) | FAMILY_HUB_NAME_REPLY
+
+    HubNameReplyHandler().handle(
+        FrameContext(
+            proxy=proxy,
+            opcode=opcode,
+            direction="H→A",
+            payload=payload,
+            raw=b"",
+            name="HUB_NAME_REPLY",
+        )
+    )
+
+    matched = proxy.wait_for_ack_family_low(FAMILY_HUB_NAME_REPLY, timeout=0.01)
+
+    assert matched == (opcode, payload)
+
+
+def test_set_hub_name_sends_family_30_and_updates_banner_cache() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    sent: list[tuple[int, bytes]] = []
+
+    def _send_family_frame(family: int, payload: bytes) -> None:
+        sent.append((family, payload))
+        proxy.notify_ack(((len(payload) & 0xFF) << 8) | FAMILY_HUB_NAME_REPLY, payload)
+
+    proxy.can_issue_commands = lambda: True  # type: ignore[method-assign]
+    proxy._send_family_frame = _send_family_frame  # type: ignore[method-assign]
+
+    ok = proxy.set_hub_name("Living Room")
+
+    assert ok is True
+    assert sent == [(OP_SET_HUB_NAME & 0xFF, b"Living Room")]
+    assert proxy.get_banner_info()["name"] == "Living Room"
 
 
 def test_device_class_registry_normalizes_public_sonos_and_rf_aliases() -> None:
@@ -858,11 +904,11 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
     monkeypatch.setattr(proxy, "reset_ack_queues", lambda: None)
 
-    sequence_calls: list[list[str]] = []
+    sequence_calls: list[list[Any]] = []
 
     def _run_create_sequence(_proxy, steps):
         step_list = list(steps)
-        sequence_calls.append([step.label for step in step_list])
+        sequence_calls.append(step_list)
         if len(sequence_calls) == 1:
             return types.SimpleNamespace(
                 success=True,
@@ -878,30 +924,6 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
         )
 
     monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _run_create_sequence)
-
-    persisted_calls: list[tuple[int, int | None, str, bytes]] = []
-
-    def _persist_command_record(
-        *,
-        device_id: int,
-        command_name: str,
-        library_type: int,
-        command_data: bytes,
-        command_code: int = 0,
-        command_id: int | None = None,
-        **_kwargs,
-    ):
-        persisted_calls.append((device_id, command_id, command_name, command_data))
-        return {
-            "status": "success",
-            "device_id": device_id,
-            "command_id": command_id if command_id is not None else len(persisted_calls),
-            "command_name": command_name,
-            "page_count": 1,
-        }
-
-    monkeypatch.setattr(proxy, "persist_command_record", _persist_command_record)
-
     backup = {
         "kind": "device_backup",
         "device": {
@@ -952,7 +974,23 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
                 },
             },
         ],
+        "key_sort": {"msg_hex": "58 12"},
         "inputs": [{"command_id": 18, "input_index": 1, "name": "Input"}],
+        "input_record": {
+            "device_id": 11,
+            "source_id_byte": 1,
+            "flag_a": 0,
+            "flag_b": 0,
+            "state_byte": 0x5A,
+            "entries": [{"command_id": 18, "input_index": 1, "fid": 0x4E32, "name": "Input"}],
+            "control_keys": {
+                "input_list": "01 02 03 04 05 06 07 08 09",
+                "input_up": "",
+                "input_down": "",
+                "input_confirm": "",
+            },
+            "favorites": ["11 12 13 14 15 16 17"],
+        },
         "button_bindings": [
             {
                 "button_id": 0x58,
@@ -992,17 +1030,132 @@ def test_restore_device_replays_create_persist_and_finalize(monkeypatch) -> None
         "restored_inputs": 1,
         "skipped_favorites": 0,
         "skipped_macro_steps": 0,
-        "command_id_map": {"18": 1, "19": 2},
+        "command_id_map": {"18": 18, "19": 19},
     }
-    assert persisted_calls == [
-        (0x22, 1, "Input", bytes.fromhex("00 01 02 03 04 05 06 07 08 09")),
-        (0x22, 2, "Power", bytes.fromhex("10 11 12 13 14 15 16 17 18 19")),
-    ]
-    assert sequence_calls[0] == ["device-create"]
-    assert sequence_calls[1][-2:] == ["device-update", "remote-sync"]
-    assert any(label.startswith("button-binding btn=0x58") for label in sequence_calls[1])
-    assert any(label.startswith("macro key=0xC6") for label in sequence_calls[1])
-    assert any(label.startswith("inputs dev=0x22") for label in sequence_calls[1])
+    assert len(sequence_calls) == 2
+    assert [step.label for step in sequence_calls[0]] == ["device-create"]
+    assert sequence_calls[0][0].payload[7] == 0xFF
+    create_config = parse_device_record(
+        sequence_calls[0][0].payload[3:],
+        hub_version=HUB_VERSION_X1,
+    )
+    assert create_config.input_flag == 0
+    assert create_config.input_mode == 0
+    assert create_config.power_mode == 1
+    assert create_config.power_style == 3
+
+    post_steps = sequence_calls[1]
+    post_families = [step.family for step in post_steps]
+    assert post_families[0] == 0x0E
+    assert 0x61 not in post_families
+    assert 0x08 in post_families
+    assert 0x64 not in post_families
+    assert post_families.index(0x0E) < post_families.index(0x3E) < post_families.index(0x41) < post_families.index(0x12) < post_families.index(0x46) < post_families.index(0x08)
+
+    command_steps = [step for step in post_steps if step.family == 0x0E]
+    assert len(command_steps) == 2
+    assert all(step.timeout == 10.0 for step in command_steps)
+    assert command_steps[0].payload[0] == 0x01
+    assert command_steps[0].payload[3] == 0x02
+    assert command_steps[0].payload[6] == 0x22
+    assert command_steps[0].payload[7] == 0x12
+    assert command_steps[1].payload[0] == 0x02
+    assert command_steps[1].payload[3] == 0x02
+    assert command_steps[1].payload[6] == 0x22
+    assert command_steps[1].payload[7] == 0x13
+    inputs_step = next(step for step in post_steps if step.family == 0x46)
+    trailing_start = 3 + 8 + 27  # wrapper + body header + one X1 entry
+    assert inputs_step.payload[7] == 0x01
+    assert inputs_step.payload[trailing_start : trailing_start + 36] == (b"\x00" * 36)
+    favorite_offset = trailing_start + 36
+    assert inputs_step.payload[favorite_offset : favorite_offset + 70] == (b"\x00" * 70)
+    assert inputs_step.payload[-2] == 0x00
+
+
+def test_restore_device_x1s_keeps_restore_style_sequence(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "reset_ack_queues", lambda: None)
+    monkeypatch.setattr(proxy, "_refresh_destination_catalog", lambda timeout=5.0: None)
+
+    sequence_calls: list[list[Any]] = []
+
+    def _run_create_sequence(_proxy, steps):
+        step_list = list(steps)
+        sequence_calls.append(step_list)
+        return types.SimpleNamespace(
+            success=True,
+            assigned_device_id=0x22,
+            failed_step=None,
+            failed_index=None,
+        )
+
+    monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _run_create_sequence)
+    backup = {
+        "kind": "device_backup",
+        "device": {
+            "device_id": 11,
+            "name": "TV",
+            "brand": "Sony",
+            "device_class": "IR",
+            "device_class_code": 0x10,
+            "icon": 1,
+            "sort": 0,
+            "code_type": 0x10,
+            "device_type": 0x10,
+            "code_id_hex": "00 " * 15 + "00",
+            "hide": 0,
+            "input_flag": 0,
+            "channel": 0,
+            "power_state": 0,
+            "ip_address": None,
+            "poll_time": -1,
+            "input_mode": 1,
+            "inputs_configured": True,
+            "power_mode": 1,
+            "power_style": 3,
+            "power_configured": True,
+            "share_mode": 0,
+            "tail_marker": 1,
+            "extras": None,
+        },
+        "commands": [
+            {
+                "command_id": 18,
+                "name": "Input",
+                "restore_data": {
+                    "transport": "hub_code_record",
+                    "library_type": 0x0D,
+                    "button_code": 0,
+                    "data_hex": "00 01 02 03 04 05 06 07 08 09",
+                },
+            },
+        ],
+        "key_sort": {"msg_hex": "58 12"},
+        "inputs": [{"command_id": 18, "input_index": 1, "name": "Input"}],
+        "button_bindings": [],
+        "macros": [],
+        "favorite_slots": [],
+    }
+
+    result = proxy.restore_device(backup)
+
+    assert result is not None
+    assert sequence_calls[0][0].payload[7] == 0x0B
+    post_families = [step.family for step in sequence_calls[1]]
+    assert post_families[0] == 0x41
+    assert 0x61 in post_families
+    assert 0x08 not in post_families
+    assert 0x64 not in post_families
+    assert post_families.index(0x61) < post_families.index(0x46)
+    assert all(step.timeout == 5.0 for step in sequence_calls[1] if step.family == 0x0E)
 
 
 def test_restore_device_input_mode_2_writes_source_type_zero(monkeypatch) -> None:
@@ -1080,6 +1233,66 @@ def test_restore_device_input_mode_2_writes_source_type_zero(monkeypatch) -> Non
     assert inputs_payload[7] == 0x00, (
         f"inputs body[4] must be 0 for the empty-input write; got "
         f"0x{inputs_payload[7]:02X} (full payload={inputs_payload.hex(' ')})"
+    )
+
+
+def test_restore_device_x1_device_type_7_still_emits_input_step(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "reset_ack_queues", lambda: None)
+
+    sequence_calls: list[list[Any]] = []
+
+    def _run_create_sequence(_proxy, steps):
+        step_list = list(steps)
+        sequence_calls.append(step_list)
+        return types.SimpleNamespace(
+            success=True,
+            assigned_device_id=0x10,
+            failed_step=None,
+            failed_index=None,
+        )
+
+    monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _run_create_sequence)
+
+    backup = {
+        "kind": "device_backup",
+        "device": {
+            "device_id": 1,
+            "name": "JBL",
+            "brand": "JBL",
+            "device_class": "IR",
+            "device_class_code": 0x10,
+            "icon": 0x13,
+            "sort": 0x0A,
+            "code_type": 0x0D,
+            "device_type": 0x07,
+            "code_id_hex": "32 82 b7 89 03 44 48 28 b2 51 cf 6b 3f 8e a8 3b",
+            "input_mode": 1,
+            "inputs_configured": True,
+            "power_mode": 1,
+            "power_style": 3,
+            "tail_marker": 1,
+        },
+        "commands": [],
+        "inputs": [{"command_id": 0x13, "input_index": 1, "name": "Input"}],
+        "button_bindings": [],
+        "macros": [],
+        "favorite_slots": [],
+    }
+
+    proxy.restore_device(backup)
+
+    post_steps = sequence_calls[1]
+    assert any(step.family == 0x46 for step in post_steps), (
+        "X1 import must emit an inputs write even for device_type=0x07"
     )
 
 
@@ -1174,11 +1387,11 @@ def test_restore_device_replays_hub_code_records(monkeypatch, device_class: str)
     )
     monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
 
-    sequence_calls: list[list[str]] = []
+    sequence_calls: list[list[Any]] = []
 
     def _run_create_sequence(_proxy, steps):
         step_list = list(steps)
-        sequence_calls.append([step.label for step in step_list])
+        sequence_calls.append(step_list)
         return types.SimpleNamespace(
             success=True,
             assigned_device_id=0x23,
@@ -1187,32 +1400,6 @@ def test_restore_device_replays_hub_code_records(monkeypatch, device_class: str)
         )
 
     monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _run_create_sequence)
-
-    persisted_calls: list[tuple[int, int | None, str, int, bytes, int]] = []
-
-    def _persist_command_record(
-        *,
-        device_id: int,
-        command_id: int | None = None,
-        command_name: str,
-        library_type: int,
-        command_data: bytes,
-        command_code: int = 0,
-        **_kwargs,
-    ):
-        persisted_calls.append(
-            (device_id, command_id, command_name, library_type, command_data, command_code)
-        )
-        return {
-            "status": "success",
-            "device_id": device_id,
-            "command_id": command_id if command_id is not None else len(persisted_calls),
-            "command_name": command_name,
-            "page_count": 1,
-            "library_type": library_type,
-        }
-
-    monkeypatch.setattr(proxy, "persist_command_record", _persist_command_record)
 
     backup = {
         "kind": "device_backup",
@@ -1251,13 +1438,73 @@ def test_restore_device_replays_hub_code_records(monkeypatch, device_class: str)
         "restored_inputs": 0,
         "skipped_favorites": 0,
         "skipped_macro_steps": 0,
-        "command_id_map": {"5": 1},
+        "command_id_map": {"5": 5},
     }
-    assert persisted_calls == [
-        (0x23, 1, "Bluetooth", 0x03, bytes.fromhex("aa bb cc dd"), 0x4E25),
-    ]
-    assert sequence_calls[0] == ["device-create"]
-    assert sequence_calls[1][-2:] == ["device-update", "remote-sync"]
+    assert [step.label for step in sequence_calls[0]] == ["device-create"]
+    command_steps = [step for step in sequence_calls[1] if step.family == 0x0E]
+    assert len(command_steps) == 1
+    assert command_steps[0].payload[0] == 0x01
+    assert command_steps[0].payload[3] == 0x01
+    assert command_steps[0].payload[6] == 0x23
+    assert command_steps[0].payload[7] == 0x05
+    assert 0x08 in [step.family for step in sequence_calls[1]]
+    assert 0x64 not in [step.family for step in sequence_calls[1]]
+
+
+def test_restore_device_allocates_free_destination_device_id(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "reset_ack_queues", lambda: None)
+
+    proxy.state.devices[0x07] = {"name": "Occupied"}
+    captured_targets: list[int] = []
+
+    def _run_create_sequence(_proxy, steps):
+        step_list = list(steps)
+        if len(captured_targets) == 0:
+            captured_targets.append(step_list[0].payload[7])
+            return types.SimpleNamespace(
+                success=True,
+                assigned_device_id=step_list[0].payload[7],
+                failed_step=None,
+                failed_index=None,
+            )
+        return types.SimpleNamespace(
+            success=True,
+            assigned_device_id=captured_targets[0],
+            failed_step=None,
+            failed_index=None,
+        )
+
+    monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _run_create_sequence)
+
+    backup = {
+        "kind": "device_backup",
+        "device": {
+            "device_id": 7,
+            "name": "Speaker",
+            "brand": "Brand",
+            "device_class": "IR",
+            "device_class_code": 0x10,
+        },
+        "commands": [],
+        "inputs": [],
+        "button_bindings": [],
+        "macros": [],
+        "favorite_slots": [],
+    }
+
+    result = proxy.restore_device(backup)
+
+    assert result is not None
+    assert result["device_id"] == 0x01
+    assert captured_targets == [0x01]
 
 
 def test_persist_ir_blob_step_carries_selected_command_id() -> None:

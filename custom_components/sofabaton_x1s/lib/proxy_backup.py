@@ -45,6 +45,9 @@ class CacheBackupMixin:
                 str(k): {str(cmd_id): label for cmd_id, label in commands.items()}
                 for k, commands in self.state.commands.items()
             },
+            "device_key_sorts": {
+                str(k): dict(v) for k, v in self.state.device_key_sorts.items()
+            },
             "ip_devices": {str(k): dict(v) for k, v in self.state.ip_devices.items()},
             "ip_buttons": {
                 str(k): {str(btn_id): dict(meta) for btn_id, meta in buttons.items()}
@@ -143,6 +146,12 @@ class CacheBackupMixin:
                 int(cmd_id) & 0xFF: str(label)
                 for cmd_id, label in entity_commands.items()
             }
+
+        self.state.device_key_sorts.clear()
+        device_key_sorts = data.get("device_key_sorts", {})
+        for key, sort_meta in device_key_sorts.items():
+            if isinstance(sort_meta, dict):
+                self.state.device_key_sorts[int(key) & 0xFF] = dict(sort_meta)
 
         ip_devices = data.get("ip_devices", {})
         self.state.ip_devices = {
@@ -286,6 +295,7 @@ class CacheBackupMixin:
             self.state.devices.pop(ent_lo, None)
             self.state.buttons.pop(ent_lo, None)
             self.state.commands.pop(ent_lo, None)
+            self.state.device_key_sorts.pop(ent_lo, None)
             self.state.ip_devices.pop(ent_lo, None)
             self.state.ip_buttons.pop(ent_lo, None)
             self._commands_complete.discard(ent_lo)
@@ -362,6 +372,7 @@ class CacheBackupMixin:
 
         # Per-device detail surfaces.
         self.state.commands.clear()
+        self.state.device_key_sorts.clear()
         self.state.buttons.clear()
         if hasattr(self.state, "button_details"):
             self.state.button_details.clear()

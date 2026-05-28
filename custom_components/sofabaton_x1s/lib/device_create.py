@@ -104,6 +104,9 @@ FAMILY_MACRO = 0x12
 #: Acked via the generic STATUS_ACK family.
 FAMILY_INPUTS = 0x46
 
+#: Family byte for device key-sort writes.
+FAMILY_KEY_SORT = 0x61
+
 #: Family byte for ``REMOTE_SYNC`` (A->H). Wire example: ``OP_0064``
 #: on frame #487. Acked via the generic STATUS_ACK family.
 FAMILY_REMOTE_SYNC = 0x64
@@ -421,7 +424,9 @@ class DeviceCreateRequest:
     button_bindings: list[dict[str, Any]] = field(default_factory=list)
     macros: list[dict[str, Any]] = field(default_factory=list)
     inputs: list[dict[str, Any]] = field(default_factory=list)
+    input_record: dict[str, Any] | None = None
     favorites: list[dict[str, Any]] = field(default_factory=list)
+    key_sort: dict[str, Any] | None = None
     network_callback_profile: dict[str, Any] | None = None
     entity_kind: Literal["device", "activity"] = "device"
     #: Source-device-id -> destination-device-id translation used when
@@ -852,6 +857,51 @@ def build_command_write_steps(
     return steps
 
 
+def build_key_sort_steps(
+    *,
+    device_id: int,
+    msg_hex: str,
+    ack_timeout: float = 5.0,
+) -> list[CreateStep]:
+    """Build the app-style family-0x61 device key-sort write."""
+
+    if device_id < 0 or device_id > 0xFF:
+        raise ValueError(f"device_id {device_id} out of byte range")
+    raw_hex = str(msg_hex or "").strip()
+    try:
+        msg_bytes = bytes.fromhex(raw_hex) if raw_hex else b""
+    except ValueError as exc:
+        raise ValueError(f"invalid key-sort msg_hex: {msg_hex!r}") from exc
+
+    page_chunk_capacity = _COMMAND_PAGE_FULL_PAYLOAD - _COMMAND_PAGE_HEADER_LEN
+    body = bytearray(len(msg_bytes) + 5)
+    total_pages = max(1, (len(body) + page_chunk_capacity - 1) // page_chunk_capacity)
+    body[0] = 0x01
+    body[1:3] = total_pages.to_bytes(2, "big")
+    body[3] = device_id & 0xFF
+    if msg_bytes:
+        body[4 : 4 + len(msg_bytes)] = msg_bytes
+    body_bytes = _seal_body(body)
+
+    steps: list[CreateStep] = []
+    for page_index in range(total_pages):
+        page_no = page_index + 1
+        start = page_index * page_chunk_capacity
+        chunk = body_bytes[start : start + page_chunk_capacity]
+        payload = bytes([0x01]) + page_no.to_bytes(2, "big") + chunk
+        steps.append(
+            CreateStep(
+                label=f"key-sort page={page_no}/{total_pages}",
+                family=FAMILY_KEY_SORT,
+                payload=payload,
+                ack_opcode=ACK_OPCODE_STATUS,
+                ack_first_byte=ACK_STATUS_BYTE_OK,
+                timeout=ack_timeout,
+            )
+        )
+    return steps
+
+
 def build_button_binding_step(
     *,
     device_id: int,
@@ -1070,6 +1120,7 @@ __all__ = [
     "FAMILY_DEVICE_CREATE",
     "FAMILY_DEVICE_UPDATE",
     "FAMILY_INPUTS",
+    "FAMILY_KEY_SORT",
     "FAMILY_COMMAND_WRITE",
     "FAMILY_MACRO",
     "FAMILY_REMOTE_SYNC",
@@ -1079,6 +1130,7 @@ __all__ = [
     "build_device_create_step",
     "build_device_update_step",
     "build_command_write_steps",
+    "build_key_sort_steps",
     "build_macro_step_record",
     "build_macro_step",
     "build_remote_sync_step",

@@ -811,6 +811,7 @@ class CatalogMixin:
         ent_lo = ent_id & 0xFF
 
         self.state.commands.pop(ent_lo, None)
+        self.state.device_key_sorts.pop(ent_lo, None)
         self._commands_complete.discard(ent_lo)
         self._pending_command_requests.pop(ent_lo, None)
 

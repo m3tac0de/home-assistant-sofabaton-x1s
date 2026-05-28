@@ -106,6 +106,7 @@ class ActivityCache:
         # Favorites ordering: maps act_lo → list of (fav_id, slot) pairs in hub order
         # Populated by OP_FAV_ORDER_RESP (family 0x63) response to OP_FAV_ORDER_REQ (0x0162)
         self.activity_favorites_order: dict[int, list[tuple[int, int]]] = {}
+        self.device_key_sorts: dict[int, dict[str, Any]] = {}
         self.activity_favorite_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
         self.activity_keybinding_labels: dict[int, dict[tuple[int, int], str]] = defaultdict(dict)
         self.activity_macros: dict[int, list[dict[str, int | str]]] = defaultdict(list)

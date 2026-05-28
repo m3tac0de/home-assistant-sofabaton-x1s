@@ -94,6 +94,7 @@ from .protocol_const import (
     OP_FIND_REMOTE,
     OP_FIND_REMOTE_X2,
     OP_REMOTE_SYNC,
+    OP_SET_HUB_NAME,
     OP_X2_REMOTE_LIST,
     OP_X2_REMOTE_SYNC,
     OP_INFO_BANNER,
@@ -140,6 +141,7 @@ from .protocol_const import (
     OP_WIFI_FW,
     FAMILY_FAV_DELETE,
     FAMILY_FAV_ORDER_REQ,
+    FAMILY_HUB_NAME_REPLY,
     FAMILY_PLAY_BLOB,
     SYNC0,
     SYNC1,
@@ -241,6 +243,32 @@ def _hex_to_bytes(raw_hex: str) -> bytes:
 
 def _ascii_padded(value: str, *, length: int) -> bytes:
     return value.encode("ascii", errors="ignore")[:length].ljust(length, b"\x00")
+
+
+def _to_dbc(value: str) -> str:
+    """Collapse full-width forms to the GB2312-friendly half-width variant."""
+
+    chars: list[str] = []
+    for ch in str(value or ""):
+        code = ord(ch)
+        if code == 0x3000:
+            chars.append(" ")
+        elif 0xFF01 <= code <= 0xFF5E:
+            chars.append(chr(code - 0xFEE0))
+        else:
+            chars.append(ch)
+    return "".join(chars)
+
+
+def _encode_hub_name_wire(value: str) -> bytes:
+    return _to_dbc(value).encode("gb2312", errors="ignore")
+
+
+def _decode_hub_name_wire(payload: bytes, *, hub_version: str | None) -> str:
+    raw = payload
+    if hub_version == HUB_VERSION_X2 and len(raw) >= 2:
+        raw = raw[2:]
+    return raw.decode("gb2312", errors="ignore").strip("\x00").strip()
 
 
 
@@ -468,6 +496,10 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         self._activity_inputs_last_ts = 0.0
         self._activity_inputs_event = threading.Event()
         self._activity_inputs_payloads: list[bytes] = []
+        self._device_key_sort_lock = threading.Lock()
+        self._device_key_sort_pending: int | None = None
+        self._device_key_sort_expected_pages: int | None = None
+        self._device_key_sort_pages: dict[int, bytes] = {}
         # Set while REQ_ACTIVITY_INPUTS is awaiting a reply. Lets the
         # STATUS_ACK handler distinguish a hub rejection of *our* inputs
         # request from unrelated 0x0103 acks.
@@ -813,6 +845,26 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         with self._banner_info_lock:
             return dict(self._banner_info)
 
+    def record_hub_name(self, name: str) -> bool:
+        """Update cached banner identity with a newly confirmed hub name."""
+
+        next_name = str(name or "").strip()
+        if not next_name:
+            return False
+
+        changed = False
+        with self._banner_info_lock:
+            next_info = dict(self._banner_info)
+            if str(next_info.get("name") or "").strip() != next_name:
+                next_info["name"] = next_name
+                self._banner_info = next_info
+                changed = True
+
+        self._banner_info_event.set()
+        if changed:
+            self._log.info("[HUB] cached hub name=%s", next_name)
+        return True
+
     def request_banner_info(self) -> bool:
         return self.enqueue_cmd(OP_REQ_BANNER)
 
@@ -906,6 +958,50 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         self._banner_info_event.wait(timeout)
         info = self.get_banner_info()
         return (info, bool(info))
+
+    def set_hub_name(
+        self,
+        name: str,
+        *,
+        timeout: float = 5.0,
+    ) -> bool:
+        next_name = str(name or "").strip()
+        if not next_name:
+            self._log.warning("[HUB] set_hub_name ignored: empty name")
+            return False
+        if not self.can_issue_commands():
+            self._log.warning("[HUB] set_hub_name ignored: transport not ready")
+            return False
+
+        payload = _encode_hub_name_wire(next_name)
+        if not payload:
+            self._log.warning("[HUB] set_hub_name ignored: name %r produced no encodable bytes", next_name)
+            return False
+
+        self.clear_ack_queue()
+        send_ts = time.monotonic()
+        self._log.info("[HUB] setting hub name=%s", next_name)
+        self._send_family_frame(OP_SET_HUB_NAME & 0xFF, payload)
+
+        matched = self.wait_for_ack_family_low(
+            FAMILY_HUB_NAME_REPLY,
+            timeout=timeout,
+            not_before=send_ts,
+        )
+        if matched is None:
+            self._log.warning("[HUB] timed out waiting for hub-name reply")
+            return False
+
+        _ack_opcode, ack_payload = matched
+        echoed_name = _decode_hub_name_wire(ack_payload, hub_version=self.hub_version)
+        if echoed_name and echoed_name != next_name:
+            self._log.info(
+                "[HUB] hub echoed normalized name=%s (requested=%s)",
+                echoed_name,
+                next_name,
+            )
+        self.record_hub_name(echoed_name or next_name)
+        return True
 
     def record_banner_payload(self, opcode: int, payload: bytes) -> dict[str, Any] | None:
         if opcode_family(opcode) != 0x02 or len(payload) < 15:

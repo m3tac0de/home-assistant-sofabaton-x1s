@@ -1343,16 +1343,29 @@ class SofabatonHub:
                 device_id=dev_lo,
                 wait_timeout=max(wait_timeout, 15.0),
             )
+        input_record: dict[str, Any] | None = None
         if skip_inputs:
             input_entries: list[dict[str, int]] | None = []
         else:
-            input_entries = await self.hass.async_add_executor_job(
+            input_record = await self.hass.async_add_executor_job(
                 partial(
-                    self._proxy.fetch_device_input_entries,
+                    self._proxy.fetch_device_input_record,
                     dev_lo,
                     timeout=wait_timeout,
                 )
             )
+            input_entries = (
+                list(input_record.get("entries") or [])
+                if isinstance(input_record, dict)
+                else []
+            )
+        key_sort_row = await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.fetch_device_key_sort,
+                dev_lo,
+                timeout=wait_timeout,
+            )
+        )
 
         label_map = {
             int(command_id) & 0xFF: str(label)
@@ -1516,6 +1529,7 @@ class SofabatonHub:
                 final_macros_ready,
                 input_entries is not None,
                 blobs_complete,
+                key_sort_row is not None,
             ]
         )
 
@@ -1531,6 +1545,7 @@ class SofabatonHub:
                 "macros": bool(final_macros_ready),
                 "inputs": input_entries is not None,
                 "blobs": bool(blobs_complete),
+                "key_sort": key_sort_row is not None,
             },
             "hub": {
                 "entry_id": self.entry_id,
@@ -1539,7 +1554,9 @@ class SofabatonHub:
             },
             "device": device_block,
             "commands": command_rows,
+            "key_sort": dict(key_sort_row) if isinstance(key_sort_row, dict) else None,
             "inputs": input_rows,
+            "input_record": input_record,
             "button_bindings": button_rows,
             "favorite_slots": favorite_rows,
             "macros": macro_rows,
@@ -1935,6 +1952,37 @@ class SofabatonHub:
             )
         )
 
+    async def async_set_hub_name(
+        self,
+        name: str,
+        *,
+        timeout: float = 5.0,
+    ) -> bool:
+        """Persist a new hub name and refresh our cached identity."""
+
+        next_name = str(name or "").strip()
+        if not next_name:
+            return False
+
+        ok = await self.hass.async_add_executor_job(
+            partial(self._proxy.set_hub_name, next_name, timeout=timeout)
+        )
+        if not ok:
+            return False
+
+        info = dict(self._proxy.get_banner_info() or {})
+        info["name"] = next_name
+        if not info.get("model"):
+            info["model"] = self.banner_model or self.version
+        if info.get("firmware_version") is None and self.hub_firmware_version is not None:
+            info["firmware_version"] = self.hub_firmware_version
+        if not info.get("production_batch") and self.production_batch:
+            info["production_batch"] = self.production_batch
+
+        await self._async_sync_authoritative_identity(info)
+        self.name = next_name
+        return True
+
     async def async_restore_backup(
         self,
         payload: dict[str, Any],
@@ -1978,7 +2026,16 @@ class SofabatonHub:
         devices = list(payload.get("devices") or [])
         activities = list(payload.get("activities") or [])
         use_replace_mode = bool(activities) if replace_mode is None else bool(replace_mode)
-        total_steps = 1 + len(devices) + len(activities) + (1 if use_replace_mode else 0)
+        bundle_hub = payload.get("hub") if isinstance(payload.get("hub"), dict) else {}
+        bundle_hub_name = str(bundle_hub.get("name") or "").strip()
+        rename_after_replace = bool(use_replace_mode and bundle_hub_name)
+        total_steps = (
+            1
+            + len(devices)
+            + len(activities)
+            + (1 if use_replace_mode else 0)
+            + (1 if rename_after_replace else 0)
+        )
         completed_steps = 1
         _progress(
             status="running",
@@ -2015,7 +2072,7 @@ class SofabatonHub:
                 total_steps=total_steps,
             )
 
-        return await self.hass.async_add_executor_job(
+        result = await self.hass.async_add_executor_job(
             partial(
                 self._proxy.restore_hub_bundle,
                 payload=payload,
@@ -2025,6 +2082,37 @@ class SofabatonHub:
                 progress_total_steps=total_steps,
             )
         )
+        if rename_after_replace and isinstance(result, dict) and result.get("status") == "success":
+            _progress(
+                status="running",
+                phase="hub",
+                message="Restoring hub nameâ€¦",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+            )
+            hub_name_restored = await self.async_set_hub_name(bundle_hub_name)
+            result = dict(result)
+            result["hub_name"] = bundle_hub_name
+            result["hub_name_restored"] = bool(hub_name_restored)
+            completed_steps += 1
+            _progress(
+                status="running",
+                phase="hub",
+                message=(
+                    "Restored hub name."
+                    if hub_name_restored
+                    else "Hub restore finished, but restoring the hub name failed."
+                ),
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+            )
+            if not hub_name_restored:
+                self._log.warning(
+                    "[%s] replace-mode restore finished, but restoring hub name %r failed",
+                    self.entry_id,
+                    bundle_hub_name,
+                )
+        return result
 
     def _build_device_block(
         self,

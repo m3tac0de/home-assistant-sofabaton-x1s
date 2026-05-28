@@ -76,6 +76,8 @@ OP_REQ_BLOB = 0x020C  # payload: [dev_lo, item_lo] or [dev_lo, 0xFF] for full bl
 OP_REQ_ACTIVATE = 0x023F  # payload: [id_lo, key_code] (activity or device ID)
 OP_REQ_ACTIVITY_MAP = 0x016C  # payload: [act_lo] request activity favorites mapping (X1)
 OP_DELETE_DEVICE = 0x0109  # payload: [dev_lo] delete an existing device (observed X1)
+OP_SET_HUB_NAME = 0x0030  # payload: GB2312-encoded hub name bytes
+FAMILY_HUB_NAME_REPLY = 0x31  # H→A variable-length hub-name reply family
 OP_FIND_REMOTE = 0x0023  # payload: [0x01] to trigger remote buzzer
 OP_ERASE_CONFIGURATION = 0x001D  # payload: empty; wipes all devices/activities/macros/favorites/inputs.
 # Identical across X1, X1S, X2. The hub commonly disconnects after the ack; clients
@@ -219,6 +221,7 @@ OPNAMES: Dict[int, str] = {
     OP_REQ_ACTIVATE: "REQ_ACTIVATE",
     OP_REQ_ACTIVITY_MAP: "REQ_ACTIVITY_MAP",
     OP_DELETE_DEVICE: "DELETE_DEVICE",
+    OP_SET_HUB_NAME: "SET_HUB_NAME",
     OP_FIND_REMOTE: "FIND_REMOTE",
     OP_ERASE_CONFIGURATION: "ERASE_CONFIGURATION",
     OP_FIND_REMOTE_X2: "FIND_REMOTE_X2",
@@ -329,6 +332,9 @@ FAMILY_FAV_DELETE = 0x10      # A→H: delete a single favorite from an activity
 FAMILY_FAV_ORDER_REQ = 0x62   # A→H: request current favorites ordering (opcode 0x0162)
 FAMILY_FAV_ORDER_RESP = 0x63  # H→A: hub returns current favorites ordering (opcode variable)
 
+FAMILY_KEY_SORT_REQ = 0x62
+FAMILY_KEY_SORT_RESP = 0x63
+
 # IR blob playback.
 # Each frame carries a 247-byte slice of a single contiguous body buffer.
 # The body buffer is laid out as:
@@ -349,6 +355,7 @@ PLAY_BLOB_CHUNK_SIZE = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_PAGE_HEADER_LEN  # 247B
 
 FAMILY_NAMES: Dict[int, str] = {
     FAMILY_STATUS_ACK: "STATUS_ACK",
+    FAMILY_HUB_NAME_REPLY: "HUB_NAME_REPLY",
     FAMILY_DEV_ROW: "DEVICE_ROW",
     FAMILY_PLAY_BLOB: "PLAY_BLOB",
     FAMILY_FAV_DELETE: "FAV_DELETE",
@@ -516,6 +523,7 @@ __all__ = [
     "OP_REQ_ACTIVATE",
     "OP_REQ_ACTIVITY_MAP",
     "OP_DELETE_DEVICE",
+    "OP_SET_HUB_NAME",
     "OP_FIND_REMOTE",
     "OP_FIND_REMOTE_X2",
     "OP_REMOTE_SYNC",
@@ -598,6 +606,7 @@ __all__ = [
     "opcode_family_name",
     "FAMILY_NAMES",
     "FAMILY_STATUS_ACK",
+    "FAMILY_HUB_NAME_REPLY",
     "FAMILY_DEV_ROW",
     "FAMILY_ACT_ROW",
     "FAMILY_MACROS",
