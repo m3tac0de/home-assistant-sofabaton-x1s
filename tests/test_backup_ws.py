@@ -166,3 +166,105 @@ def test_ws_backup_restore_starts_merge_operation(monkeypatch):
     assert "operation_id" in conn.result[1]
     assert started["coro"] is not None
     started["coro"].close()
+
+
+def test_run_backup_restore_operation_preserves_final_progress_counts():
+    class _Hub:
+        entry_id = "entry-1"
+
+        async def async_restore_backup(self, payload, *, replace_mode=None, progress_callback=None, wifi_commands_request_port=8060):
+            assert replace_mode is True
+            assert payload["kind"] == "hub_bundle"
+            if callable(progress_callback):
+                progress_callback(
+                    {
+                        "status": "running",
+                        "phase": "hub",
+                        "message": "Restored hub name.",
+                        "completed_steps": 4,
+                        "total_steps": 4,
+                    }
+                )
+            return {
+                "status": "success",
+                "_progress_completed_steps": 4,
+                "_progress_total_steps": 4,
+            }
+
+    loop = asyncio.new_event_loop()
+    try:
+        hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
+        registry = integration._backup_operation_registry(hass)
+        operation_id = registry.create(
+            kind="backup_restore",
+            entry_id="entry-1",
+            initial_state={"status": "running", "phase": "queued", "message": "Queued"},
+        )
+        loop.run_until_complete(
+            integration._run_backup_restore_operation(
+                hass,
+                operation_id,
+                hub=_Hub(),
+                payload={"kind": "hub_bundle", "schema_version": 4, "devices": [], "activities": []},
+                mode="replace",
+            )
+        )
+        state = registry.get(operation_id)["state"]
+    finally:
+        loop.close()
+
+    assert state["status"] == "success"
+    assert state["message"] == "Restore completed."
+    assert state["completed_steps"] == 4
+    assert state["total_steps"] == 4
+
+
+def test_run_backup_restore_operation_ignores_late_running_progress_after_success():
+    class _Hub:
+        entry_id = "entry-1"
+
+        async def async_restore_backup(self, payload, *, replace_mode=None, progress_callback=None, wifi_commands_request_port=8060):
+            assert replace_mode is True
+            assert payload["kind"] == "hub_bundle"
+            if callable(progress_callback):
+                progress_callback(
+                    {
+                        "status": "running",
+                        "phase": "hub",
+                        "message": "Restored hub name.",
+                        "completed_steps": 4,
+                        "total_steps": 4,
+                    }
+                )
+            return {
+                "status": "success",
+                "_progress_completed_steps": 4,
+                "_progress_total_steps": 4,
+            }
+
+    loop = asyncio.new_event_loop()
+    try:
+        hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
+        registry = integration._backup_operation_registry(hass)
+        operation_id = registry.create(
+            kind="backup_restore",
+            entry_id="entry-1",
+            initial_state={"status": "running", "phase": "queued", "message": "Queued"},
+        )
+        loop.run_until_complete(
+            integration._run_backup_restore_operation(
+                hass,
+                operation_id,
+                hub=_Hub(),
+                payload={"kind": "hub_bundle", "schema_version": 4, "devices": [], "activities": []},
+                mode="replace",
+            )
+        )
+        loop.run_until_complete(asyncio.sleep(0))
+        state = registry.get(operation_id)["state"]
+    finally:
+        loop.close()
+
+    assert state["status"] == "success"
+    assert state["phase"] == "completed"
+    assert state["message"] == "Restore completed."

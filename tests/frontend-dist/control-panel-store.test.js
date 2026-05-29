@@ -80,6 +80,18 @@ var ControlPanelApi = class {
       { type: "sofabaton_x1s/backup/progress_subscribe", operation_id: operationId }
     );
   }
+  getBackupState(entryId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/backup/state",
+      entry_id: entryId
+    });
+  }
+  clearBackupResult(operationId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/backup/clear_result",
+      operation_id: operationId
+    });
+  }
   refreshCatalog(entryId, kind) {
     return this.hass.callWS({
       type: "sofabaton_x1s/catalog/refresh",
@@ -1459,6 +1471,9 @@ var ControlPanelStore = class {
     this._lastConnectionFingerprint = "";
     this._backendRetryTimer = null;
     this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
+    this._backupOpUnsub = null;
+    this._backupOpEntryId = null;
+    this._backupOpId = null;
     this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
     this._snapshot = {
       ...INITIAL_SNAPSHOT,
@@ -1476,6 +1491,7 @@ var ControlPanelStore = class {
     } else if (this._snapshot.backendUnavailable) {
       this._scheduleBackendRetry();
     }
+    void this._syncBackupOperationFeed();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
     }
@@ -1488,6 +1504,7 @@ var ControlPanelStore = class {
       externalHubCommandLabel: null
     };
     this._clearBackendRetry();
+    void this._teardownBackupOperationFeed();
     void this.unsubscribeLogs();
   }
   _clearBackendRetry() {
@@ -1570,8 +1587,10 @@ var ControlPanelStore = class {
     this.persistViewState();
     this.emit();
     void (async () => {
+      await this._teardownBackupOperationFeed();
       await this.unsubscribeLogs();
       await this.loadControlPanelState();
+      await this._syncBackupOperationFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
   }
@@ -1632,6 +1651,7 @@ var ControlPanelStore = class {
         this._snapshot = { ...this._snapshot, contents };
         this.syncSelection();
         this._clearBackendUnavailable();
+        await this._syncBackupOperationFeed();
       } catch (error) {
         if (isBackendUnavailableError(error, this._snapshot.hass)) {
           this._markBackendUnavailable();
@@ -1655,6 +1675,7 @@ var ControlPanelStore = class {
       this.applyControlPanelState(state);
       this.syncSelection();
       this._clearBackendUnavailable();
+      await this._syncBackupOperationFeed();
       this.emit();
     } catch (error) {
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
@@ -1968,9 +1989,78 @@ var ControlPanelStore = class {
     }
   }
   _isHubCommandBusy() {
+    const hub = selectedHub(this._snapshot);
+    const activeBackupOperation = hub?.active_backup_operation;
+    const backupBusy = !!activeBackupOperation && ["pending", "running"].includes(String(activeBackupOperation.status || ""));
     return Boolean(
-      this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey
+      this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey || backupBusy
     );
+  }
+  async _syncBackupOperationFeed() {
+    const hub = selectedHub(this._snapshot);
+    const active = hub?.active_backup_operation;
+    const entryId = String(hub?.entry_id || "").trim() || null;
+    const operationId = active && ["pending", "running"].includes(String(active.status || "")) ? String(active.operation_id || "").trim() || null : null;
+    if (!this._isConnected || !entryId || !operationId || !this._snapshot.hass) {
+      await this._teardownBackupOperationFeed();
+      return;
+    }
+    if (this._backupOpEntryId === entryId && this._backupOpId === operationId && this._backupOpUnsub) {
+      return;
+    }
+    await this._teardownBackupOperationFeed();
+    this._backupOpEntryId = entryId;
+    this._backupOpId = operationId;
+    try {
+      const unsubscribe = await this.api().subscribeBackupProgress(operationId, (payload) => {
+        if (this._backupOpId !== operationId || this._backupOpEntryId !== entryId) return;
+        this._applyBackupProgressToSnapshot(entryId, payload);
+        if (!["pending", "running"].includes(String(payload.status || ""))) {
+          void this._teardownBackupOperationFeed();
+        }
+      });
+      if (this._backupOpId !== operationId || this._backupOpEntryId !== entryId) {
+        try {
+          unsubscribe();
+        } catch {
+        }
+        return;
+      }
+      this._backupOpUnsub = unsubscribe;
+    } catch {
+      this._backupOpEntryId = null;
+      this._backupOpId = null;
+      this._backupOpUnsub = null;
+    }
+  }
+  _applyBackupProgressToSnapshot(entryId, payload) {
+    if (!this._snapshot.state) return;
+    const isRunning = ["pending", "running"].includes(String(payload.status || ""));
+    const hubs = this._snapshot.state.hubs.map(
+      (hub) => hub.entry_id === entryId ? {
+        ...hub,
+        active_backup_operation: isRunning ? payload : null
+      } : hub
+    );
+    this._snapshot = {
+      ...this._snapshot,
+      state: {
+        ...this._snapshot.state,
+        hubs
+      }
+    };
+    this.emit();
+  }
+  async _teardownBackupOperationFeed() {
+    const unsub = this._backupOpUnsub;
+    this._backupOpUnsub = null;
+    this._backupOpEntryId = null;
+    this._backupOpId = null;
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+    }
   }
   emit() {
     this.onChange(this._snapshot);

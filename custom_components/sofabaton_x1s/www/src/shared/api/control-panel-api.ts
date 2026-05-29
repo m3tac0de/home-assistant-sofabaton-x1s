@@ -1,5 +1,6 @@
 import type {
   BackupBundlePayload,
+  BackupOperationStateResponse,
   BackupOperationStartResponse,
   BackupProgressEvent,
   BackupRestoreResult,
@@ -99,6 +100,20 @@ export class ControlPanelApi {
       onMessage,
       { type: "sofabaton_x1s/backup/progress_subscribe", operation_id: operationId },
     );
+  }
+
+  getBackupState(entryId: string) {
+    return this.hass.callWS<BackupOperationStateResponse>({
+      type: "sofabaton_x1s/backup/state",
+      entry_id: entryId,
+    });
+  }
+
+  clearBackupResult(operationId: string) {
+    return this.hass.callWS<{ ok: boolean }>({
+      type: "sofabaton_x1s/backup/clear_result",
+      operation_id: operationId,
+    });
   }
 
   refreshCatalog(entryId: string, kind: "activities" | "devices") {

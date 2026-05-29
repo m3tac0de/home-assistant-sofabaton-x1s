@@ -341,6 +341,7 @@ class CacheBackupMixin:
         """
         self.state.devices.clear()
         self.state.ip_devices.clear()
+        self._devices_catalog_ready = False
 
     def clear_activities_catalog(self) -> None:
         """Clear only the activity name catalog before a fresh activity list fetch.
@@ -353,6 +354,7 @@ class CacheBackupMixin:
         self.state.activities.clear()
         self._activity_row_payloads.clear()
         self.state.set_hint(None)
+        self._activities_catalog_ready = False
 
     def wipe_all_cached_state(self) -> None:
         """Drop every per-entity cache so a fresh catalog poll is required.

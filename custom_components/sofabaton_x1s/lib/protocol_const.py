@@ -200,6 +200,7 @@ OP_ACTIVITY_INPUTS_PAGE_B = 0xC947  # H→A final activity-input candidates page
 OP_ACTIVITY_ASSIGN_FINALIZE = 0xD538  # A→H post-macro activity assignment save (X1S/X2)
 OP_ACTIVITY_ASSIGN_COMMIT = 0x0265  # A→H post-save commit marker (observed on X2)
 OP_ACTIVITY_CONFIRM = 0x7B38  # A→H activity confirmation row write (observed X1)
+OP_ACTIVITY_CREATE_ACK = 0x0137  # H→A assigned activity id after family-0x37 create write (X1)
 OP_ACTIVITY_MAP_PAGE_X1S = 0xD56D  # H→A activity mapping page variant (X1S/X2)
 OP_BANNER = 0x1D02  # representative family-0x02 banner reply with hub ident/name/batch/fw
 OP_WIFI_FW = 0x0359  # WiFi firmware ver (Vx.y.z)
@@ -243,6 +244,7 @@ OPNAMES: Dict[int, str] = {
     OP_IPCMD_ROW_D: "IPCMD_ROW_D",
     ACK_SUCCESS: "ACK_SUCCESS",
     OP_STATUS_ACK: "STATUS_ACK",
+    OP_ACTIVITY_CREATE_ACK: "ACTIVITY_CREATE_ACK",
     OP_ACK_READY: "ACK_READY",
     OP_MARKER: "REQ_BUTTONS_MARKER_X1S_X2",
     OP_CATALOG_ROW_DEVICE: "CATALOG_ROW_DEVICE",

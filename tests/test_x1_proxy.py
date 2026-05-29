@@ -129,6 +129,40 @@ def test_try_finish_activities_burst_ends_burst_once_snapshot_is_complete() -> N
     assert proxy.state.current_activity_hint == 0x66
 
 
+def test_empty_activities_burst_commits_empty_snapshot_and_marks_ready() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._begin_activity_request()
+    proxy._burst.start("activities", now=0.0)
+
+    finished = proxy.try_finish_activities_burst()
+
+    assert finished is True
+    proxy._on_activities_burst_end("activities")
+    activities, ready = proxy.get_activities(force_refresh=False)
+
+    assert ready is True
+    assert activities == {}
+    assert proxy.state.activities == {}
+    assert proxy._activity_retry_due_at is None
+
+
+def test_status_ack_07_finishes_empty_activities_burst_immediately() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._begin_activity_request()
+    proxy._burst.start("activities", now=0.0)
+
+    finished = proxy.note_catalog_status_ack(0x07)
+
+    assert finished is True
+    assert proxy._burst.active is False
+    activities, ready = proxy.get_activities(force_refresh=False)
+    assert ready is True
+    assert activities == {}
+    assert proxy._activity_retry_due_at is None
+
+
 def test_try_finish_devices_burst_ends_burst_once_snapshot_is_complete() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -161,6 +195,38 @@ def test_try_finish_devices_burst_ends_burst_once_snapshot_is_complete() -> None
             "name": "TV",
         },
     }
+
+
+def test_empty_devices_burst_commits_empty_snapshot_and_marks_ready() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._begin_device_request()
+    proxy._burst.start("devices", now=0.0)
+
+    finished = proxy.try_finish_devices_burst()
+
+    assert finished is True
+    proxy._on_devices_burst_end("devices")
+    devices, ready = proxy.get_devices(force_refresh=False)
+
+    assert ready is True
+    assert devices == {}
+    assert proxy.state.devices == {}
+
+
+def test_status_ack_07_finishes_empty_devices_burst_immediately() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._begin_device_request()
+    proxy._burst.start("devices", now=0.0)
+
+    finished = proxy.note_catalog_status_ack(0x07)
+
+    assert finished is True
+    assert proxy._burst.active is False
+    devices, ready = proxy.get_devices(force_refresh=False)
+    assert ready is True
+    assert devices == {}
 
 
 def test_export_cache_state_omits_raw_body_bytes() -> None:

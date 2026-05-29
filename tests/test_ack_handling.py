@@ -20,6 +20,11 @@ from custom_components.sofabaton_x1s.lib.ack import (
     InputsBurstResult,
     SendStepResult,
 )
+from custom_components.sofabaton_x1s.lib.frame_handlers import (
+    FrameContext,
+    frame_handler_registry,
+)
+from custom_components.sofabaton_x1s.lib.protocol_const import OP_ACTIVITY_CREATE_ACK
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 
 
@@ -200,3 +205,29 @@ def test_wait_for_activity_inputs_burst_returns_payloads_on_idle(monkeypatch) ->
 
     assert result.outcome is AckOutcome.acked
     assert result.payloads == (b"page-1", b"page-2")
+
+
+def test_activity_create_ack_handler_queues_0137_and_captures_id() -> None:
+    """Family-0x37 create replies behave like create acks, not unknown noise."""
+
+    proxy = _make_proxy()
+    frame = FrameContext(
+        proxy=proxy,
+        opcode=OP_ACTIVITY_CREATE_ACK,
+        direction="H→A",
+        payload=b"\x66",
+        raw=bytes.fromhex("A5 5A 01 37 66 9D"),
+        name="ACTIVITY_CREATE_ACK",
+    )
+
+    handlers = list(frame_handler_registry.iter_for(frame.opcode, frame.direction))
+    assert handlers, "Expected a registered handler for 0x0137"
+
+    for handler in handlers:
+        handler.handle(frame)
+
+    assert proxy.wait_for_assigned_device_id(timeout=0.01) == 0x66
+    assert proxy.wait_for_ack_any([(OP_ACTIVITY_CREATE_ACK, None)], timeout=0.01) == (
+        OP_ACTIVITY_CREATE_ACK,
+        b"\x66",
+    )

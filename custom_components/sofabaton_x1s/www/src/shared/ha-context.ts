@@ -54,6 +54,7 @@ export interface ControlPanelHubState {
     string,
     Array<{ command_id: number; name?: string; label?: string }>
   >;
+  active_backup_operation?: BackupProgressEvent | null;
 }
 
 export interface ControlPanelStateResponse {
@@ -201,8 +202,15 @@ export interface BackupProgressEvent {
   current_activity_id?: number | null;
   filename?: string | null;
   backup?: BackupBundlePayload | null;
+  backup_downloaded?: boolean | null;
   result?: BackupRestoreResult | null;
   error?: string | null;
+}
+
+export interface BackupOperationStateResponse {
+  backup_export?: BackupProgressEvent | null;
+  backup_restore?: BackupProgressEvent | null;
+  active_operation?: BackupProgressEvent | null;
 }
 
 export interface ControlPanelSnapshot {

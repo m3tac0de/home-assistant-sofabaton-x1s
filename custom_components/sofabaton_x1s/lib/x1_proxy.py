@@ -454,11 +454,13 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         self._activity_row_payloads: dict[int, bytes] = {}
         self._device_request_serial = 0
         self._device_request_inflight: int | None = None
+        self._devices_catalog_ready = False
         self._device_pending_generation: int | None = None
         self._device_pending_expected_rows: int | None = None
         self._device_pending_rows: dict[int, dict[str, Any]] = {}
         self._activity_request_serial = 0
         self._activity_request_inflight: int | None = None
+        self._activities_catalog_ready = False
         self._activity_retry_count = 0
         self._activity_retry_due_at: float | None = None
         self._activity_retry_send_pending = False

@@ -43,12 +43,14 @@ ensure_stub_package(
 
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1
 from custom_components.sofabaton_x1s.lib.device_create import (
+    ACK_OPCODE_ACTIVITY_CREATE,
     ACK_OPCODE_BUTTON_BINDING,
     ACK_OPCODE_DEVICE_CREATE,
     ACK_OPCODE_MACRO,
     ACK_OPCODE_STATUS,
     ACK_STATUS_BYTE_OK,
     CreateStep,
+    FAMILY_ACTIVITY_CREATE,
     FAMILY_BUTTON_BINDING,
     FAMILY_DEVICE_CREATE,
     FAMILY_DEVICE_UPDATE,
@@ -140,6 +142,22 @@ def test_build_device_create_step_matches_bose_capture() -> None:
     assert step.ack_first_byte is None
     assert step.capture_device_id is True
     assert step.payload == _frame_to_payload(BOSE_CREATE_FRAME)
+
+
+def test_build_activity_create_step_uses_activity_ack_family() -> None:
+    config = DeviceConfig(
+        device_id=0xFF, record_kind=1, tail_marker=0, **BOSE_BASE_FIELDS,
+    )
+    step = build_device_create_step(
+        config,
+        hub_version=HUB_VERSION_X1,
+        family=FAMILY_ACTIVITY_CREATE,
+    )
+
+    assert step.family == FAMILY_ACTIVITY_CREATE
+    assert step.ack_opcode == ACK_OPCODE_ACTIVITY_CREATE
+    assert step.ack_first_byte is None
+    assert step.capture_device_id is True
 
 
 def test_build_device_update_step_matches_bose_capture() -> None:

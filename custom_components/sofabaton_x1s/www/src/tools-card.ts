@@ -291,13 +291,19 @@ class SofabatonControlPanelCard extends LitElement {
     if (this._snapshot.backendUnavailable) {
       return this.renderBackendUnavailable(height);
     }
+    const activeBackupOperation = hub?.active_backup_operation;
+    const backupBusy =
+      !!activeBackupOperation &&
+      ["pending", "running"].includes(String(activeBackupOperation.status || ""));
     const sharedHubCommandBusy = Boolean(
       this._snapshot.refreshBusy ||
       this._snapshot.externalHubCommandBusy ||
-      this._snapshot.pendingActionKey,
+      this._snapshot.pendingActionKey ||
+      backupBusy,
     );
     const sharedHubCommandLabel = this._snapshot.externalHubCommandLabel
       || (this._snapshot.refreshBusy ? "Refreshing cache…" : null)
+      || (backupBusy ? String(activeBackupOperation?.message || "Backup or restore in progress…") : null)
       || (this._snapshot.pendingActionKey ? "Hub command in progress…" : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
@@ -356,6 +362,7 @@ class SofabatonControlPanelCard extends LitElement {
           .cacheHub=${cacheHub}
           .hass=${this._snapshot.hass}
           .persistentCacheEnabled=${cacheEnabled}
+          .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}

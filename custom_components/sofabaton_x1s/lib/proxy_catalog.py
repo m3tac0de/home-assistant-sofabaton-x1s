@@ -121,7 +121,7 @@ class CatalogMixin:
             return ({}, False)
 
         activities_view = self.state.entities("activity")
-        if activities_view:
+        if self._activities_catalog_ready:
             return ({k: to_export_view(v) for k, v in activities_view.items()}, True)
 
         return ({}, False)
@@ -134,7 +134,7 @@ class CatalogMixin:
             return ({}, False)
 
         devices_view = self.state.entities("device")
-        if devices_view:
+        if self._devices_catalog_ready:
             return ({k: to_export_view(v) for k, v in devices_view.items()}, True)
 
         if self.can_issue_commands():
@@ -377,14 +377,22 @@ class CatalogMixin:
 
     def _activity_snapshot_complete(self) -> bool:
         expected = self._activity_pending_expected_rows
-        if expected is None or expected <= 0:
+        if expected == 0:
+            return True
+        if expected is None:
+            return len(self._activity_pending_rows) == 0
+        if expected < 0:
             return False
         seen = set(self._activity_pending_rows.keys())
         return seen == set(range(1, expected + 1))
 
     def _device_snapshot_complete(self) -> bool:
         expected = self._device_pending_expected_rows
-        if expected is None or expected <= 0:
+        if expected == 0:
+            return True
+        if expected is None:
+            return len(self._device_pending_rows) == 0
+        if expected < 0:
             return False
         seen = set(self._device_pending_rows.keys())
         return seen == set(range(1, expected + 1))
@@ -412,6 +420,48 @@ class CatalogMixin:
             can_issue=self.can_issue_commands,
             sender=self._send_cmd_frame,
         )
+
+    def note_catalog_status_ack(self, status: int) -> bool:
+        """Handle hub status replies that mean an empty catalog request.
+
+        Some hubs answer ``REQ_ACTIVITIES`` / ``REQ_DEVICES`` with a plain
+        ``STATUS_ACK`` carrying ``0x07`` when the corresponding table is
+        genuinely empty. In that case there will be no row burst to drive the
+        normal completion path, so finish the active catalog burst immediately
+        instead of waiting for the idle timeout.
+        """
+
+        ack_status = int(status) & 0xFF
+        if ack_status != 0x07:
+            return False
+
+        if self._activity_request_inflight is not None and not self._activity_pending_rows:
+            if self._activity_pending_generation != self._activity_request_inflight:
+                self._reset_pending_activity_snapshot(self._activity_request_inflight)
+            self._activity_pending_expected_rows = 0
+            finished = self._burst.finish(
+                "activities",
+                can_issue=self.can_issue_commands,
+                sender=self._send_cmd_frame,
+            )
+            if finished:
+                self._log.info("[ACT] STATUS_ACK 0x07 indicates an empty activities catalog; finishing burst")
+            return finished
+
+        if self._device_request_inflight is not None and not self._device_pending_rows:
+            if self._device_pending_generation != self._device_request_inflight:
+                self._reset_pending_device_snapshot(self._device_request_inflight)
+            self._device_pending_expected_rows = 0
+            finished = self._burst.finish(
+                "devices",
+                can_issue=self.can_issue_commands,
+                sender=self._send_cmd_frame,
+            )
+            if finished:
+                self._log.info("[DEV] STATUS_ACK 0x07 indicates an empty devices catalog; finishing burst")
+            return finished
+
+        return False
 
     def note_buttons_frame(self, act_lo: int, *, frame_no: int | None, total_frames: int | None) -> None:
         if frame_no != 1:
@@ -583,6 +633,7 @@ class CatalogMixin:
                 merged["power_model"] = cached_mode
             committed[dev_id] = merged
         self.state.devices = committed
+        self._devices_catalog_ready = True
 
     def _on_devices_burst_end(self, key: str) -> None:
         generation = self._device_request_inflight
@@ -632,6 +683,7 @@ class CatalogMixin:
         self.state.activities = committed
         self._activity_row_payloads = dict(self._activity_pending_payloads)
         self.state.set_hint(self._activity_pending_hint)
+        self._activities_catalog_ready = True
 
     def _on_activities_burst_end(self, key: str) -> None:
         generation = self._activity_request_inflight

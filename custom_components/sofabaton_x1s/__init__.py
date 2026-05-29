@@ -81,6 +81,7 @@ class _BackupOperationRegistry:
 
     @callback
     def create(self, *, kind: str, entry_id: str, initial_state: dict[str, Any]) -> str:
+        self._drop_completed_for_entry(entry_id, kind=kind)
         operation_id = uuid4().hex
         self._ops[operation_id] = {
             "operation_id": operation_id,
@@ -112,16 +113,46 @@ class _BackupOperationRegistry:
         return False
 
     @callback
+    def latest_for_entry(self, entry_id: str, *, kind: str | None = None) -> dict[str, Any] | None:
+        for operation in reversed(list(self._ops.values())):
+            state = operation.get("state") or {}
+            if state.get("entry_id") != entry_id:
+                continue
+            if kind is not None and state.get("kind") != kind:
+                continue
+            return dict(state)
+        return None
+
+    @callback
+    def running_for_entry(self, entry_id: str) -> dict[str, Any] | None:
+        for operation in reversed(list(self._ops.values())):
+            state = operation.get("state") or {}
+            if state.get("entry_id") != entry_id:
+                continue
+            if str(state.get("status") or "") in {"pending", "running"}:
+                return dict(state)
+        return None
+
+    @callback
     def update(self, operation_id: str, **payload: Any) -> None:
         operation = self._ops.get(operation_id)
         if operation is None:
             return
         state = dict(operation.get("state") or {})
+        current_status = str(state.get("status") or "")
+        next_status = str(payload.get("status") or current_status or "")
+        # Progress callbacks may be queued from another thread. If a terminal
+        # update already landed, never let a late pending/running callback
+        # demote the operation back into an active state.
+        if current_status in {"success", "failed"} and next_status in {"pending", "running"}:
+            return
         state.update(payload)
         operation["state"] = state
         self._notify(operation_id)
         if str(state.get("status") or "") in {"success", "failed"}:
-            self._schedule_cleanup(operation_id)
+            keep_result = bool(state.get("backup")) and str(state.get("kind") or "") == "backup_export"
+            if not keep_result:
+                self._schedule_cleanup(operation_id)
 
     def update_from_thread(self, operation_id: str, **payload: Any) -> None:
         self.hass.loop.call_soon_threadsafe(lambda: self.update(operation_id, **payload))
@@ -147,6 +178,21 @@ class _BackupOperationRegistry:
             return
         subscribers = operation.setdefault("subscribers", {})
         subscribers.pop(token, None)
+
+    @callback
+    def clear_backup_result(self, operation_id: str) -> bool:
+        operation = self._ops.get(operation_id)
+        if operation is None:
+            return False
+        state = dict(operation.get("state") or {})
+        if not state.get("backup"):
+            return False
+        state.pop("backup", None)
+        state["backup_downloaded"] = True
+        operation["state"] = state
+        self._notify(operation_id)
+        self._schedule_cleanup(operation_id, delay_seconds=30.0)
+        return True
 
     @callback
     def _notify(self, operation_id: str) -> None:
@@ -177,6 +223,22 @@ class _BackupOperationRegistry:
             self._ops.pop(operation_id, None)
 
         operation["cleanup_unsub"] = async_call_later(self.hass, delay_seconds, _cleanup)
+
+    @callback
+    def _drop_completed_for_entry(self, entry_id: str, *, kind: str) -> None:
+        for operation_id, operation in list(self._ops.items()):
+            state = operation.get("state") or {}
+            if state.get("entry_id") != entry_id or state.get("kind") != kind:
+                continue
+            if str(state.get("status") or "") in {"pending", "running"}:
+                continue
+            cleanup_unsub = operation.get("cleanup_unsub")
+            if callable(cleanup_unsub):
+                try:
+                    cleanup_unsub()
+                except Exception:
+                    pass
+            self._ops.pop(operation_id, None)
 
 
 def _backup_operation_registry(hass: HomeAssistant) -> _BackupOperationRegistry:
@@ -506,6 +568,7 @@ def _build_control_panel_hub_payload(
     *,
     persistent_cache_enabled: bool,
 ) -> dict[str, Any]:
+    registry = _backup_operation_registry(hass)
     entry = hass.config_entries.async_get_entry(hub.entry_id)
     banner_model = str(getattr(hub, "banner_model", "") or "").strip()
     version = banner_model or (get_hub_model(entry) if entry is not None else getattr(hub, "version", ""))
@@ -514,6 +577,7 @@ def _build_control_panel_hub_payload(
     )
     activities = getattr(hub, "activities", {}) or {}
     devices = getattr(hub, "devices", {}) or {}
+    active_backup_operation = registry.running_for_entry(hub.entry_id)
     return {
         "entry_id": hub.entry_id,
         "name": hub.name,
@@ -534,6 +598,7 @@ def _build_control_panel_hub_payload(
             "can_find_remote": can_run_hub_actions,
             "can_sync_remote": can_run_hub_actions,
         },
+        "active_backup_operation": active_backup_operation,
     }
 
 
@@ -904,6 +969,12 @@ async def _ws_control_panel_run_action(
         )
         return
 
+    try:
+        _raise_if_hub_operation_locked(hass, hub, "_ws_control_panel_run_action")
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+
     if msg["action"] == "find_remote":
         await hub.async_find_remote()
     else:
@@ -1065,13 +1136,18 @@ async def _run_backup_restore_operation(
                 result=result,
             )
             return
-        registry.update(
-            operation_id,
-            status="success",
-            phase="completed",
-            message="Restore completed.",
-            result=result or {"status": "success"},
-        )
+        success_payload: dict[str, Any] = {
+            "status": "success",
+            "phase": "completed",
+            "message": "Restore completed.",
+            "result": result or {"status": "success"},
+        }
+        if isinstance(result, dict):
+            if result.get("_progress_completed_steps") is not None:
+                success_payload["completed_steps"] = int(result["_progress_completed_steps"])
+            if result.get("_progress_total_steps") is not None:
+                success_payload["total_steps"] = int(result["_progress_total_steps"])
+        registry.update(operation_id, **success_payload)
     except Exception as err:
         registry.update(
             operation_id,
@@ -1098,7 +1174,7 @@ async def _ws_fetch_blob(hass: HomeAssistant, connection, msg: dict[str, Any]) -
         return
 
     try:
-        _raise_if_sync_in_progress(hub, "_ws_fetch_blob")
+        _raise_if_hub_operation_locked(hass, hub, "_ws_fetch_blob")
         result = await hub.async_fetch_blob(
             device_id=int(msg["device_id"]),
             command_id=int(msg["command_id"]) if msg.get("command_id") is not None else None,
@@ -1146,7 +1222,7 @@ async def _ws_play_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any])
         return
 
     try:
-        _raise_if_sync_in_progress(hub, "_ws_play_ir_blob")
+        _raise_if_hub_operation_locked(hass, hub, "_ws_play_ir_blob")
         blob_bytes = _parse_play_ir_blob_input(msg.get("blob"))
         ok = await hub.async_play_ir_blob(blob_bytes)
     except HomeAssistantError as err:
@@ -1184,7 +1260,7 @@ async def _ws_persist_ir_blob(hass: HomeAssistant, connection, msg: dict[str, An
         return
 
     try:
-        _raise_if_sync_in_progress(hub, "_ws_persist_ir_blob")
+        _raise_if_hub_operation_locked(hass, hub, "_ws_persist_ir_blob")
         blob_bytes = _parse_play_ir_blob_input(msg.get("blob"))
         command_name = _validate_ir_command_name(msg.get("command_name"))
         result = await hub.async_persist_ir_blob(
@@ -1237,7 +1313,7 @@ async def _ws_backup_export(hass: HomeAssistant, connection, msg: dict[str, Any]
         return
 
     try:
-        _raise_if_sync_in_progress(hub, "_ws_backup_export")
+        _raise_if_hub_operation_locked(hass, hub, "_ws_backup_export")
         device_ids = _validate_backup_device_ids(msg.get("device_ids"))
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "unavailable", str(err))
@@ -1289,7 +1365,7 @@ async def _ws_backup_restore(hass: HomeAssistant, connection, msg: dict[str, Any
         return
 
     try:
-        _raise_if_sync_in_progress(hub, "_ws_backup_restore")
+        _raise_if_hub_operation_locked(hass, hub, "_ws_backup_restore")
         mode = _validate_restore_mode(msg.get("mode"))
         payload = msg.get("backup")
         if not isinstance(payload, dict):
@@ -1352,6 +1428,45 @@ async def _ws_backup_progress_subscribe(hass: HomeAssistant, connection, msg: di
     connection.subscriptions[msg["id"]] = _unsubscribe
     connection.send_result(msg["id"])
     _forward(initial_state)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/backup/state",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_backup_state(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    registry = _backup_operation_registry(hass)
+    connection.send_result(
+        msg["id"],
+        {
+            "backup_export": registry.latest_for_entry(hub.entry_id, kind="backup_export"),
+            "backup_restore": registry.latest_for_entry(hub.entry_id, kind="backup_restore"),
+            "active_operation": registry.running_for_entry(hub.entry_id),
+        },
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/backup/clear_result",
+        vol.Required("operation_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_backup_clear_result(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    registry = _backup_operation_registry(hass)
+    if not registry.clear_backup_result(msg["operation_id"]):
+        connection.send_error(msg["id"], "not_found", "Could not resolve backup result")
+        return
+    connection.send_result(msg["id"], {"ok": True})
 
 
 @websocket_api.websocket_command(
@@ -1473,6 +1588,12 @@ async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, ms
         connection.send_error(msg["id"], "disabled", "Persistent cache is disabled")
         return
 
+    try:
+        _raise_if_hub_operation_locked(hass, hub, "_ws_refresh_persistent_cache_entry")
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+
     target_id = int(msg["target_id"])
     if target_id < 1 or target_id > 255:
         connection.send_error(msg["id"], "invalid_id", "target_id must be between 1 and 255")
@@ -1521,6 +1642,12 @@ async def _ws_refresh_catalog(hass: HomeAssistant, connection, msg: dict[str, An
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
 
+    try:
+        _raise_if_hub_operation_locked(hass, hub, "_ws_refresh_catalog")
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+
     await hub.async_request_catalog(msg["kind"])
     store = await _async_get_persistent_cache_store(hass)
     if store.enabled:
@@ -1550,6 +1677,8 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_backup_export)
     websocket_api.async_register_command(hass, _ws_backup_restore)
     websocket_api.async_register_command(hass, _ws_backup_progress_subscribe)
+    websocket_api.async_register_command(hass, _ws_backup_state)
+    websocket_api.async_register_command(hass, _ws_backup_clear_result)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache)
@@ -1933,6 +2062,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 def _raise_if_sync_in_progress(hub: SofabatonHub, operation: str) -> None:
     if bool(getattr(hub, "is_sync_in_progress", False)):
         raise HomeAssistantError(f"sync_in_progress: {operation}")
+
+
+def _raise_if_backup_operation_in_progress(
+    hass: HomeAssistant, hub: SofabatonHub, operation: str
+) -> None:
+    registry = _backup_operation_registry(hass)
+    if registry.has_running_for_entry(hub.entry_id):
+        raise HomeAssistantError(f"backup_operation_in_progress: {operation}")
+
+
+def _raise_if_hub_operation_locked(
+    hass: HomeAssistant, hub: SofabatonHub, operation: str
+) -> None:
+    _raise_if_sync_in_progress(hub, operation)
+    _raise_if_backup_operation_in_progress(hass, hub, operation)
 
 async def _async_handle_fetch_device_commands(call: ServiceCall):
     hass = call.hass

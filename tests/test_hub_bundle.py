@@ -901,6 +901,107 @@ def test_async_restore_backup_replace_mode_restores_hub_name_from_bundle() -> No
     hub.async_set_hub_name.assert_awaited_once_with("Living Room Hub")
 
 
+def test_async_restore_backup_replace_mode_restores_same_hub_name_without_identity_sync() -> None:
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "X1 - test"
+    hub.version = HUB_VERSION_X1S
+    hub.async_set_hub_name = AsyncMock(return_value=True)
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.get_banner_info = MagicMock(return_value={"name": "X1 - test"})
+    hub._proxy.erase_configuration = MagicMock(return_value=True)
+    hub._proxy.restore_hub_bundle = MagicMock(
+        return_value={
+            "status": "success",
+            "device_id_map": {},
+            "restored_devices": [],
+            "restored_activities": [],
+        }
+    )
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 4,
+        "hub": {"name": "X1 - test"},
+        "devices": [],
+        "activities": [{"kind": "activity_backup"}],
+    }
+    progress_events: list[dict[str, Any]] = []
+
+    result = _run(
+        hub.async_restore_backup(
+            bundle,
+            replace_mode=True,
+            progress_callback=lambda **payload: progress_events.append(dict(payload)),
+        )
+    )
+
+    assert result["status"] == "success"
+    assert result["_progress_completed_steps"] == 3
+    assert result["_progress_total_steps"] == 3
+    assert result["hub_name"] == "X1 - test"
+    assert result["hub_name_restored"] is True
+    hub.async_set_hub_name.assert_awaited_once_with("X1 - test", sync_identity=False)
+
+
+def test_async_restore_backup_replace_mode_progress_counts_include_restored_steps() -> None:
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Factory Default"
+    hub.version = HUB_VERSION_X1S
+    hub.async_set_hub_name = AsyncMock(return_value=True)
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.erase_configuration = MagicMock(return_value=True)
+    hub._proxy.restore_hub_bundle = MagicMock(
+        return_value={
+            "status": "success",
+            "device_id_map": {"1": 11},
+            "restored_devices": [{"source_device_id": 1, "device_id": 11}],
+            "restored_activities": [],
+        }
+    )
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 4,
+        "hub": {"name": "Living Room Hub"},
+        "devices": [{"device": {"device_id": 1}}],
+        "activities": [],
+    }
+    progress_events: list[dict[str, Any]] = []
+
+    result = _run(
+        hub.async_restore_backup(
+            bundle,
+            replace_mode=True,
+            progress_callback=lambda **payload: progress_events.append(dict(payload)),
+        )
+    )
+
+    assert result["status"] == "success"
+    assert result["_progress_completed_steps"] == 4
+    assert result["_progress_total_steps"] == 4
+    assert progress_events[-1]["message"] == "Restored hub name."
+    assert progress_events[-1]["completed_steps"] == 4
+    assert progress_events[-1]["total_steps"] == 4
+
+
 def test_async_restore_backup_merge_mode_skips_hub_name_restore() -> None:
     from custom_components.sofabaton_x1s.hub import SofabatonHub
 

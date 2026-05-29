@@ -116,6 +116,11 @@ FAMILY_REMOTE_SYNC = 0x64
 #: carries the freshly assigned ``device_id``.
 ACK_OPCODE_DEVICE_CREATE = 0x0107
 
+#: Full ack opcode the X1 returns for an activity-create. Observed as an
+#: immediate reply to family-0x37 writes, with ``payload[0]`` carrying the
+#: freshly assigned activity id.
+ACK_OPCODE_ACTIVITY_CREATE = 0x0137
+
 #: Full ack opcode for a button-binding write. ``payload[0]`` echoes
 #: the request's button id.
 ACK_OPCODE_BUTTON_BINDING = 0x013E
@@ -601,11 +606,17 @@ def build_device_create_step(
     label = (
         "activity-create" if family == FAMILY_ACTIVITY_CREATE else "device-create"
     )
+    ack_opcode = (
+        ACK_OPCODE_ACTIVITY_CREATE
+        if family == FAMILY_ACTIVITY_CREATE
+        else ACK_OPCODE_DEVICE_CREATE
+    )
+
     return CreateStep(
         label=label,
         family=family,
         payload=payload,
-        ack_opcode=ACK_OPCODE_DEVICE_CREATE,
+        ack_opcode=ack_opcode,
         ack_first_byte=None,  # any byte -- the assigned id is captured, not matched
         capture_device_id=True,
     )

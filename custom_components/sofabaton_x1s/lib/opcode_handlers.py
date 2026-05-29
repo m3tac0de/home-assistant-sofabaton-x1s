@@ -80,6 +80,7 @@ from .protocol_const import (
     OP_X2_REMOTE_LIST_ROW,
     OP_ACTIVITY_MAP_PAGE,
     OP_ACTIVITY_MAP_PAGE_X1S,
+    OP_ACTIVITY_CREATE_ACK,
     OP_X1_ACTIVITY,
     OP_X1_DEVICE,
     OP_KEYMAP_EXTRA,
@@ -524,9 +525,12 @@ class SaveCommitHandler(BaseFrameHandler):
         proxy._log.info("[CREATE] save commit/ack success")
 
 
-@register_handler(opcodes=(OP_CREATE_DEVICE_ACK,), directions=("H→A",))
+@register_handler(
+    opcodes=(OP_CREATE_DEVICE_ACK, OP_ACTIVITY_CREATE_ACK),
+    directions=("H→A",),
+)
 class CreateDeviceAckHandler(BaseFrameHandler):
-    """Capture device id from create-device ack during create sequence."""
+    """Capture assigned ids from create-device/activity-create acks."""
 
     def handle(self, frame: FrameContext) -> None:
         payload = frame.payload
@@ -535,7 +539,8 @@ class CreateDeviceAckHandler(BaseFrameHandler):
         proxy: X1Proxy = frame.proxy
         proxy.set_assigned_device_id(payload[0])
         proxy.notify_ack(frame.opcode, payload)
-        proxy._log.info("[WIFI] create ack device_id=0x%02X", payload[0])
+        entity = "activity" if frame.opcode == OP_ACTIVITY_CREATE_ACK else "device"
+        proxy._log.info("[WIFI] create ack %s_id=0x%02X", entity, payload[0])
 
 
 @register_handler(opcodes=(0x0103, 0x013E, 0x0112), directions=("H→A",))

@@ -85,6 +85,7 @@ class AckWaitersMixin:
             # for power/inputs yet"). Trip the event so the wait can exit
             # early instead of timing out after the full window.
             if status is not None and status != 0x00:
+                self.note_catalog_status_ack(status)
                 with self._activity_inputs_lock:
                     if self._activity_inputs_pending and self._activity_inputs_seen == 0:
                         self._inputs_burst_reject_pending = True

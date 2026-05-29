@@ -1957,6 +1957,7 @@ class SofabatonHub:
         name: str,
         *,
         timeout: float = 5.0,
+        sync_identity: bool = True,
     ) -> bool:
         """Persist a new hub name and refresh our cached identity."""
 
@@ -1979,7 +1980,8 @@ class SofabatonHub:
         if not info.get("production_batch") and self.production_batch:
             info["production_batch"] = self.production_batch
 
-        await self._async_sync_authoritative_identity(info)
+        if sync_identity:
+            await self._async_sync_authoritative_identity(info)
         self.name = next_name
         return True
 
@@ -2028,7 +2030,11 @@ class SofabatonHub:
         use_replace_mode = bool(activities) if replace_mode is None else bool(replace_mode)
         bundle_hub = payload.get("hub") if isinstance(payload.get("hub"), dict) else {}
         bundle_hub_name = str(bundle_hub.get("name") or "").strip()
+        current_hub_name = str(
+            (self._proxy.get_banner_info() or {}).get("name") or self.name or ""
+        ).strip()
         rename_after_replace = bool(use_replace_mode and bundle_hub_name)
+        sync_identity_after_replace = bool(bundle_hub_name and bundle_hub_name != current_hub_name)
         total_steps = (
             1
             + len(devices)
@@ -2082,6 +2088,12 @@ class SofabatonHub:
                 progress_total_steps=total_steps,
             )
         )
+        if isinstance(result, dict) and str(result.get("status") or "") == "success":
+            # ``restore_hub_bundle`` advances progress for each restored device
+            # and activity, but the outer counter still needs to absorb those
+            # completed steps before any replace-mode tail work runs.
+            completed_steps += len(result.get("restored_devices") or [])
+            completed_steps += len(result.get("restored_activities") or [])
         if rename_after_replace and isinstance(result, dict) and result.get("status") == "success":
             _progress(
                 status="running",
@@ -2090,7 +2102,10 @@ class SofabatonHub:
                 completed_steps=completed_steps,
                 total_steps=total_steps,
             )
-            hub_name_restored = await self.async_set_hub_name(bundle_hub_name)
+            hub_name_restored = await self.async_set_hub_name(
+                bundle_hub_name,
+                sync_identity=sync_identity_after_replace,
+            )
             result = dict(result)
             result["hub_name"] = bundle_hub_name
             result["hub_name_restored"] = bool(hub_name_restored)
@@ -2112,6 +2127,10 @@ class SofabatonHub:
                     self.entry_id,
                     bundle_hub_name,
                 )
+        if isinstance(result, dict):
+            result = dict(result)
+            result["_progress_completed_steps"] = completed_steps
+            result["_progress_total_steps"] = total_steps
         return result
 
     def _build_device_block(
