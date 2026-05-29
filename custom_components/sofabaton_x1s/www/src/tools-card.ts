@@ -61,12 +61,17 @@ class SofabatonControlPanelCard extends LitElement {
   private _config: Record<string, unknown> = {};
   private _snapshot;
   private readonly _store;
+  private _hubPickerOpen = false;
+  private _toolsMenuOpen = false;
   private _lastRenderedTab: TabId | null = null;
   private _pendingCacheScrollSnapshot: {
     section: string | null;
     sectionTop: number;
     panelTop: number;
   } | null = null;
+  private readonly _boundHandleDocumentPointerDown = (event: PointerEvent) => {
+    this.handleDocumentPointerDown(event);
+  };
 
   constructor() {
     super();
@@ -105,13 +110,16 @@ class SofabatonControlPanelCard extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     logOnce();
+    document.addEventListener("pointerdown", this._boundHandleDocumentPointerDown, true);
     this._store.connected();
   }
 
   disconnectedCallback() {
     super.disconnectedCallback();
     this._store.disconnected();
-    this.renderRoot.querySelector<HTMLDialogElement>("#hub-picker-dialog")?.close();
+    document.removeEventListener("pointerdown", this._boundHandleDocumentPointerDown, true);
+    this._hubPickerOpen = false;
+    this._toolsMenuOpen = false;
   }
 
   protected willUpdate() {
@@ -148,17 +156,39 @@ class SofabatonControlPanelCard extends LitElement {
     this._lastRenderedTab = this._snapshot.selectedTab;
   }
 
-  private openHubPicker() {
-    const button = this.renderRoot.querySelector<HTMLElement>("#hub-picker-btn");
-    const dialog = this.renderRoot.querySelector<HTMLDialogElement>("#hub-picker-dialog");
-    if (!button || !dialog) return;
-    const rect = button.getBoundingClientRect();
-    dialog.style.top = `${rect.bottom + 4}px`;
-    dialog.style.left = `${Math.max(8, rect.right - 180)}px`;
-    dialog.showModal();
+  private handleDocumentPointerDown(event: PointerEvent) {
+    const path = event.composedPath();
+    const hubPickerRoot = this.renderRoot.querySelector("#hub-picker-root");
+    const toolsMenuRoot = this.renderRoot.querySelector("#tools-tab-menu-root");
+    const clickedHubPicker = hubPickerRoot ? path.includes(hubPickerRoot) : false;
+    const clickedToolsMenu = toolsMenuRoot ? path.includes(toolsMenuRoot) : false;
+
+    let changed = false;
+    if (this._hubPickerOpen && !clickedHubPicker) {
+      this._hubPickerOpen = false;
+      changed = true;
+    }
+    if (this._toolsMenuOpen && !clickedToolsMenu) {
+      this._toolsMenuOpen = false;
+      changed = true;
+    }
+    if (changed) this.requestUpdate();
+  }
+
+  private toggleHubPicker() {
+    this._hubPickerOpen = !this._hubPickerOpen;
+    if (this._hubPickerOpen) this._toolsMenuOpen = false;
+    this.requestUpdate();
+  }
+
+  private toggleToolsMenu() {
+    this._toolsMenuOpen = !this._toolsMenuOpen;
+    if (this._toolsMenuOpen) this._hubPickerOpen = false;
+    this.requestUpdate();
   }
 
   private handleTabSelect(tabId: TabId) {
+    this._toolsMenuOpen = false;
     this._store.selectTab(tabId);
   }
 
@@ -394,23 +424,25 @@ class SofabatonControlPanelCard extends LitElement {
       <ha-card>
         <div class="card-inner" style=${`height:${height}px`}>
           <div class="card-header">
-            <span class="card-title">Sofabaton Control Panel</span>
             ${renderHubPicker({
               visible: hubs.length > 1,
+              open: this._hubPickerOpen,
               selectedLabel: hub?.name || hub?.entry_id || "",
               hubs,
               selectedEntryId: this._snapshot.selectedHubEntryId,
-              onOpen: () => this.openHubPicker(),
+              onToggle: () => this.toggleHubPicker(),
               onSelect: (entryId) => {
-                this.renderRoot.querySelector<HTMLDialogElement>("#hub-picker-dialog")?.close();
+                this._hubPickerOpen = false;
                 this._store.selectHub(entryId);
               },
             })}
           </div>
           ${renderTabBar({
             selectedTab: this._snapshot.selectedTab,
+            toolsMenuOpen: this._toolsMenuOpen,
             persistentCacheEnabled: cacheEnabled,
             onSelect: (tabId) => this.handleTabSelect(tabId),
+            onToggleToolsMenu: () => this.toggleToolsMenu(),
           })}
           <div class="card-body">${activeTab}</div>
         </div>

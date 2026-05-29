@@ -555,25 +555,35 @@ var cardStyles = i`
   :host { display: block; }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
-  .card-header { flex-shrink: 0; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 8px; }
+  .card-header { position: relative; flex-shrink: 0; min-height: 0; display: flex; align-items: flex-start; justify-content: flex-end; padding: 0; }
   .card-title { font-size: 16px; font-weight: 700; }
   .card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
   .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
-  .hub-picker-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--divider-color); border-radius: 999px; padding: 4px 10px; background: var(--secondary-background-color, var(--ha-card-background)); cursor: pointer; font-family: inherit; color: var(--primary-text-color); flex-shrink: 0; }
-  .chip-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); }
-  .chip-name { font-size: 13px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chip-arrow { font-size: 10px; color: var(--secondary-text-color); }
-  .hub-picker-dialog { position: fixed; margin: 0; padding: 0; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); min-width: 160px; overflow: hidden; }
-  .hub-picker-dialog::backdrop { background: transparent; }
-  .hub-option { padding: 9px 14px; font-size: 13px; cursor: pointer; }
-  .hub-option.selected { font-weight: 600; color: var(--primary-color); }
+  .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; }
+  .hub-picker-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; max-width: min(100%, 320px); border: 1px solid var(--divider-color); border-top-right-radius: var(--ha-card-border-radius, 12px); border-top-left-radius: 0; border-bottom-right-radius: 0; border-bottom-left-radius: var(--ha-card-border-radius, 12px); padding: 8px 12px 8px 14px; background: var(--secondary-background-color, var(--ha-card-background)); cursor: pointer; font-family: inherit; color: var(--primary-text-color); flex-shrink: 0; user-select: none; -webkit-user-select: none; }
+  .hub-picker-btn.is-open { border-bottom-left-radius: 0; }
+  .chip-name { font-size: 13px; font-weight: 700; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip-arrow { --mdc-icon-size: 16px; color: var(--secondary-text-color); flex-shrink: 0; }
+  .hub-picker-menu { position: absolute; top: calc(100% - 1px); right: 0; z-index: 20; display: flex; flex-direction: column; min-width: max(100%, 180px); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-top: none; border-radius: 0 0 var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .hub-option { padding: 10px 14px; font-size: 13px; }
+  .hub-option:hover, .tab-menu-item:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
+  .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--primary-color); }
   .tabs { flex-shrink: 0; display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
-  .tab-btn { position: relative; border: none; border-bottom: 3px solid transparent; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px 11px; cursor: pointer; }
+  .tab-btn { position: relative; border: none; border-bottom: 3px solid transparent; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px 11px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .tab-btn--push-right { margin-left: auto; }
+  .tab-btn--menu { display: inline-flex; align-items: center; gap: 4px; padding-right: 12px; }
+  .tab-btn--menu.is-open { color: var(--primary-color); }
+  .tab-btn-menu-icon { --mdc-icon-size: 16px; }
+  .tab-btn-menu-caret { --mdc-icon-size: 18px; margin-right: -2px; }
   .tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
   .tab-btn-label-short { display: none; }
+  .tab-menu { position: relative; display: flex; }
+  .tab-menu--push-right { margin-left: auto; }
+  .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); right: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .tab-menu-item { padding: 10px 14px; font-size: 13px; }
   .logs-panel { gap: 10px; }
   .logs-header, .hub-hero { display: grid; }
   .logs-header { gap: 4px; }
@@ -738,6 +748,8 @@ var cardStyles = i`
   .hub-compact-stat-label { font-size: 11px; color: var(--secondary-text-color); font-weight: 500; }
   .hub-compact-divider { width: 1px; height: 36px; background: color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); flex-shrink: 0; }
   @media (max-width: 640px) {
+    .tabs { overflow-x: auto; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
     .tab-btn-label-short { display: inline; }
     .tab-btn--has-short-label .tab-btn-label { display: none; }
     .hub-connection-strip { grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto; gap: 6px; padding: 8px 10px; }
@@ -746,6 +758,8 @@ var cardStyles = i`
     .hub-ident-name { font-size: 15px; }
     .hub-compact-stats { display: none; }
     .entity-chevron { display: none; }
+    .hub-picker-btn { max-width: min(100vw - 32px, 260px); }
+    .chip-name { max-width: 180px; }
   }
 `;
 
@@ -1784,23 +1798,36 @@ var ControlPanelStore = class {
 function renderHubPicker(params) {
   if (!params.visible) return null;
   return b2`
-    <button class="hub-picker-btn" id="hub-picker-btn" @click=${params.onOpen}>
-      <span class="chip-label">Hub</span>
-      <span class="chip-name">${params.selectedLabel}</span>
-      <span class="chip-arrow">▼</span>
-    </button>
-    <dialog id="hub-picker-dialog" class="hub-picker-dialog">
-      ${params.hubs.map(
+    <div class="hub-picker" id="hub-picker-root">
+      <button
+        class="hub-picker-btn${params.open ? " is-open" : ""}"
+        id="hub-picker-btn"
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded=${String(params.open)}
+        @click=${params.onToggle}
+      >
+        <span class="chip-name">${params.selectedLabel}</span>
+        <ha-icon class="chip-arrow" icon="mdi:chevron-down"></ha-icon>
+      </button>
+      ${params.open ? b2`
+            <div id="hub-picker-menu" class="hub-picker-menu" role="menu">
+              ${params.hubs.map(
     (hub) => b2`
-          <div
-            class="hub-option${hub.entry_id === params.selectedEntryId ? " selected" : ""}"
-            @click=${() => params.onSelect(hub.entry_id)}
-          >
-            ${hub.name || hub.entry_id}
-          </div>
-        `
+                  <button
+                    class="hub-option${hub.entry_id === params.selectedEntryId ? " selected" : ""}"
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked=${String(hub.entry_id === params.selectedEntryId)}
+                    @click=${() => params.onSelect(hub.entry_id)}
+                  >
+                    ${hub.name || hub.entry_id}
+                  </button>
+                `
   )}
-    </dialog>
+            </div>
+          ` : null}
+    </div>
   `;
 }
 
@@ -1809,17 +1836,17 @@ function renderTabBar(params) {
   const tabs = [
     { id: "settings", label: "Hub", disabled: false },
     { id: "wifi_commands", label: "Wifi Commands", shortLabel: "Wifi", disabled: false },
-    { id: "blobs", label: "Blobs", disabled: false },
     { id: "backup", label: "Backup", disabled: false },
-    { id: "cache", label: "Cache", disabled: !params.persistentCacheEnabled },
-    { id: "logs", label: "Logs", disabled: false, pushRight: true }
+    { id: "cache", label: "Cache", disabled: !params.persistentCacheEnabled }
   ];
+  const toolsMenuActive = params.selectedTab === "blobs" || params.selectedTab === "logs";
   return b2`
     <div class="tabs">
       ${tabs.map(
     (tab) => b2`
           <button
-            class="tab-btn${tab.pushRight ? " tab-btn--push-right" : ""}${tab.shortLabel ? " tab-btn--has-short-label" : ""}${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
+            class="tab-btn${tab.shortLabel ? " tab-btn--has-short-label" : ""}${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
+            type="button"
             ?disabled=${tab.disabled}
             @click=${() => params.onSelect(tab.id)}
           >
@@ -1828,6 +1855,41 @@ function renderTabBar(params) {
           </button>
         `
   )}
+      <div class="tab-menu tab-menu--push-right" id="tools-tab-menu-root">
+        <button
+          class="tab-btn tab-btn--menu${toolsMenuActive ? " active" : ""}${params.toolsMenuOpen ? " is-open" : ""}"
+          id="tools-tab-menu-btn"
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded=${String(params.toolsMenuOpen)}
+          @click=${params.onToggleToolsMenu}
+        >
+          <ha-icon class="tab-btn-menu-icon" icon="mdi:dots-horizontal"></ha-icon>
+          <ha-icon class="tab-btn-menu-caret" icon="mdi:chevron-down"></ha-icon>
+        </button>
+        ${params.toolsMenuOpen ? b2`
+              <div class="tab-menu-dropdown" id="tools-tab-menu-dropdown" role="menu">
+                <button
+                  class="tab-menu-item${params.selectedTab === "blobs" ? " active" : ""}"
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked=${String(params.selectedTab === "blobs")}
+                  @click=${() => params.onSelect("blobs")}
+                >
+                  Blobs
+                </button>
+                <button
+                  class="tab-menu-item${params.selectedTab === "logs" ? " active" : ""}"
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked=${String(params.selectedTab === "logs")}
+                  @click=${() => params.onSelect("logs")}
+                >
+                  Logs
+                </button>
+              </div>
+            ` : null}
+      </div>
     </div>
   `;
 }
@@ -7409,8 +7471,13 @@ var SofabatonControlPanelCard = class extends i4 {
   constructor() {
     super();
     this._config = {};
+    this._hubPickerOpen = false;
+    this._toolsMenuOpen = false;
     this._lastRenderedTab = null;
     this._pendingCacheScrollSnapshot = null;
+    this._boundHandleDocumentPointerDown = (event) => {
+      this.handleDocumentPointerDown(event);
+    };
     this._store = new ControlPanelStore(
       (snapshot) => {
         this._snapshot = snapshot;
@@ -7440,12 +7507,15 @@ var SofabatonControlPanelCard = class extends i4 {
   connectedCallback() {
     super.connectedCallback();
     logOnce();
+    document.addEventListener("pointerdown", this._boundHandleDocumentPointerDown, true);
     this._store.connected();
   }
   disconnectedCallback() {
     super.disconnectedCallback();
     this._store.disconnected();
-    this.renderRoot.querySelector("#hub-picker-dialog")?.close();
+    document.removeEventListener("pointerdown", this._boundHandleDocumentPointerDown, true);
+    this._hubPickerOpen = false;
+    this._toolsMenuOpen = false;
   }
   willUpdate() {
     if (this._lastRenderedTab === "cache") {
@@ -7476,16 +7546,35 @@ var SofabatonControlPanelCard = class extends i4 {
     }
     this._lastRenderedTab = this._snapshot.selectedTab;
   }
-  openHubPicker() {
-    const button = this.renderRoot.querySelector("#hub-picker-btn");
-    const dialog = this.renderRoot.querySelector("#hub-picker-dialog");
-    if (!button || !dialog) return;
-    const rect = button.getBoundingClientRect();
-    dialog.style.top = `${rect.bottom + 4}px`;
-    dialog.style.left = `${Math.max(8, rect.right - 180)}px`;
-    dialog.showModal();
+  handleDocumentPointerDown(event) {
+    const path = event.composedPath();
+    const hubPickerRoot = this.renderRoot.querySelector("#hub-picker-root");
+    const toolsMenuRoot = this.renderRoot.querySelector("#tools-tab-menu-root");
+    const clickedHubPicker = hubPickerRoot ? path.includes(hubPickerRoot) : false;
+    const clickedToolsMenu = toolsMenuRoot ? path.includes(toolsMenuRoot) : false;
+    let changed = false;
+    if (this._hubPickerOpen && !clickedHubPicker) {
+      this._hubPickerOpen = false;
+      changed = true;
+    }
+    if (this._toolsMenuOpen && !clickedToolsMenu) {
+      this._toolsMenuOpen = false;
+      changed = true;
+    }
+    if (changed) this.requestUpdate();
+  }
+  toggleHubPicker() {
+    this._hubPickerOpen = !this._hubPickerOpen;
+    if (this._hubPickerOpen) this._toolsMenuOpen = false;
+    this.requestUpdate();
+  }
+  toggleToolsMenu() {
+    this._toolsMenuOpen = !this._toolsMenuOpen;
+    if (this._toolsMenuOpen) this._hubPickerOpen = false;
+    this.requestUpdate();
   }
   handleTabSelect(tabId) {
+    this._toolsMenuOpen = false;
     this._store.selectTab(tabId);
   }
   handleSettingToggle(setting, enabled) {
@@ -7693,23 +7782,25 @@ var SofabatonControlPanelCard = class extends i4 {
       <ha-card>
         <div class="card-inner" style=${`height:${height}px`}>
           <div class="card-header">
-            <span class="card-title">Sofabaton Control Panel</span>
             ${renderHubPicker({
       visible: hubs.length > 1,
+      open: this._hubPickerOpen,
       selectedLabel: hub?.name || hub?.entry_id || "",
       hubs,
       selectedEntryId: this._snapshot.selectedHubEntryId,
-      onOpen: () => this.openHubPicker(),
+      onToggle: () => this.toggleHubPicker(),
       onSelect: (entryId) => {
-        this.renderRoot.querySelector("#hub-picker-dialog")?.close();
+        this._hubPickerOpen = false;
         this._store.selectHub(entryId);
       }
     })}
           </div>
           ${renderTabBar({
       selectedTab: this._snapshot.selectedTab,
+      toolsMenuOpen: this._toolsMenuOpen,
       persistentCacheEnabled: cacheEnabled,
-      onSelect: (tabId) => this.handleTabSelect(tabId)
+      onSelect: (tabId) => this.handleTabSelect(tabId),
+      onToggleToolsMenu: () => this.toggleToolsMenu()
     })}
           <div class="card-body">${activeTab}</div>
         </div>

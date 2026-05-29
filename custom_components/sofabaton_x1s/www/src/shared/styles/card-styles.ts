@@ -4,25 +4,35 @@ export const cardStyles = css`
   :host { display: block; }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
-  .card-header { flex-shrink: 0; min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 8px; }
+  .card-header { position: relative; flex-shrink: 0; min-height: 0; display: flex; align-items: flex-start; justify-content: flex-end; padding: 0; }
   .card-title { font-size: 16px; font-weight: 700; }
   .card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
   .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
-  .hub-picker-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--divider-color); border-radius: 999px; padding: 4px 10px; background: var(--secondary-background-color, var(--ha-card-background)); cursor: pointer; font-family: inherit; color: var(--primary-text-color); flex-shrink: 0; }
-  .chip-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); }
-  .chip-name { font-size: 13px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .chip-arrow { font-size: 10px; color: var(--secondary-text-color); }
-  .hub-picker-dialog { position: fixed; margin: 0; padding: 0; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); min-width: 160px; overflow: hidden; }
-  .hub-picker-dialog::backdrop { background: transparent; }
-  .hub-option { padding: 9px 14px; font-size: 13px; cursor: pointer; }
-  .hub-option.selected { font-weight: 600; color: var(--primary-color); }
+  .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; }
+  .hub-picker-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; max-width: min(100%, 320px); border: 1px solid var(--divider-color); border-top-right-radius: var(--ha-card-border-radius, 12px); border-top-left-radius: 0; border-bottom-right-radius: 0; border-bottom-left-radius: var(--ha-card-border-radius, 12px); padding: 8px 12px 8px 14px; background: var(--secondary-background-color, var(--ha-card-background)); cursor: pointer; font-family: inherit; color: var(--primary-text-color); flex-shrink: 0; user-select: none; -webkit-user-select: none; }
+  .hub-picker-btn.is-open { border-bottom-left-radius: 0; }
+  .chip-name { font-size: 13px; font-weight: 700; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip-arrow { --mdc-icon-size: 16px; color: var(--secondary-text-color); flex-shrink: 0; }
+  .hub-picker-menu { position: absolute; top: calc(100% - 1px); right: 0; z-index: 20; display: flex; flex-direction: column; min-width: max(100%, 180px); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-top: none; border-radius: 0 0 var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .hub-option { padding: 10px 14px; font-size: 13px; }
+  .hub-option:hover, .tab-menu-item:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
+  .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--primary-color); }
   .tabs { flex-shrink: 0; display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
-  .tab-btn { position: relative; border: none; border-bottom: 3px solid transparent; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px 11px; cursor: pointer; }
+  .tab-btn { position: relative; border: none; border-bottom: 3px solid transparent; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px 11px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .tab-btn--push-right { margin-left: auto; }
+  .tab-btn--menu { display: inline-flex; align-items: center; gap: 4px; padding-right: 12px; }
+  .tab-btn--menu.is-open { color: var(--primary-color); }
+  .tab-btn-menu-icon { --mdc-icon-size: 16px; }
+  .tab-btn-menu-caret { --mdc-icon-size: 18px; margin-right: -2px; }
   .tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
   .tab-btn-label-short { display: none; }
+  .tab-menu { position: relative; display: flex; }
+  .tab-menu--push-right { margin-left: auto; }
+  .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); right: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .tab-menu-item { padding: 10px 14px; font-size: 13px; }
   .logs-panel { gap: 10px; }
   .logs-header, .hub-hero { display: grid; }
   .logs-header { gap: 4px; }
@@ -187,6 +197,8 @@ export const cardStyles = css`
   .hub-compact-stat-label { font-size: 11px; color: var(--secondary-text-color); font-weight: 500; }
   .hub-compact-divider { width: 1px; height: 36px; background: color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); flex-shrink: 0; }
   @media (max-width: 640px) {
+    .tabs { overflow-x: auto; scrollbar-width: none; }
+    .tabs::-webkit-scrollbar { display: none; }
     .tab-btn-label-short { display: inline; }
     .tab-btn--has-short-label .tab-btn-label { display: none; }
     .hub-connection-strip { grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto; gap: 6px; padding: 8px 10px; }
@@ -195,5 +207,7 @@ export const cardStyles = css`
     .hub-ident-name { font-size: 15px; }
     .hub-compact-stats { display: none; }
     .entity-chevron { display: none; }
+    .hub-picker-btn { max-width: min(100vw - 32px, 260px); }
+    .chip-name { max-width: 180px; }
   }
 `;
