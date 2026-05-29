@@ -39,6 +39,21 @@ class FakeHass:
             entry.title = title
 
 
+class FakeDeviceRegistry:
+    def __init__(self, device=None):
+        self.device = device
+        self.updated = []
+
+    def async_get_device(self, *, identifiers=None, connections=None):
+        expected = {(hub_module.DOMAIN, "aa:bb:cc:dd:ee:ff")}
+        if identifiers == expected:
+            return self.device
+        return None
+
+    def async_update_device(self, device_id, **kwargs):
+        self.updated.append((device_id, kwargs))
+
+
 def test_activity_fetch_clears_inflight_after_favorite_labels(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -1610,6 +1625,9 @@ def test_async_initial_sync_fetches_banner_first_and_persists_cache(monkeypatch)
 
     calls: list[str] = []
     discovery_updates: list[tuple[dict[str, str], str | None]] = []
+    device_registry = FakeDeviceRegistry(
+        SimpleNamespace(id="device-1", name="hub-name", name_by_user=None)
+    )
 
     def _fetch_banner_info(*, force_refresh=True, timeout=2.0):
         calls.append("banner")
@@ -1637,6 +1655,7 @@ def test_async_initial_sync_fetches_banner_first_and_persists_cache(monkeypatch)
     monkeypatch.setattr(hub._proxy, "get_activities", _get_activities)
     monkeypatch.setattr(hub._proxy, "get_devices", _get_devices)
     monkeypatch.setattr(hub, "_async_get_persistent_cache_store", _get_store)
+    monkeypatch.setattr(hub_module.dr, "async_get", lambda hass: device_registry)
     monkeypatch.setattr(
         hub._proxy,
         "update_discovery_identity",
@@ -1660,8 +1679,65 @@ def test_async_initial_sync_fetches_banner_first_and_persists_cache(monkeypatch)
     assert entry.options["mdns_version"] == "X2"
     assert discovery_updates[-1][0]["NAME"] == "X2 HUB"
     assert discovery_updates[-1][1] == "X2"
+    assert device_registry.updated == [("device-1", {"name": "X2 HUB"})]
     assert store.saved
     assert store.saved[-1][1]["banner_info"]["firmware_version"] == 8
+
+    loop.close()
+
+
+def test_async_sync_authoritative_identity_skips_device_registry_rename_when_name_matches(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "X2 HUB",
+        "127.0.0.1",
+        1234,
+        {"MAC": "aa:bb:cc:dd:ee:ff"},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    entry = SimpleNamespace(
+        entry_id="entry-id",
+        data={
+            "name": "X2 HUB",
+            "host": "127.0.0.1",
+            "port": 1234,
+            "mac": "aa:bb:cc:dd:ee:ff",
+            "mdns_txt": {"MAC": "aa:bb:cc:dd:ee:ff"},
+            "mdns_version": "X1",
+        },
+        options={"mdns_version": "X1"},
+        title="old title",
+    )
+    hass._entries["entry-id"] = entry
+
+    rename_calls = []
+    monkeypatch.setattr(
+        hub,
+        "_async_update_device_registry_name",
+        lambda next_name: rename_calls.append(next_name) or asyncio.sleep(0),
+    )
+    monkeypatch.setattr(hub._proxy, "update_discovery_identity", lambda **kwargs: True)
+
+    loop.run_until_complete(
+        hub._async_sync_authoritative_identity(
+            {
+                "model": "X2",
+                "production_batch": "20221120",
+                "firmware_version": 8,
+                "name": "X2 HUB",
+            }
+        )
+    )
+
+    assert rename_calls == []
 
     loop.close()
 

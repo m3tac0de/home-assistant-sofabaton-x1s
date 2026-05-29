@@ -12,6 +12,7 @@ from homeassistant.components.zeroconf import async_get_instance
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers import device_registry as dr
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import (
@@ -265,6 +266,43 @@ class SofabatonHub:
         next_txt["AVER"] = str(int(firmware_version))
         return next_txt
 
+    async def _async_update_device_registry_name(self, next_name: str) -> None:
+        """Keep the HA device registry aligned with the authoritative hub name."""
+
+        normalized_name = str(next_name or "").strip()
+        if not normalized_name:
+            return
+
+        device_registry = dr.async_get(self.hass)
+        if device_registry is None:
+            return
+
+        config_entries = getattr(self.hass, "config_entries", None)
+        entry = (
+            config_entries.async_get_entry(self.entry_id)
+            if config_entries is not None and hasattr(config_entries, "async_get_entry")
+            else None
+        )
+        hub_mac = str(self.mac or (entry.data.get(CONF_MAC) if entry is not None else "") or "").strip()
+        if not hub_mac or not hasattr(device_registry, "async_get_device") or not hasattr(device_registry, "async_update_device"):
+            return
+
+        device = device_registry.async_get_device(
+            identifiers={(DOMAIN, hub_mac)},
+            connections=set(),
+        )
+        if device is None:
+            return
+
+        if str(getattr(device, "name_by_user", "") or "").strip():
+            return
+
+        current_name = str(getattr(device, "name", "") or "").strip()
+        if current_name == normalized_name:
+            return
+
+        device_registry.async_update_device(device.id, name=normalized_name)
+
     async def _async_sync_authoritative_identity(
         self,
         banner_info: dict[str, Any] | None,
@@ -287,8 +325,9 @@ class SofabatonHub:
         runtime_txt = dict(next_txt)
         runtime_txt["HA_PROXY"] = "1"
 
+        previous_name = str(self.name or "").strip()
         identity_changed = (
-            self.name != next_name
+            previous_name != next_name
             or self.version != next_version
             or dict((k, v) for k, v in self.mdns_txt.items() if k != "HA_PROXY") != next_txt
         )
@@ -341,7 +380,49 @@ class SofabatonHub:
             if update_kwargs:
                 self.hass.config_entries.async_update_entry(entry, **update_kwargs)
 
+        if previous_name != next_name:
+            await self._async_update_device_registry_name(next_name)
+
         return banner_changed or identity_changed
+
+    async def async_sync_authoritative_identity_before_setup(
+        self,
+        *,
+        wait_timeout: float = 5.0,
+        poll_interval: float = 0.1,
+    ) -> bool:
+        """Settle a banner-driven rename before entities/platforms are set up.
+
+        We only force the early propagation path when the live banner name
+        actually diverges from the name already in memory.
+        """
+
+        current_name = str(self.name or "").strip()
+        deadline = monotonic() + max(wait_timeout, 0.0)
+
+        while monotonic() < deadline:
+            if self._proxy.can_issue_commands():
+                remaining = max(0.1, min(1.0, deadline - monotonic()))
+                banner_info, banner_ready = await self.hass.async_add_executor_job(
+                    partial(self._proxy.fetch_banner_info, force_refresh=True, timeout=remaining)
+                )
+                if banner_ready and isinstance(banner_info, dict):
+                    banner_name = str(banner_info.get("name") or "").strip()
+                    if banner_name and banner_name != current_name:
+                        changed = await self._async_sync_authoritative_identity(banner_info)
+                        if changed:
+                            self._bump_cache_generation()
+                            async_dispatcher_send(self.hass, signal_hub(self.entry_id))
+                        return changed
+                    if banner_name:
+                        return False
+
+            sleep_for = min(poll_interval, max(0.0, deadline - monotonic()))
+            if sleep_for <= 0:
+                break
+            await asyncio.sleep(sleep_for)
+
+        return False
 
     async def _async_get_persistent_cache_store(self) -> PersistentCacheStore:
         domain_data = self.hass.data.setdefault(DOMAIN, {})
