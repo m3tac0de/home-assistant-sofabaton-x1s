@@ -23,7 +23,10 @@ export function renderLogConsole(params: {
   return html`
     <div class="tab-panel logs-panel">
       <div class="logs-header">
-        <div class="acc-title">Live Console</div>
+        <div class="logs-title-row">
+          <span class="acc-header-icon"><ha-icon icon="mdi:console-line"></ha-icon></span>
+          <div class="acc-title">Live Console</div>
+        </div>
       </div>
       <div class="logs-console" id="logs-console">${body}</div>
     </div>

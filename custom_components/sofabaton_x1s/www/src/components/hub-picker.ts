@@ -21,7 +21,7 @@ export function renderHubPicker(params: {
         @click=${params.onToggle}
       >
         <span class="chip-name">${params.selectedLabel}</span>
-        <ha-icon class="chip-arrow" icon="mdi:chevron-down"></ha-icon>
+        <ha-icon class="chip-arrow" icon="mdi:chevron-up"></ha-icon>
       </button>
       ${params.open
         ? html`

@@ -1,5 +1,7 @@
 export type TabId = "settings" | "wifi_commands" | "blobs" | "backup" | "cache" | "logs";
 export type SectionId = "activities" | "devices";
+export type BackupSectionId = "make" | "restore";
+export type BlobsSectionId = "fetch" | "test" | "save";
 export type SettingKey =
   | "persistent_cache"
   | "hex_logging_enabled"
@@ -228,6 +230,8 @@ export interface ControlPanelSnapshot {
   selectedHubEntryId: string | null;
   selectedTab: TabId;
   openSection: SectionId | null;
+  openBackupSection: BackupSectionId;
+  openBlobsSection: BlobsSectionId | null;
   openEntity: string | null;
   staleData: boolean;
   refreshBusy: boolean;

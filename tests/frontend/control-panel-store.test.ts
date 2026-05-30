@@ -144,7 +144,7 @@ function flush() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-test("loadState keeps cache tab unavailable when persistent cache is disabled", async () => {
+test("cache tab is selectable even when persistent cache is disabled", async () => {
   const { store } = createStore();
   store.connected();
   store.setHass(
@@ -161,7 +161,7 @@ test("loadState keeps cache tab unavailable when persistent cache is disabled", 
   await store.loadState();
   store.selectTab("cache");
 
-  assert.equal(store.snapshot.selectedTab, "settings");
+  assert.equal(store.snapshot.selectedTab, "cache");
   assert.equal(store.snapshot.state?.persistent_cache_enabled, false);
 });
 
@@ -267,6 +267,9 @@ test("selectHub and selectTab persist the updated view state", async () => {
     {
       selectedHubEntryId: "hub-2",
       selectedTab: "wifi_commands",
+      openSection: "activities",
+      openBackupSection: "make",
+      openBlobsSection: "fetch",
     },
   );
 });

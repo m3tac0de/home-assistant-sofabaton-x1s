@@ -1,5 +1,7 @@
 import type {
   BackupProgressEvent,
+  BackupSectionId,
+  BlobsSectionId,
   ControlPanelSnapshot,
   HassLike,
   HubAction,
@@ -29,10 +31,16 @@ const BACKEND_RETRY_MAX_MS = 10000;
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+const VALID_CACHE_SECTIONS = new Set<SectionId>(["activities", "devices"]);
+const VALID_BACKUP_SECTIONS = new Set<BackupSectionId>(["make", "restore"]);
+const VALID_BLOBS_SECTIONS = new Set<BlobsSectionId>(["fetch", "test", "save"]);
 
 interface PersistedViewState {
   selectedHubEntryId?: string | null;
   selectedTab?: TabId;
+  openSection?: SectionId | null;
+  openBackupSection?: BackupSectionId;
+  openBlobsSection?: BlobsSectionId | null;
 }
 
 interface StorageLike {
@@ -56,9 +64,25 @@ function readPersistedViewState(): PersistedViewState {
     const parsed = JSON.parse(storage.getItem(VIEW_STATE_STORAGE_KEY) || "{}") as PersistedViewState;
     const selectedHubEntryId = String(parsed?.selectedHubEntryId ?? "").trim() || null;
     const selectedTab = VALID_TABS.has(parsed?.selectedTab as TabId) ? parsed.selectedTab : undefined;
+    const openSection = VALID_CACHE_SECTIONS.has(parsed?.openSection as SectionId)
+      ? (parsed.openSection as SectionId)
+      : parsed?.openSection === null
+        ? null
+        : undefined;
+    const openBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection as BackupSectionId)
+      ? (parsed.openBackupSection as BackupSectionId)
+      : undefined;
+    const openBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection as BlobsSectionId)
+      ? (parsed.openBlobsSection as BlobsSectionId)
+      : parsed?.openBlobsSection === null
+        ? null
+        : undefined;
     return {
       selectedHubEntryId,
       ...(selectedTab ? { selectedTab } : {}),
+      ...(openSection !== undefined ? { openSection } : {}),
+      ...(openBackupSection ? { openBackupSection } : {}),
+      ...(openBlobsSection !== undefined ? { openBlobsSection } : {}),
     };
   } catch (_error) {
     return {};
@@ -86,8 +110,10 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   loadError: null,
   backendUnavailable: false,
   selectedHubEntryId: null,
-  selectedTab: "settings",
+  selectedTab: "cache",
   openSection: "activities",
+  openBackupSection: "make",
+  openBlobsSection: "fetch",
   openEntity: null,
   staleData: false,
   refreshBusy: false,
@@ -281,15 +307,14 @@ export class ControlPanelStore {
   }
 
   selectTab(tabId: TabId) {
-    const nextTab = tabId === "cache" && !persistentCacheEnabled(this._snapshot) ? "settings" : tabId;
     this._snapshot = {
       ...this._snapshot,
-      selectedTab: nextTab,
-      logsStickToBottom: nextTab === "logs" ? true : this._snapshot.logsStickToBottom,
-      logsScrollBehavior: nextTab === "logs" ? "auto" : this._snapshot.logsScrollBehavior,
+      selectedTab: tabId,
+      logsStickToBottom: tabId === "logs" ? true : this._snapshot.logsStickToBottom,
+      logsScrollBehavior: tabId === "logs" ? "auto" : this._snapshot.logsScrollBehavior,
     };
     this.persistViewState();
-    if (nextTab === "logs") void this.syncLogsFeed();
+    if (tabId === "logs") void this.syncLogsFeed();
     else void this.unsubscribeLogs();
     this.emit();
   }
@@ -300,6 +325,22 @@ export class ControlPanelStore {
       openSection: this._snapshot.openSection === sectionId ? null : sectionId,
       openEntity: null,
     };
+    this.persistViewState();
+    this.emit();
+  }
+
+  setBackupSection(sectionId: BackupSectionId) {
+    if (this._snapshot.openBackupSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, openBackupSection: sectionId };
+    this.persistViewState();
+    this.emit();
+  }
+
+  toggleBlobsSection(sectionId: BlobsSectionId) {
+    const next = this._snapshot.openBlobsSection === sectionId ? null : sectionId;
+    if (this._snapshot.openBlobsSection === next) return;
+    this._snapshot = { ...this._snapshot, openBlobsSection: next };
+    this.persistViewState();
     this.emit();
   }
 
@@ -396,18 +437,10 @@ export class ControlPanelStore {
     try {
       await this.api().setSetting(hub.entry_id, setting, enabled);
       if (setting === "persistent_cache") {
-        if (!enabled && this._snapshot.selectedTab === "cache") {
-          this._snapshot = { ...this._snapshot, selectedTab: "settings" };
-          await this.loadState();
-          return;
-        }
         if (enabled) await this.loadCacheContents();
         else await this.loadControlPanelState();
       } else {
         await this.loadControlPanelState();
-      }
-      if (this._snapshot.selectedTab === "cache" && !persistentCacheEnabled(this._snapshot)) {
-        this._snapshot = { ...this._snapshot, selectedTab: "settings" };
       }
     } catch (_error) {
       this.applyOptimisticSetting(
@@ -681,9 +714,6 @@ export class ControlPanelStore {
     if (!hubs.some((hub) => hub.entry_id === this._snapshot.selectedHubEntryId)) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: hubs[0].entry_id };
     }
-    if (this._snapshot.selectedTab === "cache" && !persistentCacheEnabled(this._snapshot)) {
-      this._snapshot = { ...this._snapshot, selectedTab: "settings" };
-    }
     this.persistViewState();
   }
 
@@ -701,6 +731,9 @@ export class ControlPanelStore {
         JSON.stringify({
           selectedHubEntryId: this._snapshot.selectedHubEntryId,
           selectedTab: this._snapshot.selectedTab,
+          openSection: this._snapshot.openSection,
+          openBackupSection: this._snapshot.openBackupSection,
+          openBlobsSection: this._snapshot.openBlobsSection,
         } satisfies PersistedViewState),
       );
     } catch (_error) {

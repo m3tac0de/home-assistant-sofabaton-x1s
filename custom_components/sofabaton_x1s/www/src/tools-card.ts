@@ -1,8 +1,8 @@
 import { LitElement, html } from "lit";
 import { cardStyles } from "./shared/styles/card-styles";
-import type { HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
+import type { BackupSectionId, BlobsSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
 import { ControlPanelStore } from "./state/control-panel-store";
-import { persistentCacheEnabled, proxyClientConnected, selectedHub, selectedHubCache } from "./shared/utils/control-panel-selectors";
+import { hubConnected, persistentCacheEnabled, proxyClientConnected, selectedHub, selectedHubCache } from "./shared/utils/control-panel-selectors";
 import { renderHubPicker } from "./components/hub-picker";
 import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
@@ -254,6 +254,31 @@ class SofabatonControlPanelCard extends LitElement {
     });
   }
 
+  private renderHeaderStatus(hub: ReturnType<typeof selectedHub>) {
+    if (!hub) return null;
+    const connected = hubConnected(this._snapshot.hass, hub);
+    const proxyOn = proxyClientConnected(this._snapshot.hass, hub);
+    const integrationVersion = String(this._snapshot.toolsFrontendVersionExpected ?? "").trim() || "unknown";
+    return html`
+      <div class="card-header-status">
+        <div class="dock-seg ${connected ? "dock-seg--hub-on" : "dock-seg--off"}">
+          <span class="dock-seg-dot"></span>
+          <span>Hub ${connected ? "connected" : "not connected"}</span>
+        </div>
+        <div class="dock-sep"></div>
+        <div class="dock-seg ${proxyOn ? "dock-seg--app-on" : "dock-seg--off"}">
+          <span class="dock-seg-dot"></span>
+          <span>App ${proxyOn ? "connected" : "not connected"}</span>
+        </div>
+        <div class="dock-sep"></div>
+        <div class="dock-seg dock-seg--version">
+          <ha-icon class="dock-version-icon" icon="mdi:cog-outline"></ha-icon>
+          <span>v<span class="dock-status-value">${integrationVersion}</span></span>
+        </div>
+      </div>
+    `;
+  }
+
   private renderBackendUnavailable(height: number) {
     return html`
       <ha-card>
@@ -340,7 +365,6 @@ class SofabatonControlPanelCard extends LitElement {
       error: this._snapshot.loadError,
       hub,
       hass: this._snapshot.hass,
-      integrationVersion: this._snapshot.toolsFrontendVersionExpected,
       persistentCacheEnabled: cacheEnabled,
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
@@ -379,6 +403,8 @@ class SofabatonControlPanelCard extends LitElement {
           .persistentCacheEnabled=${cacheEnabled}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
+          .openSection=${this._snapshot.openBlobsSection}
+          .toggleOpenSection=${(section: BlobsSectionId) => this._store.toggleBlobsSection(section)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-blobs-tab>
@@ -395,6 +421,8 @@ class SofabatonControlPanelCard extends LitElement {
           .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
+          .openSection=${this._snapshot.openBackupSection}
+          .setOpenSection=${(section: BackupSectionId) => this._store.setBackupSection(section)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-backup-tab>
@@ -412,6 +440,8 @@ class SofabatonControlPanelCard extends LitElement {
         openSection: this._snapshot.openSection,
         openEntity: this._snapshot.openEntity,
         selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
+        enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
+        onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
         onRefreshStale: () => void this._store.refreshStale(),
         onToggleSection: (sectionId) => this._store.toggleSection(sectionId),
         onToggleEntity: (key) => this._store.toggleEntity(key),
@@ -423,7 +453,15 @@ class SofabatonControlPanelCard extends LitElement {
     return html`
       <ha-card>
         <div class="card-inner" style=${`height:${height}px`}>
-          <div class="card-header">
+          ${renderTabBar({
+            selectedTab: this._snapshot.selectedTab,
+            toolsMenuOpen: this._toolsMenuOpen,
+            onSelect: (tabId) => this.handleTabSelect(tabId),
+            onToggleToolsMenu: () => this.toggleToolsMenu(),
+          })}
+          <div class="card-body">${activeTab}</div>
+          <div class="card-bottom-dock">
+            ${this.renderHeaderStatus(hub)}
             ${renderHubPicker({
               visible: hubs.length > 1,
               open: this._hubPickerOpen,
@@ -437,14 +475,6 @@ class SofabatonControlPanelCard extends LitElement {
               },
             })}
           </div>
-          ${renderTabBar({
-            selectedTab: this._snapshot.selectedTab,
-            toolsMenuOpen: this._toolsMenuOpen,
-            persistentCacheEnabled: cacheEnabled,
-            onSelect: (tabId) => this.handleTabSelect(tabId),
-            onToggleToolsMenu: () => this.toggleToolsMenu(),
-          })}
-          <div class="card-body">${activeTab}</div>
         </div>
       </ha-card>
     `;

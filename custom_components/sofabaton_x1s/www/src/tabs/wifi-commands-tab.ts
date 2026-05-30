@@ -226,7 +226,16 @@ class SofabatonWifiCommandsTab extends LitElement {
   };
 
   static styles = css`
-    :host { display: flex; flex: 1; min-height: 0; }
+    :host {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      --tools-radius-sm: calc(var(--ha-card-border-radius, 12px) * 0.85);
+      --tools-radius-md: var(--ha-card-border-radius, 12px);
+      --tools-radius-lg: calc(var(--ha-card-border-radius, 12px) * 1.33);
+      --tools-radius-xl: calc(var(--ha-card-border-radius, 12px) * 1.8);
+      --tools-radius-pill: 999px;
+    }
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow: hidden; }
     .list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; margin: -16px; }
     .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 16px 16px; }
@@ -240,16 +249,19 @@ class SofabatonWifiCommandsTab extends LitElement {
     .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
     .detail-title-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     .detail-title { font-size: 18px; font-weight: 700; color: var(--primary-text-color); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: 10px; background: transparent; color: var(--primary-text-color); font: inherit; }
+    .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
     .back-btn, .list-action-btn, .detail-sync-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
     .back-btn { display: inline-flex; align-items: center; gap: 8px; }
     .list-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 16px; row-gap: 8px; }
     .list-header-copy { min-width: 0; }
+    .list-header-title-row { display: flex; align-items: center; gap: 10px; }
+    .list-header-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
+    .list-header-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
     .list-header-copy .acc-title { display: block; }
     .list-header-copy .section-subtitle { margin-top: 8px; }
     .list-header-action { grid-column: 2; grid-row: 1; align-self: start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     .device-list { display: grid; gap: 10px; }
-    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: 18px; padding: 10px 14px; background: var(--ha-card-background, var(--card-background-color)); text-align: left; display: flex; align-items: center; gap: 14px; cursor: pointer; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); padding: 10px 14px; background: var(--ha-card-background, var(--card-background-color)); text-align: left; display: flex; align-items: center; gap: 14px; cursor: pointer; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
     .device-card.pending-delete { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 45%, var(--divider-color)); }
     .device-card:hover, .back-btn:hover, .list-action-btn:hover, .detail-sync-btn:hover, .device-delete-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
@@ -295,7 +307,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .detail-sync-btn:disabled:hover {
       border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
     }
-    .empty-state-card { border: 1px dashed var(--divider-color); border-radius: 14px; padding: 18px; color: var(--secondary-text-color); line-height: 1.5; }
+    .empty-state-card { border: 1px dashed var(--divider-color); border-radius: var(--tools-radius-md); padding: 18px; color: var(--secondary-text-color); line-height: 1.5; }
     .bottom-dock-status {
       width: 100%;
       min-height: 0;
@@ -359,7 +371,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .section-title-wrap { display: flex; align-items: center; gap: 8px; }
     .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .sync-warning-text, .empty-hint { color: var(--secondary-text-color); }
     .section-subtitle { font-size: 13px; line-height: 1.5; }
-    .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: 18px; background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }
+    .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }
     .sync-row.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); }
     .sync-row.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); }
     .sync-row.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); }
@@ -368,16 +380,17 @@ class SofabatonWifiCommandsTab extends LitElement {
     .sync-doc-link { color: var(--primary-color); font-weight: 600; text-decoration: none; }
     .sync-doc-link:hover { text-decoration: underline; }
     .list-view .sticky-footer { border-top: none; }
-    .wifi-docs-bar { display: flex; justify-content: center; padding: 7px 16px 6px; border-bottom: 1px solid var(--divider-color); }
+    .wifi-max-devices-note { display: flex; justify-content: center; padding: 8px 16px 4px; font-size: 13px; color: var(--secondary-text-color); }
+    .wifi-docs-bar { display: flex; justify-content: center; padding: 7px 16px 8px; }
     .wifi-docs-link { font-size: 12px; font-weight: 500; color: var(--primary-color); text-decoration: none; opacity: 0.85; }
     .wifi-docs-link:hover { opacity: 1; text-decoration: underline; }
-    .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
+    .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
     .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .version-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
     .sync-btn-primary, .dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
     .sync-static { opacity: 0.65; cursor: default; }
     .command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: left; display: flex; flex-direction: column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
+    .slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-md); min-height: 108px; cursor: pointer; padding: 0; text-align: left; display: flex; flex-direction: column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
     .slot-btn:hover { border-color: var(--primary-color); }
     .slot-btn.slot-empty .slot-main { gap: 12px; align-items: center; justify-content: center; flex-direction: column; min-height: 100%; width: 100%; padding: 0; text-align: center; }
     .slot-btn.slot-confirming {
@@ -399,7 +412,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
     .slot-actions { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 6px; z-index: 1; }
     .slot-flag,
-    .slot-clear { width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display: inline-flex; align-items: center; justify-content: center; padding: 0; opacity: 0.9; }
+    .slot-clear { width: 26px; height: 26px; min-width: 26px; border-radius: var(--tools-radius-sm); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display: inline-flex; align-items: center; justify-content: center; padding: 0; opacity: 0.9; }
     .slot-flag { cursor: default; }
     .slot-flag.power-on { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 35%, var(--divider-color)); }
     .slot-flag.power-off { color: #c62828; border-color: color-mix(in srgb, #c62828 35%, var(--divider-color)); }
@@ -408,7 +421,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .slot-clear ha-icon { --mdc-icon-size: 16px; }
     .slot-flag ha-icon { --mdc-icon-size: 14px; }
     .slot-clear { cursor: pointer; }
-    .slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+    .slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
     .slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
     .slot-action-btn:active { transform: translateY(1px); }
     .slot-confirm-title { font-size: 15px; line-height: 1.2; margin: 0; }
@@ -421,7 +434,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       font-size: 13px;
     }
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: 16px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--tools-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
     .dialog-header { border-bottom: 1px solid var(--divider-color); }
@@ -434,7 +447,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       align-items: center;
       justify-content: center;
       border: 1px solid var(--divider-color);
-      border-radius: 10px;
+      border-radius: var(--tools-radius-sm);
       background: var(--ha-card-background, var(--card-background-color));
       color: var(--secondary-text-color);
       cursor: pointer;
@@ -474,7 +487,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     }
     .dialog-note {
       border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color));
-      border-radius: 12px;
+      border-radius: var(--tools-radius-md);
       padding: 12px;
       background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color)));
       color: var(--primary-text-color);
@@ -497,7 +510,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .dialog-footer-actions { display: flex; gap: 8px; }
     .dialog-footer-note { min-height: 18px; font-size: 13px; color: var(--error-color, #db4437); }
     .config-block { display: grid; gap: 14px; }
-    .config-group { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--divider-color); border-radius: 14px; background: color-mix(in srgb, var(--ha-card-background, transparent) 92%, #000); }
+    .config-group { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-md); background: color-mix(in srgb, var(--ha-card-background, transparent) 92%, #000); }
     .advanced-toggle { width: fit-content; border: 0; background: transparent; color: var(--secondary-text-color); padding: 0; display: inline-flex; align-items: center; gap: 6px; text-align: left; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
     .advanced-toggle:hover { color: var(--primary-text-color); }
     .advanced-toggle-copy { display: block; }
@@ -572,7 +585,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     @media (max-width: 640px) {
       .command-grid { grid-template-columns: 1fr; }
       .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
-      .dialog, .dialog.small { width: 100%; max-height: 100%; border-radius: 0 0 16px 16px; }
+      .dialog, .dialog.small { width: 100%; max-height: 100%; border-radius: 0 0 var(--tools-radius-lg) var(--tools-radius-lg); }
       .dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
       .list-header { grid-template-columns: 1fr; }
       .list-header-action { grid-column: 1; grid-row: auto; width: 100%; }
@@ -848,7 +861,10 @@ class SofabatonWifiCommandsTab extends LitElement {
         <div class="list-scroll">
           <div class="list-header">
             <div class="list-header-copy">
-              <div class="acc-title">WIFI DEVICES</div>
+              <div class="list-header-title-row">
+                <span class="acc-header-icon"><ha-icon icon="mdi:wifi"></ha-icon></span>
+                <div class="acc-title">WIFI DEVICES</div>
+              </div>
               <div class="section-subtitle">Choose a Wifi Device to edit its command slots, or add a new one.</div>
             </div>
             <div class="list-header-action">
@@ -890,10 +906,10 @@ class SofabatonWifiCommandsTab extends LitElement {
           ` : html`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
         </div>
         <div class="sticky-footer">
+          ${!canAdd ? html`<div class="wifi-max-devices-note">Maximum number of devices reached</div>` : nothing}
           <div class="wifi-docs-bar">
             <a class="wifi-docs-link" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noreferrer noopener">Wifi Commands documentation</a>
           </div>
-          ${this._renderStatusDock(this._listDockLabel(canAdd), this._listDockTone(canAdd))}
         </div>
       </div>
     `;
@@ -1561,6 +1577,12 @@ class SofabatonWifiCommandsTab extends LitElement {
     return { powerOnCommandId, powerOffCommandId };
   }
 
+  private _validActivityIdSet(): Set<string> | null {
+    const list = this._editorActivities();
+    if (!list.length) return null;
+    return new Set(list.map((activity) => String(activity.id)));
+  }
+
   private _normalizeCommandsForStorage(
     nextCommands: unknown,
     powerOnCommandId: unknown = null,
@@ -1568,9 +1590,21 @@ class SofabatonWifiCommandsTab extends LitElement {
   ): WifiCommandSlot[] {
     const normalizedPowerOnId = this._normalizePowerCommandId(powerOnCommandId);
     const normalizedPowerOffId = this._normalizePowerCommandId(powerOffCommandId);
+    const validActivityIds = this._validActivityIdSet();
     return Array.from({ length: SLOT_COUNT }, (_, idx) => {
       const item = Array.isArray(nextCommands) ? nextCommands[idx] ?? {} : {};
       const record = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+      const rawInputActivityId = String(record.input_activity_id ?? "");
+      const inputActivityId =
+        validActivityIds && rawInputActivityId && !validActivityIds.has(rawInputActivityId)
+          ? ""
+          : rawInputActivityId;
+      const rawActivities = Array.isArray(record.activities)
+        ? record.activities.map((id) => String(id)).filter((id) => id !== "")
+        : [];
+      const activities = validActivityIds
+        ? rawActivities.filter((id) => validActivityIds.has(id))
+        : rawActivities;
       return {
         ...this._commandSlotDefault(idx),
         name: this._sanitizeCommandName(record.name ?? `Command ${idx + 1}`),
@@ -1580,8 +1614,8 @@ class SofabatonWifiCommandsTab extends LitElement {
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),
         is_power_on: normalizedPowerOnId === idx + 1,
         is_power_off: normalizedPowerOffId === idx + 1,
-        input_activity_id: String(record.input_activity_id ?? ""),
-        activities: Array.isArray(record.activities) ? record.activities.map((id) => String(id)).filter((id) => id !== "") : [],
+        input_activity_id: inputActivityId,
+        activities,
         action: this._normalizeCommandAction(record.action),
         long_press_action: this._normalizeCommandAction(record.long_press_action),
       };
@@ -2383,19 +2417,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (device.status === "running") return "sync-running";
     if (device.sync_needed) return "sync-pending";
     return "sync-ok";
-  }
-
-  private _listDockLabel(canAdd: boolean) {
-    if (this._creatingDevice) return "Creating Wifi Device…";
-    if (this._hubCommandLocked()) return this._effectiveHubCommandLabel();
-    if (!canAdd) return `Maximum of ${this._maxWifiDevices} Wifi Devices reached`;
-    return "Add Wifi Device";
-  }
-
-  private _listDockTone(canAdd: boolean) {
-    if (this._creatingDevice || this._hubCommandLocked()) return "status-progress";
-    if (!canAdd) return "status-warning";
-    return "status-success";
   }
 
   private _syncDockTone(remoteUnavailable: boolean, externallyLocked: boolean) {

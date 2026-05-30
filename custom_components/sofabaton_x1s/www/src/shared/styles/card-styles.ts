@@ -4,22 +4,26 @@ export const cardStyles = css`
   :host { display: block; }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
-  .card-header { position: relative; flex-shrink: 0; min-height: 0; display: flex; align-items: flex-start; justify-content: flex-end; padding: 0; }
+  .card-bottom-dock { position: relative; flex-shrink: 0; display: flex; align-items: stretch; justify-content: space-between; gap: 12px; padding: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }
+  .card-header-status { display: inline-flex; align-items: center; padding-left: 14px; }
+  .card-header-status .dock-seg { padding: 8px 10px; font-size: 11px; }
+  .card-header-status .dock-sep { margin: 6px 0; }
   .card-title { font-size: 16px; font-weight: 700; }
   .card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
   .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
-  .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; }
-  .hub-picker-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; max-width: min(100%, 320px); border: 1px solid var(--divider-color); border-top-right-radius: var(--ha-card-border-radius, 12px); border-top-left-radius: 0; border-bottom-right-radius: 0; border-bottom-left-radius: var(--ha-card-border-radius, 12px); padding: 8px 12px 8px 14px; background: var(--secondary-background-color, var(--ha-card-background)); cursor: pointer; font-family: inherit; color: var(--primary-text-color); flex-shrink: 0; user-select: none; -webkit-user-select: none; }
-  .hub-picker-btn.is-open { border-bottom-left-radius: 0; }
-  .chip-name { font-size: 13px; font-weight: 700; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; padding: 6px 10px 6px 0; }
+  .hub-picker-btn { display: inline-flex; align-items: center; gap: 8px; max-width: min(100%, 420px); border: 1px solid var(--divider-color); border-radius: 999px; padding: 0 14px 0 16px; background: var(--secondary-background-color, var(--ha-card-background)); cursor: pointer; font-family: inherit; color: var(--primary-text-color); flex-shrink: 0; user-select: none; -webkit-user-select: none; transition: border-color 120ms ease, background 120ms ease; }
+  .hub-picker-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+  .chip-name { font-size: 13px; font-weight: 700; flex: 1; min-width: 0; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip-arrow { --mdc-icon-size: 16px; color: var(--secondary-text-color); flex-shrink: 0; }
-  .hub-picker-menu { position: absolute; top: calc(100% - 1px); right: 0; z-index: 20; display: flex; flex-direction: column; min-width: max(100%, 180px); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-top: none; border-radius: 0 0 var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .hub-picker-menu { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 20; display: flex; flex-direction: column; width: max-content; min-width: 160px; max-width: min(320px, calc(100vw - 24px)); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
   .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .hub-option { padding: 10px 14px; font-size: 13px; }
   .hub-option:hover, .tab-menu-item:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
   .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--primary-color); }
-  .tabs { flex-shrink: 0; display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
+  .tabs { flex-shrink: 0; display: flex; align-items: stretch; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
+  .tabs-scroll { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; }
   .tab-btn { position: relative; border: none; border-bottom: 3px solid transparent; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px 11px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .tab-btn--push-right { margin-left: auto; }
   .tab-btn--menu { display: inline-flex; align-items: center; gap: 4px; padding-right: 12px; }
@@ -36,6 +40,9 @@ export const cardStyles = css`
   .logs-panel { gap: 10px; }
   .logs-header, .hub-hero { display: grid; }
   .logs-header { gap: 4px; }
+  .logs-title-row { display: flex; align-items: center; gap: 10px; }
+  .logs-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
+  .logs-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
   .logs-subtitle, .logs-empty, .cache-state, .entity-count, .refresh-list-label, .stale-banner { color: var(--secondary-text-color); }
   .logs-console { flex: 1; min-height: 0; border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: radial-gradient(circle at top, color-mix(in srgb, var(--primary-color) 6%, transparent), transparent 45%), color-mix(in srgb, #05070b 92%, var(--card-background-color, #fff)); font-family: "SF Mono", "Fira Code", Consolas, monospace; padding: 10px 0; user-select: text; -webkit-user-select: text; }
   .logs-empty { padding: 12px 14px; font-size: 12px; }
@@ -154,6 +161,16 @@ export const cardStyles = css`
   .cache-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 16px; text-align: center; font-size: 13px; line-height: 1.6; }
   .cache-state-icon { font-size: 32px; line-height: 1; margin-bottom: 4px; }
   .cache-state-sub { font-size: 12px; line-height: 1.5; max-width: 260px; }
+  .cache-enable-state { gap: 14px; max-width: 360px; margin: 0 auto; }
+  .cache-enable-state .cache-state-title { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+  .cache-enable-state .cache-state-sub { font-size: 13px; color: var(--secondary-text-color); max-width: 320px; }
+  .cache-enable-icon { width: 64px; height: 64px; display: grid; place-items: center; border-radius: var(--ha-card-border-radius, 12px); color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 14%, transparent); margin-bottom: 4px; }
+  .cache-enable-icon ha-icon { --mdc-icon-size: 34px; }
+  .cache-enable-btn { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; padding: 12px 22px; border-radius: var(--ha-card-border-radius, 12px); border: 1px solid color-mix(in srgb, var(--primary-color) 60%, var(--divider-color)); background: color-mix(in srgb, var(--primary-color) 22%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: transform 120ms ease, background 120ms ease, border-color 120ms ease, box-shadow 120ms ease; box-shadow: 0 4px 14px color-mix(in srgb, var(--primary-color) 22%, transparent); }
+  .cache-enable-btn:hover:not(:disabled) { transform: translateY(-1px); background: color-mix(in srgb, var(--primary-color) 28%, var(--ha-card-background, var(--card-background-color))); border-color: var(--primary-color); box-shadow: 0 6px 18px color-mix(in srgb, var(--primary-color) 28%, transparent); }
+  .cache-enable-btn:active:not(:disabled) { transform: translateY(0); }
+  .cache-enable-btn:disabled { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
+  .cache-enable-btn ha-icon { --mdc-icon-size: 20px; color: var(--primary-color); }
   .version-mismatch-state { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 24px 32px 40px; }
   .version-mismatch-header { display: flex; align-items: flex-start; gap: 14px; }
   .version-mismatch-icon { flex-shrink: 0; display: inline-flex; padding-top: 3px; color: var(--warning-color, #ff9800); }
@@ -197,8 +214,8 @@ export const cardStyles = css`
   .hub-compact-stat-label { font-size: 11px; color: var(--secondary-text-color); font-weight: 500; }
   .hub-compact-divider { width: 1px; height: 36px; background: color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); flex-shrink: 0; }
   @media (max-width: 640px) {
-    .tabs { overflow-x: auto; scrollbar-width: none; }
-    .tabs::-webkit-scrollbar { display: none; }
+    .tabs-scroll { overflow-x: auto; scrollbar-width: none; }
+    .tabs-scroll::-webkit-scrollbar { display: none; }
     .tab-btn-label-short { display: inline; }
     .tab-btn--has-short-label .tab-btn-label { display: none; }
     .hub-connection-strip { grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto; gap: 6px; padding: 8px 10px; }
@@ -207,7 +224,9 @@ export const cardStyles = css`
     .hub-ident-name { font-size: 15px; }
     .hub-compact-stats { display: none; }
     .entity-chevron { display: none; }
-    .hub-picker-btn { max-width: min(100vw - 32px, 260px); }
-    .chip-name { max-width: 180px; }
+    .hub-picker-btn { max-width: min(100vw - 32px, 320px); }
+    .chip-name { max-width: 220px; }
+    .card-header-status { padding-left: 8px; }
+    .card-header-status .dock-seg { padding: 6px 6px; font-size: 10.5px; }
   }
 `;

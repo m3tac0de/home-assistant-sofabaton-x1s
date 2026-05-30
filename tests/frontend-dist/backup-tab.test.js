@@ -1420,9 +1420,10 @@ var SofabatonBackupTab = class extends i3 {
     this.error = null;
     this.persistentCacheEnabled = false;
     this.selectedHubProxyConnected = false;
-    this._openSection = "make";
+    this.openSection = "make";
+    this.setOpenSection = () => {
+    };
     this._backupScope = "whole_hub";
-    this._backupSearchQuery = "";
     this._backupDeviceIds = [];
     this._backupError = null;
     this._backupProgress = null;
@@ -1457,7 +1458,6 @@ var SofabatonBackupTab = class extends i3 {
       this._backupError = null;
       this._backupProgress = null;
       this._backupScope = "whole_hub";
-      this._backupSearchQuery = "";
       this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
       this._revokeDownloadUrl();
     };
@@ -1481,9 +1481,9 @@ var SofabatonBackupTab = class extends i3 {
       error: { type: String },
       persistentCacheEnabled: { type: Boolean },
       selectedHubProxyConnected: { type: Boolean },
-      _openSection: { state: true },
+      openSection: { attribute: false },
+      setOpenSection: { attribute: false },
       _backupScope: { state: true },
-      _backupSearchQuery: { state: true },
       _backupDeviceIds: { state: true },
       _backupError: { state: true },
       _backupProgress: { state: true },
@@ -1594,12 +1594,12 @@ var SofabatonBackupTab = class extends i3 {
       min-width: 114px;
       min-height: 42px;
       padding: 0 18px;
-      border-radius: var(--backup-radius-pill);
+      border-radius: var(--backup-radius-md);
       border: 1px solid color-mix(in srgb, var(--primary-color) 75%, white 10%);
       background: color-mix(in srgb, var(--primary-color) 20%, white 80%);
       color: var(--primary-color);
       font: inherit;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 700;
       line-height: 1;
       cursor: pointer;
@@ -1617,7 +1617,7 @@ var SofabatonBackupTab = class extends i3 {
       display: flex;
       justify-content: flex-start;
     }
-    .backup-drawer-sub { color: var(--secondary-text-color); font-size: 12px; line-height: 1.45; }
+    .backup-drawer-sub { color: var(--secondary-text-color); font-size: 13px; line-height: 1.5; }
     .backup-section-title { color: var(--primary-text-color); font-size: 13px; font-weight: 700; }
 
     .backup-config-view {
@@ -1648,6 +1648,7 @@ var SofabatonBackupTab = class extends i3 {
       cursor: pointer;
       min-width: 0;
     }
+    .backup-scope-option * { cursor: inherit; }
     .backup-scope-option + .backup-scope-option {
       border-left: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
     }
@@ -1699,30 +1700,6 @@ var SofabatonBackupTab = class extends i3 {
       padding: 0;
     }
     .backup-link-btn:disabled { opacity: 0.48; cursor: default; }
-
-    .backup-search { position: relative; }
-    .backup-search ha-icon {
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--secondary-text-color);
-      --mdc-icon-size: 18px;
-      pointer-events: none;
-    }
-    .backup-search input {
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 96%, transparent);
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 13px;
-      padding: 12px 14px 12px 40px;
-      outline: none;
-    }
-    .backup-search input::placeholder { color: var(--secondary-text-color); }
 
     .selection-card {
       border: 1px solid var(--divider-color);
@@ -1837,7 +1814,7 @@ var SofabatonBackupTab = class extends i3 {
 
     .action-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center; }
     .primary-btn, .secondary-btn {
-      border-radius: var(--backup-radius-pill);
+      border-radius: var(--backup-radius-md);
       padding: 10px 16px;
       font: inherit;
       font-size: 13px;
@@ -2035,12 +2012,14 @@ var SofabatonBackupTab = class extends i3 {
       100% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
     }
 
-    @media (max-width: 760px) {
+    @media (max-width: 380px) {
       .backup-scope-options { grid-template-columns: 1fr; }
       .backup-scope-option + .backup-scope-option {
         border-left: none;
         border-top: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
       }
+    }
+    @media (max-width: 760px) {
       .progress-disc { width: 64px; height: 64px; }
       .progress-disc .progress-hub-svg { width: 40px; height: 40px; }
       .progress-route { min-width: 56px; }
@@ -2090,9 +2069,8 @@ var SofabatonBackupTab = class extends i3 {
     `;
   }
   _renderBackupSection() {
-    const isOpen = this._openSection === "make";
+    const isOpen = this.openSection === "make";
     const devices = backupDeviceOptions(this.cacheHub);
-    const filteredDevices = this._filterBackupDevices(devices);
     const wholeHub = this._backupScope === "whole_hub";
     const selectedDeviceIds = wholeHub ? devices.map((device) => device.id) : this._backupDeviceIds;
     const isRunning = this._isProgressRunning(this._backupProgress);
@@ -2101,7 +2079,7 @@ var SofabatonBackupTab = class extends i3 {
     const summary = this._backupResultSummary(this._backupProgress?.backup);
     return T`
       <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this._toggleSection("make")}>
+        <div class="acc-header" @click=${() => this.setOpenSection("make")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:content-save-move-outline"></ha-icon></span>
           <span class="acc-title">Make A Backup</span>
           <span class="flex-spacer"></span>
@@ -2172,21 +2150,9 @@ var SofabatonBackupTab = class extends i3 {
                         ${allDevicesSelected ? "Deselect all" : "Select all"}
                       </button>
                     </div>
-                    <div class="backup-search">
-                      <ha-icon icon="mdi:magnify"></ha-icon>
-                      <input
-                        type="text"
-                        .value=${this._backupSearchQuery}
-                        ?disabled=${this._backupLocked() || !this.cacheHub}
-                        placeholder="Search devices"
-                        @input=${(event) => {
-      this._backupSearchQuery = event.currentTarget.value;
-    }}
-                      />
-                    </div>
                     <div class="selection-card">
                       <div class="selection-list">
-                        ${filteredDevices.length ? filteredDevices.map((device) => T`
+                        ${devices.length ? devices.map((device) => T`
                               <div
                                 class="selection-row"
                                 @click=${() => {
@@ -2208,7 +2174,7 @@ var SofabatonBackupTab = class extends i3 {
                                 </span>
                                 ${device.meta ? T`<span class="selection-meta">${device.meta}</span>` : A}
                               </div>
-                            `) : T`<div class="selection-empty">No devices match your search.</div>`}
+                            `) : T`<div class="selection-empty">No devices available.</div>`}
                       </div>
                     </div>
                   ` : A}
@@ -2229,7 +2195,7 @@ var SofabatonBackupTab = class extends i3 {
     `;
   }
   _renderRestoreSectionLegacy() {
-    const isOpen = this._openSection === "restore";
+    const isOpen = this.openSection === "restore";
     const isRunning = this._isProgressRunning(this._restoreProgress);
     const activityOptions = bundleActivityOptions(this._restoreBundle);
     const deviceOptions = bundleDeviceOptions(this._restoreBundle);
@@ -2240,7 +2206,7 @@ var SofabatonBackupTab = class extends i3 {
     });
     return T`
       <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this._toggleSection("restore")}>
+        <div class="acc-header" @click=${() => this.setOpenSection("restore")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:database-import-outline"></ha-icon></span>
           <span class="acc-title">Restore A Backup</span>
           <span class="flex-spacer"></span>
@@ -2322,7 +2288,7 @@ var SofabatonBackupTab = class extends i3 {
     `;
   }
   _renderRestoreSection() {
-    const isOpen = this._openSection === "restore";
+    const isOpen = this.openSection === "restore";
     const isRunning = this._isProgressRunning(this._restoreProgress);
     const isSuccess = String(this._restoreProgress?.status || "") === "success";
     const activityOptions = bundleActivityOptions(this._restoreBundle);
@@ -2337,7 +2303,7 @@ var SofabatonBackupTab = class extends i3 {
     const allRestoreSelected = totalRestoreOptions > 0 && totalRestoreSelected === totalRestoreOptions;
     return T`
       <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this._toggleSection("restore")}>
+        <div class="acc-header" @click=${() => this.setOpenSection("restore")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:database-import-outline"></ha-icon></span>
           <span class="acc-title">Restore A Backup</span>
           <span class="flex-spacer"></span>
@@ -2362,28 +2328,6 @@ var SofabatonBackupTab = class extends i3 {
             <input id="restore-file-input" type="file" accept=".json,application/json" @change=${this._handleFilePicked} />
             ${!isRunning && !isSuccess && this._restoreBundle ? T`
               <div class="restore-config-view">
-                <div class="backup-scope-group">
-                  <div
-                    class="selection-row"
-                    @click=${() => {
-      if (this._restoreLocked()) return;
-      this._restoreMode = this._restoreMode === "replace" ? "merge" : "replace";
-    }}
-                  >
-                    <ha-checkbox
-                      .checked=${this._restoreMode === "replace"}
-                      ?disabled=${this._restoreLocked()}
-                      @click=${(event) => event.stopPropagation()}
-                      @change=${(event) => {
-      const target = event.currentTarget;
-      this._restoreMode = target.checked ? "replace" : "merge";
-    }}
-                    ></ha-checkbox>
-                    <span class="selection-main">
-                      <span class="selection-label">Erase existing Devices and Activities</span>
-                    </span>
-                  </div>
-                </div>
                 <div class="backup-devices-head">
                   <div class="backup-devices-head-main">
                     <div class="backup-section-title">Items to restore</div>
@@ -2452,6 +2396,28 @@ var SofabatonBackupTab = class extends i3 {
                       ` : T`<div class="selection-empty">This backup file has no devices.</div>`}
                   </div>
                 </div>
+                <div class="backup-scope-group">
+                  <div
+                    class="selection-row"
+                    @click=${() => {
+      if (this._restoreLocked()) return;
+      this._restoreMode = this._restoreMode === "replace" ? "merge" : "replace";
+    }}
+                  >
+                    <ha-checkbox
+                      .checked=${this._restoreMode === "replace"}
+                      ?disabled=${this._restoreLocked()}
+                      @click=${(event) => event.stopPropagation()}
+                      @change=${(event) => {
+      const target = event.currentTarget;
+      this._restoreMode = target.checked ? "replace" : "merge";
+    }}
+                    ></ha-checkbox>
+                    <span class="selection-main">
+                      <span class="selection-label">Erase existing Devices and Activities</span>
+                    </span>
+                  </div>
+                </div>
                 <div class="restore-action-row">
                   <button class="primary-btn" ?disabled=${this._restoreActionDisabled(restoreSelection.selectedDeviceIds)} @click=${this._runRestore}>Start restore</button>
                   <button class="secondary-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
@@ -2508,9 +2474,6 @@ var SofabatonBackupTab = class extends i3 {
       </div>
     `;
   }
-  _toggleSection(section) {
-    this._openSection = section;
-  }
   _backupLocked() {
     return this.hubCommandBusy || this._isProgressRunning(this._backupProgress) || this._isProgressRunning(this._restoreProgress);
   }
@@ -2525,20 +2488,12 @@ var SofabatonBackupTab = class extends i3 {
     if (!this._backupDeviceIds.length && this.cacheHub) {
       this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
     }
-    if (scope === "whole_hub") {
-      this._backupSearchQuery = "";
-    }
   }
   _setBackupDevice(deviceId, checked) {
     const next = new Set(this._backupDeviceIds);
     if (checked) next.add(deviceId);
     else next.delete(deviceId);
     this._backupDeviceIds = [...next].sort((left, right) => left - right);
-  }
-  _filterBackupDevices(devices) {
-    const query = this._backupSearchQuery.trim().toLowerCase();
-    if (!query) return devices;
-    return devices.filter((device) => `${device.label} ${device.meta || ""}`.toLowerCase().includes(query));
   }
   _setRestoreActivity(activityId, checked) {
     const next = new Set(this._restoreActivityIds);

@@ -1395,6 +1395,9 @@ var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+var VALID_CACHE_SECTIONS = /* @__PURE__ */ new Set(["activities", "devices"]);
+var VALID_BACKUP_SECTIONS = /* @__PURE__ */ new Set(["make", "restore"]);
+var VALID_BLOBS_SECTIONS = /* @__PURE__ */ new Set(["fetch", "test", "save"]);
 function viewStateStorage() {
   try {
     if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -1409,9 +1412,15 @@ function readPersistedViewState() {
     const parsed = JSON.parse(storage.getItem(VIEW_STATE_STORAGE_KEY) || "{}");
     const selectedHubEntryId = String(parsed?.selectedHubEntryId ?? "").trim() || null;
     const selectedTab = VALID_TABS.has(parsed?.selectedTab) ? parsed.selectedTab : void 0;
+    const openSection = VALID_CACHE_SECTIONS.has(parsed?.openSection) ? parsed.openSection : parsed?.openSection === null ? null : void 0;
+    const openBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection) ? parsed.openBackupSection : void 0;
+    const openBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection) ? parsed.openBlobsSection : parsed?.openBlobsSection === null ? null : void 0;
     return {
       selectedHubEntryId,
-      ...selectedTab ? { selectedTab } : {}
+      ...selectedTab ? { selectedTab } : {},
+      ...openSection !== void 0 ? { openSection } : {},
+      ...openBackupSection ? { openBackupSection } : {},
+      ...openBlobsSection !== void 0 ? { openBlobsSection } : {}
     };
   } catch (_error) {
     return {};
@@ -1436,8 +1445,10 @@ var INITIAL_SNAPSHOT = {
   loadError: null,
   backendUnavailable: false,
   selectedHubEntryId: null,
-  selectedTab: "settings",
+  selectedTab: "cache",
   openSection: "activities",
+  openBackupSection: "make",
+  openBlobsSection: "fetch",
   openEntity: null,
   staleData: false,
   refreshBusy: false,
@@ -1595,15 +1606,14 @@ var ControlPanelStore = class {
     })();
   }
   selectTab(tabId) {
-    const nextTab = tabId === "cache" && !persistentCacheEnabled(this._snapshot) ? "settings" : tabId;
     this._snapshot = {
       ...this._snapshot,
-      selectedTab: nextTab,
-      logsStickToBottom: nextTab === "logs" ? true : this._snapshot.logsStickToBottom,
-      logsScrollBehavior: nextTab === "logs" ? "auto" : this._snapshot.logsScrollBehavior
+      selectedTab: tabId,
+      logsStickToBottom: tabId === "logs" ? true : this._snapshot.logsStickToBottom,
+      logsScrollBehavior: tabId === "logs" ? "auto" : this._snapshot.logsScrollBehavior
     };
     this.persistViewState();
-    if (nextTab === "logs") void this.syncLogsFeed();
+    if (tabId === "logs") void this.syncLogsFeed();
     else void this.unsubscribeLogs();
     this.emit();
   }
@@ -1613,6 +1623,20 @@ var ControlPanelStore = class {
       openSection: this._snapshot.openSection === sectionId ? null : sectionId,
       openEntity: null
     };
+    this.persistViewState();
+    this.emit();
+  }
+  setBackupSection(sectionId) {
+    if (this._snapshot.openBackupSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, openBackupSection: sectionId };
+    this.persistViewState();
+    this.emit();
+  }
+  toggleBlobsSection(sectionId) {
+    const next = this._snapshot.openBlobsSection === sectionId ? null : sectionId;
+    if (this._snapshot.openBlobsSection === next) return;
+    this._snapshot = { ...this._snapshot, openBlobsSection: next };
+    this.persistViewState();
     this.emit();
   }
   toggleEntity(key) {
@@ -1700,18 +1724,10 @@ var ControlPanelStore = class {
     try {
       await this.api().setSetting(hub.entry_id, setting, enabled);
       if (setting === "persistent_cache") {
-        if (!enabled && this._snapshot.selectedTab === "cache") {
-          this._snapshot = { ...this._snapshot, selectedTab: "settings" };
-          await this.loadState();
-          return;
-        }
         if (enabled) await this.loadCacheContents();
         else await this.loadControlPanelState();
       } else {
         await this.loadControlPanelState();
-      }
-      if (this._snapshot.selectedTab === "cache" && !persistentCacheEnabled(this._snapshot)) {
-        this._snapshot = { ...this._snapshot, selectedTab: "settings" };
       }
     } catch (_error) {
       this.applyOptimisticSetting(
@@ -1965,9 +1981,6 @@ var ControlPanelStore = class {
     if (!hubs.some((hub) => hub.entry_id === this._snapshot.selectedHubEntryId)) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: hubs[0].entry_id };
     }
-    if (this._snapshot.selectedTab === "cache" && !persistentCacheEnabled(this._snapshot)) {
-      this._snapshot = { ...this._snapshot, selectedTab: "settings" };
-    }
     this.persistViewState();
   }
   api() {
@@ -1982,7 +1995,10 @@ var ControlPanelStore = class {
         VIEW_STATE_STORAGE_KEY,
         JSON.stringify({
           selectedHubEntryId: this._snapshot.selectedHubEntryId,
-          selectedTab: this._snapshot.selectedTab
+          selectedTab: this._snapshot.selectedTab,
+          openSection: this._snapshot.openSection,
+          openBackupSection: this._snapshot.openBackupSection,
+          openBlobsSection: this._snapshot.openBlobsSection
         })
       );
     } catch (_error) {
@@ -2176,7 +2192,7 @@ function createStore() {
 function flush() {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
-test("loadState keeps cache tab unavailable when persistent cache is disabled", async () => {
+test("cache tab is selectable even when persistent cache is disabled", async () => {
   const { store } = createStore();
   store.connected();
   store.setHass(
@@ -2191,7 +2207,7 @@ test("loadState keeps cache tab unavailable when persistent cache is disabled", 
   );
   await store.loadState();
   store.selectTab("cache");
-  assert.equal(store.snapshot.selectedTab, "settings");
+  assert.equal(store.snapshot.selectedTab, "cache");
   assert.equal(store.snapshot.state?.persistent_cache_enabled, false);
 });
 test("loadState restores the most recent hub and tab from local storage", async () => {
@@ -2287,7 +2303,10 @@ test("selectHub and selectTab persist the updated view state", async () => {
     JSON.parse(globalThis.localStorage?.getItem(VIEW_STATE_STORAGE_KEY2) || "{}"),
     {
       selectedHubEntryId: "hub-2",
-      selectedTab: "wifi_commands"
+      selectedTab: "wifi_commands",
+      openSection: "activities",
+      openBackupSection: "make",
+      openBlobsSection: "fetch"
     }
   );
 });

@@ -3593,6 +3593,22 @@ class SofabatonHub:
                         except (TypeError, ValueError):
                             pass
 
+                # Drop activity ids that no longer exist on this hub (e.g. the
+                # user deleted an activity that a previous deploy linked to).
+                # Without this filter async_add_device_to_activity fails on the
+                # missing target and rolls back the entire deploy, leaving the
+                # user no way to recover from the UI.
+                known_activity_ids = set(self.activities.keys())
+                if known_activity_ids:
+                    stale_activity_ids = activity_ids - known_activity_ids
+                    if stale_activity_ids:
+                        _LOGGER.info(
+                            "[%s] sync_command_config: dropping stale activity ids %s (no longer on hub)",
+                            self.entry_id,
+                            sorted(stale_activity_ids),
+                        )
+                        activity_ids &= known_activity_ids
+
                 add_results: dict[int, bool] = {}
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,

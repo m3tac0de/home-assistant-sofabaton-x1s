@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing } from "lit";
 import type {
   BlobFetchResponse,
   BlobPersistResponse,
+  BlobsSectionId,
   CacheHubState,
   ControlPanelHubState,
   HassLike,
@@ -45,7 +46,8 @@ class SofabatonBlobsTab extends LitElement {
     _saveSuccess: { state: true },
     _saveResult: { state: true },
     _loadedEntryId: { state: true },
-    _openSection: { state: true },
+    openSection: { attribute: false },
+    toggleOpenSection: { attribute: false },
     _testFlash: { state: true },
     _saveFlash: { state: true },
     _copyFlashKey: { state: true },
@@ -519,7 +521,8 @@ class SofabatonBlobsTab extends LitElement {
   private _saveSuccess = "";
   private _saveResult: BlobPersistResponse | null = null;
   private _loadedEntryId = "";
-  private _openSection: "fetch" | "test" | "save" | null = "fetch";
+  openSection: BlobsSectionId | null = "fetch";
+  toggleOpenSection: (section: BlobsSectionId) => void = () => {};
   private _testFlash = false;
   private _saveFlash = false;
   private _copyFlashKey: string | null = null;
@@ -708,9 +711,9 @@ class SofabatonBlobsTab extends LitElement {
     return html`
       <div class="tab-panel">
         <div class="blob-panel">
-          ${this._renderFetchSection(this._openSection === "fetch")}
-          ${this._renderTestSection(this._openSection === "test")}
-          ${this._renderSaveSection(this._openSection === "save")}
+          ${this._renderFetchSection(this.openSection === "fetch")}
+          ${this._renderTestSection(this.openSection === "test")}
+          ${this._renderSaveSection(this.openSection === "save")}
         </div>
       </div>
     `;
@@ -728,7 +731,7 @@ class SofabatonBlobsTab extends LitElement {
 
     return html`
       <div class="accordion-section${isOpen ? " open" : ""}" id="acc-fetch">
-        <div class="acc-header" @click=${() => this._toggleSection("fetch")}>
+        <div class="acc-header" @click=${() => this.toggleOpenSection("fetch")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:cloud-download-outline"></ha-icon></span>
           <span class="acc-title">Fetch From Hub</span>
           <span class="flex-spacer"></span>
@@ -863,7 +866,7 @@ class SofabatonBlobsTab extends LitElement {
 
     return html`
       <div class="accordion-section${isOpen ? " open" : ""}" id="acc-test">
-        <div class="acc-header" @click=${() => this._toggleSection("test")}>
+        <div class="acc-header" @click=${() => this.toggleOpenSection("test")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:flash-outline"></ha-icon></span>
           <span class="acc-title">Test A Blob</span>
           <span class="flex-spacer"></span>
@@ -925,7 +928,7 @@ class SofabatonBlobsTab extends LitElement {
 
     return html`
       <div class="accordion-section${isOpen ? " open" : ""}" id="acc-save">
-        <div class="acc-header" @click=${() => this._toggleSection("save")}>
+        <div class="acc-header" @click=${() => this.toggleOpenSection("save")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:content-save-outline"></ha-icon></span>
           <span class="acc-title">Save To Hub</span>
           <span class="flex-spacer"></span>
@@ -1306,10 +1309,6 @@ class SofabatonBlobsTab extends LitElement {
       this._copyFlashKey = null;
       this._copyFlashTimer = null;
     }, 1500);
-  }
-
-  private _toggleSection(section: "fetch" | "test" | "save") {
-    this._openSection = this._openSection === section ? null : section;
   }
 
   private _busy() {

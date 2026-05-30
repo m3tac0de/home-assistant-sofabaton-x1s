@@ -8,7 +8,6 @@ export function renderSettingsTab(params: {
   error: string | null;
   hub: ControlPanelHubState | null;
   hass: HassLike | null;
-  integrationVersion: string | null;
   persistentCacheEnabled: boolean;
   hubCommandBusy: boolean;
   pendingSettingKey: SettingKey | null;
@@ -23,7 +22,6 @@ export function renderSettingsTab(params: {
   const hub = params.hub;
   const connected = hubConnected(params.hass, hub);
   const proxyOn = proxyClientConnected(params.hass, hub);
-  const integrationVersion = String(params.integrationVersion ?? "").trim() || "unknown";
   const hubVersion = String(hub.version ?? "").trim();
   const firmwareVersion = hub.firmware_version != null ? `FW: v${hub.firmware_version}` : "";
   const versionLine = [hubVersion ? `Sofabaton ${hubVersion}` : "", firmwareVersion].filter(Boolean).join(" / ");
@@ -114,24 +112,6 @@ export function renderSettingsTab(params: {
               control: html`<ha-icon class="setting-icon" icon="mdi:sync"></ha-icon>`,
               onClick: canAct ? () => params.onRunAction("sync_remote") : undefined,
             })}
-          </div>
-        </div>
-      </div>
-      <div class="panel-sticky-footer">
-        <div class="bottom-dock-status">
-          <div class="dock-seg ${connected ? "dock-seg--hub-on" : "dock-seg--off"}">
-            <span class="dock-seg-dot"></span>
-            <span>Hub ${connected ? "connected" : "not connected"}</span>
-          </div>
-          <div class="dock-sep"></div>
-          <div class="dock-seg ${proxyOn ? "dock-seg--app-on" : "dock-seg--off"}">
-            <span class="dock-seg-dot"></span>
-            <span>App ${proxyOn ? "connected" : "not connected"}</span>
-          </div>
-          <div class="dock-sep"></div>
-          <div class="dock-seg dock-seg--version">
-            <ha-icon class="dock-version-icon" icon="mdi:cog-outline"></ha-icon>
-            <span>v<span class="dock-status-value">${integrationVersion}</span></span>
           </div>
         </div>
       </div>

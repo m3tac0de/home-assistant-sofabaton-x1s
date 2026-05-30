@@ -555,22 +555,26 @@ var cardStyles = i`
   :host { display: block; }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
-  .card-header { position: relative; flex-shrink: 0; min-height: 0; display: flex; align-items: flex-start; justify-content: flex-end; padding: 0; }
+  .card-bottom-dock { position: relative; flex-shrink: 0; display: flex; align-items: stretch; justify-content: space-between; gap: 12px; padding: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }
+  .card-header-status { display: inline-flex; align-items: center; padding-left: 14px; }
+  .card-header-status .dock-seg { padding: 8px 10px; font-size: 11px; }
+  .card-header-status .dock-sep { margin: 6px 0; }
   .card-title { font-size: 16px; font-weight: 700; }
   .card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
   .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
-  .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; }
-  .hub-picker-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; max-width: min(100%, 320px); border: 1px solid var(--divider-color); border-top-right-radius: var(--ha-card-border-radius, 12px); border-top-left-radius: 0; border-bottom-right-radius: 0; border-bottom-left-radius: var(--ha-card-border-radius, 12px); padding: 8px 12px 8px 14px; background: var(--secondary-background-color, var(--ha-card-background)); cursor: pointer; font-family: inherit; color: var(--primary-text-color); flex-shrink: 0; user-select: none; -webkit-user-select: none; }
-  .hub-picker-btn.is-open { border-bottom-left-radius: 0; }
-  .chip-name { font-size: 13px; font-weight: 700; max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; padding: 6px 10px 6px 0; }
+  .hub-picker-btn { display: inline-flex; align-items: center; gap: 8px; max-width: min(100%, 420px); border: 1px solid var(--divider-color); border-radius: 999px; padding: 0 14px 0 16px; background: var(--secondary-background-color, var(--ha-card-background)); cursor: pointer; font-family: inherit; color: var(--primary-text-color); flex-shrink: 0; user-select: none; -webkit-user-select: none; transition: border-color 120ms ease, background 120ms ease; }
+  .hub-picker-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+  .chip-name { font-size: 13px; font-weight: 700; flex: 1; min-width: 0; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip-arrow { --mdc-icon-size: 16px; color: var(--secondary-text-color); flex-shrink: 0; }
-  .hub-picker-menu { position: absolute; top: calc(100% - 1px); right: 0; z-index: 20; display: flex; flex-direction: column; min-width: max(100%, 180px); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-top: none; border-radius: 0 0 var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
+  .hub-picker-menu { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 20; display: flex; flex-direction: column; width: max-content; min-width: 160px; max-width: min(320px, calc(100vw - 24px)); margin: 0; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--card-background-color, var(--ha-card-background, white)); color: var(--primary-text-color); box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
   .hub-option, .tab-menu-item { width: 100%; border: none; background: transparent; text-align: left; font: inherit; color: inherit; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .hub-option { padding: 10px 14px; font-size: 13px; }
   .hub-option:hover, .tab-menu-item:hover { background: color-mix(in srgb, var(--primary-color) 7%, transparent); }
   .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--primary-color); }
-  .tabs { flex-shrink: 0; display: flex; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
+  .tabs { flex-shrink: 0; display: flex; align-items: stretch; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
+  .tabs-scroll { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; }
   .tab-btn { position: relative; border: none; border-bottom: 3px solid transparent; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px 11px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .tab-btn--push-right { margin-left: auto; }
   .tab-btn--menu { display: inline-flex; align-items: center; gap: 4px; padding-right: 12px; }
@@ -587,6 +591,9 @@ var cardStyles = i`
   .logs-panel { gap: 10px; }
   .logs-header, .hub-hero { display: grid; }
   .logs-header { gap: 4px; }
+  .logs-title-row { display: flex; align-items: center; gap: 10px; }
+  .logs-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
+  .logs-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
   .logs-subtitle, .logs-empty, .cache-state, .entity-count, .refresh-list-label, .stale-banner { color: var(--secondary-text-color); }
   .logs-console { flex: 1; min-height: 0; border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: radial-gradient(circle at top, color-mix(in srgb, var(--primary-color) 6%, transparent), transparent 45%), color-mix(in srgb, #05070b 92%, var(--card-background-color, #fff)); font-family: "SF Mono", "Fira Code", Consolas, monospace; padding: 10px 0; user-select: text; -webkit-user-select: text; }
   .logs-empty { padding: 12px 14px; font-size: 12px; }
@@ -705,6 +712,16 @@ var cardStyles = i`
   .cache-state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px 16px; text-align: center; font-size: 13px; line-height: 1.6; }
   .cache-state-icon { font-size: 32px; line-height: 1; margin-bottom: 4px; }
   .cache-state-sub { font-size: 12px; line-height: 1.5; max-width: 260px; }
+  .cache-enable-state { gap: 14px; max-width: 360px; margin: 0 auto; }
+  .cache-enable-state .cache-state-title { font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+  .cache-enable-state .cache-state-sub { font-size: 13px; color: var(--secondary-text-color); max-width: 320px; }
+  .cache-enable-icon { width: 64px; height: 64px; display: grid; place-items: center; border-radius: var(--ha-card-border-radius, 12px); color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 14%, transparent); margin-bottom: 4px; }
+  .cache-enable-icon ha-icon { --mdc-icon-size: 34px; }
+  .cache-enable-btn { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; padding: 12px 22px; border-radius: var(--ha-card-border-radius, 12px); border: 1px solid color-mix(in srgb, var(--primary-color) 60%, var(--divider-color)); background: color-mix(in srgb, var(--primary-color) 22%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: transform 120ms ease, background 120ms ease, border-color 120ms ease, box-shadow 120ms ease; box-shadow: 0 4px 14px color-mix(in srgb, var(--primary-color) 22%, transparent); }
+  .cache-enable-btn:hover:not(:disabled) { transform: translateY(-1px); background: color-mix(in srgb, var(--primary-color) 28%, var(--ha-card-background, var(--card-background-color))); border-color: var(--primary-color); box-shadow: 0 6px 18px color-mix(in srgb, var(--primary-color) 28%, transparent); }
+  .cache-enable-btn:active:not(:disabled) { transform: translateY(0); }
+  .cache-enable-btn:disabled { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
+  .cache-enable-btn ha-icon { --mdc-icon-size: 20px; color: var(--primary-color); }
   .version-mismatch-state { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 24px 32px 40px; }
   .version-mismatch-header { display: flex; align-items: flex-start; gap: 14px; }
   .version-mismatch-icon { flex-shrink: 0; display: inline-flex; padding-top: 3px; color: var(--warning-color, #ff9800); }
@@ -748,8 +765,8 @@ var cardStyles = i`
   .hub-compact-stat-label { font-size: 11px; color: var(--secondary-text-color); font-weight: 500; }
   .hub-compact-divider { width: 1px; height: 36px; background: color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color)); flex-shrink: 0; }
   @media (max-width: 640px) {
-    .tabs { overflow-x: auto; scrollbar-width: none; }
-    .tabs::-webkit-scrollbar { display: none; }
+    .tabs-scroll { overflow-x: auto; scrollbar-width: none; }
+    .tabs-scroll::-webkit-scrollbar { display: none; }
     .tab-btn-label-short { display: inline; }
     .tab-btn--has-short-label .tab-btn-label { display: none; }
     .hub-connection-strip { grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto; gap: 6px; padding: 8px 10px; }
@@ -758,8 +775,10 @@ var cardStyles = i`
     .hub-ident-name { font-size: 15px; }
     .hub-compact-stats { display: none; }
     .entity-chevron { display: none; }
-    .hub-picker-btn { max-width: min(100vw - 32px, 260px); }
-    .chip-name { max-width: 180px; }
+    .hub-picker-btn { max-width: min(100vw - 32px, 320px); }
+    .chip-name { max-width: 220px; }
+    .card-header-status { padding-left: 8px; }
+    .card-header-status .dock-seg { padding: 6px 6px; font-size: 10.5px; }
   }
 `;
 
@@ -1122,6 +1141,9 @@ var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
 var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+var VALID_CACHE_SECTIONS = /* @__PURE__ */ new Set(["activities", "devices"]);
+var VALID_BACKUP_SECTIONS = /* @__PURE__ */ new Set(["make", "restore"]);
+var VALID_BLOBS_SECTIONS = /* @__PURE__ */ new Set(["fetch", "test", "save"]);
 function viewStateStorage() {
   try {
     if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -1136,9 +1158,15 @@ function readPersistedViewState() {
     const parsed = JSON.parse(storage.getItem(VIEW_STATE_STORAGE_KEY) || "{}");
     const selectedHubEntryId = String(parsed?.selectedHubEntryId ?? "").trim() || null;
     const selectedTab = VALID_TABS.has(parsed?.selectedTab) ? parsed.selectedTab : void 0;
+    const openSection = VALID_CACHE_SECTIONS.has(parsed?.openSection) ? parsed.openSection : parsed?.openSection === null ? null : void 0;
+    const openBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection) ? parsed.openBackupSection : void 0;
+    const openBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection) ? parsed.openBlobsSection : parsed?.openBlobsSection === null ? null : void 0;
     return {
       selectedHubEntryId,
-      ...selectedTab ? { selectedTab } : {}
+      ...selectedTab ? { selectedTab } : {},
+      ...openSection !== void 0 ? { openSection } : {},
+      ...openBackupSection ? { openBackupSection } : {},
+      ...openBlobsSection !== void 0 ? { openBlobsSection } : {}
     };
   } catch (_error) {
     return {};
@@ -1163,8 +1191,10 @@ var INITIAL_SNAPSHOT = {
   loadError: null,
   backendUnavailable: false,
   selectedHubEntryId: null,
-  selectedTab: "settings",
+  selectedTab: "cache",
   openSection: "activities",
+  openBackupSection: "make",
+  openBlobsSection: "fetch",
   openEntity: null,
   staleData: false,
   refreshBusy: false,
@@ -1322,15 +1352,14 @@ var ControlPanelStore = class {
     })();
   }
   selectTab(tabId) {
-    const nextTab = tabId === "cache" && !persistentCacheEnabled(this._snapshot) ? "settings" : tabId;
     this._snapshot = {
       ...this._snapshot,
-      selectedTab: nextTab,
-      logsStickToBottom: nextTab === "logs" ? true : this._snapshot.logsStickToBottom,
-      logsScrollBehavior: nextTab === "logs" ? "auto" : this._snapshot.logsScrollBehavior
+      selectedTab: tabId,
+      logsStickToBottom: tabId === "logs" ? true : this._snapshot.logsStickToBottom,
+      logsScrollBehavior: tabId === "logs" ? "auto" : this._snapshot.logsScrollBehavior
     };
     this.persistViewState();
-    if (nextTab === "logs") void this.syncLogsFeed();
+    if (tabId === "logs") void this.syncLogsFeed();
     else void this.unsubscribeLogs();
     this.emit();
   }
@@ -1340,6 +1369,20 @@ var ControlPanelStore = class {
       openSection: this._snapshot.openSection === sectionId ? null : sectionId,
       openEntity: null
     };
+    this.persistViewState();
+    this.emit();
+  }
+  setBackupSection(sectionId) {
+    if (this._snapshot.openBackupSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, openBackupSection: sectionId };
+    this.persistViewState();
+    this.emit();
+  }
+  toggleBlobsSection(sectionId) {
+    const next = this._snapshot.openBlobsSection === sectionId ? null : sectionId;
+    if (this._snapshot.openBlobsSection === next) return;
+    this._snapshot = { ...this._snapshot, openBlobsSection: next };
+    this.persistViewState();
     this.emit();
   }
   toggleEntity(key) {
@@ -1427,18 +1470,10 @@ var ControlPanelStore = class {
     try {
       await this.api().setSetting(hub.entry_id, setting, enabled);
       if (setting === "persistent_cache") {
-        if (!enabled && this._snapshot.selectedTab === "cache") {
-          this._snapshot = { ...this._snapshot, selectedTab: "settings" };
-          await this.loadState();
-          return;
-        }
         if (enabled) await this.loadCacheContents();
         else await this.loadControlPanelState();
       } else {
         await this.loadControlPanelState();
-      }
-      if (this._snapshot.selectedTab === "cache" && !persistentCacheEnabled(this._snapshot)) {
-        this._snapshot = { ...this._snapshot, selectedTab: "settings" };
       }
     } catch (_error) {
       this.applyOptimisticSetting(
@@ -1692,9 +1727,6 @@ var ControlPanelStore = class {
     if (!hubs.some((hub) => hub.entry_id === this._snapshot.selectedHubEntryId)) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: hubs[0].entry_id };
     }
-    if (this._snapshot.selectedTab === "cache" && !persistentCacheEnabled(this._snapshot)) {
-      this._snapshot = { ...this._snapshot, selectedTab: "settings" };
-    }
     this.persistViewState();
   }
   api() {
@@ -1709,7 +1741,10 @@ var ControlPanelStore = class {
         VIEW_STATE_STORAGE_KEY,
         JSON.stringify({
           selectedHubEntryId: this._snapshot.selectedHubEntryId,
-          selectedTab: this._snapshot.selectedTab
+          selectedTab: this._snapshot.selectedTab,
+          openSection: this._snapshot.openSection,
+          openBackupSection: this._snapshot.openBackupSection,
+          openBlobsSection: this._snapshot.openBlobsSection
         })
       );
     } catch (_error) {
@@ -1808,7 +1843,7 @@ function renderHubPicker(params) {
         @click=${params.onToggle}
       >
         <span class="chip-name">${params.selectedLabel}</span>
-        <ha-icon class="chip-arrow" icon="mdi:chevron-down"></ha-icon>
+        <ha-icon class="chip-arrow" icon="mdi:chevron-up"></ha-icon>
       </button>
       ${params.open ? b2`
             <div id="hub-picker-menu" class="hub-picker-menu" role="menu">
@@ -1834,28 +1869,30 @@ function renderHubPicker(params) {
 // custom_components/sofabaton_x1s/www/src/components/tab-bar.ts
 function renderTabBar(params) {
   const tabs = [
-    { id: "settings", label: "Hub", disabled: false },
+    { id: "cache", label: "Cache", disabled: false },
     { id: "wifi_commands", label: "Wifi Commands", shortLabel: "Wifi", disabled: false },
     { id: "backup", label: "Backup", disabled: false },
-    { id: "cache", label: "Cache", disabled: !params.persistentCacheEnabled }
+    { id: "blobs", label: "Blobs", disabled: false }
   ];
-  const toolsMenuActive = params.selectedTab === "blobs" || params.selectedTab === "logs";
+  const toolsMenuActive = params.selectedTab === "settings" || params.selectedTab === "logs";
   return b2`
     <div class="tabs">
-      ${tabs.map(
+      <div class="tabs-scroll">
+        ${tabs.map(
     (tab) => b2`
-          <button
-            class="tab-btn${tab.shortLabel ? " tab-btn--has-short-label" : ""}${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
-            type="button"
-            ?disabled=${tab.disabled}
-            @click=${() => params.onSelect(tab.id)}
-          >
-            <span class="tab-btn-label">${tab.label}</span>
-            ${tab.shortLabel ? b2`<span class="tab-btn-label-short">${tab.shortLabel}</span>` : null}
-          </button>
-        `
+            <button
+              class="tab-btn${tab.shortLabel ? " tab-btn--has-short-label" : ""}${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
+              type="button"
+              ?disabled=${tab.disabled}
+              @click=${() => params.onSelect(tab.id)}
+            >
+              <span class="tab-btn-label">${tab.label}</span>
+              ${tab.shortLabel ? b2`<span class="tab-btn-label-short">${tab.shortLabel}</span>` : null}
+            </button>
+          `
   )}
-      <div class="tab-menu tab-menu--push-right" id="tools-tab-menu-root">
+      </div>
+      <div class="tab-menu" id="tools-tab-menu-root">
         <button
           class="tab-btn tab-btn--menu${toolsMenuActive ? " active" : ""}${params.toolsMenuOpen ? " is-open" : ""}"
           id="tools-tab-menu-btn"
@@ -1864,19 +1901,19 @@ function renderTabBar(params) {
           aria-expanded=${String(params.toolsMenuOpen)}
           @click=${params.onToggleToolsMenu}
         >
-          <ha-icon class="tab-btn-menu-icon" icon="mdi:dots-horizontal"></ha-icon>
+          <ha-icon class="tab-btn-menu-icon" icon="mdi:cog-outline"></ha-icon>
           <ha-icon class="tab-btn-menu-caret" icon="mdi:chevron-down"></ha-icon>
         </button>
         ${params.toolsMenuOpen ? b2`
               <div class="tab-menu-dropdown" id="tools-tab-menu-dropdown" role="menu">
                 <button
-                  class="tab-menu-item${params.selectedTab === "blobs" ? " active" : ""}"
+                  class="tab-menu-item${params.selectedTab === "settings" ? " active" : ""}"
                   type="button"
                   role="menuitemradio"
-                  aria-checked=${String(params.selectedTab === "blobs")}
-                  @click=${() => params.onSelect("blobs")}
+                  aria-checked=${String(params.selectedTab === "settings")}
+                  @click=${() => params.onSelect("settings")}
                 >
-                  Blobs
+                  Settings
                 </button>
                 <button
                   class="tab-menu-item${params.selectedTab === "logs" ? " active" : ""}"
@@ -1935,7 +1972,6 @@ function renderSettingsTab(params) {
   const hub = params.hub;
   const connected = hubConnected(params.hass, hub);
   const proxyOn = proxyClientConnected(params.hass, hub);
-  const integrationVersion = String(params.integrationVersion ?? "").trim() || "unknown";
   const hubVersion = String(hub.version ?? "").trim();
   const firmwareVersion = hub.firmware_version != null ? `FW: v${hub.firmware_version}` : "";
   const versionLine = [hubVersion ? `Sofabaton ${hubVersion}` : "", firmwareVersion].filter(Boolean).join(" / ");
@@ -2039,24 +2075,6 @@ function renderSettingsTab(params) {
           </div>
         </div>
       </div>
-      <div class="panel-sticky-footer">
-        <div class="bottom-dock-status">
-          <div class="dock-seg ${connected ? "dock-seg--hub-on" : "dock-seg--off"}">
-            <span class="dock-seg-dot"></span>
-            <span>Hub ${connected ? "connected" : "not connected"}</span>
-          </div>
-          <div class="dock-sep"></div>
-          <div class="dock-seg ${proxyOn ? "dock-seg--app-on" : "dock-seg--off"}">
-            <span class="dock-seg-dot"></span>
-            <span>App ${proxyOn ? "connected" : "not connected"}</span>
-          </div>
-          <div class="dock-sep"></div>
-          <div class="dock-seg dock-seg--version">
-            <ha-icon class="dock-version-icon" icon="mdi:cog-outline"></ha-icon>
-            <span>v<span class="dock-status-value">${integrationVersion}</span></span>
-          </div>
-        </div>
-      </div>
     </div>
   `;
 }
@@ -2091,7 +2109,23 @@ function badge(type, value) {
 function renderCacheTab(params) {
   if (params.loading) return b2`<div class="cache-state">Loading…</div>`;
   if (params.error) return b2`<div class="cache-state error">${params.error}</div>`;
-  if (!params.persistentCacheEnabled) return b2`<div class="cache-state"><div class="cache-state-icon">💾</div><div class="cache-state-title">Persistent cache is off</div><div class="cache-state-sub">Enable it from the Settings tab to browse cached activities and devices.</div></div>`;
+  if (!params.persistentCacheEnabled) {
+    return b2`
+      <div class="cache-state cache-enable-state">
+        <div class="cache-enable-icon"><ha-icon icon="mdi:database-cog-outline"></ha-icon></div>
+        <div class="cache-state-title">Persistent cache is off</div>
+        <div class="cache-state-sub">Turn it on to browse cached activities and devices, and to unlock Backup and Blobs workflows that depend on it.</div>
+        <button
+          class="cache-enable-btn"
+          ?disabled=${params.enablingPersistentCache || params.hubCommandBusy}
+          @click=${params.onEnablePersistentCache}
+        >
+          <ha-icon icon="mdi:database-check-outline"></ha-icon>
+          <span>${params.enablingPersistentCache ? "Enabling\u2026" : "Enable persistent cache"}</span>
+        </button>
+      </div>
+    `;
+  }
   if (!params.hub) return b2`<div class="cache-state">No hubs found.</div>`;
   const renderActivity = (activity) => {
     const id = Number(activity.id);
@@ -2178,7 +2212,10 @@ function renderLogConsole(params) {
   return b2`
     <div class="tab-panel logs-panel">
       <div class="logs-header">
-        <div class="acc-title">Live Console</div>
+        <div class="logs-title-row">
+          <span class="acc-header-icon"><ha-icon icon="mdi:console-line"></ha-icon></span>
+          <div class="acc-title">Live Console</div>
+        </div>
       </div>
       <div class="logs-console" id="logs-console">${body}</div>
     </div>
@@ -2248,7 +2285,9 @@ var SofabatonBlobsTab = class extends i4 {
     this._saveSuccess = "";
     this._saveResult = null;
     this._loadedEntryId = "";
-    this._openSection = "fetch";
+    this.openSection = "fetch";
+    this.toggleOpenSection = () => {
+    };
     this._testFlash = false;
     this._saveFlash = false;
     this._copyFlashKey = null;
@@ -2473,9 +2512,9 @@ var SofabatonBlobsTab = class extends i4 {
     return b2`
       <div class="tab-panel">
         <div class="blob-panel">
-          ${this._renderFetchSection(this._openSection === "fetch")}
-          ${this._renderTestSection(this._openSection === "test")}
-          ${this._renderSaveSection(this._openSection === "save")}
+          ${this._renderFetchSection(this.openSection === "fetch")}
+          ${this._renderTestSection(this.openSection === "test")}
+          ${this._renderSaveSection(this.openSection === "save")}
         </div>
       </div>
     `;
@@ -2491,7 +2530,7 @@ var SofabatonBlobsTab = class extends i4 {
     const disabled = this._busy() || !this.persistentCacheEnabled;
     return b2`
       <div class="accordion-section${isOpen ? " open" : ""}" id="acc-fetch">
-        <div class="acc-header" @click=${() => this._toggleSection("fetch")}>
+        <div class="acc-header" @click=${() => this.toggleOpenSection("fetch")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:cloud-download-outline"></ha-icon></span>
           <span class="acc-title">Fetch From Hub</span>
           <span class="flex-spacer"></span>
@@ -2612,7 +2651,7 @@ var SofabatonBlobsTab = class extends i4 {
     const canSubmit = !busy && !proxyConnected && String(this._testBlobInput || "").trim() !== "";
     return b2`
       <div class="accordion-section${isOpen ? " open" : ""}" id="acc-test">
-        <div class="acc-header" @click=${() => this._toggleSection("test")}>
+        <div class="acc-header" @click=${() => this.toggleOpenSection("test")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:flash-outline"></ha-icon></span>
           <span class="acc-title">Test A Blob</span>
           <span class="flex-spacer"></span>
@@ -2665,7 +2704,7 @@ var SofabatonBlobsTab = class extends i4 {
     const canSubmit = !busy && !proxyConnected && deviceIdValid && String(this._saveCommandName || "").trim() !== "" && String(this._saveBlobInput || "").trim() !== "";
     return b2`
       <div class="accordion-section${isOpen ? " open" : ""}" id="acc-save">
-        <div class="acc-header" @click=${() => this._toggleSection("save")}>
+        <div class="acc-header" @click=${() => this.toggleOpenSection("save")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:content-save-outline"></ha-icon></span>
           <span class="acc-title">Save To Hub</span>
           <span class="flex-spacer"></span>
@@ -3009,9 +3048,6 @@ var SofabatonBlobsTab = class extends i4 {
       this._copyFlashTimer = null;
     }, 1500);
   }
-  _toggleSection(section) {
-    this._openSection = this._openSection === section ? null : section;
-  }
   _busy() {
     return Boolean(this.hubCommandBusy || this._fetchLoading || this._testLoading || this._saveLoading);
   }
@@ -3054,7 +3090,8 @@ SofabatonBlobsTab.properties = {
   _saveSuccess: { state: true },
   _saveResult: { state: true },
   _loadedEntryId: { state: true },
-  _openSection: { state: true },
+  openSection: { attribute: false },
+  toggleOpenSection: { attribute: false },
   _testFlash: { state: true },
   _saveFlash: { state: true },
   _copyFlashKey: { state: true },
@@ -3601,9 +3638,10 @@ var SofabatonBackupTab = class extends i4 {
     this.error = null;
     this.persistentCacheEnabled = false;
     this.selectedHubProxyConnected = false;
-    this._openSection = "make";
+    this.openSection = "make";
+    this.setOpenSection = () => {
+    };
     this._backupScope = "whole_hub";
-    this._backupSearchQuery = "";
     this._backupDeviceIds = [];
     this._backupError = null;
     this._backupProgress = null;
@@ -3638,7 +3676,6 @@ var SofabatonBackupTab = class extends i4 {
       this._backupError = null;
       this._backupProgress = null;
       this._backupScope = "whole_hub";
-      this._backupSearchQuery = "";
       this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
       this._revokeDownloadUrl();
     };
@@ -3692,9 +3729,8 @@ var SofabatonBackupTab = class extends i4 {
     `;
   }
   _renderBackupSection() {
-    const isOpen = this._openSection === "make";
+    const isOpen = this.openSection === "make";
     const devices = backupDeviceOptions(this.cacheHub);
-    const filteredDevices = this._filterBackupDevices(devices);
     const wholeHub = this._backupScope === "whole_hub";
     const selectedDeviceIds = wholeHub ? devices.map((device) => device.id) : this._backupDeviceIds;
     const isRunning = this._isProgressRunning(this._backupProgress);
@@ -3703,7 +3739,7 @@ var SofabatonBackupTab = class extends i4 {
     const summary = this._backupResultSummary(this._backupProgress?.backup);
     return b2`
       <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this._toggleSection("make")}>
+        <div class="acc-header" @click=${() => this.setOpenSection("make")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:content-save-move-outline"></ha-icon></span>
           <span class="acc-title">Make A Backup</span>
           <span class="flex-spacer"></span>
@@ -3774,21 +3810,9 @@ var SofabatonBackupTab = class extends i4 {
                         ${allDevicesSelected ? "Deselect all" : "Select all"}
                       </button>
                     </div>
-                    <div class="backup-search">
-                      <ha-icon icon="mdi:magnify"></ha-icon>
-                      <input
-                        type="text"
-                        .value=${this._backupSearchQuery}
-                        ?disabled=${this._backupLocked() || !this.cacheHub}
-                        placeholder="Search devices"
-                        @input=${(event) => {
-      this._backupSearchQuery = event.currentTarget.value;
-    }}
-                      />
-                    </div>
                     <div class="selection-card">
                       <div class="selection-list">
-                        ${filteredDevices.length ? filteredDevices.map((device) => b2`
+                        ${devices.length ? devices.map((device) => b2`
                               <div
                                 class="selection-row"
                                 @click=${() => {
@@ -3810,7 +3834,7 @@ var SofabatonBackupTab = class extends i4 {
                                 </span>
                                 ${device.meta ? b2`<span class="selection-meta">${device.meta}</span>` : A}
                               </div>
-                            `) : b2`<div class="selection-empty">No devices match your search.</div>`}
+                            `) : b2`<div class="selection-empty">No devices available.</div>`}
                       </div>
                     </div>
                   ` : A}
@@ -3831,7 +3855,7 @@ var SofabatonBackupTab = class extends i4 {
     `;
   }
   _renderRestoreSectionLegacy() {
-    const isOpen = this._openSection === "restore";
+    const isOpen = this.openSection === "restore";
     const isRunning = this._isProgressRunning(this._restoreProgress);
     const activityOptions = bundleActivityOptions(this._restoreBundle);
     const deviceOptions = bundleDeviceOptions(this._restoreBundle);
@@ -3842,7 +3866,7 @@ var SofabatonBackupTab = class extends i4 {
     });
     return b2`
       <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this._toggleSection("restore")}>
+        <div class="acc-header" @click=${() => this.setOpenSection("restore")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:database-import-outline"></ha-icon></span>
           <span class="acc-title">Restore A Backup</span>
           <span class="flex-spacer"></span>
@@ -3924,7 +3948,7 @@ var SofabatonBackupTab = class extends i4 {
     `;
   }
   _renderRestoreSection() {
-    const isOpen = this._openSection === "restore";
+    const isOpen = this.openSection === "restore";
     const isRunning = this._isProgressRunning(this._restoreProgress);
     const isSuccess = String(this._restoreProgress?.status || "") === "success";
     const activityOptions = bundleActivityOptions(this._restoreBundle);
@@ -3939,7 +3963,7 @@ var SofabatonBackupTab = class extends i4 {
     const allRestoreSelected = totalRestoreOptions > 0 && totalRestoreSelected === totalRestoreOptions;
     return b2`
       <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this._toggleSection("restore")}>
+        <div class="acc-header" @click=${() => this.setOpenSection("restore")}>
           <span class="acc-header-icon"><ha-icon icon="mdi:database-import-outline"></ha-icon></span>
           <span class="acc-title">Restore A Backup</span>
           <span class="flex-spacer"></span>
@@ -3964,28 +3988,6 @@ var SofabatonBackupTab = class extends i4 {
             <input id="restore-file-input" type="file" accept=".json,application/json" @change=${this._handleFilePicked} />
             ${!isRunning && !isSuccess && this._restoreBundle ? b2`
               <div class="restore-config-view">
-                <div class="backup-scope-group">
-                  <div
-                    class="selection-row"
-                    @click=${() => {
-      if (this._restoreLocked()) return;
-      this._restoreMode = this._restoreMode === "replace" ? "merge" : "replace";
-    }}
-                  >
-                    <ha-checkbox
-                      .checked=${this._restoreMode === "replace"}
-                      ?disabled=${this._restoreLocked()}
-                      @click=${(event) => event.stopPropagation()}
-                      @change=${(event) => {
-      const target = event.currentTarget;
-      this._restoreMode = target.checked ? "replace" : "merge";
-    }}
-                    ></ha-checkbox>
-                    <span class="selection-main">
-                      <span class="selection-label">Erase existing Devices and Activities</span>
-                    </span>
-                  </div>
-                </div>
                 <div class="backup-devices-head">
                   <div class="backup-devices-head-main">
                     <div class="backup-section-title">Items to restore</div>
@@ -4054,6 +4056,28 @@ var SofabatonBackupTab = class extends i4 {
                       ` : b2`<div class="selection-empty">This backup file has no devices.</div>`}
                   </div>
                 </div>
+                <div class="backup-scope-group">
+                  <div
+                    class="selection-row"
+                    @click=${() => {
+      if (this._restoreLocked()) return;
+      this._restoreMode = this._restoreMode === "replace" ? "merge" : "replace";
+    }}
+                  >
+                    <ha-checkbox
+                      .checked=${this._restoreMode === "replace"}
+                      ?disabled=${this._restoreLocked()}
+                      @click=${(event) => event.stopPropagation()}
+                      @change=${(event) => {
+      const target = event.currentTarget;
+      this._restoreMode = target.checked ? "replace" : "merge";
+    }}
+                    ></ha-checkbox>
+                    <span class="selection-main">
+                      <span class="selection-label">Erase existing Devices and Activities</span>
+                    </span>
+                  </div>
+                </div>
                 <div class="restore-action-row">
                   <button class="primary-btn" ?disabled=${this._restoreActionDisabled(restoreSelection.selectedDeviceIds)} @click=${this._runRestore}>Start restore</button>
                   <button class="secondary-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
@@ -4110,9 +4134,6 @@ var SofabatonBackupTab = class extends i4 {
       </div>
     `;
   }
-  _toggleSection(section) {
-    this._openSection = section;
-  }
   _backupLocked() {
     return this.hubCommandBusy || this._isProgressRunning(this._backupProgress) || this._isProgressRunning(this._restoreProgress);
   }
@@ -4127,20 +4148,12 @@ var SofabatonBackupTab = class extends i4 {
     if (!this._backupDeviceIds.length && this.cacheHub) {
       this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
     }
-    if (scope === "whole_hub") {
-      this._backupSearchQuery = "";
-    }
   }
   _setBackupDevice(deviceId, checked) {
     const next = new Set(this._backupDeviceIds);
     if (checked) next.add(deviceId);
     else next.delete(deviceId);
     this._backupDeviceIds = [...next].sort((left, right) => left - right);
-  }
-  _filterBackupDevices(devices) {
-    const query = this._backupSearchQuery.trim().toLowerCase();
-    if (!query) return devices;
-    return devices.filter((device) => `${device.label} ${device.meta || ""}`.toLowerCase().includes(query));
   }
   _setRestoreActivity(activityId, checked) {
     const next = new Set(this._restoreActivityIds);
@@ -4363,9 +4376,9 @@ SofabatonBackupTab.properties = {
   error: { type: String },
   persistentCacheEnabled: { type: Boolean },
   selectedHubProxyConnected: { type: Boolean },
-  _openSection: { state: true },
+  openSection: { attribute: false },
+  setOpenSection: { attribute: false },
   _backupScope: { state: true },
-  _backupSearchQuery: { state: true },
   _backupDeviceIds: { state: true },
   _backupError: { state: true },
   _backupProgress: { state: true },
@@ -4474,12 +4487,12 @@ SofabatonBackupTab.styles = i`
       min-width: 114px;
       min-height: 42px;
       padding: 0 18px;
-      border-radius: var(--backup-radius-pill);
+      border-radius: var(--backup-radius-md);
       border: 1px solid color-mix(in srgb, var(--primary-color) 75%, white 10%);
       background: color-mix(in srgb, var(--primary-color) 20%, white 80%);
       color: var(--primary-color);
       font: inherit;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 700;
       line-height: 1;
       cursor: pointer;
@@ -4497,7 +4510,7 @@ SofabatonBackupTab.styles = i`
       display: flex;
       justify-content: flex-start;
     }
-    .backup-drawer-sub { color: var(--secondary-text-color); font-size: 12px; line-height: 1.45; }
+    .backup-drawer-sub { color: var(--secondary-text-color); font-size: 13px; line-height: 1.5; }
     .backup-section-title { color: var(--primary-text-color); font-size: 13px; font-weight: 700; }
 
     .backup-config-view {
@@ -4528,6 +4541,7 @@ SofabatonBackupTab.styles = i`
       cursor: pointer;
       min-width: 0;
     }
+    .backup-scope-option * { cursor: inherit; }
     .backup-scope-option + .backup-scope-option {
       border-left: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
     }
@@ -4579,30 +4593,6 @@ SofabatonBackupTab.styles = i`
       padding: 0;
     }
     .backup-link-btn:disabled { opacity: 0.48; cursor: default; }
-
-    .backup-search { position: relative; }
-    .backup-search ha-icon {
-      position: absolute;
-      left: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: var(--secondary-text-color);
-      --mdc-icon-size: 18px;
-      pointer-events: none;
-    }
-    .backup-search input {
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 96%, transparent);
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 13px;
-      padding: 12px 14px 12px 40px;
-      outline: none;
-    }
-    .backup-search input::placeholder { color: var(--secondary-text-color); }
 
     .selection-card {
       border: 1px solid var(--divider-color);
@@ -4717,7 +4707,7 @@ SofabatonBackupTab.styles = i`
 
     .action-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center; }
     .primary-btn, .secondary-btn {
-      border-radius: var(--backup-radius-pill);
+      border-radius: var(--backup-radius-md);
       padding: 10px 16px;
       font: inherit;
       font-size: 13px;
@@ -4915,12 +4905,14 @@ SofabatonBackupTab.styles = i`
       100% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
     }
 
-    @media (max-width: 760px) {
+    @media (max-width: 380px) {
       .backup-scope-options { grid-template-columns: 1fr; }
       .backup-scope-option + .backup-scope-option {
         border-left: none;
         border-top: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
       }
+    }
+    @media (max-width: 760px) {
       .progress-disc { width: 64px; height: 64px; }
       .progress-disc .progress-hub-svg { width: 40px; height: 40px; }
       .progress-route { min-width: 56px; }
@@ -5491,7 +5483,10 @@ var SofabatonWifiCommandsTab = class extends i4 {
         <div class="list-scroll">
           <div class="list-header">
             <div class="list-header-copy">
-              <div class="acc-title">WIFI DEVICES</div>
+              <div class="list-header-title-row">
+                <span class="acc-header-icon"><ha-icon icon="mdi:wifi"></ha-icon></span>
+                <div class="acc-title">WIFI DEVICES</div>
+              </div>
               <div class="section-subtitle">Choose a Wifi Device to edit its command slots, or add a new one.</div>
             </div>
             <div class="list-header-action">
@@ -5538,10 +5533,10 @@ var SofabatonWifiCommandsTab = class extends i4 {
           ` : b2`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
         </div>
         <div class="sticky-footer">
+          ${!canAdd ? b2`<div class="wifi-max-devices-note">Maximum number of devices reached</div>` : A}
           <div class="wifi-docs-bar">
             <a class="wifi-docs-link" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noreferrer noopener">Wifi Commands documentation</a>
           </div>
-          ${this._renderStatusDock(this._listDockLabel(canAdd), this._listDockTone(canAdd))}
         </div>
       </div>
     `;
@@ -6196,12 +6191,22 @@ var SofabatonWifiCommandsTab = class extends i4 {
     }
     return { powerOnCommandId, powerOffCommandId };
   }
+  _validActivityIdSet() {
+    const list = this._editorActivities();
+    if (!list.length) return null;
+    return new Set(list.map((activity) => String(activity.id)));
+  }
   _normalizeCommandsForStorage(nextCommands, powerOnCommandId = null, powerOffCommandId = null) {
     const normalizedPowerOnId = this._normalizePowerCommandId(powerOnCommandId);
     const normalizedPowerOffId = this._normalizePowerCommandId(powerOffCommandId);
+    const validActivityIds = this._validActivityIdSet();
     return Array.from({ length: SLOT_COUNT }, (_2, idx) => {
       const item = Array.isArray(nextCommands) ? nextCommands[idx] ?? {} : {};
       const record = item && typeof item === "object" ? item : {};
+      const rawInputActivityId = String(record.input_activity_id ?? "");
+      const inputActivityId = validActivityIds && rawInputActivityId && !validActivityIds.has(rawInputActivityId) ? "" : rawInputActivityId;
+      const rawActivities = Array.isArray(record.activities) ? record.activities.map((id) => String(id)).filter((id) => id !== "") : [];
+      const activities = validActivityIds ? rawActivities.filter((id) => validActivityIds.has(id)) : rawActivities;
       return {
         ...this._commandSlotDefault(idx),
         name: this._sanitizeCommandName(record.name ?? `Command ${idx + 1}`),
@@ -6210,8 +6215,8 @@ var SofabatonWifiCommandsTab = class extends i4 {
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),
         is_power_on: normalizedPowerOnId === idx + 1,
         is_power_off: normalizedPowerOffId === idx + 1,
-        input_activity_id: String(record.input_activity_id ?? ""),
-        activities: Array.isArray(record.activities) ? record.activities.map((id) => String(id)).filter((id) => id !== "") : [],
+        input_activity_id: inputActivityId,
+        activities,
         action: this._normalizeCommandAction(record.action),
         long_press_action: this._normalizeCommandAction(record.long_press_action)
       };
@@ -6840,17 +6845,6 @@ var SofabatonWifiCommandsTab = class extends i4 {
     if (device.sync_needed) return "sync-pending";
     return "sync-ok";
   }
-  _listDockLabel(canAdd) {
-    if (this._creatingDevice) return "Creating Wifi Device\u2026";
-    if (this._hubCommandLocked()) return this._effectiveHubCommandLabel();
-    if (!canAdd) return `Maximum of ${this._maxWifiDevices} Wifi Devices reached`;
-    return "Add Wifi Device";
-  }
-  _listDockTone(canAdd) {
-    if (this._creatingDevice || this._hubCommandLocked()) return "status-progress";
-    if (!canAdd) return "status-warning";
-    return "status-success";
-  }
   _syncDockTone(remoteUnavailable, externallyLocked) {
     if (remoteUnavailable || this._syncState.status === "failed") return "status-error";
     if (this._syncState.status === "running" || externallyLocked) return "status-progress";
@@ -7071,7 +7065,16 @@ SofabatonWifiCommandsTab.properties = {
   _maxWifiDevices: { state: true }
 };
 SofabatonWifiCommandsTab.styles = i`
-    :host { display: flex; flex: 1; min-height: 0; }
+    :host {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      --tools-radius-sm: calc(var(--ha-card-border-radius, 12px) * 0.85);
+      --tools-radius-md: var(--ha-card-border-radius, 12px);
+      --tools-radius-lg: calc(var(--ha-card-border-radius, 12px) * 1.33);
+      --tools-radius-xl: calc(var(--ha-card-border-radius, 12px) * 1.8);
+      --tools-radius-pill: 999px;
+    }
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow: hidden; }
     .list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; margin: -16px; }
     .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 16px 16px; }
@@ -7085,16 +7088,19 @@ SofabatonWifiCommandsTab.styles = i`
     .detail-title-main { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
     .detail-title-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     .detail-title { font-size: 18px; font-weight: 700; color: var(--primary-text-color); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: 10px; background: transparent; color: var(--primary-text-color); font: inherit; }
+    .back-btn, .list-action-btn, .detail-sync-btn, .device-delete-btn { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); background: transparent; color: var(--primary-text-color); font: inherit; }
     .back-btn, .list-action-btn, .detail-sync-btn { padding: 8px 12px; font-weight: 700; cursor: pointer; }
     .back-btn { display: inline-flex; align-items: center; gap: 8px; }
     .list-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 16px; row-gap: 8px; }
     .list-header-copy { min-width: 0; }
+    .list-header-title-row { display: flex; align-items: center; gap: 10px; }
+    .list-header-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
+    .list-header-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
     .list-header-copy .acc-title { display: block; }
     .list-header-copy .section-subtitle { margin-top: 8px; }
     .list-header-action { grid-column: 2; grid-row: 1; align-self: start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     .device-list { display: grid; gap: 10px; }
-    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: 18px; padding: 10px 14px; background: var(--ha-card-background, var(--card-background-color)); text-align: left; display: flex; align-items: center; gap: 14px; cursor: pointer; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); padding: 10px 14px; background: var(--ha-card-background, var(--card-background-color)); text-align: left; display: flex; align-items: center; gap: 14px; cursor: pointer; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
     .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
     .device-card.pending-delete { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 45%, var(--divider-color)); }
     .device-card:hover, .back-btn:hover, .list-action-btn:hover, .detail-sync-btn:hover, .device-delete-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
@@ -7140,7 +7146,7 @@ SofabatonWifiCommandsTab.styles = i`
     .detail-sync-btn:disabled:hover {
       border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
     }
-    .empty-state-card { border: 1px dashed var(--divider-color); border-radius: 14px; padding: 18px; color: var(--secondary-text-color); line-height: 1.5; }
+    .empty-state-card { border: 1px dashed var(--divider-color); border-radius: var(--tools-radius-md); padding: 18px; color: var(--secondary-text-color); line-height: 1.5; }
     .bottom-dock-status {
       width: 100%;
       min-height: 0;
@@ -7204,7 +7210,7 @@ SofabatonWifiCommandsTab.styles = i`
     .section-title-wrap { display: flex; align-items: center; gap: 8px; }
     .section-subtitle, .dialog-note, .dialog-footer-note, .slot-confirm-sub, .sync-message, .sync-warning-text, .empty-hint { color: var(--secondary-text-color); }
     .section-subtitle { font-size: 13px; line-height: 1.5; }
-    .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: 18px; background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }
+    .sync-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent); }
     .sync-row.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); }
     .sync-row.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); }
     .sync-row.sync-running { border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color)); }
@@ -7213,16 +7219,17 @@ SofabatonWifiCommandsTab.styles = i`
     .sync-doc-link { color: var(--primary-color); font-weight: 600; text-decoration: none; }
     .sync-doc-link:hover { text-decoration: underline; }
     .list-view .sticky-footer { border-top: none; }
-    .wifi-docs-bar { display: flex; justify-content: center; padding: 7px 16px 6px; border-bottom: 1px solid var(--divider-color); }
+    .wifi-max-devices-note { display: flex; justify-content: center; padding: 8px 16px 4px; font-size: 13px; color: var(--secondary-text-color); }
+    .wifi-docs-bar { display: flex; justify-content: center; padding: 7px 16px 8px; }
     .wifi-docs-link { font-size: 12px; font-weight: 500; color: var(--primary-color); text-decoration: none; opacity: 0.85; }
     .wifi-docs-link:hover { opacity: 1; text-decoration: underline; }
-    .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
+    .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
     .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .version-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
     .sync-btn-primary, .dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
     .sync-static { opacity: 0.65; cursor: default; }
     .command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    .slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: 12px; min-height: 108px; cursor: pointer; padding: 0; text-align: left; display: flex; flex-direction: column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
+    .slot-btn { position: relative; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-md); min-height: 108px; cursor: pointer; padding: 0; text-align: left; display: flex; flex-direction: column; overflow: hidden; background: var(--ha-card-background, var(--card-background-color)); }
     .slot-btn:hover { border-color: var(--primary-color); }
     .slot-btn.slot-empty .slot-main { gap: 12px; align-items: center; justify-content: center; flex-direction: column; min-height: 100%; width: 100%; padding: 0; text-align: center; }
     .slot-btn.slot-confirming {
@@ -7244,7 +7251,7 @@ SofabatonWifiCommandsTab.styles = i`
     .slot-meta-icon ha-icon { --mdc-icon-size: 14px; }
     .slot-actions { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 6px; z-index: 1; }
     .slot-flag,
-    .slot-clear { width: 26px; height: 26px; min-width: 26px; border-radius: 8px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display: inline-flex; align-items: center; justify-content: center; padding: 0; opacity: 0.9; }
+    .slot-clear { width: 26px; height: 26px; min-width: 26px; border-radius: var(--tools-radius-sm); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); display: inline-flex; align-items: center; justify-content: center; padding: 0; opacity: 0.9; }
     .slot-flag { cursor: default; }
     .slot-flag.power-on { color: #2e7d32; border-color: color-mix(in srgb, #2e7d32 35%, var(--divider-color)); }
     .slot-flag.power-off { color: #c62828; border-color: color-mix(in srgb, #c62828 35%, var(--divider-color)); }
@@ -7253,7 +7260,7 @@ SofabatonWifiCommandsTab.styles = i`
     .slot-clear ha-icon { --mdc-icon-size: 16px; }
     .slot-flag ha-icon { --mdc-icon-size: 14px; }
     .slot-clear { cursor: pointer; }
-    .slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: 10px; min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+    .slot-action-btn { margin: 0 10px 10px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); min-height: 44px; width: auto; background: var(--secondary-background-color, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 14px; font-weight: 500; line-height: 1.2; text-align: left; padding: 10px 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
     .slot-action-btn:hover { border-color: var(--primary-color); background: var(--ha-card-background, var(--card-background-color)); }
     .slot-action-btn:active { transform: translateY(1px); }
     .slot-confirm-title { font-size: 15px; line-height: 1.2; margin: 0; }
@@ -7266,7 +7273,7 @@ SofabatonWifiCommandsTab.styles = i`
       font-size: 13px;
     }
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: 16px; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--tools-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
     .dialog-header { border-bottom: 1px solid var(--divider-color); }
@@ -7279,7 +7286,7 @@ SofabatonWifiCommandsTab.styles = i`
       align-items: center;
       justify-content: center;
       border: 1px solid var(--divider-color);
-      border-radius: 10px;
+      border-radius: var(--tools-radius-sm);
       background: var(--ha-card-background, var(--card-background-color));
       color: var(--secondary-text-color);
       cursor: pointer;
@@ -7319,7 +7326,7 @@ SofabatonWifiCommandsTab.styles = i`
     }
     .dialog-note {
       border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color));
-      border-radius: 12px;
+      border-radius: var(--tools-radius-md);
       padding: 12px;
       background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color)));
       color: var(--primary-text-color);
@@ -7342,7 +7349,7 @@ SofabatonWifiCommandsTab.styles = i`
     .dialog-footer-actions { display: flex; gap: 8px; }
     .dialog-footer-note { min-height: 18px; font-size: 13px; color: var(--error-color, #db4437); }
     .config-block { display: grid; gap: 14px; }
-    .config-group { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--divider-color); border-radius: 14px; background: color-mix(in srgb, var(--ha-card-background, transparent) 92%, #000); }
+    .config-group { display: grid; gap: 14px; padding: 14px; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-md); background: color-mix(in srgb, var(--ha-card-background, transparent) 92%, #000); }
     .advanced-toggle { width: fit-content; border: 0; background: transparent; color: var(--secondary-text-color); padding: 0; display: inline-flex; align-items: center; gap: 6px; text-align: left; font: inherit; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
     .advanced-toggle:hover { color: var(--primary-text-color); }
     .advanced-toggle-copy { display: block; }
@@ -7417,7 +7424,7 @@ SofabatonWifiCommandsTab.styles = i`
     @media (max-width: 640px) {
       .command-grid { grid-template-columns: 1fr; }
       .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
-      .dialog, .dialog.small { width: 100%; max-height: 100%; border-radius: 0 0 16px 16px; }
+      .dialog, .dialog.small { width: 100%; max-height: 100%; border-radius: 0 0 var(--tools-radius-lg) var(--tools-radius-lg); }
       .dialog-footer { padding-bottom: max(env(safe-area-inset-bottom), 12px); }
       .list-header { grid-template-columns: 1fr; }
       .list-header-action { grid-column: 1; grid-row: auto; width: 100%; }
@@ -7629,6 +7636,30 @@ var SofabatonControlPanelCard = class extends i4 {
       behavior: "smooth"
     });
   }
+  renderHeaderStatus(hub) {
+    if (!hub) return null;
+    const connected = hubConnected(this._snapshot.hass, hub);
+    const proxyOn = proxyClientConnected(this._snapshot.hass, hub);
+    const integrationVersion = String(this._snapshot.toolsFrontendVersionExpected ?? "").trim() || "unknown";
+    return b2`
+      <div class="card-header-status">
+        <div class="dock-seg ${connected ? "dock-seg--hub-on" : "dock-seg--off"}">
+          <span class="dock-seg-dot"></span>
+          <span>Hub ${connected ? "connected" : "not connected"}</span>
+        </div>
+        <div class="dock-sep"></div>
+        <div class="dock-seg ${proxyOn ? "dock-seg--app-on" : "dock-seg--off"}">
+          <span class="dock-seg-dot"></span>
+          <span>App ${proxyOn ? "connected" : "not connected"}</span>
+        </div>
+        <div class="dock-sep"></div>
+        <div class="dock-seg dock-seg--version">
+          <ha-icon class="dock-version-icon" icon="mdi:cog-outline"></ha-icon>
+          <span>v<span class="dock-status-value">${integrationVersion}</span></span>
+        </div>
+      </div>
+    `;
+  }
   renderBackendUnavailable(height) {
     return b2`
       <ha-card>
@@ -7705,7 +7736,6 @@ var SofabatonControlPanelCard = class extends i4 {
       error: this._snapshot.loadError,
       hub,
       hass: this._snapshot.hass,
-      integrationVersion: this._snapshot.toolsFrontendVersionExpected,
       persistentCacheEnabled: cacheEnabled,
       hubCommandBusy: sharedHubCommandBusy,
       pendingSettingKey: this._snapshot.pendingSettingKey,
@@ -7743,6 +7773,8 @@ var SofabatonControlPanelCard = class extends i4 {
           .persistentCacheEnabled=${cacheEnabled}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
+          .openSection=${this._snapshot.openBlobsSection}
+          .toggleOpenSection=${(section) => this._store.toggleBlobsSection(section)}
           .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-blobs-tab>
@@ -7759,6 +7791,8 @@ var SofabatonControlPanelCard = class extends i4 {
           .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
+          .openSection=${this._snapshot.openBackupSection}
+          .setOpenSection=${(section) => this._store.setBackupSection(section)}
           .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-backup-tab>
@@ -7776,6 +7810,8 @@ var SofabatonControlPanelCard = class extends i4 {
         openSection: this._snapshot.openSection,
         openEntity: this._snapshot.openEntity,
         selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
+        enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
+        onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
         onRefreshStale: () => void this._store.refreshStale(),
         onToggleSection: (sectionId) => this._store.toggleSection(sectionId),
         onToggleEntity: (key) => this._store.toggleEntity(key),
@@ -7786,7 +7822,15 @@ var SofabatonControlPanelCard = class extends i4 {
     return b2`
       <ha-card>
         <div class="card-inner" style=${`height:${height}px`}>
-          <div class="card-header">
+          ${renderTabBar({
+      selectedTab: this._snapshot.selectedTab,
+      toolsMenuOpen: this._toolsMenuOpen,
+      onSelect: (tabId) => this.handleTabSelect(tabId),
+      onToggleToolsMenu: () => this.toggleToolsMenu()
+    })}
+          <div class="card-body">${activeTab}</div>
+          <div class="card-bottom-dock">
+            ${this.renderHeaderStatus(hub)}
             ${renderHubPicker({
       visible: hubs.length > 1,
       open: this._hubPickerOpen,
@@ -7800,14 +7844,6 @@ var SofabatonControlPanelCard = class extends i4 {
       }
     })}
           </div>
-          ${renderTabBar({
-      selectedTab: this._snapshot.selectedTab,
-      toolsMenuOpen: this._toolsMenuOpen,
-      persistentCacheEnabled: cacheEnabled,
-      onSelect: (tabId) => this.handleTabSelect(tabId),
-      onToggleToolsMenu: () => this.toggleToolsMenu()
-    })}
-          <div class="card-body">${activeTab}</div>
         </div>
       </ha-card>
     `;

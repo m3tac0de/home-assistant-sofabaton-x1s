@@ -28,6 +28,8 @@ export function renderCacheTab(params: {
   openSection: SectionId | null;
   openEntity: string | null;
   selectedHubProxyConnected: boolean;
+  enablingPersistentCache: boolean;
+  onEnablePersistentCache: () => void;
   onRefreshStale: () => void;
   onToggleSection: (sectionId: SectionId) => void;
   onToggleEntity: (key: string) => void;
@@ -36,7 +38,23 @@ export function renderCacheTab(params: {
 }) {
   if (params.loading) return html`<div class="cache-state">Loading…</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
-  if (!params.persistentCacheEnabled) return html`<div class="cache-state"><div class="cache-state-icon">💾</div><div class="cache-state-title">Persistent cache is off</div><div class="cache-state-sub">Enable it from the Settings tab to browse cached activities and devices.</div></div>`;
+  if (!params.persistentCacheEnabled) {
+    return html`
+      <div class="cache-state cache-enable-state">
+        <div class="cache-enable-icon"><ha-icon icon="mdi:database-cog-outline"></ha-icon></div>
+        <div class="cache-state-title">Persistent cache is off</div>
+        <div class="cache-state-sub">Turn it on to browse cached activities and devices, and to unlock Backup and Blobs workflows that depend on it.</div>
+        <button
+          class="cache-enable-btn"
+          ?disabled=${params.enablingPersistentCache || params.hubCommandBusy}
+          @click=${params.onEnablePersistentCache}
+        >
+          <ha-icon icon="mdi:database-check-outline"></ha-icon>
+          <span>${params.enablingPersistentCache ? "Enabling…" : "Enable persistent cache"}</span>
+        </button>
+      </div>
+    `;
+  }
   if (!params.hub) return html`<div class="cache-state">No hubs found.</div>`;
 
   const renderActivity = (activity: { id: number; name?: string; favorite_count?: number; macro_count?: number }) => {
