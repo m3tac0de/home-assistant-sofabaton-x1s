@@ -33,7 +33,7 @@
 
     <exportformats:documentation>
         <div>
-            Export format for the Sofabaton X-series hub family (X1/X1S/X1Pro), suitable
+            Export format for the Sofabaton X-series hub family (X1/X1S/X2), suitable
             for injection via the <a href="https://github.com/m3tac0de/home-assistant-sofabaton-x1s/">Home Assistant integration</a>.
 
             The output is a single hex string (bytes separated by spaces) representing the

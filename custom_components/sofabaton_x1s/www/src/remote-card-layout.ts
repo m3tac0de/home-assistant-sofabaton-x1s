@@ -1,6 +1,8 @@
 export const DEFAULT_GROUP_ORDER = [
   "activity",
   "macro_favorites",
+  "macros_row",
+  "favorites_row",
   "dpad",
   "nav",
   "mid",
@@ -10,6 +12,10 @@ export const DEFAULT_GROUP_ORDER = [
 ] as const;
 
 export const DEFAULT_GROUP_ORDER_SET = new Set(DEFAULT_GROUP_ORDER);
+
+export const DEFAULT_ROW_VISIBLE_ROWS = 2;
+export const MIN_ROW_VISIBLE_ROWS = 1;
+export const MAX_ROW_VISIBLE_ROWS = 6;
 
 export const LAYOUT_KEYS = [
   "group_order",
@@ -25,6 +31,8 @@ export const LAYOUT_KEYS = [
   "show_abc",
   "show_macros_button",
   "show_favorites_button",
+  "mf_as_rows",
+  "mf_row_visible_rows",
 ] as const;
 
 export function layoutBaseConfig(config: Record<string, unknown> | null | undefined) {
@@ -80,6 +88,33 @@ export function favoritesButtonEnabled(layout: Record<string, any> | null | unde
   return true;
 }
 
+export function mfAsRows(layout: Record<string, any> | null | undefined) {
+  return layout?.mf_as_rows === true;
+}
+
+export function macrosRowEnabled(layout: Record<string, any> | null | undefined) {
+  return mfAsRows(layout) && macrosButtonEnabled(layout);
+}
+
+export function favoritesRowEnabled(layout: Record<string, any> | null | undefined) {
+  return mfAsRows(layout) && favoritesButtonEnabled(layout);
+}
+
+function clampVisibleRows(value: unknown): number {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return DEFAULT_ROW_VISIBLE_ROWS;
+  const rounded = Math.round(num);
+  if (rounded < MIN_ROW_VISIBLE_ROWS) return MIN_ROW_VISIBLE_ROWS;
+  if (rounded > MAX_ROW_VISIBLE_ROWS) return MAX_ROW_VISIBLE_ROWS;
+  return rounded;
+}
+
+export function mfRowVisibleRows(
+  layout: Record<string, any> | null | undefined,
+): number {
+  return clampVisibleRows(layout?.mf_row_visible_rows);
+}
+
 export function volumeGroupEnabled(layout: Record<string, any> | null | undefined) {
   if (typeof layout?.show_volume === "boolean") return layout.show_volume;
   if (typeof layout?.show_mid === "boolean") return layout.show_mid;
@@ -121,6 +156,8 @@ export function normalizedGroupOrder(configured: unknown) {
 export const GROUP_LABELS: Record<string, string> = {
   activity: "Activity Selector",
   macro_favorites: "Macros/Favorites",
+  macros_row: "Macros Row",
+  favorites_row: "Favorites Row",
   dpad: "Direction Pad",
   nav: "Back/Home/Menu",
   mid: "Volume/Channel",

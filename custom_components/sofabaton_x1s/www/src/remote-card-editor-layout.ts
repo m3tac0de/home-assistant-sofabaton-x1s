@@ -8,6 +8,8 @@ import {
   layoutDefaultConfig,
   macrosButtonEnabled,
   mediaGroupEnabled,
+  mfAsRows,
+  mfRowVisibleRows,
   normalizedGroupOrder,
   volumeGroupEnabled,
 } from "./remote-card-layout";
@@ -172,6 +174,28 @@ export function favoritesTogglePatch(
     show_macros_button: !!macroEnabled(config, selection),
     show_favorites_button: !!enabled,
   };
+}
+
+export function mfAsRowsForEditor(
+  config: Record<string, any> | null | undefined,
+  selection: unknown,
+): boolean {
+  return mfAsRows(layoutConfigForSelection(config, selection));
+}
+
+export function mfRowVisibleRowsForEditor(
+  config: Record<string, any> | null | undefined,
+  selection: unknown,
+): number {
+  return mfRowVisibleRows(layoutConfigForSelection(config, selection));
+}
+
+export function mfAsRowsPatch(enabled: boolean) {
+  return { mf_as_rows: !!enabled };
+}
+
+export function mfRowVisibleRowsPatch(value: number) {
+  return { mf_row_visible_rows: value };
 }
 
 export function volumeTogglePatch(
