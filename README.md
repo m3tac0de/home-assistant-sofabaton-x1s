@@ -16,6 +16,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 - 🕹️ **Dashboard cards**: Sofabaton Virtual Remote & Sofabaton Control Panel
 - 🤖 **Send key presses to the hub**: `remote.send_command`, Sofabaton Virtual Remote, Sofabaton Control Panel, “recorded keypress”
 - ⚡ **Receive key presses from the hub**: "Wifi Commands" via the Control Panel card, see [`docs/wifi_commands.md`](docs/wifi_commands.md)
+- 🔄 **Fully local backup and restore**: "Backup" via the Control Panel card
 - 💾 **Store, share and generate IR codes**: "Blobs" via the Control Panel card, see [`docs/blobs.md`](docs/blobs.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
 - 🪵 **Useful logs & diagnostics**: see [`docs/logging.md`](docs/logging.md)
@@ -82,6 +83,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 - 🔘 **Dynamic button entities** that match your **currently active activity**
 - ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations. Use the dashboard cards to retrieve the codes you need
 - 💎 **Receive key presses**: “Wifi Commands” configured via the Control Panel card, trigger Actions directly from key presses on the physical remote
+- 🔄 **Fully local backup and restore**: Backup and restore via the Control Panel card, restore a whole hub or add individual devices from a backup
 - 💾 **Capture the hub’s real IR command payloads for sharing, testing, and creating new commands**: “Blobs” retrieved, tested and saved via the Control Panel card
 - 🔔 **Find Remote** diagnostic button (buzzer)
 - 🟢 **Sensors** for activity, connectivity, app connection, recorded keypress, wifi commands
@@ -187,6 +189,7 @@ type: custom:sofabaton-control-panel
 The Control Panel card is the central management UI for the integration. Its main features are:
 
 - **Wifi Commands** — Configure and deploy Wifi Devices and their commands (see below). Up to 5 Wifi Devices per hub.
+- **Backup** — Create fully local backups, restore backups across hub versions, restore a whole hub or just add individual devices from a backup.
 - **Blobs** — Generate, test, save, and share IR command blobs for your hub. See [`docs/blobs.md`](docs/blobs.md).
 - **Persistent Cache** — Enable **persistent cache** in the **Setting** tab so data retrieved from the hub survives a restart. With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable.
 - **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.
