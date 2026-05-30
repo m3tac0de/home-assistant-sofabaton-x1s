@@ -1566,6 +1566,8 @@ class SofabatonHub:
                             "delay": entry.delay & 0xFF,
                         }
                         for entry in record.key_sequence
+                        if (entry.key_id & 0xFF) != 0xFF
+                        and (entry.device_id & 0xFF) != 0xFF
                     ],
                 }
             )
@@ -1721,17 +1723,19 @@ class SofabatonHub:
             step_entries: list[dict[str, Any]] = []
             for entry in record.key_sequence:
                 step_device_id = entry.device_id & 0xFF
-                if step_device_id == 0xFF:
+                step_command_id = entry.key_id & 0xFF
+                if step_device_id == 0xFF or step_command_id == 0xFF:
                     # The hub can emit internal power-macro rows with
-                    # device_id=255. Those rows are rejected if replayed
-                    # during restore, so they must not be exported.
+                    # device_id=255 or command_id=255 (delay-only / no-op
+                    # entries). Those rows are rejected if replayed during
+                    # restore, so they must not be exported.
                     continue
                 if step_device_id != 0:
                     referenced_source_device_ids.add(step_device_id)
                 step_entries.append(
                     {
                         "device_id": step_device_id,
-                        "command_id": entry.key_id & 0xFF,
+                        "command_id": step_command_id,
                         # The macro step's "fid" is the canonical 48-bit
                         # button_code. We store it verbatim; restore
                         # will translate it via the device_id_map +

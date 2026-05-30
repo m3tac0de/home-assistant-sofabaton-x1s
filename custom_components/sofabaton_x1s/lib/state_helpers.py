@@ -210,12 +210,18 @@ class ActivityCache:
         if button_id in BUTTONNAME_BY_CODE:
             self.buttons[act_lo].add(button_id)
             details: Dict[str, int] = {"device_id": device_id, "command_id": command_id}
-            if (
-                len(record) >= 18
-                and record[10] != 0
-                and record[11:15] == b"\x00" * 4
-                and record[15] == 0x4E
-            ):
+            # Per the official KeyToKeyGets parser, each 18-byte keymap
+            # record's long-press triple lives at:
+            #   [10]        long_press_device_id
+            #   [11..16]    long_press_button_code (6B BE)
+            #   [17]        long_press_button_id   (== long_press_command_id)
+            # A row with no long press is simply ``long_press_device_id == 0``.
+            # Earlier code additionally required ``record[11:15] == 0`` and
+            # ``record[15] == 0x4E`` -- a signature that only matches the
+            # *synthetic* button codes our own writer produces, so genuine
+            # captured long-press codes (real IR, BT, etc.) were silently
+            # dropped on backup.
+            if len(record) >= 18 and record[10] != 0:
                 details["long_press_device_id"] = record[10]
                 details["long_press_command_id"] = record[17]
             self.button_details[act_lo][button_id] = details

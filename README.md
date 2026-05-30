@@ -79,15 +79,13 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 - 🛰 **Automatic discovery** of Sofabaton hubs (X2 discovery opt-in)
 - 🧩 **Multiple hubs** supported
-- 🎛 **Activity select** entity (`select.<hub>_activity`)
-- 🔘 **Dynamic button entities** that match your **currently active activity**
+- 🔘 **A healthy collection of smart selects, buttons and sensors** everything needed to create a custom UI and automations
 - ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations. Use the dashboard cards to retrieve the codes you need
 - 💎 **Receive key presses**: “Wifi Commands” configured via the Control Panel card, trigger Actions directly from key presses on the physical remote
 - 🔄 **Fully local backup and restore**: Backup and restore via the Control Panel card, restore a whole hub or add individual devices from a backup
 - 💾 **Capture the hub’s real IR command payloads for sharing, testing, and creating new commands**: “Blobs” retrieved, tested and saved via the Control Panel card
 - 🔔 **Find Remote** diagnostic button (buzzer)
-- 🟢 **Sensors** for activity, connectivity, app connection, recorded keypress, wifi commands
-- 🛰 **Proxy can be disabled** per device (stop advertising/binding for the official app)
+- 🛰 **Manage the network** decide which listeners to run and on which ports, enable/disable proxy functionality. Use detailed documentation to solve VLAN related issues.
 - 🪵 **Live Hub Logs** tab in the Control Panel card for real-time diagnostics
 
 > This documentation uses markup such as `select.<hub>_activity`, where `<hub>` is your hub's name as configured in Home Assistant — for example, `select.living_room_activity`.

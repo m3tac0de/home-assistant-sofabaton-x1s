@@ -360,7 +360,14 @@ class AckWaitersMixin:
                 for page in range(1, expected_pages + 1)
             )
             device_id = assembled[3] & 0xFF if len(assembled) >= 4 else pending_device_id
-            msg_bytes = assembled[4:-1] if len(assembled) >= 5 else b""
+            # The inbound family-0x63 body carries no trailing checksum
+            # (only the frame-level checksum, which the caller has already
+            # stripped from ``payload``). Mirror the official KeySortGets,
+            # which takes ``bArr[4:]`` verbatim -- earlier code chopped the
+            # last byte and turned the final ``(slot, 0xFF)`` pair into an
+            # orphan ``slot`` byte, which the destination hub then rejected
+            # with status=0x03 on restore.
+            msg_bytes = assembled[4:] if len(assembled) >= 4 else b""
             self.state.device_key_sorts[device_id] = {
                 "device_id": device_id,
                 "msg_hex": msg_bytes.hex(" ").strip(),
