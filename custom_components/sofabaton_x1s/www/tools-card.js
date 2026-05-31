@@ -3644,6 +3644,11 @@ if (!customElements.get("sofabaton-blobs-tab")) {
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
+var HUB_VERSION_RANK = {
+  X1: 1,
+  X1S: 2,
+  X2: 3
+};
 function backupDeviceOptions(hub) {
   return hubDevices(hub).map((device) => ({
     id: Number(device.id),
@@ -3724,6 +3729,29 @@ function validateBackupBundle(raw) {
     throw new Error("Backup file is missing devices or activities arrays.");
   }
   return bundle;
+}
+function normalizeHubVersion(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized.includes("X1S")) return "X1S";
+  if (normalized.includes("X2")) return "X2";
+  if (normalized.includes("X1")) return "X1";
+  return null;
+}
+function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
+  const sourceVersion = normalizeHubVersion(bundle?.hub?.version);
+  if (!sourceVersion) {
+    throw new Error("Backup file is missing its source hub model, so compatibility cannot be verified.");
+  }
+  const destinationVersion = normalizeHubVersion(destinationHubVersion);
+  if (!destinationVersion) {
+    throw new Error("The destination hub model is unknown, so restore compatibility cannot be verified.");
+  }
+  if (HUB_VERSION_RANK[destinationVersion] < HUB_VERSION_RANK[sourceVersion]) {
+    throw new Error(
+      `This backup was created on a Sofabaton ${sourceVersion} hub and cannot be restored onto a Sofabaton ${destinationVersion} hub.`
+    );
+  }
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-tab.ts
@@ -4434,6 +4462,7 @@ var SofabatonBackupTab = class extends i4 {
     try {
       const text = await file.text();
       const bundle = validateBackupBundle(JSON.parse(text));
+      assertBackupBundleRestoreCompatible(bundle, this.hub?.version);
       this._restoreBundle = bundle;
       this._restoreFilename = file.name;
       this._restoreMode = "merge";
