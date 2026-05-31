@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 from pathlib import Path
@@ -2011,8 +2012,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "command_to_button", _async_handle_command_to_button)
     if not hass.services.has_service(DOMAIN, "sync_command_config"):
         hass.services.async_register(DOMAIN, "sync_command_config", _async_handle_sync_command_config)
-    #if not hass.services.has_service(DOMAIN, "create_ip_button"):
-    #    hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
+    if not hass.services.has_service(DOMAIN, "create_ip_button"):
+        hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
+    if not hass.services.has_service(DOMAIN, "create_activity"):
+        hass.services.async_register(DOMAIN, "create_activity", _async_handle_create_activity)
+    if not hass.services.has_service(DOMAIN, "delete_activity"):
+        hass.services.async_register(DOMAIN, "delete_activity", _async_handle_delete_activity)
+    if not hass.services.has_service(DOMAIN, "disable_device_power_control"):
+        hass.services.async_register(DOMAIN, "disable_device_power_control", _async_handle_disable_device_power_control)
 
     hass.data[DOMAIN][entry.entry_id] = hub
 
@@ -2070,7 +2077,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "delete_favorite")
             hass.services.async_remove(DOMAIN, "command_to_button")
             hass.services.async_remove(DOMAIN, "sync_command_config")
-            #hass.services.async_remove(DOMAIN, "create_ip_button")
+            hass.services.async_remove(DOMAIN, "create_ip_button")
+            hass.services.async_remove(DOMAIN, "create_activity")
+            hass.services.async_remove(DOMAIN, "delete_activity")
+            hass.services.async_remove(DOMAIN, "disable_device_power_control")
             async_teardown_diagnostics(hass)
             if _get_lovelace_resource_mode(hass) == _LOVELACE_STORAGE_MODE:
                 if hass.data[DOMAIN].get("storage_resources_registered"):
@@ -2582,11 +2592,13 @@ async def _async_handle_create_ip_button(call: ServiceCall):
         raise ValueError("Could not resolve Sofabaton hub from service call")
 
     device_id = call.data.get("device_id")
-    device_name = call.data["device_name"].strip()
+    device_name = str(call.data.get("device_name", "")).strip()
     button_name = call.data["button_name"].strip()
     method = call.data.get("method", "GET").upper()
     url = call.data["url"]
     headers = {str(k): str(v) for k, v in (call.data.get("headers") or {}).items()}
+    body = str(call.data.get("body", ""))
+    icon = int(call.data.get("icon", 1))
 
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -2600,25 +2612,87 @@ async def _async_handle_create_ip_button(call: ServiceCall):
         raise ValueError("headers must be a mapping")
 
     if device_id is not None:
+        key_index = int(call.data.get("key_index", 1))
         result = await hass.async_add_executor_job(
-            hub._proxy.add_ip_button_to_device,
-            int(device_id),
-            button_name,
-            method,
-            url,
-            headers,
+            functools.partial(
+                hub._proxy.add_ip_button_to_device,
+                device_id=int(device_id),
+                button_name=button_name,
+                method=method,
+                url=url,
+                headers=headers,
+                key_index=key_index,
+                device_name=device_name or None,
+                body=body,
+                icon=icon,
+            ),
         )
     else:
+        if not device_name:
+            raise ValueError("device_name is required when creating a new device")
         result = await hass.async_add_executor_job(
-            hub._proxy.create_ip_button,
-            device_name,
-            button_name,
-            method,
-            url,
-            headers,
+            functools.partial(
+                hub._proxy.create_ip_button,
+                device_name=device_name,
+                button_name=button_name,
+                method=method,
+                url=url,
+                headers=headers,
+                body=body,
+                icon=icon,
+            ),
         )
 
     return result or {}
+
+
+async def _async_handle_create_activity(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    activity_name = call.data["activity_name"].strip()
+    member_device_ids = [int(d) for d in call.data.get("member_device_ids", [])]
+    power_on_steps = call.data.get("power_on_steps") or None
+    power_off_steps = call.data.get("power_off_steps") or None
+    icon = int(call.data.get("icon", 1))
+    color_id = int(call.data.get("color_id", 0))
+
+    result = await hass.async_add_executor_job(
+        functools.partial(
+            hub._proxy.create_activity,
+            activity_name=activity_name,
+            member_device_ids=member_device_ids,
+            power_on_steps=power_on_steps,
+            power_off_steps=power_off_steps,
+            icon=icon,
+            color_id=color_id,
+        ),
+    )
+    return result or {}
+
+
+async def _async_handle_delete_activity(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    activity_id = int(call.data["activity_id"])
+    result = await hass.async_add_executor_job(hub._proxy.delete_activity, activity_id)
+    return {"ok": bool(result)}
+
+
+async def _async_handle_disable_device_power_control(call: ServiceCall):
+    hass = call.hass
+    hub = await _async_resolve_hub_from_call(hass, call)
+    if hub is None:
+        raise ValueError("Could not resolve Sofabaton hub from service call")
+
+    device_id = int(call.data["device_id"])
+    result = await hass.async_add_executor_job(hub._proxy.disable_device_power_control, device_id)
+    return {"ok": bool(result)}
 
 async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
     return await _async_resolve_hub_from_data(hass, call.data)

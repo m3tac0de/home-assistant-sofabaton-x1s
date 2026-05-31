@@ -24,13 +24,23 @@ from .protocol_const import (
     ButtonName,
     FAMILY_FAV_DELETE,
     FAMILY_FAV_ORDER_REQ,
+    NATIVE_CMD_CREATE_ACTIVITY,
+    NATIVE_CMD_DELETE_ACTIVITY,
+    NATIVE_CMD_SAVE_MACRO,
     OP_ACTIVITY_ASSIGN_FINALIZE,
     OP_ACTIVITY_CONFIRM,
     OP_ACTIVITY_DEVICE_CONFIRM,
+    OP_REMOTE_SYNC,
     OP_REQ_MACRO_LABELS,
+    SYNC0,
+    SYNC1,
 )
 
 log = logging.getLogger("x1proxy")
+
+
+def _sum8(b: bytes | bytearray) -> int:
+    return sum(b) & 0xFF
 
 
 # Position of the tail token block inside a CATALOG_ROW_ACTIVITY payload.
@@ -935,6 +945,251 @@ class ActivityOpsMixin:
             result["long_press_device_id"] = long_press_device_id & 0xFF
             result["long_press_command_id"] = long_press_command_id & 0xFF
         return result
+
+    # ------------------------------------------------------------------
+    # Native activity creation (CMD=55 / CMD=18)
+    # ------------------------------------------------------------------
+
+    def _build_activity_data_x2(
+        self,
+        name: str,
+        *,
+        icon: int = 1,
+        activity_id: int = 0xFF,
+        color_id: int = 0,
+    ) -> bytes:
+        """Build the 210-byte X1S/X2 activity payload for CMD=55 (create activity)."""
+        d = bytearray(210)
+        d[0] = 0x01
+        d[1:3] = (1).to_bytes(2, "big")
+        d[3] = 0   # sign
+        d[4] = activity_id & 0xFF
+        d[5] = icon & 0xFF
+        d[6] = 0   # sort
+        # name and brand slots (UTF-16BE, 60 bytes each at offsets 29 and 89)
+        name_enc = name.encode("utf-16-be")
+        name_slot = (name_enc[:60] + b"\x00" * 60)[:60]
+        d[29:89] = name_slot
+        d[89:149] = name_slot   # brand = name
+
+        cfg = bytearray(60)
+        cfg[0] = 0xFC
+        cfg[1] = 0x00
+        cfg[2] = 0xFC
+        cfg[3] = 0x00
+        cfg[22] = color_id & 0xFF
+        d[149:209] = cfg
+        d[209] = _sum8(d[:209])
+        return bytes(d)
+
+    def _build_macro_frames_x2(
+        self,
+        activity_id: int,
+        key_id: int,
+        steps: list[tuple],
+        macro_name: str = "",
+    ) -> list[bytes]:
+        """Build CMD=18 macro save frames for an activity's power-on or power-off key.
+
+        ``key_id`` is 198 for power-on and 199 for power-off (hub convention).
+
+        ``steps`` is a list of tuples:
+          ``("cmd", device_id, key_id)`` — fire a button on a device
+          ``("delay", seconds)``         — insert a delay
+        """
+        step_count = len(steps)
+        step_data = bytearray()
+        for step in steps:
+            if step[0] == "delay":
+                sd = bytearray(10)
+                for i in range(9):
+                    sd[i] = 0xFF
+                sd[9] = step[1] & 0xFF
+                step_data += sd
+            else:
+                # ("cmd", device_id, key_id)
+                sd = bytearray(10)
+                sd[0] = step[1] & 0xFF  # device_id
+                sd[1] = step[2] & 0xFF  # key_id (198=power_on, 199=power_off)
+                sd[8] = 1               # duration
+                sd[9] = 0xFF
+                step_data += sd
+
+        # name slot (UTF-16BE, 60 bytes)
+        name_enc = macro_name.encode("utf-16-be")
+        name_bytes = (name_enc[:60] + b"\x00" * 60)[:60]
+
+        inner_len = len(step_data) + 6 + 60 + 1  # header(6) + name(60) + checksum(1)
+        inner = bytearray(inner_len)
+        total_pages = (inner_len + 246) // 247
+        inner[0] = 0x01
+        inner[1:3] = total_pages.to_bytes(2, "big")
+        inner[3] = activity_id & 0xFF
+        inner[4] = key_id & 0xFF
+        inner[5] = step_count & 0xFF
+        inner[6 : 6 + len(step_data)] = step_data
+        inner[6 + len(step_data) : 6 + len(step_data) + 60] = name_bytes
+        inner[-1] = _sum8(inner[:-1])
+
+        frames = []
+        for page_idx in range(total_pages):
+            offset = page_idx * 247
+            end = min(offset + 247, inner_len)
+            chunk = inner[offset:end]
+            chunk_len = len(chunk)
+            f = bytearray(chunk_len + 8)
+            f[0] = SYNC0
+            f[1] = SYNC1
+            f[2] = (chunk_len + 3) & 0xFF
+            f[3] = NATIVE_CMD_SAVE_MACRO
+            f[4] = 0x01
+            f[5:7] = (page_idx + 1).to_bytes(2, "big")
+            f[7 : 7 + chunk_len] = chunk
+            f[-1] = _sum8(f[:-1])
+            frames.append(bytes(f))
+        return frames
+
+    def create_activity(
+        self,
+        *,
+        activity_name: str,
+        member_device_ids: list[int],
+        power_on_steps: list[tuple] | None = None,
+        power_off_steps: list[tuple] | None = None,
+        icon: int = 1,
+        color_id: int = 0,
+    ) -> dict[str, Any] | None:
+        """Create a new activity on the hub with optional power macros.
+
+        ``member_device_ids`` lists the device IDs to include in the activity.
+        The hub assigns the activity ID automatically via its CMD=55 ACK.
+
+        ``power_on_steps`` / ``power_off_steps`` are lists of tuples for the
+        CMD=18 macro (keys 198 / 199):
+          ``("cmd", device_id, key_index)`` — fire a button
+          ``("delay", seconds)``            — pause
+        If ``None``, the corresponding macro is skipped entirely.
+        """
+        if not self.can_issue_commands():
+            self._log.info("[ACTIVITY] create_activity ignored: proxy client is connected")
+            return None
+
+        overhead = b"\x01" + (1).to_bytes(2, "big")
+
+        # CMD=55: create activity
+        create_data = self._build_activity_data_x2(
+            activity_name, icon=icon, activity_id=0xFF, color_id=color_id,
+        )
+
+        # Reuse the _build_native_frame helper defined in WifiDeviceMixin
+        create_frame = self._build_native_frame(NATIVE_CMD_CREATE_ACTIVITY, overhead, create_data)
+
+        self.reset_ack_queues()
+        self._log.info("[ACTIVITY] sending CMD=55 (create) for '%s'", activity_name)
+        self.transport.send_local(create_frame)
+
+        activity_id = self.wait_for_assigned_device_id(timeout=5.0)
+        if activity_id is None:
+            self._log.warning("[ACTIVITY] hub did not assign activity_id after CMD=55")
+            return None
+        self._log.info("[ACTIVITY] hub assigned activity_id=%d", activity_id)
+
+        # CMD=18: POWER_ON macro (key 198)
+        if power_on_steps:
+            on_frames = self._build_macro_frames_x2(
+                activity_id, 198, power_on_steps, macro_name="Power On",
+            )
+            time.sleep(1)
+            self._log.info(
+                "[ACTIVITY] sending CMD=18 POWER_ON macro (%d steps)", len(power_on_steps),
+            )
+            for frame in on_frames:
+                self.transport.send_local(frame)
+
+        # CMD=18: POWER_OFF macro (key 199)
+        if power_off_steps:
+            off_frames = self._build_macro_frames_x2(
+                activity_id, 199, power_off_steps, macro_name="Power Off",
+            )
+            time.sleep(1)
+            self._log.info(
+                "[ACTIVITY] sending CMD=18 POWER_OFF macro (%d steps)", len(power_off_steps),
+            )
+            for frame in off_frames:
+                self.transport.send_local(frame)
+
+        # Assign member devices via OP_ACTIVITY_DEVICE_CONFIRM
+        if member_device_ids:
+            act_lo = activity_id & 0xFF
+            time.sleep(2)
+
+            self._activity_map_complete.discard(act_lo)
+            self.state.activity_members.pop(act_lo, None)
+            self.state.activity_command_refs.pop(act_lo, None)
+            self.state.activity_favorite_slots.pop(act_lo, None)
+            self.state.activity_keybinding_slots.pop(act_lo, None)
+            self.state.activity_favorite_labels.pop(act_lo, None)
+            self.state.activity_keybinding_labels.pop(act_lo, None)
+            self._clear_favorite_label_requests_for_activity(act_lo)
+
+            self._log.info(
+                "[ACTIVITY] requesting activity mapping for act=0x%02X", act_lo,
+            )
+            if self.request_activity_mapping(act_lo):
+                self._wait_for_activity_map_burst(act_lo, timeout=5.0)
+
+            self._log.info(
+                "[ACTIVITY] assigning %d member devices to activity %d: %s",
+                len(member_device_ids), activity_id, member_device_ids,
+            )
+            self.reset_ack_queues()
+            for member_id in member_device_ids:
+                payload = bytes([member_id & 0xFF, 0x00])
+                self._log.info(
+                    "[ACTIVITY] confirm member dev=0x%02X for act=0x%02X",
+                    member_id & 0xFF, act_lo,
+                )
+                self._send_cmd_frame(OP_ACTIVITY_DEVICE_CONFIRM, payload)
+                ack = self.wait_for_ack_any([(0x0103, None)], timeout=5.0)
+                if ack is None:
+                    self._log.warning(
+                        "[ACTIVITY] missing ACK after member confirm dev=0x%02X",
+                        member_id & 0xFF,
+                    )
+
+        # REMOTE_SYNC
+        sync_frame = self._build_frame(OP_REMOTE_SYNC, b"")
+        time.sleep(1)
+        self._log.info("[ACTIVITY] sending REMOTE_SYNC")
+        self.transport.send_local(sync_frame)
+
+        time.sleep(1)
+        self._log.info(
+            "[ACTIVITY] created activity '%s' id=%d members=%s",
+            activity_name, activity_id, member_device_ids,
+        )
+        return {
+            "activity_name": activity_name,
+            "activity_id": activity_id,
+            "members": member_device_ids,
+            "status": "success",
+        }
+
+    def delete_activity(self, activity_id: int) -> bool:
+        """Delete an activity from the hub using CMD=57."""
+        if not self.can_issue_commands():
+            self._log.info("[ACTIVITY] delete_activity ignored: proxy client is connected")
+            return False
+
+        act_lo = activity_id & 0xFF
+        self.reset_ack_queues()
+        return self._send_native_step(
+            step_name=f"delete-activity[act=0x{act_lo:02X}]",
+            family=NATIVE_CMD_DELETE_ACTIVITY,
+            payload=bytes([act_lo]),
+            ack_opcode=0x0103,
+            timeout=10.0,
+        )
 
 
 __all__ = ["ActivityOpsMixin"]

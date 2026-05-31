@@ -433,6 +433,11 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         self._df_h2a = Deframer()
         self._df_a2h = Deframer()
         self._adv_started = False
+        # Set to True while programmatic native device/activity creation is in
+        # progress.  When set, OP_REQ_DEVICES forwarded by the companion app is
+        # suppressed so the hub does not interrupt the multi-frame creation
+        # sequence with a catalog burst.
+        self.native_creating: bool = False
 
         self.state = ActivityCache()
         self._button_assembler = DeviceButtonAssembler()
@@ -1825,6 +1830,12 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
     def _handle_app_frames(self, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
         for opcode, _raw, _payload, _scid, _ecid in frames:
             if opcode == OP_REQ_DEVICES:
+                if self.native_creating:
+                    # Suppress catalog polling while native device/activity
+                    # creation is in progress to avoid interrupting multi-frame
+                    # sequences with a device burst from the hub.
+                    self._log.debug("[CREATE] suppressing OP_REQ_DEVICES during native_creating")
+                    continue
                 self._begin_device_request()
                 self._app_devices_deadline = time.monotonic() + 1.0
                 self._app_devices_retry_sent = False
@@ -1837,6 +1848,76 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
     def _clear_app_device_retry(self) -> None:
         self._app_devices_deadline = None
         self._app_devices_retry_sent = False
+
+    # ------------------------------------------------------------------
+    # Native protocol helper — step-with-ack
+    # ------------------------------------------------------------------
+
+    def _send_native_step(
+        self,
+        *,
+        step_name: str,
+        family: int,
+        payload: bytes,
+        ack_opcode: int,
+        ack_first_byte: int | None = None,
+        ack_fallback_opcodes: tuple[int, ...] = (),
+        timeout: float = 5.0,
+        retries: int = 0,
+        retry_delay: float = 0.0,
+    ) -> bool:
+        """Send a single-family frame and wait for an ACK.
+
+        Used by the native device/activity creation path (CMD=7/8/14/55/57/65).
+        Returns True on successful ACK, False on timeout.
+        """
+        candidates: list[tuple[int, int | None]] = [(ack_opcode, ack_first_byte)]
+        candidates.extend((op, None) for op in ack_fallback_opcodes)
+
+        total_attempts = max(1, int(retries) + 1)
+        for attempt in range(1, total_attempts + 1):
+            self._log.debug(
+                "[NATIVE][STEP] %s tx family=0x%02X expect_ack=0x%04X first_byte=%s attempt=%d/%d",
+                step_name,
+                family,
+                ack_opcode,
+                f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
+                attempt,
+                total_attempts,
+            )
+            self._send_family_frame(family, payload)
+
+            matched = self.wait_for_ack_any(candidates, timeout=timeout)
+            if matched is not None:
+                matched_opcode, _matched_payload = matched
+                if matched_opcode != ack_opcode:
+                    self._log.warning(
+                        "[NATIVE][STEP] %s matched fallback ack=0x%04X (expected=0x%04X)",
+                        step_name,
+                        matched_opcode,
+                        ack_opcode,
+                    )
+                self._log.debug("[NATIVE][STEP] %s acked via 0x%04X", step_name, matched_opcode)
+                return True
+
+            if attempt < total_attempts:
+                self._log.warning(
+                    "[NATIVE][STEP] %s retrying after ack timeout (attempt %d/%d)",
+                    step_name,
+                    attempt,
+                    total_attempts,
+                )
+                if retry_delay > 0:
+                    import time as _time  # noqa: PLC0415
+                    _time.sleep(retry_delay)
+
+        self._log.warning(
+            "[NATIVE][STEP] %s failed waiting ack=0x%04X first_byte=%s",
+            step_name,
+            ack_opcode,
+            f"0x{ack_first_byte:02X}" if ack_first_byte is not None else "*",
+        )
+        return False
 
     def parse_device_commands(self, payload: bytes, dev_id: int) -> Dict[int, str]:
         """Parse an assembled REQ_COMMANDS body using the fixed-width schema.

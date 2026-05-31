@@ -97,6 +97,21 @@ OP_CREATE_DEVICE_HEAD = 0x07D5  # payload includes UTF-16LE device name
 OP_DEFINE_IP_CMD = 0x0ED3  # payload includes HTTP method/URL/headers
 OP_DEFINE_IP_CMD_EXISTING = 0x0EAE  # payload defines IP command for an existing device
 OP_PREPARE_SAVE = 0x4102  # payload triggers save transaction start
+
+# Native hub protocol families (single-byte command byte embedded in frame)
+# -------------------------------------------------------------------------
+# These are low-level frame families used by the hub's native (non-virtual-device)
+# protocol path. Each family byte is the CMD field in the A5 5A frame.
+# Frames use the format: [A5][5A][LEN][CMD][data...][CHECKSUM]
+NATIVE_CMD_CREATE_DEVICE = 0x07   # CMD=7:  create a new device (X1S/X2: 210-byte data)
+NATIVE_CMD_COMMIT_DEVICE = 0x08   # CMD=8:  commit/save device config
+NATIVE_CMD_SYNC_KEY = 0x0E        # CMD=14: sync a key/command to a device
+NATIVE_CMD_CREATE_ACTIVITY = 0x37 # CMD=55: create an activity
+NATIVE_CMD_DELETE_ACTIVITY = 0x39 # CMD=57: delete an activity
+NATIVE_CMD_SAVE_MACRO = 0x12      # CMD=18: save power-on/off macros for an activity
+NATIVE_CMD_POWER_MODE_QUERY = 0x40  # CMD=64: query device power mode
+NATIVE_CMD_POWER_MODE_SET = 0x41    # CMD=65: set device power mode (powerMode field)
+NATIVE_ACK_POWER_MODE = 0x42        # CMD=66: hub reply to power mode query
 OP_FINALIZE_DEVICE = 0x4677
 OP_DEVICE_SAVE_HEAD = 0x8D5D  # hub assigns device id
 OP_SAVE_COMMIT = 0x6501
@@ -539,6 +554,15 @@ __all__ = [
     "OP_FINALIZE_DEVICE",
     "OP_DEVICE_SAVE_HEAD",
     "OP_SAVE_COMMIT",
+    "NATIVE_CMD_CREATE_DEVICE",
+    "NATIVE_CMD_COMMIT_DEVICE",
+    "NATIVE_CMD_SYNC_KEY",
+    "NATIVE_CMD_CREATE_ACTIVITY",
+    "NATIVE_CMD_DELETE_ACTIVITY",
+    "NATIVE_CMD_SAVE_MACRO",
+    "NATIVE_CMD_POWER_MODE_QUERY",
+    "NATIVE_CMD_POWER_MODE_SET",
+    "NATIVE_ACK_POWER_MODE",
     "ACK_SUCCESS",
     "OP_STATUS_ACK",
     "OP_REQ_IPCMD_SYNC",

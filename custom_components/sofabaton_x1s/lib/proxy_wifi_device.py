@@ -31,20 +31,31 @@ from .protocol_const import (
     ButtonName,
     DEVICE_CLASS_WIFI_IP,
     DEVICE_CLASS_WIFI_ROKU,
+    NATIVE_CMD_COMMIT_DEVICE,
+    NATIVE_CMD_CREATE_DEVICE,
+    NATIVE_CMD_POWER_MODE_SET,
+    NATIVE_CMD_SYNC_KEY,
     OP_CREATE_DEVICE_HEAD,
     OP_DEFINE_IP_CMD,
     OP_DEFINE_IP_CMD_EXISTING,
     OP_FINALIZE_DEVICE,
     OP_PREPARE_SAVE,
+    OP_REMOTE_SYNC,
     OP_REQ_ACTIVITY_INPUTS,
     OP_REQ_BLOB,
     OP_SAVE_COMMIT,
+    SYNC0,
+    SYNC1,
 )
 from .state_helpers import normalize_device_entry
 
 
 def _hex_to_bytes(raw_hex: str) -> bytes:
     return bytes.fromhex(raw_hex)
+
+
+def _sum8(b: bytes | bytearray) -> int:
+    return sum(b) & 0xFF
 
 
 def _validate_wifi_input_ids(
@@ -1150,6 +1161,178 @@ class WifiDeviceMixin:
         payload.extend(self._encode_http_request(method, url, headers))
         return OP_DEFINE_IP_CMD_EXISTING, bytes(payload)
 
+    # ------------------------------------------------------------------
+    # Native frame builders (X1S/X2 hub protocol)
+    # ------------------------------------------------------------------
+    # The following helpers build raw frames for the hub's native binary
+    # protocol (A5 5A frames) used by CMD=7 (create device), CMD=14
+    # (sync key), and CMD=8 (commit device).  This path is faster and
+    # more reliable than the virtual-device/Roku replay path because it
+    # does not require the hub to be in an idle "create" state.
+    # ------------------------------------------------------------------
+
+    def _utf16be_padded(self, text: str, *, length: int) -> bytes:
+        """Encode ``text`` as UTF-16BE, truncated/zero-padded to ``length`` bytes."""
+        data = text.encode("utf-16-be")
+        truncated = data[:length]
+        return truncated + b"\x00" * max(0, length - len(truncated))
+
+    def _build_native_frame(self, cmd: int, overhead: bytes, data: bytes) -> bytes:
+        """Wrap ``overhead + data`` in an A5 5A native frame for ``cmd``."""
+        payload = overhead + data
+        frame = bytearray([SYNC0, SYNC1, len(payload) & 0xFF, cmd & 0xFF])
+        frame.extend(payload)
+        frame.append(_sum8(frame))
+        return bytes(frame)
+
+    def _build_device_data_x2(
+        self,
+        name: str,
+        *,
+        icon: int = 1,
+        device_id: int = 0xFF,
+        sign: int = 0,
+        commit: bool = False,
+        target_ip: str = "",
+    ) -> bytes:
+        """Build the 210-byte X1S/X2 device payload for CMD=7 (create) or CMD=8 (commit).
+
+        For CMD=7 pass ``device_id=0xFF`` — the hub assigns a new ID.
+        For CMD=8 pass the hub-assigned ``device_id``.
+        ``powerModel=1`` (``cfg[11]``) tells the app that power settings
+        have been configured, preventing the "Not configured" warning.
+        """
+        d = bytearray(210)
+        d[0] = 0x01
+        d[1:3] = (1).to_bytes(2, "big")
+        d[3] = sign & 0xFF
+        d[4] = device_id & 0xFF
+        d[5] = icon & 0xFF
+        d[6] = (device_id & 0xFF) if commit else 0x00
+        d[7] = 28   # codeType: WiFi DIY
+        d[8] = 16   # type: WiFi
+        d[29:89] = self._utf16be_padded(name, length=60)
+        d[89:149] = self._utf16be_padded(name, length=60)  # brand = name
+
+        cfg = bytearray(60)
+        if target_ip:
+            cfg[0] = 0xFC
+            cfg[1] = 0x55
+            for i, octet in enumerate(target_ip.split(".")[:4]):
+                cfg[2 + i] = int(octet) & 0xFF
+        cfg[6] = 0xFC
+        cfg[9] = 0xFC
+        cfg[10] = 0x02  # inputModel: WiFi
+        cfg[11] = 0x01  # powerModel=1: power settings present (prevents "Not configured")
+        cfg[14] = 0xFC
+        cfg[16] = 0xFC
+        if commit:
+            cfg[17] = 0x01
+        d[149:209] = cfg
+        d[209] = _sum8(d[:209])
+        return bytes(d)
+
+    def _build_key_frame_x2(
+        self,
+        *,
+        key_index: int,
+        total_keys: int,
+        device_id: int,
+        key_id: int,
+        key_name: str,
+        ip: str,
+        port: int,
+        pulse: str,
+    ) -> bytes:
+        """Build CMD=14 key-sync frame(s) in X1S/X2 format (81-byte overhead).
+
+        Returns all pages concatenated as a single bytes object.
+        ``key_index`` and ``key_id`` are 1-based; the caller must supply
+        them correctly (1 for the first button, 2 for the second, etc.).
+        """
+        pulse_bytes = pulse.encode("ascii", errors="replace")
+        pulse_len = len(pulse_bytes)
+
+        ip_block = bytearray(pulse_len + 8)
+        for i, p in enumerate(ip.split(".")[:4]):
+            ip_block[i] = int(p) & 0xFF
+        ip_block[4:6] = port.to_bytes(2, "big")
+        ip_block[6:8] = pulse_len.to_bytes(2, "big")
+        ip_block[8 : 8 + pulse_len] = pulse_bytes
+
+        key_data_len = pulse_len + 81
+        total_pages = (key_data_len + 246) // 247
+
+        kd = bytearray(key_data_len)
+        kd[0] = total_keys & 0xFF
+        kd[1:3] = total_pages.to_bytes(2, "big")
+        kd[3] = device_id & 0xFF
+        kd[4] = key_id & 0xFF
+        kd[5] = 0x1C   # codeType: WiFi DIY
+        kd[12:72] = self._utf16be_padded(key_name, length=60)
+        kd[72 : 72 + len(ip_block)] = ip_block
+        kd[key_data_len - 1] = _sum8(kd[: key_data_len - 1])
+
+        all_frames = bytearray()
+        for page_idx in range(total_pages):
+            offset = page_idx * 247
+            end = min(offset + 247, key_data_len)
+            chunk = kd[offset:end]
+            f = bytearray()
+            f.extend([SYNC0, SYNC1, (len(chunk) + 3) & 0xFF, NATIVE_CMD_SYNC_KEY])
+            f.append((key_index + 1) & 0xFF)
+            f.extend((page_idx + 1).to_bytes(2, "big"))
+            f.extend(chunk)
+            f.append(_sum8(f))
+            all_frames.extend(f)
+        return bytes(all_frames)
+
+    def _build_ip_pulse(
+        self,
+        method: str,
+        url: str,
+        headers: dict[str, str],
+        body: str = "",
+    ) -> str:
+        """Build the raw HTTP request string the hub sends when a key is pressed."""
+        from urllib.parse import urlparse  # noqa: PLC0415
+
+        parsed = urlparse(url)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+
+        parts = [f"{method} {path} HTTP/1.1\r\n", f"Host:{host}:{port}\r\n"]
+        for k, v in headers.items():
+            parts.append(f"{k}:{v}\r\n")
+        if body:
+            parts.append(f"Content-Length:{len(body.encode('ascii', errors='replace'))}\r\n")
+        parts.append("\r\n")
+        if body:
+            parts.append(body)
+        return "".join(parts)
+
+    @staticmethod
+    def _extract_host(url: str) -> str:
+        from urllib.parse import urlparse  # noqa: PLC0415
+
+        return urlparse(url).hostname or "127.0.0.1"
+
+    @staticmethod
+    def _extract_port(url: str) -> int:
+        from urllib.parse import urlparse  # noqa: PLC0415
+
+        parsed = urlparse(url)
+        if parsed.port:
+            return parsed.port
+        return 443 if parsed.scheme == "https" else 80
+
+    # ------------------------------------------------------------------
+    # Native IP device creation
+    # ------------------------------------------------------------------
+
     def create_ip_button(
         self,
         *,
@@ -1158,41 +1341,90 @@ class WifiDeviceMixin:
         method: str,
         url: str,
         headers: dict[str, str],
+        body: str = "",
+        icon: int = 1,
     ) -> dict[str, Any] | None:
+        """Create a new IP device on the hub with one button.
+
+        Uses the hub's native protocol: CMD=7 (create), CMD=14 (key sync),
+        CMD=8 (commit), then REMOTE_SYNC.  Each frame is sent individually
+        with a delay so the hub can process them one at a time.
+
+        The caller should follow up with :meth:`disable_device_power_control`
+        to set ``powerMode=4`` (no automatic power control) after creation.
+        """
         if not self.can_issue_commands():
             self._log.info("[CREATE] create_ip_button ignored: proxy client is connected")
             return None
 
-        frames = self._build_virtual_device_frames(
-            device_name=device_name,
-            button_name=button_name,
-            method=method,
-            url=url,
-            headers=headers,
+        overhead = b"\x01" + (1).to_bytes(2, "big")  # action=1, count=1
+
+        # CMD=7: create device
+        target_ip = self._extract_host(url)
+        create_data = self._build_device_data_x2(
+            device_name, device_id=0xFF, target_ip=target_ip, icon=icon,
+        )
+        create_frame = self._build_native_frame(NATIVE_CMD_CREATE_DEVICE, overhead, create_data)
+
+        self.reset_ack_queues()
+        self._log.info("[CREATE] sending CMD=7 (create) for '%s'", device_name)
+        self.transport.send_local(create_frame)
+
+        device_id = self.wait_for_assigned_device_id(timeout=3.0)
+        if device_id is None:
+            self._log.warning("[CREATE] hub did not assign device_id after CMD=7")
+            return None
+        self._log.info("[CREATE] hub assigned device_id=%d", device_id)
+
+        # CMD=14: key sync — hub uses 1-based button slots
+        pulse = self._build_ip_pulse(method, url, headers, body=body)
+        key_frame = self._build_key_frame_x2(
+            key_index=1,
+            total_keys=1,
+            device_id=device_id,
+            key_id=1,
+            key_name=button_name,
+            ip=self._extract_host(url),
+            port=self._extract_port(url),
+            pulse=pulse,
         )
 
-        self.start_virtual_device(
-            device_name=device_name,
-            button_name=button_name,
-            method=method,
-            url=url,
-            headers=headers,
+        time.sleep(1)
+        self._log.info("[CREATE] sending CMD=14 (key sync) for '%s'", button_name)
+        self.transport.send_local(key_frame)
+
+        # CMD=8: commit
+        commit_data = self._build_device_data_x2(
+            device_name, device_id=device_id, commit=True,
+            target_ip=target_ip, icon=icon,
         )
+        commit_frame = self._build_native_frame(NATIVE_CMD_COMMIT_DEVICE, overhead, commit_data)
 
-        for opcode, payload in frames:
-            self._send_cmd_frame(opcode, payload)
-            time.sleep(0.05)
+        time.sleep(1)
+        self._log.info("[CREATE] sending CMD=8 (commit) dev=%d", device_id)
+        self.transport.send_local(commit_frame)
 
-        result = self.wait_for_virtual_device(timeout=3.0)
-        if result and result.get("device_id") is not None:
-            self._log.info(
-                "[CREATE] virtual dev=0x%04X btn=%s method=%s url=%s",
-                result.get("device_id", 0),
-                result.get("button_id"),
-                result.get("method"),
-                result.get("url"),
-            )
-        return result
+        # REMOTE_SYNC
+        sync_frame = self._build_frame(OP_REMOTE_SYNC, b"")
+        time.sleep(1)
+        self._log.info("[CREATE] sending REMOTE_SYNC")
+        self.transport.send_local(sync_frame)
+
+        time.sleep(1)
+        self._log.info(
+            "[CREATE] device '%s' created with id=%d, button='%s'",
+            device_name, device_id, button_name,
+        )
+        return {
+            "device_name": device_name,
+            "button_name": button_name,
+            "method": method,
+            "url": url,
+            "headers": headers,
+            "device_id": device_id,
+            "button_id": 1,
+            "status": "success",
+        }
 
     def add_ip_button_to_device(
         self,
@@ -1202,41 +1434,102 @@ class WifiDeviceMixin:
         method: str,
         url: str,
         headers: dict[str, str],
+        key_index: int = 1,
+        device_name: str | None = None,
+        body: str = "",
+        icon: int = 1,
     ) -> dict[str, Any] | None:
-        """Add an IP-backed command to an existing device."""
+        """Add an IP-backed command to an existing device using the native protocol.
 
+        ``key_index`` is the 1-based position of this button within the device.
+        The caller must track and increment this for each additional button.
+        ``device_name`` is needed for the CMD=8 commit frame; if omitted it is
+        looked up from the local state cache.
+        """
         if not self.can_issue_commands():
             self._log.info("[CREATE] add_ip_button_to_device ignored: proxy client is connected")
             return None
 
-        self.request_ip_commands_for_device(device_id, wait=True)
-        existing = self.state.ip_buttons.get(device_id & 0xFF, {})
-        next_button_id = (max(existing.keys()) + 1) if existing else 1
+        if device_name is None:
+            device_name = self.state.entities("device").get(
+                device_id & 0xFF, {}
+            ).get("name", f"Device {device_id}")
 
-        device_name = self.state.entities("device").get(device_id & 0xFF, {}).get("name", f"Device {device_id}")
+        overhead = b"\x01" + (1).to_bytes(2, "big")
 
-        opcode, payload = self._build_existing_device_frame(
+        # CMD=14: key sync
+        pulse = self._build_ip_pulse(method, url, headers, body=body)
+        key_frame = self._build_key_frame_x2(
+            key_index=key_index,
+            total_keys=key_index,
             device_id=device_id,
-            button_id=next_button_id,
-            button_name=button_name,
-            method=method,
-            url=url,
-            headers=headers,
+            key_id=key_index,
+            key_name=button_name,
+            ip=self._extract_host(url),
+            port=self._extract_port(url),
+            pulse=pulse,
         )
 
-        self.start_virtual_device(
-            device_name=device_name,
-            button_name=button_name,
-            method=method,
-            url=url,
-            headers=headers,
+        self._log.info(
+            "[CREATE] sending CMD=14 (key sync) dev=%d key='%s'",
+            device_id, button_name,
         )
+        self.transport.send_local(key_frame)
 
-        self._send_cmd_frame(opcode, payload)
+        # CMD=8: commit
+        target_ip = self._extract_host(url)
+        commit_data = self._build_device_data_x2(
+            device_name, device_id=device_id, commit=True,
+            target_ip=target_ip, icon=icon,
+        )
+        commit_frame = self._build_native_frame(NATIVE_CMD_COMMIT_DEVICE, overhead, commit_data)
 
-        result = self.wait_for_virtual_device(timeout=3.0)
-        self.request_ip_commands_for_device(device_id, wait=True)
-        return result
+        time.sleep(1)
+        self._log.info("[CREATE] sending CMD=8 (commit) dev=%d", device_id)
+        self.transport.send_local(commit_frame)
+
+        # REMOTE_SYNC
+        sync_frame = self._build_frame(OP_REMOTE_SYNC, b"")
+        time.sleep(1)
+        self._log.info("[CREATE] sending REMOTE_SYNC")
+        self.transport.send_local(sync_frame)
+
+        time.sleep(1)
+        self._log.info(
+            "[CREATE] added button '%s' to device %d ('%s')",
+            button_name, device_id, device_name,
+        )
+        return {
+            "device_name": device_name,
+            "button_name": button_name,
+            "method": method,
+            "url": url,
+            "headers": headers,
+            "device_id": device_id,
+            "button_id": key_index,
+            "status": "success",
+        }
+
+    def disable_device_power_control(self, device_id: int) -> bool:
+        """Set ``powerMode=4`` (no automatic power control) for a device.
+
+        Sends CMD=0x41 with ``[device_id, 0x04]`` to the hub, which maps to
+        the app's "No, disable automatic power control" option in
+        ``PowerConfigurationActivity``.  Must be called after the device is
+        committed (CMD=8) so the hub recognises the device ID.
+        """
+        if not self.can_issue_commands():
+            return False
+
+        self.reset_ack_queues()
+        self._log.info("[POWER] disabling automatic power control for dev=%d (powerMode=4)", device_id)
+        return self._send_native_step(
+            step_name=f"power-disable[dev={device_id}]",
+            family=NATIVE_CMD_POWER_MODE_SET,
+            payload=bytes([device_id, 0x04]),
+            ack_opcode=0x0103,
+            timeout=5.0,
+        )
 
 
 __all__ = ["WifiDeviceMixin"]
