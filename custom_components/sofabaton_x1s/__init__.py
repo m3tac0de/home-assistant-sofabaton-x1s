@@ -373,16 +373,16 @@ def _build_frontend_module_specs(
 
 
 async def _async_get_remote_card_version(hass: HomeAssistant) -> str:
-    source_path = Path(__file__).parent / "www" / "src" / "remote-card.ts"
+    bundle_path = Path(__file__).parent / "www" / _REMOTE_CARD_FILENAME
     try:
-        source = await hass.async_add_executor_job(source_path.read_text, "utf-8")
+        source = await hass.async_add_executor_job(bundle_path.read_text, "utf-8")
     except FileNotFoundError as err:
         _LOGGER.warning("[%s] Failed to read remote card version source: %s", DOMAIN, err)
         return ""
 
-    match = re.search(r'const\s+CARD_VERSION\s*=\s*"([^"]+)"', source)
+    match = re.search(r'(?:var|let|const)\s+CARD_VERSION\s*=\s*"([^"]+)"', source)
     if not match:
-        _LOGGER.warning("[%s] Failed to parse remote card version from %s", DOMAIN, source_path)
+        _LOGGER.warning("[%s] Failed to parse remote card version from %s", DOMAIN, bundle_path)
         return ""
     return str(match.group(1)).strip()
 

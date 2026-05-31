@@ -5630,3 +5630,43 @@ def test_restore_activity_replays_create_and_remaps_device_ids(monkeypatch) -> N
 
     # Activity got registered locally so callers see it immediately.
     assert proxy.state.activities.get(0x55, {}).get("name") == "Watch TV"
+
+
+def test_log_frames_dispatches_handlers_at_info_level() -> None:
+    # Regression for the bug where users with hex logging disabled (default)
+    # had their catalog stay empty: handler dispatch was previously skipped
+    # whenever the proxy logger was below DEBUG, but the registered handlers
+    # are the path that ingests activities/devices/buttons into the catalog,
+    # so they must run regardless of log level.
+    import logging
+    from custom_components.sofabaton_x1s.lib.protocol_const import OP_CATALOG_ROW_ACTIVITY
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=True)
+    # Force the proxy logger to INFO so the DEBUG gate would have fired in
+    # the old code path (this is the production default when hex logging is
+    # off and the tools-card logs tab is closed).
+    underlying = logging.getLogger("test.x1_proxy.info_level")
+    underlying.setLevel(logging.INFO)
+    proxy._log._logger = underlying
+    assert not proxy._log.isEnabledFor(logging.DEBUG)
+
+    proxy._begin_activity_request()
+
+    payload = bytearray(214)
+    payload[0] = 1  # row_idx
+    payload[3] = 1  # expected_rows
+    payload[6:8] = (0x0065).to_bytes(2, "big")  # act_id
+    payload[32] = 0x01  # 'W' utf16le low byte (label slot starts at 32)
+    raw = (
+        bytes([0xA5, 0x5A, (OP_CATALOG_ROW_ACTIVITY >> 8) & 0xFF, OP_CATALOG_ROW_ACTIVITY & 0xFF])
+        + bytes(payload)
+        + b"\x00"
+    )
+
+    proxy._log_frames("H→A", [(OP_CATALOG_ROW_ACTIVITY, raw, bytes(payload), 1, 1)])
+    proxy._on_activities_burst_end("activities")
+
+    assert 0x65 in proxy.state.activities, (
+        "CatalogActivityHandler did not run; activity catalog stayed empty "
+        "despite the hub frame being delivered to _log_frames at INFO level"
+    )

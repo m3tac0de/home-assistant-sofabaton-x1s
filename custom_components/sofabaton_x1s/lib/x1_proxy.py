@@ -1854,135 +1854,141 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
     # Structured frame logs
     # ---------------------------------------------------------------------
     def _log_frames(self, direction: str, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
-        # Per-frame decode is DEBUG-only and does non-trivial parsing work;
-        # skip it entirely when nothing is listening at DEBUG. The frontend
-        # logs tab and the hex-logging switch both force this logger to DEBUG
-        # while they are active, so attributed frame lines still reach the
-        # tools-card and diagnostics download.
-        if not self._log.isEnabledFor(logging.DEBUG):
-            return
+        # This method has two responsibilities, only one of which is logging:
+        #   1. dispatch each frame to its registered frame_handler_registry
+        #      handler — that is the path that ingests activities/devices/
+        #      buttons/commands/macros into the proxy state cache;
+        #   2. emit DEBUG-level decoded summaries for the tools-card logs tab
+        #      and the diagnostics download.
+        # The DEBUG-only work is skipped when nothing is listening, but the
+        # handler dispatch must run regardless of log level — gating it would
+        # leave the catalog empty whenever hex logging is off.
+        debug_enabled = self._log.isEnabledFor(logging.DEBUG)
         for op, raw, payload, scid, ecid in frames:
-            name = OPNAMES.get(op)
-            fam_name = opcode_family_name(op)
-            hi = opcode_hi(op)
-            fam = opcode_family(op)
-            note = f"#{scid}→#{ecid}" if scid != ecid else f"#{ecid}"
-            parsed = parse_command_burst_frame(
-                op,
-                raw,
-                hub_version=self.hub_version,
-            )
-            parsed_macro = parse_macro_burst_frame(op, raw)
-            if name is None and parsed_macro is not None:
-                name = parsed_macro.display_name
+            name: str | None = None
 
-            # Lead with the most specific label we can resolve: a named opcode,
-            # else its family, else an explicit "unmapped" marker. We long ago
-            # classified most traffic by family, so "unmapped" is now reserved
-            # for genuinely unknown low-bytes rather than the default.
-            if name is not None:
-                label = name if fam_name is None else f"{name} fam={fam_name}"
-            elif fam_name is not None:
-                label = f"{fam_name} op=0x{op:04X}"
-            else:
-                label = f"unmapped op=0x{op:04X} hi=0x{hi:02X} fam=0x{fam:02X}"
-            self._log.debug(
-                "%s %s %s (0x%04X) len=%d %s", LogTag.FRAME, direction, label, op, len(raw), note
-            )
-            if parsed is not None:
-                totals = (
-                    f"{parsed.frame_no}/{parsed.total_frames}"
-                    if parsed.total_frames is not None
-                    else f"{parsed.frame_no}"
+            if debug_enabled:
+                name = OPNAMES.get(op)
+                fam_name = opcode_family_name(op)
+                hi = opcode_hi(op)
+                fam = opcode_family(op)
+                note = f"#{scid}→#{ecid}" if scid != ecid else f"#{ecid}"
+                parsed = parse_command_burst_frame(
+                    op,
+                    raw,
+                    hub_version=self.hub_version,
                 )
-                first_cmd = (
-                    f" first_cmd=0x{parsed.first_command_id:02X}"
-                    if parsed.first_command_id is not None
-                    else ""
-                )
-                fmt = (
-                    f" fmt=0x{parsed.format_marker:02X}"
-                    if parsed.format_marker is not None
-                    else ""
-                )
-                total_commands = (
-                    f" total_cmds={parsed.total_commands}"
-                    if parsed.total_commands is not None
-                    else ""
-                )
-                self._log.debug(
-                    f"{LogTag.FRAME} %s REQ_COMMANDS role=%s variant=%s page=%s dev=0x%02X%s%s%s",
-                    note,
-                    parsed.role,
-                    parsed.layout_kind,
-                    totals,
-                    parsed.device_id,
-                    total_commands,
-                    first_cmd,
-                    fmt,
-                )
-            parsed_buttons = parse_button_burst_frame(op, raw, hub_version=self.hub_version)
-            if parsed_buttons is not None:
-                totals = (
-                    f"{parsed_buttons.frame_no}/{parsed_buttons.total_frames}"
-                    if parsed_buttons.total_frames is not None
-                    else f"{parsed_buttons.frame_no}"
-                )
-                total_rows = (
-                    f" total_rows={parsed_buttons.total_rows}"
-                    if parsed_buttons.total_rows is not None
-                    else ""
-                )
-                activity = (
-                    f" act=0x{parsed_buttons.activity_id:02X}"
-                    if parsed_buttons.activity_id is not None
-                    else ""
-                )
-                row_data = " row_data=yes" if parsed_buttons.has_row_data else " row_data=no"
-                self._log.debug(
-                    f"{LogTag.FRAME} %s REQ_BUTTONS role=%s variant=%s page=%s%s%s%s",
-                    note,
-                    parsed_buttons.role,
-                    parsed_buttons.layout_kind,
-                    totals,
-                    activity,
-                    total_rows,
-                    row_data,
-                )
+                parsed_macro = parse_macro_burst_frame(op, raw)
+                if name is None and parsed_macro is not None:
+                    name = parsed_macro.display_name
 
-            if parsed_macro is not None:
-                frag = (
-                    f"{parsed_macro.fragment_index}/{parsed_macro.total_fragments}"
-                    if parsed_macro.fragment_index is not None and parsed_macro.total_fragments is not None
-                    else (f"{parsed_macro.fragment_index}" if parsed_macro.fragment_index is not None else "?")
-                )
-                activity = (
-                    f" act=0x{parsed_macro.activity_id:02X}"
-                    if parsed_macro.activity_id is not None
-                    else ""
-                )
-                start_cmd = (
-                    f" start_cmd=0x{parsed_macro.start_command_id:02X}"
-                    if parsed_macro.start_command_id is not None
-                    else ""
-                )
-                len_ok = " len_ok=yes" if parsed_macro.payload_length_matches_hi else " len_ok=no"
+                # Lead with the most specific label we can resolve: a named opcode,
+                # else its family, else an explicit "unmapped" marker. We long ago
+                # classified most traffic by family, so "unmapped" is now reserved
+                # for genuinely unknown low-bytes rather than the default.
+                if name is not None:
+                    label = name if fam_name is None else f"{name} fam={fam_name}"
+                elif fam_name is not None:
+                    label = f"{fam_name} op=0x{op:04X}"
+                else:
+                    label = f"unmapped op=0x{op:04X} hi=0x{hi:02X} fam=0x{fam:02X}"
                 self._log.debug(
-                    f"{LogTag.FRAME} %s REQ_MACROS role=%s frag=%s%s%s%s",
-                    note,
-                    parsed_macro.role,
-                    frag,
-                    activity,
-                    start_cmd,
-                    len_ok,
+                    "%s %s %s (0x%04X) len=%d %s", LogTag.FRAME, direction, label, op, len(raw), note
                 )
+                if parsed is not None:
+                    totals = (
+                        f"{parsed.frame_no}/{parsed.total_frames}"
+                        if parsed.total_frames is not None
+                        else f"{parsed.frame_no}"
+                    )
+                    first_cmd = (
+                        f" first_cmd=0x{parsed.first_command_id:02X}"
+                        if parsed.first_command_id is not None
+                        else ""
+                    )
+                    fmt = (
+                        f" fmt=0x{parsed.format_marker:02X}"
+                        if parsed.format_marker is not None
+                        else ""
+                    )
+                    total_commands = (
+                        f" total_cmds={parsed.total_commands}"
+                        if parsed.total_commands is not None
+                        else ""
+                    )
+                    self._log.debug(
+                        f"{LogTag.FRAME} %s REQ_COMMANDS role=%s variant=%s page=%s dev=0x%02X%s%s%s",
+                        note,
+                        parsed.role,
+                        parsed.layout_kind,
+                        totals,
+                        parsed.device_id,
+                        total_commands,
+                        first_cmd,
+                        fmt,
+                    )
+                parsed_buttons = parse_button_burst_frame(op, raw, hub_version=self.hub_version)
+                if parsed_buttons is not None:
+                    totals = (
+                        f"{parsed_buttons.frame_no}/{parsed_buttons.total_frames}"
+                        if parsed_buttons.total_frames is not None
+                        else f"{parsed_buttons.frame_no}"
+                    )
+                    total_rows = (
+                        f" total_rows={parsed_buttons.total_rows}"
+                        if parsed_buttons.total_rows is not None
+                        else ""
+                    )
+                    activity = (
+                        f" act=0x{parsed_buttons.activity_id:02X}"
+                        if parsed_buttons.activity_id is not None
+                        else ""
+                    )
+                    row_data = " row_data=yes" if parsed_buttons.has_row_data else " row_data=no"
+                    self._log.debug(
+                        f"{LogTag.FRAME} %s REQ_BUTTONS role=%s variant=%s page=%s%s%s%s",
+                        note,
+                        parsed_buttons.role,
+                        parsed_buttons.layout_kind,
+                        totals,
+                        activity,
+                        total_rows,
+                        row_data,
+                    )
 
-            if direction == "A→H" and fam == FAMILY_PLAY_BLOB:
-                blob = self._extract_single_frame_play_blob(payload)
-                if blob is not None:
-                    descriptor_text = self._descriptive_play_blob_text(blob)
-                    if descriptor_text is not None:
-                        self._log.debug("%s descriptor %s", LogTag.IR, descriptor_text)
+                if parsed_macro is not None:
+                    frag = (
+                        f"{parsed_macro.fragment_index}/{parsed_macro.total_fragments}"
+                        if parsed_macro.fragment_index is not None and parsed_macro.total_fragments is not None
+                        else (f"{parsed_macro.fragment_index}" if parsed_macro.fragment_index is not None else "?")
+                    )
+                    activity = (
+                        f" act=0x{parsed_macro.activity_id:02X}"
+                        if parsed_macro.activity_id is not None
+                        else ""
+                    )
+                    start_cmd = (
+                        f" start_cmd=0x{parsed_macro.start_command_id:02X}"
+                        if parsed_macro.start_command_id is not None
+                        else ""
+                    )
+                    len_ok = " len_ok=yes" if parsed_macro.payload_length_matches_hi else " len_ok=no"
+                    self._log.debug(
+                        f"{LogTag.FRAME} %s REQ_MACROS role=%s frag=%s%s%s%s",
+                        note,
+                        parsed_macro.role,
+                        frag,
+                        activity,
+                        start_cmd,
+                        len_ok,
+                    )
+
+                if direction == "A→H" and fam == FAMILY_PLAY_BLOB:
+                    blob = self._extract_single_frame_play_blob(payload)
+                    if blob is not None:
+                        descriptor_text = self._descriptive_play_blob_text(blob)
+                        if descriptor_text is not None:
+                            self._log.debug("%s descriptor %s", LogTag.IR, descriptor_text)
 
             context = FrameContext(
                 proxy=self,
