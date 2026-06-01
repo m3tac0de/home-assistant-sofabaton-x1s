@@ -151,6 +151,7 @@ from .state_helpers import (
     BurstScheduler,
     normalize_device_entry,
 )
+from .deframer import Deframer
 from .transport_bridge import TransportBridge
 from .proxy_restore import RestoreMixin
 from .proxy_wifi_device import WifiDeviceMixin
@@ -335,51 +336,7 @@ def _enable_keepalive(sock: socket.socket, *, idle: int = 30, interval: int = 10
 
 
 
-# ============================================================================
-# Deframer
-# ============================================================================
-class Deframer:
-    def __init__(self) -> None:
-        self.buf = bytearray()
-        self._cur_start_cid: Optional[int] = None
-
-    def feed(self, data: bytes, cid: int) -> List[Tuple[int, bytes, bytes, int, int]]:
-        out: List[Tuple[int, bytes, bytes, int, int]] = []
-        if not data: return out
-        self.buf.extend(data)
-        if len(self.buf) > 1_000_000: del self.buf[:500_000]
-
-        while True:
-            start = self.buf.find(bytes([SYNC0, SYNC1]))
-            if start < 0:
-                self.buf.clear(); self._cur_start_cid = None
-                break
-            if start:
-                del self.buf[:start]
-                self._cur_start_cid = self._cur_start_cid or cid
-            if len(self.buf) < 5: break
-            if self._cur_start_cid is None: self._cur_start_cid = cid
-
-            nxt = self.buf.find(bytes([SYNC0, SYNC1]), 2)
-            if nxt != -1:
-                cand = bytes(self.buf[:nxt])
-                if cand and cand[-1] == (_sum8(cand[:-1]) & 0xFF):
-                    opcode = (cand[2] << 8) | cand[3]
-                    out.append((opcode, cand, cand[4:-1], self._cur_start_cid or cid, cid))
-                    del self.buf[:nxt]; self._cur_start_cid = None
-                    continue
-                del self.buf[0]
-                if not (len(self.buf) >= 2 and self.buf[0] == SYNC0 and self.buf[1] == SYNC1):
-                    self._cur_start_cid = None
-                continue
-
-            cand = bytes(self.buf)
-            if len(cand) >= 5 and cand[0] == SYNC0 and cand[1] == SYNC1 and cand[-1] == (_sum8(cand[:-1]) & 0xFF):
-                opcode = (cand[2] << 8) | cand[3]
-                out.append((opcode, cand, cand[4:-1], self._cur_start_cid or cid, cid))
-                self.buf.clear(); self._cur_start_cid = None
-            break
-        return out
+# Deframer moved to lib/deframer.py — re-exported above.
 
 # ============================================================================
 # Proxy

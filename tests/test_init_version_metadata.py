@@ -256,6 +256,9 @@ class _FakeHub:
     async def async_restore_persistent_cache(self, payload):
         self.restored_cache = payload
 
+    async def async_sync_authoritative_identity_before_setup(self):
+        return None
+
     async def async_start(self):
         self.started = True
 

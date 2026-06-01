@@ -24,6 +24,7 @@ def test_get_activities_forces_refresh_by_default(monkeypatch):
 def test_get_activities_can_use_cached_values_without_refresh():
     proxy = X1Proxy("127.0.0.1")
     proxy.state.activities[0x11] = {"name": "Movie", "active": False}
+    proxy._activities_catalog_ready = True
 
     activities, ready = proxy.get_activities(force_refresh=False)
 

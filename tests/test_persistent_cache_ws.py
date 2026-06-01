@@ -136,7 +136,7 @@ def test_ws_refresh_persistent_cache_entry(monkeypatch):
     try:
         loop.run_until_complete(
             integration._ws_refresh_persistent_cache_entry(
-                SimpleNamespace(),
+                SimpleNamespace(data={}),
                 conn,
                 {
                     "id": 2,
@@ -279,7 +279,7 @@ def test_ws_refresh_persistent_cache_entry_by_entry_id(monkeypatch):
     try:
         loop.run_until_complete(
             integration._ws_refresh_persistent_cache_entry(
-                SimpleNamespace(),
+                SimpleNamespace(data={}),
                 conn,
                 {
                     "id": 4,
@@ -357,6 +357,7 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
                         "can_find_remote": True,
                         "can_sync_remote": True,
                     },
+                    "active_backup_operation": None,
                 }
             ],
         },
@@ -416,7 +417,7 @@ def test_ws_control_panel_set_setting_updates_hub_setting(monkeypatch):
     try:
         loop.run_until_complete(
             integration._ws_control_panel_set_setting(
-                SimpleNamespace(),
+                SimpleNamespace(data={}),
                 conn,
                 {
                     "id": 42,
@@ -448,7 +449,7 @@ def test_ws_control_panel_run_action_triggers_hub_action(monkeypatch):
     try:
         loop.run_until_complete(
             integration._ws_control_panel_run_action(
-                SimpleNamespace(),
+                SimpleNamespace(data={}),
                 conn,
                 {
                     "id": 43,

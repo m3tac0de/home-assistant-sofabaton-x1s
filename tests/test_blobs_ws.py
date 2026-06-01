@@ -88,7 +88,7 @@ def test_ws_fetch_blob_returns_normalized_payload(monkeypatch):
     try:
       loop.run_until_complete(
           integration._ws_fetch_blob(
-              SimpleNamespace(),
+              SimpleNamespace(data={}),
               conn,
               {"id": 1, "entry_id": "entry-1", "device_id": 11, "command_id": 18},
           )
@@ -115,7 +115,7 @@ def test_ws_play_ir_blob_accepts_hex_blob(monkeypatch):
     try:
       loop.run_until_complete(
           integration._ws_play_ir_blob(
-              SimpleNamespace(),
+              SimpleNamespace(data={}),
               conn,
               {
                   "id": 2,
@@ -148,7 +148,7 @@ def test_ws_play_ir_blob_accepts_descriptor(monkeypatch):
     try:
       loop.run_until_complete(
           integration._ws_play_ir_blob(
-              SimpleNamespace(),
+              SimpleNamespace(data={}),
               conn,
               {
                   "id": 3,
@@ -182,7 +182,7 @@ def test_ws_play_ir_blob_reports_invalid_blob(monkeypatch):
     try:
       loop.run_until_complete(
           integration._ws_play_ir_blob(
-              SimpleNamespace(),
+              SimpleNamespace(data={}),
               conn,
               {"id": 4, "entry_id": "entry-1", "blob": "zzzz"},
           )
@@ -210,7 +210,7 @@ def test_ws_play_ir_blob_reports_unavailable_when_hub_rejects(monkeypatch):
     try:
       loop.run_until_complete(
           integration._ws_play_ir_blob(
-              SimpleNamespace(),
+              SimpleNamespace(data={}),
               conn,
               {
                   "id": 5,
@@ -244,7 +244,7 @@ def test_ws_persist_ir_blob_accepts_descriptor(monkeypatch):
     try:
       loop.run_until_complete(
           integration._ws_persist_ir_blob(
-              SimpleNamespace(),
+              SimpleNamespace(data={}),
               conn,
               {
                   "id": 6,
@@ -283,7 +283,7 @@ def test_ws_persist_ir_blob_reports_unavailable_when_hub_rejects(monkeypatch):
     try:
       loop.run_until_complete(
           integration._ws_persist_ir_blob(
-              SimpleNamespace(),
+              SimpleNamespace(data={}),
               conn,
               {
                   "id": 7,
