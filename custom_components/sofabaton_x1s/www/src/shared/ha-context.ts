@@ -109,6 +109,24 @@ export interface LogsResponse {
   lines: ControlPanelLogLine[];
 }
 
+/**
+ * Structural view of a virtual-device command blob (wifi_ip, wifi_roku,
+ * wifi_hue, wifi_sonos). Populated by the hub when the device class is
+ * decodable and the decoder's round-trip verifier passes; null otherwise.
+ *
+ * The Fetch Blob view uses this as the "Descriptor" mode for these
+ * classes, the same way the existing toggle works for X2 descriptive
+ * IR payloads (which surface as `parsed_blob`). For the structural
+ * classes the rendered descriptor text already lives in `parsed_blob`
+ * — this field exposes the raw structured fields for editor surfaces
+ * downstream.
+ */
+export interface BlobFetchDecodedBlock {
+  class: string;
+  trailer_hex: string;
+  fields: Record<string, unknown>;
+}
+
 export interface BlobFetchCommandResult {
   command_label?: string | null;
   device_id: number;
@@ -117,6 +135,7 @@ export interface BlobFetchCommandResult {
   blob_kind?: string | null;
   command_blob?: string | null;
   parsed_blob?: string | null;
+  decoded?: BlobFetchDecodedBlock | null;
   replay_tail_checksum?: number | null;
   command_checksum?: number | null;
 }

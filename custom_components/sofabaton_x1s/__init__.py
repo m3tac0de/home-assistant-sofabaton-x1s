@@ -1952,7 +1952,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await hub.async_restore_persistent_cache(cache_payload)
 
     await hub.async_start()
-    await hub.async_sync_authoritative_identity_before_setup()
 
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)

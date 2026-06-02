@@ -228,7 +228,12 @@ class TransportBridge:
         self._stop_notify_listener()
 
     def can_issue_commands(self) -> bool:
-        return not self.is_client_connected
+        # Two preconditions: the hub must be TCP-connected (otherwise
+        # frames go into _local_to_hub and are silently discarded by the
+        # bridge loop when it notices there's no hub socket), and the
+        # real Sofabaton app must NOT be attached to the proxy (when it
+        # is, the app owns the session and the proxy must not race it).
+        return self.is_hub_connected and not self.is_client_connected
 
     def send_local(self, payload: bytes) -> None:
         self._local_to_hub.extend(payload)

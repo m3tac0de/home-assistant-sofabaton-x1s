@@ -1185,7 +1185,13 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
     
     def send_command(self, ent_id: int, key_code: int) -> bool:
         if not self.can_issue_commands():
-            self._log.info("[CMD] send_command ignored: proxy client is connected"); return False
+            self._log.info(
+                "[CMD] send_command ignored: transport not ready "
+                "(hub_connected=%s, client_connected=%s)",
+                self.transport.is_hub_connected,
+                self.transport.is_client_connected,
+            )
+            return False
 
         if key_code == ButtonName.POWER_ON:
             self.state.set_hint(ent_id)

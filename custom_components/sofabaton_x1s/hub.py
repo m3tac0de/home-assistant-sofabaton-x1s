@@ -60,7 +60,12 @@ from .lib.protocol_const import (
     DEVICE_CLASS_WIFI_SONOS,
     normalize_device_class,
 )
-from .lib.commands import descriptive_play_blob_text, looks_like_descriptive_play_blob, split_play_blob_tail
+from .lib.blob_decoders import (
+    format_decoded_for_display as decoded_blob_display_text,
+    is_decodable_class as is_blob_decodable_class,
+    try_decode_blob as try_decode_command_blob,
+)
+from .lib.commands import split_play_blob_tail
 from .lib.devices import DeviceConfig, parse_device_record
 from .lib.x1_proxy import X1Proxy
 from .command_config import (
@@ -385,45 +390,6 @@ class SofabatonHub:
             await self._async_update_device_registry_name(next_name)
 
         return banner_changed or identity_changed
-
-    async def async_sync_authoritative_identity_before_setup(
-        self,
-        *,
-        wait_timeout: float = 5.0,
-        poll_interval: float = 0.1,
-    ) -> bool:
-        """Settle a banner-driven rename before entities/platforms are set up.
-
-        We only force the early propagation path when the live banner name
-        actually diverges from the name already in memory.
-        """
-
-        current_name = str(self.name or "").strip()
-        deadline = monotonic() + max(wait_timeout, 0.0)
-
-        while monotonic() < deadline:
-            if self._proxy.can_issue_commands():
-                remaining = max(0.1, min(1.0, deadline - monotonic()))
-                banner_info, banner_ready = await self.hass.async_add_executor_job(
-                    partial(self._proxy.fetch_banner_info, force_refresh=True, timeout=remaining)
-                )
-                if banner_ready and isinstance(banner_info, dict):
-                    banner_name = str(banner_info.get("name") or "").strip()
-                    if banner_name and banner_name != current_name:
-                        changed = await self._async_sync_authoritative_identity(banner_info)
-                        if changed:
-                            self._bump_cache_generation()
-                            async_dispatcher_send(self.hass, signal_hub(self.entry_id))
-                        return changed
-                    if banner_name:
-                        return False
-
-            sleep_for = min(poll_interval, max(0.0, deadline - monotonic()))
-            if sleep_for <= 0:
-                break
-            await asyncio.sleep(sleep_for)
-
-        return False
 
     async def _async_get_persistent_cache_store(self) -> PersistentCacheStore:
         domain_data = self.hass.data.setdefault(DOMAIN, {})
@@ -1245,25 +1211,50 @@ class SofabatonHub:
             replay_tail_checksum: int | None = None
             blob_kind = "raw"
             parsed_blob: str | None = None
-
-            if blob_bytes:
-                blob_body, replay_tail_checksum = split_play_blob_tail(blob_bytes)
-                if looks_like_descriptive_play_blob(blob_body):
-                    blob_kind = "descriptive"
-                    parsed_blob = descriptive_play_blob_text(blob_body)
+            decoded_block: dict[str, Any] | None = None
 
             command_device_id = command.get("device_id")
             normalized_device_id = int(command_device_id) if command_device_id is not None else device_id
+            cached_device_class = self._get_cached_device_class(normalized_device_id)
+
+            if blob_bytes:
+                blob_body, replay_tail_checksum = split_play_blob_tail(blob_bytes)
+                # One uniform decoder path for every class that can
+                # carry user-meaningful structure: descriptive IR
+                # payloads (P:Sony12 etc.), wifi_ip, wifi_roku,
+                # wifi_hue, wifi_sonos. Each runs a strict round-trip
+                # verifier internally; on any mismatch (including
+                # non-descriptive IR blobs that fail the magic-prefix
+                # sniff) the decoder returns None and the row falls
+                # back to the raw-hex view, exactly like a row whose
+                # class has no decoder at all.
+                if blob_body and is_blob_decodable_class(cached_device_class):
+                    candidate = try_decode_command_blob(cached_device_class, blob_body)
+                    if candidate is not None:
+                        decoded_block = candidate
+                        # Two blob_kind values are exposed:
+                        #   "descriptive" — preserved for IR
+                        #     descriptors so the existing UI / tests
+                        #     stay valid for the historical IR case.
+                        #   "decoded"    — used for the four
+                        #     virtual-device classes that newly gain
+                        #     structured fields.
+                        if candidate.get("class") == DEVICE_CLASS_IR:
+                            blob_kind = "descriptive"
+                        else:
+                            blob_kind = "decoded"
+                        parsed_blob = decoded_blob_display_text(candidate)
 
             commands_out.append(
                 {
                     "command_label": command.get("label"),
                     "device_id": normalized_device_id,
                     "command_id": command.get("command_id"),
-                    "device_class": self._get_cached_device_class(normalized_device_id),
+                    "device_class": cached_device_class,
                     "blob_kind": blob_kind,
                     "command_blob": blob_body.hex(" ") if blob_body else None,
                     "parsed_blob": parsed_blob,
+                    "decoded": decoded_block,
                     "replay_tail_checksum": replay_tail_checksum,
                     "command_checksum": replay_tail_checksum,
                 }
@@ -1279,8 +1270,23 @@ class SofabatonHub:
         }
 
     @staticmethod
-    def _build_hub_code_record_restore_data(command: dict[str, Any]) -> dict[str, Any] | None:
-        """Extract opaque command-record metadata from a raw 0x020C dump result."""
+    def _build_hub_code_record_restore_data(
+        command: dict[str, Any],
+        *,
+        device_class: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Extract opaque command-record metadata from a raw 0x020C dump result.
+
+        For the virtual-device classes that carry user-meaningful
+        structure inside the blob (``wifi_ip``, ``wifi_roku``,
+        ``wifi_hue``, ``wifi_sonos``), the result also gains a
+        ``decoded`` block whose ``fields`` describe the host / port /
+        URL path / HTTP method / headers / body. The ``decoded`` block
+        is purely additive: the wire-faithful ``data_hex`` remains the
+        only input the restore path reads, so older backups (no
+        ``decoded`` block) and forward backups round-trip the same
+        bytes through the same code path.
+        """
 
         pages = command.get("pages")
         if not isinstance(pages, list) or not pages:
@@ -1303,12 +1309,23 @@ class SofabatonHub:
         if not data_hex:
             return None
 
-        return {
+        restore_data: dict[str, Any] = {
             "transport": "hub_code_record",
             "library_type": payload[8],
             "command_code": payload[9:15].hex(" "),
             "data_hex": data_hex,
         }
+
+        if device_class and is_blob_decodable_class(device_class):
+            # Round-trip verifier inside try_decode_command_blob
+            # guarantees that any non-None result re-encodes to exactly
+            # data_hex; on any mismatch we leave the row carrying raw
+            # data_hex only, which is the same shape backups have today.
+            decoded_block = try_decode_command_blob(device_class, data_hex)
+            if decoded_block is not None:
+                restore_data["decoded"] = decoded_block
+
+        return restore_data
 
     async def async_backup_device(
         self,
@@ -1504,19 +1521,35 @@ class SofabatonHub:
                 if blob_hex:
                     meta = command_meta_for_device.get(command_id)
                     meta_dict = meta if isinstance(meta, dict) else {}
-                    row["restore_data"] = {
+                    restore_data = {
                         "transport": "hub_code_record",
                         "library_type": int(meta_dict.get("library_type", 0x0D)) & 0xFF,
                         "button_code": int(meta_dict.get("button_code", 0)) & 0xFFFFFFFFFFFF,
                         "data_hex": blob_hex,
                     }
+                    # Descriptive IR payloads (P:Sony12 etc.) ride the
+                    # same `decoded` block shape as the wifi virtual
+                    # device classes. The decoder content-sniffs the
+                    # magic prefix and returns None for non-descriptive
+                    # blobs (raw learned-IR, database-style captures),
+                    # so those rows keep the raw-only restore_data
+                    # shape they had before. `data_hex` is never
+                    # mutated; `decoded` is purely additive metadata.
+                    decoded_block = try_decode_command_blob(
+                        DEVICE_CLASS_IR, blob_hex
+                    )
+                    if decoded_block is not None:
+                        restore_data["decoded"] = decoded_block
+                    row["restore_data"] = restore_data
             elif uses_raw_command_dump:
                 # BT, RF, and the wifi network-callback variants all
                 # share the family-0x0E record shape; the page-one
                 # extractor pulls library_type / command_code /
                 # data_hex straight from the dump so backup→restore is
                 # transport-agnostic.
-                restore_data = self._build_hub_code_record_restore_data(blob_command)
+                restore_data = self._build_hub_code_record_restore_data(
+                    blob_command, device_class=normalized_device_class,
+                )
                 if restore_data is not None:
                     row["restore_data"] = restore_data
             # Device classes that produce neither a hub_code_record nor a

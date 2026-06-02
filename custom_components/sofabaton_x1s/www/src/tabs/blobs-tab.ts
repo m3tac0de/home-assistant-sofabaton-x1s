@@ -547,7 +547,22 @@ class SofabatonBlobsTab extends LitElement {
     return String(remoteAttrsForHub(this.hass, this.hub)?.hub_version || this.hub?.version || "").toUpperCase();
   }
 
-  /** Descriptor parsing (P:Sony12 R:... strings) is X2-only on the hub side. */
+  /**
+   * Descriptor view applicability for the Test / Save subtitles.
+   *
+   * Two parser paths feed the Descriptor view:
+   *   1. X2-only descriptive IR strings (P:Sony12 R:... etc.), which
+   *      the hub parses out of the captured IR blob body.
+   *   2. The virtual device classes (wifi_ip, wifi_roku, wifi_hue,
+   *      wifi_sonos), whose blobs carry structural fields the
+   *      integration decodes on every hub version.
+   *
+   * Path (2) only matters in the Fetch view — the Test / Save inputs
+   * are IR-only, so the subtitles below still gate their descriptor
+   * sentence on hub version. The Fetch results render the toggle
+   * whenever the row carries a non-empty `parsed_blob`, so no
+   * version gate is needed there.
+   */
   private _supportsDescriptors() {
     return this._hubVersion().includes("X2");
   }
