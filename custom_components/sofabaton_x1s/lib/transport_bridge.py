@@ -170,6 +170,7 @@ class TransportBridge:
 
         self._chunk_id = 0
         self._proxy_enabled = True
+        self._busy_gate: Optional[Callable[[], bool]] = None
 
     # ------------------------------------------------------------------
     # Callback registration
@@ -329,11 +330,37 @@ class TransportBridge:
         self._discovery_enabled = False
         self._stop_notify_listener()
 
+    def set_busy_gate(self, gate: Optional[Callable[[], bool]]) -> None:
+        """Register a callable that suppresses CALL_ME handling when truthy.
+
+        Used to ignore proxy-client CALL_ME pings while the hub is occupied
+        with a long-running task (backup, restore, command-config sync) so
+        the in-flight TCP session is not interrupted.
+        """
+
+        self._busy_gate = gate
+
     def _handle_call_me(
         self, src_ip: str, src_port: int, app_ip: str, app_port: int
     ) -> None:
         if not self._proxy_enabled or self._stop.is_set():
             return
+
+        gate = self._busy_gate
+        if gate is not None:
+            try:
+                busy = bool(gate())
+            except Exception:
+                self._log.exception("%s busy gate raised", LogTag.TRANSPORT)
+                busy = False
+            if busy:
+                self._log.info(
+                    "%s APP CALL_ME from %s:%d ignored (hub busy with long-running task)",
+                    LogTag.TRANSPORT,
+                    src_ip,
+                    src_port,
+                )
+                return
 
         self._log.info(
             "%s APP CALL_ME from %s:%d -> app tcp %s:%d",

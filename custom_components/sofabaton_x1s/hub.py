@@ -452,6 +452,7 @@ class SofabatonHub:
         proxy.on_burst_end("commands", self._on_commands_burst)
         proxy.on_burst_end("macros", self._on_macros_burst)
         proxy.on_app_activation(self._on_app_activation)
+        proxy.transport.set_busy_gate(self.is_long_running_task_active)
         return proxy
 
     async def async_start(self) -> None:
@@ -3057,6 +3058,25 @@ class SofabatonHub:
     @property
     def is_sync_in_progress(self) -> bool:
         return self._command_sync_lock.locked()
+
+    def is_long_running_task_active(self) -> bool:
+        """True while a backup, restore, or command-config sync is running.
+
+        Wired into the transport bridge as the CALL_ME busy gate so proxy
+        clients are ignored without tearing down mDNS/broadcast discovery.
+        """
+
+        if self._command_sync_lock.locked():
+            return True
+        try:
+            from . import _backup_operation_registry  # local import to avoid cycle
+        except Exception:
+            return False
+        try:
+            registry = _backup_operation_registry(self.hass)
+        except Exception:
+            return False
+        return bool(registry.has_running_for_entry(self.entry_id))
 
     def get_command_sync_progress(self, device_key: str | None = None) -> dict[str, Any]:
         normalized_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY
