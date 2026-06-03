@@ -633,6 +633,26 @@ class ActivateRequestHandler(BaseFrameHandler):
         )
 
 
+@register_handler(opcode_families_low=(0x67,), directions=("H→A",))
+class OtaUpdatePushHandler(BaseFrameHandler):
+    """Handle the hub's OTA-in-progress push (opcode-lo 0x67).
+
+    The hub emits this frame when it begins a firmware update and then
+    goes silent for several minutes. We notify listeners so the
+    integration can tear down the session, back off reconnects, and
+    surface a notification to the user.
+    """
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        proxy._log.warning(
+            "[OTA] H→A OTA-update push (opcode=0x%04X len=%d)",
+            frame.opcode,
+            len(frame.payload),
+        )
+        proxy.notify_ota_in_progress()
+
+
 @register_handler(opcodes=(OP_ACK_READY,), directions=("H→A",))
 class AckReadyHandler(BaseFrameHandler):
     """Handle ACK_READY frames and optionally trigger data refreshes."""

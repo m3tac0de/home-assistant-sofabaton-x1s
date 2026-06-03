@@ -8,6 +8,7 @@ from functools import partial
 from typing import Any, Dict, Optional
 from urllib.parse import unquote
 
+from homeassistant.components import persistent_notification
 from homeassistant.components.zeroconf import async_get_instance
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -197,6 +198,13 @@ class SofabatonHub:
         self.production_batch: str | None = None
         self.activities_ready: bool = False
         self.devices_ready: bool = False
+        # Set while the hub is doing a firmware OTA (opcode 0x0167); we
+        # suppress reconnect attempts and post a persistent notification
+        # so the user knows to come back in a few minutes. Cleared on the
+        # next successful hub connection.
+        self._ota_in_progress: bool = False
+        self._ota_notification_id = f"sofabaton_x1s_ota_{entry_id}"
+        self._ota_pause_seconds: float = 300.0
         self._devices_generation: int = 0
         self._activities_generation: int = 0
         self._cache_generation: int = 0
@@ -448,6 +456,7 @@ class SofabatonHub:
         proxy.on_burst_end("buttons", self._on_buttons_burst)
         proxy.on_client_state_change(self._on_client_state_change)
         proxy.on_hub_state_change(self._on_hub_state_change)
+        proxy.on_ota_update(self._on_ota_update)
         proxy.on_burst_end("devices", self._on_devices_burst)
         proxy.on_burst_end("commands", self._on_commands_burst)
         proxy.on_burst_end("macros", self._on_macros_burst)
@@ -643,8 +652,57 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_hub(self.entry_id))
 
             if connected:
+                if self._ota_in_progress:
+                    self._ota_in_progress = False
+                    self._log.info(
+                        "[%s] Hub reconnected after OTA pause; dismissing notification",
+                        self.entry_id,
+                    )
+                    persistent_notification.async_dismiss(
+                        self.hass, self._ota_notification_id
+                    )
                 self._log.debug("[%s] Hub connected, doing initial sync", self.entry_id)
                 self.hass.async_create_task(self._async_initial_sync())
+        self.hass.loop.call_soon_threadsafe(_inner)
+
+    def _on_ota_update(self) -> None:
+        """Handle the hub's OTA-update push: pause reconnects and notify the user.
+
+        On opcode 0x0167 the hub goes silent for several minutes while
+        applying a firmware update. We trip a backoff in the transport
+        bridge so reconnect attempts are suppressed during that window
+        and surface a persistent notification so HA users understand why
+        the hub went unavailable.
+        """
+
+        def _inner() -> None:
+            if self._ota_in_progress:
+                return
+            self._ota_in_progress = True
+            self._log.warning(
+                "[%s] Hub announced OTA firmware update; pausing reconnects for %.0fs",
+                self.entry_id,
+                self._ota_pause_seconds,
+            )
+            try:
+                self._proxy.transport.pause_for_ota(self._ota_pause_seconds)
+            except Exception:
+                self._log.exception(
+                    "[%s] Failed to arm OTA pause on transport", self.entry_id
+                )
+            minutes = max(1, int(round(self._ota_pause_seconds / 60.0)))
+            persistent_notification.async_create(
+                self.hass,
+                (
+                    f"The SofaBaton hub **{self.name}** is installing a firmware "
+                    f"update and will be unavailable for several minutes. Home "
+                    f"Assistant will reconnect automatically; please come back "
+                    f"in about {minutes} minutes."
+                ),
+                title="SofaBaton hub firmware update in progress",
+                notification_id=self._ota_notification_id,
+            )
+
         self.hass.loop.call_soon_threadsafe(_inner)
 
     def _on_devices_burst(self, key: str) -> None:

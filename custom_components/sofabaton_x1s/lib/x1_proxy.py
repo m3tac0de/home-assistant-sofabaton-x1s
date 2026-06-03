@@ -431,6 +431,7 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         self._activity_list_update_listeners: list[Callable[[], None]] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
+        self._ota_update_listeners: list[callable] = []
         self._activation_listeners: list[callable] = []
         self._app_devices_deadline: float | None = None
         self._app_devices_retry_sent = False
@@ -785,6 +786,19 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         """cb(connected: bool)"""
         self._client_state_listeners.append(cb)
         cb(self._client_connected)
+
+    def on_ota_update(self, cb) -> None:
+        """cb()  Fired when the hub announces an OTA firmware update (opcode 0x0167)."""
+        self._ota_update_listeners.append(cb)
+
+    def notify_ota_in_progress(self) -> None:
+        """Dispatch the OTA-in-progress event to registered listeners."""
+        self._log.warning("[OTA] hub announced firmware update — pausing reconnects")
+        for cb in self._ota_update_listeners:
+            try:
+                cb()
+            except Exception:
+                self._log.exception("ota update listener failed")
 
     def on_activity_change(self, cb) -> None:
         """cb(new_id: int | None, old_id: int | None, name: str | None)"""

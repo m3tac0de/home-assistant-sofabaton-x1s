@@ -171,6 +171,11 @@ class TransportBridge:
         self._chunk_id = 0
         self._proxy_enabled = True
         self._busy_gate: Optional[Callable[[], bool]] = None
+        # When set in the future, suppress CALL_ME pings and refuse hub-
+        # initiated reconnects until the deadline passes. Used to honour
+        # the hub's OTA-update push (opcode 0x0167): stay disconnected
+        # for several minutes while the firmware update runs.
+        self._ota_pause_until: float = 0.0
 
     # ------------------------------------------------------------------
     # Callback registration
@@ -204,6 +209,43 @@ class TransportBridge:
     def is_client_connected(self) -> bool:
         with self._app_lock:
             return self._app_sock is not None
+
+    def pause_for_ota(self, seconds: float) -> None:
+        """Drop the hub session and refuse reconnects for ``seconds`` seconds.
+
+        Invoked when the hub announces a firmware OTA update. The hub may
+        still dial us back during this window; we silently drop those
+        connections and stop sending CALL_ME pings until the pause
+        expires.
+        """
+
+        deadline = time.time() + max(0.0, float(seconds))
+        if deadline > self._ota_pause_until:
+            self._ota_pause_until = deadline
+            self._log.warning(
+                "%s OTA pause armed for %.0fs (until %.0f)",
+                LogTag.TRANSPORT,
+                seconds,
+                deadline,
+            )
+        existing: Optional[socket.socket] = None
+        with self._hub_lock:
+            existing = self._hub_sock
+            self._hub_sock = None
+        if existing is not None:
+            try:
+                existing.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                existing.close()
+            except Exception:
+                pass
+            self._notify_hub_state(False)
+            self._signal_wake()
+
+    def _ota_pause_active(self) -> bool:
+        return self._ota_pause_until > time.time()
 
     def enable_proxy(self) -> None:
         self._proxy_enabled = True
@@ -393,6 +435,9 @@ class TransportBridge:
                 if self.is_hub_connected:
                     time.sleep(0.3)
                     continue
+                if self._ota_pause_active():
+                    time.sleep(0.5)
+                    continue
                 now = time.time()
                 if now - last >= 2.0 + random.uniform(-0.25, 0.25):
                     try:
@@ -422,6 +467,24 @@ class TransportBridge:
         self, hub_sock: socket.socket, hub_addr: Tuple[str, int]
     ) -> None:
         """Callback invoked by :class:`HubListener` when the hub TCP-connects."""
+
+        if self._ota_pause_active():
+            self._log.info(
+                "%s rejecting hub TCP from %s:%d during OTA pause (%.0fs left)",
+                LogTag.TRANSPORT,
+                hub_addr[0],
+                hub_addr[1],
+                self._ota_pause_until - time.time(),
+            )
+            try:
+                hub_sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                hub_sock.close()
+            except Exception:
+                pass
+            return
 
         try:
             hub_sock.settimeout(0.0)

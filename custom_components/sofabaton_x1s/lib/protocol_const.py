@@ -139,6 +139,11 @@ OP_IPCMD_ROW_D = 0x0DAE
 
 # H→A responses (from hub to app/client)
 OP_ACK_READY = 0x0160
+# H→A push emitted when the hub begins a firmware OTA update. The hub goes
+# silent for a few minutes while the update runs and does not actively
+# manage the connection during that window, so receivers are expected to
+# tear down the session and stay disconnected until the hub comes back.
+OP_OTA_UPDATE = 0x0167
 OP_MARKER = 0x0C3D  # segment marker before continuation
 
 OP_CATALOG_ROW_DEVICE = 0xD50B  # Row from list of devices
@@ -246,6 +251,7 @@ OPNAMES: Dict[int, str] = {
     OP_STATUS_ACK: "STATUS_ACK",
     OP_ACTIVITY_CREATE_ACK: "ACTIVITY_CREATE_ACK",
     OP_ACK_READY: "ACK_READY",
+    OP_OTA_UPDATE: "OTA_UPDATE",
     OP_MARKER: "REQ_BUTTONS_MARKER_X1S_X2",
     OP_CATALOG_ROW_DEVICE: "CATALOG_ROW_DEVICE",
     OP_CATALOG_ROW_ACTIVITY: "CATALOG_ROW_ACTIVITY",
@@ -553,6 +559,7 @@ __all__ = [
     "OP_IPCMD_ROW_C",
     "OP_IPCMD_ROW_D",
     "OP_ACK_READY",
+    "OP_OTA_UPDATE",
     "OP_MARKER",
     "OP_CATALOG_ROW_DEVICE",
     "OP_CATALOG_ROW_ACTIVITY",
