@@ -1828,6 +1828,7 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
             if debug_enabled:
                 name = OPNAMES.get(op)
                 fam_name = opcode_family_name(op)
+                fam = opcode_family(op)
                 note = f"chunk={scid}→{ecid}" if scid != ecid else f"chunk={ecid}"
                 parsed = parse_command_burst_frame(
                     op,
