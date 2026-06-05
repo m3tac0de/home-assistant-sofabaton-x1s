@@ -1,5 +1,6 @@
-import { LitElement, css, html, nothing } from "lit";
+﻿import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
+import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } from "../components/secondary-tab";
 import type { ControlPanelHubState, HassLike } from "../shared/ha-context";
 import { entityForHub, proxyClientConnected, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
 import {
@@ -134,6 +135,7 @@ const HARD_BUTTON_ID_MAP: Record<string, number> = {
 
 const X2_ONLY_HARD_BUTTON_IDS = new Set([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
 const DEFAULT_ACTION = { action: "perform-action" };
+const WIFI_SECTION_ROW = [{ id: "wifi", label: "Wifi Devices", icon: "mdi:wifi", passive: true }] as const;
 
 type PressType = "short" | "long";
 type ActiveModal = "details" | "action" | null;
@@ -195,6 +197,8 @@ class SofabatonWifiCommandsTab extends LitElement {
     hubCommandBusyLabel: { type: String },
     loading: { type: Boolean },
     error: { type: String },
+    blockedTitle: { type: String },
+    blockedMessage: { type: String },
     _commandsData: { state: true },
     _wifiDevices: { state: true },
     _selectedDeviceKey: { state: true },
@@ -225,7 +229,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     _maxWifiDevices: { state: true },
   };
 
-  static styles = css`
+  static styles = [secondaryTabStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -237,9 +241,10 @@ class SofabatonWifiCommandsTab extends LitElement {
       --tools-radius-pill: 999px;
     }
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow: hidden; }
-    .list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; margin: -16px; }
+    .tab-panel--detail { padding: 0; }
+    .list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; }
     .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 16px 16px; }
-    .detail-view { min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; margin: -16px; }
+    .detail-view { min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; }
     .sticky-header, .sticky-footer { position: sticky; z-index: 2; background: var(--ha-card-background, var(--card-background-color)); }
     .sticky-header { padding: 12px 16px; }
     .sticky-header { top: 0; border-bottom: 1px solid var(--divider-color); }
@@ -254,22 +259,18 @@ class SofabatonWifiCommandsTab extends LitElement {
     .back-btn { display: inline-flex; align-items: center; gap: 8px; }
     .list-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 16px; row-gap: 8px; }
     .list-header-copy { min-width: 0; }
-    .list-header-title-row { display: flex; align-items: center; gap: 10px; }
-    .list-header-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
-    .list-header-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-    .list-header-copy .acc-title { display: block; }
-    .list-header-copy .section-subtitle { margin-top: 8px; }
+    .list-header-copy .section-subtitle { margin-top: 0; }
     .list-header-action { grid-column: 2; grid-row: 1; align-self: start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .device-list { display: grid; gap: 10px; }
-    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); padding: 10px 14px; background: var(--ha-card-background, var(--card-background-color)); text-align: left; display: flex; align-items: center; gap: 14px; cursor: pointer; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .device-list { display: grid; gap: 6px; }
+    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); padding: 9px 10px 9px 12px; background: var(--secondary-background-color, var(--ha-card-background)); text-align: left; display: flex; align-items: center; gap: 10px; cursor: pointer; overflow: hidden; box-shadow: none; transition: border-color 120ms ease, background-color 120ms ease; }
     .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
     .device-card.pending-delete { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 45%, var(--divider-color)); }
     .device-card:hover, .back-btn:hover, .list-action-btn:hover, .detail-sync-btn:hover, .device-delete-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 16px; }
+    .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
     .device-card-lead { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
     .device-card-lead ha-icon { --mdc-icon-size: 20px; }
-    .device-card-name { font-size: 14px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-    .device-card-meta { font-size: 12px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; margin-left: auto; }
+    .device-card-name { flex: 1; font-size: 13px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .device-card-meta { font-size: 12px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; margin-left: auto; flex-shrink: 0; }
     .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
     .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: #2e7d32; }
     .status-pill.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); color: var(--error-color, #db4437); }
@@ -282,7 +283,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     .status-pill ha-icon { --mdc-icon-size: 18px; }
     .device-status-pill { min-width: 0; }
     .device-status-pill-label { min-width: 0; }
-    .device-card-count { white-space: nowrap; font-size: 13px; color: var(--primary-text-color); }
+    .device-card-count { white-space: nowrap; font-size: 12px; color: var(--primary-text-color); flex-shrink: 0; }
     .device-card-count-strong { font-weight: 700; }
     .device-card-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: 4px; }
     .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--secondary-text-color); flex: 0 0 auto; }
@@ -306,6 +307,18 @@ class SofabatonWifiCommandsTab extends LitElement {
     .list-action-btn:disabled:hover,
     .detail-sync-btn:disabled:hover {
       border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
+    }
+    .detail-sync-btn.detail-sync-btn--state-ok {
+      border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
+      background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
+      color: #2e7d32;
+      opacity: 1;
+    }
+    .detail-sync-btn.detail-sync-btn--state-ok:disabled {
+      border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
+      background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
+      color: #2e7d32;
+      opacity: 1;
     }
     .empty-state-card { border: 1px dashed var(--divider-color); border-radius: var(--tools-radius-md); padding: 18px; color: var(--secondary-text-color); line-height: 1.5; }
     .bottom-dock-status {
@@ -604,7 +617,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       .device-status-pill-label { display: none; }
       .sync-row { align-items: flex-start; flex-direction: column; }
     }
-  `;
+  `];
 
   declare hass: HassLike | null;
   declare hub: ControlPanelHubState | null;
@@ -614,6 +627,8 @@ class SofabatonWifiCommandsTab extends LitElement {
   hubCommandBusyLabel: string | null = null;
   declare loading: boolean;
   declare error: string | null;
+  blockedTitle: string | null = null;
+  blockedMessage: string | null = null;
 
   private _commandsData: WifiCommandSlot[] = this._normalizeCommandsForStorage([]);
   private _wifiDevices: WifiDeviceSummary[] = [];
@@ -667,15 +682,15 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   protected render() {
-    if (this.loading) return html`<div class="state">Loading…</div>`;
+    if (this.loading) return html`<div class="state">Loading...</div>`;
     if (this.error) return html`<div class="state error">${this.error}</div>`;
     if (!this.hub) return html`<div class="state">No hubs found.</div>`;
-    if (proxyClientConnected(this.hass, this.hub)) {
+    if (this.blockedTitle && this.blockedMessage) {
       return html`
         <div class="tab-panel">
           <div class="blocked-state">
-            <div class="blocked-state-title">Wifi Commands unavailable</div>
-            <div class="blocked-state-sub">Wifi Commands cannot be used while the Sofabaton app is connected to the hub through the proxy.</div>
+            <div class="blocked-state-title">${this.blockedTitle}</div>
+            <div class="blocked-state-sub">${this.blockedMessage}</div>
           </div>
         </div>
       `;
@@ -685,7 +700,19 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (!selectedDevice) {
       return html`
         <div class="tab-panel">
-          ${this._renderDeviceListView()}
+          ${renderSecondaryTabShell({
+            connected: true,
+            items: [...WIFI_SECTION_ROW],
+            selectedId: "wifi",
+            shellClassName: "secondary-view-shell--edge",
+            content: renderSecondaryViewBody({
+              connected: true,
+              padded: false,
+              scroll: false,
+              className: "list-view",
+              content: this._renderDeviceListView(),
+            }),
+          })}
           ${this._renderDetailsModal()}
           ${this._renderActionModal()}
           ${this._renderSyncWarningModal()}
@@ -702,56 +729,6 @@ class SofabatonWifiCommandsTab extends LitElement {
       remoteUnavailable,
       syncRunning,
     });
-
-    return html`
-      <div class="tab-panel">
-        <div class="detail-view">
-          <div class="sticky-header">
-            <div class="detail-title-row">
-              <button class="back-btn" @click=${this._goBackToDeviceList}>
-                <ha-icon icon="mdi:arrow-left"></ha-icon>
-              </button>
-              <div class="detail-title">${selectedDevice.device_name}</div>
-            </div>
-          </div>
-          <div class="detail-scroll">
-            ${this._hubVersionConfident() ? nothing : html`
-              <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
-                Your hub may be miss-versioned. Click here to fix it.
-              </button>
-            `}
-        ${this._hubVersionConfident() ? nothing : html`
-          <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
-            ⚠️ Your hub may be miss-versioned! Click here to fix it.
-          </button>
-        `}
-        <div class="sync-row ${syncTone}">
-          <div class="sync-message-wrap">
-            <span class="status-pill ${syncTone}">
-              <ha-icon icon=${this._syncStatusIcon(remoteUnavailable)}></ha-icon>
-              <span>${this._syncMessageShort(remoteUnavailable)}</span>
-            </span>
-            <div class="sync-message">${this._renderSyncMessage(remoteUnavailable)}</div>
-          </div>
-          ${remoteUnavailable ? nothing : syncRunning ? html`<div class="sync-static">Syncing…</div>` : this._syncState.sync_needed ? html`
-            <button class="sync-btn sync-btn-primary" ?disabled=${this._commandSyncRunning} @click=${this._runCommandConfigSync}>Sync to Hub</button>
-          ` : nothing}
-        </div>
-        ${remoteUnavailable ? nothing : html`
-          <div class="command-grid">
-            ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
-          </div>
-        `}
-          </div>
-        </div>
-        ${this._renderDetailsModal()}
-        ${this._renderActionModal()}
-        ${this._renderSyncWarningModal()}
-        ${this._renderHubVersionModal()}
-        ${this._renderCreateDeviceModal()}
-        ${this._renderDeleteDeviceModal()}
-      </div>
-    `;
   }
 
   private _renderSelectedDeviceView({
@@ -765,7 +742,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   }) {
     const externallyLocked = this._hubCommandLocked() && !this._selectedDeviceOwnsPendingSync();
     return html`
-      <div class="tab-panel">
+      <div class="tab-panel tab-panel--detail">
         <div class="detail-view">
           <div class="sticky-header">
             <div class="detail-title-row">
@@ -787,67 +764,10 @@ class SofabatonWifiCommandsTab extends LitElement {
               </div>
             `}
           </div>
-          <div class="sticky-footer">
-            ${this._renderStatusDock(this._renderSyncMessage(remoteUnavailable, externallyLocked), this._syncDockTone(remoteUnavailable, externallyLocked))}
-          </div>
         </div>
         ${this._renderDetailsModal()}
         ${this._renderActionModal()}
         ${this._renderSyncWarningModal()}
-        ${this._renderCreateDeviceModal()}
-        ${this._renderDeleteDeviceModal()}
-      </div>
-    `;
-    return html`
-      <div class="tab-panel">
-        <div class="detail-view">
-          <div class="sticky-header">
-            <div class="detail-title-row">
-              <button class="back-btn" @click=${this._goBackToDeviceList}>
-                <ha-icon icon="mdi:arrow-left"></ha-icon>
-              </button>
-              <div class="detail-title">${selectedDevice.device_name}</div>
-            </div>
-          </div>
-          <div class="detail-scroll">
-            ${this._hubVersionConfident() ? nothing : html`
-              <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
-                Your hub may be miss-versioned. Click here to fix it.
-              </button>
-            `}
-            ${remoteUnavailable ? nothing : html`
-              <div class="command-grid">
-                ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
-              </div>
-            `}
-          </div>
-          <div class="sticky-footer">
-            <button
-              class="bottom-dock-trigger ${!remoteUnavailable && !syncRunning && this._syncState.sync_needed ? "interactive" : ""}"
-              ?disabled=${remoteUnavailable || syncRunning || !this._syncState.sync_needed}
-              @click=${!remoteUnavailable && !syncRunning && this._syncState.sync_needed ? this._runCommandConfigSync : null}
-            >
-            <div class="bottom-dock">
-              <div class="bottom-dock-main">
-                <div class="bottom-dock-copy">${syncMessage}</div>
-              </div>
-              <div class="bottom-dock-actions">
-                ${remoteUnavailable ? nothing : syncRunning ? html`<div class="sync-static">Syncingâ€¦</div>` : this._syncState.sync_needed ? html`
-                  <button class="sync-btn sync-btn-primary" ?disabled=${this._commandSyncRunning} @click=${this._runCommandConfigSync}>Sync to Hub</button>
-                ` : html`
-                  <span class="status-pill ${syncTone}">
-                    <ha-icon icon=${this._syncStatusIcon(remoteUnavailable)}></ha-icon>
-                    <span>${shortSyncMessage}</span>
-                  </span>
-                `}
-              </div>
-            </div>
-          </div>
-        </div>
-        ${this._renderDetailsModal()}
-        ${this._renderActionModal()}
-        ${this._renderSyncWarningModal()}
-        ${this._renderHubVersionModal()}
         ${this._renderCreateDeviceModal()}
         ${this._renderDeleteDeviceModal()}
       </div>
@@ -857,54 +777,48 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _renderDeviceListView() {
     const canAdd = this._wifiDevices.length < this._maxWifiDevices;
     return html`
-      <div class="list-view">
-        <div class="list-scroll">
-          <div class="list-header">
-            <div class="list-header-copy">
-              <div class="list-header-title-row">
-                <span class="acc-header-icon"><ha-icon icon="mdi:wifi"></ha-icon></span>
-                <div class="acc-title">WIFI DEVICES</div>
-              </div>
-              <div class="section-subtitle">Choose a Wifi Device to edit its command slots, or add a new one.</div>
-            </div>
-            <div class="list-header-action">
-              <button class="detail-sync-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
-                Add Wifi Device
-              </button>
-            </div>
+      <div class="list-scroll">
+        <div class="list-header">
+          <div class="list-header-copy">
+            <div class="section-subtitle">Choose a Wifi Device to edit its command slots, or add a new one.</div>
           </div>
-          ${this._wifiDevices.length ? html`
-            <div class="device-list">
-              ${this._wifiDevices.map((device) => html`
-                <div
-                  class="device-card ${device.device_key === this._deletingDeviceKey ? "pending-delete" : ""}"
-                  role="button"
-                  tabindex=${this._deletingDeviceKey === device.device_key ? -1 : 0}
-                  aria-disabled=${String(device.device_key === this._deletingDeviceKey)}
-                  @click=${device.device_key === this._deletingDeviceKey ? null : () => this._selectWifiDevice(device.device_key)}
-                  @keydown=${device.device_key === this._deletingDeviceKey ? null : ((event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this._selectWifiDevice(device.device_key); } })}
-                >
-                  <div class="device-card-main">
-                    <span class="device-card-lead"><ha-icon icon="mdi:wifi"></ha-icon></span>
-                    <div class="device-card-name">${device.device_name}</div>
-                    <div class="device-card-meta">
-                      <span class="status-pill device-status-pill ${this._deviceStatusTone(device)}">
-                        <ha-icon icon=${this._deviceStatusIcon(device)}></ha-icon>
-                        <span class="device-status-pill-label">${this._deviceStatusLabel(device)}</span>
-                      </span>
-                      <span class="device-card-count"><span class="device-card-count-strong">${Number(device.configured_slot_count || 0)}</span> slot${Number(device.configured_slot_count || 0) === 1 ? "" : "s"}</span>
-                    </div>
-                  </div>
-                  <div class="device-card-actions">
-                    <button class="device-delete-btn" title="Delete Wifi Device" ?disabled=${this._hubCommandLocked() || device.device_key === this._deletingDeviceKey} @click=${(event: Event) => this._promptDeleteDevice(device.device_key, event)}>
-                      <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                    </button>
+          <div class="list-header-action">
+            <button class="detail-sync-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
+              Add Wifi Device
+            </button>
+          </div>
+        </div>
+        ${this._wifiDevices.length ? html`
+          <div class="device-list">
+            ${this._wifiDevices.map((device) => html`
+              <div
+                class="device-card ${device.device_key === this._deletingDeviceKey ? "pending-delete" : ""}"
+                role="button"
+                tabindex=${this._deletingDeviceKey === device.device_key ? -1 : 0}
+                aria-disabled=${String(device.device_key === this._deletingDeviceKey)}
+                @click=${device.device_key === this._deletingDeviceKey ? null : () => this._selectWifiDevice(device.device_key)}
+                @keydown=${device.device_key === this._deletingDeviceKey ? null : ((event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this._selectWifiDevice(device.device_key); } })}
+              >
+                <div class="device-card-main">
+                  <span class="device-card-lead"><ha-icon icon="mdi:wifi"></ha-icon></span>
+                  <div class="device-card-name">${device.device_name}</div>
+                  <div class="device-card-meta">
+                    <span class="status-pill device-status-pill ${this._deviceStatusTone(device)}">
+                      <ha-icon icon=${this._deviceStatusIcon(device)}></ha-icon>
+                      <span class="device-status-pill-label">${this._deviceStatusLabel(device)}</span>
+                    </span>
+                    <span class="device-card-count"><span class="device-card-count-strong">${Number(device.configured_slot_count || 0)}</span> slot${Number(device.configured_slot_count || 0) === 1 ? "" : "s"}</span>
                   </div>
                 </div>
-              `)}
-            </div>
-          ` : html`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
-        </div>
+                <div class="device-card-actions">
+                  <button class="device-delete-btn" title="Delete Wifi Device" ?disabled=${this._hubCommandLocked() || device.device_key === this._deletingDeviceKey} @click=${(event: Event) => this._promptDeleteDevice(device.device_key, event)}>
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>
+                </div>
+              </div>
+            `)}
+          </div>
+        ` : html`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
         <div class="sticky-footer">
           ${!canAdd ? html`<div class="wifi-max-devices-note">Maximum number of devices reached</div>` : nothing}
           <div class="wifi-docs-bar">
@@ -1100,7 +1014,7 @@ class SofabatonWifiCommandsTab extends LitElement {
           </div>
           <div class="dialog-body">
             <div class="dialog-note">
-              Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote’s display, in the mobile app, and as the Wifi Command's sensor status.
+              Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.
             </div>
             <div class="config-block">
               <div class="config-group">
@@ -1363,7 +1277,7 @@ class SofabatonWifiCommandsTab extends LitElement {
             </div>
             <label class="warning-optout">
               <input type="checkbox" .checked=${this._syncWarningOptOut} @change=${(event: Event) => { this._syncWarningOptOut = (event.currentTarget as HTMLInputElement).checked; }} />
-              <span>Don’t show this warning again for this remote.</span>
+              <span>Don't show this warning again for this remote.</span>
             </label>
           </div>
           <div class="dialog-footer">
@@ -1389,7 +1303,7 @@ class SofabatonWifiCommandsTab extends LitElement {
           </div>
           <div class="dialog-body">
             <div class="dialog-text">
-              We couldn’t automatically detect your hub model. Select the correct version below — the change takes effect immediately, no restart needed.
+              We couldn't automatically detect your hub model. Select the correct version below - the change takes effect immediately, no restart needed.
             </div>
             <div class="version-chip-row">
               ${["X1", "X1S", "X2"].map((version) => html`
@@ -1490,9 +1404,9 @@ class SofabatonWifiCommandsTab extends LitElement {
     const runningDevice = this._runningWifiDevice();
     if (runningDevice) {
       const deviceName = String(runningDevice.device_name || "").trim();
-      return deviceName ? `Syncing ${deviceName}…` : "Syncing Wifi Device…";
+      return deviceName ? `Syncing ${deviceName}...` : "Syncing Wifi Device...";
     }
-    return String(this.hubCommandBusyLabel || "").trim() || "Hub command in progress…";
+    return String(this.hubCommandBusyLabel || "").trim() || "Hub command in progress...";
   }
 
   private _runningWifiDevice() {
@@ -1950,7 +1864,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     const group = (keys: string[], title: string) =>
       keys.filter((key) => DEFAULT_KEY_LABELS[key]).map((key) => ({
         value: key,
-        label: `${title} • ${DEFAULT_KEY_LABELS[key]}`,
+        label: `${title} - ${DEFAULT_KEY_LABELS[key]}`,
       }));
     return [
       ...group(["up", "down", "left", "right", "ok", "back", "home", "menu"], "Navigation"),
@@ -2395,7 +2309,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private _deviceStatusLabel(device: WifiDeviceSummary) {
-    if (device.device_key === this._deletingDeviceKey) return "Deleting…";
+    if (device.device_key === this._deletingDeviceKey) return "Deleting...";
     if (device.status === "running") return "Syncing";
     if (device.status === "failed") return "Sync failed";
     if (device.sync_needed) return "Sync needed";
@@ -2453,14 +2367,14 @@ class SofabatonWifiCommandsTab extends LitElement {
     const label = remoteUnavailable
       ? "Unavailable"
       : syncRunning
-        ? "Syncing…"
+        ? "Syncing..."
         : externallyLocked
           ? "Busy"
           : this._syncState.sync_needed
             ? "Sync to Hub"
             : "Up to Date";
     const disabled = remoteUnavailable || syncRunning || externallyLocked || !this._syncState.sync_needed;
-    const classes = `detail-sync-btn${!disabled && this._syncState.sync_needed ? " sync-btn-primary" : ""}`;
+    const classes = `detail-sync-btn${!disabled && this._syncState.sync_needed ? " sync-btn-primary" : ""}${!remoteUnavailable && !syncRunning && !externallyLocked && !this._syncState.sync_needed ? " detail-sync-btn--state-ok" : ""}`;
     return html`<button class=${classes} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>${label}</button>`;
   }
 
@@ -2473,7 +2387,9 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _goBackToDeviceList = () => {
     this._selectedDeviceKey = null;
     this._commandsData = this._normalizeCommandsForStorage([]);
-    this._syncState = this._defaultSyncState();
+    if (this._syncState.status !== "running") {
+      this._syncState = this._defaultSyncState();
+    }
   };
 
   private _openCreateDeviceModal = () => {
@@ -2498,7 +2414,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       return;
     }
     this._creatingDevice = true;
-    this._setSharedHubCommandBusy(true, "Creating Wifi Device…");
+    this._setSharedHubCommandBusy(true, "Creating Wifi Device...");
     try {
       const payload = await this.hass.callWS<{ device_key?: string }>({
         type: "sofabaton_x1s/command_device/create",
@@ -2536,7 +2452,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (this._hubCommandLocked()) return;
     this._closeDeleteDeviceModal();
     this._deletingDeviceKey = deviceKey;
-    this._setSharedHubCommandBusy(true, "Deleting Wifi Device…");
+    this._setSharedHubCommandBusy(true, "Deleting Wifi Device...");
     try {
       await this.hass.callWS({
         type: "sofabaton_x1s/command_device/delete",
@@ -2620,9 +2536,10 @@ class SofabatonWifiCommandsTab extends LitElement {
           }
         : device,
     );
-    this._setSharedHubCommandBusy(true, "Syncing Wifi Device…");
+    this._setSharedHubCommandBusy(true, "Syncing Wifi Device...");
     try {
       await this.hass.callService("sofabaton_x1s", "sync_command_config", { entity_id: entityId, device_key: deviceKey });
+      await this._refreshControlPanelState();
     } catch (error) {
       this._syncState = {
         ...this._syncState,
@@ -2648,14 +2565,20 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private _scheduleSyncPoll() {
-    if (this._syncState.status !== "running" || this._remoteUnavailable()) {
+    const runningDevice = this._runningWifiDevice();
+    const selectedDeviceRunning = this._syncState.status === "running";
+    if ((!selectedDeviceRunning && !runningDevice) || this._remoteUnavailable()) {
       this._clearPollTimer();
       return;
     }
     if (this._commandSyncPollTimer != null) return;
     this._commandSyncPollTimer = window.setTimeout(async () => {
       this._commandSyncPollTimer = null;
-      await this._loadCommandSyncProgress(true);
+      if (selectedDeviceRunning && this._selectedDeviceKey) {
+        await this._loadCommandSyncProgress(true);
+      } else {
+        await this._loadWifiDevices(true);
+      }
     }, 1000);
   }
 
@@ -2714,3 +2637,5 @@ class SofabatonWifiCommandsTab extends LitElement {
 if (!customElements.get("sofabaton-wifi-commands-tab")) {
   customElements.define("sofabaton-wifi-commands-tab", SofabatonWifiCommandsTab);
 }
+
+

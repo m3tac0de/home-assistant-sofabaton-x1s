@@ -720,7 +720,7 @@
 
   <!-- Card bundle — runs after stubs module above.
        The ?v= bust forces browsers to skip cache when the file is updated. -->
-  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=27"></script>
+  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=61"></script>
 
   <!-- Harness logic — runs after both modules above -->
   <script type="module">
@@ -806,7 +806,7 @@
     // tools_frontend_version must match the ?v= cache-bust on the script tag.
     // The store compares this against LOADED_TOOLS_FRONTEND_VERSION (read from the
     // script URL's ?v= param) and sets toolsFrontendVersionMismatch if they differ.
-    const TOOLS_FRONTEND_VERSION = "27";
+    const TOOLS_FRONTEND_VERSION = "61";
 
     const BASE_STATE = {
       persistent_cache_enabled: true,

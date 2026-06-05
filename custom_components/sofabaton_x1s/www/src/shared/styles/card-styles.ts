@@ -1,6 +1,7 @@
 import { css } from "lit";
+import { secondaryTabStyles } from "../../components/secondary-tab";
 
-export const cardStyles = css`
+export const cardStyles = [secondaryTabStyles, css`
   :host { display: block; }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
@@ -42,6 +43,96 @@ export const cardStyles = css`
   }
   .card-title { font-size: 16px; font-weight: 700; }
   .card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .card-bottom-dock {
+    position: relative;
+    flex-shrink: 0;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 12px;
+    border-top: 1px solid color-mix(in srgb, var(--divider-color) 82%, transparent);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--primary-color) 8%, var(--ha-card-background, var(--card-background-color))),
+        color-mix(in srgb, var(--primary-color) 4%, var(--ha-card-background, var(--card-background-color)))
+      );
+  }
+  .card-bottom-dock--success {
+    border-top-color: color-mix(in srgb, var(--success-color, #22c55e) 45%, var(--divider-color));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--success-color, #22c55e) 11%, var(--ha-card-background, var(--card-background-color))),
+        color-mix(in srgb, var(--success-color, #22c55e) 6%, var(--ha-card-background, var(--card-background-color)))
+      );
+  }
+  .card-bottom-dock--error {
+    border-top-color: color-mix(in srgb, var(--error-color, #db4437) 45%, var(--divider-color));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--error-color, #db4437) 11%, var(--ha-card-background, var(--card-background-color))),
+        color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)))
+      );
+  }
+  .card-bottom-dock-center {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    overflow: hidden;
+  }
+  .card-bottom-dock-center > span,
+  .card-bottom-dock-center > a {
+    min-width: 0;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-bottom-dock-status {
+    color: color-mix(in srgb, var(--secondary-text-color) 88%, transparent);
+  }
+  .card-bottom-dock--success .card-bottom-dock-status {
+    color: color-mix(in srgb, var(--success-color, #22c55e) 88%, black 10%);
+  }
+  .card-bottom-dock--error .card-bottom-dock-status {
+    color: color-mix(in srgb, var(--error-color, #db4437) 88%, black 10%);
+  }
+  .card-bottom-dock-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .card-bottom-dock-link:hover {
+    text-decoration: underline;
+  }
+  .card-bottom-dock-empty {
+    display: block;
+    width: 100%;
+    min-height: 1px;
+  }
+  .card-bottom-dock-progress-line {
+    position: absolute;
+    top: -1px;
+    left: 0;
+    height: 2px;
+    background: var(--primary-color);
+    transition: width 180ms ease;
+  }
+  .card-bottom-dock-progress-line[data-indeterminate="true"] {
+    width: 35% !important;
+    animation: dockProgressIndeterminate 1.2s ease-in-out infinite;
+  }
+  @keyframes dockProgressIndeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(320%); }
+  }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
   .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
   .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-start; }
@@ -59,13 +150,13 @@ export const cardStyles = css`
   .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--primary-color); }
   .tabs { flex-shrink: 0; display: flex; align-items: stretch; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
   .tabs-scroll { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; }
-  .tab-btn { position: relative; border: none; border-bottom: 3px solid transparent; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px 11px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .tab-btn { position: relative; border: none; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .tab-btn--push-right { margin-left: auto; }
   .tab-btn--menu { display: inline-flex; align-items: center; gap: 4px; padding-right: 12px; }
   .tab-btn--menu.is-open { color: var(--primary-color); }
   .tab-btn-menu-icon { --mdc-icon-size: 16px; }
   .tab-btn-menu-caret { --mdc-icon-size: 18px; margin-right: -2px; }
-  .tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+  .tab-btn.active { color: var(--primary-color); box-shadow: inset 0 -3px 0 var(--primary-color); }
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
   .tab-btn-label-short { display: none; }
   .tab-menu { position: relative; display: flex; }
@@ -73,6 +164,13 @@ export const cardStyles = css`
   .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); right: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
   .tab-menu-item { padding: 10px 14px; font-size: 13px; }
   .logs-panel { gap: 10px; }
+  .logs-console-wrap {
+    flex: 1;
+    min-height: 0;
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+  }
   .logs-header, .hub-hero { display: grid; }
   .logs-header { gap: 4px; }
   .logs-title-row { display: flex; align-items: center; gap: 10px; }
@@ -198,7 +296,7 @@ export const cardStyles = css`
   .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 82%, #08131c), color-mix(in srgb, var(--primary-color) 58%, #14324b)); color: white; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); flex-shrink: 0; }
   .setting-description { font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); }
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
-  .cache-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: -16px; }
+  .cache-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
   .accordion-section:first-child { border-top: none; }
   .accordion-section.open { flex: 1; }
@@ -236,6 +334,14 @@ export const cardStyles = css`
   .id-badge span:first-child { color: var(--secondary-text-color); opacity: 0.75; }
   .id-badge span:last-child { color: var(--primary-text-color); text-align: right; }
   .entity-count { font-size: 10px; color: var(--secondary-text-color); flex-shrink: 0; white-space: nowrap; }
+  .cache-panel-header {
+    margin-top: 6px;
+    margin-bottom: 8px;
+  }
+  .cache-panel-body,
+  .secondary-tab-panel--connected .cache-panel-body {
+    padding-top: 0;
+  }
   .entity-chevron { font-size: 8px; color: var(--secondary-text-color); transition: transform 150ms; flex-shrink: 0; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
@@ -312,11 +418,17 @@ export const cardStyles = css`
     .hub-ident-name { font-size: 15px; }
     .hub-compact-stats { display: none; }
     .entity-chevron { display: none; }
+    .entity-count { display: none; }
     .card-topbar { padding: 4px 8px; gap: 6px; }
+    .card-bottom-dock { padding: 5px 8px; }
+    .card-bottom-dock-center { font-size: 10px; }
     .hub-picker-btn { max-width: min(100vw - 32px, 320px); }
     .chip-name { max-width: 220px; }
     .card-header-status { gap: 4px; }
-    .dock-pill { min-height: 20px; padding: 0 6px; font-size: 9px; }
     .card-brand { font-size: 9px; letter-spacing: 0.1em; }
+    .cache-panel-header {
+      margin-top: 5px;
+      margin-bottom: 6px;
+    }
   }
-`;
+`];

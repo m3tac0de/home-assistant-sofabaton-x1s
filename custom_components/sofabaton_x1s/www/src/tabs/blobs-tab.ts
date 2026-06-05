@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
+import { renderSecondaryTabContent, renderSecondaryTabShell, secondaryTabStyles, type SecondaryTabItem } from "../components/secondary-tab";
 import type {
   BlobFetchResponse,
   BlobPersistResponse,
@@ -17,6 +18,12 @@ import {
   type BlobDeviceOption,
 } from "./blobs-state";
 
+const BLOBS_SECTION_ITEMS: SecondaryTabItem<BlobsSectionId>[] = [
+  { id: "fetch", icon: "mdi:cloud-download-outline", label: "Fetch" },
+  { id: "test", icon: "mdi:flash-outline", label: "Test" },
+  { id: "save", icon: "mdi:content-save-outline", label: "Save" },
+];
+
 class SofabatonBlobsTab extends LitElement {
   static properties = {
     hass: { attribute: false },
@@ -29,6 +36,8 @@ class SofabatonBlobsTab extends LitElement {
     loading: { type: Boolean },
     error: { type: String },
     persistentCacheEnabled: { type: Boolean },
+    blockedTitle: { type: String },
+    blockedMessage: { type: String },
     _selectedDeviceId: { state: true },
     _selectedCommandId: { state: true },
     _fetchLoading: { state: true },
@@ -46,15 +55,15 @@ class SofabatonBlobsTab extends LitElement {
     _saveSuccess: { state: true },
     _saveResult: { state: true },
     _loadedEntryId: { state: true },
-    openSection: { attribute: false },
-    toggleOpenSection: { attribute: false },
+    selectedSection: { attribute: false },
+    setSelectedSection: { attribute: false },
     _testFlash: { state: true },
     _saveFlash: { state: true },
     _copyFlashKey: { state: true },
     _resultViewMode: { state: true },
   };
 
-  static styles = css`
+  static styles = [secondaryTabStyles, css`
     :host { display: flex; flex: 1; min-height: 0; }
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
@@ -93,19 +102,6 @@ class SofabatonBlobsTab extends LitElement {
       container-type: inline-size;
       container-name: blob-panel;
     }
-    .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
-    .accordion-section:first-child { border-top: none; }
-    .accordion-section.open { flex: 1; }
-    .acc-header { flex-shrink: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 16px; cursor: pointer; user-select: none; transition: background-color 120ms ease; }
-    .acc-header-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
-    .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-    .accordion-section.open .acc-header-icon { color: var(--primary-color); }
-    .acc-header:hover { background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color))); }
-    .acc-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color); }
-    .flex-spacer { flex: 1; }
-    .chevron { font-size: 9px; color: var(--secondary-text-color); transition: transform 150ms; }
-    .accordion-section.open .chevron { transform: rotate(180deg); }
-    .acc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; display: grid; gap: 6px; align-content: start; }
     .blob-section-content { display: flex; flex-direction: column; gap: 14px; padding-top: 0; min-width: 0; }
     .blob-section-subtitle {
       display: flex;
@@ -491,7 +487,7 @@ class SofabatonBlobsTab extends LitElement {
         grid-template-columns: 1fr;
       }
     }
-  `;
+  `];
 
   hass: HassLike | null = null;
   hub: ControlPanelHubState | null = null;
@@ -503,6 +499,8 @@ class SofabatonBlobsTab extends LitElement {
   loading = false;
   error: string | null = null;
   persistentCacheEnabled = false;
+  blockedTitle: string | null = null;
+  blockedMessage: string | null = null;
 
   private _selectedDeviceId: number | null = null;
   private _selectedCommandId: number | null = null;
@@ -521,8 +519,8 @@ class SofabatonBlobsTab extends LitElement {
   private _saveSuccess = "";
   private _saveResult: BlobPersistResponse | null = null;
   private _loadedEntryId = "";
-  openSection: BlobsSectionId | null = "fetch";
-  toggleOpenSection: (section: BlobsSectionId) => void = () => {};
+  selectedSection: BlobsSectionId | null = "fetch";
+  setSelectedSection: (section: BlobsSectionId) => void = () => {};
   private _testFlash = false;
   private _saveFlash = false;
   private _copyFlashKey: string | null = null;
@@ -712,29 +710,37 @@ class SofabatonBlobsTab extends LitElement {
     if (this.loading) return html`<div class="state">Loading…</div>`;
     if (this.error) return html`<div class="state error">${this.error}</div>`;
     if (!this.hub) return html`<div class="state">No hubs found.</div>`;
-    if (proxyClientConnected(this.hass, this.hub)) {
+    if (this.blockedTitle && this.blockedMessage) {
       return html`
         <div class="tab-panel">
           <div class="blocked-state">
-            <div class="blocked-state-title">Blobs unavailable</div>
-            <div class="blocked-state-sub">Blobs cannot be used while the Sofabaton app is connected to the hub through the proxy.</div>
+            <div class="blocked-state-title">${this.blockedTitle}</div>
+            <div class="blocked-state-sub">${this.blockedMessage}</div>
           </div>
         </div>
       `;
     }
 
+    const selectedSection = this.selectedSection ?? "fetch";
     return html`
       <div class="tab-panel">
-        <div class="blob-panel">
-          ${this._renderFetchSection(this.openSection === "fetch")}
-          ${this._renderTestSection(this.openSection === "test")}
-          ${this._renderSaveSection(this.openSection === "save")}
-        </div>
+        ${renderSecondaryTabShell({
+          items: BLOBS_SECTION_ITEMS,
+          selectedId: selectedSection,
+          onSelect: (section) => this.setSelectedSection(section),
+          connected: true,
+          shellClassName: "blob-panel secondary-view-shell--edge",
+          content: selectedSection === "fetch"
+            ? this._renderFetchSectionContent()
+            : selectedSection === "test"
+              ? this._renderTestSectionContent()
+              : this._renderSaveSectionContent(),
+        })}
       </div>
     `;
   }
 
-  private _renderFetchSection(isOpen: boolean) {
+  private _renderFetchSectionContent() {
     const deviceOptions = this._deviceOptions();
     const commandOptions = this._commandOptions();
     const fetchBlocked = blobFetchBlockedReason({
@@ -745,16 +751,10 @@ class SofabatonBlobsTab extends LitElement {
     const disabled = this._busy() || !this.persistentCacheEnabled;
 
     return html`
-      <div class="accordion-section${isOpen ? " open" : ""}" id="acc-fetch">
-        <div class="acc-header" @click=${() => this.toggleOpenSection("fetch")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:cloud-download-outline"></ha-icon></span>
-          <span class="acc-title">Fetch From Hub</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? html`
-        <div class="acc-body" id="acc-body-fetch">
-          <div class="blob-section-content">
+      ${renderSecondaryTabContent({
+        connected: true,
+        content: html`
+        <div class="blob-section-content">
           ${this._fetchSubtitle()}
           ${fetchBlocked === "cache_disabled"
             ? this._renderStatus(
@@ -792,10 +792,9 @@ class SofabatonBlobsTab extends LitElement {
             ? this._renderStatus("error", "mdi:alert-circle-outline", this._fetchError)
             : nothing}
           ${this._fetchResponse ? this._renderFetchResults() : nothing}
-          </div>
         </div>
-        ` : nothing}
-      </div>
+        `,
+      })}
     `;
   }
 
@@ -874,22 +873,16 @@ class SofabatonBlobsTab extends LitElement {
     `;
   }
 
-  private _renderTestSection(isOpen: boolean) {
+  private _renderTestSectionContent() {
     const proxyConnected = proxyClientConnected(this.hass, this.hub);
     const busy = this._busy();
     const canSubmit = !busy && !proxyConnected && String(this._testBlobInput || "").trim() !== "";
 
     return html`
-      <div class="accordion-section${isOpen ? " open" : ""}" id="acc-test">
-        <div class="acc-header" @click=${() => this.toggleOpenSection("test")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:flash-outline"></ha-icon></span>
-          <span class="acc-title">Test A Blob</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? html`
-        <div class="acc-body" id="acc-body-test">
-          <div class="blob-section-content">
+      ${renderSecondaryTabContent({
+        connected: true,
+        content: html`
+        <div class="blob-section-content">
           ${this._testSubtitle()}
           ${this._renderBlobTextarea({
             value: this._testBlobInput,
@@ -905,7 +898,7 @@ class SofabatonBlobsTab extends LitElement {
           <div class="action-row">
             ${this._renderActionButton({
               label: "Test",
-              busyLabel: "Testing…",
+              busyLabel: "Testing...",
               idleIcon: "mdi:flash-outline",
               state: this._buttonState({
                 busy: this._testLoading,
@@ -919,14 +912,13 @@ class SofabatonBlobsTab extends LitElement {
           ${this._testError
             ? this._renderStatus("error", "mdi:alert-circle-outline", this._testError)
             : nothing}
-          </div>
         </div>
-        ` : nothing}
-      </div>
+        `,
+      })}
     `;
   }
 
-  private _renderSaveSection(isOpen: boolean) {
+  private _renderSaveSectionContent() {
     const proxyConnected = proxyClientConnected(this.hass, this.hub);
     const busy = this._busy();
     const parsedDeviceId = Number.parseInt(String(this._saveDeviceIdInput || "").trim(), 10);
@@ -942,16 +934,10 @@ class SofabatonBlobsTab extends LitElement {
       && String(this._saveBlobInput || "").trim() !== "";
 
     return html`
-      <div class="accordion-section${isOpen ? " open" : ""}" id="acc-save">
-        <div class="acc-header" @click=${() => this.toggleOpenSection("save")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:content-save-outline"></ha-icon></span>
-          <span class="acc-title">Save To Hub</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? html`
-        <div class="acc-body" id="acc-body-save">
-          <div class="blob-section-content">
+      ${renderSecondaryTabContent({
+        connected: true,
+        content: html`
+        <div class="blob-section-content">
           ${this._saveSubtitle()}
           ${irDeviceOptions.length === 0 && !proxyConnected
             ? this._renderStatus(
@@ -995,7 +981,7 @@ class SofabatonBlobsTab extends LitElement {
           <div class="action-row">
             ${this._renderActionButton({
               label: "Save",
-              busyLabel: "Saving…",
+              busyLabel: "Saving...",
               idleIcon: "mdi:content-save-outline",
               state: this._buttonState({
                 busy: this._saveLoading,
@@ -1017,25 +1003,13 @@ class SofabatonBlobsTab extends LitElement {
           ${this._saveError
             ? this._renderStatus("error", "mdi:alert-circle-outline", this._saveError)
             : nothing}
-          </div>
+          ${this._saveResult ? this._renderSaveResult() : nothing}
         </div>
-        ` : nothing}
-      </div>
+        `,
+      })}
     `;
   }
 
-/**
-   * Command-name input that matches the Wifi Commands tab character allow-list
-   * and length cap exactly:
-   *   - X1S/X2: Unicode letters/numbers/marks + ` +&.'()_-`
-   *   - X1:    `[A-Za-z0-9 ]`
-   *   - Max 20 chars
-   * Pattern follows wifi-commands-tab._sanitizeCommandName via shared logic.
-   *
-   * The @input handler only rewrites the live DOM value (no state update) to
-   * avoid a state-driven re-render every keystroke (which would reset cursor
-   * position). State commits on @change.
-   */
   private _renderCommandNameInput(busy: boolean, proxyConnected: boolean) {
     const onInputLive = (event: Event) => {
       const input = event.currentTarget as HTMLElement & { value: string };

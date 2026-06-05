@@ -1,4 +1,5 @@
 import { LitElement, css, html, nothing } from "lit";
+import { renderSecondaryTabContent, renderSecondaryTabShell, secondaryTabStyles, type SecondaryTabItem } from "../components/secondary-tab";
 import type {
   BackupBundlePayload,
   BackupProgressEvent,
@@ -24,6 +25,12 @@ import {
 
 type BackupScope = "whole_hub" | "individual_devices";
 
+const BACKUP_SECTION_ITEMS: SecondaryTabItem<BackupSectionId>[] = [
+  { id: "make", icon: "mdi:content-save-move-outline", label: "Make" },
+  { id: "edit", icon: "mdi:pencil-box-outline", label: "Edit" },
+  { id: "restore", icon: "mdi:database-import-outline", label: "Restore" },
+];
+
 class SofabatonBackupTab extends LitElement {
   static properties = {
     hass: { attribute: false },
@@ -37,8 +44,10 @@ class SofabatonBackupTab extends LitElement {
     error: { type: String },
     persistentCacheEnabled: { type: Boolean },
     selectedHubProxyConnected: { type: Boolean },
-    openSection: { attribute: false },
-    setOpenSection: { attribute: false },
+    blockedTitle: { type: String },
+    blockedMessage: { type: String },
+    selectedSection: { attribute: false },
+    setSelectedSection: { attribute: false },
     _backupScope: { state: true },
     _backupDeviceIds: { state: true },
     _backupError: { state: true },
@@ -59,7 +68,7 @@ class SofabatonBackupTab extends LitElement {
     _editingKey: { state: true },
   };
 
-  static styles = css`
+  static styles = [secondaryTabStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -108,44 +117,12 @@ class SofabatonBackupTab extends LitElement {
       min-height: 0;
       display: flex;
       flex-direction: column;
-      margin: -16px;
     }
-    .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
-    .accordion-section:first-child { border-top: none; }
-    .accordion-section.open { flex: 1; }
-    .acc-header {
-      flex-shrink: 0;
-      height: 44px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 0 16px;
-      cursor: pointer;
-      user-select: none;
-      transition: background-color 120ms ease;
-    }
-    .acc-header:hover { background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color))); }
-    .acc-header-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
-    .accordion-section.open .acc-header-icon { color: var(--primary-color); }
-    .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-    .acc-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color); }
-    .flex-spacer { flex: 1; }
-    .chevron { font-size: 9px; color: var(--secondary-text-color); transition: transform 150ms; }
-    .accordion-section.open .chevron { transform: rotate(180deg); }
-    .acc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px; display: grid; gap: 12px; align-content: start; }
     .backup-body {
-      padding-top: 0;
-      display: flex;
-      flex-direction: column;
       gap: 12px;
-      align-content: normal;
     }
     .restore-body {
-      padding-top: 0;
-      display: flex;
-      flex-direction: column;
       gap: 12px;
-      align-content: normal;
     }
 
     .header-primary-btn {
@@ -686,7 +663,7 @@ class SofabatonBackupTab extends LitElement {
       .progress-disc .progress-hub-svg { width: 50px; height: 50px; }
       .progress-route { flex-basis: 52px; min-width: 52px; }
     }
-  `;
+  `];
 
   hass: HassLike | null = null;
   hub: ControlPanelHubState | null = null;
@@ -699,8 +676,10 @@ class SofabatonBackupTab extends LitElement {
   error: string | null = null;
   persistentCacheEnabled = false;
   selectedHubProxyConnected = false;
-  openSection: BackupSectionId = "make";
-  setOpenSection: (section: BackupSectionId) => void = () => {};
+  blockedTitle: string | null = null;
+  blockedMessage: string | null = null;
+  selectedSection: BackupSectionId = "make";
+  setSelectedSection: (section: BackupSectionId) => void = () => {};
 
   private _backupScope: BackupScope = "whole_hub";
   private _backupDeviceIds: number[] = [];
@@ -746,12 +725,12 @@ class SofabatonBackupTab extends LitElement {
     if (!this.hub || !this.hass) {
       return html`<div class="tab-panel"><div class="state">Select a hub to manage backups.</div></div>`;
     }
-    if (this.selectedHubProxyConnected) {
+    if (this.blockedTitle && this.blockedMessage) {
       return html`
         <div class="tab-panel">
           <div class="blocked-state">
-            <div class="blocked-state-title">Backup unavailable</div>
-            <div class="blocked-state-sub">Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.</div>
+            <div class="blocked-state-title">${this.blockedTitle}</div>
+            <div class="blocked-state-sub">${this.blockedMessage}</div>
           </div>
         </div>
       `;
@@ -759,17 +738,24 @@ class SofabatonBackupTab extends LitElement {
 
     return html`
       <div class="tab-panel">
-        <div class="backup-panel">
-          ${this._renderBackupSection()}
-          ${this._renderEditSection()}
-          ${this._renderRestoreSection()}
-        </div>
+        ${renderSecondaryTabShell({
+          items: BACKUP_SECTION_ITEMS,
+          selectedId: this.selectedSection,
+          onSelect: (section) => this.setSelectedSection(section),
+          connected: true,
+          shellClassName: "backup-panel secondary-view-shell--edge",
+          content:
+            this.selectedSection === "make"
+              ? this._renderBackupSectionContent()
+              : this.selectedSection === "edit"
+                ? this._renderEditSectionContent()
+                : this._renderRestoreSectionContent(),
+        })}
       </div>
     `;
   }
 
-  private _renderBackupSection() {
-    const isOpen = this.openSection === "make";
+  private _renderBackupSectionContent() {
     const devices = backupDeviceOptions(this.cacheHub);
     const wholeHub = this._backupScope === "whole_hub";
     const selectedDeviceIds = wholeHub ? devices.map((device) => device.id) : this._backupDeviceIds;
@@ -779,15 +765,10 @@ class SofabatonBackupTab extends LitElement {
     const summary = this._backupResultSummary(this._backupProgress?.backup);
 
     return html`
-      <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this.setOpenSection("make")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:content-save-move-outline"></ha-icon></span>
-          <span class="acc-title">Make A Backup</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? html`
-          <div class="acc-body backup-body">
+      ${renderSecondaryTabContent({
+        connected: true,
+        contentClassName: "backup-body",
+        content: html`
             <div class="backup-drawer-sub">
               ${isRunning
                 ? "The hub is creating your backup."
@@ -914,121 +895,21 @@ class SofabatonBackupTab extends LitElement {
                   </div>
                   </div>
                 `}
-          </div>
-        ` : nothing}
-      </div>
+        `,
+      })}
     `;
   }
 
-  private _renderRestoreSectionLegacy() {
-    const isOpen = this.openSection === "restore";
-    const isRunning = this._isProgressRunning(this._restoreProgress);
-    const activityOptions = bundleActivityOptions(this._restoreBundle);
-    const deviceOptions = bundleDeviceOptions(this._restoreBundle);
-    const restoreSelection = reconcileRestoreSelection({
-      bundle: this._restoreBundle,
-      selectedActivityIds: this._restoreActivityIds,
-      manualSelectedDeviceIds: this._restoreManualDeviceIds,
-    });
-
-    return html`
-      <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this.setOpenSection("restore")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:database-import-outline"></ha-icon></span>
-          <span class="acc-title">Restore A Backup</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? html`
-          <div class="acc-body restore-body">
-            <div class="backup-drawer-sub">
-              Load a backup file, then choose exactly what to restore. Activities automatically pull in the Devices they depend on.
-            </div>
-            ${this._restoreError ? this._renderStatus("error", "mdi:alert-circle-outline", this._restoreError) : nothing}
-            ${this._restoreSuccess ? this._renderStatus("success", "mdi:check-circle-outline", this._restoreSuccess) : nothing}
-            ${isRunning && this._restoreProgress ? this._renderProgressCard(this._restoreProgress, "restore") : nothing}
-            <input id="restore-file-input" type="file" accept=".json,application/json" @change=${this._handleFilePicked} />
-            <div class="action-row" style="justify-content:flex-start;">
-              <button class="secondary-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>Choose backup file</button>
-              ${this._restoreFilename ? html`<span class="file-chip"><ha-icon icon="mdi:file-document-outline"></ha-icon>${this._restoreFilename}</span>` : nothing}
-            </div>
-            ${this._restoreBundle ? html`
-              <div class="mode-tabs">
-                <button class="mode-tab ${this._restoreMode === "replace" ? "active" : ""}" ?disabled=${this._restoreLocked()} @click=${() => this._restoreMode = "replace"}>Replace</button>
-                <button class="mode-tab ${this._restoreMode === "merge" ? "active" : ""}" ?disabled=${this._restoreLocked()} @click=${() => this._restoreMode = "merge"}>Merge</button>
-              </div>
-              ${this._renderStatus(
-                "warning",
-                this._restoreMode === "replace" ? "mdi:alert-outline" : "mdi:plus-circle-outline",
-                this._restoreMode === "replace"
-                  ? "Replace erases the destination hub first, then restores the selected content."
-                  : "Merge keeps the current hub content and adds the selected backup content as new items.",
-              )}
-              <div class="selection-card">
-                <div class="selection-list">
-                  ${activityOptions.length ? activityOptions.map((activity) => html`
-                    <div class="selection-row">
-                      ${this._renderCheckboxControl({
-                        checked: this._restoreActivityIds.includes(activity.id),
-                        disabled: this._restoreLocked(),
-                        onChange: (checked) => this._setRestoreActivity(activity.id, checked),
-                        stopClick: false,
-                      })}
-                      <span class="selection-main">
-                        <span class="selection-label">${activity.label}</span>
-                        ${activity.meta ? html`<span class="selection-sub">${activity.meta}</span>` : nothing}
-                      </span>
-                    </div>
-                  `) : html`<div class="selection-empty">This backup file has no activities.</div>`}
-                </div>
-              </div>
-              <div class="selection-card">
-                <div class="selection-list">
-                  ${deviceOptions.length ? deviceOptions.map((device) => {
-                    const forced = restoreSelection.forcedDeviceIds.includes(device.id);
-                    return html`
-                      <div class="selection-row ${forced ? "locked" : ""}">
-                        ${this._renderCheckboxControl({
-                          checked: restoreSelection.selectedDeviceIds.includes(device.id),
-                          disabled: forced || this._restoreLocked(),
-                          onChange: (checked) => this._setRestoreDevice(device.id, checked),
-                          stopClick: false,
-                        })}
-                        <span class="selection-main">
-                          <span class="selection-label">${device.label}</span>
-                          ${device.meta ? html`<span class="selection-sub">${forced ? `${device.meta} · required by selected activities` : device.meta}</span>` : nothing}
-                        </span>
-                      </div>
-                    `;
-                  }) : html`<div class="selection-empty">This backup file has no devices.</div>`}
-                </div>
-              </div>
-              <div class="action-row" style="justify-content:flex-start;">
-                <button class="primary-btn" ?disabled=${this._restoreActionDisabled(restoreSelection.selectedDeviceIds)} @click=${this._runRestore}>Start restore</button>
-              </div>
-            ` : nothing}
-          </div>
-        ` : nothing}
-      </div>
-    `;
-  }
-
-  private _renderEditSection() {
-    const isOpen = this.openSection === "edit";
+  private _renderEditSectionContent() {
     const bundle = this._editBundle;
     const activityOptions = bundleActivityOptions(bundle);
     const deviceOptions = bundleDeviceOptions(bundle);
     const hubName = String(bundle?.hub?.name || "").trim();
     return html`
-      <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this.setOpenSection("edit")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:pencil-box-outline"></ha-icon></span>
-          <span class="acc-title">Edit A Backup</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? html`
-          <div class="acc-body edit-body">
+      ${renderSecondaryTabContent({
+        connected: true,
+        contentClassName: "edit-body",
+        content: html`
             <div class="backup-drawer-sub">
               ${bundle
                 ? "Rename the hub, activities, and devices in this backup. Edits stay in your browser until you download the modified file."
@@ -1085,9 +966,8 @@ class SofabatonBackupTab extends LitElement {
                 <button class="secondary-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
               </div>
             `}
-          </div>
-        ` : nothing}
-      </div>
+        `,
+      })}
     `;
   }
 
@@ -1248,8 +1128,7 @@ class SofabatonBackupTab extends LitElement {
     setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
-  private _renderRestoreSection() {
-    const isOpen = this.openSection === "restore";
+  private _renderRestoreSectionContent() {
     const isRunning = this._isProgressRunning(this._restoreProgress);
     const isSuccess = String(this._restoreProgress?.status || "") === "success";
     const activityOptions = bundleActivityOptions(this._restoreBundle);
@@ -1264,15 +1143,10 @@ class SofabatonBackupTab extends LitElement {
     const allRestoreSelected = totalRestoreOptions > 0 && totalRestoreSelected === totalRestoreOptions;
 
     return html`
-      <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this.setOpenSection("restore")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:database-import-outline"></ha-icon></span>
-          <span class="acc-title">Restore A Backup</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? html`
-          <div class="acc-body restore-body">
+      ${renderSecondaryTabContent({
+        connected: true,
+        contentClassName: "restore-body",
+        content: html`
             <div class="backup-drawer-sub">
               ${isRunning
                 ? "The hub is restoring your backup."
@@ -1392,9 +1266,8 @@ class SofabatonBackupTab extends LitElement {
                 <button class="secondary-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
               </div>
             ` : nothing}
-          </div>
-        ` : nothing}
-      </div>
+        `,
+      })}
     `;
   }
 
@@ -1611,6 +1484,7 @@ class SofabatonBackupTab extends LitElement {
     this.setHubCommandBusy?.(true, "Starting backup…");
     try {
       const start = await this.api().startBackupExport(this.hub.entry_id, deviceIds);
+      await this.refreshControlPanelState?.();
       await this._subscribeToOperation(start.operation_id, "backup");
     } catch (error) {
       this._backupError = formatError(error);
@@ -1636,6 +1510,7 @@ class SofabatonBackupTab extends LitElement {
     this.setHubCommandBusy?.(true, "Starting restore…");
     try {
       const start = await this.api().startBackupRestore(this.hub.entry_id, filtered, this._restoreMode);
+      await this.refreshControlPanelState?.();
       await this._subscribeToOperation(start.operation_id, "restore");
     } catch (error) {
       this._restoreError = formatError(error);
@@ -1845,3 +1720,4 @@ class SofabatonBackupTab extends LitElement {
 if (!customElements.get("sofabaton-backup-tab")) {
   customElements.define("sofabaton-backup-tab", SofabatonBackupTab);
 }
+

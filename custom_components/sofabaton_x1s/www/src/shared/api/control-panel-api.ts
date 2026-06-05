@@ -109,6 +109,13 @@ export class ControlPanelApi {
     });
   }
 
+  getWifiCommandDevices(entityId: string) {
+    return this.hass.callWS<{ devices?: Array<Record<string, unknown>>; max_devices?: number }>({
+      type: "sofabaton_x1s/command_devices/list",
+      entity_id: entityId,
+    });
+  }
+
   clearBackupResult(operationId: string) {
     return this.hass.callWS<{ ok: boolean }>({
       type: "sofabaton_x1s/backup/clear_result",

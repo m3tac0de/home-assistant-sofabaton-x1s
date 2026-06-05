@@ -1,4 +1,5 @@
 import { html } from "lit";
+import { renderSecondaryTabShell, renderSecondaryViewBody } from "./secondary-tab";
 import type { ControlPanelLogLine } from "../shared/ha-context";
 import { formatLogEntry } from "../shared/utils/control-panel-selectors";
 
@@ -22,13 +23,17 @@ export function renderLogConsole(params: {
             });
   return html`
     <div class="tab-panel logs-panel">
-      <div class="logs-header">
-        <div class="logs-title-row">
-          <span class="acc-header-icon"><ha-icon icon="mdi:console-line"></ha-icon></span>
-          <div class="acc-title">Live Console</div>
-        </div>
-      </div>
-      <div class="logs-console" id="logs-console">${body}</div>
+      ${renderSecondaryTabShell({
+        items: [{ id: "logs", label: "Live Console", icon: "mdi:console-line", passive: true }],
+        selectedId: "logs",
+        connected: true,
+        shellClassName: "secondary-view-shell--edge",
+        content: renderSecondaryViewBody({
+          connected: true,
+          className: "logs-console-wrap",
+          content: html`<div class="logs-console" id="logs-console">${body}</div>`,
+        }),
+      })}
     </div>
   `;
 }

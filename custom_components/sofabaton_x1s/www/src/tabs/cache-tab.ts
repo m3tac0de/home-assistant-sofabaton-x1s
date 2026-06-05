@@ -1,4 +1,5 @@
 import { html } from "lit";
+import { renderSecondaryPanel, renderSecondaryTabShell } from "../components/secondary-tab";
 import type { CacheHubState, SectionId } from "../shared/ha-context";
 import {
   activityButtons,
@@ -10,8 +11,6 @@ import {
   hubActivities,
   hubDevices,
 } from "../shared/utils/control-panel-selectors";
-import { renderAccordionSection } from "../components/accordion-section";
-
 function badge(type: string, value: string | number) {
   return html`<span class="id-badge"><span>${type}:</span><span>${String(value)}</span></span>`;
 }
@@ -25,13 +24,13 @@ export function renderCacheTab(params: {
   refreshBusy: boolean;
   hubCommandBusy: boolean;
   activeRefreshLabel: string | null;
-  openSection: SectionId | null;
+  selectedSection: SectionId;
   openEntity: string | null;
   selectedHubProxyConnected: boolean;
   enablingPersistentCache: boolean;
   onEnablePersistentCache: () => void;
   onRefreshStale: () => void;
-  onToggleSection: (sectionId: SectionId) => void;
+  onSelectSection: (sectionId: SectionId) => void;
   onToggleEntity: (key: string) => void;
   onRefreshSection: (sectionId: SectionId) => void;
   onRefreshEntry: (kind: "activity" | "device", targetId: number, key: string) => void;
@@ -69,10 +68,12 @@ export function renderCacheTab(params: {
     return html`
       <div class="entity-block${isOpen ? " open" : ""}" id=${`entity-${key}`}>
         <div class="entity-summary" @click=${() => params.onToggleEntity(key)}>
-          <span class="entity-name">${activity.name || `Activity ${id}`}</span>
+          <span class="entity-name">
+            <span class="entity-name-label">${activity.name || `Activity ${id}`}</span>
+          </span>
           <span class="entity-meta">
             ${badge("DevID", id)}
-            <span class="entity-count">${favorites.length} favs · ${macros.length} macros · ${buttons.length} btns</span>
+            <span class="entity-count entity-count--activity">${favorites.length} favs / ${macros.length} macros / ${buttons.length} btns</span>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("activity", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
             <span class="entity-chevron">▼</span>
           </span>
@@ -121,14 +122,39 @@ export function renderCacheTab(params: {
 
   const activities = hubActivities(params.hub);
   const devices = hubDevices(params.hub);
+  const selectedSection: SectionId = params.selectedSection;
+  const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
+  const activeBody = selectedSection === "activities"
+    ? activities.map(renderActivity)
+    : devices.map(renderDevice);
 
   return html`
     <div class="tab-panel">
       ${params.staleData ? html`<div class="stale-banner"><span class="stale-banner-text">Cache was updated externally. Refresh to see latest data.</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>Refresh</button></div>` : null}
-      <div class="cache-panel">
-        ${renderAccordionSection({ sectionId: "activities", title: "Activities", icon: "mdi:play-circle-outline", count: activities.length, isOpen: params.openSection === "activities", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("activities"), onRefresh: () => params.onRefreshSection("activities"), body: activities.map(renderActivity) })}
-        ${renderAccordionSection({ sectionId: "devices", title: "Devices", icon: "mdi:audio-video", count: devices.length, isOpen: params.openSection === "devices", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("devices"), onRefresh: () => params.onRefreshSection("devices"), body: devices.map(renderDevice) })}
-      </div>
+      ${renderSecondaryTabShell({
+        connected: true,
+        shellClassName: "cache-panel secondary-view-shell--edge",
+        items: [
+          { id: "activities", label: "Activities", icon: "mdi:play-circle-outline", count: activities.length },
+          { id: "devices", label: "Devices", icon: "mdi:audio-video", count: devices.length },
+        ],
+        selectedId: selectedSection,
+        onSelect: params.onSelectSection,
+        content: renderSecondaryPanel({
+          connected: true,
+          header: html`
+          <div class="secondary-panel-header secondary-panel-header--plain cache-panel-header">
+            <span class="flex-spacer"></span>
+            <span class="refresh-list-label">Refresh list</span>
+            <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
+              <ha-icon icon="mdi:refresh"></ha-icon>
+            </button>
+          </div>
+          `,
+          bodyClassName: "cache-panel-body",
+          body: activeBody,
+        }),
+      })}
     </div>
   `;
 }

@@ -6,6 +6,7 @@ import type {
   HassLike,
   HubAction,
   RefreshKind,
+  RuntimeCompletionNotice,
   SectionId,
   SettingKey,
   TabId,
@@ -38,6 +39,9 @@ const VALID_BLOBS_SECTIONS = new Set<BlobsSectionId>(["fetch", "test", "save"]);
 interface PersistedViewState {
   selectedHubEntryId?: string | null;
   selectedTab?: TabId;
+  selectedCacheSection?: SectionId;
+  selectedBackupSection?: BackupSectionId;
+  selectedBlobsSection?: BlobsSectionId;
   openSection?: SectionId | null;
   openBackupSection?: BackupSectionId;
   openBlobsSection?: BlobsSectionId | null;
@@ -64,25 +68,27 @@ function readPersistedViewState(): PersistedViewState {
     const parsed = JSON.parse(storage.getItem(VIEW_STATE_STORAGE_KEY) || "{}") as PersistedViewState;
     const selectedHubEntryId = String(parsed?.selectedHubEntryId ?? "").trim() || null;
     const selectedTab = VALID_TABS.has(parsed?.selectedTab as TabId) ? parsed.selectedTab : undefined;
-    const openSection = VALID_CACHE_SECTIONS.has(parsed?.openSection as SectionId)
-      ? (parsed.openSection as SectionId)
-      : parsed?.openSection === null
-        ? null
-        : undefined;
-    const openBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection as BackupSectionId)
-      ? (parsed.openBackupSection as BackupSectionId)
-      : undefined;
-    const openBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection as BlobsSectionId)
-      ? (parsed.openBlobsSection as BlobsSectionId)
-      : parsed?.openBlobsSection === null
-        ? null
-        : undefined;
+    const selectedCacheSection = VALID_CACHE_SECTIONS.has(parsed?.selectedCacheSection as SectionId)
+      ? (parsed.selectedCacheSection as SectionId)
+      : VALID_CACHE_SECTIONS.has(parsed?.openSection as SectionId)
+        ? (parsed.openSection as SectionId)
+        : "activities";
+    const selectedBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.selectedBackupSection as BackupSectionId)
+      ? (parsed.selectedBackupSection as BackupSectionId)
+      : VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection as BackupSectionId)
+        ? (parsed.openBackupSection as BackupSectionId)
+        : "make";
+    const selectedBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.selectedBlobsSection as BlobsSectionId)
+      ? (parsed.selectedBlobsSection as BlobsSectionId)
+      : VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection as BlobsSectionId)
+        ? (parsed.openBlobsSection as BlobsSectionId)
+        : "fetch";
     return {
       selectedHubEntryId,
       ...(selectedTab ? { selectedTab } : {}),
-      ...(openSection !== undefined ? { openSection } : {}),
-      ...(openBackupSection ? { openBackupSection } : {}),
-      ...(openBlobsSection !== undefined ? { openBlobsSection } : {}),
+      selectedCacheSection,
+      selectedBackupSection,
+      selectedBlobsSection,
     };
   } catch (_error) {
     return {};
@@ -111,15 +117,16 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   backendUnavailable: false,
   selectedHubEntryId: null,
   selectedTab: "cache",
-  openSection: "activities",
-  openBackupSection: "make",
-  openBlobsSection: "fetch",
+  selectedCacheSection: "activities",
+  selectedBackupSection: "make",
+  selectedBlobsSection: "fetch",
   openEntity: null,
   staleData: false,
   refreshBusy: false,
   activeRefreshLabel: null,
   externalHubCommandBusy: false,
   externalHubCommandLabel: null,
+  runtimeCompletionNotice: null,
   pendingSettingKey: null,
   pendingActionKey: null,
   logsLines: [],
@@ -153,6 +160,8 @@ export class ControlPanelStore {
   private _backupOpUnsub: (() => void) | null = null;
   private _backupOpEntryId: string | null = null;
   private _backupOpId: string | null = null;
+  private _runtimeStatePollTimer: ReturnType<typeof setTimeout> | null = null;
+  private _runtimeCompletionTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly _loadedFrontendVersion: string;
 
   constructor(
@@ -179,6 +188,7 @@ export class ControlPanelStore {
       this._scheduleBackendRetry();
     }
     void this._syncBackupOperationFeed();
+    this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
     }
@@ -190,7 +200,10 @@ export class ControlPanelStore {
       ...this._snapshot,
       externalHubCommandBusy: false,
       externalHubCommandLabel: null,
+      runtimeCompletionNotice: null,
     };
+    this._clearRuntimeStatePoll();
+    this._clearRuntimeCompletionTimer();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this.unsubscribeLogs();
@@ -202,6 +215,61 @@ export class ControlPanelStore {
       this._backendRetryTimer = null;
     }
     this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
+  }
+
+  private _clearRuntimeCompletionTimer() {
+    if (this._runtimeCompletionTimer) {
+      clearTimeout(this._runtimeCompletionTimer);
+      this._runtimeCompletionTimer = null;
+    }
+  }
+
+  private _clearRuntimeStatePoll() {
+    if (this._runtimeStatePollTimer) {
+      clearTimeout(this._runtimeStatePollTimer);
+      this._runtimeStatePollTimer = null;
+    }
+  }
+
+  private _scheduleRuntimeStatePoll() {
+    this._clearRuntimeStatePoll();
+    if (!this._isConnected) return;
+    const hub = selectedHub(this._snapshot);
+    if (hub?.runtime_state?.kind !== "operation_running") return;
+    this._runtimeStatePollTimer = setTimeout(() => {
+      this._runtimeStatePollTimer = null;
+      void this._refreshRuntimeState();
+    }, 1000);
+  }
+
+  private async _refreshRuntimeState() {
+    if (!this._isConnected) return;
+    const previousHub = selectedHub(this._snapshot);
+    const previousRuntime = previousHub?.runtime_state;
+    try {
+      await this.loadControlPanelState();
+      const nextHub = selectedHub(this._snapshot);
+      const nextRuntime = nextHub?.runtime_state;
+      if (
+        previousRuntime?.kind === "operation_running"
+        && nextRuntime?.kind !== "operation_running"
+      ) {
+        const operation = previousRuntime.operation;
+        const successLabel = operation === "backup_restore"
+          ? "Restore completed successfully."
+          : operation === "backup_export"
+            ? "Backup completed successfully."
+            : "Wifi Device deployed successfully.";
+        this.showRuntimeCompletion({
+          tone: "success",
+          label: successLabel,
+        });
+      }
+    } catch {
+      this._scheduleRuntimeStatePoll();
+      return;
+    }
+    this._scheduleRuntimeStatePoll();
   }
 
   private _scheduleBackendRetry() {
@@ -294,7 +362,9 @@ export class ControlPanelStore {
       logsScrollBehavior: "auto",
       externalHubCommandBusy: false,
       externalHubCommandLabel: null,
+      runtimeCompletionNotice: null,
     };
+    this._clearRuntimeCompletionTimer();
     this.persistViewState();
     this.emit();
     void (async () => {
@@ -319,27 +389,27 @@ export class ControlPanelStore {
     this.emit();
   }
 
-  toggleSection(sectionId: SectionId) {
+  selectCacheSection(sectionId: SectionId) {
+    if (this._snapshot.selectedCacheSection === sectionId && this._snapshot.openEntity === null) return;
     this._snapshot = {
       ...this._snapshot,
-      openSection: this._snapshot.openSection === sectionId ? null : sectionId,
+      selectedCacheSection: sectionId,
       openEntity: null,
     };
     this.persistViewState();
     this.emit();
   }
 
-  setBackupSection(sectionId: BackupSectionId) {
-    if (this._snapshot.openBackupSection === sectionId) return;
-    this._snapshot = { ...this._snapshot, openBackupSection: sectionId };
+  setSelectedBackupSection(sectionId: BackupSectionId) {
+    if (this._snapshot.selectedBackupSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, selectedBackupSection: sectionId };
     this.persistViewState();
     this.emit();
   }
 
-  toggleBlobsSection(sectionId: BlobsSectionId) {
-    const next = this._snapshot.openBlobsSection === sectionId ? null : sectionId;
-    if (this._snapshot.openBlobsSection === next) return;
-    this._snapshot = { ...this._snapshot, openBlobsSection: next };
+  setSelectedBlobsSection(sectionId: BlobsSectionId) {
+    if (this._snapshot.selectedBlobsSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, selectedBlobsSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -366,6 +436,25 @@ export class ControlPanelStore {
       externalHubCommandLabel: busy ? String(label || "").trim() || "Hub command in progress…" : null,
     };
     this.emit();
+  }
+
+  showRuntimeCompletion(notice: RuntimeCompletionNotice | null, ttlMs = 4000) {
+    this._clearRuntimeCompletionTimer();
+    this._snapshot = {
+      ...this._snapshot,
+      runtimeCompletionNotice: notice,
+    };
+    this.emit();
+    if (!notice) return;
+    this._runtimeCompletionTimer = setTimeout(() => {
+      this._runtimeCompletionTimer = null;
+      if (!this._snapshot.runtimeCompletionNotice) return;
+      this._snapshot = {
+        ...this._snapshot,
+        runtimeCompletionNotice: null,
+      };
+      this.emit();
+    }, ttlMs);
   }
 
   async loadState(options: { silent?: boolean } = {}) {
@@ -662,6 +751,7 @@ export class ControlPanelStore {
       toolsFrontendVersionMismatch:
         expectedVersion !== null && expectedVersion !== this._loadedFrontendVersion,
     };
+    this._scheduleRuntimeStatePoll();
   }
 
   private applyOptimisticSetting(setting: SettingKey, enabled: boolean) {
@@ -731,9 +821,9 @@ export class ControlPanelStore {
         JSON.stringify({
           selectedHubEntryId: this._snapshot.selectedHubEntryId,
           selectedTab: this._snapshot.selectedTab,
-          openSection: this._snapshot.openSection,
-          openBackupSection: this._snapshot.openBackupSection,
-          openBlobsSection: this._snapshot.openBlobsSection,
+          selectedCacheSection: this._snapshot.selectedCacheSection,
+          selectedBackupSection: this._snapshot.selectedBackupSection,
+          selectedBlobsSection: this._snapshot.selectedBlobsSection,
         } satisfies PersistedViewState),
       );
     } catch (_error) {

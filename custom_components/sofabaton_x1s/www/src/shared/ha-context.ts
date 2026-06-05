@@ -57,12 +57,24 @@ export interface ControlPanelHubState {
     Array<{ command_id: number; name?: string; label?: string }>
   >;
   active_backup_operation?: BackupProgressEvent | null;
+  runtime_state?: ControlPanelRuntimeState | null;
 }
 
 export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
   tools_frontend_version: string;
   hubs: ControlPanelHubState[];
+}
+
+export interface ControlPanelRuntimeState {
+  kind: "idle" | "app_connected" | "operation_running";
+  operation?: "wifi_deploy" | "backup_export" | "backup_restore" | null;
+  label?: string | null;
+  detail?: string | null;
+  current_step?: number | null;
+  total_steps?: number | null;
+  device_key?: string | null;
+  device_name?: string | null;
 }
 
 export interface CacheHubState {
@@ -236,6 +248,11 @@ export interface BackupOperationStateResponse {
   active_operation?: BackupProgressEvent | null;
 }
 
+export interface RuntimeCompletionNotice {
+  tone: "success" | "error";
+  label: string;
+}
+
 export interface ControlPanelSnapshot {
   hass: HassLike | null;
   state: ControlPanelStateResponse | null;
@@ -248,15 +265,16 @@ export interface ControlPanelSnapshot {
   backendUnavailable: boolean;
   selectedHubEntryId: string | null;
   selectedTab: TabId;
-  openSection: SectionId | null;
-  openBackupSection: BackupSectionId;
-  openBlobsSection: BlobsSectionId | null;
+  selectedCacheSection: SectionId;
+  selectedBackupSection: BackupSectionId;
+  selectedBlobsSection: BlobsSectionId;
   openEntity: string | null;
   staleData: boolean;
   refreshBusy: boolean;
   activeRefreshLabel: string | null;
   externalHubCommandBusy: boolean;
   externalHubCommandLabel: string | null;
+  runtimeCompletionNotice: RuntimeCompletionNotice | null;
   pendingSettingKey: SettingKey | null;
   pendingActionKey: HubAction | null;
   logsLines: ControlPanelLogLine[];

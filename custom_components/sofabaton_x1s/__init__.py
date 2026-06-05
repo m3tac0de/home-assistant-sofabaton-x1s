@@ -651,7 +651,74 @@ async def _async_wifi_listener_needed(hass: HomeAssistant, entry_id: str) -> boo
     return any(wifi_device_requires_listener(device) for device in devices)
 
 
-def _build_control_panel_hub_payload(
+async def _async_build_control_panel_runtime_payload(
+    hass: HomeAssistant,
+    hub: SofabatonHub,
+) -> dict[str, Any]:
+    registry = _backup_operation_registry(hass)
+    active_backup_operation = registry.running_for_entry(hub.entry_id)
+    if active_backup_operation:
+        kind = str(active_backup_operation.get("kind") or "").strip().lower()
+        operation = "backup_restore" if kind == "backup_restore" else "backup_export"
+        return {
+            "kind": "operation_running",
+            "operation": operation,
+            "label": "Restoring backup" if operation == "backup_restore" else "Creating backup",
+            "detail": str(
+                active_backup_operation.get("message")
+                or active_backup_operation.get("phase")
+                or "Working..."
+            ),
+            "current_step": active_backup_operation.get("completed_steps"),
+            "total_steps": active_backup_operation.get("total_steps"),
+            "device_key": None,
+            "device_name": None,
+        }
+
+    if bool(getattr(hub, "client_connected", False)):
+        return {
+            "kind": "app_connected",
+            "operation": None,
+            "label": "Only Logs is available while the Sofabaton app is connected.",
+            "detail": None,
+            "current_step": None,
+            "total_steps": None,
+            "device_key": None,
+            "device_name": None,
+        }
+
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    devices = await store.async_list_hub_devices(hub.entry_id, roku_listen_port=roku_listen_port)
+    for device in devices:
+        device_key = str(device.get("device_key") or "")
+        sync_payload = _build_wifi_device_sync_payload(hub, device, device_key=device_key)
+        if str(sync_payload.get("status") or "").strip().lower() != "running":
+            continue
+        return {
+            "kind": "operation_running",
+            "operation": "wifi_deploy",
+            "label": "Deploying Wifi commands",
+            "detail": str(sync_payload.get("message") or "Sync in progress"),
+            "current_step": sync_payload.get("current_step"),
+            "total_steps": sync_payload.get("total_steps"),
+            "device_key": device_key or None,
+            "device_name": str(device.get("device_name") or "").strip() or None,
+        }
+
+    return {
+        "kind": "idle",
+        "operation": None,
+        "label": None,
+        "detail": None,
+        "current_step": None,
+        "total_steps": None,
+        "device_key": None,
+        "device_name": None,
+    }
+
+
+async def _async_build_control_panel_hub_payload(
     hass: HomeAssistant,
     hub: SofabatonHub,
     *,
@@ -667,6 +734,7 @@ def _build_control_panel_hub_payload(
     activities = getattr(hub, "activities", {}) or {}
     devices = getattr(hub, "devices", {}) or {}
     active_backup_operation = registry.running_for_entry(hub.entry_id)
+    runtime_state = await _async_build_control_panel_runtime_payload(hass, hub)
     return {
         "entry_id": hub.entry_id,
         "name": hub.name,
@@ -688,6 +756,7 @@ def _build_control_panel_hub_payload(
             "can_sync_remote": can_run_hub_actions,
         },
         "active_backup_operation": active_backup_operation,
+        "runtime_state": runtime_state,
     }
 
 
@@ -976,17 +1045,20 @@ async def _ws_get_control_panel_state(
 ) -> None:
     store = await _async_get_persistent_cache_store(hass)
     tools_frontend_version = await _async_get_integration_version(hass)
-    payload = {
-        "persistent_cache_enabled": store.enabled,
-        "tools_frontend_version": tools_frontend_version,
-        "hubs": [
-            _build_control_panel_hub_payload(
+    hubs = await asyncio.gather(
+        *[
+            _async_build_control_panel_hub_payload(
                 hass,
                 hub,
                 persistent_cache_enabled=store.enabled,
             )
             for hub in _get_hubs(hass.data.get(DOMAIN, {}))
-        ],
+        ]
+    )
+    payload = {
+        "persistent_cache_enabled": store.enabled,
+        "tools_frontend_version": tools_frontend_version,
+        "hubs": hubs,
     }
     connection.send_result(msg["id"], payload)
 

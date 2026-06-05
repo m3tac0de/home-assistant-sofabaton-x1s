@@ -550,8 +550,322 @@ var o4 = s3.litElementPolyfillSupport;
 o4?.({ LitElement: i4 });
 (s3.litElementVersions ?? (s3.litElementVersions = [])).push("4.2.2");
 
+// custom_components/sofabaton_x1s/www/src/components/secondary-tab.ts
+var secondaryTabStyles = i`
+  .secondary-view-shell {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+  }
+  .secondary-view-shell--edge {
+    margin: -16px;
+  }
+  .secondary-view-shell--connected {
+    --secondary-connected-inline: 16px;
+    --secondary-connected-bottom: 16px;
+    --secondary-connected-radius: calc(var(--ha-card-border-radius, 12px) * 1.8);
+  }
+  .secondary-view-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .secondary-view-body--scroll {
+    overflow-y: auto;
+  }
+  .secondary-view-body--padded {
+    padding: 12px 16px 16px;
+  }
+  .secondary-tab-row {
+    flex-shrink: 0;
+    display: flex;
+    align-items: stretch;
+    min-height: 36px;
+    margin: 8px 0 0;
+    border: 1px solid color-mix(in srgb, var(--divider-color) 88%, transparent);
+    border-radius: calc(var(--ha-card-border-radius, 12px) + 2px);
+    overflow: hidden;
+    background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 82%, transparent);
+  }
+  .secondary-tab-row--flush {
+    margin-inline: 16px;
+  }
+  .secondary-view-shell--connected .secondary-tab-row {
+    margin-top: 10px;
+    margin-inline: var(--secondary-connected-inline);
+    border-color: color-mix(in srgb, var(--divider-color) 84%, transparent);
+    border-radius: var(--secondary-connected-radius) var(--secondary-connected-radius) 0 0;
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 96%, transparent),
+        color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 68%, transparent)
+      );
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  }
+  .secondary-tab-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 16px;
+    border: none;
+    border-right: 1px solid color-mix(in srgb, var(--divider-color) 86%, transparent);
+    background: transparent;
+    color: color-mix(in srgb, var(--secondary-text-color) 88%, var(--primary-text-color) 12%);
+    font: inherit;
+    cursor: pointer;
+  }
+  .secondary-tab-btn:last-child {
+    border-right: none;
+  }
+  .secondary-tab-btn.active {
+    color: var(--primary-color);
+    background: transparent;
+    box-shadow: inset 0 -2px 0 var(--primary-color);
+  }
+  .secondary-view-shell--connected .secondary-tab-btn.active {
+    box-shadow: inset 0 -3px 0 var(--primary-color);
+  }
+  .secondary-tab-btn--static {
+    cursor: default;
+  }
+  .secondary-tab-btn-icon,
+  .secondary-panel-title-icon {
+    display: inline-flex;
+    color: inherit;
+  }
+  .secondary-tab-btn-icon ha-icon,
+  .secondary-panel-title-icon ha-icon {
+    --mdc-icon-size: 18px;
+  }
+  .secondary-tab-btn-label {
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .secondary-tab-btn-count {
+    flex: 0 0 auto;
+    padding: 0 5px;
+    border: 1px solid var(--divider-color);
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.2;
+    color: inherit;
+    background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, transparent);
+  }
+  .secondary-tab-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .secondary-tab-panel--connected,
+  .secondary-view-body--connected {
+    margin: 0 var(--secondary-connected-inline) var(--secondary-connected-bottom);
+    border-left: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent);
+    border-radius: 0 0 var(--secondary-connected-radius) var(--secondary-connected-radius);
+    background:
+      radial-gradient(circle at top center, color-mix(in srgb, var(--primary-color) 5%, transparent), transparent 48%),
+      color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 98%, transparent);
+    overflow: hidden;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03);
+  }
+  .secondary-tab-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .secondary-tab-panel--connected .secondary-tab-content {
+    padding-top: 18px;
+  }
+  .secondary-panel-header {
+    flex-shrink: 0;
+    min-height: 38px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    border-bottom: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent);
+    background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, transparent);
+  }
+  .secondary-panel-header--plain {
+    min-height: 34px;
+    justify-content: flex-end;
+    border-bottom: none;
+    background: transparent;
+  }
+  .secondary-panel-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--secondary-text-color);
+  }
+  .secondary-panel-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 16px;
+    display: grid;
+    gap: 6px;
+    align-content: start;
+  }
+  .secondary-tab-panel--connected .secondary-panel-body {
+    padding-top: 16px;
+  }
+  @media (max-width: 640px) {
+    .secondary-tab-row {
+      min-height: 34px;
+      margin-top: 7px;
+    }
+    .secondary-tab-row--flush {
+      margin-inline: 12px;
+    }
+    .secondary-view-shell--connected {
+      --secondary-connected-inline: 12px;
+      --secondary-connected-bottom: 12px;
+    }
+    .secondary-tab-btn {
+      min-height: 34px;
+      gap: 5px;
+      padding: 0 12px;
+    }
+    .secondary-tab-btn-label {
+      font-size: 12px;
+      letter-spacing: 0.04em;
+    }
+    .secondary-tab-btn-count {
+      padding: 1px 5px;
+      font-size: 9px;
+    }
+    .secondary-panel-header {
+      gap: 8px;
+      padding: 0 12px;
+    }
+  }
+`;
+function normalizeClassName(className) {
+  return String(className || "").trim().replace(/\s+/g, " ");
+}
+function renderSecondaryTabRow(params) {
+  const rowClassName = normalizeClassName(
+    `secondary-tab-row${params.flush === false ? "" : " secondary-tab-row--flush"} ${params.className || ""}`
+  );
+  return b2`
+    <div class=${rowClassName}>
+      ${params.items.map((item) => {
+    const isActive = item.id === params.selectedId;
+    const isPassive = item.passive || !params.onSelect;
+    const buttonClassName = normalizeClassName(
+      `secondary-tab-btn${isActive ? " active" : ""}${isPassive ? " secondary-tab-btn--static" : ""}`
+    );
+    if (isPassive) {
+      return b2`
+            <div class=${buttonClassName}>
+              <span class="secondary-tab-btn-icon"><ha-icon icon=${item.icon}></ha-icon></span>
+              <span class="secondary-tab-btn-label">${item.label}</span>
+              ${typeof item.count === "number" ? b2`<span class="secondary-tab-btn-count">${item.count}</span>` : A}
+            </div>
+          `;
+    }
+    return b2`
+          <button
+            class=${buttonClassName}
+            type="button"
+            ?disabled=${item.disabled}
+            @click=${() => {
+      if (!item.disabled && item.id !== params.selectedId) params.onSelect?.(item.id);
+    }}
+          >
+            <span class="secondary-tab-btn-icon"><ha-icon icon=${item.icon}></ha-icon></span>
+            <span class="secondary-tab-btn-label">${item.label}</span>
+            ${typeof item.count === "number" ? b2`<span class="secondary-tab-btn-count">${item.count}</span>` : A}
+          </button>
+        `;
+  })}
+    </div>
+  `;
+}
+function renderSecondaryTabShell(params) {
+  const shellClassName = normalizeClassName(
+    `secondary-view-shell${params.connected ? " secondary-view-shell--connected" : ""} ${params.shellClassName || ""}`
+  );
+  return b2`
+    <div class=${shellClassName}>
+      ${renderSecondaryTabRow({
+    items: params.items,
+    selectedId: params.selectedId,
+    onSelect: params.onSelect,
+    flush: params.flush,
+    className: params.rowClassName
+  })}
+      ${params.content}
+    </div>
+  `;
+}
+function renderSecondaryTabContent(params) {
+  const panelClassName = normalizeClassName(
+    `secondary-tab-panel${params.connected ? " secondary-tab-panel--connected" : ""} ${params.panelClassName || ""}`
+  );
+  const contentClassName = normalizeClassName(`secondary-tab-content ${params.contentClassName || ""}`);
+  return b2`
+    <div class=${panelClassName}>
+      <div class=${contentClassName}>
+        ${params.content}
+      </div>
+    </div>
+  `;
+}
+function renderSecondaryPanel(params) {
+  const panelClassName = normalizeClassName(
+    `secondary-tab-panel${params.connected ? " secondary-tab-panel--connected" : ""} ${params.panelClassName || ""}`
+  );
+  const bodyClassName = normalizeClassName(`secondary-panel-body ${params.bodyClassName || ""}`);
+  return b2`
+    <div class=${panelClassName}>
+      ${params.header}
+      <div class=${bodyClassName}>
+        ${params.body}
+      </div>
+    </div>
+  `;
+}
+function renderSecondaryViewBody(params) {
+  const viewClassName = normalizeClassName(
+    `secondary-view-body${params.connected ? " secondary-view-body--connected" : ""}${params.scroll === false ? "" : " secondary-view-body--scroll"}${params.padded === false ? "" : " secondary-view-body--padded"} ${params.className || ""}`
+  );
+  return b2`
+    <div class=${viewClassName}>
+      ${params.content}
+    </div>
+  `;
+}
+
 // custom_components/sofabaton_x1s/www/src/shared/styles/card-styles.ts
-var cardStyles = i`
+var cardStyles = [secondaryTabStyles, i`
   :host { display: block; }
   *, *::before, *::after { box-sizing: border-box; }
   .card-inner { height: var(--tools-card-height, 600px); display: flex; flex-direction: column; overflow: hidden; border-radius: var(--ha-card-border-radius, 12px); }
@@ -593,6 +907,96 @@ var cardStyles = i`
   }
   .card-title { font-size: 16px; font-weight: 700; }
   .card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .card-bottom-dock {
+    position: relative;
+    flex-shrink: 0;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 12px;
+    border-top: 1px solid color-mix(in srgb, var(--divider-color) 82%, transparent);
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--primary-color) 8%, var(--ha-card-background, var(--card-background-color))),
+        color-mix(in srgb, var(--primary-color) 4%, var(--ha-card-background, var(--card-background-color)))
+      );
+  }
+  .card-bottom-dock--success {
+    border-top-color: color-mix(in srgb, var(--success-color, #22c55e) 45%, var(--divider-color));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--success-color, #22c55e) 11%, var(--ha-card-background, var(--card-background-color))),
+        color-mix(in srgb, var(--success-color, #22c55e) 6%, var(--ha-card-background, var(--card-background-color)))
+      );
+  }
+  .card-bottom-dock--error {
+    border-top-color: color-mix(in srgb, var(--error-color, #db4437) 45%, var(--divider-color));
+    background:
+      linear-gradient(
+        180deg,
+        color-mix(in srgb, var(--error-color, #db4437) 11%, var(--ha-card-background, var(--card-background-color))),
+        color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)))
+      );
+  }
+  .card-bottom-dock-center {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    color: var(--secondary-text-color);
+    overflow: hidden;
+  }
+  .card-bottom-dock-center > span,
+  .card-bottom-dock-center > a {
+    min-width: 0;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-bottom-dock-status {
+    color: color-mix(in srgb, var(--secondary-text-color) 88%, transparent);
+  }
+  .card-bottom-dock--success .card-bottom-dock-status {
+    color: color-mix(in srgb, var(--success-color, #22c55e) 88%, black 10%);
+  }
+  .card-bottom-dock--error .card-bottom-dock-status {
+    color: color-mix(in srgb, var(--error-color, #db4437) 88%, black 10%);
+  }
+  .card-bottom-dock-link {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .card-bottom-dock-link:hover {
+    text-decoration: underline;
+  }
+  .card-bottom-dock-empty {
+    display: block;
+    width: 100%;
+    min-height: 1px;
+  }
+  .card-bottom-dock-progress-line {
+    position: absolute;
+    top: -1px;
+    left: 0;
+    height: 2px;
+    background: var(--primary-color);
+    transition: width 180ms ease;
+  }
+  .card-bottom-dock-progress-line[data-indeterminate="true"] {
+    width: 35% !important;
+    animation: dockProgressIndeterminate 1.2s ease-in-out infinite;
+  }
+  @keyframes dockProgressIndeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(320%); }
+  }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
   .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
   .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-start; }
@@ -610,13 +1014,13 @@ var cardStyles = i`
   .hub-option.selected, .tab-menu-item.active { font-weight: 700; color: var(--primary-color); }
   .tabs { flex-shrink: 0; display: flex; align-items: stretch; gap: 2px; padding: 0 16px; border-bottom: 1px solid var(--divider-color); }
   .tabs-scroll { display: flex; gap: 2px; flex: 1 1 auto; min-width: 0; }
-  .tab-btn { position: relative; border: none; border-bottom: 3px solid transparent; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px 11px; cursor: pointer; user-select: none; -webkit-user-select: none; }
+  .tab-btn { position: relative; border: none; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 700; padding: 12px 16px; cursor: pointer; user-select: none; -webkit-user-select: none; }
   .tab-btn--push-right { margin-left: auto; }
   .tab-btn--menu { display: inline-flex; align-items: center; gap: 4px; padding-right: 12px; }
   .tab-btn--menu.is-open { color: var(--primary-color); }
   .tab-btn-menu-icon { --mdc-icon-size: 16px; }
   .tab-btn-menu-caret { --mdc-icon-size: 18px; margin-right: -2px; }
-  .tab-btn.active { color: var(--primary-color); border-bottom-color: var(--primary-color); }
+  .tab-btn.active { color: var(--primary-color); box-shadow: inset 0 -3px 0 var(--primary-color); }
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
   .tab-btn-label-short { display: none; }
   .tab-menu { position: relative; display: flex; }
@@ -624,6 +1028,13 @@ var cardStyles = i`
   .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); right: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
   .tab-menu-item { padding: 10px 14px; font-size: 13px; }
   .logs-panel { gap: 10px; }
+  .logs-console-wrap {
+    flex: 1;
+    min-height: 0;
+    padding: 12px 16px 16px;
+    display: flex;
+    flex-direction: column;
+  }
   .logs-header, .hub-hero { display: grid; }
   .logs-header { gap: 4px; }
   .logs-title-row { display: flex; align-items: center; gap: 10px; }
@@ -749,7 +1160,7 @@ var cardStyles = i`
   .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 82%, #08131c), color-mix(in srgb, var(--primary-color) 58%, #14324b)); color: white; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); flex-shrink: 0; }
   .setting-description { font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); }
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
-  .cache-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: -16px; }
+  .cache-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
   .accordion-section:first-child { border-top: none; }
   .accordion-section.open { flex: 1; }
@@ -787,6 +1198,14 @@ var cardStyles = i`
   .id-badge span:first-child { color: var(--secondary-text-color); opacity: 0.75; }
   .id-badge span:last-child { color: var(--primary-text-color); text-align: right; }
   .entity-count { font-size: 10px; color: var(--secondary-text-color); flex-shrink: 0; white-space: nowrap; }
+  .cache-panel-header {
+    margin-top: 6px;
+    margin-bottom: 8px;
+  }
+  .cache-panel-body,
+  .secondary-tab-panel--connected .cache-panel-body {
+    padding-top: 0;
+  }
   .entity-chevron { font-size: 8px; color: var(--secondary-text-color); transition: transform 150ms; flex-shrink: 0; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
@@ -863,14 +1282,20 @@ var cardStyles = i`
     .hub-ident-name { font-size: 15px; }
     .hub-compact-stats { display: none; }
     .entity-chevron { display: none; }
+    .entity-count { display: none; }
     .card-topbar { padding: 4px 8px; gap: 6px; }
+    .card-bottom-dock { padding: 5px 8px; }
+    .card-bottom-dock-center { font-size: 10px; }
     .hub-picker-btn { max-width: min(100vw - 32px, 320px); }
     .chip-name { max-width: 220px; }
     .card-header-status { gap: 4px; }
-    .dock-pill { min-height: 20px; padding: 0 6px; font-size: 9px; }
     .card-brand { font-size: 9px; letter-spacing: 0.1em; }
+    .cache-panel-header {
+      margin-top: 5px;
+      margin-bottom: 6px;
+    }
   }
-`;
+`];
 
 // custom_components/sofabaton_x1s/www/src/shared/api/control-panel-api.ts
 var ControlPanelApi = class {
@@ -954,6 +1379,12 @@ var ControlPanelApi = class {
     return this.hass.callWS({
       type: "sofabaton_x1s/backup/state",
       entry_id: entryId
+    });
+  }
+  getWifiCommandDevices(entityId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/command_devices/list",
+      entity_id: entityId
     });
   }
   clearBackupResult(operationId) {
@@ -1177,6 +1608,91 @@ function hubConnected(hass, hub) {
 function canRunHubActions(hass, hub) {
   return remoteAvailableForHub(hass, hub);
 }
+function resolveCardGateState(snapshot) {
+  if (snapshot.toolsFrontendVersionMismatch) return { kind: "version_mismatch" };
+  if (snapshot.backendUnavailable) return { kind: "backend_unavailable" };
+  const hub = selectedHub(snapshot);
+  if (hub && !hubConnected(snapshot.hass, hub)) return { kind: "hub_unavailable" };
+  return { kind: "pass" };
+}
+function resolveRuntimeState(snapshot) {
+  const hub = selectedHub(snapshot);
+  if (snapshot.runtimeCompletionNotice) {
+    return {
+      kind: "completion",
+      tone: snapshot.runtimeCompletionNotice.tone,
+      label: snapshot.runtimeCompletionNotice.label,
+      detail: null
+    };
+  }
+  const hubRuntime = hub?.runtime_state;
+  if (hubRuntime?.kind === "operation_running") {
+    const total = Number(hubRuntime.total_steps || 0);
+    const current = Number(hubRuntime.current_step || 0);
+    const percent = total > 0 ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
+    return {
+      kind: "operation_running",
+      operation: hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : "wifi_deploy",
+      label: String(hubRuntime.label || "Operation running"),
+      detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
+      progress: {
+        current: Number.isFinite(current) ? current : null,
+        total: Number.isFinite(total) && total > 0 ? total : null,
+        percent,
+        indeterminate: !total || total <= 0
+      }
+    };
+  }
+  if (hubRuntime?.kind === "app_connected") {
+    return {
+      kind: "app_connected",
+      label: String(hubRuntime.label || "Only Logs is available while the Sofabaton app is connected."),
+      detail: String(hubRuntime.detail || "")
+    };
+  }
+  if (hub && proxyClientConnected(snapshot.hass, hub)) {
+    return {
+      kind: "app_connected",
+      label: "Only Logs is available while the Sofabaton app is connected.",
+      detail: null
+    };
+  }
+  if (snapshot.externalHubCommandBusy) {
+    return {
+      kind: "notice",
+      label: String(snapshot.externalHubCommandLabel || "Hub command in progress..."),
+      detail: null
+    };
+  }
+  if (snapshot.refreshBusy) {
+    return {
+      kind: "notice",
+      label: "Refreshing cache...",
+      detail: null
+    };
+  }
+  return null;
+}
+function resolveTabAvailability(snapshot, tabId) {
+  const gateState = resolveCardGateState(snapshot);
+  if (gateState.kind !== "pass") {
+    return {
+      kind: "blocked",
+      title: gateState.kind === "hub_unavailable" ? "Hub unavailable" : "Unavailable",
+      message: gateState.kind === "version_mismatch" ? "Refresh the dashboard to load the updated Sofabaton Control Panel card." : gateState.kind === "backend_unavailable" ? "Waiting for the Sofabaton X1S integration to finish starting." : "This hub is not connected, so the control panel is unavailable until the hub reconnects."
+    };
+  }
+  if (tabId === "logs" || tabId === "settings" || tabId === "cache") {
+    return { kind: "available" };
+  }
+  const hub = selectedHub(snapshot);
+  if (hub && proxyClientConnected(snapshot.hass, hub)) {
+    const title = tabId === "wifi_commands" ? "Wifi Commands unavailable" : tabId === "backup" ? "Backup unavailable" : "Blobs unavailable";
+    const message = tabId === "wifi_commands" ? "Wifi Commands cannot be used while the Sofabaton app is connected to the hub through the proxy." : tabId === "backup" ? "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy." : "Blobs cannot be used while the Sofabaton app is connected to the hub through the proxy.";
+    return { kind: "blocked", title, message };
+  }
+  return { kind: "available" };
+}
 function cacheGenerationSnapshot(hass) {
   const snapshot = {};
   for (const id of remoteEntities(hass)) {
@@ -1248,15 +1764,15 @@ function readPersistedViewState() {
     const parsed = JSON.parse(storage.getItem(VIEW_STATE_STORAGE_KEY) || "{}");
     const selectedHubEntryId = String(parsed?.selectedHubEntryId ?? "").trim() || null;
     const selectedTab = VALID_TABS.has(parsed?.selectedTab) ? parsed.selectedTab : void 0;
-    const openSection = VALID_CACHE_SECTIONS.has(parsed?.openSection) ? parsed.openSection : parsed?.openSection === null ? null : void 0;
-    const openBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection) ? parsed.openBackupSection : void 0;
-    const openBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection) ? parsed.openBlobsSection : parsed?.openBlobsSection === null ? null : void 0;
+    const selectedCacheSection = VALID_CACHE_SECTIONS.has(parsed?.selectedCacheSection) ? parsed.selectedCacheSection : VALID_CACHE_SECTIONS.has(parsed?.openSection) ? parsed.openSection : "activities";
+    const selectedBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.selectedBackupSection) ? parsed.selectedBackupSection : VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection) ? parsed.openBackupSection : "make";
+    const selectedBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.selectedBlobsSection) ? parsed.selectedBlobsSection : VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection) ? parsed.openBlobsSection : "fetch";
     return {
       selectedHubEntryId,
       ...selectedTab ? { selectedTab } : {},
-      ...openSection !== void 0 ? { openSection } : {},
-      ...openBackupSection ? { openBackupSection } : {},
-      ...openBlobsSection !== void 0 ? { openBlobsSection } : {}
+      selectedCacheSection,
+      selectedBackupSection,
+      selectedBlobsSection
     };
   } catch (_error) {
     return {};
@@ -1282,15 +1798,16 @@ var INITIAL_SNAPSHOT = {
   backendUnavailable: false,
   selectedHubEntryId: null,
   selectedTab: "cache",
-  openSection: "activities",
-  openBackupSection: "make",
-  openBlobsSection: "fetch",
+  selectedCacheSection: "activities",
+  selectedBackupSection: "make",
+  selectedBlobsSection: "fetch",
   openEntity: null,
   staleData: false,
   refreshBusy: false,
   activeRefreshLabel: null,
   externalHubCommandBusy: false,
   externalHubCommandLabel: null,
+  runtimeCompletionNotice: null,
   pendingSettingKey: null,
   pendingActionKey: null,
   logsLines: [],
@@ -1321,6 +1838,8 @@ var ControlPanelStore = class {
     this._backupOpUnsub = null;
     this._backupOpEntryId = null;
     this._backupOpId = null;
+    this._runtimeStatePollTimer = null;
+    this._runtimeCompletionTimer = null;
     this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
     this._snapshot = {
       ...INITIAL_SNAPSHOT,
@@ -1339,6 +1858,7 @@ var ControlPanelStore = class {
       this._scheduleBackendRetry();
     }
     void this._syncBackupOperationFeed();
+    this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
     }
@@ -1348,8 +1868,11 @@ var ControlPanelStore = class {
     this._snapshot = {
       ...this._snapshot,
       externalHubCommandBusy: false,
-      externalHubCommandLabel: null
+      externalHubCommandLabel: null,
+      runtimeCompletionNotice: null
     };
+    this._clearRuntimeStatePoll();
+    this._clearRuntimeCompletionTimer();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this.unsubscribeLogs();
@@ -1360,6 +1883,50 @@ var ControlPanelStore = class {
       this._backendRetryTimer = null;
     }
     this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
+  }
+  _clearRuntimeCompletionTimer() {
+    if (this._runtimeCompletionTimer) {
+      clearTimeout(this._runtimeCompletionTimer);
+      this._runtimeCompletionTimer = null;
+    }
+  }
+  _clearRuntimeStatePoll() {
+    if (this._runtimeStatePollTimer) {
+      clearTimeout(this._runtimeStatePollTimer);
+      this._runtimeStatePollTimer = null;
+    }
+  }
+  _scheduleRuntimeStatePoll() {
+    this._clearRuntimeStatePoll();
+    if (!this._isConnected) return;
+    const hub = selectedHub(this._snapshot);
+    if (hub?.runtime_state?.kind !== "operation_running") return;
+    this._runtimeStatePollTimer = setTimeout(() => {
+      this._runtimeStatePollTimer = null;
+      void this._refreshRuntimeState();
+    }, 1e3);
+  }
+  async _refreshRuntimeState() {
+    if (!this._isConnected) return;
+    const previousHub = selectedHub(this._snapshot);
+    const previousRuntime = previousHub?.runtime_state;
+    try {
+      await this.loadControlPanelState();
+      const nextHub = selectedHub(this._snapshot);
+      const nextRuntime = nextHub?.runtime_state;
+      if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running") {
+        const operation = previousRuntime.operation;
+        const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : "Wifi Device deployed successfully.";
+        this.showRuntimeCompletion({
+          tone: "success",
+          label: successLabel
+        });
+      }
+    } catch {
+      this._scheduleRuntimeStatePoll();
+      return;
+    }
+    this._scheduleRuntimeStatePoll();
   }
   _scheduleBackendRetry() {
     if (!this._isConnected) return;
@@ -1429,8 +1996,10 @@ var ControlPanelStore = class {
       logsStickToBottom: true,
       logsScrollBehavior: "auto",
       externalHubCommandBusy: false,
-      externalHubCommandLabel: null
+      externalHubCommandLabel: null,
+      runtimeCompletionNotice: null
     };
+    this._clearRuntimeCompletionTimer();
     this.persistViewState();
     this.emit();
     void (async () => {
@@ -1453,25 +2022,25 @@ var ControlPanelStore = class {
     else void this.unsubscribeLogs();
     this.emit();
   }
-  toggleSection(sectionId) {
+  selectCacheSection(sectionId) {
+    if (this._snapshot.selectedCacheSection === sectionId && this._snapshot.openEntity === null) return;
     this._snapshot = {
       ...this._snapshot,
-      openSection: this._snapshot.openSection === sectionId ? null : sectionId,
+      selectedCacheSection: sectionId,
       openEntity: null
     };
     this.persistViewState();
     this.emit();
   }
-  setBackupSection(sectionId) {
-    if (this._snapshot.openBackupSection === sectionId) return;
-    this._snapshot = { ...this._snapshot, openBackupSection: sectionId };
+  setSelectedBackupSection(sectionId) {
+    if (this._snapshot.selectedBackupSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, selectedBackupSection: sectionId };
     this.persistViewState();
     this.emit();
   }
-  toggleBlobsSection(sectionId) {
-    const next = this._snapshot.openBlobsSection === sectionId ? null : sectionId;
-    if (this._snapshot.openBlobsSection === next) return;
-    this._snapshot = { ...this._snapshot, openBlobsSection: next };
+  setSelectedBlobsSection(sectionId) {
+    if (this._snapshot.selectedBlobsSection === sectionId) return;
+    this._snapshot = { ...this._snapshot, selectedBlobsSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -1495,6 +2064,24 @@ var ControlPanelStore = class {
       externalHubCommandLabel: busy ? String(label || "").trim() || "Hub command in progress\u2026" : null
     };
     this.emit();
+  }
+  showRuntimeCompletion(notice, ttlMs = 4e3) {
+    this._clearRuntimeCompletionTimer();
+    this._snapshot = {
+      ...this._snapshot,
+      runtimeCompletionNotice: notice
+    };
+    this.emit();
+    if (!notice) return;
+    this._runtimeCompletionTimer = setTimeout(() => {
+      this._runtimeCompletionTimer = null;
+      if (!this._snapshot.runtimeCompletionNotice) return;
+      this._snapshot = {
+        ...this._snapshot,
+        runtimeCompletionNotice: null
+      };
+      this.emit();
+    }, ttlMs);
   }
   async loadState(options = {}) {
     if (this._loadingStatePromise) return this._loadingStatePromise;
@@ -1771,6 +2358,7 @@ var ControlPanelStore = class {
       toolsFrontendVersionExpected: expectedVersion,
       toolsFrontendVersionMismatch: expectedVersion !== null && expectedVersion !== this._loadedFrontendVersion
     };
+    this._scheduleRuntimeStatePoll();
   }
   applyOptimisticSetting(setting, enabled) {
     if (!this._snapshot.state) return;
@@ -1832,9 +2420,9 @@ var ControlPanelStore = class {
         JSON.stringify({
           selectedHubEntryId: this._snapshot.selectedHubEntryId,
           selectedTab: this._snapshot.selectedTab,
-          openSection: this._snapshot.openSection,
-          openBackupSection: this._snapshot.openBackupSection,
-          openBlobsSection: this._snapshot.openBlobsSection
+          selectedCacheSection: this._snapshot.selectedCacheSection,
+          selectedBackupSection: this._snapshot.selectedBackupSection,
+          selectedBlobsSection: this._snapshot.selectedBlobsSection
         })
       );
     } catch (_error) {
@@ -2180,29 +2768,6 @@ function renderSettingsTab(params) {
   `;
 }
 
-// custom_components/sofabaton_x1s/www/src/components/accordion-section.ts
-function renderAccordionSection(params) {
-  return b2`
-    <div class="accordion-section${params.isOpen ? " open" : ""}" id=${`acc-${params.sectionId}`}>
-      <div class="acc-header" @click=${params.onToggle}>
-        ${params.icon ? b2`<span class="acc-header-icon"><ha-icon icon=${params.icon}></ha-icon></span>` : null}
-        <span class="acc-title">${params.title}</span>
-        <span class="badge">${params.count}</span>
-        <span class="flex-spacer"></span>
-        <span class="refresh-list-label">Refresh list</span>
-        <button class="icon-btn${params.spinning ? " spinning" : ""}" ?disabled=${params.disabled} @click=${(event) => {
-    event.stopPropagation();
-    params.onRefresh();
-  }}>
-          <ha-icon icon="mdi:refresh"></ha-icon>
-        </button>
-        <span class="chevron">▼</span>
-      </div>
-      ${params.isOpen ? b2`<div class="acc-body" id=${`acc-body-${params.sectionId}`}>${params.body}</div>` : null}
-    </div>
-  `;
-}
-
 // custom_components/sofabaton_x1s/www/src/tabs/cache-tab.ts
 function badge(type, value) {
   return b2`<span class="id-badge"><span>${type}:</span><span>${String(value)}</span></span>`;
@@ -2232,7 +2797,7 @@ function renderCacheTab(params) {
     const id = Number(activity.id);
     const key = `act-${id}`;
     const isOpen = params.openEntity === key;
-    const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
+    const locked2 = params.hubCommandBusy || params.selectedHubProxyConnected;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
     const favorites = activityFavorites(params.hub, id);
     const macros = activityMacros(params.hub, id);
@@ -2240,11 +2805,13 @@ function renderCacheTab(params) {
     return b2`
       <div class="entity-block${isOpen ? " open" : ""}" id=${`entity-${key}`}>
         <div class="entity-summary" @click=${() => params.onToggleEntity(key)}>
-          <span class="entity-name">${activity.name || `Activity ${id}`}</span>
+          <span class="entity-name">
+            <span class="entity-name-label">${activity.name || `Activity ${id}`}</span>
+          </span>
           <span class="entity-meta">
             ${badge("DevID", id)}
-            <span class="entity-count">${favorites.length} favs · ${macros.length} macros · ${buttons.length} btns</span>
-            <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event) => {
+            <span class="entity-count entity-count--activity">${favorites.length} favs / ${macros.length} macros / ${buttons.length} btns</span>
+            <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked2} @click=${(event) => {
       event.stopPropagation();
       params.onRefreshEntry("activity", id, key);
     }}><ha-icon icon="mdi:refresh"></ha-icon></button>
@@ -2264,7 +2831,7 @@ function renderCacheTab(params) {
     const id = Number(device.id);
     const key = `dev-${id}`;
     const isOpen = params.openEntity === key;
-    const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
+    const locked2 = params.hubCommandBusy || params.selectedHubProxyConnected;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
     const commands = deviceCommands(params.hub, id);
     const icon = deviceClassIcon(device.device_class);
@@ -2278,7 +2845,7 @@ function renderCacheTab(params) {
           <span class="entity-meta">
             ${badge("DevID", id)}
             <span class="entity-count">${Number(device.command_count || 0)} cmds</span>
-            <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event) => {
+            <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked2} @click=${(event) => {
       event.stopPropagation();
       params.onRefreshEntry("device", id, key);
     }}><ha-icon icon="mdi:refresh"></ha-icon></button>
@@ -2291,13 +2858,36 @@ function renderCacheTab(params) {
   };
   const activities = hubActivities(params.hub);
   const devices = hubDevices(params.hub);
+  const selectedSection = params.selectedSection;
+  const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
+  const activeBody = selectedSection === "activities" ? activities.map(renderActivity) : devices.map(renderDevice);
   return b2`
     <div class="tab-panel">
       ${params.staleData ? b2`<div class="stale-banner"><span class="stale-banner-text">Cache was updated externally. Refresh to see latest data.</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>Refresh</button></div>` : null}
-      <div class="cache-panel">
-        ${renderAccordionSection({ sectionId: "activities", title: "Activities", icon: "mdi:play-circle-outline", count: activities.length, isOpen: params.openSection === "activities", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("activities"), onRefresh: () => params.onRefreshSection("activities"), body: activities.map(renderActivity) })}
-        ${renderAccordionSection({ sectionId: "devices", title: "Devices", icon: "mdi:audio-video", count: devices.length, isOpen: params.openSection === "devices", disabled: params.hubCommandBusy || params.selectedHubProxyConnected, spinning: params.refreshBusy && !params.activeRefreshLabel, onToggle: () => params.onToggleSection("devices"), onRefresh: () => params.onRefreshSection("devices"), body: devices.map(renderDevice) })}
-      </div>
+      ${renderSecondaryTabShell({
+    connected: true,
+    shellClassName: "cache-panel secondary-view-shell--edge",
+    items: [
+      { id: "activities", label: "Activities", icon: "mdi:play-circle-outline", count: activities.length },
+      { id: "devices", label: "Devices", icon: "mdi:audio-video", count: devices.length }
+    ],
+    selectedId: selectedSection,
+    onSelect: params.onSelectSection,
+    content: renderSecondaryPanel({
+      connected: true,
+      header: b2`
+          <div class="secondary-panel-header secondary-panel-header--plain cache-panel-header">
+            <span class="flex-spacer"></span>
+            <span class="refresh-list-label">Refresh list</span>
+            <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
+              <ha-icon icon="mdi:refresh"></ha-icon>
+            </button>
+          </div>
+          `,
+      bodyClassName: "cache-panel-body",
+      body: activeBody
+    })
+  })}
     </div>
   `;
 }
@@ -2312,13 +2902,17 @@ function renderLogConsole(params) {
   });
   return b2`
     <div class="tab-panel logs-panel">
-      <div class="logs-header">
-        <div class="logs-title-row">
-          <span class="acc-header-icon"><ha-icon icon="mdi:console-line"></ha-icon></span>
-          <div class="acc-title">Live Console</div>
-        </div>
-      </div>
-      <div class="logs-console" id="logs-console">${body}</div>
+      ${renderSecondaryTabShell({
+    items: [{ id: "logs", label: "Live Console", icon: "mdi:console-line", passive: true }],
+    selectedId: "logs",
+    connected: true,
+    shellClassName: "secondary-view-shell--edge",
+    content: renderSecondaryViewBody({
+      connected: true,
+      className: "logs-console-wrap",
+      content: b2`<div class="logs-console" id="logs-console">${body}</div>`
+    })
+  })}
     </div>
   `;
 }
@@ -2356,6 +2950,11 @@ function blobFetchBlockedReason(params) {
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/blobs-tab.ts
+var BLOBS_SECTION_ITEMS = [
+  { id: "fetch", icon: "mdi:cloud-download-outline", label: "Fetch" },
+  { id: "test", icon: "mdi:flash-outline", label: "Test" },
+  { id: "save", icon: "mdi:content-save-outline", label: "Save" }
+];
 var SofabatonBlobsTab = class extends i4 {
   constructor() {
     super(...arguments);
@@ -2369,6 +2968,8 @@ var SofabatonBlobsTab = class extends i4 {
     this.loading = false;
     this.error = null;
     this.persistentCacheEnabled = false;
+    this.blockedTitle = null;
+    this.blockedMessage = null;
     this._selectedDeviceId = null;
     this._selectedCommandId = null;
     this._fetchLoading = false;
@@ -2386,8 +2987,8 @@ var SofabatonBlobsTab = class extends i4 {
     this._saveSuccess = "";
     this._saveResult = null;
     this._loadedEntryId = "";
-    this.openSection = "fetch";
-    this.toggleOpenSection = () => {
+    this.selectedSection = "fetch";
+    this.setSelectedSection = () => {
     };
     this._testFlash = false;
     this._saveFlash = false;
@@ -2615,27 +3216,31 @@ var SofabatonBlobsTab = class extends i4 {
     if (this.loading) return b2`<div class="state">Loading…</div>`;
     if (this.error) return b2`<div class="state error">${this.error}</div>`;
     if (!this.hub) return b2`<div class="state">No hubs found.</div>`;
-    if (proxyClientConnected(this.hass, this.hub)) {
+    if (this.blockedTitle && this.blockedMessage) {
       return b2`
         <div class="tab-panel">
           <div class="blocked-state">
-            <div class="blocked-state-title">Blobs unavailable</div>
-            <div class="blocked-state-sub">Blobs cannot be used while the Sofabaton app is connected to the hub through the proxy.</div>
+            <div class="blocked-state-title">${this.blockedTitle}</div>
+            <div class="blocked-state-sub">${this.blockedMessage}</div>
           </div>
         </div>
       `;
     }
+    const selectedSection = this.selectedSection ?? "fetch";
     return b2`
       <div class="tab-panel">
-        <div class="blob-panel">
-          ${this._renderFetchSection(this.openSection === "fetch")}
-          ${this._renderTestSection(this.openSection === "test")}
-          ${this._renderSaveSection(this.openSection === "save")}
-        </div>
+        ${renderSecondaryTabShell({
+      items: BLOBS_SECTION_ITEMS,
+      selectedId: selectedSection,
+      onSelect: (section) => this.setSelectedSection(section),
+      connected: true,
+      shellClassName: "blob-panel secondary-view-shell--edge",
+      content: selectedSection === "fetch" ? this._renderFetchSectionContent() : selectedSection === "test" ? this._renderTestSectionContent() : this._renderSaveSectionContent()
+    })}
       </div>
     `;
   }
-  _renderFetchSection(isOpen) {
+  _renderFetchSectionContent() {
     const deviceOptions = this._deviceOptions();
     const commandOptions = this._commandOptions();
     const fetchBlocked = blobFetchBlockedReason({
@@ -2645,22 +3250,16 @@ var SofabatonBlobsTab = class extends i4 {
     });
     const disabled = this._busy() || !this.persistentCacheEnabled;
     return b2`
-      <div class="accordion-section${isOpen ? " open" : ""}" id="acc-fetch">
-        <div class="acc-header" @click=${() => this.toggleOpenSection("fetch")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:cloud-download-outline"></ha-icon></span>
-          <span class="acc-title">Fetch From Hub</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? b2`
-        <div class="acc-body" id="acc-body-fetch">
-          <div class="blob-section-content">
+      ${renderSecondaryTabContent({
+      connected: true,
+      content: b2`
+        <div class="blob-section-content">
           ${this._fetchSubtitle()}
           ${fetchBlocked === "cache_disabled" ? this._renderStatus(
-      "warning",
-      "mdi:database-off-outline",
-      "Enable persistent cache in the Hub tab before using Fetch."
-    ) : A}
+        "warning",
+        "mdi:database-off-outline",
+        "Enable persistent cache in the Hub tab before using Fetch."
+      ) : A}
           <div class="control-grid">
             <ha-selector
               .hass=${this.hass}
@@ -2680,16 +3279,15 @@ var SofabatonBlobsTab = class extends i4 {
             ></ha-selector>
           </div>
           ${fetchBlocked === "no_commands" ? this._renderStatus(
-      "warning",
-      "mdi:refresh-circle",
-      "This device has no cached commands yet. Refresh that device from the Cache tab first."
-    ) : A}
+        "warning",
+        "mdi:refresh-circle",
+        "This device has no cached commands yet. Refresh that device from the Cache tab first."
+      ) : A}
           ${this._fetchError ? this._renderStatus("error", "mdi:alert-circle-outline", this._fetchError) : A}
           ${this._fetchResponse ? this._renderFetchResults() : A}
-          </div>
         </div>
-        ` : A}
-      </div>
+        `
+    })}
     `;
   }
   _renderFetchResults() {
@@ -2761,55 +3359,48 @@ var SofabatonBlobsTab = class extends i4 {
       </div>
     `;
   }
-  _renderTestSection(isOpen) {
+  _renderTestSectionContent() {
     const proxyConnected = proxyClientConnected(this.hass, this.hub);
     const busy = this._busy();
     const canSubmit = !busy && !proxyConnected && String(this._testBlobInput || "").trim() !== "";
     return b2`
-      <div class="accordion-section${isOpen ? " open" : ""}" id="acc-test">
-        <div class="acc-header" @click=${() => this.toggleOpenSection("test")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:flash-outline"></ha-icon></span>
-          <span class="acc-title">Test A Blob</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? b2`
-        <div class="acc-body" id="acc-body-test">
-          <div class="blob-section-content">
+      ${renderSecondaryTabContent({
+      connected: true,
+      content: b2`
+        <div class="blob-section-content">
           ${this._testSubtitle()}
           ${this._renderBlobTextarea({
-      value: this._testBlobInput,
-      disabled: busy || proxyConnected,
-      placeholder: this._blobInputPlaceholder(),
-      onInput: (value) => {
-        this._testBlobInput = value;
-        this._testError = "";
-        this._testSuccess = "";
-        this._testFlash = false;
-      }
-    })}
+        value: this._testBlobInput,
+        disabled: busy || proxyConnected,
+        placeholder: this._blobInputPlaceholder(),
+        onInput: (value) => {
+          this._testBlobInput = value;
+          this._testError = "";
+          this._testSuccess = "";
+          this._testFlash = false;
+        }
+      })}
           <div class="action-row">
             ${this._renderActionButton({
-      label: "Test",
-      busyLabel: "Testing\u2026",
-      idleIcon: "mdi:flash-outline",
-      state: this._buttonState({
-        busy: this._testLoading,
-        error: Boolean(this._testError),
-        success: this._testFlash && Boolean(this._testSuccess),
-        canSubmit
-      }),
-      onClick: () => void this._runTest()
-    })}
+        label: "Test",
+        busyLabel: "Testing...",
+        idleIcon: "mdi:flash-outline",
+        state: this._buttonState({
+          busy: this._testLoading,
+          error: Boolean(this._testError),
+          success: this._testFlash && Boolean(this._testSuccess),
+          canSubmit
+        }),
+        onClick: () => void this._runTest()
+      })}
           </div>
           ${this._testError ? this._renderStatus("error", "mdi:alert-circle-outline", this._testError) : A}
-          </div>
         </div>
-        ` : A}
-      </div>
+        `
+    })}
     `;
   }
-  _renderSaveSection(isOpen) {
+  _renderSaveSectionContent() {
     const proxyConnected = proxyClientConnected(this.hass, this.hub);
     const busy = this._busy();
     const parsedDeviceId = Number.parseInt(String(this._saveDeviceIdInput || "").trim(), 10);
@@ -2819,22 +3410,16 @@ var SofabatonBlobsTab = class extends i4 {
     );
     const canSubmit = !busy && !proxyConnected && deviceIdValid && String(this._saveCommandName || "").trim() !== "" && String(this._saveBlobInput || "").trim() !== "";
     return b2`
-      <div class="accordion-section${isOpen ? " open" : ""}" id="acc-save">
-        <div class="acc-header" @click=${() => this.toggleOpenSection("save")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:content-save-outline"></ha-icon></span>
-          <span class="acc-title">Save To Hub</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? b2`
-        <div class="acc-body" id="acc-body-save">
-          <div class="blob-section-content">
+      ${renderSecondaryTabContent({
+      connected: true,
+      content: b2`
+        <div class="blob-section-content">
           ${this._saveSubtitle()}
           ${irDeviceOptions.length === 0 && !proxyConnected ? this._renderStatus(
-      "warning",
-      "mdi:refresh-circle",
-      "No IR devices found in the cache. Refresh devices from the Cache tab first."
-    ) : A}
+        "warning",
+        "mdi:refresh-circle",
+        "No IR devices found in the cache. Refresh devices from the Cache tab first."
+      ) : A}
           <div class="control-grid">
             <div class="blob-input-host">
               <ha-selector
@@ -2844,42 +3429,42 @@ var SofabatonBlobsTab = class extends i4 {
                 .value=${this._saveDeviceIdInput && this._saveDeviceIdInput !== "__none__" ? this._saveDeviceIdInput : "__none__"}
                 .disabled=${busy || proxyConnected || irDeviceOptions.length === 0}
                 @value-changed=${(event) => {
-      const raw = String(event.detail?.value ?? "");
-      this._saveDeviceIdInput = raw && raw !== "__none__" ? raw : "";
-      this._saveError = "";
-      this._saveSuccess = "";
-      this._saveResult = null;
-      this._saveFlash = false;
-    }}
+        const raw = String(event.detail?.value ?? "");
+        this._saveDeviceIdInput = raw && raw !== "__none__" ? raw : "";
+        this._saveError = "";
+        this._saveSuccess = "";
+        this._saveResult = null;
+        this._saveFlash = false;
+      }}
               ></ha-selector>
             </div>
             ${this._renderCommandNameInput(busy, proxyConnected)}
           </div>
           ${this._renderBlobTextarea({
-      value: this._saveBlobInput,
-      disabled: busy || proxyConnected,
-      placeholder: this._blobInputPlaceholder(),
-      onInput: (value) => {
-        this._saveBlobInput = value;
-        this._saveError = "";
-        this._saveSuccess = "";
-        this._saveResult = null;
-        this._saveFlash = false;
-      }
-    })}
+        value: this._saveBlobInput,
+        disabled: busy || proxyConnected,
+        placeholder: this._blobInputPlaceholder(),
+        onInput: (value) => {
+          this._saveBlobInput = value;
+          this._saveError = "";
+          this._saveSuccess = "";
+          this._saveResult = null;
+          this._saveFlash = false;
+        }
+      })}
           <div class="action-row">
             ${this._renderActionButton({
-      label: "Save",
-      busyLabel: "Saving\u2026",
-      idleIcon: "mdi:content-save-outline",
-      state: this._buttonState({
-        busy: this._saveLoading,
-        error: Boolean(this._saveError),
-        success: this._saveFlash && Boolean(this._saveSuccess),
-        canSubmit
-      }),
-      onClick: () => void this._runSave()
-    })}
+        label: "Save",
+        busyLabel: "Saving...",
+        idleIcon: "mdi:content-save-outline",
+        state: this._buttonState({
+          busy: this._saveLoading,
+          error: Boolean(this._saveError),
+          success: this._saveFlash && Boolean(this._saveSuccess),
+          canSubmit
+        }),
+        onClick: () => void this._runSave()
+      })}
             ${this._saveSuccess ? b2`
                   <div class="section-status success inline-status" role="status" aria-live="polite">
                     <span class="status-icon"><ha-icon icon="mdi:check-circle-outline"></ha-icon></span>
@@ -2888,24 +3473,12 @@ var SofabatonBlobsTab = class extends i4 {
                 ` : A}
           </div>
           ${this._saveError ? this._renderStatus("error", "mdi:alert-circle-outline", this._saveError) : A}
-          </div>
+          ${this._saveResult ? this._renderSaveResult() : A}
         </div>
-        ` : A}
-      </div>
+        `
+    })}
     `;
   }
-  /**
-     * Command-name input that matches the Wifi Commands tab character allow-list
-     * and length cap exactly:
-     *   - X1S/X2: Unicode letters/numbers/marks + ` +&.'()_-`
-     *   - X1:    `[A-Za-z0-9 ]`
-     *   - Max 20 chars
-     * Pattern follows wifi-commands-tab._sanitizeCommandName via shared logic.
-     *
-     * The @input handler only rewrites the live DOM value (no state update) to
-     * avoid a state-driven re-render every keystroke (which would reset cursor
-     * position). State commits on @change.
-     */
   _renderCommandNameInput(busy, proxyConnected) {
     const onInputLive = (event) => {
       const input = event.currentTarget;
@@ -3189,6 +3762,8 @@ SofabatonBlobsTab.properties = {
   loading: { type: Boolean },
   error: { type: String },
   persistentCacheEnabled: { type: Boolean },
+  blockedTitle: { type: String },
+  blockedMessage: { type: String },
   _selectedDeviceId: { state: true },
   _selectedCommandId: { state: true },
   _fetchLoading: { state: true },
@@ -3206,14 +3781,14 @@ SofabatonBlobsTab.properties = {
   _saveSuccess: { state: true },
   _saveResult: { state: true },
   _loadedEntryId: { state: true },
-  openSection: { attribute: false },
-  toggleOpenSection: { attribute: false },
+  selectedSection: { attribute: false },
+  setSelectedSection: { attribute: false },
   _testFlash: { state: true },
   _saveFlash: { state: true },
   _copyFlashKey: { state: true },
   _resultViewMode: { state: true }
 };
-SofabatonBlobsTab.styles = i`
+SofabatonBlobsTab.styles = [secondaryTabStyles, i`
     :host { display: flex; flex: 1; min-height: 0; }
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
@@ -3252,19 +3827,6 @@ SofabatonBlobsTab.styles = i`
       container-type: inline-size;
       container-name: blob-panel;
     }
-    .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
-    .accordion-section:first-child { border-top: none; }
-    .accordion-section.open { flex: 1; }
-    .acc-header { flex-shrink: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 16px; cursor: pointer; user-select: none; transition: background-color 120ms ease; }
-    .acc-header-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
-    .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-    .accordion-section.open .acc-header-icon { color: var(--primary-color); }
-    .acc-header:hover { background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color))); }
-    .acc-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color); }
-    .flex-spacer { flex: 1; }
-    .chevron { font-size: 9px; color: var(--secondary-text-color); transition: transform 150ms; }
-    .accordion-section.open .chevron { transform: rotate(180deg); }
-    .acc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; display: grid; gap: 6px; align-content: start; }
     .blob-section-content { display: flex; flex-direction: column; gap: 14px; padding-top: 0; min-width: 0; }
     .blob-section-subtitle {
       display: flex;
@@ -3650,7 +4212,7 @@ SofabatonBlobsTab.styles = i`
         grid-template-columns: 1fr;
       }
     }
-  `;
+  `];
 if (!customElements.get("sofabaton-blobs-tab")) {
   customElements.define("sofabaton-blobs-tab", SofabatonBlobsTab);
 }
@@ -3792,6 +4354,11 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-tab.ts
+var BACKUP_SECTION_ITEMS = [
+  { id: "make", icon: "mdi:content-save-move-outline", label: "Make" },
+  { id: "edit", icon: "mdi:pencil-box-outline", label: "Edit" },
+  { id: "restore", icon: "mdi:database-import-outline", label: "Restore" }
+];
 var SofabatonBackupTab = class extends i4 {
   constructor() {
     super(...arguments);
@@ -3804,8 +4371,10 @@ var SofabatonBackupTab = class extends i4 {
     this.error = null;
     this.persistentCacheEnabled = false;
     this.selectedHubProxyConnected = false;
-    this.openSection = "make";
-    this.setOpenSection = () => {
+    this.blockedTitle = null;
+    this.blockedMessage = null;
+    this.selectedSection = "make";
+    this.setSelectedSection = () => {
     };
     this._backupScope = "whole_hub";
     this._backupDeviceIds = [];
@@ -3913,28 +4482,30 @@ var SofabatonBackupTab = class extends i4 {
     if (!this.hub || !this.hass) {
       return b2`<div class="tab-panel"><div class="state">Select a hub to manage backups.</div></div>`;
     }
-    if (this.selectedHubProxyConnected) {
+    if (this.blockedTitle && this.blockedMessage) {
       return b2`
         <div class="tab-panel">
           <div class="blocked-state">
-            <div class="blocked-state-title">Backup unavailable</div>
-            <div class="blocked-state-sub">Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.</div>
+            <div class="blocked-state-title">${this.blockedTitle}</div>
+            <div class="blocked-state-sub">${this.blockedMessage}</div>
           </div>
         </div>
       `;
     }
     return b2`
       <div class="tab-panel">
-        <div class="backup-panel">
-          ${this._renderBackupSection()}
-          ${this._renderEditSection()}
-          ${this._renderRestoreSection()}
-        </div>
+        ${renderSecondaryTabShell({
+      items: BACKUP_SECTION_ITEMS,
+      selectedId: this.selectedSection,
+      onSelect: (section) => this.setSelectedSection(section),
+      connected: true,
+      shellClassName: "backup-panel secondary-view-shell--edge",
+      content: this.selectedSection === "make" ? this._renderBackupSectionContent() : this.selectedSection === "edit" ? this._renderEditSectionContent() : this._renderRestoreSectionContent()
+    })}
       </div>
     `;
   }
-  _renderBackupSection() {
-    const isOpen = this.openSection === "make";
+  _renderBackupSectionContent() {
     const devices = backupDeviceOptions(this.cacheHub);
     const wholeHub = this._backupScope === "whole_hub";
     const selectedDeviceIds = wholeHub ? devices.map((device) => device.id) : this._backupDeviceIds;
@@ -3943,25 +4514,20 @@ var SofabatonBackupTab = class extends i4 {
     const allDevicesSelected = devices.length > 0 && this._backupDeviceIds.length === devices.length;
     const summary = this._backupResultSummary(this._backupProgress?.backup);
     return b2`
-      <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this.setOpenSection("make")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:content-save-move-outline"></ha-icon></span>
-          <span class="acc-title">Make A Backup</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? b2`
-          <div class="acc-body backup-body">
+      ${renderSecondaryTabContent({
+      connected: true,
+      contentClassName: "backup-body",
+      content: b2`
             <div class="backup-drawer-sub">
               ${isRunning ? "The hub is creating your backup." : isSuccess ? "Your backup is ready." : "Choose what to include in this backup."}
             </div>
             ${!this.persistentCacheEnabled || !this.cacheHub ? this._renderStatus("warning", "mdi:database-off-outline", "Enable persistent cache to choose backup contents from the card.") : A}
             ${this._backupError ? this._renderStatus("error", "mdi:alert-circle-outline", this._backupError) : A}
             ${isRunning && this._backupProgress ? this._renderProgressCard(this._backupProgress, "backup") : isSuccess ? (() => {
-      const hasBundle = !!this._backupProgress?.backup;
-      const wasDownloaded = !!this._backupProgress?.backup_downloaded;
-      const expired = !!this._backupProgress?.backup_expired;
-      return b2`
+        const hasBundle = !!this._backupProgress?.backup;
+        const wasDownloaded = !!this._backupProgress?.backup_downloaded;
+        const expired = !!this._backupProgress?.backup_expired;
+        return b2`
                   <div class="backup-complete-card">
                     <div class="backup-complete-icon"><ha-icon icon="mdi:check-decagram-outline"></ha-icon></div>
                     <div class="backup-complete-title">Backup completed</div>
@@ -3981,37 +4547,37 @@ var SofabatonBackupTab = class extends i4 {
                     </div>
                   </div>
                 `;
-    })() : b2`
+      })() : b2`
                   <div class="backup-config-view">
                   <div class="backup-scope-group">
                     <div class="backup-scope-options">
                       <label
                         class="backup-scope-option ${wholeHub ? "selected" : ""}"
                         @click=${() => {
-      if (this._backupLocked() || !this.cacheHub) return;
-      this._setBackupScope("whole_hub");
-    }}
+        if (this._backupLocked() || !this.cacheHub) return;
+        this._setBackupScope("whole_hub");
+      }}
                       >
                         ${this._renderScopeChoice({
-      label: "Entire hub",
-      name: "backup-scope",
-      checked: wholeHub,
-      disabled: this._backupLocked() || !this.cacheHub
-    })}
+        label: "Entire hub",
+        name: "backup-scope",
+        checked: wholeHub,
+        disabled: this._backupLocked() || !this.cacheHub
+      })}
                       </label>
                       <label
                         class="backup-scope-option ${!wholeHub ? "selected" : ""}"
                         @click=${() => {
-      if (this._backupLocked() || !this.cacheHub) return;
-      this._setBackupScope("individual_devices");
-    }}
+        if (this._backupLocked() || !this.cacheHub) return;
+        this._setBackupScope("individual_devices");
+      }}
                       >
                         ${this._renderScopeChoice({
-      label: "Selected devices",
-      name: "backup-scope",
-      checked: !wholeHub,
-      disabled: this._backupLocked() || !this.cacheHub
-    })}
+        label: "Selected devices",
+        name: "backup-scope",
+        checked: !wholeHub,
+        disabled: this._backupLocked() || !this.cacheHub
+      })}
                       </label>
                     </div>
                   </div>
@@ -4031,15 +4597,15 @@ var SofabatonBackupTab = class extends i4 {
                               <div
                                 class="selection-row"
                                 @click=${() => {
-      if (this._backupLocked() || !this.cacheHub) return;
-      this._setBackupDevice(device.id, !selectedDeviceIds.includes(device.id));
-    }}
+        if (this._backupLocked() || !this.cacheHub) return;
+        this._setBackupDevice(device.id, !selectedDeviceIds.includes(device.id));
+      }}
                               >
                                 ${this._renderCheckboxControl({
-      checked: selectedDeviceIds.includes(device.id),
-      disabled: this._backupLocked() || !this.cacheHub,
-      onChange: (checked) => this._setBackupDevice(device.id, checked)
-    })}
+        checked: selectedDeviceIds.includes(device.id),
+        disabled: this._backupLocked() || !this.cacheHub,
+        onChange: (checked) => this._setBackupDevice(device.id, checked)
+      })}
                                 <span class="selection-main">
                                   <span class="selection-label">${device.label}</span>
                                 </span>
@@ -4060,116 +4626,20 @@ var SofabatonBackupTab = class extends i4 {
                   </div>
                   </div>
                 `}
-          </div>
-        ` : A}
-      </div>
-    `;
-  }
-  _renderRestoreSectionLegacy() {
-    const isOpen = this.openSection === "restore";
-    const isRunning = this._isProgressRunning(this._restoreProgress);
-    const activityOptions = bundleActivityOptions(this._restoreBundle);
-    const deviceOptions = bundleDeviceOptions(this._restoreBundle);
-    const restoreSelection = reconcileRestoreSelection({
-      bundle: this._restoreBundle,
-      selectedActivityIds: this._restoreActivityIds,
-      manualSelectedDeviceIds: this._restoreManualDeviceIds
-    });
-    return b2`
-      <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this.setOpenSection("restore")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:database-import-outline"></ha-icon></span>
-          <span class="acc-title">Restore A Backup</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? b2`
-          <div class="acc-body restore-body">
-            <div class="backup-drawer-sub">
-              Load a backup file, then choose exactly what to restore. Activities automatically pull in the Devices they depend on.
-            </div>
-            ${this._restoreError ? this._renderStatus("error", "mdi:alert-circle-outline", this._restoreError) : A}
-            ${this._restoreSuccess ? this._renderStatus("success", "mdi:check-circle-outline", this._restoreSuccess) : A}
-            ${isRunning && this._restoreProgress ? this._renderProgressCard(this._restoreProgress, "restore") : A}
-            <input id="restore-file-input" type="file" accept=".json,application/json" @change=${this._handleFilePicked} />
-            <div class="action-row" style="justify-content:flex-start;">
-              <button class="secondary-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>Choose backup file</button>
-              ${this._restoreFilename ? b2`<span class="file-chip"><ha-icon icon="mdi:file-document-outline"></ha-icon>${this._restoreFilename}</span>` : A}
-            </div>
-            ${this._restoreBundle ? b2`
-              <div class="mode-tabs">
-                <button class="mode-tab ${this._restoreMode === "replace" ? "active" : ""}" ?disabled=${this._restoreLocked()} @click=${() => this._restoreMode = "replace"}>Replace</button>
-                <button class="mode-tab ${this._restoreMode === "merge" ? "active" : ""}" ?disabled=${this._restoreLocked()} @click=${() => this._restoreMode = "merge"}>Merge</button>
-              </div>
-              ${this._renderStatus(
-      "warning",
-      this._restoreMode === "replace" ? "mdi:alert-outline" : "mdi:plus-circle-outline",
-      this._restoreMode === "replace" ? "Replace erases the destination hub first, then restores the selected content." : "Merge keeps the current hub content and adds the selected backup content as new items."
-    )}
-              <div class="selection-card">
-                <div class="selection-list">
-                  ${activityOptions.length ? activityOptions.map((activity) => b2`
-                    <div class="selection-row">
-                      ${this._renderCheckboxControl({
-      checked: this._restoreActivityIds.includes(activity.id),
-      disabled: this._restoreLocked(),
-      onChange: (checked) => this._setRestoreActivity(activity.id, checked),
-      stopClick: false
+        `
     })}
-                      <span class="selection-main">
-                        <span class="selection-label">${activity.label}</span>
-                        ${activity.meta ? b2`<span class="selection-sub">${activity.meta}</span>` : A}
-                      </span>
-                    </div>
-                  `) : b2`<div class="selection-empty">This backup file has no activities.</div>`}
-                </div>
-              </div>
-              <div class="selection-card">
-                <div class="selection-list">
-                  ${deviceOptions.length ? deviceOptions.map((device) => {
-      const forced = restoreSelection.forcedDeviceIds.includes(device.id);
-      return b2`
-                      <div class="selection-row ${forced ? "locked" : ""}">
-                        ${this._renderCheckboxControl({
-        checked: restoreSelection.selectedDeviceIds.includes(device.id),
-        disabled: forced || this._restoreLocked(),
-        onChange: (checked) => this._setRestoreDevice(device.id, checked),
-        stopClick: false
-      })}
-                        <span class="selection-main">
-                          <span class="selection-label">${device.label}</span>
-                          ${device.meta ? b2`<span class="selection-sub">${forced ? `${device.meta} \xB7 required by selected activities` : device.meta}</span>` : A}
-                        </span>
-                      </div>
-                    `;
-    }) : b2`<div class="selection-empty">This backup file has no devices.</div>`}
-                </div>
-              </div>
-              <div class="action-row" style="justify-content:flex-start;">
-                <button class="primary-btn" ?disabled=${this._restoreActionDisabled(restoreSelection.selectedDeviceIds)} @click=${this._runRestore}>Start restore</button>
-              </div>
-            ` : A}
-          </div>
-        ` : A}
-      </div>
     `;
   }
-  _renderEditSection() {
-    const isOpen = this.openSection === "edit";
+  _renderEditSectionContent() {
     const bundle = this._editBundle;
     const activityOptions = bundleActivityOptions(bundle);
     const deviceOptions = bundleDeviceOptions(bundle);
     const hubName = String(bundle?.hub?.name || "").trim();
     return b2`
-      <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this.setOpenSection("edit")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:pencil-box-outline"></ha-icon></span>
-          <span class="acc-title">Edit A Backup</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? b2`
-          <div class="acc-body edit-body">
+      ${renderSecondaryTabContent({
+      connected: true,
+      contentClassName: "edit-body",
+      content: b2`
             <div class="backup-drawer-sub">
               ${bundle ? "Rename the hub, activities, and devices in this backup. Edits stay in your browser until you download the modified file." : "Load a backup file to rename its hub, activities, and devices before downloading it again."}
             </div>
@@ -4181,11 +4651,11 @@ var SofabatonBackupTab = class extends i4 {
                   <span class="edit-hub-caption">Hub name</span>
                   <div class="edit-hub-inline">
                     ${this._renderEditableLabel({
-      editKey: "hub",
-      value: hubName || "Unnamed hub",
-      placeholder: "Hub name",
-      onSave: (next) => this._applyHubRename(next)
-    })}
+        editKey: "hub",
+        value: hubName || "Unnamed hub",
+        placeholder: "Hub name",
+        onSave: (next) => this._applyHubRename(next)
+      })}
                   </div>
                 </div>
                 <div class="selection-card">
@@ -4193,20 +4663,20 @@ var SofabatonBackupTab = class extends i4 {
                     ${activityOptions.length ? b2`
                         <div class="selection-group-header">Activities</div>
                         ${activityOptions.map((activity) => this._renderEditRow({
-      editKey: `activity:${activity.id}`,
-      label: activity.label,
-      meta: activity.meta,
-      onSave: (next) => this._applyActivityRename(activity.id, next)
-    }))}
+        editKey: `activity:${activity.id}`,
+        label: activity.label,
+        meta: activity.meta,
+        onSave: (next) => this._applyActivityRename(activity.id, next)
+      }))}
                       ` : b2`<div class="selection-empty">This backup file has no activities.</div>`}
                     ${deviceOptions.length ? b2`
                         <div class="selection-group-header">Devices</div>
                         ${deviceOptions.map((device) => this._renderEditRow({
-      editKey: `device:${device.id}`,
-      label: device.label,
-      meta: device.meta,
-      onSave: (next) => this._applyDeviceRename(device.id, next)
-    }))}
+        editKey: `device:${device.id}`,
+        label: device.label,
+        meta: device.meta,
+        onSave: (next) => this._applyDeviceRename(device.id, next)
+      }))}
                       ` : b2`<div class="selection-empty">This backup file has no devices.</div>`}
                   </div>
                 </div>
@@ -4220,9 +4690,8 @@ var SofabatonBackupTab = class extends i4 {
                 <button class="secondary-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
               </div>
             `}
-          </div>
-        ` : A}
-      </div>
+        `
+    })}
     `;
   }
   _renderEditRow(params) {
@@ -4323,8 +4792,7 @@ var SofabatonBackupTab = class extends i4 {
     if (!this._editBundle) return;
     this._editBundle = renameBundleDevice(this._editBundle, deviceId, name);
   }
-  _renderRestoreSection() {
-    const isOpen = this.openSection === "restore";
+  _renderRestoreSectionContent() {
     const isRunning = this._isProgressRunning(this._restoreProgress);
     const isSuccess = String(this._restoreProgress?.status || "") === "success";
     const activityOptions = bundleActivityOptions(this._restoreBundle);
@@ -4338,15 +4806,10 @@ var SofabatonBackupTab = class extends i4 {
     const totalRestoreSelected = this._restoreActivityIds.length + restoreSelection.selectedDeviceIds.length;
     const allRestoreSelected = totalRestoreOptions > 0 && totalRestoreSelected === totalRestoreOptions;
     return b2`
-      <div class="accordion-section ${isOpen ? "open" : ""}">
-        <div class="acc-header" @click=${() => this.setOpenSection("restore")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:database-import-outline"></ha-icon></span>
-          <span class="acc-title">Restore A Backup</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? b2`
-          <div class="acc-body restore-body">
+      ${renderSecondaryTabContent({
+      connected: true,
+      contentClassName: "restore-body",
+      content: b2`
             <div class="backup-drawer-sub">
               ${isRunning ? "The hub is restoring your backup." : isSuccess ? "Your restore has completed." : "Load a backup file, then choose exactly what to restore. Activities automatically pull in the Devices they depend on."}
             </div>
@@ -4381,15 +4844,15 @@ var SofabatonBackupTab = class extends i4 {
                           <div
                             class="selection-row"
                             @click=${() => {
-      if (this._restoreLocked()) return;
-      this._setRestoreActivity(activity.id, !this._restoreActivityIds.includes(activity.id));
-    }}
+        if (this._restoreLocked()) return;
+        this._setRestoreActivity(activity.id, !this._restoreActivityIds.includes(activity.id));
+      }}
                           >
                             ${this._renderCheckboxControl({
-      checked: this._restoreActivityIds.includes(activity.id),
-      disabled: this._restoreLocked(),
-      onChange: (checked) => this._setRestoreActivity(activity.id, checked)
-    })}
+        checked: this._restoreActivityIds.includes(activity.id),
+        disabled: this._restoreLocked(),
+        onChange: (checked) => this._setRestoreActivity(activity.id, checked)
+      })}
                             <span class="selection-main">
                               <span class="selection-label">${activity.label}</span>
                             </span>
@@ -4400,27 +4863,27 @@ var SofabatonBackupTab = class extends i4 {
                     ${deviceOptions.length ? b2`
                         <div class="selection-group-header">Devices</div>
                         ${deviceOptions.map((device) => {
-      const forced = restoreSelection.forcedDeviceIds.includes(device.id);
-      return b2`
+        const forced = restoreSelection.forcedDeviceIds.includes(device.id);
+        return b2`
                             <div
                               class="selection-row ${forced ? "locked" : ""}"
                               @click=${() => {
-        if (forced || this._restoreLocked()) return;
-        this._setRestoreDevice(device.id, !restoreSelection.selectedDeviceIds.includes(device.id));
-      }}
+          if (forced || this._restoreLocked()) return;
+          this._setRestoreDevice(device.id, !restoreSelection.selectedDeviceIds.includes(device.id));
+        }}
                             >
                               ${this._renderCheckboxControl({
-        checked: restoreSelection.selectedDeviceIds.includes(device.id),
-        disabled: forced || this._restoreLocked(),
-        onChange: (checked) => this._setRestoreDevice(device.id, checked)
-      })}
+          checked: restoreSelection.selectedDeviceIds.includes(device.id),
+          disabled: forced || this._restoreLocked(),
+          onChange: (checked) => this._setRestoreDevice(device.id, checked)
+        })}
                               <span class="selection-main">
                                 <span class="selection-label">${device.label}</span>
                               </span>
                               ${device.meta ? b2`<span class="selection-meta">${forced ? `${device.meta} \xB7 linked` : device.meta}</span>` : A}
                             </div>
                           `;
-    })}
+      })}
                       ` : b2`<div class="selection-empty">This backup file has no devices.</div>`}
                   </div>
                 </div>
@@ -4428,17 +4891,17 @@ var SofabatonBackupTab = class extends i4 {
                   <div
                     class="selection-row"
                     @click=${() => {
-      if (this._restoreLocked()) return;
-      this._restoreMode = this._restoreMode === "replace" ? "merge" : "replace";
-    }}
+        if (this._restoreLocked()) return;
+        this._restoreMode = this._restoreMode === "replace" ? "merge" : "replace";
+      }}
                   >
                     ${this._renderCheckboxControl({
-      checked: this._restoreMode === "replace",
-      disabled: this._restoreLocked(),
-      onChange: (checked) => {
-        this._restoreMode = checked ? "replace" : "merge";
-      }
-    })}
+        checked: this._restoreMode === "replace",
+        disabled: this._restoreLocked(),
+        onChange: (checked) => {
+          this._restoreMode = checked ? "replace" : "merge";
+        }
+      })}
                     <span class="selection-main">
                       <span class="selection-label">Erase existing Devices and Activities</span>
                     </span>
@@ -4454,9 +4917,8 @@ var SofabatonBackupTab = class extends i4 {
                 <button class="secondary-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
               </div>
             ` : A}
-          </div>
-        ` : A}
-      </div>
+        `
+    })}
     `;
   }
   _renderStatus(tone, icon, message) {
@@ -4627,6 +5089,7 @@ var SofabatonBackupTab = class extends i4 {
     this.setHubCommandBusy?.(true, "Starting backup\u2026");
     try {
       const start = await this.api().startBackupExport(this.hub.entry_id, deviceIds);
+      await this.refreshControlPanelState?.();
       await this._subscribeToOperation(start.operation_id, "backup");
     } catch (error) {
       this._backupError = formatError(error);
@@ -4651,6 +5114,7 @@ var SofabatonBackupTab = class extends i4 {
     this.setHubCommandBusy?.(true, "Starting restore\u2026");
     try {
       const start = await this.api().startBackupRestore(this.hub.entry_id, filtered, this._restoreMode);
+      await this.refreshControlPanelState?.();
       await this._subscribeToOperation(start.operation_id, "restore");
     } catch (error) {
       this._restoreError = formatError(error);
@@ -4818,8 +5282,10 @@ SofabatonBackupTab.properties = {
   error: { type: String },
   persistentCacheEnabled: { type: Boolean },
   selectedHubProxyConnected: { type: Boolean },
-  openSection: { attribute: false },
-  setOpenSection: { attribute: false },
+  blockedTitle: { type: String },
+  blockedMessage: { type: String },
+  selectedSection: { attribute: false },
+  setSelectedSection: { attribute: false },
   _backupScope: { state: true },
   _backupDeviceIds: { state: true },
   _backupError: { state: true },
@@ -4839,7 +5305,7 @@ SofabatonBackupTab.properties = {
   _editError: { state: true },
   _editingKey: { state: true }
 };
-SofabatonBackupTab.styles = i`
+SofabatonBackupTab.styles = [secondaryTabStyles, i`
     :host {
       display: flex;
       flex: 1;
@@ -4888,44 +5354,12 @@ SofabatonBackupTab.styles = i`
       min-height: 0;
       display: flex;
       flex-direction: column;
-      margin: -16px;
     }
-    .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
-    .accordion-section:first-child { border-top: none; }
-    .accordion-section.open { flex: 1; }
-    .acc-header {
-      flex-shrink: 0;
-      height: 44px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 0 16px;
-      cursor: pointer;
-      user-select: none;
-      transition: background-color 120ms ease;
-    }
-    .acc-header:hover { background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color))); }
-    .acc-header-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
-    .accordion-section.open .acc-header-icon { color: var(--primary-color); }
-    .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-    .acc-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color); }
-    .flex-spacer { flex: 1; }
-    .chevron { font-size: 9px; color: var(--secondary-text-color); transition: transform 150ms; }
-    .accordion-section.open .chevron { transform: rotate(180deg); }
-    .acc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px; display: grid; gap: 12px; align-content: start; }
     .backup-body {
-      padding-top: 0;
-      display: flex;
-      flex-direction: column;
       gap: 12px;
-      align-content: normal;
     }
     .restore-body {
-      padding-top: 0;
-      display: flex;
-      flex-direction: column;
       gap: 12px;
-      align-content: normal;
     }
 
     .header-primary-btn {
@@ -5466,7 +5900,7 @@ SofabatonBackupTab.styles = i`
       .progress-disc .progress-hub-svg { width: 50px; height: 50px; }
       .progress-route { flex-basis: 52px; min-width: 52px; }
     }
-  `;
+  `];
 if (!customElements.get("sofabaton-backup-tab")) {
   customElements.define("sofabaton-backup-tab", SofabatonBackupTab);
 }
@@ -5659,11 +6093,14 @@ var HARD_BUTTON_ID_MAP = {
 };
 var X2_ONLY_HARD_BUTTON_IDS = /* @__PURE__ */ new Set([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
 var DEFAULT_ACTION = { action: "perform-action" };
+var WIFI_SECTION_ROW = [{ id: "wifi", label: "Wifi Devices", icon: "mdi:wifi", passive: true }];
 var SofabatonWifiCommandsTab = class extends i4 {
   constructor() {
     super(...arguments);
     this.hubCommandBusy = false;
     this.hubCommandBusyLabel = null;
+    this.blockedTitle = null;
+    this.blockedMessage = null;
     this._commandsData = this._normalizeCommandsForStorage([]);
     this._wifiDevices = [];
     this._selectedDeviceKey = null;
@@ -5763,7 +6200,9 @@ var SofabatonWifiCommandsTab = class extends i4 {
     this._goBackToDeviceList = () => {
       this._selectedDeviceKey = null;
       this._commandsData = this._normalizeCommandsForStorage([]);
-      this._syncState = this._defaultSyncState();
+      if (this._syncState.status !== "running") {
+        this._syncState = this._defaultSyncState();
+      }
     };
     this._openCreateDeviceModal = () => {
       if (this._hubCommandLocked()) return;
@@ -5786,7 +6225,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
       if (this._hubCommandLocked()) return;
       this._closeDeleteDeviceModal();
       this._deletingDeviceKey = deviceKey;
-      this._setSharedHubCommandBusy(true, "Deleting Wifi Device\u2026");
+      this._setSharedHubCommandBusy(true, "Deleting Wifi Device...");
       try {
         await this.hass.callWS({
           type: "sofabaton_x1s/command_device/delete",
@@ -5847,15 +6286,15 @@ var SofabatonWifiCommandsTab = class extends i4 {
     return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
   }
   render() {
-    if (this.loading) return b2`<div class="state">Loading…</div>`;
+    if (this.loading) return b2`<div class="state">Loading...</div>`;
     if (this.error) return b2`<div class="state error">${this.error}</div>`;
     if (!this.hub) return b2`<div class="state">No hubs found.</div>`;
-    if (proxyClientConnected(this.hass, this.hub)) {
+    if (this.blockedTitle && this.blockedMessage) {
       return b2`
         <div class="tab-panel">
           <div class="blocked-state">
-            <div class="blocked-state-title">Wifi Commands unavailable</div>
-            <div class="blocked-state-sub">Wifi Commands cannot be used while the Sofabaton app is connected to the hub through the proxy.</div>
+            <div class="blocked-state-title">${this.blockedTitle}</div>
+            <div class="blocked-state-sub">${this.blockedMessage}</div>
           </div>
         </div>
       `;
@@ -5864,7 +6303,19 @@ var SofabatonWifiCommandsTab = class extends i4 {
     if (!selectedDevice) {
       return b2`
         <div class="tab-panel">
-          ${this._renderDeviceListView()}
+          ${renderSecondaryTabShell({
+        connected: true,
+        items: [...WIFI_SECTION_ROW],
+        selectedId: "wifi",
+        shellClassName: "secondary-view-shell--edge",
+        content: renderSecondaryViewBody({
+          connected: true,
+          padded: false,
+          scroll: false,
+          className: "list-view",
+          content: this._renderDeviceListView()
+        })
+      })}
           ${this._renderDetailsModal()}
           ${this._renderActionModal()}
           ${this._renderSyncWarningModal()}
@@ -5880,55 +6331,6 @@ var SofabatonWifiCommandsTab = class extends i4 {
       remoteUnavailable,
       syncRunning
     });
-    return b2`
-      <div class="tab-panel">
-        <div class="detail-view">
-          <div class="sticky-header">
-            <div class="detail-title-row">
-              <button class="back-btn" @click=${this._goBackToDeviceList}>
-                <ha-icon icon="mdi:arrow-left"></ha-icon>
-              </button>
-              <div class="detail-title">${selectedDevice.device_name}</div>
-            </div>
-          </div>
-          <div class="detail-scroll">
-            ${this._hubVersionConfident() ? A : b2`
-              <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
-                Your hub may be miss-versioned. Click here to fix it.
-              </button>
-            `}
-        ${this._hubVersionConfident() ? A : b2`
-          <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
-            ⚠️ Your hub may be miss-versioned! Click here to fix it.
-          </button>
-        `}
-        <div class="sync-row ${syncTone}">
-          <div class="sync-message-wrap">
-            <span class="status-pill ${syncTone}">
-              <ha-icon icon=${this._syncStatusIcon(remoteUnavailable)}></ha-icon>
-              <span>${this._syncMessageShort(remoteUnavailable)}</span>
-            </span>
-            <div class="sync-message">${this._renderSyncMessage(remoteUnavailable)}</div>
-          </div>
-          ${remoteUnavailable ? A : syncRunning ? b2`<div class="sync-static">Syncing…</div>` : this._syncState.sync_needed ? b2`
-            <button class="sync-btn sync-btn-primary" ?disabled=${this._commandSyncRunning} @click=${this._runCommandConfigSync}>Sync to Hub</button>
-          ` : A}
-        </div>
-        ${remoteUnavailable ? A : b2`
-          <div class="command-grid">
-            ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
-          </div>
-        `}
-          </div>
-        </div>
-        ${this._renderDetailsModal()}
-        ${this._renderActionModal()}
-        ${this._renderSyncWarningModal()}
-        ${this._renderHubVersionModal()}
-        ${this._renderCreateDeviceModal()}
-        ${this._renderDeleteDeviceModal()}
-      </div>
-    `;
   }
   _renderSelectedDeviceView({
     selectedDevice,
@@ -5937,7 +6339,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
   }) {
     const externallyLocked = this._hubCommandLocked() && !this._selectedDeviceOwnsPendingSync();
     return b2`
-      <div class="tab-panel">
+      <div class="tab-panel tab-panel--detail">
         <div class="detail-view">
           <div class="sticky-header">
             <div class="detail-title-row">
@@ -5959,67 +6361,10 @@ var SofabatonWifiCommandsTab = class extends i4 {
               </div>
             `}
           </div>
-          <div class="sticky-footer">
-            ${this._renderStatusDock(this._renderSyncMessage(remoteUnavailable, externallyLocked), this._syncDockTone(remoteUnavailable, externallyLocked))}
-          </div>
         </div>
         ${this._renderDetailsModal()}
         ${this._renderActionModal()}
         ${this._renderSyncWarningModal()}
-        ${this._renderCreateDeviceModal()}
-        ${this._renderDeleteDeviceModal()}
-      </div>
-    `;
-    return b2`
-      <div class="tab-panel">
-        <div class="detail-view">
-          <div class="sticky-header">
-            <div class="detail-title-row">
-              <button class="back-btn" @click=${this._goBackToDeviceList}>
-                <ha-icon icon="mdi:arrow-left"></ha-icon>
-              </button>
-              <div class="detail-title">${selectedDevice.device_name}</div>
-            </div>
-          </div>
-          <div class="detail-scroll">
-            ${this._hubVersionConfident() ? A : b2`
-              <button class="hub-version-warn-btn" @click=${this._openHubVersionModal}>
-                Your hub may be miss-versioned. Click here to fix it.
-              </button>
-            `}
-            ${remoteUnavailable ? A : b2`
-              <div class="command-grid">
-                ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
-              </div>
-            `}
-          </div>
-          <div class="sticky-footer">
-            <button
-              class="bottom-dock-trigger ${!remoteUnavailable && !syncRunning && this._syncState.sync_needed ? "interactive" : ""}"
-              ?disabled=${remoteUnavailable || syncRunning || !this._syncState.sync_needed}
-              @click=${!remoteUnavailable && !syncRunning && this._syncState.sync_needed ? this._runCommandConfigSync : null}
-            >
-            <div class="bottom-dock">
-              <div class="bottom-dock-main">
-                <div class="bottom-dock-copy">${syncMessage}</div>
-              </div>
-              <div class="bottom-dock-actions">
-                ${remoteUnavailable ? A : syncRunning ? b2`<div class="sync-static">Syncingâ€¦</div>` : this._syncState.sync_needed ? b2`
-                  <button class="sync-btn sync-btn-primary" ?disabled=${this._commandSyncRunning} @click=${this._runCommandConfigSync}>Sync to Hub</button>
-                ` : b2`
-                  <span class="status-pill ${syncTone}">
-                    <ha-icon icon=${this._syncStatusIcon(remoteUnavailable)}></ha-icon>
-                    <span>${shortSyncMessage}</span>
-                  </span>
-                `}
-              </div>
-            </div>
-          </div>
-        </div>
-        ${this._renderDetailsModal()}
-        ${this._renderActionModal()}
-        ${this._renderSyncWarningModal()}
-        ${this._renderHubVersionModal()}
         ${this._renderCreateDeviceModal()}
         ${this._renderDeleteDeviceModal()}
       </div>
@@ -6028,59 +6373,53 @@ var SofabatonWifiCommandsTab = class extends i4 {
   _renderDeviceListView() {
     const canAdd = this._wifiDevices.length < this._maxWifiDevices;
     return b2`
-      <div class="list-view">
-        <div class="list-scroll">
-          <div class="list-header">
-            <div class="list-header-copy">
-              <div class="list-header-title-row">
-                <span class="acc-header-icon"><ha-icon icon="mdi:wifi"></ha-icon></span>
-                <div class="acc-title">WIFI DEVICES</div>
-              </div>
-              <div class="section-subtitle">Choose a Wifi Device to edit its command slots, or add a new one.</div>
-            </div>
-            <div class="list-header-action">
-              <button class="detail-sync-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
-                Add Wifi Device
-              </button>
-            </div>
+      <div class="list-scroll">
+        <div class="list-header">
+          <div class="list-header-copy">
+            <div class="section-subtitle">Choose a Wifi Device to edit its command slots, or add a new one.</div>
           </div>
-          ${this._wifiDevices.length ? b2`
-            <div class="device-list">
-              ${this._wifiDevices.map((device) => b2`
-                <div
-                  class="device-card ${device.device_key === this._deletingDeviceKey ? "pending-delete" : ""}"
-                  role="button"
-                  tabindex=${this._deletingDeviceKey === device.device_key ? -1 : 0}
-                  aria-disabled=${String(device.device_key === this._deletingDeviceKey)}
-                  @click=${device.device_key === this._deletingDeviceKey ? null : () => this._selectWifiDevice(device.device_key)}
-                  @keydown=${device.device_key === this._deletingDeviceKey ? null : ((event) => {
+          <div class="list-header-action">
+            <button class="detail-sync-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
+              Add Wifi Device
+            </button>
+          </div>
+        </div>
+        ${this._wifiDevices.length ? b2`
+          <div class="device-list">
+            ${this._wifiDevices.map((device) => b2`
+              <div
+                class="device-card ${device.device_key === this._deletingDeviceKey ? "pending-delete" : ""}"
+                role="button"
+                tabindex=${this._deletingDeviceKey === device.device_key ? -1 : 0}
+                aria-disabled=${String(device.device_key === this._deletingDeviceKey)}
+                @click=${device.device_key === this._deletingDeviceKey ? null : () => this._selectWifiDevice(device.device_key)}
+                @keydown=${device.device_key === this._deletingDeviceKey ? null : ((event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         this._selectWifiDevice(device.device_key);
       }
     })}
-                >
-                  <div class="device-card-main">
-                    <span class="device-card-lead"><ha-icon icon="mdi:wifi"></ha-icon></span>
-                    <div class="device-card-name">${device.device_name}</div>
-                    <div class="device-card-meta">
-                      <span class="status-pill device-status-pill ${this._deviceStatusTone(device)}">
-                        <ha-icon icon=${this._deviceStatusIcon(device)}></ha-icon>
-                        <span class="device-status-pill-label">${this._deviceStatusLabel(device)}</span>
-                      </span>
-                      <span class="device-card-count"><span class="device-card-count-strong">${Number(device.configured_slot_count || 0)}</span> slot${Number(device.configured_slot_count || 0) === 1 ? "" : "s"}</span>
-                    </div>
-                  </div>
-                  <div class="device-card-actions">
-                    <button class="device-delete-btn" title="Delete Wifi Device" ?disabled=${this._hubCommandLocked() || device.device_key === this._deletingDeviceKey} @click=${(event) => this._promptDeleteDevice(device.device_key, event)}>
-                      <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                    </button>
+              >
+                <div class="device-card-main">
+                  <span class="device-card-lead"><ha-icon icon="mdi:wifi"></ha-icon></span>
+                  <div class="device-card-name">${device.device_name}</div>
+                  <div class="device-card-meta">
+                    <span class="status-pill device-status-pill ${this._deviceStatusTone(device)}">
+                      <ha-icon icon=${this._deviceStatusIcon(device)}></ha-icon>
+                      <span class="device-status-pill-label">${this._deviceStatusLabel(device)}</span>
+                    </span>
+                    <span class="device-card-count"><span class="device-card-count-strong">${Number(device.configured_slot_count || 0)}</span> slot${Number(device.configured_slot_count || 0) === 1 ? "" : "s"}</span>
                   </div>
                 </div>
-              `)}
-            </div>
-          ` : b2`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
-        </div>
+                <div class="device-card-actions">
+                  <button class="device-delete-btn" title="Delete Wifi Device" ?disabled=${this._hubCommandLocked() || device.device_key === this._deletingDeviceKey} @click=${(event) => this._promptDeleteDevice(device.device_key, event)}>
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>
+                </div>
+              </div>
+            `)}
+          </div>
+        ` : b2`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
         <div class="sticky-footer">
           ${!canAdd ? b2`<div class="wifi-max-devices-note">Maximum number of devices reached</div>` : A}
           <div class="wifi-docs-bar">
@@ -6276,7 +6615,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
           </div>
           <div class="dialog-body">
             <div class="dialog-note">
-              Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote’s display, in the mobile app, and as the Wifi Command's sensor status.
+              Create a Command in this slot. Give it a name and decide which Activities to apply it to. The name will appear on your remote's display, in the mobile app, and as the Wifi Command's sensor status.
             </div>
             <div class="config-block">
               <div class="config-group">
@@ -6541,7 +6880,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
               <input type="checkbox" .checked=${this._syncWarningOptOut} @change=${(event) => {
       this._syncWarningOptOut = event.currentTarget.checked;
     }} />
-              <span>Don’t show this warning again for this remote.</span>
+              <span>Don't show this warning again for this remote.</span>
             </label>
           </div>
           <div class="dialog-footer">
@@ -6572,7 +6911,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
           </div>
           <div class="dialog-body">
             <div class="dialog-text">
-              We couldn’t automatically detect your hub model. Select the correct version below — the change takes effect immediately, no restart needed.
+              We couldn't automatically detect your hub model. Select the correct version below - the change takes effect immediately, no restart needed.
             </div>
             <div class="version-chip-row">
               ${["X1", "X1S", "X2"].map((version) => b2`
@@ -6662,9 +7001,9 @@ var SofabatonWifiCommandsTab = class extends i4 {
     const runningDevice = this._runningWifiDevice();
     if (runningDevice) {
       const deviceName = String(runningDevice.device_name || "").trim();
-      return deviceName ? `Syncing ${deviceName}\u2026` : "Syncing Wifi Device\u2026";
+      return deviceName ? `Syncing ${deviceName}...` : "Syncing Wifi Device...";
     }
-    return String(this.hubCommandBusyLabel || "").trim() || "Hub command in progress\u2026";
+    return String(this.hubCommandBusyLabel || "").trim() || "Hub command in progress...";
   }
   _runningWifiDevice() {
     const selectedDevice = this._selectedWifiDevice();
@@ -7016,7 +7355,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
   _editorHardButtonOptions() {
     const group = (keys, title) => keys.filter((key) => DEFAULT_KEY_LABELS[key]).map((key) => ({
       value: key,
-      label: `${title} \u2022 ${DEFAULT_KEY_LABELS[key]}`
+      label: `${title} - ${DEFAULT_KEY_LABELS[key]}`
     }));
     return [
       ...group(["up", "down", "left", "right", "ok", "back", "home", "menu"], "Navigation"),
@@ -7373,7 +7712,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
     return "Idle";
   }
   _deviceStatusLabel(device) {
-    if (device.device_key === this._deletingDeviceKey) return "Deleting\u2026";
+    if (device.device_key === this._deletingDeviceKey) return "Deleting...";
     if (device.status === "running") return "Syncing";
     if (device.status === "failed") return "Sync failed";
     if (device.sync_needed) return "Sync needed";
@@ -7418,9 +7757,9 @@ var SofabatonWifiCommandsTab = class extends i4 {
     syncRunning,
     externallyLocked
   }) {
-    const label = remoteUnavailable ? "Unavailable" : syncRunning ? "Syncing\u2026" : externallyLocked ? "Busy" : this._syncState.sync_needed ? "Sync to Hub" : "Up to Date";
+    const label = remoteUnavailable ? "Unavailable" : syncRunning ? "Syncing..." : externallyLocked ? "Busy" : this._syncState.sync_needed ? "Sync to Hub" : "Up to Date";
     const disabled = remoteUnavailable || syncRunning || externallyLocked || !this._syncState.sync_needed;
-    const classes = `detail-sync-btn${!disabled && this._syncState.sync_needed ? " sync-btn-primary" : ""}`;
+    const classes = `detail-sync-btn${!disabled && this._syncState.sync_needed ? " sync-btn-primary" : ""}${!remoteUnavailable && !syncRunning && !externallyLocked && !this._syncState.sync_needed ? " detail-sync-btn--state-ok" : ""}`;
     return b2`<button class=${classes} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>${label}</button>`;
   }
   _selectWifiDevice(deviceKey) {
@@ -7438,7 +7777,7 @@ var SofabatonWifiCommandsTab = class extends i4 {
       return;
     }
     this._creatingDevice = true;
-    this._setSharedHubCommandBusy(true, "Creating Wifi Device\u2026");
+    this._setSharedHubCommandBusy(true, "Creating Wifi Device...");
     try {
       const payload = await this.hass.callWS({
         type: "sofabaton_x1s/command_device/create",
@@ -7500,9 +7839,10 @@ var SofabatonWifiCommandsTab = class extends i4 {
         status: "running"
       } : device
     );
-    this._setSharedHubCommandBusy(true, "Syncing Wifi Device\u2026");
+    this._setSharedHubCommandBusy(true, "Syncing Wifi Device...");
     try {
       await this.hass.callService("sofabaton_x1s", "sync_command_config", { entity_id: entityId, device_key: deviceKey });
+      await this._refreshControlPanelState();
     } catch (error) {
       this._syncState = {
         ...this._syncState,
@@ -7525,14 +7865,20 @@ var SofabatonWifiCommandsTab = class extends i4 {
     }
   }
   _scheduleSyncPoll() {
-    if (this._syncState.status !== "running" || this._remoteUnavailable()) {
+    const runningDevice = this._runningWifiDevice();
+    const selectedDeviceRunning = this._syncState.status === "running";
+    if (!selectedDeviceRunning && !runningDevice || this._remoteUnavailable()) {
       this._clearPollTimer();
       return;
     }
     if (this._commandSyncPollTimer != null) return;
     this._commandSyncPollTimer = window.setTimeout(async () => {
       this._commandSyncPollTimer = null;
-      await this._loadCommandSyncProgress(true);
+      if (selectedDeviceRunning && this._selectedDeviceKey) {
+        await this._loadCommandSyncProgress(true);
+      } else {
+        await this._loadWifiDevices(true);
+      }
     }, 1e3);
   }
   _clearPollTimer() {
@@ -7584,6 +7930,8 @@ SofabatonWifiCommandsTab.properties = {
   hubCommandBusyLabel: { type: String },
   loading: { type: Boolean },
   error: { type: String },
+  blockedTitle: { type: String },
+  blockedMessage: { type: String },
   _commandsData: { state: true },
   _wifiDevices: { state: true },
   _selectedDeviceKey: { state: true },
@@ -7613,7 +7961,7 @@ SofabatonWifiCommandsTab.properties = {
   _creatingDevice: { state: true },
   _maxWifiDevices: { state: true }
 };
-SofabatonWifiCommandsTab.styles = i`
+SofabatonWifiCommandsTab.styles = [secondaryTabStyles, i`
     :host {
       display: flex;
       flex: 1;
@@ -7625,9 +7973,10 @@ SofabatonWifiCommandsTab.styles = i`
       --tools-radius-pill: 999px;
     }
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow: hidden; }
-    .list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; margin: -16px; }
+    .tab-panel--detail { padding: 0; }
+    .list-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; }
     .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px 16px 16px; }
-    .detail-view { min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; margin: -16px; }
+    .detail-view { min-height: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden; }
     .sticky-header, .sticky-footer { position: sticky; z-index: 2; background: var(--ha-card-background, var(--card-background-color)); }
     .sticky-header { padding: 12px 16px; }
     .sticky-header { top: 0; border-bottom: 1px solid var(--divider-color); }
@@ -7642,22 +7991,18 @@ SofabatonWifiCommandsTab.styles = i`
     .back-btn { display: inline-flex; align-items: center; gap: 8px; }
     .list-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 16px; row-gap: 8px; }
     .list-header-copy { min-width: 0; }
-    .list-header-title-row { display: flex; align-items: center; gap: 10px; }
-    .list-header-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
-    .list-header-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-    .list-header-copy .acc-title { display: block; }
-    .list-header-copy .section-subtitle { margin-top: 8px; }
+    .list-header-copy .section-subtitle { margin-top: 0; }
     .list-header-action { grid-column: 2; grid-row: 1; align-self: start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-    .device-list { display: grid; gap: 10px; }
-    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--tools-radius-lg); padding: 10px 14px; background: var(--ha-card-background, var(--card-background-color)); text-align: left; display: flex; align-items: center; gap: 14px; cursor: pointer; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .device-list { display: grid; gap: 6px; }
+    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); padding: 9px 10px 9px 12px; background: var(--secondary-background-color, var(--ha-card-background)); text-align: left; display: flex; align-items: center; gap: 10px; cursor: pointer; overflow: hidden; box-shadow: none; transition: border-color 120ms ease, background-color 120ms ease; }
     .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
     .device-card.pending-delete { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 45%, var(--divider-color)); }
     .device-card:hover, .back-btn:hover, .list-action-btn:hover, .detail-sync-btn:hover, .device-delete-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 16px; }
+    .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
     .device-card-lead { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
     .device-card-lead ha-icon { --mdc-icon-size: 20px; }
-    .device-card-name { font-size: 14px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-    .device-card-meta { font-size: 12px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; margin-left: auto; }
+    .device-card-name { flex: 1; font-size: 13px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+    .device-card-meta { font-size: 12px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0; margin-left: auto; flex-shrink: 0; }
     .status-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 11px; font-size: 12px; font-weight: 700; border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); white-space: nowrap; flex: 0 0 auto; }
     .status-pill.sync-ok { border-color: color-mix(in srgb, #48b851 35%, var(--divider-color)); color: #2e7d32; }
     .status-pill.sync-error { border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color)); color: var(--error-color, #db4437); }
@@ -7670,7 +8015,7 @@ SofabatonWifiCommandsTab.styles = i`
     .status-pill ha-icon { --mdc-icon-size: 18px; }
     .device-status-pill { min-width: 0; }
     .device-status-pill-label { min-width: 0; }
-    .device-card-count { white-space: nowrap; font-size: 13px; color: var(--primary-text-color); }
+    .device-card-count { white-space: nowrap; font-size: 12px; color: var(--primary-text-color); flex-shrink: 0; }
     .device-card-count-strong { font-weight: 700; }
     .device-card-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; margin-left: 4px; }
     .device-delete-btn { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; color: var(--secondary-text-color); flex: 0 0 auto; }
@@ -7694,6 +8039,18 @@ SofabatonWifiCommandsTab.styles = i`
     .list-action-btn:disabled:hover,
     .detail-sync-btn:disabled:hover {
       border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
+    }
+    .detail-sync-btn.detail-sync-btn--state-ok {
+      border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
+      background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
+      color: #2e7d32;
+      opacity: 1;
+    }
+    .detail-sync-btn.detail-sync-btn--state-ok:disabled {
+      border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
+      background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
+      color: #2e7d32;
+      opacity: 1;
     }
     .empty-state-card { border: 1px dashed var(--divider-color); border-radius: var(--tools-radius-md); padding: 18px; color: var(--secondary-text-color); line-height: 1.5; }
     .bottom-dock-status {
@@ -7992,7 +8349,7 @@ SofabatonWifiCommandsTab.styles = i`
       .device-status-pill-label { display: none; }
       .sync-row { align-items: flex-start; flex-direction: column; }
     }
-  `;
+  `];
 if (!customElements.get("sofabaton-wifi-commands-tab")) {
   customElements.define("sofabaton-wifi-commands-tab", SofabatonWifiCommandsTab);
 }
@@ -8007,6 +8364,20 @@ function resolveLoadedToolsFrontendVersion() {
 }
 var LOADED_TOOLS_FRONTEND_VERSION = resolveLoadedToolsFrontendVersion();
 var TOOLS_VERSION = LOADED_TOOLS_FRONTEND_VERSION;
+var DOC_LINKS = {
+  wifi_commands: {
+    href: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
+    label: "Wifi Commands documentation"
+  },
+  backup: {
+    href: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md",
+    label: "Backup documentation"
+  },
+  blobs: {
+    href: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/blobs.md",
+    label: "Blobs documentation"
+  }
+};
 function logOnce() {
   const windowWithFlag = window;
   if (windowWithFlag[LOG_ONCE_KEY]) return;
@@ -8146,15 +8517,18 @@ var SofabatonControlPanelCard = class extends i4 {
   }
   captureCacheScrollState() {
     const state = {
-      section: this._snapshot.openSection || null,
+      section: this._snapshot.selectedCacheSection || null,
       sectionTop: 0,
       panelTop: 0
     };
-    const body = state.section ? this.renderRoot.querySelector(`#acc-body-${state.section}`) : null;
+    const body = this.cacheScrollBody();
     const panel = this.renderRoot.querySelector(".tab-panel");
     if (body) state.sectionTop = body.scrollTop || 0;
     if (panel) state.panelTop = panel.scrollTop || 0;
     return state;
+  }
+  cacheScrollBody() {
+    return this.renderRoot.querySelector(".cache-panel-body");
   }
   restoreCacheScrollState(snapshot, pendingEntityKey) {
     if (!snapshot) {
@@ -8166,7 +8540,7 @@ var SofabatonControlPanelCard = class extends i4 {
     requestAnimationFrame(() => {
       const panel = this.renderRoot.querySelector(".tab-panel");
       if (panel) panel.scrollTop = Number(snapshot.panelTop || 0);
-      const body = snapshot.section ? this.renderRoot.querySelector(`#acc-body-${snapshot.section}`) : null;
+      const body = this.cacheScrollBody();
       if (body) body.scrollTop = Number(snapshot.sectionTop || 0);
       if (pendingEntityKey) {
         requestAnimationFrame(() => this.scrollEntityToTop(pendingEntityKey));
@@ -8176,7 +8550,7 @@ var SofabatonControlPanelCard = class extends i4 {
   scrollEntityToTop(key) {
     const entity = this.renderRoot.querySelector(`#entity-${key}`);
     if (!entity) return;
-    const body = entity.closest(".acc-body");
+    const body = entity.closest(".cache-panel-body, .secondary-panel-body, .acc-body");
     if (!body) return;
     const entityTop = entity.getBoundingClientRect().top;
     const bodyTop = body.getBoundingClientRect().top;
@@ -8203,6 +8577,27 @@ var SofabatonControlPanelCard = class extends i4 {
   renderBrandLabel() {
     const version = String(this._snapshot.toolsFrontendVersionExpected ?? this._snapshot.toolsFrontendVersionLoaded ?? "").trim() || "unknown";
     return b2`<div class="card-brand">SOFABATON CONTROL PANEL - v${version}</div>`;
+  }
+  renderBottomDock(hub) {
+    const runtimeState = resolveRuntimeState(this._snapshot);
+    const docLink = runtimeState ? null : DOC_LINKS[this._snapshot.selectedTab] ?? null;
+    const statusText = runtimeState ? runtimeState.detail || runtimeState.label : null;
+    const progressPercent = runtimeState?.kind === "operation_running" ? runtimeState.progress.percent : null;
+    const dockClass = runtimeState?.kind === "completion" ? `card-bottom-dock card-bottom-dock--${runtimeState.tone}` : "card-bottom-dock";
+    return b2`
+      <div class=${dockClass}>
+        ${runtimeState?.kind === "operation_running" ? b2`
+              <div
+                class="card-bottom-dock-progress-line"
+                data-indeterminate=${runtimeState.progress.indeterminate ? "true" : "false"}
+                style=${runtimeState.progress.indeterminate || progressPercent == null ? "width: 35%" : `width:${progressPercent}%`}
+              ></div>
+            ` : null}
+        <div class="card-bottom-dock-center">
+          ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : b2`<span class="card-bottom-dock-empty" aria-hidden="true"></span>`}
+        </div>
+      </div>
+    `;
   }
   renderBackendUnavailable(height) {
     return b2`
@@ -8270,13 +8665,14 @@ var SofabatonControlPanelCard = class extends i4 {
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
     const height = Number(this._config.card_height ?? 600);
-    const selectedHubConnected = !hub || hubConnected(this._snapshot.hass, hub);
-    if (this._snapshot.toolsFrontendVersionMismatch) {
+    const cardGateState = resolveCardGateState(this._snapshot);
+    if (cardGateState.kind === "version_mismatch") {
       return this.renderVersionMismatch(height);
     }
-    if (this._snapshot.backendUnavailable) {
+    if (cardGateState.kind === "backend_unavailable") {
       return this.renderBackendUnavailable(height);
     }
+    const selectedHubConnected = cardGateState.kind !== "hub_unavailable";
     const activeBackupOperation = hub?.active_backup_operation;
     const backupBusy = !!activeBackupOperation && ["pending", "running"].includes(String(activeBackupOperation.status || ""));
     const sharedHubCommandBusy = Boolean(
@@ -8302,10 +8698,13 @@ var SofabatonControlPanelCard = class extends i4 {
         error: this._snapshot.logsError
       });
     } else if (this._snapshot.selectedTab === "wifi_commands") {
+      const availability = resolveTabAvailability(this._snapshot, "wifi_commands");
       activeTab = b2`
         <sofabaton-wifi-commands-tab
           .loading=${this._snapshot.loading}
           .error=${this._snapshot.loadError}
+          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
+          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
           .hub=${hub}
           .hass=${this._snapshot.hass}
           .hubCommandBusy=${sharedHubCommandBusy}
@@ -8315,27 +8714,33 @@ var SofabatonControlPanelCard = class extends i4 {
         ></sofabaton-wifi-commands-tab>
       `;
     } else if (this._snapshot.selectedTab === "blobs") {
+      const availability = resolveTabAvailability(this._snapshot, "blobs");
       activeTab = b2`
         <sofabaton-blobs-tab
           .loading=${this._snapshot.loading}
           .error=${this._snapshot.loadError}
+          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
+          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
           .hub=${hub}
           .cacheHub=${cacheHub}
           .hass=${this._snapshot.hass}
           .persistentCacheEnabled=${cacheEnabled}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
-          .openSection=${this._snapshot.openBlobsSection}
-          .toggleOpenSection=${(section) => this._store.toggleBlobsSection(section)}
+          .selectedSection=${this._snapshot.selectedBlobsSection}
+          .setSelectedSection=${(section) => this._store.setSelectedBlobsSection(section)}
           .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {
+      const availability = resolveTabAvailability(this._snapshot, "backup");
       activeTab = b2`
         <sofabaton-backup-tab
           .loading=${this._snapshot.loading}
           .error=${this._snapshot.loadError}
+          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
+          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
           .hub=${hub}
           .cacheHub=${cacheHub}
           .hass=${this._snapshot.hass}
@@ -8343,8 +8748,8 @@ var SofabatonControlPanelCard = class extends i4 {
           .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
-          .openSection=${this._snapshot.openBackupSection}
-          .setOpenSection=${(section) => this._store.setBackupSection(section)}
+          .selectedSection=${this._snapshot.selectedBackupSection}
+          .setSelectedSection=${(section) => this._store.setSelectedBackupSection(section)}
           .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-backup-tab>
@@ -8359,13 +8764,13 @@ var SofabatonControlPanelCard = class extends i4 {
         refreshBusy: this._snapshot.refreshBusy,
         hubCommandBusy: sharedHubCommandBusy,
         activeRefreshLabel: this._snapshot.activeRefreshLabel,
-        openSection: this._snapshot.openSection,
+        selectedSection: this._snapshot.selectedCacheSection,
         openEntity: this._snapshot.openEntity,
         selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
         enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
         onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
         onRefreshStale: () => void this._store.refreshStale(),
-        onToggleSection: (sectionId) => this._store.toggleSection(sectionId),
+        onSelectSection: (sectionId) => this._store.selectCacheSection(sectionId),
         onToggleEntity: (key) => this._store.toggleEntity(key),
         onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
         onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key)
@@ -8398,6 +8803,7 @@ var SofabatonControlPanelCard = class extends i4 {
       onToggleToolsMenu: () => this.toggleToolsMenu()
     })}
           ${selectedHubConnected ? b2`<div class="card-body">${activeTab}</div>` : this.renderHubUnavailable()}
+          ${this.renderBottomDock(hub)}
         </div>
       </ha-card>
     `;
