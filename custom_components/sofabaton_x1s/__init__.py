@@ -630,7 +630,12 @@ def _build_wifi_device_sync_payload(
         (configured_slots > 0 and bool(commands_hash) and commands_hash != deployed_commands_hash)
         or (configured_slots == 0 and (has_deployed_device or bool(deployed_commands_hash)))
     )
-    if commands_hash and str(progress.get("status") or "") == "success" and progress_hash == commands_hash:
+    if (
+        commands_hash
+        and str(progress.get("status") or "") == "success"
+        and progress_hash == commands_hash
+        and (has_deployed_device or bool(deployed_commands_hash))
+    ):
         sync_needed = False
     return {
         **progress,

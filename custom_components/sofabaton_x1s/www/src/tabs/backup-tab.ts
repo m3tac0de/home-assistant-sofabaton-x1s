@@ -9,7 +9,8 @@ import type {
   HassLike,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
-import { formatError, hubIcon } from "../shared/utils/control-panel-selectors";
+import { formatError } from "../shared/utils/control-panel-selectors";
+import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
 import {
   assertBackupBundleRestoreCompatible,
   backupDeviceOptions,
@@ -68,7 +69,7 @@ class SofabatonBackupTab extends LitElement {
     _editingKey: { state: true },
   };
 
-  static styles = [secondaryTabStyles, css`
+  static styles = [secondaryTabStyles, operationProgressStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -171,44 +172,19 @@ class SofabatonBackupTab extends LitElement {
       gap: 12px;
     }
     .backup-scope-group { display: grid; gap: 8px; }
-    .backup-scope-options {
+    ha-radio-group.scope-form--md {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-md);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
-      overflow: hidden;
-    }
-    .backup-scope-option {
-      display: flex;
-      cursor: pointer;
-      min-width: 0;
-    }
-    .backup-scope-option * { cursor: inherit; }
-    .backup-scope-option + .backup-scope-option {
-      border-left: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
-    }
-    .backup-scope-option.selected {
-      background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .backup-scope-option ha-formfield {
-      width: 100%;
-      min-width: 0;
-      --mdc-theme-text-primary-on-background: var(--primary-text-color);
-    }
-    .backup-scope-option .scope-form {
-      width: 100%;
-      min-width: 0;
-      box-sizing: border-box;
-      display: flex;
-      align-items: center;
       gap: 8px;
-      padding: 0;
+      width: 100%;
+      --ha-radio-option-active-color: var(--primary-color);
+      --ha-radio-option-checked-background-color: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
     }
-    .backup-scope-option ha-radio { flex: 0 0 auto; }
-    .scope-form-label {
+    ha-radio-group.scope-form--md ha-radio-option {
       min-width: 0;
-      flex: 1 1 auto;
+    }
+    @media (max-width: 380px) {
+      ha-radio-group.scope-form--md { grid-template-columns: 1fr; }
     }
     .compat-choice {
       width: 18px;
@@ -540,115 +516,7 @@ class SofabatonBackupTab extends LitElement {
       flex-wrap: wrap;
     }
 
-    .progress-shell {
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-xl);
-      padding: 18px;
-      background: transparent;
-      color: var(--primary-text-color);
-    }
-    .progress-shell[data-mode="restore"] .packet { animation-name: backupMove; }
-    .progress-stage {
-      position: relative;
-      display: flex;
-      flex-wrap: nowrap;
-      justify-content: center;
-      gap: 4px;
-      align-items: center;
-      min-height: 110px;
-      min-width: 0;
-    }
-    .progress-node { display: grid; justify-items: center; gap: 10px; z-index: 2; }
-    .progress-disc {
-      width: 76px;
-      height: 76px;
-      display: grid;
-      place-items: center;
-      border-radius: var(--backup-radius-lg);
-      background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 88%, transparent);
-      border: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
-    }
-    .progress-node.home .progress-disc { color: var(--primary-color); }
-    .progress-node.hub .progress-disc { color: var(--primary-color); }
-    .progress-disc ha-icon { --mdc-icon-size: 50px; }
-    .progress-disc .progress-hub-svg { width: 60px; height: 60px; }
-    .progress-node-label {
-      color: var(--secondary-text-color);
-      font-size: 11px;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      white-space: nowrap;
-    }
-    .progress-route { position: relative; flex: 0 1 68px; min-width: 68px; height: 42px; }
-    .progress-route::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 50%;
-      height: 2px;
-      background: color-mix(in srgb, var(--primary-color) 28%, transparent);
-      transform: translateY(-50%);
-    }
-    .packet {
-      position: absolute;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: var(--primary-color);
-      box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 14%, transparent);
-      animation: restoreMove 1.75s cubic-bezier(.55,0,.25,1) infinite;
-    }
-    .packet:nth-child(2) { animation-delay: .38s; opacity: .78; transform: scale(.82); }
-    .packet:nth-child(3) { animation-delay: .76s; opacity: .55; transform: scale(.68); }
-    .progress-copy {
-      margin-top: 8px;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .progress-title {
-      font-size: clamp(20px, 3vw, 28px);
-      letter-spacing: -.03em;
-      font-weight: 700;
-    }
-    .progress-message { color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; }
-    .progress-bar {
-      margin-top: 14px;
-      height: 8px;
-      overflow: hidden;
-      border-radius: var(--backup-radius-pill);
-      background: color-mix(in srgb, var(--divider-color) 55%, transparent);
-    }
-    .progress-bar-fill {
-      height: 100%;
-      border-radius: inherit;
-      background: var(--primary-color);
-      transition: width 180ms ease;
-    }
-    .progress-meta {
-      margin-top: 10px;
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      font-size: 12px;
-      color: var(--secondary-text-color);
-    }
-
     input[type="file"] { display: none; }
-    @keyframes backupMove {
-      0% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(.55); }
-      18% { opacity: 1; }
-      82% { opacity: 1; }
-      100% { left: 94%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
-    }
-    @keyframes restoreMove {
-      0% { left: 94%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(.55); }
-      18% { opacity: 1; }
-      82% { opacity: 1; }
-      100% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
-    }
 
     @media (max-width: 380px) {
       .backup-scope-options { grid-template-columns: 1fr; }
@@ -656,12 +524,6 @@ class SofabatonBackupTab extends LitElement {
         border-left: none;
         border-top: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
       }
-    }
-    @media (max-width: 760px) {
-      .progress-disc { width: 64px; height: 64px; }
-      .progress-disc ha-icon { --mdc-icon-size: 42px; }
-      .progress-disc .progress-hub-svg { width: 50px; height: 50px; }
-      .progress-route { flex-basis: 52px; min-width: 52px; }
     }
   `];
 
@@ -817,36 +679,15 @@ class SofabatonBackupTab extends LitElement {
                 : html`
                   <div class="backup-config-view">
                   <div class="backup-scope-group">
-                    <div class="backup-scope-options">
-                      <label
-                        class="backup-scope-option ${wholeHub ? "selected" : ""}"
-                        @click=${() => {
-                          if (this._backupLocked() || !this.cacheHub) return;
-                          this._setBackupScope("whole_hub");
-                        }}
-                      >
-                        ${this._renderScopeChoice({
-                          label: "Entire hub",
-                          name: "backup-scope",
-                          checked: wholeHub,
-                          disabled: this._backupLocked() || !this.cacheHub,
-                        })}
-                      </label>
-                      <label
-                        class="backup-scope-option ${!wholeHub ? "selected" : ""}"
-                        @click=${() => {
-                          if (this._backupLocked() || !this.cacheHub) return;
-                          this._setBackupScope("individual_devices");
-                        }}
-                      >
-                        ${this._renderScopeChoice({
-                          label: "Selected devices",
-                          name: "backup-scope",
-                          checked: !wholeHub,
-                          disabled: this._backupLocked() || !this.cacheHub,
-                        })}
-                      </label>
-                    </div>
+                    ${this._renderScopeGroup({
+                      value: this._backupScope,
+                      disabled: this._backupLocked() || !this.cacheHub,
+                      options: [
+                        { value: "whole_hub", label: "Entire hub" },
+                        { value: "individual_devices", label: "Selected devices" },
+                      ],
+                      onChange: (next) => this._setBackupScope(next),
+                    })}
                   </div>
                   ${!wholeHub ? html`
                     <div class="backup-devices-head">
@@ -1280,28 +1121,31 @@ class SofabatonBackupTab extends LitElement {
     `;
   }
 
-  private _renderScopeChoice(params: {
-    label: string;
-    name: string;
-    checked: boolean;
+  private _renderScopeGroup<T extends string>(params: {
+    value: T;
     disabled: boolean;
+    options: Array<{ value: T; label: string; disabled?: boolean }>;
+    onChange: (value: T) => void;
   }) {
-    if (customElements.get("ha-formfield") && customElements.get("ha-radio")) {
-      return html`
-        <ha-formfield class="scope-form" label=${params.label}>
-          <ha-radio
-            name=${params.name}
-            .checked=${params.checked}
-            ?disabled=${params.disabled}
-          ></ha-radio>
-        </ha-formfield>
-      `;
-    }
+    const isOption = (raw: unknown): raw is T =>
+      typeof raw === "string" && params.options.some((option) => option.value === raw);
     return html`
-      <span class="scope-form scope-form--fallback">
-        ${this._renderRadioControl(params)}
-        <span class="scope-form-label">${params.label}</span>
-      </span>
+      <ha-radio-group
+        class="scope-form scope-form--md"
+        .value=${params.value}
+        ?disabled=${params.disabled}
+        @value-changed=${(event: CustomEvent<{ value: unknown }>) => {
+          const next = event.detail?.value;
+          if (isOption(next) && next !== params.value) params.onChange(next);
+        }}
+      >
+        ${params.options.map((option) => html`
+          <ha-radio-option
+            value=${option.value}
+            ?disabled=${params.disabled || !!option.disabled}
+          >${option.label}</ha-radio-option>
+        `)}
+      </ha-radio-group>
     `;
   }
 
@@ -1340,63 +1184,12 @@ class SofabatonBackupTab extends LitElement {
     `;
   }
 
-  private _renderRadioControl(params: {
-    checked: boolean;
-    disabled: boolean;
-    name: string;
-  }) {
-    if (customElements.get("ha-radio")) {
-      return html`
-        <ha-radio
-          name=${params.name}
-          .checked=${params.checked}
-          ?disabled=${params.disabled}
-        ></ha-radio>
-      `;
-    }
-    return html`
-      <input
-        class="compat-choice compat-choice--radio"
-        type="radio"
-        name=${params.name}
-        .checked=${params.checked}
-        ?disabled=${params.disabled}
-      />
-    `;
-  }
-
   private _renderProgressCard(progress: BackupProgressEvent, mode: "backup" | "restore") {
-    const total = Math.max(0, Number(progress.total_steps || 0));
-    const done = Math.max(0, Number(progress.completed_steps || 0));
-    const percent = total > 0 ? Math.max(6, Math.min(100, Math.round((done / total) * 100))) : 36;
-    return html`
-      <div class="progress-shell" data-mode=${mode}>
-        <div class="progress-stage">
-          <div class="progress-node home">
-            <div class="progress-disc"><ha-icon icon="mdi:home-assistant"></ha-icon></div>
-            <div class="progress-node-label">Home Assistant</div>
-          </div>
-          <div class="progress-route" aria-hidden="true">
-            <i class="packet"></i>
-            <i class="packet"></i>
-            <i class="packet"></i>
-          </div>
-          <div class="progress-node hub">
-            <div class="progress-disc">${hubIcon("hero", "progress-hub-svg")}</div>
-            <div class="progress-node-label">Sofabaton Hub</div>
-          </div>
-        </div>
-        <div class="progress-copy">
-          <div class="progress-title">${mode === "backup" ? "Creating backup" : "Restoring backup"}</div>
-          <div class="progress-message">${String(progress.message || "Working…")}</div>
-        </div>
-        <div class="progress-bar"><div class="progress-bar-fill" style=${`width:${percent}%`}></div></div>
-        <div class="progress-meta">
-          <span>${String(progress.phase || "running").replace(/_/g, " ")}</span>
-          <span>${total > 0 ? `${done}/${total} steps` : "Preparing…"}</span>
-        </div>
-      </div>
-    `;
+    return renderOperationProgress({
+      mode,
+      title: mode === "backup" ? "Creating backup" : "Restoring backup",
+      message: String(progress.message || "Working…"),
+    });
   }
 
   private _backupLocked() {

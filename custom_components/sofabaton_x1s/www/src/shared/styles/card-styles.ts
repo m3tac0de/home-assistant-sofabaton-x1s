@@ -13,6 +13,7 @@ export const cardStyles = [secondaryTabStyles, css`
     justify-content: space-between;
     gap: 8px;
     padding: 4px 12px;
+    min-height: 32px;
     border-bottom: 1px solid color-mix(in srgb, var(--divider-color) 82%, transparent);
     background:
       linear-gradient(
@@ -26,20 +27,11 @@ export const cardStyles = [secondaryTabStyles, css`
     flex: 1 1 auto;
     color: color-mix(in srgb, var(--primary-text-color) 94%, var(--secondary-text-color));
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 400;
     letter-spacing: 0.12em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .card-header-status {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    flex-wrap: nowrap;
-    white-space: nowrap;
   }
   .card-title { font-size: 16px; font-weight: 700; }
   .card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -106,8 +98,8 @@ export const cardStyles = [secondaryTabStyles, css`
   }
   .card-bottom-dock-link {
     color: var(--primary-color);
-    text-decoration: none;
-    font-weight: 600;
+    text-decoration: underline;
+    font-weight: 400;
   }
   .card-bottom-dock-link:hover {
     text-decoration: underline;
@@ -119,19 +111,36 @@ export const cardStyles = [secondaryTabStyles, css`
   }
   .card-bottom-dock-progress-line {
     position: absolute;
-    top: -1px;
+    top: -2px;
     left: 0;
-    height: 2px;
-    background: var(--primary-color);
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--primary-color) 60%, transparent),
+      var(--primary-color) 45%,
+      color-mix(in srgb, var(--primary-color) 70%, white 30%) 55%,
+      var(--primary-color)
+    );
+    box-shadow:
+      0 0 8px color-mix(in srgb, var(--primary-color) 70%, transparent),
+      0 0 14px color-mix(in srgb, var(--primary-color) 40%, transparent);
+    border-radius: 2px;
     transition: width 180ms ease;
+    animation: dockProgressPulse 1.4s ease-in-out infinite;
   }
   .card-bottom-dock-progress-line[data-indeterminate="true"] {
     width: 35% !important;
-    animation: dockProgressIndeterminate 1.2s ease-in-out infinite;
+    animation:
+      dockProgressIndeterminate 1.2s ease-in-out infinite,
+      dockProgressPulse 1.4s ease-in-out infinite;
   }
   @keyframes dockProgressIndeterminate {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(320%); }
+  }
+  @keyframes dockProgressPulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.35); }
   }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
   .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
@@ -221,38 +230,49 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-tab-layout > .tab-panel { flex: 1; }
   .panel-sticky-footer { flex-shrink: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }
   .bottom-dock-status { width: 100%; display: flex; align-items: stretch; justify-content: center; }
-  .dock-pill {
+  .card-bottom-dock-right {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    pointer-events: auto;
+  }
+  .dock-pill-pair {
+    display: inline-flex;
+    align-items: stretch;
     min-height: 22px;
-    padding: 0 8px;
     border-radius: 999px;
+    overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent);
-    background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 86%, transparent);
-    font-size: 10px;
-    font-weight: 700;
     line-height: 1;
     white-space: nowrap;
+    font-size: 10px;
+    font-weight: 700;
   }
-  .dock-pill--hub-on {
+  .dock-pill-half {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 9px;
+  }
+  .dock-pill-half + .dock-pill-half {
+    border-left: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent);
+  }
+  .dock-pill-half--hub-on {
     color: #2f9f43;
-    border-color: color-mix(in srgb, #48b851 40%, var(--divider-color));
-    background: color-mix(in srgb, #48b851 12%, var(--ha-card-background, var(--card-background-color)));
+    background: color-mix(in srgb, #48b851 16%, var(--ha-card-background, var(--card-background-color)));
   }
-  .dock-pill--hub-off {
+  .dock-pill-half--hub-off {
     color: #c13d3d;
-    border-color: color-mix(in srgb, #db4437 42%, var(--divider-color));
-    background: color-mix(in srgb, #db4437 10%, var(--ha-card-background, var(--card-background-color)));
+    background: color-mix(in srgb, #db4437 14%, var(--ha-card-background, var(--card-background-color)));
   }
-  .dock-pill--app-on {
+  .dock-pill-half--app-on {
     color: #2f80d8;
-    border-color: color-mix(in srgb, #67b7ff 42%, var(--divider-color));
-    background: color-mix(in srgb, #67b7ff 12%, var(--ha-card-background, var(--card-background-color)));
+    background: color-mix(in srgb, #67b7ff 16%, var(--ha-card-background, var(--card-background-color)));
   }
-  .dock-pill--app-off {
+  .dock-pill-half--app-off {
     color: color-mix(in srgb, var(--secondary-text-color) 78%, transparent);
-    border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
     background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
   }
   .card-blocked-state {
@@ -424,7 +444,6 @@ export const cardStyles = [secondaryTabStyles, css`
     .card-bottom-dock-center { font-size: 10px; }
     .hub-picker-btn { max-width: min(100vw - 32px, 320px); }
     .chip-name { max-width: 220px; }
-    .card-header-status { gap: 4px; }
     .card-brand { font-size: 9px; letter-spacing: 0.1em; }
     .cache-panel-header {
       margin-top: 5px;

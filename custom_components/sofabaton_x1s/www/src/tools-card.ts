@@ -277,18 +277,14 @@ class SofabatonControlPanelCard extends LitElement {
     });
   }
 
-  private renderHeaderStatus(hub: ReturnType<typeof selectedHub>) {
+  private renderConnectivityPill(hub: ReturnType<typeof selectedHub>) {
     if (!hub) return null;
     const connected = hubConnected(this._snapshot.hass, hub);
     const proxyOn = proxyClientConnected(this._snapshot.hass, hub);
     return html`
-      <div class="card-header-status">
-        <div class="dock-pill ${connected ? "dock-pill--hub-on" : "dock-pill--hub-off"}">
-          <span>HUB</span>
-        </div>
-        <div class="dock-pill ${proxyOn ? "dock-pill--app-on" : "dock-pill--app-off"}">
-          <span>APP</span>
-        </div>
+      <div class="dock-pill-pair" role="group" aria-label="Connectivity">
+        <span class="dock-pill-half ${connected ? "dock-pill-half--hub-on" : "dock-pill-half--hub-off"}">HUB</span>
+        <span class="dock-pill-half ${proxyOn ? "dock-pill-half--app-on" : "dock-pill-half--app-off"}">APP</span>
       </div>
     `;
   }
@@ -326,6 +322,9 @@ class SofabatonControlPanelCard extends LitElement {
             : docLink
               ? html`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>`
               : html`<span class="card-bottom-dock-empty" aria-hidden="true"></span>`}
+        </div>
+        <div class="card-bottom-dock-right">
+          ${this.renderConnectivityPill(hub)}
         </div>
       </div>
     `;
@@ -409,18 +408,17 @@ class SofabatonControlPanelCard extends LitElement {
     }
     const selectedHubConnected = cardGateState.kind !== "hub_unavailable";
     const activeBackupOperation = hub?.active_backup_operation;
-    const backupBusy =
-      !!activeBackupOperation &&
-      ["pending", "running"].includes(String(activeBackupOperation.status || ""));
+    const runtimeState = resolveRuntimeState(this._snapshot);
+    const runtimeOperationBusy = runtimeState?.kind === "operation_running";
     const sharedHubCommandBusy = Boolean(
+      runtimeOperationBusy ||
       this._snapshot.refreshBusy ||
       this._snapshot.externalHubCommandBusy ||
-      this._snapshot.pendingActionKey ||
-      backupBusy,
+      this._snapshot.pendingActionKey,
     );
-    const sharedHubCommandLabel = this._snapshot.externalHubCommandLabel
+    const sharedHubCommandLabel = (runtimeOperationBusy ? (runtimeState!.detail || runtimeState!.label) : null)
+      || this._snapshot.externalHubCommandLabel
       || (this._snapshot.refreshBusy ? "Refreshing cache…" : null)
-      || (backupBusy ? String(activeBackupOperation?.message || "Backup or restore in progress…") : null)
       || (this._snapshot.pendingActionKey ? "Hub command in progress…" : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
@@ -526,7 +524,6 @@ class SofabatonControlPanelCard extends LitElement {
         <div class="card-inner" style=${`height:${height}px`}>
           <div class="card-topbar">
             ${this.renderBrandLabel()}
-            ${this.renderHeaderStatus(hub)}
             ${hubs.length > 1
               ? renderHubPicker({
                   interactive: true,

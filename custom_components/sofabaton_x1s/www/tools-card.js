@@ -877,6 +877,7 @@ var cardStyles = [secondaryTabStyles, i`
     justify-content: space-between;
     gap: 8px;
     padding: 4px 12px;
+    min-height: 32px;
     border-bottom: 1px solid color-mix(in srgb, var(--divider-color) 82%, transparent);
     background:
       linear-gradient(
@@ -890,20 +891,11 @@ var cardStyles = [secondaryTabStyles, i`
     flex: 1 1 auto;
     color: color-mix(in srgb, var(--primary-text-color) 94%, var(--secondary-text-color));
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 400;
     letter-spacing: 0.12em;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  .card-header-status {
-    flex: 0 0 auto;
-    display: inline-flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-    flex-wrap: nowrap;
-    white-space: nowrap;
   }
   .card-title { font-size: 16px; font-weight: 700; }
   .card-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -970,8 +962,8 @@ var cardStyles = [secondaryTabStyles, i`
   }
   .card-bottom-dock-link {
     color: var(--primary-color);
-    text-decoration: none;
-    font-weight: 600;
+    text-decoration: underline;
+    font-weight: 400;
   }
   .card-bottom-dock-link:hover {
     text-decoration: underline;
@@ -983,19 +975,36 @@ var cardStyles = [secondaryTabStyles, i`
   }
   .card-bottom-dock-progress-line {
     position: absolute;
-    top: -1px;
+    top: -2px;
     left: 0;
-    height: 2px;
-    background: var(--primary-color);
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--primary-color) 60%, transparent),
+      var(--primary-color) 45%,
+      color-mix(in srgb, var(--primary-color) 70%, white 30%) 55%,
+      var(--primary-color)
+    );
+    box-shadow:
+      0 0 8px color-mix(in srgb, var(--primary-color) 70%, transparent),
+      0 0 14px color-mix(in srgb, var(--primary-color) 40%, transparent);
+    border-radius: 2px;
     transition: width 180ms ease;
+    animation: dockProgressPulse 1.4s ease-in-out infinite;
   }
   .card-bottom-dock-progress-line[data-indeterminate="true"] {
     width: 35% !important;
-    animation: dockProgressIndeterminate 1.2s ease-in-out infinite;
+    animation:
+      dockProgressIndeterminate 1.2s ease-in-out infinite,
+      dockProgressPulse 1.4s ease-in-out infinite;
   }
   @keyframes dockProgressIndeterminate {
     0% { transform: translateX(-100%); }
     100% { transform: translateX(320%); }
+  }
+  @keyframes dockProgressPulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.35); }
   }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
   .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
@@ -1085,38 +1094,49 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-tab-layout > .tab-panel { flex: 1; }
   .panel-sticky-footer { flex-shrink: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }
   .bottom-dock-status { width: 100%; display: flex; align-items: stretch; justify-content: center; }
-  .dock-pill {
+  .card-bottom-dock-right {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    pointer-events: auto;
+  }
+  .dock-pill-pair {
+    display: inline-flex;
+    align-items: stretch;
     min-height: 22px;
-    padding: 0 8px;
     border-radius: 999px;
+    overflow: hidden;
     border: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent);
-    background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 86%, transparent);
-    font-size: 10px;
-    font-weight: 700;
     line-height: 1;
     white-space: nowrap;
+    font-size: 10px;
+    font-weight: 700;
   }
-  .dock-pill--hub-on {
+  .dock-pill-half {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 9px;
+  }
+  .dock-pill-half + .dock-pill-half {
+    border-left: 1px solid color-mix(in srgb, var(--divider-color) 84%, transparent);
+  }
+  .dock-pill-half--hub-on {
     color: #2f9f43;
-    border-color: color-mix(in srgb, #48b851 40%, var(--divider-color));
-    background: color-mix(in srgb, #48b851 12%, var(--ha-card-background, var(--card-background-color)));
+    background: color-mix(in srgb, #48b851 16%, var(--ha-card-background, var(--card-background-color)));
   }
-  .dock-pill--hub-off {
+  .dock-pill-half--hub-off {
     color: #c13d3d;
-    border-color: color-mix(in srgb, #db4437 42%, var(--divider-color));
-    background: color-mix(in srgb, #db4437 10%, var(--ha-card-background, var(--card-background-color)));
+    background: color-mix(in srgb, #db4437 14%, var(--ha-card-background, var(--card-background-color)));
   }
-  .dock-pill--app-on {
+  .dock-pill-half--app-on {
     color: #2f80d8;
-    border-color: color-mix(in srgb, #67b7ff 42%, var(--divider-color));
-    background: color-mix(in srgb, #67b7ff 12%, var(--ha-card-background, var(--card-background-color)));
+    background: color-mix(in srgb, #67b7ff 16%, var(--ha-card-background, var(--card-background-color)));
   }
-  .dock-pill--app-off {
+  .dock-pill-half--app-off {
     color: color-mix(in srgb, var(--secondary-text-color) 78%, transparent);
-    border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
     background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
   }
   .card-blocked-state {
@@ -1288,7 +1308,6 @@ var cardStyles = [secondaryTabStyles, i`
     .card-bottom-dock-center { font-size: 10px; }
     .hub-picker-btn { max-width: min(100vw - 32px, 320px); }
     .chip-name { max-width: 220px; }
-    .card-header-status { gap: 4px; }
     .card-brand { font-size: 9px; letter-spacing: 0.1em; }
     .cache-panel-header {
       margin-top: 5px;
@@ -1900,28 +1919,17 @@ var ControlPanelStore = class {
     this._clearRuntimeStatePoll();
     if (!this._isConnected) return;
     const hub = selectedHub(this._snapshot);
-    if (hub?.runtime_state?.kind !== "operation_running") return;
+    const isRunning = hub?.runtime_state?.kind === "operation_running";
+    const interval = isRunning ? 1e3 : 5e3;
     this._runtimeStatePollTimer = setTimeout(() => {
       this._runtimeStatePollTimer = null;
       void this._refreshRuntimeState();
-    }, 1e3);
+    }, interval);
   }
   async _refreshRuntimeState() {
     if (!this._isConnected) return;
-    const previousHub = selectedHub(this._snapshot);
-    const previousRuntime = previousHub?.runtime_state;
     try {
       await this.loadControlPanelState();
-      const nextHub = selectedHub(this._snapshot);
-      const nextRuntime = nextHub?.runtime_state;
-      if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running") {
-        const operation = previousRuntime.operation;
-        const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : "Wifi Device deployed successfully.";
-        this.showRuntimeCompletion({
-          tone: "success",
-          label: successLabel
-        });
-      }
     } catch {
       this._scheduleRuntimeStatePoll();
       return;
@@ -2065,7 +2073,7 @@ var ControlPanelStore = class {
     };
     this.emit();
   }
-  showRuntimeCompletion(notice, ttlMs = 4e3) {
+  showRuntimeCompletion(notice, ttlMs = 6e3) {
     this._clearRuntimeCompletionTimer();
     this._snapshot = {
       ...this._snapshot,
@@ -2350,6 +2358,8 @@ var ControlPanelStore = class {
     }
   }
   applyControlPanelState(state) {
+    const previousHub = selectedHub(this._snapshot);
+    const previousRuntime = previousHub?.runtime_state;
     const expectedVersion = normalizeExpectedFrontendVersion(state?.tools_frontend_version);
     this._snapshot = {
       ...this._snapshot,
@@ -2358,6 +2368,16 @@ var ControlPanelStore = class {
       toolsFrontendVersionExpected: expectedVersion,
       toolsFrontendVersionMismatch: expectedVersion !== null && expectedVersion !== this._loadedFrontendVersion
     };
+    const nextHub = selectedHub(this._snapshot);
+    const nextRuntime = nextHub?.runtime_state;
+    if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running") {
+      const operation = previousRuntime.operation;
+      const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : "Wifi Device deployed successfully.";
+      this.showRuntimeCompletion({
+        tone: "success",
+        label: successLabel
+      });
+    }
     this._scheduleRuntimeStatePoll();
   }
   applyOptimisticSetting(setting, enabled) {
@@ -4217,6 +4237,133 @@ if (!customElements.get("sofabaton-blobs-tab")) {
   customElements.define("sofabaton-blobs-tab", SofabatonBlobsTab);
 }
 
+// custom_components/sofabaton_x1s/www/src/components/operation-progress.ts
+var operationProgressStyles = i`
+  .progress-shell {
+    --op-progress-radius-lg: var(--ha-card-border-radius, 12px);
+    border: 1px solid var(--divider-color);
+    border-radius: calc(var(--op-progress-radius-lg) + 4px);
+    padding: 18px;
+    background: transparent;
+    color: var(--primary-text-color);
+  }
+  .progress-shell[data-mode="restore"] .packet,
+  .progress-shell[data-mode="wifi-deploy"] .packet {
+    animation-name: opProgressForward;
+  }
+  .progress-stage {
+    position: relative;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 4px;
+    align-items: center;
+    min-height: 110px;
+    min-width: 0;
+  }
+  .progress-node { display: grid; justify-items: center; gap: 10px; z-index: 2; }
+  .progress-disc {
+    width: 76px;
+    height: 76px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--op-progress-radius-lg);
+    background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 88%, transparent);
+    border: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
+  }
+  .progress-node.home .progress-disc,
+  .progress-node.hub .progress-disc { color: var(--primary-color); }
+  .progress-disc ha-icon { --mdc-icon-size: 50px; }
+  .progress-disc .progress-hub-svg { width: 60px; height: 60px; }
+  .progress-node-label {
+    color: var(--secondary-text-color);
+    font-size: 11px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .progress-route { position: relative; flex: 0 1 68px; min-width: 68px; height: 42px; }
+  .progress-route::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 2px;
+    background: color-mix(in srgb, var(--primary-color) 28%, transparent);
+    transform: translateY(-50%);
+  }
+  .packet {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 14%, transparent);
+    animation: opProgressReverse 1.75s cubic-bezier(.55,0,.25,1) infinite;
+  }
+  .packet:nth-child(2) { animation-delay: .38s; opacity: .78; transform: scale(.82); }
+  .packet:nth-child(3) { animation-delay: .76s; opacity: .55; transform: scale(.68); }
+  .progress-copy {
+    margin-top: 8px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .progress-title {
+    font-size: clamp(20px, 3vw, 28px);
+    letter-spacing: -.03em;
+    font-weight: 700;
+  }
+  .progress-message { color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; }
+
+  @keyframes opProgressForward {
+    0% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(.55); }
+    18% { opacity: 1; }
+    82% { opacity: 1; }
+    100% { left: 94%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
+  }
+  @keyframes opProgressReverse {
+    0% { left: 94%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(.55); }
+    18% { opacity: 1; }
+    82% { opacity: 1; }
+    100% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
+  }
+
+  @media (max-width: 760px) {
+    .progress-disc { width: 64px; height: 64px; }
+    .progress-disc ha-icon { --mdc-icon-size: 42px; }
+    .progress-disc .progress-hub-svg { width: 50px; height: 50px; }
+    .progress-route { flex-basis: 52px; min-width: 52px; }
+  }
+`;
+function renderOperationProgress(view) {
+  return b2`
+    <div class="progress-shell" data-mode=${view.mode} role="status" aria-live="polite">
+      <div class="progress-stage">
+        <div class="progress-node home">
+          <div class="progress-disc"><ha-icon icon="mdi:home-assistant"></ha-icon></div>
+          <div class="progress-node-label">Home Assistant</div>
+        </div>
+        <div class="progress-route" aria-hidden="true">
+          <i class="packet"></i>
+          <i class="packet"></i>
+          <i class="packet"></i>
+        </div>
+        <div class="progress-node hub">
+          <div class="progress-disc">${hubIcon("hero", "progress-hub-svg")}</div>
+          <div class="progress-node-label">Sofabaton Hub</div>
+        </div>
+      </div>
+      <div class="progress-copy">
+        <div class="progress-title">${view.title}</div>
+        <div class="progress-message">${view.message}</div>
+      </div>
+    </div>
+  `;
+}
+
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
@@ -4550,36 +4697,15 @@ var SofabatonBackupTab = class extends i4 {
       })() : b2`
                   <div class="backup-config-view">
                   <div class="backup-scope-group">
-                    <div class="backup-scope-options">
-                      <label
-                        class="backup-scope-option ${wholeHub ? "selected" : ""}"
-                        @click=${() => {
-        if (this._backupLocked() || !this.cacheHub) return;
-        this._setBackupScope("whole_hub");
-      }}
-                      >
-                        ${this._renderScopeChoice({
-        label: "Entire hub",
-        name: "backup-scope",
-        checked: wholeHub,
-        disabled: this._backupLocked() || !this.cacheHub
+                    ${this._renderScopeGroup({
+        value: this._backupScope,
+        disabled: this._backupLocked() || !this.cacheHub,
+        options: [
+          { value: "whole_hub", label: "Entire hub" },
+          { value: "individual_devices", label: "Selected devices" }
+        ],
+        onChange: (next) => this._setBackupScope(next)
       })}
-                      </label>
-                      <label
-                        class="backup-scope-option ${!wholeHub ? "selected" : ""}"
-                        @click=${() => {
-        if (this._backupLocked() || !this.cacheHub) return;
-        this._setBackupScope("individual_devices");
-      }}
-                      >
-                        ${this._renderScopeChoice({
-        label: "Selected devices",
-        name: "backup-scope",
-        checked: !wholeHub,
-        disabled: this._backupLocked() || !this.cacheHub
-      })}
-                      </label>
-                    </div>
                   </div>
                   ${!wholeHub ? b2`
                     <div class="backup-devices-head">
@@ -4929,23 +5055,25 @@ var SofabatonBackupTab = class extends i4 {
       </div>
     `;
   }
-  _renderScopeChoice(params) {
-    if (customElements.get("ha-formfield") && customElements.get("ha-radio")) {
-      return b2`
-        <ha-formfield class="scope-form" label=${params.label}>
-          <ha-radio
-            name=${params.name}
-            .checked=${params.checked}
-            ?disabled=${params.disabled}
-          ></ha-radio>
-        </ha-formfield>
-      `;
-    }
+  _renderScopeGroup(params) {
+    const isOption = (raw) => typeof raw === "string" && params.options.some((option) => option.value === raw);
     return b2`
-      <span class="scope-form scope-form--fallback">
-        ${this._renderRadioControl(params)}
-        <span class="scope-form-label">${params.label}</span>
-      </span>
+      <ha-radio-group
+        class="scope-form scope-form--md"
+        .value=${params.value}
+        ?disabled=${params.disabled}
+        @value-changed=${(event) => {
+      const next = event.detail?.value;
+      if (isOption(next) && next !== params.value) params.onChange(next);
+    }}
+      >
+        ${params.options.map((option) => b2`
+          <ha-radio-option
+            value=${option.value}
+            ?disabled=${params.disabled || !!option.disabled}
+          >${option.label}</ha-radio-option>
+        `)}
+      </ha-radio-group>
     `;
   }
   _renderCheckboxControl(params) {
@@ -4979,58 +5107,12 @@ var SofabatonBackupTab = class extends i4 {
       />
     `;
   }
-  _renderRadioControl(params) {
-    if (customElements.get("ha-radio")) {
-      return b2`
-        <ha-radio
-          name=${params.name}
-          .checked=${params.checked}
-          ?disabled=${params.disabled}
-        ></ha-radio>
-      `;
-    }
-    return b2`
-      <input
-        class="compat-choice compat-choice--radio"
-        type="radio"
-        name=${params.name}
-        .checked=${params.checked}
-        ?disabled=${params.disabled}
-      />
-    `;
-  }
   _renderProgressCard(progress, mode) {
-    const total = Math.max(0, Number(progress.total_steps || 0));
-    const done = Math.max(0, Number(progress.completed_steps || 0));
-    const percent = total > 0 ? Math.max(6, Math.min(100, Math.round(done / total * 100))) : 36;
-    return b2`
-      <div class="progress-shell" data-mode=${mode}>
-        <div class="progress-stage">
-          <div class="progress-node home">
-            <div class="progress-disc"><ha-icon icon="mdi:home-assistant"></ha-icon></div>
-            <div class="progress-node-label">Home Assistant</div>
-          </div>
-          <div class="progress-route" aria-hidden="true">
-            <i class="packet"></i>
-            <i class="packet"></i>
-            <i class="packet"></i>
-          </div>
-          <div class="progress-node hub">
-            <div class="progress-disc">${hubIcon("hero", "progress-hub-svg")}</div>
-            <div class="progress-node-label">Sofabaton Hub</div>
-          </div>
-        </div>
-        <div class="progress-copy">
-          <div class="progress-title">${mode === "backup" ? "Creating backup" : "Restoring backup"}</div>
-          <div class="progress-message">${String(progress.message || "Working\u2026")}</div>
-        </div>
-        <div class="progress-bar"><div class="progress-bar-fill" style=${`width:${percent}%`}></div></div>
-        <div class="progress-meta">
-          <span>${String(progress.phase || "running").replace(/_/g, " ")}</span>
-          <span>${total > 0 ? `${done}/${total} steps` : "Preparing\u2026"}</span>
-        </div>
-      </div>
-    `;
+    return renderOperationProgress({
+      mode,
+      title: mode === "backup" ? "Creating backup" : "Restoring backup",
+      message: String(progress.message || "Working\u2026")
+    });
   }
   _backupLocked() {
     return this.hubCommandBusy || this._isProgressRunning(this._backupProgress) || this._isProgressRunning(this._restoreProgress);
@@ -5305,7 +5387,7 @@ SofabatonBackupTab.properties = {
   _editError: { state: true },
   _editingKey: { state: true }
 };
-SofabatonBackupTab.styles = [secondaryTabStyles, i`
+SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
     :host {
       display: flex;
       flex: 1;
@@ -5408,44 +5490,19 @@ SofabatonBackupTab.styles = [secondaryTabStyles, i`
       gap: 12px;
     }
     .backup-scope-group { display: grid; gap: 8px; }
-    .backup-scope-options {
+    ha-radio-group.scope-form--md {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-md);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
-      overflow: hidden;
-    }
-    .backup-scope-option {
-      display: flex;
-      cursor: pointer;
-      min-width: 0;
-    }
-    .backup-scope-option * { cursor: inherit; }
-    .backup-scope-option + .backup-scope-option {
-      border-left: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
-    }
-    .backup-scope-option.selected {
-      background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .backup-scope-option ha-formfield {
-      width: 100%;
-      min-width: 0;
-      --mdc-theme-text-primary-on-background: var(--primary-text-color);
-    }
-    .backup-scope-option .scope-form {
-      width: 100%;
-      min-width: 0;
-      box-sizing: border-box;
-      display: flex;
-      align-items: center;
       gap: 8px;
-      padding: 0;
+      width: 100%;
+      --ha-radio-option-active-color: var(--primary-color);
+      --ha-radio-option-checked-background-color: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
     }
-    .backup-scope-option ha-radio { flex: 0 0 auto; }
-    .scope-form-label {
+    ha-radio-group.scope-form--md ha-radio-option {
       min-width: 0;
-      flex: 1 1 auto;
+    }
+    @media (max-width: 380px) {
+      ha-radio-group.scope-form--md { grid-template-columns: 1fr; }
     }
     .compat-choice {
       width: 18px;
@@ -5777,115 +5834,7 @@ SofabatonBackupTab.styles = [secondaryTabStyles, i`
       flex-wrap: wrap;
     }
 
-    .progress-shell {
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-xl);
-      padding: 18px;
-      background: transparent;
-      color: var(--primary-text-color);
-    }
-    .progress-shell[data-mode="restore"] .packet { animation-name: backupMove; }
-    .progress-stage {
-      position: relative;
-      display: flex;
-      flex-wrap: nowrap;
-      justify-content: center;
-      gap: 4px;
-      align-items: center;
-      min-height: 110px;
-      min-width: 0;
-    }
-    .progress-node { display: grid; justify-items: center; gap: 10px; z-index: 2; }
-    .progress-disc {
-      width: 76px;
-      height: 76px;
-      display: grid;
-      place-items: center;
-      border-radius: var(--backup-radius-lg);
-      background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 88%, transparent);
-      border: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
-    }
-    .progress-node.home .progress-disc { color: var(--primary-color); }
-    .progress-node.hub .progress-disc { color: var(--primary-color); }
-    .progress-disc ha-icon { --mdc-icon-size: 50px; }
-    .progress-disc .progress-hub-svg { width: 60px; height: 60px; }
-    .progress-node-label {
-      color: var(--secondary-text-color);
-      font-size: 11px;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      white-space: nowrap;
-    }
-    .progress-route { position: relative; flex: 0 1 68px; min-width: 68px; height: 42px; }
-    .progress-route::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 50%;
-      height: 2px;
-      background: color-mix(in srgb, var(--primary-color) 28%, transparent);
-      transform: translateY(-50%);
-    }
-    .packet {
-      position: absolute;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: var(--primary-color);
-      box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary-color) 14%, transparent);
-      animation: restoreMove 1.75s cubic-bezier(.55,0,.25,1) infinite;
-    }
-    .packet:nth-child(2) { animation-delay: .38s; opacity: .78; transform: scale(.82); }
-    .packet:nth-child(3) { animation-delay: .76s; opacity: .55; transform: scale(.68); }
-    .progress-copy {
-      margin-top: 8px;
-      text-align: center;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .progress-title {
-      font-size: clamp(20px, 3vw, 28px);
-      letter-spacing: -.03em;
-      font-weight: 700;
-    }
-    .progress-message { color: var(--secondary-text-color); font-size: 14px; line-height: 1.5; }
-    .progress-bar {
-      margin-top: 14px;
-      height: 8px;
-      overflow: hidden;
-      border-radius: var(--backup-radius-pill);
-      background: color-mix(in srgb, var(--divider-color) 55%, transparent);
-    }
-    .progress-bar-fill {
-      height: 100%;
-      border-radius: inherit;
-      background: var(--primary-color);
-      transition: width 180ms ease;
-    }
-    .progress-meta {
-      margin-top: 10px;
-      display: flex;
-      justify-content: space-between;
-      gap: 10px;
-      font-size: 12px;
-      color: var(--secondary-text-color);
-    }
-
     input[type="file"] { display: none; }
-    @keyframes backupMove {
-      0% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(.55); }
-      18% { opacity: 1; }
-      82% { opacity: 1; }
-      100% { left: 94%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
-    }
-    @keyframes restoreMove {
-      0% { left: 94%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(.55); }
-      18% { opacity: 1; }
-      82% { opacity: 1; }
-      100% { left: 6%; top: 50%; opacity: 0; transform: translate(-50%, -50%) scale(1); }
-    }
 
     @media (max-width: 380px) {
       .backup-scope-options { grid-template-columns: 1fr; }
@@ -5893,12 +5842,6 @@ SofabatonBackupTab.styles = [secondaryTabStyles, i`
         border-left: none;
         border-top: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
       }
-    }
-    @media (max-width: 760px) {
-      .progress-disc { width: 64px; height: 64px; }
-      .progress-disc ha-icon { --mdc-icon-size: 42px; }
-      .progress-disc .progress-hub-svg { width: 50px; height: 50px; }
-      .progress-route { flex-basis: 52px; min-width: 52px; }
     }
   `];
 if (!customElements.get("sofabaton-backup-tab")) {
@@ -6355,11 +6298,15 @@ var SofabatonWifiCommandsTab = class extends i4 {
             </div>
           </div>
           <div class="detail-scroll">
-            ${remoteUnavailable ? A : b2`
-              <div class="command-grid">
-                ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
-              </div>
-            `}
+            ${remoteUnavailable ? A : syncRunning ? renderOperationProgress({
+      mode: "wifi-deploy",
+      title: "Deploying Wifi commands",
+      message: String(this._syncState.message || "Sync in progress")
+    }) : b2`
+                    <div class="command-grid">
+                      ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
+                    </div>
+                  `}
           </div>
         </div>
         ${this._renderDetailsModal()}
@@ -6422,9 +6369,6 @@ var SofabatonWifiCommandsTab = class extends i4 {
         ` : b2`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
         <div class="sticky-footer">
           ${!canAdd ? b2`<div class="wifi-max-devices-note">Maximum number of devices reached</div>` : A}
-          <div class="wifi-docs-bar">
-            <a class="wifi-docs-link" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noreferrer noopener">Wifi Commands documentation</a>
-          </div>
         </div>
       </div>
     `;
@@ -7961,7 +7905,7 @@ SofabatonWifiCommandsTab.properties = {
   _creatingDevice: { state: true },
   _maxWifiDevices: { state: true }
 };
-SofabatonWifiCommandsTab.styles = [secondaryTabStyles, i`
+SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles, i`
     :host {
       display: flex;
       flex: 1;
@@ -8126,9 +8070,6 @@ SofabatonWifiCommandsTab.styles = [secondaryTabStyles, i`
     .sync-doc-link:hover { text-decoration: underline; }
     .list-view .sticky-footer { border-top: none; }
     .wifi-max-devices-note { display: flex; justify-content: center; padding: 8px 16px 4px; font-size: 13px; color: var(--secondary-text-color); }
-    .wifi-docs-bar { display: flex; justify-content: center; padding: 7px 16px 8px; }
-    .wifi-docs-link { font-size: 12px; font-weight: 500; color: var(--primary-color); text-decoration: none; opacity: 0.85; }
-    .wifi-docs-link:hover { opacity: 1; text-decoration: underline; }
     .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
     .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .version-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
@@ -8559,18 +8500,14 @@ var SofabatonControlPanelCard = class extends i4 {
       behavior: "smooth"
     });
   }
-  renderHeaderStatus(hub) {
+  renderConnectivityPill(hub) {
     if (!hub) return null;
     const connected = hubConnected(this._snapshot.hass, hub);
     const proxyOn = proxyClientConnected(this._snapshot.hass, hub);
     return b2`
-      <div class="card-header-status">
-        <div class="dock-pill ${connected ? "dock-pill--hub-on" : "dock-pill--hub-off"}">
-          <span>HUB</span>
-        </div>
-        <div class="dock-pill ${proxyOn ? "dock-pill--app-on" : "dock-pill--app-off"}">
-          <span>APP</span>
-        </div>
+      <div class="dock-pill-pair" role="group" aria-label="Connectivity">
+        <span class="dock-pill-half ${connected ? "dock-pill-half--hub-on" : "dock-pill-half--hub-off"}">HUB</span>
+        <span class="dock-pill-half ${proxyOn ? "dock-pill-half--app-on" : "dock-pill-half--app-off"}">APP</span>
       </div>
     `;
   }
@@ -8595,6 +8532,9 @@ var SofabatonControlPanelCard = class extends i4 {
             ` : null}
         <div class="card-bottom-dock-center">
           ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : b2`<span class="card-bottom-dock-empty" aria-hidden="true"></span>`}
+        </div>
+        <div class="card-bottom-dock-right">
+          ${this.renderConnectivityPill(hub)}
         </div>
       </div>
     `;
@@ -8674,11 +8614,12 @@ var SofabatonControlPanelCard = class extends i4 {
     }
     const selectedHubConnected = cardGateState.kind !== "hub_unavailable";
     const activeBackupOperation = hub?.active_backup_operation;
-    const backupBusy = !!activeBackupOperation && ["pending", "running"].includes(String(activeBackupOperation.status || ""));
+    const runtimeState = resolveRuntimeState(this._snapshot);
+    const runtimeOperationBusy = runtimeState?.kind === "operation_running";
     const sharedHubCommandBusy = Boolean(
-      this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey || backupBusy
+      runtimeOperationBusy || this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey
     );
-    const sharedHubCommandLabel = this._snapshot.externalHubCommandLabel || (this._snapshot.refreshBusy ? "Refreshing cache\u2026" : null) || (backupBusy ? String(activeBackupOperation?.message || "Backup or restore in progress\u2026") : null) || (this._snapshot.pendingActionKey ? "Hub command in progress\u2026" : null);
+    const sharedHubCommandLabel = (runtimeOperationBusy ? runtimeState.detail || runtimeState.label : null) || this._snapshot.externalHubCommandLabel || (this._snapshot.refreshBusy ? "Refreshing cache\u2026" : null) || (this._snapshot.pendingActionKey ? "Hub command in progress\u2026" : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
@@ -8781,7 +8722,6 @@ var SofabatonControlPanelCard = class extends i4 {
         <div class="card-inner" style=${`height:${height}px`}>
           <div class="card-topbar">
             ${this.renderBrandLabel()}
-            ${this.renderHeaderStatus(hub)}
             ${hubs.length > 1 ? renderHubPicker({
       interactive: true,
       open: this._hubPickerOpen,

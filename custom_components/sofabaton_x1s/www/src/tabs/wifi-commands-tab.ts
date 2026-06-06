@@ -1,6 +1,7 @@
 ﻿import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } from "../components/secondary-tab";
+import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
 import type { ControlPanelHubState, HassLike } from "../shared/ha-context";
 import { entityForHub, proxyClientConnected, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
 import {
@@ -229,7 +230,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     _maxWifiDevices: { state: true },
   };
 
-  static styles = [secondaryTabStyles, css`
+  static styles = [secondaryTabStyles, operationProgressStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -394,9 +395,6 @@ class SofabatonWifiCommandsTab extends LitElement {
     .sync-doc-link:hover { text-decoration: underline; }
     .list-view .sticky-footer { border-top: none; }
     .wifi-max-devices-note { display: flex; justify-content: center; padding: 8px 16px 4px; font-size: 13px; color: var(--secondary-text-color); }
-    .wifi-docs-bar { display: flex; justify-content: center; padding: 7px 16px 8px; }
-    .wifi-docs-link { font-size: 12px; font-weight: 500; color: var(--primary-color); text-decoration: none; opacity: 0.85; }
-    .wifi-docs-link:hover { opacity: 1; text-decoration: underline; }
     .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
     .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
     .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .version-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
@@ -758,11 +756,19 @@ class SofabatonWifiCommandsTab extends LitElement {
             </div>
           </div>
           <div class="detail-scroll">
-            ${remoteUnavailable ? nothing : html`
-              <div class="command-grid">
-                ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
-              </div>
-            `}
+            ${remoteUnavailable
+              ? nothing
+              : syncRunning
+                ? renderOperationProgress({
+                    mode: "wifi-deploy",
+                    title: "Deploying Wifi commands",
+                    message: String(this._syncState.message || "Sync in progress"),
+                  })
+                : html`
+                    <div class="command-grid">
+                      ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
+                    </div>
+                  `}
           </div>
         </div>
         ${this._renderDetailsModal()}
@@ -821,9 +827,6 @@ class SofabatonWifiCommandsTab extends LitElement {
         ` : html`<div class="empty-state-card">No Wifi Devices configured yet. Add one to start assigning command slots.</div>`}
         <div class="sticky-footer">
           ${!canAdd ? html`<div class="wifi-max-devices-note">Maximum number of devices reached</div>` : nothing}
-          <div class="wifi-docs-bar">
-            <a class="wifi-docs-link" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noreferrer noopener">Wifi Commands documentation</a>
-          </div>
         </div>
       </div>
     `;

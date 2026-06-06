@@ -235,36 +235,18 @@ export class ControlPanelStore {
     this._clearRuntimeStatePoll();
     if (!this._isConnected) return;
     const hub = selectedHub(this._snapshot);
-    if (hub?.runtime_state?.kind !== "operation_running") return;
+    const isRunning = hub?.runtime_state?.kind === "operation_running";
+    const interval = isRunning ? 1000 : 5000;
     this._runtimeStatePollTimer = setTimeout(() => {
       this._runtimeStatePollTimer = null;
       void this._refreshRuntimeState();
-    }, 1000);
+    }, interval);
   }
 
   private async _refreshRuntimeState() {
     if (!this._isConnected) return;
-    const previousHub = selectedHub(this._snapshot);
-    const previousRuntime = previousHub?.runtime_state;
     try {
       await this.loadControlPanelState();
-      const nextHub = selectedHub(this._snapshot);
-      const nextRuntime = nextHub?.runtime_state;
-      if (
-        previousRuntime?.kind === "operation_running"
-        && nextRuntime?.kind !== "operation_running"
-      ) {
-        const operation = previousRuntime.operation;
-        const successLabel = operation === "backup_restore"
-          ? "Restore completed successfully."
-          : operation === "backup_export"
-            ? "Backup completed successfully."
-            : "Wifi Device deployed successfully.";
-        this.showRuntimeCompletion({
-          tone: "success",
-          label: successLabel,
-        });
-      }
     } catch {
       this._scheduleRuntimeStatePoll();
       return;
@@ -438,7 +420,7 @@ export class ControlPanelStore {
     this.emit();
   }
 
-  showRuntimeCompletion(notice: RuntimeCompletionNotice | null, ttlMs = 4000) {
+  showRuntimeCompletion(notice: RuntimeCompletionNotice | null, ttlMs = 6000) {
     this._clearRuntimeCompletionTimer();
     this._snapshot = {
       ...this._snapshot,
@@ -742,6 +724,8 @@ export class ControlPanelStore {
   }
 
   private applyControlPanelState(state: ControlPanelSnapshot["state"]) {
+    const previousHub = selectedHub(this._snapshot);
+    const previousRuntime = previousHub?.runtime_state;
     const expectedVersion = normalizeExpectedFrontendVersion(state?.tools_frontend_version);
     this._snapshot = {
       ...this._snapshot,
@@ -751,6 +735,23 @@ export class ControlPanelStore {
       toolsFrontendVersionMismatch:
         expectedVersion !== null && expectedVersion !== this._loadedFrontendVersion,
     };
+    const nextHub = selectedHub(this._snapshot);
+    const nextRuntime = nextHub?.runtime_state;
+    if (
+      previousRuntime?.kind === "operation_running"
+      && nextRuntime?.kind !== "operation_running"
+    ) {
+      const operation = previousRuntime.operation;
+      const successLabel = operation === "backup_restore"
+        ? "Restore completed successfully."
+        : operation === "backup_export"
+          ? "Backup completed successfully."
+          : "Wifi Device deployed successfully.";
+      this.showRuntimeCompletion({
+        tone: "success",
+        label: successLabel,
+      });
+    }
     this._scheduleRuntimeStatePoll();
   }
 
