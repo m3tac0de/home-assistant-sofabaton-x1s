@@ -351,7 +351,8 @@ class SofabatonBackupTab extends LitElement {
     .edit-config-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
     .edit-config-view .selection-card { flex: 1 1 auto; min-height: 0; }
     .edit-config-view .selection-list { max-height: none; height: 100%; min-height: 0; }
-    .edit-action-row { display: flex; justify-content: flex-start; gap: 10px; flex-wrap: wrap; }
+    .edit-action-row { display: flex; justify-content: flex-start; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; }
+    .edit-action-row .primary-btn { flex: 0 0 auto; }
     .edit-hub-row {
       display: flex;
       flex-direction: column;
@@ -552,8 +553,20 @@ class SofabatonBackupTab extends LitElement {
     .restore-action-row {
       display: flex;
       justify-content: flex-start;
+      align-items: center;
       gap: 10px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      min-width: 0;
+    }
+    .restore-action-row .primary-btn { flex: 0 0 auto; }
+    .filename-btn {
+      flex: 1 1 0;
+      min-width: 0;
+      max-width: 100%;
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     input[type="file"] { display: none; }
@@ -840,12 +853,12 @@ class SofabatonBackupTab extends LitElement {
                 </div>
                 <div class="edit-action-row">
                   <button class="primary-btn" @click=${this._downloadEditedBundle}>Download edited backup</button>
-                  <button class="secondary-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
+                  <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
                 </div>
               </div>
             ` : html`
               <div class="edit-action-row">
-                <button class="secondary-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
+                <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
               </div>
             `}
         `,
@@ -1140,12 +1153,12 @@ class SofabatonBackupTab extends LitElement {
                 </div>
                 <div class="restore-action-row">
                   <button class="primary-btn" ?disabled=${this._restoreActionDisabled(restoreSelection.selectedDeviceIds)} @click=${this._runRestore}>Start restore</button>
-                  <button class="secondary-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
+                  <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
                 </div>
               </div>
             ` : !isRunning && !isSuccess ? html`
               <div class="restore-action-row">
-                <button class="secondary-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
+                <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
               </div>
             ` : nothing}
         `,
