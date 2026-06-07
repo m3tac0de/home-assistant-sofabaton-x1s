@@ -106,3 +106,21 @@ test("backup tab rejects restore files from newer hub generations", async () => 
   assert.match(String(element._restoreError || ""), /cannot be restored onto a Sofabaton X1S hub/i);
   assert.equal(input.value, "");
 });
+
+test("backup tab renders native radios for scope selection", () => {
+  const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
+
+  const result = element._renderScopeGroup({
+    value: "whole_hub",
+    disabled: false,
+    options: [
+      { value: "whole_hub", label: "Entire hub" },
+      { value: "individual_devices", label: "Selected devices" },
+    ],
+    onChange: () => undefined,
+  });
+
+  assert.match(result.strings.join(""), /compat-radio-group/);
+  assert.equal(Array.isArray(result.values), true);
+  assert.equal(result.values.length > 0, true);
+});

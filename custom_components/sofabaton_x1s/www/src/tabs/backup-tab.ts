@@ -186,6 +186,46 @@ class SofabatonBackupTab extends LitElement {
     @media (max-width: 380px) {
       ha-radio-group.scope-form--md { grid-template-columns: 1fr; }
     }
+    .compat-radio-group {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      width: 100%;
+    }
+    .compat-radio-option {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-md);
+      background: var(--ha-card-background, var(--card-background-color));
+      color: var(--primary-text-color);
+      cursor: pointer;
+      transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+    }
+    .compat-radio-option:hover {
+      border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+    }
+    .compat-radio-option.selected {
+      border-color: color-mix(in srgb, var(--primary-color) 70%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .compat-radio-option.disabled {
+      opacity: 0.58;
+      cursor: default;
+    }
+    .compat-radio-option-label {
+      min-width: 0;
+      flex: 1 1 auto;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    @media (max-width: 380px) {
+      .compat-radio-group { grid-template-columns: 1fr; }
+    }
     .compat-choice {
       width: 18px;
       height: 18px;
@@ -562,6 +602,7 @@ class SofabatonBackupTab extends LitElement {
   private _editFilename = "";
   private _editError: string | null = null;
   private _editingKey: string | null = null;
+  private readonly _backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
@@ -1130,22 +1171,29 @@ class SofabatonBackupTab extends LitElement {
     const isOption = (raw: unknown): raw is T =>
       typeof raw === "string" && params.options.some((option) => option.value === raw);
     return html`
-      <ha-radio-group
-        class="scope-form scope-form--md"
-        .value=${params.value}
-        ?disabled=${params.disabled}
-        @value-changed=${(event: CustomEvent<{ value: unknown }>) => {
-          const next = event.detail?.value;
-          if (isOption(next) && next !== params.value) params.onChange(next);
-        }}
-      >
+      <div class="compat-radio-group" role="radiogroup" aria-disabled=${params.disabled ? "true" : "false"}>
         ${params.options.map((option) => html`
-          <ha-radio-option
-            value=${option.value}
-            ?disabled=${params.disabled || !!option.disabled}
-          >${option.label}</ha-radio-option>
+          <label
+            class="compat-radio-option ${option.value === params.value ? "selected" : ""} ${params.disabled || !!option.disabled ? "disabled" : ""}"
+          >
+            <input
+              class="compat-choice compat-choice--radio"
+              type="radio"
+              name=${this._backupScopeRadioName}
+              .value=${option.value}
+              .checked=${option.value === params.value}
+              ?disabled=${params.disabled || !!option.disabled}
+              @change=${(event: Event) => {
+                const target = event.currentTarget as HTMLInputElement;
+                if (target.checked && isOption(target.value) && target.value !== params.value) {
+                  params.onChange(target.value);
+                }
+              }}
+            />
+            <span class="compat-radio-option-label">${option.label}</span>
+          </label>
         `)}
-      </ha-radio-group>
+      </div>
     `;
   }
 
