@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import "../../custom_components/sofabaton_x1s/www/src/tabs/backup-tab";
 import type { BackupOperationStateResponse, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
+import { activityQuickAccessItems, reorderBundleActivityQuickAccess } from "../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 
 const BackupTabElement = customElements.get("sofabaton-backup-tab") as {
   new (): HTMLElement;
@@ -169,4 +170,114 @@ test("backup complete dismiss clears backend result and resets the make view", a
   assert.equal(element._backupProgress, null);
   assert.equal(element._backupScope, "whole_hub");
   assert.deepEqual(element._backupDeviceIds, [7]);
+});
+
+test("backup edit detail rename updates the selected device name in the bundle", () => {
+  const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
+  element._editBundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { name: "Living Room", version: "X1S" },
+    activities: [],
+    devices: [
+      {
+        kind: "device",
+        complete: true,
+        device: { device_id: 7, name: "TV", device_class: "tv" },
+      },
+    ],
+  };
+
+  element._openEditDetail("device", 7, "TV");
+  element._editDetailNameDraft = "Media Center";
+
+  element._applyEditDetailRename();
+
+  assert.equal(element._selectedEditTitle(), "Media Center");
+  assert.equal(element._editBundle.devices[0].device?.name, "Media Center");
+});
+
+test("backup activity quick-access items derive favorite labels from bundled device commands", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    activities: [
+      {
+        kind: "activity_backup",
+        complete: true,
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        macros: [{ button_id: 2, name: "Lights Down", steps: [] }],
+        favorite_slots: [{ button_id: 1, device_id: 7, command_id: 3 }],
+      },
+    ],
+    devices: [
+      {
+        kind: "device_backup",
+        complete: true,
+        device: { device_id: 7, name: "Projector", device_class: "tv" },
+        commands: [{ command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+  } as any;
+
+  const items = activityQuickAccessItems(bundle, 101);
+
+  assert.deepEqual(items.map((item) => ({ kind: item.kind, label: item.label, buttonId: item.buttonId })), [
+    { kind: "favorite", label: "HDMI 1", buttonId: 1 },
+    { kind: "macro", label: "Lights Down", buttonId: 2 },
+  ]);
+});
+
+test("backup activity quick-access reorder rewrites macro and favorite button ids from mixed order", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    activities: [
+      {
+        kind: "activity_backup",
+        complete: true,
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        macros: [{ button_id: 2, name: "Lights Down", steps: [] }],
+        favorite_slots: [{ button_id: 1, device_id: 7, command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+    devices: [],
+  } as any;
+
+  const reordered = reorderBundleActivityQuickAccess(bundle, 101, [
+    { kind: "macro", buttonId: 2 },
+    { kind: "favorite", buttonId: 1 },
+  ]);
+
+  assert.equal(reordered.activities[0].macros?.[0]?.button_id, 1);
+  assert.equal(reordered.activities[0].favorite_slots?.[0]?.button_id, 2);
+});
+
+test("backup activity quick-access items hide internal power macros", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    activities: [
+      {
+        kind: "activity_backup",
+        complete: true,
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        macros: [
+          { button_id: 198, name: "POWER_ON", steps: [] },
+          { button_id: 199, name: "POWER_OFF", steps: [] },
+          { button_id: 2, name: "Lights Down", steps: [] },
+        ],
+        favorite_slots: [{ button_id: 1, device_id: 7, command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+    devices: [],
+  } as any;
+
+  const items = activityQuickAccessItems(bundle, 101);
+
+  assert.deepEqual(items.map((item) => item.label), ["HDMI 1", "Lights Down"]);
+  assert.deepEqual(items.map((item) => item.buttonId), [1, 2]);
 });

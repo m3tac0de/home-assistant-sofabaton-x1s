@@ -1186,6 +1186,7 @@
       const host = document.getElementById("card-host");
       host.innerHTML = "";
 
+      await customElements.whenDefined("sofabaton-control-panel");
       const card = document.createElement("sofabaton-control-panel");
       card.setConfig({});
       window._harnessCard = card;

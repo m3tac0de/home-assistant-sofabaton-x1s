@@ -1,4 +1,12 @@
-import type { BackupBundleActivityPayload, BackupBundleDevicePayload, BackupBundlePayload, CacheHubState } from "../shared/ha-context";
+import type {
+  BackupBundleActivityPayload,
+  BackupBundleCommandRow,
+  BackupBundleDevicePayload,
+  BackupBundleFavoriteSlot,
+  BackupBundleMacroRow,
+  BackupBundlePayload,
+  CacheHubState,
+} from "../shared/ha-context";
 import { BACKUP_BUNDLE_SCHEMA_VERSION } from "../shared/ha-context";
 import { hubActivities, hubDevices } from "../shared/utils/control-panel-selectors";
 
@@ -13,11 +21,21 @@ export interface RestoreSelectionState {
   selectedDeviceIds: number[];
 }
 
+export interface BackupActivityQuickAccessItem {
+  kind: "macro" | "favorite";
+  activityId: number;
+  buttonId: number;
+  label: string;
+  deviceId?: number;
+  commandId?: number;
+}
+
 const HUB_VERSION_RANK: Record<string, number> = {
   X1: 1,
   X1S: 2,
   X2: 3,
 };
+const INTERNAL_POWER_MACRO_BUTTON_IDS = new Set([198, 199]);
 
 export function backupActivityOptions(hub: CacheHubState | null): BackupSelectionOption[] {
   return hubActivities(hub).map((activity) => ({
@@ -178,6 +196,181 @@ export function renameBundleDevice(
   name: string,
 ): BackupBundlePayload {
   return { ...bundle, devices: renameInList(bundle.devices, Number(deviceId), name) };
+}
+
+function updateActivity(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  updater: (activity: BackupBundleActivityPayload) => BackupBundleActivityPayload,
+): BackupBundlePayload {
+  const normalizedId = Number(activityId);
+  return {
+    ...bundle,
+    activities: (bundle.activities ?? []).map((activity) => {
+      if (Number(activity?.device?.device_id || 0) !== normalizedId) return activity;
+      return updater(activity);
+    }),
+  };
+}
+
+function updateDeviceCommandLabel(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+  name: string,
+): BackupBundlePayload {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const trimmed = String(name ?? "").trim();
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          return { ...command, name: trimmed };
+        }),
+      };
+    }),
+  };
+}
+
+function commandLabelFor(bundle: BackupBundlePayload, deviceId: number, commandId: number) {
+  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  const command = (device?.commands ?? []).find((entry) => Number(entry?.command_id || 0) === Number(commandId));
+  return String(command?.name || "").trim();
+}
+
+function favoriteLabel(bundle: BackupBundlePayload, row: BackupBundleFavoriteSlot) {
+  const explicit = String(row?.name || "").trim();
+  if (explicit) return explicit;
+  const deviceId = Number(row?.device_id || 0);
+  const commandId = Number(row?.command_id || 0);
+  const derived = commandLabelFor(bundle, deviceId, commandId);
+  if (derived) return derived;
+  return `Favorite ${Number(row?.button_id || 0) || "?"}`;
+}
+
+function sortByButtonId<T extends { button_id?: number | null }>(rows: T[] | null | undefined): T[] {
+  return [...(rows ?? [])].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+
+function isEditableActivityMacro(row: BackupBundleMacroRow) {
+  const buttonId = Number(row?.button_id || 0);
+  const normalizedName = String(row?.name || "").trim().toUpperCase();
+  if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(buttonId)) return false;
+  if (normalizedName === "POWER_ON" || normalizedName === "POWER_OFF") return false;
+  return true;
+}
+
+export function activityQuickAccessItems(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): BackupActivityQuickAccessItem[] {
+  if (!bundle) return [];
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const items: BackupActivityQuickAccessItem[] = [];
+  for (const row of sortByButtonId<BackupBundleMacroRow>(activity.macros).filter(isEditableActivityMacro)) {
+    const buttonId = Number(row?.button_id || 0);
+    if (buttonId <= 0) continue;
+    items.push({
+      kind: "macro",
+      activityId: Number(activityId),
+      buttonId,
+      label: String(row?.name || `Macro ${buttonId}`),
+    });
+  }
+  for (const row of sortByButtonId<BackupBundleFavoriteSlot>(activity.favorite_slots)) {
+    const buttonId = Number(row?.button_id || 0);
+    if (buttonId <= 0) continue;
+    items.push({
+      kind: "favorite",
+      activityId: Number(activityId),
+      buttonId,
+      label: favoriteLabel(bundle, row),
+      deviceId: Number(row?.device_id || 0) || undefined,
+      commandId: Number(row?.command_id || 0) || undefined,
+    });
+  }
+  return items.sort((left, right) => left.buttonId - right.buttonId);
+}
+
+export function renameBundleActivityMacro(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  buttonId: number,
+  name: string,
+): BackupBundlePayload {
+  const normalizedButtonId = Number(buttonId);
+  const trimmed = String(name ?? "").trim();
+  return updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: (activity.macros ?? []).map((row) => (
+      Number(row?.button_id || 0) === normalizedButtonId ? { ...row, name: trimmed } : row
+    )),
+  }));
+}
+
+export function renameBundleActivityFavorite(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  buttonId: number,
+  name: string,
+): BackupBundlePayload {
+  const normalizedButtonId = Number(buttonId);
+  const trimmed = String(name ?? "").trim();
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const row = (activity?.favorite_slots ?? []).find((entry) => Number(entry?.button_id || 0) === normalizedButtonId);
+  const deviceId = Number(row?.device_id || 0);
+  const commandId = Number(row?.command_id || 0);
+  let nextBundle = bundle;
+  if (deviceId > 0 && commandId > 0) {
+    nextBundle = updateDeviceCommandLabel(nextBundle, deviceId, commandId, trimmed);
+  }
+  return updateActivity(nextBundle, activityId, (current) => ({
+    ...current,
+    favorite_slots: (current.favorite_slots ?? []).map((entry) => (
+      Number(entry?.button_id || 0) === normalizedButtonId ? { ...entry, name: trimmed } : entry
+    )),
+  }));
+}
+
+export function reorderBundleActivityQuickAccess(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  orderedItems: Array<Pick<BackupActivityQuickAccessItem, "kind" | "buttonId">>,
+): BackupBundlePayload {
+  const normalizedActivityId = Number(activityId);
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedActivityId);
+  if (!activity) return bundle;
+  const macrosByButtonId = new Map<number, BackupBundleMacroRow>();
+  for (const row of activity.macros ?? []) {
+    macrosByButtonId.set(Number(row?.button_id || 0), row);
+  }
+  const favoritesByButtonId = new Map<number, BackupBundleFavoriteSlot>();
+  for (const row of activity.favorite_slots ?? []) {
+    favoritesByButtonId.set(Number(row?.button_id || 0), row);
+  }
+  const macroRows: BackupBundleMacroRow[] = [];
+  const favoriteRows: BackupBundleFavoriteSlot[] = [];
+  orderedItems.forEach((item, index) => {
+    const nextButtonId = index + 1;
+    if (item.kind === "macro") {
+      const row = macrosByButtonId.get(Number(item.buttonId));
+      if (row) macroRows.push({ ...row, button_id: nextButtonId });
+      return;
+    }
+    const row = favoritesByButtonId.get(Number(item.buttonId));
+    if (row) favoriteRows.push({ ...row, button_id: nextButtonId });
+  });
+  return updateActivity(bundle, normalizedActivityId, (current) => ({
+    ...current,
+    macros: macroRows,
+    favorite_slots: favoriteRows,
+  }));
 }
 
 export function assertBackupBundleRestoreCompatible(bundle: BackupBundlePayload, destinationHubVersion: unknown) {

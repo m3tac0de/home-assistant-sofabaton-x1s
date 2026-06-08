@@ -186,6 +186,34 @@ export interface BackupBundleDevicePayload {
   kind?: string | null;
   complete?: boolean;
   device?: BackupBundleDeviceBlock | null;
+  commands?: BackupBundleCommandRow[] | null;
+}
+
+export interface BackupBundleCommandRow {
+  command_id?: number | null;
+  name?: string | null;
+  restore_data?: Record<string, unknown> | null;
+}
+
+export interface BackupBundleFavoriteSlot {
+  button_id?: number | null;
+  device_id?: number | null;
+  command_id?: number | null;
+  name?: string | null;
+}
+
+export interface BackupBundleMacroStep {
+  device_id?: number | null;
+  command_id?: number | null;
+  button_code?: number | null;
+  duration?: number | null;
+  delay?: number | null;
+}
+
+export interface BackupBundleMacroRow {
+  button_id?: number | null;
+  name?: string | null;
+  steps?: BackupBundleMacroStep[] | null;
 }
 
 export interface BackupBundleActivityPayload {
@@ -193,6 +221,8 @@ export interface BackupBundleActivityPayload {
   complete?: boolean;
   device?: BackupBundleDeviceBlock | null;
   referenced_source_device_ids?: number[] | null;
+  favorite_slots?: BackupBundleFavoriteSlot[] | null;
+  macros?: BackupBundleMacroRow[] | null;
 }
 
 export interface BackupBundlePayload {

@@ -4371,6 +4371,7 @@ var HUB_VERSION_RANK = {
   X1S: 2,
   X2: 3
 };
+var INTERNAL_POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
 function backupDeviceOptions(hub) {
   return hubDevices(hub).map((device) => ({
     id: Number(device.id),
@@ -4460,14 +4461,6 @@ function normalizeHubVersion(value) {
   if (normalized.includes("X1")) return "X1";
   return null;
 }
-function renameBundleHub(bundle, name) {
-  const trimmed = String(name ?? "").trim();
-  if (!trimmed) return bundle;
-  return {
-    ...bundle,
-    hub: { ...bundle.hub ?? {}, name: trimmed }
-  };
-}
 function renameInList(list, id, name) {
   const trimmed = String(name ?? "").trim();
   return (list ?? []).map((entry) => {
@@ -4481,6 +4474,141 @@ function renameBundleActivity(bundle, activityId, name) {
 }
 function renameBundleDevice(bundle, deviceId, name) {
   return { ...bundle, devices: renameInList(bundle.devices, Number(deviceId), name) };
+}
+function updateActivity(bundle, activityId, updater) {
+  const normalizedId = Number(activityId);
+  return {
+    ...bundle,
+    activities: (bundle.activities ?? []).map((activity) => {
+      if (Number(activity?.device?.device_id || 0) !== normalizedId) return activity;
+      return updater(activity);
+    })
+  };
+}
+function updateDeviceCommandLabel(bundle, deviceId, commandId, name) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const trimmed = String(name ?? "").trim();
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          return { ...command, name: trimmed };
+        })
+      };
+    })
+  };
+}
+function commandLabelFor(bundle, deviceId, commandId) {
+  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  const command = (device?.commands ?? []).find((entry) => Number(entry?.command_id || 0) === Number(commandId));
+  return String(command?.name || "").trim();
+}
+function favoriteLabel(bundle, row) {
+  const explicit = String(row?.name || "").trim();
+  if (explicit) return explicit;
+  const deviceId = Number(row?.device_id || 0);
+  const commandId = Number(row?.command_id || 0);
+  const derived = commandLabelFor(bundle, deviceId, commandId);
+  if (derived) return derived;
+  return `Favorite ${Number(row?.button_id || 0) || "?"}`;
+}
+function sortByButtonId(rows) {
+  return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+function isEditableActivityMacro(row) {
+  const buttonId = Number(row?.button_id || 0);
+  const normalizedName = String(row?.name || "").trim().toUpperCase();
+  if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(buttonId)) return false;
+  if (normalizedName === "POWER_ON" || normalizedName === "POWER_OFF") return false;
+  return true;
+}
+function activityQuickAccessItems(bundle, activityId) {
+  if (!bundle) return [];
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const items = [];
+  for (const row of sortByButtonId(activity.macros).filter(isEditableActivityMacro)) {
+    const buttonId = Number(row?.button_id || 0);
+    if (buttonId <= 0) continue;
+    items.push({
+      kind: "macro",
+      activityId: Number(activityId),
+      buttonId,
+      label: String(row?.name || `Macro ${buttonId}`)
+    });
+  }
+  for (const row of sortByButtonId(activity.favorite_slots)) {
+    const buttonId = Number(row?.button_id || 0);
+    if (buttonId <= 0) continue;
+    items.push({
+      kind: "favorite",
+      activityId: Number(activityId),
+      buttonId,
+      label: favoriteLabel(bundle, row),
+      deviceId: Number(row?.device_id || 0) || void 0,
+      commandId: Number(row?.command_id || 0) || void 0
+    });
+  }
+  return items.sort((left, right) => left.buttonId - right.buttonId);
+}
+function renameBundleActivityMacro(bundle, activityId, buttonId, name) {
+  const normalizedButtonId = Number(buttonId);
+  const trimmed = String(name ?? "").trim();
+  return updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: (activity.macros ?? []).map((row) => Number(row?.button_id || 0) === normalizedButtonId ? { ...row, name: trimmed } : row)
+  }));
+}
+function renameBundleActivityFavorite(bundle, activityId, buttonId, name) {
+  const normalizedButtonId = Number(buttonId);
+  const trimmed = String(name ?? "").trim();
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const row = (activity?.favorite_slots ?? []).find((entry) => Number(entry?.button_id || 0) === normalizedButtonId);
+  const deviceId = Number(row?.device_id || 0);
+  const commandId = Number(row?.command_id || 0);
+  let nextBundle = bundle;
+  if (deviceId > 0 && commandId > 0) {
+    nextBundle = updateDeviceCommandLabel(nextBundle, deviceId, commandId, trimmed);
+  }
+  return updateActivity(nextBundle, activityId, (current) => ({
+    ...current,
+    favorite_slots: (current.favorite_slots ?? []).map((entry) => Number(entry?.button_id || 0) === normalizedButtonId ? { ...entry, name: trimmed } : entry)
+  }));
+}
+function reorderBundleActivityQuickAccess(bundle, activityId, orderedItems) {
+  const normalizedActivityId = Number(activityId);
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedActivityId);
+  if (!activity) return bundle;
+  const macrosByButtonId = /* @__PURE__ */ new Map();
+  for (const row of activity.macros ?? []) {
+    macrosByButtonId.set(Number(row?.button_id || 0), row);
+  }
+  const favoritesByButtonId = /* @__PURE__ */ new Map();
+  for (const row of activity.favorite_slots ?? []) {
+    favoritesByButtonId.set(Number(row?.button_id || 0), row);
+  }
+  const macroRows = [];
+  const favoriteRows = [];
+  orderedItems.forEach((item, index) => {
+    const nextButtonId = index + 1;
+    if (item.kind === "macro") {
+      const row2 = macrosByButtonId.get(Number(item.buttonId));
+      if (row2) macroRows.push({ ...row2, button_id: nextButtonId });
+      return;
+    }
+    const row = favoritesByButtonId.get(Number(item.buttonId));
+    if (row) favoriteRows.push({ ...row, button_id: nextButtonId });
+  });
+  return updateActivity(bundle, normalizedActivityId, (current) => ({
+    ...current,
+    macros: macroRows,
+    favorite_slots: favoriteRows
+  }));
 }
 function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   const sourceVersion = normalizeHubVersion(bundle?.hub?.version);
@@ -4546,8 +4674,38 @@ var SofabatonBackupTab = class extends i4 {
     this._editBundle = null;
     this._editFilename = "";
     this._editError = null;
-    this._editingKey = null;
+    this._editDetailKind = null;
+    this._editDetailId = null;
+    this._editDetailNameDraft = "";
+    this._editRenameDialogOpen = false;
+    this._editRenameDialogDraft = "";
+    this._editRenameDialogError = "";
+    this._editRenameDialogTarget = null;
     this._backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
+    this._handleEditRenameDialogInput = (event) => {
+      const input = event.currentTarget;
+      const value = this._sanitizeBundleName(input.value);
+      input.value = value;
+      this._editRenameDialogDraft = value;
+      this._editRenameDialogError = "";
+    };
+    this._openDetailRenameDialog = () => {
+      if (!this._editDetailKind || this._editDetailId == null) return;
+      this._editRenameDialogTarget = {
+        kind: "detail",
+        entityKind: this._editDetailKind,
+        entityId: this._editDetailId
+      };
+      this._editRenameDialogDraft = this._selectedEditTitle();
+      this._editRenameDialogError = "";
+      this._editRenameDialogOpen = true;
+    };
+    this._closeEditRenameDialog = () => {
+      this._editRenameDialogOpen = false;
+      this._editRenameDialogDraft = "";
+      this._editRenameDialogError = "";
+      this._editRenameDialogTarget = null;
+    };
     this._openEditFilePicker = () => {
       this.renderRoot.querySelector("#edit-file-input")?.click();
     };
@@ -4561,15 +4719,44 @@ var SofabatonBackupTab = class extends i4 {
         const bundle = validateBackupBundle(JSON.parse(text));
         this._editBundle = bundle;
         this._editFilename = file.name;
-        this._editingKey = null;
+        this._closeEditDetail();
       } catch (error) {
         this._editBundle = null;
         this._editFilename = "";
-        this._editingKey = null;
+        this._closeEditDetail();
         this._editError = formatError(error);
       } finally {
         if (input) input.value = "";
       }
+    };
+    this._closeEditDetail = () => {
+      this._editDetailKind = null;
+      this._editDetailId = null;
+      this._editDetailNameDraft = "";
+      this._closeEditRenameDialog();
+    };
+    this._applyEditRenameDialog = () => {
+      const next = this._sanitizeBundleName(this._editRenameDialogDraft);
+      if (!next) {
+        this._editRenameDialogError = "Enter a name to continue.";
+        return;
+      }
+      const target = this._editRenameDialogTarget;
+      if (!target || !this._editBundle) return;
+      if (target.kind === "detail") {
+        this._editDetailNameDraft = next;
+        if (target.entityKind === "activity") this._applyActivityRename(target.entityId, next);
+        else this._applyDeviceRename(target.entityId, next);
+        this._closeEditRenameDialog();
+        return;
+      }
+      if (target.kind === "macro") {
+        this._editBundle = renameBundleActivityMacro(this._editBundle, target.activityId, target.buttonId, next);
+        this._closeEditRenameDialog();
+        return;
+      }
+      this._editBundle = renameBundleActivityFavorite(this._editBundle, target.activityId, target.buttonId, next);
+      this._closeEditRenameDialog();
     };
     this._downloadEditedBundle = () => {
       if (!this._editBundle) return;
@@ -4644,6 +4831,15 @@ var SofabatonBackupTab = class extends i4 {
           </div>
         </div>
       `;
+    }
+    if (this.selectedSection === "edit" && this._editDetailKind && this._editDetailId != null) {
+      const detailTitle = this._selectedEditTitle();
+      if (detailTitle) {
+        return this._renderEditDetailView({
+          kind: this._editDetailKind,
+          title: detailTitle
+        });
+      }
     }
     return b2`
       <div class="tab-panel">
@@ -4766,142 +4962,153 @@ var SofabatonBackupTab = class extends i4 {
     const bundle = this._editBundle;
     const activityOptions = bundleActivityOptions(bundle);
     const deviceOptions = bundleDeviceOptions(bundle);
-    const hubName = String(bundle?.hub?.name || "").trim();
     return b2`
       ${renderSecondaryTabContent({
       connected: true,
       contentClassName: "edit-body",
       content: b2`
-            <div class="backup-drawer-sub">
-              ${bundle ? "Rename the hub, activities, and devices in this backup. Edits stay in your browser until you download the modified file." : "Load a backup file to rename its hub, activities, and devices before downloading it again."}
-            </div>
             ${this._editError ? this._renderStatus("error", "mdi:alert-circle-outline", this._editError) : A}
             <input id="edit-file-input" type="file" accept=".json,application/json" @change=${this._handleEditFilePicked} />
             ${bundle ? b2`
-              <div class="edit-config-view">
-                <div class="edit-hub-row">
-                  <span class="edit-hub-caption">Hub name</span>
-                  <div class="edit-hub-inline">
-                    ${this._renderEditableLabel({
-        editKey: "hub",
-        value: hubName || "Unnamed hub",
-        placeholder: "Hub name",
-        onSave: (next) => this._applyHubRename(next)
+              ${this._renderEditOverview({
+        activityOptions,
+        deviceOptions
       })}
-                  </div>
+            ` : b2`
+              <div class="edit-config-view">
+                <div class="backup-drawer-sub">
+                  Load a backup file, then choose an Activity or Device to edit.
                 </div>
-                <div class="selection-card">
-                  <div class="selection-list">
-                    ${activityOptions.length ? b2`
-                        <div class="selection-group-header">Activities</div>
-                        ${activityOptions.map((activity) => this._renderEditRow({
-        editKey: `activity:${activity.id}`,
-        label: activity.label,
-        meta: activity.meta,
-        onSave: (next) => this._applyActivityRename(activity.id, next)
-      }))}
-                      ` : b2`<div class="selection-empty">This backup file has no activities.</div>`}
-                    ${deviceOptions.length ? b2`
-                        <div class="selection-group-header">Devices</div>
-                        ${deviceOptions.map((device) => this._renderEditRow({
-        editKey: `device:${device.id}`,
-        label: device.label,
-        meta: device.meta,
-        onSave: (next) => this._applyDeviceRename(device.id, next)
-      }))}
-                      ` : b2`<div class="selection-empty">This backup file has no devices.</div>`}
-                  </div>
-                </div>
-                <div class="edit-action-row">
-                  <button class="primary-btn" @click=${this._downloadEditedBundle}>Download edited backup</button>
+                <div class="restore-action-row">
                   <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
                 </div>
-              </div>
-            ` : b2`
-              <div class="edit-action-row">
-                <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
               </div>
             `}
         `
     })}
     `;
   }
-  _renderEditRow(params) {
-    const isEditing = this._editingKey === params.editKey;
+  _renderEditOverview(params) {
     return b2`
-      <div class="edit-row">
-        ${this._renderEditableLabel({
-      editKey: params.editKey,
-      value: params.label,
-      placeholder: "Name",
-      onSave: params.onSave
-    })}
-        ${params.meta && !isEditing ? b2`<span class="edit-row-meta">${params.meta}</span>` : A}
+      <div class="edit-config-view">
+        <div class="backup-drawer-sub">
+          Load a backup file, then choose an Activity or Device to edit. This mirrors Restore so the same items are easy to find on desktop and mobile.
+        </div>
+        <div class="selection-card">
+          <div class="selection-list">
+            ${params.activityOptions.length ? b2`
+                  <div class="selection-group-header">Activities</div>
+                  ${params.activityOptions.map((option) => this._renderEditCollectionRow(option, () => this._openEditDetail("activity", option.id, option.label)))}
+                ` : b2`<div class="selection-empty">This backup file has no activities.</div>`}
+            ${params.deviceOptions.length ? b2`
+                  <div class="selection-group-header">Devices</div>
+                  ${params.deviceOptions.map((option) => this._renderEditCollectionRow(option, () => this._openEditDetail("device", option.id, option.label)))}
+                ` : b2`<div class="selection-empty">This backup file has no devices.</div>`}
+          </div>
+        </div>
+        <div class="restore-action-row">
+          <button class="primary-btn" @click=${this._downloadEditedBundle}>Download edited backup</button>
+          <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
+        </div>
       </div>
     `;
   }
-  _renderEditableLabel(params) {
-    const isEditing = this._editingKey === params.editKey;
-    if (!isEditing) {
-      return b2`
-        <span class="edit-row-label" title=${params.value}>${params.value}</span>
-        <button
-          class="icon-btn"
-          title="Rename"
-          @click=${() => {
-        this._editingKey = params.editKey;
-      }}
-        >
-          <ha-icon icon="mdi:pencil-outline"></ha-icon>
-        </button>
-      `;
-    }
-    const sanitize = (raw) => this._sanitizeBundleName(raw);
-    const commit = (input) => {
-      const next = sanitize(String(input?.value ?? ""));
-      if (next) params.onSave(next);
-      this._editingKey = null;
-    };
+  _renderEditCollectionRow(option, onSelect) {
     return b2`
-      <input
-        class="edit-row-input"
-        type="text"
-        .value=${params.value}
-        placeholder=${params.placeholder}
-        maxlength="20"
-        autofocus
-        @input=${(event) => {
-      const input = event.currentTarget;
-      const cleaned = sanitize(input.value);
-      if (cleaned !== input.value) {
-        const caret = Math.max(0, (input.selectionStart ?? cleaned.length) - (input.value.length - cleaned.length));
-        input.value = cleaned;
-        input.setSelectionRange(caret, caret);
-      }
-    }}
-        @keydown=${(event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        commit(event.currentTarget);
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        this._editingKey = null;
-      }
-    }}
-        @blur=${(event) => commit(event.currentTarget)}
-      />
-      <button
-        class="icon-btn"
-        title="Save"
-        @mousedown=${(event) => event.preventDefault()}
-        @click=${(event) => {
-      const root = event.currentTarget.parentElement;
-      const input = root?.querySelector(".edit-row-input") ?? null;
-      commit(input);
-    }}
-      >
-        <ha-icon icon="mdi:check"></ha-icon>
+      <button class="edit-selection-row" @click=${onSelect}>
+        <span class="selection-main">
+          <span class="selection-label">${option.label}</span>
+        </span>
+        ${option.meta ? b2`<span class="selection-meta">${option.meta}</span>` : A}
+        <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
       </button>
+    `;
+  }
+  _renderEditDetailView(params) {
+    const activityQuickAccess = params.kind === "activity" && this._editDetailId != null ? activityQuickAccessItems(this._editBundle, this._editDetailId) : [];
+    return b2`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <div class="detail-title-main">
+                <button class="back-btn" @click=${this._closeEditDetail}>
+                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                </button>
+                <div class="detail-title">${params.title}</div>
+                <div class="detail-title-actions">
+                  <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            ${params.kind === "activity" ? this._renderActivityQuickAccessSection(activityQuickAccess) : b2`
+                  <div class="edit-support-card">
+                    Device command renaming, supported payload editors, and safer removal workflows will expand underneath this header in later phases.
+                  </div>
+                `}
+          </div>
+        </div>
+        ${this._renderEditRenameDialog()}
+      </div>
+    `;
+  }
+  _renderActivityQuickAccessSection(items) {
+    if (this._editDetailId == null) return A;
+    return b2`
+      <div class="quick-access-section">
+        <div class="quick-access-head">
+          <div class="quick-access-title">Macros and Favorites</div>
+          <div class="quick-access-sub">Rename entries or move them up and down inside the Activity.</div>
+        </div>
+        ${items.length ? b2`
+              <div class="quick-access-list">
+                ${items.map((item, index) => b2`
+                  <div class="quick-access-row">
+                    <div class="quick-access-main">
+                      <div class="quick-access-label-row">
+                        <div class="quick-access-label">${item.label}</div>
+                        <div class="quick-access-chip">${item.kind}</div>
+                      </div>
+                      <div class="quick-access-meta">
+                        ${item.kind === "macro" ? `Quick-access slot ${item.buttonId}` : `Favorite command ${item.commandId || "?"} on device ${item.deviceId || "?"} \xB7 slot ${item.buttonId}`}
+                      </div>
+                    </div>
+                    <div class="quick-access-move">
+                      <button
+                        class="icon-btn"
+                        ?disabled=${index === 0}
+                        @click=${() => this._moveActivityQuickAccessItem(index, -1)}
+                        aria-label="Move up"
+                      >
+                        <ha-icon icon="mdi:chevron-up"></ha-icon>
+                      </button>
+                      <button
+                        class="icon-btn"
+                        ?disabled=${index === items.length - 1}
+                        @click=${() => this._moveActivityQuickAccessItem(index, 1)}
+                        aria-label="Move down"
+                      >
+                        <ha-icon icon="mdi:chevron-down"></ha-icon>
+                      </button>
+                    </div>
+                    <div class="quick-access-actions">
+                      <button
+                        class="icon-btn"
+                        @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
+                        aria-label=${`Rename ${item.kind}`}
+                      >
+                        <ha-icon icon="mdi:pencil"></ha-icon>
+                      </button>
+                    </div>
+                  </div>
+                `)}
+              </div>
+            ` : b2`<div class="quick-access-empty">This Activity does not currently contain any Macros or Favorites.</div>`}
+      </div>
     `;
   }
   _bundleSupportsUnicodeNames() {
@@ -4912,9 +5119,81 @@ var SofabatonBackupTab = class extends i4 {
     const pattern = this._bundleSupportsUnicodeNames() ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu : /[^A-Za-z0-9 ]+/g;
     return String(value ?? "").replace(pattern, "").slice(0, 20);
   }
-  _applyHubRename(name) {
-    if (!this._editBundle) return;
-    this._editBundle = renameBundleHub(this._editBundle, name);
+  _useLegacyTextField() {
+    return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
+  }
+  _renderEditRenameDialog() {
+    if (!this._editRenameDialogOpen || !this._editRenameDialogTarget) return A;
+    const label = this._editRenameDialogLabel();
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeEditRenameDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${label}</div>
+            <button class="dialog-close" @click=${this._closeEditRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${this._useLegacyTextField() ? b2`
+                  <ha-textfield
+                    id="sb-backup-edit-name"
+                    .label=${"Name"}
+                    .maxLength=${20}
+                    .value=${this._editRenameDialogDraft}
+                    @input=${this._handleEditRenameDialogInput}
+                    @change=${this._handleEditRenameDialogInput}
+                    @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this._applyEditRenameDialog();
+      }
+    }}
+                  ></ha-textfield>
+                ` : b2`
+                  <ha-input
+                    id="sb-backup-edit-name"
+                    type="text"
+                    .label=${"Name"}
+                    .maxlength=${20}
+                    .value=${this._editRenameDialogDraft}
+                    @input=${this._handleEditRenameDialogInput}
+                    @change=${this._handleEditRenameDialogInput}
+                    @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this._applyEditRenameDialog();
+      }
+    }}
+                  ></ha-input>
+                `}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._editRenameDialogError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeEditRenameDialog}>Cancel</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyEditRenameDialog}>Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _editRenameDialogLabel() {
+    const target = this._editRenameDialogTarget;
+    if (!target) return "Rename";
+    if (target.kind === "detail") {
+      return target.entityKind === "activity" ? "Rename Activity" : "Rename Device";
+    }
+    return target.kind === "macro" ? "Rename Macro" : "Rename Favorite";
+  }
+  _openQuickAccessRenameDialog(kind, buttonId) {
+    if (this._editDetailId == null) return;
+    this._editRenameDialogTarget = kind === "macro" ? { kind: "macro", activityId: this._editDetailId, buttonId } : { kind: "favorite", activityId: this._editDetailId, buttonId };
+    const item = activityQuickAccessItems(this._editBundle, this._editDetailId).find(
+      (entry) => entry.kind === kind && entry.buttonId === Number(buttonId)
+    );
+    this._editRenameDialogDraft = item?.label || "";
+    this._editRenameDialogError = "";
+    this._editRenameDialogOpen = true;
   }
   _applyActivityRename(activityId, name) {
     if (!this._editBundle) return;
@@ -4923,6 +5202,37 @@ var SofabatonBackupTab = class extends i4 {
   _applyDeviceRename(deviceId, name) {
     if (!this._editBundle) return;
     this._editBundle = renameBundleDevice(this._editBundle, deviceId, name);
+  }
+  _openEditDetail(kind, id, name) {
+    this._editDetailKind = kind;
+    this._editDetailId = Number(id);
+    this._editDetailNameDraft = this._sanitizeBundleName(name);
+  }
+  _selectedEditTitle() {
+    if (!this._editBundle || !this._editDetailKind || this._editDetailId == null) return "";
+    const options = this._editDetailKind === "activity" ? bundleActivityOptions(this._editBundle) : bundleDeviceOptions(this._editBundle);
+    return options.find((option) => option.id === this._editDetailId)?.label || "";
+  }
+  _applyEditDetailRename() {
+    const next = this._sanitizeBundleName(this._editDetailNameDraft);
+    if (!next || !this._editDetailKind || this._editDetailId == null) return;
+    if (this._editDetailKind === "activity") this._applyActivityRename(this._editDetailId, next);
+    else this._applyDeviceRename(this._editDetailId, next);
+    this._editDetailNameDraft = next;
+  }
+  _moveActivityQuickAccessItem(index, delta) {
+    if (!this._editBundle || this._editDetailId == null) return;
+    const items = activityQuickAccessItems(this._editBundle, this._editDetailId);
+    const nextIndex = index + delta;
+    if (index < 0 || nextIndex < 0 || index >= items.length || nextIndex >= items.length) return;
+    const nextItems = [...items];
+    const [moved] = nextItems.splice(index, 1);
+    nextItems.splice(nextIndex, 0, moved);
+    this._editBundle = reorderBundleActivityQuickAccess(
+      this._editBundle,
+      this._editDetailId,
+      nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
+    );
   }
   _renderRestoreSectionContent() {
     const isRunning = this._isProgressRunning(this._restoreProgress);
@@ -5456,7 +5766,13 @@ SofabatonBackupTab.properties = {
   _editBundle: { state: true },
   _editFilename: { state: true },
   _editError: { state: true },
-  _editingKey: { state: true }
+  _editDetailKind: { state: true },
+  _editDetailId: { state: true },
+  _editDetailNameDraft: { state: true },
+  _editRenameDialogOpen: { state: true },
+  _editRenameDialogDraft: { state: true },
+  _editRenameDialogError: { state: true },
+  _editRenameDialogTarget: { state: true }
 };
 SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
     :host {
@@ -5668,6 +5984,10 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
       flex: 1 1 auto;
       min-height: 0;
     }
+    .edit-config-view .selection-card {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
     .selection-list { display: flex; flex-direction: column; max-height: 340px; overflow-y: auto; }
     .backup-config-view .selection-list {
       max-height: none;
@@ -5675,6 +5995,11 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
       min-height: 0;
     }
     .restore-config-view .selection-list {
+      max-height: none;
+      height: 100%;
+      min-height: 0;
+    }
+    .edit-config-view .selection-list {
       max-height: none;
       height: 100%;
       min-height: 0;
@@ -5701,6 +6026,9 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
       border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
     }
     .selection-group-header:first-child { border-top: none; }
+    .edit-config-view .selection-group-header {
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 94%, white 6%);
+    }
     .selection-row {
       display: flex;
       gap: 12px;
@@ -5737,44 +6065,137 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
     }
 
     .edit-body { padding-top: 0; padding-bottom: 8px; display: flex; flex-direction: column; gap: 8px; align-content: normal; }
-    .edit-config-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
-    .edit-config-view .selection-card { flex: 1 1 auto; min-height: 0; }
-    .edit-config-view .selection-list { max-height: none; height: 100%; min-height: 0; }
-    .edit-action-row { display: flex; justify-content: flex-start; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; }
-    .edit-action-row .primary-btn { flex: 0 0 auto; }
-    .edit-hub-row {
+    .edit-config-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+    .edit-selection-row {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+      cursor: pointer;
+    }
+    .edit-selection-row:first-child { border-top: none; }
+    .edit-selection-row:hover {
+      background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+    }
+    .selection-chevron {
+      color: var(--secondary-text-color);
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .selection-chevron ha-icon { --mdc-icon-size: 18px; }
+    .tab-panel--detail { padding: 0; }
+    .detail-view {
+      min-height: 0;
       display: flex;
       flex-direction: column;
-      gap: 2px;
-      padding: 6px 14px 8px;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-md);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
+      gap: 0;
+      overflow: hidden;
     }
-    .edit-hub-caption { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color); }
-    .edit-hub-inline { display: flex; align-items: center; gap: 4px; }
-    .edit-row { display: flex; align-items: center; gap: 4px; padding: 4px 14px; border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent); }
-    .edit-row:first-child { border-top: none; }
-    .edit-row-label {
-      flex: 0 1 auto;
+    .sticky-header {
+      position: sticky;
+      z-index: 2;
+      background: var(--ha-card-background, var(--card-background-color));
+    }
+    .sticky-header { top: 0; border-bottom: 1px solid var(--divider-color); padding: 12px 16px; }
+    .detail-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .detail-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
       min-width: 0;
+    }
+    .detail-title-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      flex: 1;
+    }
+    .detail-title-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .detail-title {
+      font-size: 18px;
+      font-weight: 700;
       color: var(--primary-text-color);
-      font-size: 13px;
-      font-weight: 600;
+      min-width: 0;
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
     }
-    .edit-row-meta {
-      margin-left: auto;
+    .back-btn {
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      flex: 0 0 auto;
+      justify-content: center;
+    }
+    .back-btn:hover {
+      border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
+    }
+    .edit-detail-card {
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-lg);
+      padding: 14px;
+      background: var(--ha-card-background, var(--card-background-color));
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .edit-detail-copy {
       color: var(--secondary-text-color);
-      font-size: 12px;
-      font-weight: 600;
-      white-space: nowrap;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .edit-field-group {
+      display: grid;
+      gap: 8px;
+    }
+    .edit-field-label {
+      color: var(--secondary-text-color);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .edit-field-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
     }
     .edit-row-input {
-      flex: 0 1 220px;
-      width: 220px;
+      flex: 1 1 auto;
+      width: 100%;
       min-width: 0;
       max-width: 100%;
       font: inherit;
@@ -5788,25 +6209,186 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
       outline: none;
     }
     .edit-row-input:focus { border-color: var(--primary-color); }
-    .icon-btn {
+    .edit-support-card {
+      border: 1px dashed color-mix(in srgb, var(--divider-color) 88%, transparent);
+      border-radius: var(--backup-radius-md);
+      padding: 12px 14px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      line-height: 1.5;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
+    }
+    .icon-btn, .dialog-close {
       flex: 0 0 auto;
-      display: inline-grid;
-      place-items: center;
-      width: 26px;
-      height: 26px;
-      border-radius: var(--backup-radius-pill);
-      border: 1px solid transparent;
-      background: transparent;
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: var(--ha-card-background, var(--card-background-color));
       color: var(--secondary-text-color);
       cursor: pointer;
-      transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+      transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease;
     }
-    .icon-btn:hover:not(:disabled) {
-      color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+    .icon-btn:hover:not(:disabled),
+    .dialog-close:hover {
+      border-color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
+      color: var(--primary-text-color);
     }
+    .icon-btn:active,
+    .dialog-close:active { transform: translateY(1px); }
     .icon-btn:disabled { opacity: 0.45; cursor: default; }
     .icon-btn ha-icon { --mdc-icon-size: 16px; }
+    .quick-access-section {
+      display: grid;
+      gap: 12px;
+    }
+    .quick-access-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .quick-access-title {
+      color: var(--primary-text-color);
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .quick-access-sub {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .quick-access-list {
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-lg);
+      background: var(--ha-card-background, var(--card-background-color));
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .quick-access-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 14px;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+    }
+    .quick-access-row:first-child { border-top: none; }
+    .quick-access-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .quick-access-label-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .quick-access-label {
+      min-width: 0;
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .quick-access-chip {
+      flex: 0 0 auto;
+      border-radius: var(--backup-radius-pill);
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      border: 1px solid var(--divider-color);
+      color: var(--secondary-text-color);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 74%, transparent);
+    }
+    .quick-access-meta {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .quick-access-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .quick-access-move {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .quick-access-empty {
+      border: 1px dashed color-mix(in srgb, var(--divider-color) 88%, transparent);
+      border-radius: var(--backup-radius-md);
+      padding: 12px 14px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      line-height: 1.5;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
+    }
+    .dialog-btn {
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      padding: 8px 12px;
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .dialog-btn:hover:not(:disabled) {
+      border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
+    }
+    .dialog-btn-primary {
+      border-color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+    }
+    .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog.small { width: min(500px, calc(100vw - 36px)); }
+    .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .dialog-header { border-bottom: 1px solid var(--divider-color); }
+    .dialog-title { font-size: 16px; flex: 1; color: var(--primary-text-color); }
+    .dialog-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+      --ha-color-form-background: var(
+        --input-fill-color,
+        var(
+          --secondary-background-color,
+          color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)
+        )
+      );
+      --ha-color-form-background-hover: var(--ha-color-form-background);
+    }
+    .dialog-body ha-input,
+    .dialog-body ha-textfield {
+      width: 100%;
+    }
+    .dialog-body ha-input {
+      --ha-input-padding-top: 0;
+      --ha-input-padding-bottom: 0;
+    }
+    .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; }
+    .dialog-footer-actions { display: flex; gap: 8px; }
+    .dialog-footer-note { min-height: 18px; font-size: 13px; color: var(--error-color, #db4437); }
 
     .status-box {
       display: flex;
@@ -5965,6 +6547,44 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
       .backup-scope-option + .backup-scope-option {
         border-left: none;
         border-top: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
+      }
+      .quick-access-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+      .quick-access-actions {
+        justify-content: flex-end;
+      }
+      .edit-field-row,
+      .restore-action-row {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .detail-title-actions {
+        gap: 6px;
+        min-width: max-content;
+      }
+      .restore-action-row > .primary-btn,
+      .restore-action-row > .secondary-btn {
+        width: 100%;
+      }
+      .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+      .dialog, .dialog.small {
+        width: min(100vw, 100%);
+        max-height: calc(100vh - max(env(safe-area-inset-top), 8px));
+        border-radius: var(--backup-radius-xl) var(--backup-radius-xl) 0 0;
+      }
+      .dialog-footer {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .dialog-footer-actions {
+        width: 100%;
+      }
+      .dialog-footer-actions .dialog-btn {
+        flex: 1 1 0;
+      }
+      .dialog-footer-note {
+        min-height: 0;
       }
     }
   `];
