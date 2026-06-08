@@ -1,4 +1,4 @@
-import { LitElement, html } from "lit";
+import { LitElement, html, nothing } from "lit";
 import { cardStyles } from "./shared/styles/card-styles";
 import type { BackupSectionId, BlobsSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
 import { ControlPanelStore } from "./state/control-panel-store";
@@ -321,7 +321,7 @@ class SofabatonControlPanelCard extends LitElement {
             ? html`<span class="card-bottom-dock-status">${statusText}</span>`
             : docLink
               ? html`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>`
-              : html`<span class="card-bottom-dock-empty" aria-hidden="true"></span>`}
+              : nothing}
         </div>
         <div class="card-bottom-dock-right">
           ${this.renderConnectivityPill(hub)}
@@ -472,7 +472,7 @@ class SofabatonControlPanelCard extends LitElement {
           .selectedSection=${this._snapshot.selectedBlobsSection}
           .setSelectedSection=${(section: BlobsSectionId) => this._store.setSelectedBlobsSection(section)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
-          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {

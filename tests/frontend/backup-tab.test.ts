@@ -124,3 +124,49 @@ test("backup tab renders native radios for scope selection", () => {
   assert.equal(Array.isArray(result.values), true);
   assert.equal(result.values.length > 0, true);
 });
+
+test("backup complete dismiss clears backend result and resets the make view", async () => {
+  const calls: string[] = [];
+  const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
+
+  element.hass = {
+    states: {},
+    async callWS<T>(message: Record<string, unknown>) {
+      const type = String(message.type ?? "");
+      calls.push(type);
+      if (type === "sofabaton_x1s/backup/clear_result") return { ok: true } as T;
+      throw new Error(`Unexpected WS call: ${type}`);
+    },
+    connection: null,
+  };
+  element.cacheHub = {
+    entry_id: "hub-1",
+    devices_list: [{ id: 7, name: "TV", command_count: 1 }],
+  };
+  let refreshed = 0;
+  element.refreshControlPanelState = async () => {
+    refreshed += 1;
+  };
+  element._backupError = "old error";
+  element._backupScope = "individual_devices";
+  element._backupDeviceIds = [];
+  element._backupProgress = {
+    operation_id: "backup-1",
+    kind: "backup_export",
+    entry_id: "hub-1",
+    status: "success",
+    phase: "completed",
+    message: "Backup completed.",
+    completed_steps: 2,
+    total_steps: 2,
+  };
+
+  await (element as any)._completeBackupResult();
+
+  assert.deepEqual(calls, ["sofabaton_x1s/backup/clear_result"]);
+  assert.equal(refreshed, 1);
+  assert.equal(element._backupError, null);
+  assert.equal(element._backupProgress, null);
+  assert.equal(element._backupScope, "whole_hub");
+  assert.deepEqual(element._backupDeviceIds, [7]);
+});

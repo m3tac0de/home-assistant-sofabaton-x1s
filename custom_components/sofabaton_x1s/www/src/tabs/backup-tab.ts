@@ -725,7 +725,7 @@ class SofabatonBackupTab extends LitElement {
                       <button class="primary-btn" ?disabled=${!hasBundle} @click=${this._downloadLatestBackup}>
                         ${wasDownloaded ? "Download again" : "Download backup"}
                       </button>
-                      <button class="secondary-btn" @click=${this._resetBackupComposer}>Complete</button>
+                      <button class="secondary-btn" @click=${() => void this._completeBackupResult()}>Complete</button>
                     </div>
                   </div>
                 `;
@@ -1505,6 +1505,25 @@ class SofabatonBackupTab extends LitElement {
     this._backupScope = "whole_hub";
     this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
   };
+
+  private async _completeBackupResult() {
+    const operationId = String(this._backupProgress?.operation_id || "").trim();
+    this._backupError = null;
+    if (operationId) {
+      try {
+        await this.api().clearBackupResult(operationId);
+      } catch (error) {
+        this._backupError = formatError(error);
+      }
+    }
+    try {
+      await this.refreshControlPanelState?.();
+    } catch {
+      // Ignore refresh failures here; local state still resets and the next
+      // normal poll will reconcile the view.
+    }
+    this._resetBackupComposer();
+  }
 
   private _resetRestoreComposer = () => {
     this._restoreError = null;

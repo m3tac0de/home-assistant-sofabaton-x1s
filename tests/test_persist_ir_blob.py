@@ -62,13 +62,28 @@ def test_persist_ir_blob_matches_observed_x1_save_pages(monkeypatch) -> None:
         "command_name": "tst cmd 2",
         "page_count": 4,
     }
-    assert [opcode & 0xFF for opcode, _payload in sent] == [0x0E, 0x0E, 0x0E, 0x0E]
-    assert [payload[:3] for _opcode, payload in sent] == [
+    assert [opcode & 0xFF for opcode, _payload in sent[:4]] == [0x0E, 0x0E, 0x0E, 0x0E]
+    assert [payload[:3] for _opcode, payload in sent[:4]] == [
         b"\x01\x00\x01",
         b"\x01\x00\x02",
         b"\x01\x00\x03",
         b"\x01\x00\x04",
     ]
+
+    # After the IR blob is uploaded the proxy follows up with a
+    # single-page family-0x61 write that re-emits the per-device
+    # display order with the new command appended; without this the
+    # physical remote's device-browse UI does not surface the
+    # newly-saved command.
+    sort_frames = [(opcode, payload) for opcode, payload in sent[4:] if (opcode & 0xFF) == 0x61]
+    assert len(sort_frames) == 1
+    sort_payload = sort_frames[0][1]
+    # Page header (0x01, page_no_be16) + body header (0x01, total_pages_be16, dev_lo).
+    assert sort_payload[:7] == bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x02])
+    # Newly saved command must be the last (command_id, sort_id) pair in the body.
+    pair_section = sort_payload[7:-1]
+    assert len(pair_section) % 2 == 0
+    assert pair_section[-2] == 0x70
 
     first_payload = sent[0][1]
     assert first_payload[:15] == bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x04, 0x02, 0x70, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
@@ -161,7 +176,16 @@ def test_persist_ir_blob_matches_observed_x1s_save_pages(monkeypatch) -> None:
         "command_name": "cmd tst 2",
         "page_count": 2,
     }
-    assert [opcode & 0xFF for opcode, _payload in sent] == [0x0E, 0x0E]
+    assert [opcode & 0xFF for opcode, _payload in sent[:2]] == [0x0E, 0x0E]
+    # See the X1 variant for the rationale behind the follow-up
+    # family-0x61 sort write that lands after the two save pages.
+    sort_frames = [(opcode, payload) for opcode, payload in sent[2:] if (opcode & 0xFF) == 0x61]
+    assert len(sort_frames) == 1
+    sort_payload = sort_frames[0][1]
+    assert sort_payload[:7] == bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x0C])
+    pair_section = sort_payload[7:-1]
+    assert len(pair_section) % 2 == 0
+    assert pair_section[-2] == 0x53
     assert sent[0][1][:15] == bytes(
         [0x01, 0x00, 0x01, 0x01, 0x00, 0x02, 0x0C, 0x53, 0x0D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     )

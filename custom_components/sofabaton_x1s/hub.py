@@ -2373,29 +2373,73 @@ class SofabatonHub:
         if result is None:
             return None
 
+        # Decouple post-save housekeeping (refresh + cache persist) from
+        # the action's return value. The save and the sort-table write
+        # have already landed on the hub at this point, so the caller
+        # has everything it needs to report success. Running the refresh
+        # in the foreground was prone to wedging the websocket action's
+        # completion -- the family-0x61 sort write can leave the proxy's
+        # burst tracker briefly mid-stream on an unsolicited commands
+        # burst, which then stalls the verification round-trip. Move
+        # housekeeping to a background task so nothing downstream of
+        # this point can block the action from settling.
+        self.hass.async_create_task(
+            self._async_post_persist_housekeeping(device_id, result, wait_timeout)
+        )
+
+        return result
+
+    async def _async_post_persist_housekeeping(
+        self,
+        device_id: int,
+        result: dict[str, Any],
+        wait_timeout: float,
+    ) -> None:
+        """Refresh cached command metadata and persist the catalog cache.
+
+        Runs in the background after ``async_persist_ir_blob`` has
+        already returned. Any failure is logged at debug level and
+        swallowed -- the user-visible save action has already
+        succeeded, and the cache will catch up on the next normal
+        refresh cycle if this pass times out.
+        """
+
+        refresh_budget = min(2.0, wait_timeout)
         try:
             command_id = result.get("command_id")
             if isinstance(command_id, int):
-                await self.async_fetch_single_device_command(
-                    device_id,
-                    command_id,
-                    wait_timeout=wait_timeout,
-                    force_refresh=True,
+                await asyncio.wait_for(
+                    self.async_fetch_single_device_command(
+                        device_id,
+                        command_id,
+                        wait_timeout=refresh_budget,
+                        force_refresh=False,
+                    ),
+                    timeout=refresh_budget + 0.5,
                 )
             else:
-                await self.async_fetch_device_commands(
-                    device_id,
-                    wait_timeout=wait_timeout,
+                await asyncio.wait_for(
+                    self.async_fetch_device_commands(
+                        device_id,
+                        wait_timeout=refresh_budget,
+                    ),
+                    timeout=refresh_budget + 0.5,
                 )
         except Exception:
             self._log.debug(
-                "[BLOBS] persist_ir_blob refresh failed for device %s",
+                "[BLOBS] persist_ir_blob background refresh failed for device %s",
                 device_id,
                 exc_info=True,
             )
 
-        await self._async_persist_cache_if_enabled()
-        return result
+        try:
+            await self._async_persist_cache_if_enabled()
+        except Exception:
+            self._log.debug(
+                "[BLOBS] persist_ir_blob background cache persist failed for device %s",
+                device_id,
+                exc_info=True,
+            )
 
     async def async_create_wifi_device(
         self,

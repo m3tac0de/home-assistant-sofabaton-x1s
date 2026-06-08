@@ -73,6 +73,7 @@ class CommandRecord:
     command_id: int
     control: bytes
     label: str
+    sort_id: int = 0
 
 
 @dataclass(slots=True)
@@ -427,6 +428,7 @@ def iter_command_records_from_assembled(
             command_id=record[1],
             control=bytes(record[2 : COMMAND_RECORD_LABEL_OFFSET]),
             label=label,
+            sort_id=record[stride - 1] & 0xFF,
         )
 
 

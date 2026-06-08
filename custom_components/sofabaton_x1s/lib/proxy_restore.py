@@ -42,6 +42,7 @@ from .device_create import (
     run_device_create,
     synthesize_command_code,
 )
+from .blob_decoders import encode_decoded_blob, try_decode_blob
 from .devices import device_config_from_backup
 from .inputs import ControlKeyBlock, FavoriteSlot, InputEntry, build_inputs_write
 from .protocol_const import (
@@ -121,6 +122,46 @@ class RestoreMixin:
     def _command_restore_data(command_row: dict[str, Any]) -> dict[str, Any] | None:
         restore_data = command_row.get("restore_data")
         return dict(restore_data) if isinstance(restore_data, dict) else None
+
+    @staticmethod
+    def _edited_command_data_hex(
+        restore_data: dict[str, Any],
+        device_class: str | None,
+        command_id: int,
+    ) -> str | None:
+        # When a backup row carries ``decoded.edited = true`` the user has
+        # hand-modified the structured payload; re-encode from ``decoded``
+        # and verify the encoder is round-trip-stable before letting those
+        # bytes near the hub. Returns the new hex string, or ``None`` if
+        # the row is a pristine capture (the common case). Raises
+        # ``ValueError`` on any encode / round-trip failure so a silent
+        # fallback to the stale ``data_hex`` cannot mask a dropped edit.
+        decoded = restore_data.get("decoded")
+        if not isinstance(decoded, dict):
+            return None
+        if not bool(decoded.get("edited")):
+            return None
+        try:
+            encoded = encode_decoded_blob(decoded)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ValueError(
+                f"command_id {command_id}: edited decoded block could not be "
+                f"re-encoded ({exc})"
+            ) from exc
+        verify = try_decode_blob(device_class, encoded)
+        if verify is None:
+            raise ValueError(
+                f"command_id {command_id}: edited decoded block failed "
+                f"round-trip self-check"
+            )
+        if verify.get("fields") != decoded.get("fields") or verify.get(
+            "trailer_hex", ""
+        ) != decoded.get("trailer_hex", ""):
+            raise ValueError(
+                f"command_id {command_id}: edited decoded block does not "
+                f"round-trip to the same fields"
+            )
+        return encoded.hex()
 
     def _validate_restore_capabilities(
         self,
@@ -402,6 +443,7 @@ class RestoreMixin:
         if not isinstance(command_rows, list):
             command_rows = []
 
+        device_class = self._restore_device_class(payload)
         descriptors: list[dict[str, Any]] = []
         seen_command_ids: set[int] = set()
         for row in sorted(
@@ -431,7 +473,13 @@ class RestoreMixin:
                     )
                 continue
 
-            data_hex = str(restore_data.get("data_hex") or "").strip()
+            edited_hex = self._edited_command_data_hex(
+                restore_data, device_class, command_id
+            )
+            if edited_hex is not None:
+                data_hex = edited_hex
+            else:
+                data_hex = str(restore_data.get("data_hex") or "").strip()
             if not data_hex:
                 if strict:
                     raise ValueError(

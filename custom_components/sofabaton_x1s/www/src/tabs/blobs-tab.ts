@@ -2,7 +2,6 @@ import { LitElement, css, html, nothing } from "lit";
 import { renderSecondaryTabContent, renderSecondaryTabShell, secondaryTabStyles, type SecondaryTabItem } from "../components/secondary-tab";
 import type {
   BlobFetchResponse,
-  BlobPersistResponse,
   BlobsSectionId,
   CacheHubState,
   ControlPanelHubState,
@@ -53,7 +52,6 @@ class SofabatonBlobsTab extends LitElement {
     _saveLoading: { state: true },
     _saveError: { state: true },
     _saveSuccess: { state: true },
-    _saveResult: { state: true },
     _loadedEntryId: { state: true },
     selectedSection: { attribute: false },
     setSelectedSection: { attribute: false },
@@ -517,7 +515,6 @@ class SofabatonBlobsTab extends LitElement {
   private _saveLoading = false;
   private _saveError = "";
   private _saveSuccess = "";
-  private _saveResult: BlobPersistResponse | null = null;
   private _loadedEntryId = "";
   selectedSection: BlobsSectionId | null = "fetch";
   setSelectedSection: (section: BlobsSectionId) => void = () => {};
@@ -959,7 +956,6 @@ class SofabatonBlobsTab extends LitElement {
                   this._saveDeviceIdInput = raw && raw !== "__none__" ? raw : "";
                   this._saveError = "";
                   this._saveSuccess = "";
-                  this._saveResult = null;
                   this._saveFlash = false;
                 }}
               ></ha-selector>
@@ -974,7 +970,6 @@ class SofabatonBlobsTab extends LitElement {
               this._saveBlobInput = value;
               this._saveError = "";
               this._saveSuccess = "";
-              this._saveResult = null;
               this._saveFlash = false;
             },
           })}
@@ -1003,7 +998,6 @@ class SofabatonBlobsTab extends LitElement {
           ${this._saveError
             ? this._renderStatus("error", "mdi:alert-circle-outline", this._saveError)
             : nothing}
-          ${this._saveResult ? this._renderSaveResult() : nothing}
         </div>
         `,
       })}
@@ -1023,7 +1017,6 @@ class SofabatonBlobsTab extends LitElement {
       this._saveCommandName = value;
       this._saveError = "";
       this._saveSuccess = "";
-      this._saveResult = null;
       this._saveFlash = false;
     };
     const disabled = busy || proxyConnected;
@@ -1200,7 +1193,6 @@ class SofabatonBlobsTab extends LitElement {
     this._saveLoading = false;
     this._saveError = "";
     this._saveSuccess = "";
-    this._saveResult = null;
     this._testFlash = false;
     this._saveFlash = false;
     if (this._testFlashTimer) { clearTimeout(this._testFlashTimer); this._testFlashTimer = null; }
@@ -1366,10 +1358,9 @@ class SofabatonBlobsTab extends LitElement {
     this._saveLoading = true;
     this._saveError = "";
     this._saveSuccess = "";
-    this._saveResult = null;
     this._setSharedBusy(true, "Saving blob…");
       try {
-        this._saveResult = await this._api().persistIrBlob(
+        const result = await this._api().persistIrBlob(
           entryId,
           deviceId,
           this._saveCommandName,
@@ -1377,7 +1368,7 @@ class SofabatonBlobsTab extends LitElement {
         );
         await this._refreshControlPanelState();
         this._saveSuccess =
-          `Saved command ${this._saveResult.command_name} as id ${this._saveResult.command_id} on device ${this._saveResult.device_id}.`;
+          `Saved command ${result.command_name} as id ${result.command_id} on device ${result.device_id}.`;
         this._scheduleSuccessRevert("save");
       } catch (error) {
         this._saveError = formatError(error);

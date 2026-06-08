@@ -2308,7 +2308,8 @@ var SofabatonBackupTab = class extends i3 {
     .edit-config-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
     .edit-config-view .selection-card { flex: 1 1 auto; min-height: 0; }
     .edit-config-view .selection-list { max-height: none; height: 100%; min-height: 0; }
-    .edit-action-row { display: flex; justify-content: flex-start; gap: 10px; flex-wrap: wrap; }
+    .edit-action-row { display: flex; justify-content: flex-start; align-items: center; gap: 10px; flex-wrap: nowrap; min-width: 0; }
+    .edit-action-row .primary-btn { flex: 0 0 auto; }
     .edit-hub-row {
       display: flex;
       flex-direction: column;
@@ -2509,8 +2510,20 @@ var SofabatonBackupTab = class extends i3 {
     .restore-action-row {
       display: flex;
       justify-content: flex-start;
+      align-items: center;
       gap: 10px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      min-width: 0;
+    }
+    .restore-action-row .primary-btn { flex: 0 0 auto; }
+    .filename-btn {
+      flex: 1 1 0;
+      min-width: 0;
+      max-width: 100%;
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     input[type="file"] { display: none; }
@@ -2607,7 +2620,7 @@ var SofabatonBackupTab = class extends i3 {
                       <button class="primary-btn" ?disabled=${!hasBundle} @click=${this._downloadLatestBackup}>
                         ${wasDownloaded ? "Download again" : "Download backup"}
                       </button>
-                      <button class="secondary-btn" @click=${this._resetBackupComposer}>Complete</button>
+                      <button class="secondary-btn" @click=${() => void this._completeBackupResult()}>Complete</button>
                     </div>
                   </div>
                 `;
@@ -2725,12 +2738,12 @@ var SofabatonBackupTab = class extends i3 {
                 </div>
                 <div class="edit-action-row">
                   <button class="primary-btn" @click=${this._downloadEditedBundle}>Download edited backup</button>
-                  <button class="secondary-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
+                  <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
                 </div>
               </div>
             ` : T`
               <div class="edit-action-row">
-                <button class="secondary-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
+                <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
               </div>
             `}
         `
@@ -2952,12 +2965,12 @@ var SofabatonBackupTab = class extends i3 {
                 </div>
                 <div class="restore-action-row">
                   <button class="primary-btn" ?disabled=${this._restoreActionDisabled(restoreSelection.selectedDeviceIds)} @click=${this._runRestore}>Start restore</button>
-                  <button class="secondary-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
+                  <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
                 </div>
               </div>
             ` : !isRunning && !isSuccess ? T`
               <div class="restore-action-row">
-                <button class="secondary-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
+                <button class="secondary-btn filename-btn" ?disabled=${this._restoreLocked()} @click=${this._openFilePicker}>${this._restoreFilename || "Choose backup file"}</button>
               </div>
             ` : A}
         `
@@ -3237,6 +3250,22 @@ var SofabatonBackupTab = class extends i3 {
     const deviceCount = Array.isArray(bundle?.devices) ? bundle.devices.length : 0;
     return `${activityCount} Activities and ${deviceCount} Devices backed up`;
   }
+  async _completeBackupResult() {
+    const operationId = String(this._backupProgress?.operation_id || "").trim();
+    this._backupError = null;
+    if (operationId) {
+      try {
+        await this.api().clearBackupResult(operationId);
+      } catch (error) {
+        this._backupError = formatError(error);
+      }
+    }
+    try {
+      await this.refreshControlPanelState?.();
+    } catch {
+    }
+    this._resetBackupComposer();
+  }
   async _syncBackupOperationState() {
     const entryId = String(this.hub?.entry_id || "").trim();
     if (!entryId || !this.hass) return;
@@ -3386,4 +3415,46 @@ test("backup tab renders native radios for scope selection", () => {
   assert.match(result.strings.join(""), /compat-radio-group/);
   assert.equal(Array.isArray(result.values), true);
   assert.equal(result.values.length > 0, true);
+});
+test("backup complete dismiss clears backend result and resets the make view", async () => {
+  const calls = [];
+  const element = new BackupTabElement();
+  element.hass = {
+    states: {},
+    async callWS(message) {
+      const type = String(message.type ?? "");
+      calls.push(type);
+      if (type === "sofabaton_x1s/backup/clear_result") return { ok: true };
+      throw new Error(`Unexpected WS call: ${type}`);
+    },
+    connection: null
+  };
+  element.cacheHub = {
+    entry_id: "hub-1",
+    devices_list: [{ id: 7, name: "TV", command_count: 1 }]
+  };
+  let refreshed = 0;
+  element.refreshControlPanelState = async () => {
+    refreshed += 1;
+  };
+  element._backupError = "old error";
+  element._backupScope = "individual_devices";
+  element._backupDeviceIds = [];
+  element._backupProgress = {
+    operation_id: "backup-1",
+    kind: "backup_export",
+    entry_id: "hub-1",
+    status: "success",
+    phase: "completed",
+    message: "Backup completed.",
+    completed_steps: 2,
+    total_steps: 2
+  };
+  await element._completeBackupResult();
+  assert.deepEqual(calls, ["sofabaton_x1s/backup/clear_result"]);
+  assert.equal(refreshed, 1);
+  assert.equal(element._backupError, null);
+  assert.equal(element._backupProgress, null);
+  assert.equal(element._backupScope, "whole_hub");
+  assert.deepEqual(element._backupDeviceIds, [7]);
 });

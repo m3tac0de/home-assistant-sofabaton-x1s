@@ -528,6 +528,7 @@ class ActivityCache:
                 self.command_metadata[dev_id & 0xFF][record.command_id & 0xFF] = {
                     "library_type": record.control[0] & 0xFF,
                     "button_code": int.from_bytes(record.control[1:7], "big"),
+                    "sort_id": record.sort_id & 0xFF,
                 }
             if record.command_id not in commands_found and record.label:
                 commands_found[record.command_id] = record.label

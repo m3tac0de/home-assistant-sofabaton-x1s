@@ -3005,7 +3005,6 @@ var SofabatonBlobsTab = class extends i4 {
     this._saveLoading = false;
     this._saveError = "";
     this._saveSuccess = "";
-    this._saveResult = null;
     this._loadedEntryId = "";
     this.selectedSection = "fetch";
     this.setSelectedSection = () => {
@@ -3061,17 +3060,16 @@ var SofabatonBlobsTab = class extends i4 {
       this._saveLoading = true;
       this._saveError = "";
       this._saveSuccess = "";
-      this._saveResult = null;
       this._setSharedBusy(true, "Saving blob\u2026");
       try {
-        this._saveResult = await this._api().persistIrBlob(
+        const result = await this._api().persistIrBlob(
           entryId,
           deviceId,
           this._saveCommandName,
           this._saveBlobInput
         );
         await this._refreshControlPanelState();
-        this._saveSuccess = `Saved command ${this._saveResult.command_name} as id ${this._saveResult.command_id} on device ${this._saveResult.device_id}.`;
+        this._saveSuccess = `Saved command ${result.command_name} as id ${result.command_id} on device ${result.device_id}.`;
         this._scheduleSuccessRevert("save");
       } catch (error) {
         this._saveError = formatError(error);
@@ -3453,7 +3451,6 @@ var SofabatonBlobsTab = class extends i4 {
         this._saveDeviceIdInput = raw && raw !== "__none__" ? raw : "";
         this._saveError = "";
         this._saveSuccess = "";
-        this._saveResult = null;
         this._saveFlash = false;
       }}
               ></ha-selector>
@@ -3468,7 +3465,6 @@ var SofabatonBlobsTab = class extends i4 {
           this._saveBlobInput = value;
           this._saveError = "";
           this._saveSuccess = "";
-          this._saveResult = null;
           this._saveFlash = false;
         }
       })}
@@ -3493,7 +3489,6 @@ var SofabatonBlobsTab = class extends i4 {
                 ` : A}
           </div>
           ${this._saveError ? this._renderStatus("error", "mdi:alert-circle-outline", this._saveError) : A}
-          ${this._saveResult ? this._renderSaveResult() : A}
         </div>
         `
     })}
@@ -3512,7 +3507,6 @@ var SofabatonBlobsTab = class extends i4 {
       this._saveCommandName = value;
       this._saveError = "";
       this._saveSuccess = "";
-      this._saveResult = null;
       this._saveFlash = false;
     };
     const disabled = busy || proxyConnected;
@@ -3664,7 +3658,6 @@ var SofabatonBlobsTab = class extends i4 {
     this._saveLoading = false;
     this._saveError = "";
     this._saveSuccess = "";
-    this._saveResult = null;
     this._testFlash = false;
     this._saveFlash = false;
     if (this._testFlashTimer) {
@@ -3799,7 +3792,6 @@ SofabatonBlobsTab.properties = {
   _saveLoading: { state: true },
   _saveError: { state: true },
   _saveSuccess: { state: true },
-  _saveResult: { state: true },
   _loadedEntryId: { state: true },
   selectedSection: { attribute: false },
   setSelectedSection: { attribute: false },
@@ -4691,7 +4683,7 @@ var SofabatonBackupTab = class extends i4 {
                       <button class="primary-btn" ?disabled=${!hasBundle} @click=${this._downloadLatestBackup}>
                         ${wasDownloaded ? "Download again" : "Download backup"}
                       </button>
-                      <button class="secondary-btn" @click=${this._resetBackupComposer}>Complete</button>
+                      <button class="secondary-btn" @click=${() => void this._completeBackupResult()}>Complete</button>
                     </div>
                   </div>
                 `;
@@ -5320,6 +5312,22 @@ var SofabatonBackupTab = class extends i4 {
     const activityCount = Array.isArray(bundle?.activities) ? bundle.activities.length : 0;
     const deviceCount = Array.isArray(bundle?.devices) ? bundle.devices.length : 0;
     return `${activityCount} Activities and ${deviceCount} Devices backed up`;
+  }
+  async _completeBackupResult() {
+    const operationId = String(this._backupProgress?.operation_id || "").trim();
+    this._backupError = null;
+    if (operationId) {
+      try {
+        await this.api().clearBackupResult(operationId);
+      } catch (error) {
+        this._backupError = formatError(error);
+      }
+    }
+    try {
+      await this.refreshControlPanelState?.();
+    } catch {
+    }
+    this._resetBackupComposer();
   }
   async _syncBackupOperationState() {
     const entryId = String(this.hub?.entry_id || "").trim();
@@ -8592,7 +8600,7 @@ var SofabatonControlPanelCard = class extends i4 {
               ></div>
             ` : null}
         <div class="card-bottom-dock-center">
-          ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : b2`<span class="card-bottom-dock-empty" aria-hidden="true"></span>`}
+          ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : A}
         </div>
         <div class="card-bottom-dock-right">
           ${this.renderConnectivityPill(hub)}
@@ -8732,7 +8740,7 @@ var SofabatonControlPanelCard = class extends i4 {
           .selectedSection=${this._snapshot.selectedBlobsSection}
           .setSelectedSection=${(section) => this._store.setSelectedBlobsSection(section)}
           .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
-          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {
