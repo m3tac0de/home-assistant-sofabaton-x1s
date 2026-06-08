@@ -97,22 +97,101 @@ option is turned on.
 The **Edit** section in the card lets you rename the hub, devices, and
 activities inside a backup file before downloading it again.
 
-That editor is intentionally narrow. The backup format is schema-checked on
-restore, and the integration expects the bundle structure to match exactly, so
-manual structural edits are best treated as an advanced workflow.
+That editor is intentionally narrow. It only renames the hub, devices, and
+activities. It does not edit command payloads.
 
-## About command payloads
+The backup format is schema-checked on restore, and the integration expects
+the bundle structure to match exactly, so any manual JSON editing should be
+treated as an advanced workflow.
+
+## Advanced: editing command payloads manually
 
 Command payloads are stored in backups as raw `data_hex`. That raw payload is
 the authoritative restore source and is written back to the hub as-is during
 restore.
 
 For some command classes, the backup may also include a `decoded` block with a
-more readable view of the same payload. That extra metadata is informative, but
-restore still depends on `data_hex`, not on the decoded view.
+more readable view of the same payload.
+
+If a command row contains `restore_data.decoded.edited: true`, restore
+re-encodes `data_hex` from the `decoded` block first and then restores that
+newly encoded payload. If `edited` is absent or false, restore ignores the
+decoded view and uses the stored `data_hex` unchanged.
+
+This means manual payload editing is supported, but only for rows that
+already carry a valid `decoded` block for a supported class.
+
+## What you can edit safely
+
+The supported decoded classes are:
+
+- `wifi_ip`: `host`, `port`, `method`, `path`, `header`, `content_type`, `body`
+- `wifi_roku`: `path`
+- `wifi_hue`: `path`, `body_block`
+- `wifi_sonos`: `path`, `body_block`
+- `ir`: `descriptor` for the descriptive IR variant only
+
+Rows that do not carry one of those decoded classes remain raw-only. That
+includes Bluetooth, RF-style payloads, non-descriptive IR blobs, and any other
+command row that has no `decoded` block.
+
+## How to edit a payload
+
+Use this flow when you want restore to apply a manual payload change:
+
+1. Create and download a backup JSON file.
+2. Open the file in a text editor.
+3. Find the command row you want to change.
+4. Edit only the values under `restore_data.decoded.fields`.
+5. Set `restore_data.decoded.edited` to `true`.
+6. Leave `restore_data.decoded.class` and `restore_data.decoded.trailer_hex`
+   alone.
+7. Restore from that edited backup file.
+
+Example:
+
+```json
+"restore_data": {
+  "data_hex": "1e6c61756e63682f6362333833353339363834622f31302f302f73686f7274d3",
+  "decoded": {
+    "class": "wifi_roku",
+    "trailer_hex": "d3",
+    "edited": true,
+    "fields": {
+      "path": "keypress/Home"
+    }
+  }
+}
+```
+
+## What restore validates
+
+Restore does not trust edited payloads blindly.
+
+- It re-encodes raw bytes from `decoded`.
+- It decodes those bytes again as a self-check.
+- It verifies that the decoded fields and `trailer_hex` still match what you
+  asked for.
+
+If any of those checks fail, restore raises an error for that command row
+instead of silently falling back to the old `data_hex`. This is deliberate:
+failed edits should be visible, not partially ignored.
+
+## Important limits
+
+- Do not edit `data_hex` and `decoded` independently. If you are editing a
+  supported decoded row, treat `decoded` as the source of truth and set
+  `edited: true`.
+- Do not add a made-up `decoded` block to a raw-only command row. Restore only
+  supports manual editing for rows whose class already has a real decoder and
+  encoder.
+- Do not restructure the bundle, delete required keys, or change ids unless
+  you are prepared to debug schema or restore errors yourself.
+- The card's built-in **Edit** section is still rename-only. Payload edits are
+  done by editing the downloaded JSON file manually.
 
 ## Related docs
 
 - Service/API details: [actions.md](./actions.md)
 - Blob workflow overview: [blobs.md](./blobs.md)
-- Decoder details: [command-blob-decoders.md](./protocol/command-blob-decoders.md)
+- Command payload reference: [command_payloads.md](./command_payloads.md)

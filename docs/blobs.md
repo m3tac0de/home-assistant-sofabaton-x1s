@@ -159,3 +159,8 @@ A possible workflow is:
   payload.
 - Test first, then save.
 - Only test and save **IR** blobs.
+
+## Related docs
+
+- Backup and restore: [backup.md](./backup.md)
+- Command payload reference: [command_payloads.md](./command_payloads.md)
