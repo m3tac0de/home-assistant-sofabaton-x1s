@@ -611,6 +611,13 @@ class SofabatonBackupTab extends LitElement {
   private _progressUnsub: (() => void) | null = null;
   private _loadedBackupEntryId = "";
   private _backupHydrating = false;
+  // Op-ids the user has already acknowledged (via Complete, error
+  // dismiss, etc.). The sync function skips re-applying terminal
+  // status for any op in this set, so subscription events or stale
+  // server snapshots cannot snap the view back to a "complete" or
+  // "failed" view the user has already moved past. Cleared opportunistically
+  // when the op stops appearing in the server snapshot.
+  private _acknowledgedOpIds: Set<string> = new Set();
   private _editBundle: BackupBundlePayload | null = null;
   private _editFilename = "";
   private _editError: string | null = null;
@@ -1059,7 +1066,7 @@ class SofabatonBackupTab extends LitElement {
                     <div class="backup-complete-title">Restore completed</div>
                     <div class="backup-complete-sub">The selected Activities and Devices were restored to the hub.</div>
                     <div class="action-row">
-                      <button class="primary-btn" @click=${this._resetRestoreComposer}>Complete</button>
+                      <button class="primary-btn" @click=${() => void this._completeRestoreResult()}>Complete</button>
                     </div>
                   </div>
                 `
@@ -1375,6 +1382,25 @@ class SofabatonBackupTab extends LitElement {
   private async _subscribeToOperation(operationId: string, kind: "backup" | "restore") {
     this._teardownProgressSubscription();
     const unsubscribe = await this.api().subscribeBackupProgress(operationId, async (payload) => {
+      // ``transient: true`` is the orchestrator's signal that this is a
+      // pre-flight failure — no wire writes happened and the op is
+      // about to be dismissed server-side. Surface the message as an
+      // ephemeral error chip but do NOT update _backupProgress /
+      // _restoreProgress; those drive the "failed view" render and
+      // would otherwise leave a stale failed card stuck on screen.
+      const transient = Boolean((payload as { transient?: boolean })?.transient);
+      if (transient && payload.status === "failed") {
+        const opId = String(payload.operation_id || operationId || "").trim();
+        if (opId) this._acknowledgedOpIds.add(opId);
+        if (kind === "backup") {
+          this._backupError = String(payload.error || payload.message || "Backup failed.");
+        } else {
+          this._restoreError = String(payload.error || payload.message || "Restore failed.");
+        }
+        this.setHubCommandBusy?.(false, null);
+        this._teardownProgressSubscription();
+        return;
+      }
       if (kind === "backup") {
         this._backupProgress = payload;
         if (payload.status === "success") {
@@ -1510,6 +1536,7 @@ class SofabatonBackupTab extends LitElement {
     const operationId = String(this._backupProgress?.operation_id || "").trim();
     this._backupError = null;
     if (operationId) {
+      this._acknowledgedOpIds.add(operationId);
       try {
         await this.api().clearBackupResult(operationId);
       } catch (error) {
@@ -1531,6 +1558,29 @@ class SofabatonBackupTab extends LitElement {
     this._restoreProgress = null;
     this._restoreMode = "merge";
   };
+
+  private async _completeRestoreResult() {
+    // Mirror of _completeBackupResult: drop the server-side op record
+    // before clearing local state so the next sync cannot snap the
+    // success view back. Records the op_id in the acknowledged set as
+    // a belt-and-braces measure against any in-flight subscription
+    // event that lands between the dismiss call and the local reset.
+    const operationId = String(this._restoreProgress?.operation_id || "").trim();
+    if (operationId) {
+      this._acknowledgedOpIds.add(operationId);
+      try {
+        await this.api().clearRestoreResult(operationId);
+      } catch (error) {
+        this._restoreError = formatError(error);
+      }
+    }
+    try {
+      await this.refreshControlPanelState?.();
+    } catch {
+      // Local reset still happens; next poll reconciles.
+    }
+    this._resetRestoreComposer();
+  }
 
   private async _syncBackupOperationState() {
     const entryId = String(this.hub?.entry_id || "").trim();
@@ -1559,8 +1609,26 @@ class SofabatonBackupTab extends LitElement {
     this._teardownProgressSubscription();
     try {
       const state = await this.api().getBackupState(entryId);
-      this._backupProgress = state?.backup_export || null;
-      this._restoreProgress = state?.backup_restore || null;
+      const rawBackup = state?.backup_export || null;
+      const rawRestore = state?.backup_restore || null;
+      // Drop ops the user has already acknowledged. The id sticks in
+      // the ack set just long enough for the cleared server state to
+      // propagate; we evict it here once the server no longer reports
+      // the op so the set cannot grow unbounded over a long session.
+      const backupId = String(rawBackup?.operation_id || "").trim();
+      const restoreId = String(rawRestore?.operation_id || "").trim();
+      const liveIds = new Set<string>();
+      if (backupId) liveIds.add(backupId);
+      if (restoreId) liveIds.add(restoreId);
+      for (const ackId of [...this._acknowledgedOpIds]) {
+        if (!liveIds.has(ackId)) this._acknowledgedOpIds.delete(ackId);
+      }
+      const backupSnapshot =
+        backupId && this._acknowledgedOpIds.has(backupId) ? null : rawBackup;
+      const restoreSnapshot =
+        restoreId && this._acknowledgedOpIds.has(restoreId) ? null : rawRestore;
+      this._backupProgress = backupSnapshot;
+      this._restoreProgress = restoreSnapshot;
       this._backupError =
         String(this._backupProgress?.status || "") === "failed"
           ? String(this._backupProgress?.error || this._backupProgress?.message || "Backup failed.")

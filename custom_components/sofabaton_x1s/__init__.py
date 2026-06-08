@@ -198,6 +198,29 @@ class _BackupOperationRegistry:
         return True
 
     @callback
+    def dismiss_operation(self, operation_id: str) -> bool:
+        # Full drop of a terminal operation: cancels any pending cleanup
+        # timer and removes the op from the registry entirely. After this
+        # returns True, ``latest_for_entry`` will no longer surface the
+        # op, so a card refresh cannot snap a "Complete" view back to a
+        # stale success/failure record. Refuses to drop pending/running
+        # ops — those have to terminate naturally first.
+        operation = self._ops.get(operation_id)
+        if operation is None:
+            return False
+        state = operation.get("state") or {}
+        if str(state.get("status") or "") in {"pending", "running"}:
+            return False
+        cleanup_unsub = operation.get("cleanup_unsub")
+        if callable(cleanup_unsub):
+            try:
+                cleanup_unsub()
+            except Exception:
+                pass
+        self._ops.pop(operation_id, None)
+        return True
+
+    @callback
     def flag_backup_downloaded(self, operation_id: str) -> bool:
         """Mark a backup as downloaded so the UI can show a confirmation.
 
@@ -1304,7 +1327,11 @@ async def _run_backup_restore_operation(
             return merged
         return dict(payload_update)
 
+    progress_seen = False
+
     def _progress(payload: dict[str, Any] | None = None, **payload_update: Any) -> None:
+        nonlocal progress_seen
+        progress_seen = True
         registry.update_from_thread(
             operation_id,
             **_normalize_progress_payload(payload, **payload_update),
@@ -1341,6 +1368,26 @@ async def _run_backup_restore_operation(
                 success_payload["total_steps"] = int(result["_progress_total_steps"])
         registry.update(operation_id, **success_payload)
     except Exception as err:
+        # Pre-flight failures (validator round-trip rejection, malformed
+        # bundle, schema mismatch) raise before any progress callback
+        # fires — there's no "operation in a failed state" to persist
+        # because no wire writes happened. Surface the error to the
+        # active subscriber, then dismiss the op so a card refresh does
+        # not snap a stale failure record back onto the UI. In-flight
+        # failures (progress already started, hub disconnected midway,
+        # etc.) take the normal failed-status path so the user can
+        # navigate away and come back to the error report.
+        if not progress_seen:
+            registry.update(
+                operation_id,
+                status="failed",
+                phase="failed",
+                message=str(err) or "Restore failed",
+                error=str(err) or "Restore failed",
+                transient=True,
+            )
+            registry.dismiss_operation(operation_id)
+            return
         registry.update(
             operation_id,
             status="failed",
@@ -1654,10 +1701,24 @@ async def _ws_backup_state(hass: HomeAssistant, connection, msg: dict[str, Any])
 )
 @websocket_api.async_response
 async def _ws_backup_clear_result(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # Full-drop the completed op from the registry. The "Complete"
+    # button on backup/restore screens calls this — the op must vanish
+    # so a card refresh does not snap the success view back from
+    # cached server state. Returns ok even if the op is already gone
+    # (idempotent — covers double-clicks and races with the auto-300s
+    # cleanup timer).
     registry = _backup_operation_registry(hass)
-    if not registry.clear_backup_result(msg["operation_id"]):
-        connection.send_error(msg["id"], "not_found", "Could not resolve backup result")
+    operation = registry.get(msg["operation_id"])
+    if operation is None:
+        connection.send_result(msg["id"], {"ok": True, "already_dismissed": True})
         return
+    state = operation.get("state") or {}
+    if str(state.get("status") or "") in {"pending", "running"}:
+        connection.send_error(
+            msg["id"], "still_running", "Operation is still running"
+        )
+        return
+    registry.dismiss_operation(msg["operation_id"])
     connection.send_result(msg["id"], {"ok": True})
 
 

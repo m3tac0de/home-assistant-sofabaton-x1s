@@ -268,3 +268,200 @@ def test_run_backup_restore_operation_ignores_late_running_progress_after_succes
     assert state["status"] == "success"
     assert state["phase"] == "completed"
     assert state["message"] == "Restore completed."
+
+
+def test_dismiss_operation_drops_terminal_op_and_refuses_running():
+    loop = asyncio.new_event_loop()
+    try:
+        registry = integration._BackupOperationRegistry(SimpleNamespace(loop=loop))
+        op_id = registry.create(
+            kind="backup_export",
+            entry_id="entry-1",
+            initial_state={"status": "running", "phase": "queued"},
+        )
+        # Refuses to drop a still-running op.
+        assert registry.dismiss_operation(op_id) is False
+        assert registry.get(op_id) is not None
+
+        registry.update(op_id, status="success", phase="completed")
+        # Terminal op gets fully dropped and is no longer surfaced by
+        # ``latest_for_entry`` — that's what stops a card refresh from
+        # snapping the success view back.
+        assert registry.dismiss_operation(op_id) is True
+        assert registry.get(op_id) is None
+        assert (
+            registry.latest_for_entry("entry-1", kind="backup_export") is None
+        )
+
+        # Idempotent — dismissing an unknown id returns False without raising.
+        assert registry.dismiss_operation("not-a-real-id") is False
+    finally:
+        loop.close()
+
+
+def test_ws_backup_clear_result_fully_drops_terminal_op():
+    conn = _Conn()
+    loop = asyncio.new_event_loop()
+    try:
+        hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
+        registry = integration._backup_operation_registry(hass)
+        op_id = registry.create(
+            kind="backup_export",
+            entry_id="entry-1",
+            initial_state={
+                "status": "success",
+                "phase": "completed",
+                "backup": {"kind": "hub_bundle", "schema_version": 5},
+            },
+        )
+        loop.run_until_complete(
+            integration._ws_backup_clear_result(
+                hass, conn, {"id": 99, "operation_id": op_id}
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is None
+    assert conn.result == (99, {"ok": True})
+    # The fix: the op must be GONE, not merely stripped of its bundle.
+    # Pre-fix behavior kept status=success around for 30s so the
+    # Complete view would snap back.
+    assert registry.get(op_id) is None
+    assert registry.latest_for_entry("entry-1", kind="backup_export") is None
+
+
+def test_ws_backup_clear_result_refuses_to_dismiss_running_op():
+    conn = _Conn()
+    loop = asyncio.new_event_loop()
+    try:
+        hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
+        registry = integration._backup_operation_registry(hass)
+        op_id = registry.create(
+            kind="backup_export",
+            entry_id="entry-1",
+            initial_state={"status": "running", "phase": "queued"},
+        )
+        loop.run_until_complete(
+            integration._ws_backup_clear_result(
+                hass, conn, {"id": 100, "operation_id": op_id}
+            )
+        )
+    finally:
+        loop.close()
+
+    assert conn.error is not None
+    assert conn.error[1] == "still_running"
+    assert registry.get(op_id) is not None
+
+
+def test_run_backup_restore_operation_dismisses_preflight_failures():
+    class _RejectingHub:
+        entry_id = "entry-1"
+
+        async def async_restore_backup(
+            self,
+            payload,
+            *,
+            replace_mode=None,
+            progress_callback=None,
+            wifi_commands_request_port=8060,
+        ):
+            # Pre-flight failure: validator rejects the bundle before
+            # any progress event fires. Mirrors the path my
+            # ``_edited_command_data_hex`` validator takes when an
+            # edited row fails its round-trip self-check.
+            raise ValueError("edited decoded block failed round-trip self-check")
+
+    loop = asyncio.new_event_loop()
+    try:
+        hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
+        registry = integration._backup_operation_registry(hass)
+        op_id = registry.create(
+            kind="backup_restore",
+            entry_id="entry-1",
+            initial_state={"status": "running", "phase": "queued"},
+        )
+        loop.run_until_complete(
+            integration._run_backup_restore_operation(
+                hass,
+                op_id,
+                hub=_RejectingHub(),
+                payload={
+                    "kind": "hub_bundle",
+                    "schema_version": 5,
+                    "devices": [],
+                    "activities": [],
+                },
+                mode="merge",
+            )
+        )
+    finally:
+        loop.close()
+
+    # The op gets the failed-status update so any live subscriber
+    # sees the error message, then is immediately dismissed from the
+    # registry so no card refresh can snap a stale failure view back.
+    assert registry.get(op_id) is None
+    assert registry.latest_for_entry("entry-1", kind="backup_restore") is None
+
+
+def test_run_backup_restore_operation_persists_inflight_failures():
+    class _MidwayFailHub:
+        entry_id = "entry-1"
+
+        async def async_restore_backup(
+            self,
+            payload,
+            *,
+            replace_mode=None,
+            progress_callback=None,
+            wifi_commands_request_port=8060,
+        ):
+            # Emit progress THEN fail — represents an in-flight error
+            # (hub disconnect, partial restore). Distinct from
+            # pre-flight: the operation actually started touching the
+            # hub, so the user needs the failed-status record to
+            # persist while they navigate away to investigate.
+            if callable(progress_callback):
+                progress_callback(
+                    status="running",
+                    phase="device",
+                    message="Restoring device 11…",
+                    completed_steps=1,
+                    total_steps=4,
+                )
+            raise RuntimeError("hub disconnected midway")
+
+    loop = asyncio.new_event_loop()
+    try:
+        hass = SimpleNamespace(loop=loop, data={integration.DOMAIN: {}})
+        registry = integration._backup_operation_registry(hass)
+        op_id = registry.create(
+            kind="backup_restore",
+            entry_id="entry-1",
+            initial_state={"status": "running", "phase": "queued"},
+        )
+        loop.run_until_complete(
+            integration._run_backup_restore_operation(
+                hass,
+                op_id,
+                hub=_MidwayFailHub(),
+                payload={
+                    "kind": "hub_bundle",
+                    "schema_version": 5,
+                    "devices": [],
+                    "activities": [],
+                },
+                mode="merge",
+            )
+        )
+        loop.run_until_complete(asyncio.sleep(0))
+    finally:
+        loop.close()
+
+    state = registry.get(op_id)
+    assert state is not None
+    assert state["state"]["status"] == "failed"
+    assert "hub disconnected midway" in str(state["state"]["error"])
+    assert state["state"].get("transient") is not True

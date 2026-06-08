@@ -1412,6 +1412,12 @@ var ControlPanelApi = class {
       operation_id: operationId
     });
   }
+  clearRestoreResult(operationId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/backup/clear_result",
+      operation_id: operationId
+    });
+  }
   refreshCatalog(entryId, kind) {
     return this.hass.callWS({
       type: "sofabaton_x1s/catalog/refresh",
@@ -4530,6 +4536,13 @@ var SofabatonBackupTab = class extends i4 {
     this._progressUnsub = null;
     this._loadedBackupEntryId = "";
     this._backupHydrating = false;
+    // Op-ids the user has already acknowledged (via Complete, error
+    // dismiss, etc.). The sync function skips re-applying terminal
+    // status for any op in this set, so subscription events or stale
+    // server snapshots cannot snap the view back to a "complete" or
+    // "failed" view the user has already moved past. Cleared opportunistically
+    // when the op stops appearing in the server snapshot.
+    this._acknowledgedOpIds = /* @__PURE__ */ new Set();
     this._editBundle = null;
     this._editFilename = "";
     this._editError = null;
@@ -4939,7 +4952,7 @@ var SofabatonBackupTab = class extends i4 {
                     <div class="backup-complete-title">Restore completed</div>
                     <div class="backup-complete-sub">The selected Activities and Devices were restored to the hub.</div>
                     <div class="action-row">
-                      <button class="primary-btn" @click=${this._resetRestoreComposer}>Complete</button>
+                      <button class="primary-btn" @click=${() => void this._completeRestoreResult()}>Complete</button>
                     </div>
                   </div>
                 ` : A}
@@ -5206,6 +5219,19 @@ var SofabatonBackupTab = class extends i4 {
   async _subscribeToOperation(operationId, kind) {
     this._teardownProgressSubscription();
     const unsubscribe = await this.api().subscribeBackupProgress(operationId, async (payload) => {
+      const transient = Boolean(payload?.transient);
+      if (transient && payload.status === "failed") {
+        const opId = String(payload.operation_id || operationId || "").trim();
+        if (opId) this._acknowledgedOpIds.add(opId);
+        if (kind === "backup") {
+          this._backupError = String(payload.error || payload.message || "Backup failed.");
+        } else {
+          this._restoreError = String(payload.error || payload.message || "Restore failed.");
+        }
+        this.setHubCommandBusy?.(false, null);
+        this._teardownProgressSubscription();
+        return;
+      }
       if (kind === "backup") {
         this._backupProgress = payload;
         if (payload.status === "success") {
@@ -5317,6 +5343,7 @@ var SofabatonBackupTab = class extends i4 {
     const operationId = String(this._backupProgress?.operation_id || "").trim();
     this._backupError = null;
     if (operationId) {
+      this._acknowledgedOpIds.add(operationId);
       try {
         await this.api().clearBackupResult(operationId);
       } catch (error) {
@@ -5328,6 +5355,22 @@ var SofabatonBackupTab = class extends i4 {
     } catch {
     }
     this._resetBackupComposer();
+  }
+  async _completeRestoreResult() {
+    const operationId = String(this._restoreProgress?.operation_id || "").trim();
+    if (operationId) {
+      this._acknowledgedOpIds.add(operationId);
+      try {
+        await this.api().clearRestoreResult(operationId);
+      } catch (error) {
+        this._restoreError = formatError(error);
+      }
+    }
+    try {
+      await this.refreshControlPanelState?.();
+    } catch {
+    }
+    this._resetRestoreComposer();
   }
   async _syncBackupOperationState() {
     const entryId = String(this.hub?.entry_id || "").trim();
@@ -5347,8 +5390,20 @@ var SofabatonBackupTab = class extends i4 {
     this._teardownProgressSubscription();
     try {
       const state = await this.api().getBackupState(entryId);
-      this._backupProgress = state?.backup_export || null;
-      this._restoreProgress = state?.backup_restore || null;
+      const rawBackup = state?.backup_export || null;
+      const rawRestore = state?.backup_restore || null;
+      const backupId = String(rawBackup?.operation_id || "").trim();
+      const restoreId = String(rawRestore?.operation_id || "").trim();
+      const liveIds = /* @__PURE__ */ new Set();
+      if (backupId) liveIds.add(backupId);
+      if (restoreId) liveIds.add(restoreId);
+      for (const ackId of [...this._acknowledgedOpIds]) {
+        if (!liveIds.has(ackId)) this._acknowledgedOpIds.delete(ackId);
+      }
+      const backupSnapshot = backupId && this._acknowledgedOpIds.has(backupId) ? null : rawBackup;
+      const restoreSnapshot = restoreId && this._acknowledgedOpIds.has(restoreId) ? null : rawRestore;
+      this._backupProgress = backupSnapshot;
+      this._restoreProgress = restoreSnapshot;
       this._backupError = String(this._backupProgress?.status || "") === "failed" ? String(this._backupProgress?.error || this._backupProgress?.message || "Backup failed.") : null;
       this._restoreError = String(this._restoreProgress?.status || "") === "failed" ? String(this._restoreProgress?.error || this._restoreProgress?.message || "Restore failed.") : null;
       this._restoreSuccess = String(this._restoreProgress?.status || "") === "success" ? "Restore completed." : null;

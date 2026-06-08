@@ -123,6 +123,17 @@ export class ControlPanelApi {
     });
   }
 
+  clearRestoreResult(operationId: string) {
+    // Server-side ``backup/clear_result`` is generic — it fully drops
+    // any terminal op (backup_export or backup_restore). Wrapping it
+    // here for call-site readability and to give the two screens an
+    // obvious symmetric pair.
+    return this.hass.callWS<{ ok: boolean }>({
+      type: "sofabaton_x1s/backup/clear_result",
+      operation_id: operationId,
+    });
+  }
+
   refreshCatalog(entryId: string, kind: "activities" | "devices") {
     return this.hass.callWS({
       type: "sofabaton_x1s/catalog/refresh",

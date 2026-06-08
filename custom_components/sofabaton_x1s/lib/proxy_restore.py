@@ -126,7 +126,6 @@ class RestoreMixin:
     @staticmethod
     def _edited_command_data_hex(
         restore_data: dict[str, Any],
-        device_class: str | None,
         command_id: int,
     ) -> str | None:
         # When a backup row carries ``decoded.edited = true`` the user has
@@ -136,6 +135,11 @@ class RestoreMixin:
         # the row is a pristine capture (the common case). Raises
         # ``ValueError`` on any encode / round-trip failure so a silent
         # fallback to the stale ``data_hex`` cannot mask a dropped edit.
+        #
+        # Round-trip verification keys off ``decoded["class"]`` — the
+        # decoded block is self-describing, and the outer device-level
+        # ``device_class`` is not guaranteed to be present in
+        # hand-edited bundles.
         decoded = restore_data.get("decoded")
         if not isinstance(decoded, dict):
             return None
@@ -148,7 +152,7 @@ class RestoreMixin:
                 f"command_id {command_id}: edited decoded block could not be "
                 f"re-encoded ({exc})"
             ) from exc
-        verify = try_decode_blob(device_class, encoded)
+        verify = try_decode_blob(decoded.get("class"), encoded)
         if verify is None:
             raise ValueError(
                 f"command_id {command_id}: edited decoded block failed "
@@ -443,7 +447,6 @@ class RestoreMixin:
         if not isinstance(command_rows, list):
             command_rows = []
 
-        device_class = self._restore_device_class(payload)
         descriptors: list[dict[str, Any]] = []
         seen_command_ids: set[int] = set()
         for row in sorted(
@@ -473,9 +476,7 @@ class RestoreMixin:
                     )
                 continue
 
-            edited_hex = self._edited_command_data_hex(
-                restore_data, device_class, command_id
-            )
+            edited_hex = self._edited_command_data_hex(restore_data, command_id)
             if edited_hex is not None:
                 data_hex = edited_hex
             else:

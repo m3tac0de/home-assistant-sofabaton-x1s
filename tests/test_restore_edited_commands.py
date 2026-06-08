@@ -59,7 +59,7 @@ def test_returns_none_when_no_decoded_block():
     restore_data = {"data_hex": WIFI_ROKU_HEX}
     assert (
         RestoreMixin._edited_command_data_hex(
-            restore_data, DEVICE_CLASS_WIFI_ROKU, 0x10
+            restore_data, 0x10
         )
         is None
     )
@@ -68,19 +68,9 @@ def test_returns_none_when_no_decoded_block():
 def test_returns_none_when_edited_flag_absent_or_false():
     decoded = _decoded_block()
     restore_data = {"data_hex": WIFI_ROKU_HEX, "decoded": decoded}
-    assert (
-        RestoreMixin._edited_command_data_hex(
-            restore_data, DEVICE_CLASS_WIFI_ROKU, 0x10
-        )
-        is None
-    )
+    assert RestoreMixin._edited_command_data_hex(restore_data, 0x10) is None
     decoded["edited"] = False
-    assert (
-        RestoreMixin._edited_command_data_hex(
-            restore_data, DEVICE_CLASS_WIFI_ROKU, 0x10
-        )
-        is None
-    )
+    assert RestoreMixin._edited_command_data_hex(restore_data, 0x10) is None
 
 
 def test_returns_reencoded_hex_when_edited_true_and_round_trip_passes():
@@ -89,9 +79,7 @@ def test_returns_reencoded_hex_when_edited_true_and_round_trip_passes():
     decoded["edited"] = True
     restore_data = {"data_hex": WIFI_ROKU_HEX, "decoded": decoded}
 
-    new_hex = RestoreMixin._edited_command_data_hex(
-        restore_data, DEVICE_CLASS_WIFI_ROKU, 0x10
-    )
+    new_hex = RestoreMixin._edited_command_data_hex(restore_data, 0x10)
     assert isinstance(new_hex, str)
     assert new_hex != WIFI_ROKU_HEX
 
@@ -108,9 +96,7 @@ def test_edited_true_pristine_fields_re_encodes_to_original_bytes():
     decoded["edited"] = True
     restore_data = {"data_hex": "deadbeef", "decoded": decoded}
 
-    new_hex = RestoreMixin._edited_command_data_hex(
-        restore_data, DEVICE_CLASS_WIFI_ROKU, 0x10
-    )
+    new_hex = RestoreMixin._edited_command_data_hex(restore_data, 0x10)
     # Unedited fields with edited=true still re-encode; the result is the
     # captured bytes and replaces the stale data_hex sentinel above.
     assert new_hex == WIFI_ROKU_HEX
@@ -122,9 +108,7 @@ def test_raises_on_unknown_class():
     decoded["edited"] = True
     restore_data = {"data_hex": WIFI_ROKU_HEX, "decoded": decoded}
     with pytest.raises(ValueError, match="could not be re-encoded"):
-        RestoreMixin._edited_command_data_hex(
-            restore_data, DEVICE_CLASS_WIFI_ROKU, 0x10
-        )
+        RestoreMixin._edited_command_data_hex(restore_data, 0x10)
 
 
 def test_raises_when_fields_missing():
@@ -133,6 +117,33 @@ def test_raises_when_fields_missing():
     decoded["edited"] = True
     restore_data = {"data_hex": WIFI_ROKU_HEX, "decoded": decoded}
     with pytest.raises(ValueError, match="could not be re-encoded"):
-        RestoreMixin._edited_command_data_hex(
-            restore_data, DEVICE_CLASS_WIFI_ROKU, 0x10
-        )
+        RestoreMixin._edited_command_data_hex(restore_data, 0x10)
+
+
+def test_user_reported_wifi_ip_edit_round_trips():
+    # Repro for the user-reported failure on a hand-edited wifi_ip row:
+    # the helper used to key its round-trip verifier off the outer
+    # device-block ``device_class`` (often absent / non-normalizable in
+    # a hand-edited bundle), causing pristine encoder output to be
+    # rejected. The decoded block is self-describing — its ``class``
+    # field is what should drive verification.
+    decoded = {
+        "class": "wifi_ip",
+        "trailer_hex": "4e",
+        "edited": True,
+        "fields": {
+            "host": "192.168.2.88",
+            "port": 6666,
+            "method": "GET",
+            "path": "/freddy/e26a44861b45/11/0/short",
+            "header": "",
+            "content_type": "application/x-www-form-urlencoded",
+            "body": "",
+        },
+    }
+    restore_data = {"data_hex": "00", "decoded": decoded}
+    new_hex = RestoreMixin._edited_command_data_hex(restore_data, 1)
+    assert isinstance(new_hex, str) and new_hex
+    assert new_hex.startswith("c0a80258")  # 192.168.2.88
+    assert "1a0a" in new_hex[:12]  # port 6666
+    assert new_hex.endswith("4e")  # trailer preserved

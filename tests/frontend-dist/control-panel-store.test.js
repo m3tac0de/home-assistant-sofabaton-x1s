@@ -98,6 +98,12 @@ var ControlPanelApi = class {
       operation_id: operationId
     });
   }
+  clearRestoreResult(operationId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/backup/clear_result",
+      operation_id: operationId
+    });
+  }
   refreshCatalog(entryId, kind) {
     return this.hass.callWS({
       type: "sofabaton_x1s/catalog/refresh",
