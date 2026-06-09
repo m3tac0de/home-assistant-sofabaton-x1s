@@ -3722,6 +3722,22 @@ var SofabatonBlobsTab = class extends i4 {
     if (this._resultViewMode[cmdKey] === mode) return;
     this._resultViewMode = { ...this._resultViewMode, [cmdKey]: mode };
   }
+  /**
+   * Build the text shown in the Descriptor view (and used by Copy).
+   *
+   * For wifi_hue / wifi_sonos the hub's pre-formatted `parsed_blob`
+   * splits `body_block` across rendered newlines and indents each
+   * line. That looks tidy but obscures the wire reality: `body_block`
+   * is a single opaque string where every `\r` / `\n` byte is part of
+   * the device-side protocol (it carries its own Content-Length
+   * declaration, line separators, and body bytes). We rebuild the
+   * descriptor client-side so the body_block surfaces as one literal
+   * string with `\r` / `\n` shown as their two-char escape sequences,
+   * matching the editor's "raw wire string" rendering.
+   *
+   * Every other class (wifi_ip, wifi_roku, ir descriptive, and any
+   * non-decodable case) keeps the hub's `parsed_blob` as-is.
+   */
   _renderableDescriptor(command) {
     const className = String(command.decoded?.class ?? "").toLowerCase();
     if (className === "wifi_hue" || className === "wifi_sonos") {
@@ -4381,6 +4397,140 @@ function renderOperationProgress(view) {
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
+var DECODED_CLASS_FORM_SPECS = {
+  wifi_ip: {
+    title: "HTTP request",
+    subtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
+    fields: [
+      { key: "host", label: "Host (IPv4)", helper: "e.g. 192.168.2.77" },
+      { key: "port", label: "Port", numeric: true },
+      { key: "method", label: "HTTP method", helper: "e.g. GET, POST" },
+      { key: "path", label: "Path" },
+      {
+        key: "header",
+        label: "Extra headers",
+        multiline: true,
+        crlfOnWire: true,
+        helper: "One header per line. Host and Content-Length are added automatically."
+      },
+      { key: "content_type", label: "Content type" },
+      { key: "body", label: "Body", multiline: true }
+    ]
+  },
+  wifi_roku: {
+    title: "Roku ECP request",
+    fields: [
+      { key: "path", label: "ECP URL path", helper: "e.g. /launch/12 or /keypress/Home" }
+    ]
+  },
+  wifi_hue: {
+    title: "Hue REST request",
+    subtitle: "Body block is injected verbatim between Host headers and the network write.",
+    fields: [
+      { key: "path", label: "URL path" },
+      {
+        key: "body_block",
+        label: "Body block (raw wire string)",
+        multiline: true,
+        escapedDisplay: true,
+        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
+      }
+    ]
+  },
+  wifi_sonos: {
+    title: "Sonos UPnP request",
+    subtitle: "Body block is injected verbatim between Host headers and the network write.",
+    fields: [
+      { key: "path", label: "URL path" },
+      {
+        key: "body_block",
+        label: "Body block (raw wire string)",
+        multiline: true,
+        escapedDisplay: true,
+        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
+      }
+    ]
+  },
+  ir: {
+    title: "Descriptive IR payload",
+    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR blobs are not editable here.",
+    fields: [
+      {
+        key: "descriptor",
+        label: "Descriptor",
+        helper: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2"
+      }
+    ]
+  }
+};
+function normalizeDecodableClass(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized in DECODED_CLASS_FORM_SPECS) {
+    return normalized;
+  }
+  return null;
+}
+function commandDecodedBlock(bundle, deviceId, commandId) {
+  if (!bundle) return null;
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId
+  );
+  if (!device) return null;
+  const command = (device.commands ?? []).find(
+    (entry) => Number(entry?.command_id || 0) === normalizedCommandId
+  );
+  if (!command) return null;
+  const restoreData = command.restore_data;
+  if (!restoreData || typeof restoreData !== "object") return null;
+  const decoded = restoreData.decoded;
+  if (!decoded || typeof decoded !== "object") return null;
+  const decodedRecord = decoded;
+  const className = normalizeDecodableClass(decodedRecord.class);
+  if (!className) return null;
+  const fields = decodedRecord.fields;
+  if (!fields || typeof fields !== "object") return null;
+  return {
+    className,
+    fields: { ...fields },
+    trailerHex: String(decodedRecord.trailer_hex ?? ""),
+    edited: Boolean(decodedRecord.edited)
+  };
+}
+function updateCommandDecodedFields(bundle, deviceId, commandId, newFields) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          const restoreData = command.restore_data;
+          if (!restoreData || typeof restoreData !== "object") return command;
+          const decoded = restoreData.decoded;
+          if (!decoded || typeof decoded !== "object") return command;
+          const decodedRecord = decoded;
+          const existingFields = decodedRecord.fields ?? {};
+          return {
+            ...command,
+            restore_data: {
+              ...restoreData,
+              decoded: {
+                ...decodedRecord,
+                fields: { ...existingFields, ...newFields },
+                edited: true
+              }
+            }
+          };
+        })
+      };
+    })
+  };
+}
 var HUB_VERSION_RANK = {
   X1: 1,
   X1S: 2,
@@ -4394,12 +4544,12 @@ function backupDeviceOptions(hub) {
     meta: String(device.device_class || "").trim() || void 0
   }));
 }
-function _readBundleSortKey(block) {
+function compareByHubOrder(left, right) {
+  return left.sortKey - right.sortKey || left.id - right.id;
+}
+function readSortKey(block) {
   const value = Number(block?.sort);
   return Number.isFinite(value) ? value : 0;
-}
-function _compareByHubOrder(left, right) {
-  return (left.sortKey - right.sortKey) || (left.id - right.id);
 }
 function bundleActivityOptions(bundle) {
   return [...bundle?.activities ?? []].map((activity) => {
@@ -4407,11 +4557,11 @@ function bundleActivityOptions(bundle) {
     const id = Number(block.device_id || 0);
     return {
       id,
-      sortKey: _readBundleSortKey(block),
+      sortKey: readSortKey(block),
       label: String(block.name || `Activity ${id}`),
       meta: `${(activity?.referenced_source_device_ids ?? []).length} linked devices`
     };
-  }).filter((option) => option.id > 0).sort(_compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
+  }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
 function bundleDeviceOptions(bundle) {
   return [...bundle?.devices ?? []].map((device) => {
@@ -4419,11 +4569,11 @@ function bundleDeviceOptions(bundle) {
     const id = Number(block.device_id || 0);
     return {
       id,
-      sortKey: _readBundleSortKey(block),
+      sortKey: readSortKey(block),
       label: String(block.name || `Device ${id}`),
       meta: String(block.device_class || "").trim() || void 0
     };
-  }).filter((option) => option.id > 0).sort(_compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
+  }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
 function forcedRestoreDeviceIds(bundle, selectedActivityIds) {
   const selected = new Set(selectedActivityIds.map((value) => Number(value)));
@@ -4484,6 +4634,14 @@ function normalizeHubVersion(value) {
   if (normalized.includes("X2")) return "X2";
   if (normalized.includes("X1")) return "X1";
   return null;
+}
+function renameBundleHub(bundle, name) {
+  const trimmed = String(name ?? "").trim();
+  if (!trimmed) return bundle;
+  return {
+    ...bundle,
+    hub: { ...bundle.hub ?? {}, name: trimmed }
+  };
 }
 function renameInList(list, id, name) {
   const trimmed = String(name ?? "").trim();
@@ -4608,7 +4766,7 @@ function deviceCommandItems(bundle, deviceId) {
   if (!bundle) return [];
   const normalizedDeviceId = Number(deviceId);
   const device = (bundle.devices ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId,
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId
   );
   if (!device) return [];
   const items = [];
@@ -4620,14 +4778,11 @@ function deviceCommandItems(bundle, deviceId) {
   }
   return items.sort((left, right) => left.commandId - right.commandId);
 }
-function renameBundleDeviceCommand(bundle, deviceId, commandId, name) {
-  return updateDeviceCommandLabel(bundle, Number(deviceId), Number(commandId), String(name ?? "").trim());
-}
 function bundleDeviceClass(bundle, deviceId) {
   if (!bundle) return null;
   const normalizedId = Number(deviceId);
   const device = (bundle.devices ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === normalizedId,
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
   );
   if (!device) return null;
   return String(device.device?.device_class ?? "").trim().toLowerCase() || null;
@@ -4636,7 +4791,7 @@ function deviceIpAddress(bundle, deviceId) {
   if (!bundle) return null;
   const normalizedId = Number(deviceId);
   const device = (bundle.devices ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === normalizedId,
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
   );
   if (!device?.device) return null;
   const raw = String(device.device.ip_address ?? "").trim();
@@ -4652,134 +4807,21 @@ function updateBundleDeviceIp(bundle, deviceId, ip) {
       if (!device.device) return device;
       return {
         ...device,
-        device: { ...device.device, ip_address: trimmed || null },
+        device: { ...device.device, ip_address: trimmed || null }
       };
-    }),
+    })
   };
 }
-const IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
-const IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-const DECODED_CLASS_FORM_SPECS = {
-  wifi_ip: {
-    title: "HTTP request",
-    subtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
-    fields: [
-      { key: "host", label: "Host (IPv4)", helper: "e.g. 192.168.2.77" },
-      { key: "port", label: "Port", numeric: true },
-      { key: "method", label: "HTTP method", helper: "e.g. GET, POST" },
-      { key: "path", label: "Path" },
-      { key: "header", label: "Extra headers", multiline: true, crlfOnWire: true, helper: "One header per line. Host and Content-Length are added automatically." },
-      { key: "content_type", label: "Content type" },
-      { key: "body", label: "Body", multiline: true },
-    ],
-  },
-  wifi_roku: {
-    title: "Roku ECP request",
-    fields: [
-      { key: "path", label: "ECP URL path", helper: "e.g. /launch/12 or /keypress/Home" },
-    ],
-  },
-  wifi_hue: {
-    title: "Hue REST request",
-    subtitle: "Body block is injected verbatim between Host headers and the network write.",
-    fields: [
-      { key: "path", label: "URL path" },
-      {
-        key: "body_block",
-        label: "Body block (raw wire string)",
-        multiline: true,
-        escapedDisplay: true,
-        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value — it must match the body byte count.",
-      },
-    ],
-  },
-  wifi_sonos: {
-    title: "Sonos UPnP request",
-    subtitle: "Body block is injected verbatim between Host headers and the network write.",
-    fields: [
-      { key: "path", label: "URL path" },
-      {
-        key: "body_block",
-        label: "Body block (raw wire string)",
-        multiline: true,
-        escapedDisplay: true,
-        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value — it must match the body byte count.",
-      },
-    ],
-  },
-  ir: {
-    title: "Descriptive IR payload",
-    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:… D:… F:…) are decodable; raw learned-IR blobs are not editable here.",
-    fields: [
-      { key: "descriptor", label: "Descriptor", helper: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2" },
-    ],
-  },
-};
-function _normalizeDecodableClass(value) {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized in DECODED_CLASS_FORM_SPECS) return normalized;
-  return null;
+function renameBundleDeviceCommand(bundle, deviceId, commandId, name) {
+  return updateDeviceCommandLabel(bundle, Number(deviceId), Number(commandId), String(name ?? "").trim());
 }
-function commandDecodedBlock(bundle, deviceId, commandId) {
-  if (!bundle) return null;
-  const normalizedDeviceId = Number(deviceId);
-  const normalizedCommandId = Number(commandId);
-  const device = (bundle.devices ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId,
-  );
-  if (!device) return null;
-  const command = (device.commands ?? []).find(
-    (entry) => Number(entry?.command_id || 0) === normalizedCommandId,
-  );
-  if (!command) return null;
-  const restoreData = command.restore_data;
-  if (!restoreData || typeof restoreData !== "object") return null;
-  const decoded = restoreData.decoded;
-  if (!decoded || typeof decoded !== "object") return null;
-  const className = _normalizeDecodableClass(decoded.class);
-  if (!className) return null;
-  const fields = decoded.fields;
-  if (!fields || typeof fields !== "object") return null;
-  return {
-    className,
-    fields: { ...fields },
-    trailerHex: String(decoded.trailer_hex ?? ""),
-    edited: Boolean(decoded.edited),
-  };
+function reorderBundleActivities(bundle, orderedActivityIds) {
+  return reorderBundleTopLevelEntries(bundle, "activities", orderedActivityIds);
 }
-function updateCommandDecodedFields(bundle, deviceId, commandId, newFields) {
-  const normalizedDeviceId = Number(deviceId);
-  const normalizedCommandId = Number(commandId);
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((device) => {
-      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
-      return {
-        ...device,
-        commands: (device.commands ?? []).map((command) => {
-          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
-          const restoreData = command.restore_data;
-          if (!restoreData || typeof restoreData !== "object") return command;
-          const decoded = restoreData.decoded;
-          if (!decoded || typeof decoded !== "object") return command;
-          const existingFields = (decoded.fields ?? {});
-          return {
-            ...command,
-            restore_data: {
-              ...restoreData,
-              decoded: {
-                ...decoded,
-                fields: { ...existingFields, ...newFields },
-                edited: true,
-              },
-            },
-          };
-        }),
-      };
-    }),
-  };
+function reorderBundleDevices(bundle, orderedDeviceIds) {
+  return reorderBundleTopLevelEntries(bundle, "devices", orderedDeviceIds);
 }
-function _reorderBundleTopLevelEntries(bundle, key, orderedIds) {
+function reorderBundleTopLevelEntries(bundle, key, orderedIds) {
   const entries = bundle[key] ?? [];
   const newSortById = /* @__PURE__ */ new Map();
   orderedIds.forEach((id, index) => {
@@ -4795,12 +4837,6 @@ function _reorderBundleTopLevelEntries(bundle, key, orderedIds) {
     return { ...entry, device: { ...block, sort: nextSort } };
   });
   return { ...bundle, [key]: nextEntries };
-}
-function reorderBundleActivities(bundle, orderedActivityIds) {
-  return _reorderBundleTopLevelEntries(bundle, "activities", orderedActivityIds);
-}
-function reorderBundleDevices(bundle, orderedDeviceIds) {
-  return _reorderBundleTopLevelEntries(bundle, "devices", orderedDeviceIds);
 }
 function reorderBundleActivityQuickAccess(bundle, activityId, orderedItems) {
   const normalizedActivityId = Number(activityId);
@@ -4849,12 +4885,14 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-tab.ts
+var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
+var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 var BACKUP_SECTION_ITEMS = [
   { id: "make", icon: "mdi:content-save-move-outline", label: "Make" },
   { id: "edit", icon: "mdi:pencil-box-outline", label: "Edit" },
   { id: "restore", icon: "mdi:database-import-outline", label: "Restore" }
 ];
-var SofabatonBackupTab = class extends i4 {
+var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
   constructor() {
     super(...arguments);
     this.hass = null;
@@ -4903,11 +4941,32 @@ var SofabatonBackupTab = class extends i4 {
     this._editRenameDialogDraft = "";
     this._editRenameDialogError = "";
     this._editRenameDialogTarget = null;
+    // True when `_editBundle` has user-made changes that have not yet
+    // been downloaded. Flipped on by every edit handler (rename, reorder,
+    // decoded payload, IP, etc.) and on session restore (those ARE
+    // unsaved edits). Flipped off by `_downloadEditedBundle` and by
+    // any path that loads a fresh bundle from file. Drives the
+    // "Unsaved" indicators in the Edit overview and detail header.
+    this._editBundleDirty = false;
+    // Per-field text drafts for the structured-payload editor that shows
+    // inside the rename dialog when the target command is in a decodable
+    // class. Keyed by the spec's `key`. Empty for non-command targets and
+    // for command targets without a decoded block.
     this._editRenameDialogDecodedDrafts = {};
+    // Snapshot of the decoded block at dialog-open time, used to:
+    //   (a) skip the bundle update entirely when nothing changed, and
+    //   (b) decide whether to render the structured-payload form.
     this._editRenameDialogDecodedSnapshot = null;
     this._haSortableReady = Boolean(customElements.get("ha-sortable"));
     this._backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
     this._editSessionRestoreTried = false;
+    this._handleDecodedFieldInput = (event, fieldKey) => {
+      const input = event.currentTarget;
+      this._editRenameDialogDecodedDrafts = {
+        ...this._editRenameDialogDecodedDrafts,
+        [fieldKey]: input.value
+      };
+    };
     this._handleEditRenameDialogInput = (event) => {
       const input = event.currentTarget;
       if (this._editRenameDialogTarget?.kind === "device_ip") {
@@ -4930,6 +4989,15 @@ var SofabatonBackupTab = class extends i4 {
       this._editRenameDialogError = "";
       this._editRenameDialogOpen = true;
     };
+    this._openHubNameRenameDialog = () => {
+      if (!this._editBundle) return;
+      this._editRenameDialogTarget = { kind: "hub_name" };
+      this._editRenameDialogDraft = this._sanitizeBundleName(String(this._editBundle.hub?.name ?? ""));
+      this._editRenameDialogError = "";
+      this._editRenameDialogDecodedSnapshot = null;
+      this._editRenameDialogDecodedDrafts = {};
+      this._editRenameDialogOpen = true;
+    };
     this._closeEditRenameDialog = () => {
       this._editRenameDialogOpen = false;
       this._editRenameDialogDraft = "";
@@ -4937,13 +5005,6 @@ var SofabatonBackupTab = class extends i4 {
       this._editRenameDialogTarget = null;
       this._editRenameDialogDecodedDrafts = {};
       this._editRenameDialogDecodedSnapshot = null;
-    };
-    this._handleDecodedFieldInput = (event, fieldKey) => {
-      const input = event.currentTarget;
-      this._editRenameDialogDecodedDrafts = {
-        ...this._editRenameDialogDecodedDrafts,
-        [fieldKey]: input.value,
-      };
     };
     this._openEditFilePicker = () => {
       this.renderRoot.querySelector("#edit-file-input")?.click();
@@ -4958,10 +5019,12 @@ var SofabatonBackupTab = class extends i4 {
         const bundle = validateBackupBundle(JSON.parse(text));
         this._editBundle = bundle;
         this._editFilename = file.name;
+        this._editBundleDirty = false;
         this._closeEditDetail();
       } catch (error) {
         this._editBundle = null;
         this._editFilename = "";
+        this._editBundleDirty = false;
         this._closeEditDetail();
         this._editError = formatError(error);
       } finally {
@@ -4983,7 +5046,7 @@ var SofabatonBackupTab = class extends i4 {
           this._editRenameDialogError = "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.";
           return;
         }
-        this._editBundle = updateBundleDeviceIp(this._editBundle, target.deviceId, draft);
+        this._commitEditBundleEdit(updateBundleDeviceIp(this._editBundle, target.deviceId, draft));
         this._closeEditRenameDialog();
         return;
       }
@@ -4999,8 +5062,13 @@ var SofabatonBackupTab = class extends i4 {
         this._closeEditRenameDialog();
         return;
       }
+      if (target.kind === "hub_name") {
+        this._commitEditBundleEdit(renameBundleHub(this._editBundle, next));
+        this._closeEditRenameDialog();
+        return;
+      }
       if (target.kind === "macro") {
-        this._editBundle = renameBundleActivityMacro(this._editBundle, target.activityId, target.buttonId, next);
+        this._commitEditBundleEdit(renameBundleActivityMacro(this._editBundle, target.activityId, target.buttonId, next));
         this._closeEditRenameDialog();
         return;
       }
@@ -5010,14 +5078,19 @@ var SofabatonBackupTab = class extends i4 {
         if (snapshot) {
           const changedFields = this._collectChangedDecodedFields(snapshot);
           if (changedFields) {
-            nextBundle = updateCommandDecodedFields(nextBundle, target.deviceId, target.commandId, changedFields);
+            nextBundle = updateCommandDecodedFields(
+              nextBundle,
+              target.deviceId,
+              target.commandId,
+              changedFields
+            );
           }
         }
-        this._editBundle = nextBundle;
+        this._commitEditBundleEdit(nextBundle);
         this._closeEditRenameDialog();
         return;
       }
-      this._editBundle = renameBundleActivityFavorite(this._editBundle, target.activityId, target.buttonId, next);
+      this._commitEditBundleEdit(renameBundleActivityFavorite(this._editBundle, target.activityId, target.buttonId, next));
       this._closeEditRenameDialog();
     };
     this._handleEditActivityOrderSort = (event) => {
@@ -5029,25 +5102,6 @@ var SofabatonBackupTab = class extends i4 {
       event.stopPropagation();
       event.stopImmediatePropagation();
       this._reorderEditTopLevel(event, "device");
-    };
-    this._reorderEditTopLevel = (event, kind) => {
-      if (!this._editBundle) return;
-      const sortableEvent = event;
-      const oldIndex = Number(sortableEvent.detail?.oldIndex);
-      const newIndex = Number(sortableEvent.detail?.newIndex);
-      if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
-      const current = kind === "activity"
-        ? bundleActivityOptions(this._editBundle)
-        : bundleDeviceOptions(this._editBundle);
-      if (oldIndex < 0 || newIndex < 0 || oldIndex >= current.length || newIndex >= current.length) return;
-      const nextOptions = [...current];
-      const [moved] = nextOptions.splice(oldIndex, 1);
-      if (!moved) return;
-      nextOptions.splice(newIndex, 0, moved);
-      const orderedIds = nextOptions.map((option) => option.id);
-      this._editBundle = kind === "activity"
-        ? reorderBundleActivities(this._editBundle, orderedIds)
-        : reorderBundleDevices(this._editBundle, orderedIds);
     };
     this._handleActivityQuickAccessSort = (event) => {
       event.stopPropagation();
@@ -5063,11 +5117,11 @@ var SofabatonBackupTab = class extends i4 {
       const [moved] = nextItems.splice(oldIndex, 1);
       if (!moved) return;
       nextItems.splice(newIndex, 0, moved);
-      this._editBundle = reorderBundleActivityQuickAccess(
+      this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
         this._editBundle,
         this._editDetailId,
         nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
-      );
+      ));
     };
     this._downloadEditedBundle = () => {
       if (!this._editBundle) return;
@@ -5083,6 +5137,7 @@ var SofabatonBackupTab = class extends i4 {
       document.body.removeChild(anchor);
       setTimeout(() => URL.revokeObjectURL(url), 0);
       this._clearEditSession();
+      this._editBundleDirty = false;
     };
     this._toggleAllBackupDevices = () => {
       const devices = backupDeviceOptions(this.cacheHub);
@@ -5132,28 +5187,18 @@ var SofabatonBackupTab = class extends i4 {
     if (changed.has("cacheHub") && this.cacheHub && !this._backupDeviceIds.length) {
       this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
     }
-    if (
-      !this._editSessionRestoreTried
-      && this.hub
-      && this.selectedSection === "edit"
-      && !this._editBundle
-    ) {
+    if (!this._editSessionRestoreTried && this.hub && this.selectedSection === "edit" && !this._editBundle) {
       this._editSessionRestoreTried = true;
       this._restoreEditSession();
     }
-    if (
-      changed.has("_editBundle")
-      || changed.has("_editFilename")
-      || changed.has("_editDetailKind")
-      || changed.has("_editDetailId")
-    ) {
+    if (changed.has("_editBundle") || changed.has("_editFilename") || changed.has("_editDetailKind") || changed.has("_editDetailId")) {
       this._persistEditSession();
     }
   }
   _editSessionStorageKey() {
     const entryId = this.hub?.entry_id;
     if (!entryId) return null;
-    return `sofabaton.backup-edit-session.v1.${entryId}`;
+    return `${_SofabatonBackupTab._EDIT_SESSION_KEY_PREFIX}${entryId}`;
   }
   _persistEditSession() {
     const key = this._editSessionStorageKey();
@@ -5167,13 +5212,10 @@ var SofabatonBackupTab = class extends i4 {
         savedAt: Date.now(),
         filename: this._editFilename || "",
         bundle: this._editBundle,
-        detail: this._editDetailKind && this._editDetailId != null
-          ? { kind: this._editDetailKind, id: this._editDetailId }
-          : null,
+        detail: this._editDetailKind && this._editDetailId != null ? { kind: this._editDetailKind, id: this._editDetailId } : null
       };
       window.localStorage.setItem(key, JSON.stringify(payload));
     } catch {
-      // ignore
     }
   }
   _clearEditSession() {
@@ -5182,13 +5224,18 @@ var SofabatonBackupTab = class extends i4 {
     try {
       window.localStorage.removeItem(key);
     } catch {
-      // ignore
     }
   }
+  /**
+   * Wipe the in-memory edit draft AND the persisted session.
+   * Called when the user starts a new backup or restore so they don't return
+   * to the Edit tab and mistake a stale draft for the file they just produced.
+   */
   _discardEditSession() {
     this._editBundle = null;
     this._editFilename = "";
     this._editError = null;
+    this._editBundleDirty = false;
     this._closeEditDetail();
     this._clearEditSession();
   }
@@ -5205,8 +5252,7 @@ var SofabatonBackupTab = class extends i4 {
     try {
       const parsed = JSON.parse(raw);
       const savedAt = Number(parsed?.savedAt);
-      const ttl = 60 * 60 * 1000;
-      if (!Number.isFinite(savedAt) || Date.now() - savedAt > ttl) {
+      if (!Number.isFinite(savedAt) || Date.now() - savedAt > _SofabatonBackupTab._EDIT_SESSION_TTL_MS) {
         window.localStorage.removeItem(key);
         return;
       }
@@ -5217,11 +5263,11 @@ var SofabatonBackupTab = class extends i4 {
         this._editDetailKind = parsed.detail.kind;
         this._editDetailId = Number(parsed.detail.id);
       }
+      this._editBundleDirty = true;
     } catch {
       try {
         window.localStorage.removeItem(key);
       } catch {
-        // ignore
       }
     }
   }
@@ -5397,6 +5443,7 @@ var SofabatonBackupTab = class extends i4 {
                 </div>
               </div>
             `}
+            ${this._renderEditRenameDialog()}
         `
     })}
     `;
@@ -5404,23 +5451,33 @@ var SofabatonBackupTab = class extends i4 {
   _renderEditOverview(params) {
     const activitiesSortable = this._haSortableReady && params.activityOptions.length > 1;
     const devicesSortable = this._haSortableReady && params.deviceOptions.length > 1;
-    const renderActivityRows = () => params.activityOptions.map((option) =>
-      this._renderEditCollectionRow(
-        option,
-        () => this._openEditDetail("activity", option.id, option.label),
-        activitiesSortable,
-      ));
-    const renderDeviceRows = () => params.deviceOptions.map((option) =>
-      this._renderEditCollectionRow(
-        option,
-        () => this._openEditDetail("device", option.id, option.label),
-        devicesSortable,
-      ));
+    const renderActivityRows = () => params.activityOptions.map((option) => this._renderEditCollectionRow(
+      option,
+      () => this._openEditDetail("activity", option.id, option.label),
+      activitiesSortable
+    ));
+    const renderDeviceRows = () => params.deviceOptions.map((option) => this._renderEditCollectionRow(
+      option,
+      () => this._openEditDetail("device", option.id, option.label),
+      devicesSortable
+    ));
+    const hubName = String(this._editBundle?.hub?.name ?? "").trim();
     return b2`
       <div class="edit-config-view">
         <div class="backup-drawer-sub">
           Load a backup file, then choose an Activity or Device to edit.
           ${this._haSortableReady ? " Drag the handle on any row to reorder Activities and Devices to match how they appear on your hub." : ""}
+        </div>
+        <div class="edit-hub-name-row" title="Hub name is only applied at restore time when the user opts to wipe the hub.">
+          <span class="edit-hub-name-label">Hub name</span>
+          <span class="edit-hub-name-value">${hubName || "(not set)"}</span>
+          <button
+            class="icon-btn"
+            @click=${this._openHubNameRenameDialog}
+            aria-label="Rename Hub"
+          >
+            <ha-icon icon="mdi:pencil"></ha-icon>
+          </button>
         </div>
         <div class="selection-card">
           <div class="selection-list">
@@ -5458,8 +5515,17 @@ var SofabatonBackupTab = class extends i4 {
                 ` : b2`<div class="selection-empty">This backup file has no devices.</div>`}
           </div>
         </div>
+        ${this._editBundleDirty ? b2`
+              <div class="edit-unsaved-banner" role="status">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>Unsaved changes. Click <strong>Download edited backup</strong> to save them to a file.</span>
+              </div>
+            ` : A}
         <div class="restore-action-row">
-          <button class="primary-btn" @click=${this._downloadEditedBundle}>Download edited backup</button>
+          <button
+            class="primary-btn${this._editBundleDirty ? " primary-btn--unsaved" : ""}"
+            @click=${this._downloadEditedBundle}
+          >Download edited backup</button>
           <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
         </div>
       </div>
@@ -5487,7 +5553,7 @@ var SofabatonBackupTab = class extends i4 {
   }
   _renderEditDetailView(params) {
     const activityQuickAccess = params.kind === "activity" && this._editDetailId != null ? activityQuickAccessItems(this._editBundle, this._editDetailId) : [];
-    const deviceCommands = params.kind === "device" && this._editDetailId != null ? deviceCommandItems(this._editBundle, this._editDetailId) : [];
+    const deviceCommands2 = params.kind === "device" && this._editDetailId != null ? deviceCommandItems(this._editBundle, this._editDetailId) : [];
     return b2`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view">
@@ -5498,6 +5564,7 @@ var SofabatonBackupTab = class extends i4 {
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title">${params.title}</div>
+                ${this._editBundleDirty ? b2`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
                 <div class="detail-title-actions">
                   <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
                     <ha-icon icon="mdi:pencil"></ha-icon>
@@ -5507,11 +5574,9 @@ var SofabatonBackupTab = class extends i4 {
             </div>
           </div>
           <div class="detail-scroll">
-            ${params.kind === "activity"
-              ? this._renderActivityQuickAccessSection(activityQuickAccess)
-              : b2`
+            ${params.kind === "activity" ? this._renderActivityQuickAccessSection(activityQuickAccess) : b2`
                   ${this._renderDeviceNetworkSection()}
-                  ${this._renderDeviceCommandsSection(deviceCommands)}
+                  ${this._renderDeviceCommandsSection(deviceCommands2)}
                 `}
           </div>
         </div>
@@ -5519,6 +5584,14 @@ var SofabatonBackupTab = class extends i4 {
       </div>
     `;
   }
+  /**
+   * "Network" section shown above Commands in the Device detail view
+   * for hue / roku / sonos devices, where the IP address lives on the
+   * device head and the hub uses it to build Host headers / addressing
+   * at replay time. wifi_ip devices are deliberately excluded — their
+   * IP lives inside each command blob and is edited per-command via
+   * the structured-payload form.
+   */
   _renderDeviceNetworkSection() {
     if (this._editDetailId == null || !this._editBundle) return A;
     const deviceId = Number(this._editDetailId);
@@ -5767,9 +5840,7 @@ var SofabatonBackupTab = class extends i4 {
   _renderDecodedField(field) {
     const value = this._editRenameDialogDecodedDrafts[field.key] ?? "";
     const onInput = (event) => this._handleDecodedFieldInput(event, field.key);
-    const multilineClass = field.escapedDisplay
-      ? "decoded-field-input--multiline decoded-field-input--escaped"
-      : "decoded-field-input--multiline";
+    const multilineClass = field.escapedDisplay ? "decoded-field-input--multiline decoded-field-input--escaped" : "decoded-field-input--multiline";
     return b2`
       <label class="decoded-field">
         <span class="decoded-field-label">${field.label}</span>
@@ -5805,13 +5876,56 @@ var SofabatonBackupTab = class extends i4 {
     if (target.kind === "macro") return "Rename Macro";
     if (target.kind === "favorite") return "Rename Favorite";
     if (target.kind === "device_ip") return "Edit IP address";
+    if (target.kind === "hub_name") return "Rename Hub";
     return "Rename Command";
   }
+  /** Per-target label & max length used by the dialog's primary text input. */
   _editRenameFieldLabel() {
     return this._editRenameDialogTarget?.kind === "device_ip" ? "IP address" : "Name";
   }
   _editRenameFieldMaxLength() {
     return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 20;
+  }
+  /**
+   * Diff each spec field against the open-dialog snapshot. Returns a
+   * record of fields that changed (mapped back through the wire-format
+   * coercion in `_draftToFieldValue`), or `null` when nothing changed
+   * and the bundle should be left untouched.
+   */
+  _collectChangedDecodedFields(snapshot) {
+    const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
+    if (!spec) return null;
+    const changed = {};
+    let touched = false;
+    for (const field of spec.fields) {
+      const draft = this._editRenameDialogDecodedDrafts[field.key] ?? "";
+      const original = this._fieldValueToDraft(snapshot.fields[field.key], field);
+      if (draft === original) continue;
+      changed[field.key] = this._draftToFieldValue(draft, field);
+      touched = true;
+    }
+    return touched ? changed : null;
+  }
+  /**
+   * Convert a draft string from a form control to the value shape the
+   * decoder expects. `numeric` fields become numbers; `crlfOnWire`
+   * fields get `\n` line endings normalized to `\r\n` so the wire
+   * round-trip stays exact even though the browser textarea hides the
+   * `\r`. Everything else passes through verbatim.
+   */
+  _draftToFieldValue(draft, field) {
+    if (field.numeric) {
+      const numeric = Number(draft);
+      return Number.isFinite(numeric) ? numeric : 0;
+    }
+    if (field.escapedDisplay) {
+      let result = draft.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+      return result;
+    }
+    if (field.crlfOnWire) {
+      return draft.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+    }
+    return draft;
   }
   _openDeviceIpRenameDialog(deviceId) {
     const normalizedId = Number(deviceId);
@@ -5828,7 +5942,7 @@ var SofabatonBackupTab = class extends i4 {
     const normalizedCommandId = Number(commandId);
     this._editRenameDialogTarget = { kind: "command", deviceId, commandId: normalizedCommandId };
     const item = deviceCommandItems(this._editBundle, deviceId).find(
-      (entry) => entry.commandId === normalizedCommandId,
+      (entry) => entry.commandId === normalizedCommandId
     );
     this._editRenameDialogDraft = item?.label || "";
     this._editRenameDialogError = "";
@@ -5855,33 +5969,6 @@ var SofabatonBackupTab = class extends i4 {
     }
     return stringValue;
   }
-  _collectChangedDecodedFields(snapshot) {
-    const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
-    if (!spec) return null;
-    const changed = {};
-    let touched = false;
-    for (const field of spec.fields) {
-      const draft = this._editRenameDialogDecodedDrafts[field.key] ?? "";
-      const original = this._fieldValueToDraft(snapshot.fields[field.key], field);
-      if (draft === original) continue;
-      changed[field.key] = this._draftToFieldValue(draft, field);
-      touched = true;
-    }
-    return touched ? changed : null;
-  }
-  _draftToFieldValue(draft, field) {
-    if (field.numeric) {
-      const numeric = Number(draft);
-      return Number.isFinite(numeric) ? numeric : 0;
-    }
-    if (field.escapedDisplay) {
-      return draft.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
-    }
-    if (field.crlfOnWire) {
-      return draft.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
-    }
-    return draft;
-  }
   _openQuickAccessRenameDialog(kind, buttonId) {
     if (this._editDetailId == null) return;
     this._editRenameDialogTarget = kind === "macro" ? { kind: "macro", activityId: this._editDetailId, buttonId } : { kind: "favorite", activityId: this._editDetailId, buttonId };
@@ -5892,13 +5979,23 @@ var SofabatonBackupTab = class extends i4 {
     this._editRenameDialogError = "";
     this._editRenameDialogOpen = true;
   }
+  /**
+   * Commit a mutated bundle from any edit handler. Centralizes the
+   * "this counts as a user edit" decision so loaders (file pick,
+   * session restore, discard) can keep using the direct
+   * `this._editBundle = ...` assignment to bypass the dirty flag.
+   */
+  _commitEditBundleEdit(next) {
+    this._editBundle = next;
+    this._editBundleDirty = true;
+  }
   _applyActivityRename(activityId, name) {
     if (!this._editBundle) return;
-    this._editBundle = renameBundleActivity(this._editBundle, activityId, name);
+    this._commitEditBundleEdit(renameBundleActivity(this._editBundle, activityId, name));
   }
   _applyDeviceRename(deviceId, name) {
     if (!this._editBundle) return;
-    this._editBundle = renameBundleDevice(this._editBundle, deviceId, name);
+    this._commitEditBundleEdit(renameBundleDevice(this._editBundle, deviceId, name));
   }
   _openEditDetail(kind, id, name) {
     this._editDetailKind = kind;
@@ -5925,11 +6022,11 @@ var SofabatonBackupTab = class extends i4 {
     const nextItems = [...items];
     const [moved] = nextItems.splice(index, 1);
     nextItems.splice(nextIndex, 0, moved);
-    this._editBundle = reorderBundleActivityQuickAccess(
+    this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
       this._editBundle,
       this._editDetailId,
       nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
-    );
+    ));
   }
   _moveQuickAccessByIdentity(kind, buttonId, delta) {
     if (!this._editBundle || this._editDetailId == null) return;
@@ -5937,6 +6034,21 @@ var SofabatonBackupTab = class extends i4 {
     const index = items.findIndex((item) => item.kind === kind && item.buttonId === Number(buttonId));
     if (index === -1) return;
     this._moveActivityQuickAccessItem(index, delta);
+  }
+  _reorderEditTopLevel(event, kind) {
+    if (!this._editBundle) return;
+    const sortableEvent = event;
+    const oldIndex = Number(sortableEvent.detail?.oldIndex);
+    const newIndex = Number(sortableEvent.detail?.newIndex);
+    if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
+    const current = kind === "activity" ? bundleActivityOptions(this._editBundle) : bundleDeviceOptions(this._editBundle);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex >= current.length || newIndex >= current.length) return;
+    const nextOptions = [...current];
+    const [moved] = nextOptions.splice(oldIndex, 1);
+    if (!moved) return;
+    nextOptions.splice(newIndex, 0, moved);
+    const orderedIds = nextOptions.map((option) => option.id);
+    this._commitEditBundleEdit(kind === "activity" ? reorderBundleActivities(this._editBundle, orderedIds) : reorderBundleDevices(this._editBundle, orderedIds));
   }
   _renderRestoreSectionContent() {
     const isRunning = this._isProgressRunning(this._restoreProgress);
@@ -6439,7 +6551,7 @@ var SofabatonBackupTab = class extends i4 {
     }
   }
 };
-SofabatonBackupTab.properties = {
+_SofabatonBackupTab.properties = {
   hass: { attribute: false },
   hub: { attribute: false },
   cacheHub: { attribute: false },
@@ -6479,9 +6591,12 @@ SofabatonBackupTab.properties = {
   _editRenameDialogDraft: { state: true },
   _editRenameDialogError: { state: true },
   _editRenameDialogTarget: { state: true },
+  _editRenameDialogDecodedDrafts: { state: true },
+  _editRenameDialogDecodedSnapshot: { state: true },
+  _editBundleDirty: { state: true },
   _haSortableReady: { state: true }
 };
-SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
+_SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
     :host {
       display: flex;
       flex: 1;
@@ -6793,6 +6908,9 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
     }
     .edit-order-sortable { display: block; }
     .edit-order-sortable-container { display: block; }
+    /* Inside a sortable wrapper, ":first-child" of the row would not match
+       (the row's parent is the wrapper, not the list). Re-strip the border
+       on the first row of each wrapped group so groups still read cleanly. */
     .edit-order-sortable-container .edit-selection-row:first-child { border-top: none; }
     .edit-row-drag {
       flex: 0 0 auto;
@@ -7016,6 +7134,9 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
       align-items: center;
       padding: 12px 14px;
     }
+    /* Variant for rows that don't carry a drag handle (e.g. Device commands,
+       which have no concept of ordering). Drop the leading column so the
+       label sits flush with the row padding. */
     .quick-access-row--no-drag {
       grid-template-columns: minmax(0, 1fr) auto;
     }
@@ -7157,6 +7278,10 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
       min-height: 60px;
       white-space: pre;
     }
+    /* Escaped wire-string fields are conceptually one long string with
+       visible \\n escapes. Wrap on the textarea edge rather than
+       overflowing horizontally, and break long URL-like tokens so the
+       string never runs off the right side. */
     .decoded-field-input--escaped {
       white-space: pre-wrap;
       word-break: break-all;
@@ -7349,6 +7474,98 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
 
     input[type="file"] { display: none; }
 
+    /* Compact hub-name row on the Edit overview. Hub name is only
+       applied at restore time when the user chooses to wipe the hub,
+       so it earns a single thin row instead of its own card. */
+    .edit-hub-name-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+      background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 96%, black);
+      font-size: 13px;
+      min-width: 0;
+    }
+    .edit-hub-name-label {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--secondary-text-color);
+    }
+    .edit-hub-name-value {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--primary-text-color);
+    }
+    .edit-hub-name-row .icon-btn {
+      flex: 0 0 auto;
+      padding: 2px;
+    }
+    .edit-hub-name-row .icon-btn ha-icon { --mdc-icon-size: 18px; }
+
+    /* Unsaved-changes indicators.
+       .edit-unsaved-chip is the compact pill used in the detail
+       sticky-header next to the title. .edit-unsaved-banner is the
+       wider notice on the overview page above the action row.
+       .primary-btn--unsaved decorates the Download button with a
+       dot when there are pending edits. */
+    .edit-unsaved-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex: 0 0 auto;
+      padding: 2px 8px 2px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-radius: 999px;
+      color: var(--warning-color, #f59e0b);
+      background: color-mix(in srgb, var(--warning-color, #f59e0b) 16%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
+    }
+    .edit-unsaved-chip::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--warning-color, #f59e0b);
+    }
+    .edit-unsaved-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
+      background: color-mix(in srgb, var(--warning-color, #f59e0b) 10%, transparent);
+      color: var(--primary-text-color);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .edit-unsaved-banner ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--warning-color, #f59e0b);
+      flex: 0 0 auto;
+    }
+    .primary-btn--unsaved::after {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-left: 8px;
+      border-radius: 50%;
+      background: var(--warning-color, #f59e0b);
+      vertical-align: middle;
+    }
+
     @media (max-width: 380px) {
       .backup-scope-options { grid-template-columns: 1fr; }
       .backup-scope-option + .backup-scope-option {
@@ -7395,6 +7612,9 @@ SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
       }
     }
   `];
+_SofabatonBackupTab._EDIT_SESSION_TTL_MS = 60 * 60 * 1e3;
+_SofabatonBackupTab._EDIT_SESSION_KEY_PREFIX = "sofabaton.backup-edit-session.v1.";
+var SofabatonBackupTab = _SofabatonBackupTab;
 if (!customElements.get("sofabaton-backup-tab")) {
   customElements.define("sofabaton-backup-tab", SofabatonBackupTab);
 }

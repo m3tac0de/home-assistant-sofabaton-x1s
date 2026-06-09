@@ -1,6 +1,7 @@
 import type {
   BackupBundleActivityPayload,
   BackupBundleCommandRow,
+  BackupBundleDeviceBlock,
   BackupBundleDevicePayload,
   BackupBundleFavoriteSlot,
   BackupBundleMacroRow,

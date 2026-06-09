@@ -1754,6 +1754,140 @@ function renderOperationProgress(view) {
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
+var DECODED_CLASS_FORM_SPECS = {
+  wifi_ip: {
+    title: "HTTP request",
+    subtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
+    fields: [
+      { key: "host", label: "Host (IPv4)", helper: "e.g. 192.168.2.77" },
+      { key: "port", label: "Port", numeric: true },
+      { key: "method", label: "HTTP method", helper: "e.g. GET, POST" },
+      { key: "path", label: "Path" },
+      {
+        key: "header",
+        label: "Extra headers",
+        multiline: true,
+        crlfOnWire: true,
+        helper: "One header per line. Host and Content-Length are added automatically."
+      },
+      { key: "content_type", label: "Content type" },
+      { key: "body", label: "Body", multiline: true }
+    ]
+  },
+  wifi_roku: {
+    title: "Roku ECP request",
+    fields: [
+      { key: "path", label: "ECP URL path", helper: "e.g. /launch/12 or /keypress/Home" }
+    ]
+  },
+  wifi_hue: {
+    title: "Hue REST request",
+    subtitle: "Body block is injected verbatim between Host headers and the network write.",
+    fields: [
+      { key: "path", label: "URL path" },
+      {
+        key: "body_block",
+        label: "Body block (raw wire string)",
+        multiline: true,
+        escapedDisplay: true,
+        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
+      }
+    ]
+  },
+  wifi_sonos: {
+    title: "Sonos UPnP request",
+    subtitle: "Body block is injected verbatim between Host headers and the network write.",
+    fields: [
+      { key: "path", label: "URL path" },
+      {
+        key: "body_block",
+        label: "Body block (raw wire string)",
+        multiline: true,
+        escapedDisplay: true,
+        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
+      }
+    ]
+  },
+  ir: {
+    title: "Descriptive IR payload",
+    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR blobs are not editable here.",
+    fields: [
+      {
+        key: "descriptor",
+        label: "Descriptor",
+        helper: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2"
+      }
+    ]
+  }
+};
+function normalizeDecodableClass(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized in DECODED_CLASS_FORM_SPECS) {
+    return normalized;
+  }
+  return null;
+}
+function commandDecodedBlock(bundle, deviceId, commandId) {
+  if (!bundle) return null;
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId
+  );
+  if (!device) return null;
+  const command = (device.commands ?? []).find(
+    (entry) => Number(entry?.command_id || 0) === normalizedCommandId
+  );
+  if (!command) return null;
+  const restoreData = command.restore_data;
+  if (!restoreData || typeof restoreData !== "object") return null;
+  const decoded = restoreData.decoded;
+  if (!decoded || typeof decoded !== "object") return null;
+  const decodedRecord = decoded;
+  const className = normalizeDecodableClass(decodedRecord.class);
+  if (!className) return null;
+  const fields = decodedRecord.fields;
+  if (!fields || typeof fields !== "object") return null;
+  return {
+    className,
+    fields: { ...fields },
+    trailerHex: String(decodedRecord.trailer_hex ?? ""),
+    edited: Boolean(decodedRecord.edited)
+  };
+}
+function updateCommandDecodedFields(bundle, deviceId, commandId, newFields) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          const restoreData = command.restore_data;
+          if (!restoreData || typeof restoreData !== "object") return command;
+          const decoded = restoreData.decoded;
+          if (!decoded || typeof decoded !== "object") return command;
+          const decodedRecord = decoded;
+          const existingFields = decodedRecord.fields ?? {};
+          return {
+            ...command,
+            restore_data: {
+              ...restoreData,
+              decoded: {
+                ...decodedRecord,
+                fields: { ...existingFields, ...newFields },
+                edited: true
+              }
+            }
+          };
+        })
+      };
+    })
+  };
+}
 var HUB_VERSION_RANK = {
   X1: 1,
   X1S: 2,
@@ -1767,16 +1901,24 @@ function backupDeviceOptions(hub) {
     meta: String(device.device_class || "").trim() || void 0
   }));
 }
+function compareByHubOrder(left, right) {
+  return left.sortKey - right.sortKey || left.id - right.id;
+}
+function readSortKey(block) {
+  const value = Number(block?.sort);
+  return Number.isFinite(value) ? value : 0;
+}
 function bundleActivityOptions(bundle) {
   return [...bundle?.activities ?? []].map((activity) => {
     const block = activity?.device || {};
     const id = Number(block.device_id || 0);
     return {
       id,
+      sortKey: readSortKey(block),
       label: String(block.name || `Activity ${id}`),
       meta: `${(activity?.referenced_source_device_ids ?? []).length} linked devices`
     };
-  }).filter((option) => option.id > 0).sort((left, right) => left.label.localeCompare(right.label));
+  }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
 function bundleDeviceOptions(bundle) {
   return [...bundle?.devices ?? []].map((device) => {
@@ -1784,10 +1926,11 @@ function bundleDeviceOptions(bundle) {
     const id = Number(block.device_id || 0);
     return {
       id,
+      sortKey: readSortKey(block),
       label: String(block.name || `Device ${id}`),
       meta: String(block.device_class || "").trim() || void 0
     };
-  }).filter((option) => option.id > 0).sort((left, right) => left.label.localeCompare(right.label));
+  }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
 function forcedRestoreDeviceIds(bundle, selectedActivityIds) {
   const selected = new Set(selectedActivityIds.map((value) => Number(value)));
@@ -1848,6 +1991,14 @@ function normalizeHubVersion(value) {
   if (normalized.includes("X2")) return "X2";
   if (normalized.includes("X1")) return "X1";
   return null;
+}
+function renameBundleHub(bundle, name) {
+  const trimmed = String(name ?? "").trim();
+  if (!trimmed) return bundle;
+  return {
+    ...bundle,
+    hub: { ...bundle.hub ?? {}, name: trimmed }
+  };
 }
 function renameInList(list, id, name) {
   const trimmed = String(name ?? "").trim();
@@ -1968,6 +2119,82 @@ function renameBundleActivityFavorite(bundle, activityId, buttonId, name) {
     favorite_slots: (current.favorite_slots ?? []).map((entry) => Number(entry?.button_id || 0) === normalizedButtonId ? { ...entry, name: trimmed } : entry)
   }));
 }
+function deviceCommandItems(bundle, deviceId) {
+  if (!bundle) return [];
+  const normalizedDeviceId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId
+  );
+  if (!device) return [];
+  const items = [];
+  for (const row of device.commands ?? []) {
+    const commandId = Number(row?.command_id || 0);
+    if (commandId <= 0) continue;
+    const label = String(row?.name || "").trim() || `Command ${commandId}`;
+    items.push({ deviceId: normalizedDeviceId, commandId, label });
+  }
+  return items.sort((left, right) => left.commandId - right.commandId);
+}
+function bundleDeviceClass(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device) return null;
+  return String(device.device?.device_class ?? "").trim().toLowerCase() || null;
+}
+function deviceIpAddress(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device?.device) return null;
+  const raw = String(device.device.ip_address ?? "").trim();
+  return raw || null;
+}
+function updateBundleDeviceIp(bundle, deviceId, ip) {
+  const normalizedId = Number(deviceId);
+  const trimmed = String(ip ?? "").trim();
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
+      if (!device.device) return device;
+      return {
+        ...device,
+        device: { ...device.device, ip_address: trimmed || null }
+      };
+    })
+  };
+}
+function renameBundleDeviceCommand(bundle, deviceId, commandId, name) {
+  return updateDeviceCommandLabel(bundle, Number(deviceId), Number(commandId), String(name ?? "").trim());
+}
+function reorderBundleActivities(bundle, orderedActivityIds) {
+  return reorderBundleTopLevelEntries(bundle, "activities", orderedActivityIds);
+}
+function reorderBundleDevices(bundle, orderedDeviceIds) {
+  return reorderBundleTopLevelEntries(bundle, "devices", orderedDeviceIds);
+}
+function reorderBundleTopLevelEntries(bundle, key, orderedIds) {
+  const entries = bundle[key] ?? [];
+  const newSortById = /* @__PURE__ */ new Map();
+  orderedIds.forEach((id, index) => {
+    const normalized = Number(id);
+    if (normalized > 0) newSortById.set(normalized, index + 1);
+  });
+  const nextEntries = entries.map((entry) => {
+    const block = entry?.device;
+    if (!block) return entry;
+    const entryId = Number(block.device_id || 0);
+    const nextSort = newSortById.get(entryId);
+    if (nextSort === void 0) return entry;
+    return { ...entry, device: { ...block, sort: nextSort } };
+  });
+  return { ...bundle, [key]: nextEntries };
+}
 function reorderBundleActivityQuickAccess(bundle, activityId, orderedItems) {
   const normalizedActivityId = Number(activityId);
   const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedActivityId);
@@ -2015,12 +2242,14 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-tab.ts
+var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
+var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 var BACKUP_SECTION_ITEMS = [
   { id: "make", icon: "mdi:content-save-move-outline", label: "Make" },
   { id: "edit", icon: "mdi:pencil-box-outline", label: "Edit" },
   { id: "restore", icon: "mdi:database-import-outline", label: "Restore" }
 ];
-var SofabatonBackupTab = class extends i3 {
+var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   constructor() {
     super(...arguments);
     this.hass = null;
@@ -2069,13 +2298,41 @@ var SofabatonBackupTab = class extends i3 {
     this._editRenameDialogDraft = "";
     this._editRenameDialogError = "";
     this._editRenameDialogTarget = null;
+    // True when `_editBundle` has user-made changes that have not yet
+    // been downloaded. Flipped on by every edit handler (rename, reorder,
+    // decoded payload, IP, etc.) and on session restore (those ARE
+    // unsaved edits). Flipped off by `_downloadEditedBundle` and by
+    // any path that loads a fresh bundle from file. Drives the
+    // "Unsaved" indicators in the Edit overview and detail header.
+    this._editBundleDirty = false;
+    // Per-field text drafts for the structured-payload editor that shows
+    // inside the rename dialog when the target command is in a decodable
+    // class. Keyed by the spec's `key`. Empty for non-command targets and
+    // for command targets without a decoded block.
+    this._editRenameDialogDecodedDrafts = {};
+    // Snapshot of the decoded block at dialog-open time, used to:
+    //   (a) skip the bundle update entirely when nothing changed, and
+    //   (b) decide whether to render the structured-payload form.
+    this._editRenameDialogDecodedSnapshot = null;
     this._haSortableReady = Boolean(customElements.get("ha-sortable"));
     this._backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
+    this._editSessionRestoreTried = false;
+    this._handleDecodedFieldInput = (event, fieldKey) => {
+      const input = event.currentTarget;
+      this._editRenameDialogDecodedDrafts = {
+        ...this._editRenameDialogDecodedDrafts,
+        [fieldKey]: input.value
+      };
+    };
     this._handleEditRenameDialogInput = (event) => {
       const input = event.currentTarget;
-      const value = this._sanitizeBundleName(input.value);
-      input.value = value;
-      this._editRenameDialogDraft = value;
+      if (this._editRenameDialogTarget?.kind === "device_ip") {
+        this._editRenameDialogDraft = input.value;
+      } else {
+        const value = this._sanitizeBundleName(input.value);
+        input.value = value;
+        this._editRenameDialogDraft = value;
+      }
       this._editRenameDialogError = "";
     };
     this._openDetailRenameDialog = () => {
@@ -2089,11 +2346,22 @@ var SofabatonBackupTab = class extends i3 {
       this._editRenameDialogError = "";
       this._editRenameDialogOpen = true;
     };
+    this._openHubNameRenameDialog = () => {
+      if (!this._editBundle) return;
+      this._editRenameDialogTarget = { kind: "hub_name" };
+      this._editRenameDialogDraft = this._sanitizeBundleName(String(this._editBundle.hub?.name ?? ""));
+      this._editRenameDialogError = "";
+      this._editRenameDialogDecodedSnapshot = null;
+      this._editRenameDialogDecodedDrafts = {};
+      this._editRenameDialogOpen = true;
+    };
     this._closeEditRenameDialog = () => {
       this._editRenameDialogOpen = false;
       this._editRenameDialogDraft = "";
       this._editRenameDialogError = "";
       this._editRenameDialogTarget = null;
+      this._editRenameDialogDecodedDrafts = {};
+      this._editRenameDialogDecodedSnapshot = null;
     };
     this._openEditFilePicker = () => {
       this.renderRoot.querySelector("#edit-file-input")?.click();
@@ -2108,10 +2376,12 @@ var SofabatonBackupTab = class extends i3 {
         const bundle = validateBackupBundle(JSON.parse(text));
         this._editBundle = bundle;
         this._editFilename = file.name;
+        this._editBundleDirty = false;
         this._closeEditDetail();
       } catch (error) {
         this._editBundle = null;
         this._editFilename = "";
+        this._editBundleDirty = false;
         this._closeEditDetail();
         this._editError = formatError(error);
       } finally {
@@ -2125,13 +2395,23 @@ var SofabatonBackupTab = class extends i3 {
       this._closeEditRenameDialog();
     };
     this._applyEditRenameDialog = () => {
+      const target = this._editRenameDialogTarget;
+      if (!target || !this._editBundle) return;
+      if (target.kind === "device_ip") {
+        const draft = this._editRenameDialogDraft.trim();
+        if (draft && !IPV4_PATTERN.test(draft)) {
+          this._editRenameDialogError = "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.";
+          return;
+        }
+        this._commitEditBundleEdit(updateBundleDeviceIp(this._editBundle, target.deviceId, draft));
+        this._closeEditRenameDialog();
+        return;
+      }
       const next = this._sanitizeBundleName(this._editRenameDialogDraft);
       if (!next) {
         this._editRenameDialogError = "Enter a name to continue.";
         return;
       }
-      const target = this._editRenameDialogTarget;
-      if (!target || !this._editBundle) return;
       if (target.kind === "detail") {
         this._editDetailNameDraft = next;
         if (target.entityKind === "activity") this._applyActivityRename(target.entityId, next);
@@ -2139,19 +2419,54 @@ var SofabatonBackupTab = class extends i3 {
         this._closeEditRenameDialog();
         return;
       }
-      if (target.kind === "macro") {
-        this._editBundle = renameBundleActivityMacro(this._editBundle, target.activityId, target.buttonId, next);
+      if (target.kind === "hub_name") {
+        this._commitEditBundleEdit(renameBundleHub(this._editBundle, next));
         this._closeEditRenameDialog();
         return;
       }
-      this._editBundle = renameBundleActivityFavorite(this._editBundle, target.activityId, target.buttonId, next);
+      if (target.kind === "macro") {
+        this._commitEditBundleEdit(renameBundleActivityMacro(this._editBundle, target.activityId, target.buttonId, next));
+        this._closeEditRenameDialog();
+        return;
+      }
+      if (target.kind === "command") {
+        let nextBundle = renameBundleDeviceCommand(this._editBundle, target.deviceId, target.commandId, next);
+        const snapshot = this._editRenameDialogDecodedSnapshot;
+        if (snapshot) {
+          const changedFields = this._collectChangedDecodedFields(snapshot);
+          if (changedFields) {
+            nextBundle = updateCommandDecodedFields(
+              nextBundle,
+              target.deviceId,
+              target.commandId,
+              changedFields
+            );
+          }
+        }
+        this._commitEditBundleEdit(nextBundle);
+        this._closeEditRenameDialog();
+        return;
+      }
+      this._commitEditBundleEdit(renameBundleActivityFavorite(this._editBundle, target.activityId, target.buttonId, next));
       this._closeEditRenameDialog();
     };
+    this._handleEditActivityOrderSort = (event) => {
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      this._reorderEditTopLevel(event, "activity");
+    };
+    this._handleEditDeviceOrderSort = (event) => {
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      this._reorderEditTopLevel(event, "device");
+    };
     this._handleActivityQuickAccessSort = (event) => {
+      event.stopPropagation();
+      event.stopImmediatePropagation();
       if (!this._editBundle || this._editDetailId == null) return;
       const sortableEvent = event;
-      const oldIndex = Number(sortableEvent.oldIndex);
-      const newIndex = Number(sortableEvent.newIndex);
+      const oldIndex = Number(sortableEvent.detail?.oldIndex);
+      const newIndex = Number(sortableEvent.detail?.newIndex);
       if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
       const items = activityQuickAccessItems(this._editBundle, this._editDetailId);
       if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
@@ -2159,11 +2474,11 @@ var SofabatonBackupTab = class extends i3 {
       const [moved] = nextItems.splice(oldIndex, 1);
       if (!moved) return;
       nextItems.splice(newIndex, 0, moved);
-      this._editBundle = reorderBundleActivityQuickAccess(
+      this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
         this._editBundle,
         this._editDetailId,
         nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
-      );
+      ));
     };
     this._downloadEditedBundle = () => {
       if (!this._editBundle) return;
@@ -2178,6 +2493,8 @@ var SofabatonBackupTab = class extends i3 {
       anchor.dispatchEvent(new MouseEvent("click"));
       document.body.removeChild(anchor);
       setTimeout(() => URL.revokeObjectURL(url), 0);
+      this._clearEditSession();
+      this._editBundleDirty = false;
     };
     this._toggleAllBackupDevices = () => {
       const devices = backupDeviceOptions(this.cacheHub);
@@ -2248,6 +2565,9 @@ var SofabatonBackupTab = class extends i3 {
       _editRenameDialogDraft: { state: true },
       _editRenameDialogError: { state: true },
       _editRenameDialogTarget: { state: true },
+      _editRenameDialogDecodedDrafts: { state: true },
+      _editRenameDialogDecodedSnapshot: { state: true },
+      _editBundleDirty: { state: true },
       _haSortableReady: { state: true }
     };
   }
@@ -2562,6 +2882,25 @@ var SofabatonBackupTab = class extends i3 {
     .edit-selection-row:hover {
       background: color-mix(in srgb, var(--primary-color) 6%, transparent);
     }
+    .edit-order-sortable { display: block; }
+    .edit-order-sortable-container { display: block; }
+    /* Inside a sortable wrapper, ":first-child" of the row would not match
+       (the row's parent is the wrapper, not the list). Re-strip the border
+       on the first row of each wrapped group so groups still read cleanly. */
+    .edit-order-sortable-container .edit-selection-row:first-child { border-top: none; }
+    .edit-row-drag {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--secondary-text-color);
+      cursor: grab;
+      touch-action: none;
+      padding: 2px;
+      margin-left: -4px;
+    }
+    .edit-row-drag:active { cursor: grabbing; }
+    .edit-row-drag ha-icon { --mdc-icon-size: 18px; }
     .selection-chevron {
       color: var(--secondary-text-color);
       flex: 0 0 auto;
@@ -2752,6 +3091,9 @@ var SofabatonBackupTab = class extends i3 {
     .quick-access-sortable {
       display: block;
     }
+    .quick-access-sortable-container {
+      display: block;
+    }
     .quick-access-sortable-item {
       display: block;
       border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
@@ -2767,6 +3109,12 @@ var SofabatonBackupTab = class extends i3 {
       gap: 10px;
       align-items: center;
       padding: 12px 14px;
+    }
+    /* Variant for rows that don't carry a drag handle (e.g. Device commands,
+       which have no concept of ordering). Drop the leading column so the
+       label sits flush with the row padding. */
+    .quick-access-row--no-drag {
+      grid-template-columns: minmax(0, 1fr) auto;
     }
     .quick-access-main {
       min-width: 0;
@@ -2853,6 +3201,73 @@ var SofabatonBackupTab = class extends i3 {
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
     .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
+    .dialog.medium { width: min(640px, calc(100vw - 36px)); }
+    .decoded-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 6px;
+      padding-top: 10px;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+    }
+    .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
+    .decoded-form-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary-text-color);
+    }
+    .decoded-form-sub {
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      line-height: 1.4;
+    }
+    .decoded-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .decoded-field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--secondary-text-color);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .decoded-field-input {
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+      font-size: 13px;
+      color: var(--primary-text-color);
+      background: var(--ha-color-form-background, var(--secondary-background-color));
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      padding: 8px 10px;
+    }
+    .decoded-field-input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+    .decoded-field-input--multiline {
+      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+      resize: vertical;
+      min-height: 60px;
+      white-space: pre;
+    }
+    /* Escaped wire-string fields are conceptually one long string with
+       visible \\n escapes. Wrap on the textarea edge rather than
+       overflowing horizontally, and break long URL-like tokens so the
+       string never runs off the right side. */
+    .decoded-field-input--escaped {
+      white-space: pre-wrap;
+      word-break: break-all;
+      overflow-wrap: anywhere;
+    }
+    .decoded-field-helper {
+      font-size: 11px;
+      color: var(--secondary-text-color);
+      line-height: 1.35;
+    }
     .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
     .dialog-header { border-bottom: 1px solid var(--divider-color); }
     .dialog-title { font-size: 16px; flex: 1; color: var(--primary-text-color); }
@@ -3035,6 +3450,98 @@ var SofabatonBackupTab = class extends i3 {
 
     input[type="file"] { display: none; }
 
+    /* Compact hub-name row on the Edit overview. Hub name is only
+       applied at restore time when the user chooses to wipe the hub,
+       so it earns a single thin row instead of its own card. */
+    .edit-hub-name-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+      background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 96%, black);
+      font-size: 13px;
+      min-width: 0;
+    }
+    .edit-hub-name-label {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--secondary-text-color);
+    }
+    .edit-hub-name-value {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--primary-text-color);
+    }
+    .edit-hub-name-row .icon-btn {
+      flex: 0 0 auto;
+      padding: 2px;
+    }
+    .edit-hub-name-row .icon-btn ha-icon { --mdc-icon-size: 18px; }
+
+    /* Unsaved-changes indicators.
+       .edit-unsaved-chip is the compact pill used in the detail
+       sticky-header next to the title. .edit-unsaved-banner is the
+       wider notice on the overview page above the action row.
+       .primary-btn--unsaved decorates the Download button with a
+       dot when there are pending edits. */
+    .edit-unsaved-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex: 0 0 auto;
+      padding: 2px 8px 2px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-radius: 999px;
+      color: var(--warning-color, #f59e0b);
+      background: color-mix(in srgb, var(--warning-color, #f59e0b) 16%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
+    }
+    .edit-unsaved-chip::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--warning-color, #f59e0b);
+    }
+    .edit-unsaved-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
+      background: color-mix(in srgb, var(--warning-color, #f59e0b) 10%, transparent);
+      color: var(--primary-text-color);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .edit-unsaved-banner ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--warning-color, #f59e0b);
+      flex: 0 0 auto;
+    }
+    .primary-btn--unsaved::after {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-left: 8px;
+      border-radius: 50%;
+      background: var(--warning-color, #f59e0b);
+      vertical-align: middle;
+    }
+
     @media (max-width: 380px) {
       .backup-scope-options { grid-template-columns: 1fr; }
       .backup-scope-option + .backup-scope-option {
@@ -3082,6 +3589,12 @@ var SofabatonBackupTab = class extends i3 {
     }
   `];
   }
+  static {
+    this._EDIT_SESSION_TTL_MS = 60 * 60 * 1e3;
+  }
+  static {
+    this._EDIT_SESSION_KEY_PREFIX = "sofabaton.backup-edit-session.v1.";
+  }
   disconnectedCallback() {
     super.disconnectedCallback();
     this._teardownProgressSubscription();
@@ -3097,9 +3610,93 @@ var SofabatonBackupTab = class extends i3 {
   updated(changed) {
     if (changed.has("hub")) {
       void this._syncBackupOperationState();
+      this._editSessionRestoreTried = false;
     }
     if (changed.has("cacheHub") && this.cacheHub && !this._backupDeviceIds.length) {
       this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
+    }
+    if (!this._editSessionRestoreTried && this.hub && this.selectedSection === "edit" && !this._editBundle) {
+      this._editSessionRestoreTried = true;
+      this._restoreEditSession();
+    }
+    if (changed.has("_editBundle") || changed.has("_editFilename") || changed.has("_editDetailKind") || changed.has("_editDetailId")) {
+      this._persistEditSession();
+    }
+  }
+  _editSessionStorageKey() {
+    const entryId = this.hub?.entry_id;
+    if (!entryId) return null;
+    return `${_SofabatonBackupTab._EDIT_SESSION_KEY_PREFIX}${entryId}`;
+  }
+  _persistEditSession() {
+    const key = this._editSessionStorageKey();
+    if (!key) return;
+    try {
+      if (!this._editBundle) {
+        window.localStorage.removeItem(key);
+        return;
+      }
+      const payload = {
+        savedAt: Date.now(),
+        filename: this._editFilename || "",
+        bundle: this._editBundle,
+        detail: this._editDetailKind && this._editDetailId != null ? { kind: this._editDetailKind, id: this._editDetailId } : null
+      };
+      window.localStorage.setItem(key, JSON.stringify(payload));
+    } catch {
+    }
+  }
+  _clearEditSession() {
+    const key = this._editSessionStorageKey();
+    if (!key) return;
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+    }
+  }
+  /**
+   * Wipe the in-memory edit draft AND the persisted session.
+   * Called when the user starts a new backup or restore so they don't return
+   * to the Edit tab and mistake a stale draft for the file they just produced.
+   */
+  _discardEditSession() {
+    this._editBundle = null;
+    this._editFilename = "";
+    this._editError = null;
+    this._editBundleDirty = false;
+    this._closeEditDetail();
+    this._clearEditSession();
+  }
+  _restoreEditSession() {
+    const key = this._editSessionStorageKey();
+    if (!key) return;
+    let raw = null;
+    try {
+      raw = window.localStorage.getItem(key);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      const savedAt = Number(parsed?.savedAt);
+      if (!Number.isFinite(savedAt) || Date.now() - savedAt > _SofabatonBackupTab._EDIT_SESSION_TTL_MS) {
+        window.localStorage.removeItem(key);
+        return;
+      }
+      const bundle = validateBackupBundle(parsed.bundle);
+      this._editBundle = bundle;
+      this._editFilename = typeof parsed.filename === "string" ? parsed.filename : "";
+      if (parsed.detail && parsed.detail.kind && Number.isFinite(Number(parsed.detail.id))) {
+        this._editDetailKind = parsed.detail.kind;
+        this._editDetailId = Number(parsed.detail.id);
+      }
+      this._editBundleDirty = true;
+    } catch {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {
+      }
     }
   }
   render() {
@@ -3279,33 +3876,100 @@ var SofabatonBackupTab = class extends i3 {
     `;
   }
   _renderEditOverview(params) {
+    const activitiesSortable = this._haSortableReady && params.activityOptions.length > 1;
+    const devicesSortable = this._haSortableReady && params.deviceOptions.length > 1;
+    const renderActivityRows = () => params.activityOptions.map((option) => this._renderEditCollectionRow(
+      option,
+      () => this._openEditDetail("activity", option.id, option.label),
+      activitiesSortable
+    ));
+    const renderDeviceRows = () => params.deviceOptions.map((option) => this._renderEditCollectionRow(
+      option,
+      () => this._openEditDetail("device", option.id, option.label),
+      devicesSortable
+    ));
+    const hubName = String(this._editBundle?.hub?.name ?? "").trim();
     return T`
       <div class="edit-config-view">
         <div class="backup-drawer-sub">
-          Load a backup file, then choose an Activity or Device to edit. This mirrors Restore so the same items are easy to find on desktop and mobile.
+          Load a backup file, then choose an Activity or Device to edit.
+          ${this._haSortableReady ? " Drag the handle on any row to reorder Activities and Devices to match how they appear on your hub." : ""}
+        </div>
+        <div class="edit-hub-name-row" title="Hub name is only applied at restore time when the user opts to wipe the hub.">
+          <span class="edit-hub-name-label">Hub name</span>
+          <span class="edit-hub-name-value">${hubName || "(not set)"}</span>
+          <button
+            class="icon-btn"
+            @click=${this._openHubNameRenameDialog}
+            aria-label="Rename Hub"
+          >
+            <ha-icon icon="mdi:pencil"></ha-icon>
+          </button>
         </div>
         <div class="selection-card">
           <div class="selection-list">
             ${params.activityOptions.length ? T`
                   <div class="selection-group-header">Activities</div>
-                  ${params.activityOptions.map((option) => this._renderEditCollectionRow(option, () => this._openEditDetail("activity", option.id, option.label)))}
+                  ${activitiesSortable ? T`
+                        <ha-sortable
+                          class="edit-order-sortable"
+                          draggable-selector=".edit-selection-row"
+                          handle-selector=".edit-row-drag"
+                          animation="180"
+                          @item-moved=${this._handleEditActivityOrderSort}
+                        >
+                          <div class="edit-order-sortable-container">
+                            ${renderActivityRows()}
+                          </div>
+                        </ha-sortable>
+                      ` : renderActivityRows()}
                 ` : T`<div class="selection-empty">This backup file has no activities.</div>`}
             ${params.deviceOptions.length ? T`
                   <div class="selection-group-header">Devices</div>
-                  ${params.deviceOptions.map((option) => this._renderEditCollectionRow(option, () => this._openEditDetail("device", option.id, option.label)))}
+                  ${devicesSortable ? T`
+                        <ha-sortable
+                          class="edit-order-sortable"
+                          draggable-selector=".edit-selection-row"
+                          handle-selector=".edit-row-drag"
+                          animation="180"
+                          @item-moved=${this._handleEditDeviceOrderSort}
+                        >
+                          <div class="edit-order-sortable-container">
+                            ${renderDeviceRows()}
+                          </div>
+                        </ha-sortable>
+                      ` : renderDeviceRows()}
                 ` : T`<div class="selection-empty">This backup file has no devices.</div>`}
           </div>
         </div>
+        ${this._editBundleDirty ? T`
+              <div class="edit-unsaved-banner" role="status">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>Unsaved changes. Click <strong>Download edited backup</strong> to save them to a file.</span>
+              </div>
+            ` : A}
         <div class="restore-action-row">
-          <button class="primary-btn" @click=${this._downloadEditedBundle}>Download edited backup</button>
+          <button
+            class="primary-btn${this._editBundleDirty ? " primary-btn--unsaved" : ""}"
+            @click=${this._downloadEditedBundle}
+          >Download edited backup</button>
           <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
         </div>
       </div>
     `;
   }
-  _renderEditCollectionRow(option, onSelect) {
+  _renderEditCollectionRow(option, onSelect, showDragHandle) {
     return T`
       <button class="edit-selection-row" @click=${onSelect}>
+        ${showDragHandle ? T`
+              <span
+                class="edit-row-drag"
+                aria-hidden="true"
+                @click=${(event) => event.stopPropagation()}
+              >
+                <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
+              </span>
+            ` : A}
         <span class="selection-main">
           <span class="selection-label">${option.label}</span>
         </span>
@@ -3316,6 +3980,7 @@ var SofabatonBackupTab = class extends i3 {
   }
   _renderEditDetailView(params) {
     const activityQuickAccess = params.kind === "activity" && this._editDetailId != null ? activityQuickAccessItems(this._editBundle, this._editDetailId) : [];
+    const deviceCommands = params.kind === "device" && this._editDetailId != null ? deviceCommandItems(this._editBundle, this._editDetailId) : [];
     return T`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view">
@@ -3326,6 +3991,7 @@ var SofabatonBackupTab = class extends i3 {
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title">${params.title}</div>
+                ${this._editBundleDirty ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
                 <div class="detail-title-actions">
                   <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
                     <ha-icon icon="mdi:pencil"></ha-icon>
@@ -3336,13 +4002,107 @@ var SofabatonBackupTab = class extends i3 {
           </div>
           <div class="detail-scroll">
             ${params.kind === "activity" ? this._renderActivityQuickAccessSection(activityQuickAccess) : T`
-                  <div class="edit-support-card">
-                    Device command renaming, supported payload editors, and safer removal workflows will expand underneath this header in later phases.
-                  </div>
+                  ${this._renderDeviceNetworkSection()}
+                  ${this._renderDeviceCommandsSection(deviceCommands)}
                 `}
           </div>
         </div>
         ${this._renderEditRenameDialog()}
+      </div>
+    `;
+  }
+  /**
+   * "Network" section shown above Commands in the Device detail view
+   * for hue / roku / sonos devices, where the IP address lives on the
+   * device head and the hub uses it to build Host headers / addressing
+   * at replay time. wifi_ip devices are deliberately excluded — their
+   * IP lives inside each command blob and is edited per-command via
+   * the structured-payload form.
+   */
+  _renderDeviceNetworkSection() {
+    if (this._editDetailId == null || !this._editBundle) return A;
+    const deviceId = Number(this._editDetailId);
+    const deviceClass = bundleDeviceClass(this._editBundle, deviceId) ?? "";
+    if (!IP_HEAD_DEVICE_CLASSES.has(deviceClass)) return A;
+    const ip = deviceIpAddress(this._editBundle, deviceId);
+    return T`
+      <div class="quick-access-section">
+        <div class="quick-access-head">
+          <div class="quick-access-title">Network</div>
+          <div class="quick-access-sub">
+            The device's IP address lives in the device record. The hub uses it to address the device at replay time (Host header for Hue / Sonos, base URL for Roku).
+          </div>
+        </div>
+        <div class="quick-access-list">
+          <div class="quick-access-sortable-container">
+            <div class="quick-access-sortable-item">
+              <div class="quick-access-row quick-access-row--no-drag">
+                <div class="quick-access-main">
+                  <div class="quick-access-label-row">
+                    <div class="quick-access-label">${ip ?? "(not set)"}</div>
+                    <div class="quick-access-chip">ip</div>
+                  </div>
+                  <div class="quick-access-meta">IPv4 dotted-decimal address</div>
+                </div>
+                <div class="quick-access-actions">
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
+                    aria-label="Edit IP address"
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderDeviceCommandsSection(items) {
+    if (this._editDetailId == null) return A;
+    return T`
+      <div class="quick-access-section">
+        <div class="quick-access-head">
+          <div class="quick-access-title">Commands</div>
+          <div class="quick-access-sub">
+            Use the pencil to rename a command. Names update everywhere the command is referenced.
+          </div>
+        </div>
+        ${items.length ? T`
+              <div class="quick-access-list">
+                <div class="quick-access-sortable-container">
+                  ${items.map((item) => this._renderDeviceCommandRow(item))}
+                </div>
+              </div>
+            ` : T`<div class="quick-access-empty">This Device does not currently have any commands.</div>`}
+      </div>
+    `;
+  }
+  _renderDeviceCommandRow(item) {
+    return T`
+      <div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
+        <div class="quick-access-row quick-access-row--no-drag">
+          <div class="quick-access-main">
+            <div class="quick-access-label-row">
+              <div class="quick-access-label">${item.label}</div>
+              <div class="quick-access-chip">command</div>
+            </div>
+            <div class="quick-access-meta">
+              Command ID ${item.commandId}
+            </div>
+          </div>
+          <div class="quick-access-actions">
+            <button
+              class="icon-btn"
+              @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
+              aria-label="Rename command"
+            >
+              <ha-icon icon="mdi:pencil"></ha-icon>
+            </button>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -3365,9 +4125,11 @@ var SofabatonBackupTab = class extends i3 {
                         draggable-selector=".quick-access-sortable-item"
                         handle-selector=".quick-access-drag"
                         animation="180"
-                        @end=${this._handleActivityQuickAccessSort}
+                        @item-moved=${this._handleActivityQuickAccessSort}
                       >
-                        ${rows}
+                        <div class="quick-access-sortable-container">
+                          ${rows}
+                        </div>
                       </ha-sortable>
                     ` : rows}
               </div>
@@ -3377,7 +4139,7 @@ var SofabatonBackupTab = class extends i3 {
   }
   _renderActivityQuickAccessRow(item) {
     return T`
-      <div class="quick-access-sortable-item" draggable="true" data-kind=${item.kind} data-button-id=${item.buttonId}>
+      <div class="quick-access-sortable-item" data-kind=${item.kind} data-button-id=${item.buttonId}>
         <div class="quick-access-row">
           <div class="quick-access-drag" aria-hidden="true">
             <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
@@ -3434,9 +4196,11 @@ var SofabatonBackupTab = class extends i3 {
   _renderEditRenameDialog() {
     if (!this._editRenameDialogOpen || !this._editRenameDialogTarget) return A;
     const label = this._editRenameDialogLabel();
+    const decoded = this._editRenameDialogDecodedSnapshot;
+    const dialogSizeClass = decoded ? "medium" : "small";
     return T`
       <div class="modal-backdrop" @click=${this._closeEditRenameDialog}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+        <div class="dialog ${dialogSizeClass}" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${label}</div>
             <button class="dialog-close" @click=${this._closeEditRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
@@ -3445,8 +4209,8 @@ var SofabatonBackupTab = class extends i3 {
             ${this._useLegacyTextField() ? T`
                   <ha-textfield
                     id="sb-backup-edit-name"
-                    .label=${"Name"}
-                    .maxLength=${20}
+                    .label=${this._editRenameFieldLabel()}
+                    .maxLength=${this._editRenameFieldMaxLength()}
                     .value=${this._editRenameDialogDraft}
                     @input=${this._handleEditRenameDialogInput}
                     @change=${this._handleEditRenameDialogInput}
@@ -3461,8 +4225,8 @@ var SofabatonBackupTab = class extends i3 {
                   <ha-input
                     id="sb-backup-edit-name"
                     type="text"
-                    .label=${"Name"}
-                    .maxlength=${20}
+                    .label=${this._editRenameFieldLabel()}
+                    .maxlength=${this._editRenameFieldMaxLength()}
                     .value=${this._editRenameDialogDraft}
                     @input=${this._handleEditRenameDialogInput}
                     @change=${this._handleEditRenameDialogInput}
@@ -3474,6 +4238,7 @@ var SofabatonBackupTab = class extends i3 {
     }}
                   ></ha-input>
                 `}
+            ${decoded ? this._renderDecodedPayloadForm(decoded.className) : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._editRenameDialogError}</div>
@@ -3486,13 +4251,150 @@ var SofabatonBackupTab = class extends i3 {
       </div>
     `;
   }
+  _renderDecodedPayloadForm(className) {
+    const spec = DECODED_CLASS_FORM_SPECS[className];
+    if (!spec) return A;
+    return T`
+      <div class="decoded-form">
+        <div class="decoded-form-head">
+          <div class="decoded-form-title">${spec.title}</div>
+          ${spec.subtitle ? T`<div class="decoded-form-sub">${spec.subtitle}</div>` : A}
+        </div>
+        ${spec.fields.map((field) => this._renderDecodedField(field))}
+      </div>
+    `;
+  }
+  _renderDecodedField(field) {
+    const value = this._editRenameDialogDecodedDrafts[field.key] ?? "";
+    const onInput = (event) => this._handleDecodedFieldInput(event, field.key);
+    const multilineClass = field.escapedDisplay ? "decoded-field-input--multiline decoded-field-input--escaped" : "decoded-field-input--multiline";
+    return T`
+      <label class="decoded-field">
+        <span class="decoded-field-label">${field.label}</span>
+        ${field.multiline ? T`
+              <textarea
+                class="decoded-field-input ${multilineClass}"
+                rows="4"
+                spellcheck="false"
+                .value=${value}
+                @input=${onInput}
+                @change=${onInput}
+              ></textarea>
+            ` : T`
+              <input
+                class="decoded-field-input"
+                type=${field.numeric ? "number" : "text"}
+                spellcheck="false"
+                .value=${value}
+                @input=${onInput}
+                @change=${onInput}
+              />
+            `}
+        ${field.helper ? T`<span class="decoded-field-helper">${field.helper}</span>` : A}
+      </label>
+    `;
+  }
   _editRenameDialogLabel() {
     const target = this._editRenameDialogTarget;
     if (!target) return "Rename";
     if (target.kind === "detail") {
       return target.entityKind === "activity" ? "Rename Activity" : "Rename Device";
     }
-    return target.kind === "macro" ? "Rename Macro" : "Rename Favorite";
+    if (target.kind === "macro") return "Rename Macro";
+    if (target.kind === "favorite") return "Rename Favorite";
+    if (target.kind === "device_ip") return "Edit IP address";
+    if (target.kind === "hub_name") return "Rename Hub";
+    return "Rename Command";
+  }
+  /** Per-target label & max length used by the dialog's primary text input. */
+  _editRenameFieldLabel() {
+    return this._editRenameDialogTarget?.kind === "device_ip" ? "IP address" : "Name";
+  }
+  _editRenameFieldMaxLength() {
+    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 20;
+  }
+  /**
+   * Diff each spec field against the open-dialog snapshot. Returns a
+   * record of fields that changed (mapped back through the wire-format
+   * coercion in `_draftToFieldValue`), or `null` when nothing changed
+   * and the bundle should be left untouched.
+   */
+  _collectChangedDecodedFields(snapshot) {
+    const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
+    if (!spec) return null;
+    const changed = {};
+    let touched = false;
+    for (const field of spec.fields) {
+      const draft = this._editRenameDialogDecodedDrafts[field.key] ?? "";
+      const original = this._fieldValueToDraft(snapshot.fields[field.key], field);
+      if (draft === original) continue;
+      changed[field.key] = this._draftToFieldValue(draft, field);
+      touched = true;
+    }
+    return touched ? changed : null;
+  }
+  /**
+   * Convert a draft string from a form control to the value shape the
+   * decoder expects. `numeric` fields become numbers; `crlfOnWire`
+   * fields get `\n` line endings normalized to `\r\n` so the wire
+   * round-trip stays exact even though the browser textarea hides the
+   * `\r`. Everything else passes through verbatim.
+   */
+  _draftToFieldValue(draft, field) {
+    if (field.numeric) {
+      const numeric = Number(draft);
+      return Number.isFinite(numeric) ? numeric : 0;
+    }
+    if (field.escapedDisplay) {
+      let result = draft.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+      return result;
+    }
+    if (field.crlfOnWire) {
+      return draft.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+    }
+    return draft;
+  }
+  _openDeviceIpRenameDialog(deviceId) {
+    const normalizedId = Number(deviceId);
+    this._editRenameDialogTarget = { kind: "device_ip", deviceId: normalizedId };
+    this._editRenameDialogDraft = deviceIpAddress(this._editBundle, normalizedId) || "";
+    this._editRenameDialogError = "";
+    this._editRenameDialogDecodedSnapshot = null;
+    this._editRenameDialogDecodedDrafts = {};
+    this._editRenameDialogOpen = true;
+  }
+  _openDeviceCommandRenameDialog(commandId) {
+    if (this._editDetailId == null) return;
+    const deviceId = Number(this._editDetailId);
+    const normalizedCommandId = Number(commandId);
+    this._editRenameDialogTarget = { kind: "command", deviceId, commandId: normalizedCommandId };
+    const item = deviceCommandItems(this._editBundle, deviceId).find(
+      (entry) => entry.commandId === normalizedCommandId
+    );
+    this._editRenameDialogDraft = item?.label || "";
+    this._editRenameDialogError = "";
+    const decoded = commandDecodedBlock(this._editBundle, deviceId, normalizedCommandId);
+    this._editRenameDialogDecodedSnapshot = decoded;
+    this._editRenameDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
+    this._editRenameDialogOpen = true;
+  }
+  _initialDecodedDrafts(decoded) {
+    const spec = DECODED_CLASS_FORM_SPECS[decoded.className];
+    if (!spec) return {};
+    const drafts = {};
+    for (const field of spec.fields) {
+      drafts[field.key] = this._fieldValueToDraft(decoded.fields[field.key], field);
+    }
+    return drafts;
+  }
+  _fieldValueToDraft(value, field) {
+    if (value == null) return "";
+    if (field.numeric) return String(Number(value) || 0);
+    const stringValue = String(value);
+    if (field.escapedDisplay) {
+      return stringValue.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+    }
+    return stringValue;
   }
   _openQuickAccessRenameDialog(kind, buttonId) {
     if (this._editDetailId == null) return;
@@ -3504,13 +4406,23 @@ var SofabatonBackupTab = class extends i3 {
     this._editRenameDialogError = "";
     this._editRenameDialogOpen = true;
   }
+  /**
+   * Commit a mutated bundle from any edit handler. Centralizes the
+   * "this counts as a user edit" decision so loaders (file pick,
+   * session restore, discard) can keep using the direct
+   * `this._editBundle = ...` assignment to bypass the dirty flag.
+   */
+  _commitEditBundleEdit(next) {
+    this._editBundle = next;
+    this._editBundleDirty = true;
+  }
   _applyActivityRename(activityId, name) {
     if (!this._editBundle) return;
-    this._editBundle = renameBundleActivity(this._editBundle, activityId, name);
+    this._commitEditBundleEdit(renameBundleActivity(this._editBundle, activityId, name));
   }
   _applyDeviceRename(deviceId, name) {
     if (!this._editBundle) return;
-    this._editBundle = renameBundleDevice(this._editBundle, deviceId, name);
+    this._commitEditBundleEdit(renameBundleDevice(this._editBundle, deviceId, name));
   }
   _openEditDetail(kind, id, name) {
     this._editDetailKind = kind;
@@ -3537,11 +4449,11 @@ var SofabatonBackupTab = class extends i3 {
     const nextItems = [...items];
     const [moved] = nextItems.splice(index, 1);
     nextItems.splice(nextIndex, 0, moved);
-    this._editBundle = reorderBundleActivityQuickAccess(
+    this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
       this._editBundle,
       this._editDetailId,
       nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
-    );
+    ));
   }
   _moveQuickAccessByIdentity(kind, buttonId, delta) {
     if (!this._editBundle || this._editDetailId == null) return;
@@ -3549,6 +4461,21 @@ var SofabatonBackupTab = class extends i3 {
     const index = items.findIndex((item) => item.kind === kind && item.buttonId === Number(buttonId));
     if (index === -1) return;
     this._moveActivityQuickAccessItem(index, delta);
+  }
+  _reorderEditTopLevel(event, kind) {
+    if (!this._editBundle) return;
+    const sortableEvent = event;
+    const oldIndex = Number(sortableEvent.detail?.oldIndex);
+    const newIndex = Number(sortableEvent.detail?.newIndex);
+    if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
+    const current = kind === "activity" ? bundleActivityOptions(this._editBundle) : bundleDeviceOptions(this._editBundle);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex >= current.length || newIndex >= current.length) return;
+    const nextOptions = [...current];
+    const [moved] = nextOptions.splice(oldIndex, 1);
+    if (!moved) return;
+    nextOptions.splice(newIndex, 0, moved);
+    const orderedIds = nextOptions.map((option) => option.id);
+    this._commitEditBundleEdit(kind === "activity" ? reorderBundleActivities(this._editBundle, orderedIds) : reorderBundleDevices(this._editBundle, orderedIds));
   }
   _renderRestoreSectionContent() {
     const isRunning = this._isProgressRunning(this._restoreProgress);
@@ -3806,6 +4733,7 @@ var SofabatonBackupTab = class extends i3 {
     if (!this.hub) return;
     this._backupError = null;
     this._backupProgress = null;
+    this._discardEditSession();
     const deviceIds = this._backupScope === "whole_hub" ? null : this._backupDeviceIds;
     this.setHubCommandBusy?.(true, "Starting backup\u2026");
     try {
@@ -3832,6 +4760,7 @@ var SofabatonBackupTab = class extends i3 {
     this._restoreError = null;
     this._restoreSuccess = null;
     this._restoreProgress = null;
+    this._discardEditSession();
     this.setHubCommandBusy?.(true, "Starting restore\u2026");
     try {
       const start = await this.api().startBackupRestore(this.hub.entry_id, filtered, this._restoreMode);

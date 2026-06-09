@@ -37,6 +37,7 @@ import {
   renameBundleActivityMacro,
   renameBundleDevice,
   renameBundleDeviceCommand,
+  renameBundleHub,
   updateBundleDeviceIp,
   updateCommandDecodedFields,
   validateBackupBundle,
@@ -50,7 +51,8 @@ type BackupRenameDialogTarget =
   | { kind: "macro"; activityId: number; buttonId: number }
   | { kind: "favorite"; activityId: number; buttonId: number }
   | { kind: "command"; deviceId: number; commandId: number }
-  | { kind: "device_ip"; deviceId: number };
+  | { kind: "device_ip"; deviceId: number }
+  | { kind: "hub_name" };
 
 // Device classes whose `ip_address` lives in the device head and is
 // the source of truth for the device's network address. wifi_ip is
@@ -109,6 +111,7 @@ class SofabatonBackupTab extends LitElement {
     _editRenameDialogTarget: { state: true },
     _editRenameDialogDecodedDrafts: { state: true },
     _editRenameDialogDecodedSnapshot: { state: true },
+    _editBundleDirty: { state: true },
     _haSortableReady: { state: true },
   };
 
@@ -990,6 +993,98 @@ class SofabatonBackupTab extends LitElement {
 
     input[type="file"] { display: none; }
 
+    /* Compact hub-name row on the Edit overview. Hub name is only
+       applied at restore time when the user chooses to wipe the hub,
+       so it earns a single thin row instead of its own card. */
+    .edit-hub-name-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+      background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 96%, black);
+      font-size: 13px;
+      min-width: 0;
+    }
+    .edit-hub-name-label {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--secondary-text-color);
+    }
+    .edit-hub-name-value {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--primary-text-color);
+    }
+    .edit-hub-name-row .icon-btn {
+      flex: 0 0 auto;
+      padding: 2px;
+    }
+    .edit-hub-name-row .icon-btn ha-icon { --mdc-icon-size: 18px; }
+
+    /* Unsaved-changes indicators.
+       .edit-unsaved-chip is the compact pill used in the detail
+       sticky-header next to the title. .edit-unsaved-banner is the
+       wider notice on the overview page above the action row.
+       .primary-btn--unsaved decorates the Download button with a
+       dot when there are pending edits. */
+    .edit-unsaved-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex: 0 0 auto;
+      padding: 2px 8px 2px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-radius: 999px;
+      color: var(--warning-color, #f59e0b);
+      background: color-mix(in srgb, var(--warning-color, #f59e0b) 16%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
+    }
+    .edit-unsaved-chip::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--warning-color, #f59e0b);
+    }
+    .edit-unsaved-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
+      background: color-mix(in srgb, var(--warning-color, #f59e0b) 10%, transparent);
+      color: var(--primary-text-color);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .edit-unsaved-banner ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--warning-color, #f59e0b);
+      flex: 0 0 auto;
+    }
+    .primary-btn--unsaved::after {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-left: 8px;
+      border-radius: 50%;
+      background: var(--warning-color, #f59e0b);
+      vertical-align: middle;
+    }
+
     @media (max-width: 380px) {
       .backup-scope-options { grid-template-columns: 1fr; }
       .backup-scope-option + .backup-scope-option {
@@ -1085,6 +1180,13 @@ class SofabatonBackupTab extends LitElement {
   private _editRenameDialogDraft = "";
   private _editRenameDialogError = "";
   private _editRenameDialogTarget: BackupRenameDialogTarget | null = null;
+  // True when `_editBundle` has user-made changes that have not yet
+  // been downloaded. Flipped on by every edit handler (rename, reorder,
+  // decoded payload, IP, etc.) and on session restore (those ARE
+  // unsaved edits). Flipped off by `_downloadEditedBundle` and by
+  // any path that loads a fresh bundle from file. Drives the
+  // "Unsaved" indicators in the Edit overview and detail header.
+  private _editBundleDirty = false;
   // Per-field text drafts for the structured-payload editor that shows
   // inside the rename dialog when the target command is in a decodable
   // class. Keyed by the spec's `key`. Empty for non-command targets and
@@ -1149,7 +1251,7 @@ class SofabatonBackupTab extends LitElement {
   private _editSessionStorageKey(): string | null {
     const entryId = this.hub?.entry_id;
     if (!entryId) return null;
-    return `${BackupTab._EDIT_SESSION_KEY_PREFIX}${entryId}`;
+    return `${SofabatonBackupTab._EDIT_SESSION_KEY_PREFIX}${entryId}`;
   }
 
   private _persistEditSession() {
@@ -1193,6 +1295,7 @@ class SofabatonBackupTab extends LitElement {
     this._editBundle = null;
     this._editFilename = "";
     this._editError = null;
+    this._editBundleDirty = false;
     this._closeEditDetail();
     this._clearEditSession();
   }
@@ -1215,7 +1318,7 @@ class SofabatonBackupTab extends LitElement {
         detail?: { kind?: BackupEditTargetKind; id?: number } | null;
       };
       const savedAt = Number(parsed?.savedAt);
-      if (!Number.isFinite(savedAt) || Date.now() - savedAt > BackupTab._EDIT_SESSION_TTL_MS) {
+      if (!Number.isFinite(savedAt) || Date.now() - savedAt > SofabatonBackupTab._EDIT_SESSION_TTL_MS) {
         window.localStorage.removeItem(key);
         return;
       }
@@ -1226,6 +1329,10 @@ class SofabatonBackupTab extends LitElement {
         this._editDetailKind = parsed.detail.kind;
         this._editDetailId = Number(parsed.detail.id);
       }
+      // A restored session was already an in-progress edit by definition.
+      // Surface it as dirty so the user sees the same warning they'd see
+      // if they were still mid-edit when they walked away.
+      this._editBundleDirty = true;
     } catch {
       // Corrupt or incompatible — drop it so we don't keep failing.
       try {
@@ -1436,6 +1543,7 @@ class SofabatonBackupTab extends LitElement {
                 </div>
               </div>
             `}
+            ${this._renderEditRenameDialog()}
         `,
       })}
     `;
@@ -1459,6 +1567,7 @@ class SofabatonBackupTab extends LitElement {
         () => this._openEditDetail("device", option.id, option.label),
         devicesSortable,
       ));
+    const hubName = String(this._editBundle?.hub?.name ?? "").trim();
     return html`
       <div class="edit-config-view">
         <div class="backup-drawer-sub">
@@ -1466,6 +1575,17 @@ class SofabatonBackupTab extends LitElement {
           ${this._haSortableReady
             ? " Drag the handle on any row to reorder Activities and Devices to match how they appear on your hub."
             : ""}
+        </div>
+        <div class="edit-hub-name-row" title="Hub name is only applied at restore time when the user opts to wipe the hub.">
+          <span class="edit-hub-name-label">Hub name</span>
+          <span class="edit-hub-name-value">${hubName || "(not set)"}</span>
+          <button
+            class="icon-btn"
+            @click=${this._openHubNameRenameDialog}
+            aria-label="Rename Hub"
+          >
+            <ha-icon icon="mdi:pencil"></ha-icon>
+          </button>
         </div>
         <div class="selection-card">
           <div class="selection-list">
@@ -1511,8 +1631,19 @@ class SofabatonBackupTab extends LitElement {
               : html`<div class="selection-empty">This backup file has no devices.</div>`}
           </div>
         </div>
+        ${this._editBundleDirty
+          ? html`
+              <div class="edit-unsaved-banner" role="status">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>Unsaved changes. Click <strong>Download edited backup</strong> to save them to a file.</span>
+              </div>
+            `
+          : nothing}
         <div class="restore-action-row">
-          <button class="primary-btn" @click=${this._downloadEditedBundle}>Download edited backup</button>
+          <button
+            class="primary-btn${this._editBundleDirty ? " primary-btn--unsaved" : ""}"
+            @click=${this._downloadEditedBundle}
+          >Download edited backup</button>
           <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
         </div>
       </div>
@@ -1566,6 +1697,9 @@ class SofabatonBackupTab extends LitElement {
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title">${params.title}</div>
+                ${this._editBundleDirty
+                  ? html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`
+                  : nothing}
                 <div class="detail-title-actions">
                   <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
                     <ha-icon icon="mdi:pencil"></ha-icon>
@@ -1901,6 +2035,7 @@ class SofabatonBackupTab extends LitElement {
     if (target.kind === "macro") return "Rename Macro";
     if (target.kind === "favorite") return "Rename Favorite";
     if (target.kind === "device_ip") return "Edit IP address";
+    if (target.kind === "hub_name") return "Rename Hub";
     return "Rename Command";
   }
 
@@ -2006,6 +2141,16 @@ class SofabatonBackupTab extends LitElement {
     this._editRenameDialogOpen = true;
   };
 
+  private _openHubNameRenameDialog = () => {
+    if (!this._editBundle) return;
+    this._editRenameDialogTarget = { kind: "hub_name" };
+    this._editRenameDialogDraft = this._sanitizeBundleName(String(this._editBundle.hub?.name ?? ""));
+    this._editRenameDialogError = "";
+    this._editRenameDialogDecodedSnapshot = null;
+    this._editRenameDialogDecodedDrafts = {};
+    this._editRenameDialogOpen = true;
+  };
+
   private _openDeviceIpRenameDialog(deviceId: number) {
     const normalizedId = Number(deviceId);
     this._editRenameDialogTarget = { kind: "device_ip", deviceId: normalizedId };
@@ -2099,10 +2244,13 @@ class SofabatonBackupTab extends LitElement {
       const bundle = validateBackupBundle(JSON.parse(text));
       this._editBundle = bundle;
       this._editFilename = file.name;
+      // Fresh load from disk — no user edits yet.
+      this._editBundleDirty = false;
       this._closeEditDetail();
     } catch (error) {
       this._editBundle = null;
       this._editFilename = "";
+      this._editBundleDirty = false;
       this._closeEditDetail();
       this._editError = formatError(error);
     } finally {
@@ -2110,14 +2258,25 @@ class SofabatonBackupTab extends LitElement {
     }
   };
 
+  /**
+   * Commit a mutated bundle from any edit handler. Centralizes the
+   * "this counts as a user edit" decision so loaders (file pick,
+   * session restore, discard) can keep using the direct
+   * `this._editBundle = ...` assignment to bypass the dirty flag.
+   */
+  private _commitEditBundleEdit(next: BackupBundlePayload) {
+    this._editBundle = next;
+    this._editBundleDirty = true;
+  }
+
   private _applyActivityRename(activityId: number, name: string) {
     if (!this._editBundle) return;
-    this._editBundle = renameBundleActivity(this._editBundle, activityId, name);
+    this._commitEditBundleEdit(renameBundleActivity(this._editBundle, activityId, name));
   }
 
   private _applyDeviceRename(deviceId: number, name: string) {
     if (!this._editBundle) return;
-    this._editBundle = renameBundleDevice(this._editBundle, deviceId, name);
+    this._commitEditBundleEdit(renameBundleDevice(this._editBundle, deviceId, name));
   }
 
   private _openEditDetail(kind: BackupEditTargetKind, id: number, name: string) {
@@ -2161,7 +2320,7 @@ class SofabatonBackupTab extends LitElement {
         this._editRenameDialogError = "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.";
         return;
       }
-      this._editBundle = updateBundleDeviceIp(this._editBundle, target.deviceId, draft);
+      this._commitEditBundleEdit(updateBundleDeviceIp(this._editBundle, target.deviceId, draft));
       this._closeEditRenameDialog();
       return;
     }
@@ -2177,8 +2336,13 @@ class SofabatonBackupTab extends LitElement {
       this._closeEditRenameDialog();
       return;
     }
+    if (target.kind === "hub_name") {
+      this._commitEditBundleEdit(renameBundleHub(this._editBundle, next));
+      this._closeEditRenameDialog();
+      return;
+    }
     if (target.kind === "macro") {
-      this._editBundle = renameBundleActivityMacro(this._editBundle, target.activityId, target.buttonId, next);
+      this._commitEditBundleEdit(renameBundleActivityMacro(this._editBundle, target.activityId, target.buttonId, next));
       this._closeEditRenameDialog();
       return;
     }
@@ -2201,11 +2365,11 @@ class SofabatonBackupTab extends LitElement {
           );
         }
       }
-      this._editBundle = nextBundle;
+      this._commitEditBundleEdit(nextBundle);
       this._closeEditRenameDialog();
       return;
     }
-    this._editBundle = renameBundleActivityFavorite(this._editBundle, target.activityId, target.buttonId, next);
+    this._commitEditBundleEdit(renameBundleActivityFavorite(this._editBundle, target.activityId, target.buttonId, next));
     this._closeEditRenameDialog();
   };
 
@@ -2217,11 +2381,11 @@ class SofabatonBackupTab extends LitElement {
     const nextItems = [...items];
     const [moved] = nextItems.splice(index, 1);
     nextItems.splice(nextIndex, 0, moved);
-    this._editBundle = reorderBundleActivityQuickAccess(
+    this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
       this._editBundle,
       this._editDetailId,
       nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId })),
-    );
+    ));
   }
 
   private _moveQuickAccessByIdentity(kind: BackupQuickAccessKind, buttonId: number, delta: -1 | 1) {
@@ -2259,9 +2423,9 @@ class SofabatonBackupTab extends LitElement {
     if (!moved) return;
     nextOptions.splice(newIndex, 0, moved);
     const orderedIds = nextOptions.map((option) => option.id);
-    this._editBundle = kind === "activity"
+    this._commitEditBundleEdit(kind === "activity"
       ? reorderBundleActivities(this._editBundle, orderedIds)
-      : reorderBundleDevices(this._editBundle, orderedIds);
+      : reorderBundleDevices(this._editBundle, orderedIds));
   }
 
   private _handleActivityQuickAccessSort = (event: Event) => {
@@ -2278,11 +2442,11 @@ class SofabatonBackupTab extends LitElement {
     const [moved] = nextItems.splice(oldIndex, 1);
     if (!moved) return;
     nextItems.splice(newIndex, 0, moved);
-    this._editBundle = reorderBundleActivityQuickAccess(
+    this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
       this._editBundle,
       this._editDetailId,
       nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId })),
-    );
+    ));
   };
 
   private _downloadEditedBundle = () => {
@@ -2301,6 +2465,11 @@ class SofabatonBackupTab extends LitElement {
     // The download is the explicit "I'm done" signal — end the edit session
     // so a stale draft doesn't reappear next time the user opens the tab.
     this._clearEditSession();
+    // Clearing the dirty flag here (not on session clear) keeps the
+    // user's edits marked as in-progress even if they navigated away
+    // and came back via session restore — the only thing that
+    // "commits" their work is the download itself.
+    this._editBundleDirty = false;
   };
 
   private _renderRestoreSectionContent() {

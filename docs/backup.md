@@ -94,50 +94,61 @@ option is turned on.
 
 ## Editing backup files
 
-The **Edit** section in the card lets you rename the hub, devices, and
-activities inside a backup file before downloading it again.
+The **Edit** section in the card opens a loaded backup bundle for in-place
+edits before you download it again. It works on the bundle in memory, so
+nothing on the hub changes until you restore.
 
-That editor is intentionally narrow. It only renames the hub, devices, and
-activities. It does not edit command payloads.
+What you can do in the editor:
 
-The backup format is schema-checked on restore, and the integration expects
-the bundle structure to match exactly, so any manual JSON editing should be
-treated as an advanced workflow.
+- **Rename** the hub, devices, activities, activity macros, activity
+  favorites, and device commands. Command renames propagate everywhere the
+  command is referenced.
+- **Reorder** devices and activities to match how they appear on the hub, and
+  reorder macros and favorites inside an activity. Drag handles are available
+  where the browser supports them; move buttons are provided as a fallback.
+- **Edit the head IP address** of `wifi_hue`, `wifi_roku`, and `wifi_sonos`
+  devices. (For `wifi_ip` devices, the IP lives inside each command blob and
+  is edited per-command via the structured-payload form below.)
+- **Edit structured command payloads** ("Blobs" in the Control Panel card) for
+  command rows whose class has a decoder. The supported classes and fields are:
+  - `wifi_ip`: `host`, `port`, `method`, `path`, extra `header` lines,
+    `content_type`, `body`
+  - `wifi_roku`: `path`
+  - `wifi_hue`: `path`, `body_block`
+  - `wifi_sonos`: `path`, `body_block`
+  - `ir`: `descriptor` (descriptive-protocol IR only — raw learned-IR
+    blobs are not editable)
 
-## Advanced: editing command payloads manually
+  When you save changes to a decoded payload, the editor marks that row as
+  edited so restore re-encodes the payload from your fields instead of
+  replaying the original `data_hex`.
 
-Command payloads are stored in backups as raw `data_hex`. That raw payload is
+Rows that do not carry a supported `decoded` block remain raw-only. That
+includes Bluetooth, RF-style payloads, non-descriptive IR blobs, and any
+other command row without a decoder.
+
+After editing, download the bundle from the card and restore it like any
+other backup file.
+
+## Advanced: editing the JSON manually
+
+The same payload-edit mechanism is exposed in the bundle JSON, so anything
+the card editor does can also be done by hand. This is only needed when you
+want a workflow the card does not cover (scripted edits, bulk find/replace,
+etc.).
+
+Command payloads ("Blobs" in the Control Panel card) are stored in backups as raw
+`data_hex`. That raw payload is
 the authoritative restore source and is written back to the hub as-is during
-restore.
-
-For some command classes, the backup may also include a `decoded` block with a
-more readable view of the same payload.
+restore. For some command classes, the backup also includes a `decoded` block
+with a more readable view of the same payload.
 
 If a command row contains `restore_data.decoded.edited: true`, restore
 re-encodes `data_hex` from the `decoded` block first and then restores that
 newly encoded payload. If `edited` is absent or false, restore ignores the
 decoded view and uses the stored `data_hex` unchanged.
 
-This means manual payload editing is supported, but only for rows that
-already carry a valid `decoded` block for a supported class.
-
-## What you can edit safely
-
-The supported decoded classes are:
-
-- `wifi_ip`: `host`, `port`, `method`, `path`, `header`, `content_type`, `body`
-- `wifi_roku`: `path`
-- `wifi_hue`: `path`, `body_block`
-- `wifi_sonos`: `path`, `body_block`
-- `ir`: `descriptor` for the descriptive IR variant only
-
-Rows that do not carry one of those decoded classes remain raw-only. That
-includes Bluetooth, RF-style payloads, non-descriptive IR blobs, and any other
-command row that has no `decoded` block.
-
-## How to edit a payload
-
-Use this flow when you want restore to apply a manual payload change:
+To apply a manual payload change:
 
 1. Create and download a backup JSON file.
 2. Open the file in a text editor.
@@ -187,8 +198,6 @@ failed edits should be visible, not partially ignored.
   encoder.
 - Do not restructure the bundle, delete required keys, or change ids unless
   you are prepared to debug schema or restore errors yourself.
-- The card's built-in **Edit** section is still rename-only. Payload edits are
-  done by editing the downloaded JSON file manually.
 
 ## Related docs
 

@@ -1,7 +1,7 @@
 # Sofabaton Command Payloads
 
-This page explains the command payload data you may see in fetched blobs and
-backup files.
+This page explains the command payload data (shown as "Blobs" in the Control Panel
+card) you may see in fetched blobs and backup files.
 
 It is written for users of the integration. It does not describe the internal
 decoder implementation.
