@@ -9,10 +9,11 @@ import {
   selectedDeviceOwnsPendingSync,
   shouldFinalizeWifiHubLoad,
 } from "./wifi-commands-state";
+import { TOOLS_CARD_STRINGS } from "../strings";
 
 const SLOT_COUNT = 10;
 const INPUT_ICON = "mdi:video-input-hdmi";
-const WIFI_COMMANDS_DOCS_URL = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md";
+const WIFI_COMMANDS_DOCS_URL = TOOLS_CARD_STRINGS.wifiCommands.docsUrl;
 
 const ID = {
   UP: 174,
@@ -74,35 +75,7 @@ const HARD_BUTTON_ICONS: Record<string, string> = {
   c: "mdi:alpha-c-circle-outline",
 };
 
-const DEFAULT_KEY_LABELS: Record<string, string> = {
-  up: "Up",
-  down: "Down",
-  left: "Left",
-  right: "Right",
-  ok: "OK",
-  back: "Back",
-  home: "Home",
-  menu: "Menu",
-  volup: "Vol +",
-  voldn: "Vol -",
-  mute: "Mute",
-  chup: "Ch +",
-  chdn: "Ch -",
-  guide: "Guide",
-  dvr: "DVR",
-  play: "Play",
-  exit: "Exit",
-  rew: "Rewind",
-  pause: "Pause",
-  fwd: "Fast Forward",
-  red: "Red",
-  green: "Green",
-  yellow: "Yellow",
-  blue: "Blue",
-  a: "A",
-  b: "B",
-  c: "C",
-};
+const DEFAULT_KEY_LABELS: Record<string, string> = TOOLS_CARD_STRINGS.wifiCommands.keyLabels;
 
 const HARD_BUTTON_ID_MAP: Record<string, number> = {
   up: ID.UP,
@@ -136,7 +109,7 @@ const HARD_BUTTON_ID_MAP: Record<string, number> = {
 
 const X2_ONLY_HARD_BUTTON_IDS = new Set([ID.C, ID.B, ID.A, ID.EXIT, ID.DVR, ID.PLAY, ID.GUIDE]);
 const DEFAULT_ACTION = { action: "perform-action" };
-const WIFI_SECTION_ROW = [{ id: "wifi", label: "Wifi Devices", icon: "mdi:wifi", passive: true }] as const;
+const WIFI_SECTION_ROW = [{ id: "wifi", label: TOOLS_CARD_STRINGS.wifiCommands.sectionLabel, icon: "mdi:wifi", passive: true }] as const;
 
 type PressType = "short" | "long";
 type ActiveModal = "details" | "action" | null;
@@ -761,8 +734,8 @@ class SofabatonWifiCommandsTab extends LitElement {
               : syncRunning
                 ? renderOperationProgress({
                     mode: "wifi-deploy",
-                    title: "Deploying Wifi commands",
-                    message: String(this._syncState.message || "Sync in progress"),
+                    title: TOOLS_CARD_STRINGS.wifiCommands.deployingTitle,
+                    message: String(this._syncState.message || TOOLS_CARD_STRINGS.wifiCommands.syncInProgress),
                   })
                 : html`
                     <div class="command-grid">
@@ -786,11 +759,11 @@ class SofabatonWifiCommandsTab extends LitElement {
       <div class="list-scroll">
         <div class="list-header">
           <div class="list-header-copy">
-            <div class="section-subtitle">Choose a Wifi Device to edit its command slots, or add a new one.</div>
+            <div class="section-subtitle">${TOOLS_CARD_STRINGS.wifiCommands.sectionSubtitle}</div>
           </div>
           <div class="list-header-action">
             <button class="detail-sync-btn" ?disabled=${!canAdd || this._hubCommandLocked() || this._creatingDevice} @click=${this._openCreateDeviceModal}>
-              Add Wifi Device
+              ${TOOLS_CARD_STRINGS.wifiCommands.addDevice}
             </button>
           </div>
         </div>
@@ -838,7 +811,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       <div class="modal-backdrop" @click=${this._closeCreateDeviceModal}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">Add Wifi Device</div>
+            <div class="dialog-title">${TOOLS_CARD_STRINGS.wifiCommands.addDevice}</div>
             <button class="dialog-close" @click=${this._closeCreateDeviceModal}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
@@ -896,8 +869,8 @@ class SofabatonWifiCommandsTab extends LitElement {
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._deviceMutationError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" ?disabled=${this._creatingDevice} @click=${this._closeCreateDeviceModal}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" ?disabled=${this._creatingDevice} @click=${this._createWifiDevice}>Create</button>
+              <button class="dialog-btn" ?disabled=${this._creatingDevice} @click=${this._closeCreateDeviceModal}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" ?disabled=${this._creatingDevice} @click=${this._createWifiDevice}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCreate}</button>
             </div>
           </div>
         </div>
@@ -912,17 +885,17 @@ class SofabatonWifiCommandsTab extends LitElement {
       <div class="modal-backdrop" @click=${this._closeDeleteDeviceModal}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">Delete Wifi Device?</div>
+            <div class="dialog-title">${TOOLS_CARD_STRINGS.wifiCommands.deleteModalTitle}</div>
             <button class="dialog-close" @click=${this._closeDeleteDeviceModal}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            <div class="dialog-text">Delete "${device.device_name}" from the hub and remove its saved command-slot configuration?</div>
+            <div class="dialog-text">${TOOLS_CARD_STRINGS.wifiCommands.deleteModalBody(device.device_name)}</div>
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._deviceMutationError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeDeleteDeviceModal}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._deleteWifiDevice}>Delete</button>
+              <button class="dialog-btn" @click=${this._closeDeleteDeviceModal}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._deleteWifiDevice}>${TOOLS_CARD_STRINGS.wifiCommands.deleteModalDelete}</button>
             </div>
           </div>
         </div>
@@ -936,11 +909,11 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (isConfirming) {
       return html`
         <div class="slot-btn slot-confirming">
-          <div class="slot-confirm-title">Clear command slot?</div>
-          <div class="slot-confirm-sub">Resets configuration.</div>
+            <div class="slot-confirm-title">${TOOLS_CARD_STRINGS.wifiCommands.clearSlotTitle}</div>
+          <div class="slot-confirm-sub">${TOOLS_CARD_STRINGS.wifiCommands.clearSlotSubtitle}</div>
           <div class="slot-confirm-actions">
-            <button class="dialog-btn" @click=${() => { this._confirmClearSlot = null; }}>No</button>
-            <button class="dialog-btn dialog-btn-primary" @click=${() => this._clearSlot(idx)}>Yes</button>
+            <button class="dialog-btn" @click=${() => { this._confirmClearSlot = null; }}>${TOOLS_CARD_STRINGS.wifiCommands.clearSlotNo}</button>
+            <button class="dialog-btn dialog-btn-primary" @click=${() => this._clearSlot(idx)}>${TOOLS_CARD_STRINGS.wifiCommands.clearSlotYes}</button>
           </div>
         </div>
       `;
@@ -951,7 +924,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         <button class="slot-btn slot-empty" @click=${() => this._openCommandEditor(idx)}>
           <div class="slot-main">
             <div style="font-size:28px;color:var(--secondary-text-color)">+</div>
-            <div class="slot-name">Make Command</div>
+            <div class="slot-name">${TOOLS_CARD_STRINGS.wifiCommands.makeCommand}</div>
           </div>
         </button>
       `;
@@ -989,7 +962,7 @@ class SofabatonWifiCommandsTab extends LitElement {
           </span>
         </button>
         <button class="slot-action-btn" @click=${(event: Event) => { event.stopPropagation(); this._openCommandActionEditor(idx); }}>
-          ${details.commandSummary === "No Action configured" ? "No Action configured" : `> ${details.service}`}
+          ${details.commandSummary === TOOLS_CARD_STRINGS.wifiCommands.noActionConfigured ? TOOLS_CARD_STRINGS.wifiCommands.noActionConfigured : `> ${details.service}`}
         </button>
       </div>
     `;
@@ -1012,7 +985,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       <div class="modal-backdrop" @click=${this._closeOnBackdrop}>
         <div class="dialog" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">Command Slot ${slotIndex + 1}</div>
+            <div class="dialog-title">${TOOLS_CARD_STRINGS.wifiCommands.commandSlotTitle(slotIndex)}</div>
             <button class="dialog-close" @click=${this._closeCommandEditor}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
@@ -1025,7 +998,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                   ? html`
                       <ha-textfield
                         id="sb-command-display-name"
-                        .label=${"Command Display Name"}
+                        .label=${TOOLS_CARD_STRINGS.wifiCommands.commandDisplayName}
                         .maxLength=${20}
                         .value=${draft.name}
                         @input=${(event: Event) => {
@@ -1046,7 +1019,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                       <ha-input
                         id="sb-command-display-name"
                         type="text"
-                        .label=${"Command Display Name"}
+                        .label=${TOOLS_CARD_STRINGS.wifiCommands.commandDisplayName}
                         .maxlength=${20}
                         .value=${draft.name}
                         @input=${(event: Event) => {
@@ -1071,7 +1044,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                   aria-expanded=${String(this._advancedOptionsOpen)}
                 >
                   <span class="advanced-toggle-copy">
-                    <span>Advanced</span>
+                    <span>${TOOLS_CARD_STRINGS.wifiCommands.advanced}</span>
                   </span>
                   <ha-icon icon="mdi:chevron-down"></ha-icon>
                 </button>
@@ -1083,7 +1056,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                       <span class="checkbox-left">
                         <span class="checkbox-icon power-on"><ha-icon icon="mdi:power"></ha-icon></span>
                         <span class="checkbox-copy">
-                          <span>Set as Power ON command</span>
+                          <span>${TOOLS_CARD_STRINGS.wifiCommands.powerOn}</span>
                           <span class="checkbox-subtext">${this._powerReplacementLabel("on")}</span>
                         </span>
                       </span>
@@ -1099,7 +1072,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                       <span class="checkbox-left">
                         <span class="checkbox-icon power-off"><ha-icon icon="mdi:power"></ha-icon></span>
                         <span class="checkbox-copy">
-                          <span>Set as Power OFF command</span>
+                          <span>${TOOLS_CARD_STRINGS.wifiCommands.powerOff}</span>
                           <span class="checkbox-subtext">${this._powerReplacementLabel("off")}</span>
                         </span>
                       </span>
@@ -1115,8 +1088,8 @@ class SofabatonWifiCommandsTab extends LitElement {
                       <span class="checkbox-left">
                         <span class="checkbox-icon input"><ha-icon icon=${INPUT_ICON}></ha-icon></span>
                         <span class="checkbox-copy">
-                          <span>Set as Activity input</span>
-                          <span class="checkbox-subtext">${hasActivities ? this._inputActivityReplacementLabel() : "No activities available for this hub."}</span>
+                          <span>${TOOLS_CARD_STRINGS.wifiCommands.activityInput}</span>
+                          <span class="checkbox-subtext">${hasActivities ? this._inputActivityReplacementLabel() : TOOLS_CARD_STRINGS.wifiCommands.noActivitiesForHub}</span>
                         </span>
                       </span>
                       <ha-switch
@@ -1130,7 +1103,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                       <ha-selector
                         .hass=${this.hass}
                         .selector=${{ select: { mode: "dropdown", options: activities.map((activity) => ({ value: String(activity.id), label: activity.name })) } }}
-                        .label=${"Activity to apply the input to"}
+                        .label=${TOOLS_CARD_STRINGS.wifiCommands.activityInputLabel}
                         .value=${inputActivityValue}
                         .disabled=${!inputSelectionEnabled || !hasActivities}
                         @value-changed=${(event: CustomEvent) => this._handleInputActivityChanged(event)}
@@ -1145,7 +1118,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                 }}>
                   <span class="checkbox-left">
                     <span class="checkbox-icon"><ha-icon icon="mdi:heart"></ha-icon></span>
-                    <span>Set as Favorite</span>
+                    <span>${TOOLS_CARD_STRINGS.wifiCommands.favorite}</span>
                   </span>
                   <ha-switch
                     .checked=${draft.add_as_favorite}
@@ -1156,7 +1129,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                 <ha-selector
                   .hass=${this.hass}
                   .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "None" }, ...this._editorAvailableHardButtonOptions().map((option) => ({ value: option.value, label: option.label }))] } }}
-                  .label=${"Physical Button Assignment"}
+                  .label=${TOOLS_CARD_STRINGS.wifiCommands.physicalButtonAssignment}
                   .value=${this._selectorValueForButton(draft)}
                   @value-changed=${(event: CustomEvent) => this._handleHardButtonChanged(event)}
                 ></ha-selector>
@@ -1166,7 +1139,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                 }}>
                   <span class="checkbox-left">
                     <span class="checkbox-icon"><ha-icon icon="mdi:timer-sand-full"></ha-icon></span>
-                    <span>Enable long-press</span>
+                    <span>${TOOLS_CARD_STRINGS.wifiCommands.enableLongPress}</span>
                   </span>
                   <ha-switch
                     .checked=${hasMappedButton && draft.long_press_enabled}
@@ -1175,7 +1148,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                     @change=${(event: Event) => this._handleLongPressSwitchChange(event)}
                   ></ha-switch>
                 </button>
-                <div class="activities-label ${activitySelectionEnabled ? "" : "disabled"}">Apply to these Activities</div>
+                <div class="activities-label ${activitySelectionEnabled ? "" : "disabled"}">${TOOLS_CARD_STRINGS.wifiCommands.applyToActivities}</div>
                 <div class="activity-chip-row">
                   ${activities.length ? activities.map((activity) => html`
                     <button
@@ -1185,7 +1158,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                     >
                       ${activity.name}
                     </button>
-                  `) : html`<div class="empty-hint">No activities available for this hub.</div>`}
+                  `) : html`<div class="empty-hint">${TOOLS_CARD_STRINGS.wifiCommands.noActivitiesForHub}</div>`}
                 </div>
               </div>
             </div>
@@ -1193,8 +1166,8 @@ class SofabatonWifiCommandsTab extends LitElement {
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._commandSaveError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeCommandEditor}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._saveActiveCommandModal}>Save</button>
+              <button class="dialog-btn" @click=${this._closeCommandEditor}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._saveActiveCommandModal}>${TOOLS_CARD_STRINGS.wifiCommands.save}</button>
             </div>
           </div>
         </div>
@@ -1211,28 +1184,28 @@ class SofabatonWifiCommandsTab extends LitElement {
       <div class="modal-backdrop" @click=${this._closeOnBackdrop}>
         <div class="dialog" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">Command Slot ${Number(this._activeCommandSlot) + 1} Action</div>
+            <div class="dialog-title">${TOOLS_CARD_STRINGS.wifiCommands.commandSlotActionTitle(Number(this._activeCommandSlot))}</div>
             <button class="dialog-close" @click=${this._closeCommandActionEditor}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             <div class="dialog-note">
-              Run an Action whenever the command is performed. Configuring an Action is optional; you can create your own automations that trigger from the Wifi Commands sensor.
+              ${TOOLS_CARD_STRINGS.wifiCommands.actionModalNote}
             </div>
             <div class="config-block">
               ${draft.long_press_enabled ? html`
                 <div class="action-tabs">
-                  <button class="action-tab ${activeTab === "short" ? "active" : ""}" @click=${() => this._setActiveCommandActionTab("short")}>Short press</button>
-                  <button class="action-tab ${activeTab === "long" ? "active" : ""}" @click=${() => this._setActiveCommandActionTab("long")}>Long press</button>
+                  <button class="action-tab ${activeTab === "short" ? "active" : ""}" @click=${() => this._setActiveCommandActionTab("short")}>${TOOLS_CARD_STRINGS.wifiCommands.shortPress}</button>
+                  <button class="action-tab ${activeTab === "long" ? "active" : ""}" @click=${() => this._setActiveCommandActionTab("long")}>${TOOLS_CARD_STRINGS.wifiCommands.longPress}</button>
                 </div>
               ` : nothing}
-              <div class="action-helper">${activeTab === "long" ? "Select Long-Press Action" : "Select Triggered Action"}</div>
+              <div class="action-helper">${activeTab === "long" ? TOOLS_CARD_STRINGS.wifiCommands.selectLongPressAction : TOOLS_CARD_STRINGS.wifiCommands.selectTriggeredAction}</div>
               <div class="action-selector-wrap" ?hidden=${activeTab !== "short"}>
                 ${keyed(this._shortSelectorVersion, html`
                   <ha-selector
                     data-hide-action-type="1"
                     .hass=${this.hass}
                     .selector=${{ ui_action: {} }}
-                    .label=${"Action"}
+                    .label=${TOOLS_CARD_STRINGS.wifiCommands.action}
                     .value=${this._commandActionForPress(draft, "short")}
                     @value-changed=${(event: CustomEvent) => this._handleActionChanged("short", event.detail?.value)}
                   ></ha-selector>
@@ -1244,7 +1217,7 @@ class SofabatonWifiCommandsTab extends LitElement {
                     data-hide-action-type="1"
                     .hass=${this.hass}
                     .selector=${{ ui_action: {} }}
-                    .label=${"Action"}
+                    .label=${TOOLS_CARD_STRINGS.wifiCommands.action}
                     .value=${this._commandActionForPress(draft, "long")}
                     @value-changed=${(event: CustomEvent) => this._handleActionChanged("long", event.detail?.value)}
                   ></ha-selector>
@@ -1255,8 +1228,8 @@ class SofabatonWifiCommandsTab extends LitElement {
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._commandSaveError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeCommandActionEditor}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._saveActiveCommandModal}>Save</button>
+              <button class="dialog-btn" @click=${this._closeCommandActionEditor}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._saveActiveCommandModal}>${TOOLS_CARD_STRINGS.wifiCommands.save}</button>
             </div>
           </div>
         </div>
@@ -1270,24 +1243,24 @@ class SofabatonWifiCommandsTab extends LitElement {
       <div class="modal-backdrop" @click=${() => { this._syncWarningOpen = false; }}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">Sync commands to hub?</div>
+            <div class="dialog-title">${TOOLS_CARD_STRINGS.wifiCommands.syncWarningTitle}</div>
             <button class="dialog-close" @click=${() => { this._syncWarningOpen = false; }}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             <div class="dialog-text sync-warning-text">
-              This sync can run for several minutes. During this process, other interactions with the hub are blocked.<br /><br />
-              At the end of deployment, the physical remote will be force-resynced. It is recommended to finish your full Wifi Commands setup first, then sync once.
+              ${TOOLS_CARD_STRINGS.wifiCommands.syncWarningBody}<br /><br />
+              ${TOOLS_CARD_STRINGS.wifiCommands.syncWarningBody2}
             </div>
             <label class="warning-optout">
               <input type="checkbox" .checked=${this._syncWarningOptOut} @change=${(event: Event) => { this._syncWarningOptOut = (event.currentTarget as HTMLInputElement).checked; }} />
-              <span>Don't show this warning again for this remote.</span>
+              <span>${TOOLS_CARD_STRINGS.wifiCommands.syncWarningOptOut}</span>
             </label>
           </div>
           <div class="dialog-footer">
             <div></div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${() => { this._syncWarningOpen = false; }}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._confirmSyncWarning}>Start sync</button>
+              <button class="dialog-btn" @click=${() => { this._syncWarningOpen = false; }}>${TOOLS_CARD_STRINGS.wifiCommands.createModalCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._confirmSyncWarning}>${TOOLS_CARD_STRINGS.wifiCommands.syncWarningStart}</button>
             </div>
           </div>
         </div>
@@ -1407,7 +1380,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     const runningDevice = this._runningWifiDevice();
     if (runningDevice) {
       const deviceName = String(runningDevice.device_name || "").trim();
-      return deviceName ? `Syncing ${deviceName}...` : "Syncing Wifi Device...";
+      return deviceName ? TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceNamed(deviceName) : TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback;
     }
     return String(this.hubCommandBusyLabel || "").trim() || "Hub command in progress...";
   }
@@ -1752,7 +1725,7 @@ class SofabatonWifiCommandsTab extends LitElement {
           ? `${actionSuffix} ${entitySuffix}`
           : explicitService && actionSuffix
             ? actionSuffix
-            : "No Action configured",
+            : TOOLS_CARD_STRINGS.wifiCommands.noActionConfigured,
     };
   }
 
@@ -1763,10 +1736,10 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _commandSlotSummaryDetails(command: WifiCommandSlot) {
     const shortDetails = this._commandActionDetails(command.action);
-    if (shortDetails.commandSummary !== "No Action configured") return shortDetails;
+    if (shortDetails.commandSummary !== TOOLS_CARD_STRINGS.wifiCommands.noActionConfigured) return shortDetails;
     if (!command.long_press_enabled) return shortDetails;
     const longDetails = this._commandActionDetails(command.long_press_action);
-    return longDetails.commandSummary !== "No Action configured" ? longDetails : shortDetails;
+    return longDetails.commandSummary !== TOOLS_CARD_STRINGS.wifiCommands.noActionConfigured ? longDetails : shortDetails;
   }
 
   private _commandSaveValidationMessage(slot: WifiCommandSlot | null = null) {
@@ -2294,30 +2267,30 @@ class SofabatonWifiCommandsTab extends LitElement {
   }
 
   private _syncMessage(remoteUnavailable: boolean) {
-    if (remoteUnavailable) return "Remote entity unavailable. Is the app connected?";
-    if (this._syncState.status === "running") return String(this._syncState.message || "Sync in progress");
-    if (this._syncState.status === "failed") return String(this._syncState.message || "Last sync failed.");
-    if (this._syncState.sync_needed) return "Command config changes need to be synced to the hub.";
-    if (this._syncState.status === "success") return "Hub command configuration is up to date.";
-    return "No sync needed.";
+    if (remoteUnavailable) return TOOLS_CARD_STRINGS.wifiCommands.syncMessageRemoteUnavailable;
+    if (this._syncState.status === "running") return String(this._syncState.message || TOOLS_CARD_STRINGS.wifiCommands.syncInProgress);
+    if (this._syncState.status === "failed") return String(this._syncState.message || TOOLS_CARD_STRINGS.wifiCommands.syncMessageFailed);
+    if (this._syncState.sync_needed) return TOOLS_CARD_STRINGS.wifiCommands.syncMessageNeeded;
+    if (this._syncState.status === "success") return TOOLS_CARD_STRINGS.wifiCommands.syncMessageUpToDate;
+    return TOOLS_CARD_STRINGS.wifiCommands.syncMessageIdle;
   }
 
   private _syncMessageShort(remoteUnavailable: boolean) {
-    if (remoteUnavailable) return "Unavailable";
-    if (this._syncState.status === "running") return "Syncing";
-    if (this._syncState.status === "failed") return "Sync failed";
-    if (this._syncState.sync_needed) return "Sync needed";
-    if (this._syncState.status === "success") return "Up to date";
-    return "Idle";
+    if (remoteUnavailable) return TOOLS_CARD_STRINGS.wifiCommands.syncShortUnavailable;
+    if (this._syncState.status === "running") return TOOLS_CARD_STRINGS.wifiCommands.syncShortRunning;
+    if (this._syncState.status === "failed") return TOOLS_CARD_STRINGS.wifiCommands.syncShortFailed;
+    if (this._syncState.sync_needed) return TOOLS_CARD_STRINGS.wifiCommands.syncShortNeeded;
+    if (this._syncState.status === "success") return TOOLS_CARD_STRINGS.wifiCommands.syncShortUpToDate;
+    return TOOLS_CARD_STRINGS.wifiCommands.syncShortIdle;
   }
 
   private _deviceStatusLabel(device: WifiDeviceSummary) {
-    if (device.device_key === this._deletingDeviceKey) return "Deleting...";
-    if (device.status === "running") return "Syncing";
-    if (device.status === "failed") return "Sync failed";
-    if (device.sync_needed) return "Sync needed";
-    if (device.status === "success") return "Synced";
-    return "Synced";
+    if (device.device_key === this._deletingDeviceKey) return TOOLS_CARD_STRINGS.wifiCommands.deviceDeleting;
+    if (device.status === "running") return TOOLS_CARD_STRINGS.wifiCommands.syncShortRunning;
+    if (device.status === "failed") return TOOLS_CARD_STRINGS.wifiCommands.syncShortFailed;
+    if (device.sync_needed) return TOOLS_CARD_STRINGS.wifiCommands.syncShortNeeded;
+    if (device.status === "success") return TOOLS_CARD_STRINGS.wifiCommands.deviceSynced;
+    return TOOLS_CARD_STRINGS.wifiCommands.deviceSynced;
   }
 
   private _deviceStatusIcon(device: WifiDeviceSummary) {
@@ -2346,7 +2319,7 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _renderSyncMessage(remoteUnavailable: boolean, externallyLocked = false) {
     const message = externallyLocked ? this._effectiveHubCommandLabel() : this._syncMessage(remoteUnavailable);
     if (remoteUnavailable || this._syncState.status !== "failed") return message;
-    return html`${message} <a class="sync-doc-link" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noreferrer">See documentation</a>`;
+    return html`${message} <a class="sync-doc-link" href=${WIFI_COMMANDS_DOCS_URL} target="_blank" rel="noreferrer">${TOOLS_CARD_STRINGS.wifiCommands.seeDocumentation}</a>`;
   }
 
   private _renderStatusDock(message: unknown, tone: string) {
@@ -2368,14 +2341,14 @@ class SofabatonWifiCommandsTab extends LitElement {
     externallyLocked: boolean;
   }) {
     const label = remoteUnavailable
-      ? "Unavailable"
+      ? TOOLS_CARD_STRINGS.wifiCommands.actionButtonUnavailable
       : syncRunning
-        ? "Syncing..."
+        ? TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncing
         : externallyLocked
-          ? "Busy"
+          ? TOOLS_CARD_STRINGS.wifiCommands.actionButtonBusy
           : this._syncState.sync_needed
-            ? "Sync to Hub"
-            : "Up to Date";
+            ? TOOLS_CARD_STRINGS.wifiCommands.actionButtonSyncToHub
+            : TOOLS_CARD_STRINGS.wifiCommands.actionButtonUpToDate;
     const disabled = remoteUnavailable || syncRunning || externallyLocked || !this._syncState.sync_needed;
     const classes = `detail-sync-btn${!disabled && this._syncState.sync_needed ? " sync-btn-primary" : ""}${!remoteUnavailable && !syncRunning && !externallyLocked && !this._syncState.sync_needed ? " detail-sync-btn--state-ok" : ""}`;
     return html`<button class=${classes} ?disabled=${disabled} @click=${disabled ? null : this._runCommandConfigSync}>${label}</button>`;
@@ -2413,11 +2386,11 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (!entityId || !this.hass?.callWS) return;
     if (this._hubCommandLocked()) return;
     if (!deviceName) {
-      this._deviceMutationError = "Device name is required.";
+      this._deviceMutationError = TOOLS_CARD_STRINGS.wifiCommands.createDeviceNameRequired;
       return;
     }
     this._creatingDevice = true;
-    this._setSharedHubCommandBusy(true, "Creating Wifi Device...");
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.createDeviceBusy);
     try {
       const payload = await this.hass.callWS<{ device_key?: string }>({
         type: "sofabaton_x1s/command_device/create",
@@ -2428,7 +2401,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       await this._loadWifiDevices(true);
       this._selectWifiDevice(String(payload?.device_key || ""));
     } catch (error) {
-      this._deviceMutationError = String((error as Error)?.message || "Unable to create Wifi Device");
+      this._deviceMutationError = String((error as Error)?.message || TOOLS_CARD_STRINGS.wifiCommands.createDeviceFailed);
     } finally {
       this._creatingDevice = false;
       this._setSharedHubCommandBusy(false);
@@ -2455,7 +2428,7 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (this._hubCommandLocked()) return;
     this._closeDeleteDeviceModal();
     this._deletingDeviceKey = deviceKey;
-    this._setSharedHubCommandBusy(true, "Deleting Wifi Device...");
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.deleteDeviceBusy);
     try {
       await this.hass.callWS({
         type: "sofabaton_x1s/command_device/delete",
@@ -2466,7 +2439,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       await this._loadWifiDevices(true);
       await this._refreshControlPanelState();
     } catch (error) {
-      this._deviceMutationError = String((error as Error)?.message || "Unable to delete Wifi Device");
+      this._deviceMutationError = String((error as Error)?.message || TOOLS_CARD_STRINGS.wifiCommands.deleteDeviceFailed);
       this._deleteDeviceKey = deviceKey;
     } finally {
       this._deletingDeviceKey = null;
@@ -2525,7 +2498,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       status: "running",
       current_step: 0,
       total_steps: Number(this._syncState.total_steps || 0),
-      message: "Starting sync",
+      message: TOOLS_CARD_STRINGS.wifiCommands.startSync,
       sync_needed: true,
     };
     this._commandSyncRunning = true;
@@ -2539,7 +2512,7 @@ class SofabatonWifiCommandsTab extends LitElement {
           }
         : device,
     );
-    this._setSharedHubCommandBusy(true, "Syncing Wifi Device...");
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback);
     try {
       await this.hass.callService("sofabaton_x1s", "sync_command_config", { entity_id: entityId, device_key: deviceKey });
       await this._refreshControlPanelState();
@@ -2547,7 +2520,7 @@ class SofabatonWifiCommandsTab extends LitElement {
       this._syncState = {
         ...this._syncState,
         status: "failed",
-        message: String((error as Error)?.message || "Sync failed to start"),
+        message: String((error as Error)?.message || TOOLS_CARD_STRINGS.wifiCommands.syncFailedToStart),
       };
       this._wifiDevices = this._wifiDevices.map((device) =>
         device.device_key === deviceKey

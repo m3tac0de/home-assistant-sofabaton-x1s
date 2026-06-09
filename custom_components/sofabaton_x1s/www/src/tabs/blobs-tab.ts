@@ -17,11 +17,12 @@ import {
   type BlobCommandOption,
   type BlobDeviceOption,
 } from "./blobs-state";
+import { TOOLS_CARD_STRINGS } from "../strings";
 
 const BLOBS_SECTION_ITEMS: SecondaryTabItem<BlobsSectionId>[] = [
-  { id: "fetch", icon: "mdi:cloud-download-outline", label: "Fetch" },
-  { id: "test", icon: "mdi:flash-outline", label: "Test" },
-  { id: "save", icon: "mdi:content-save-outline", label: "Save" },
+  { id: "fetch", icon: "mdi:cloud-download-outline", label: TOOLS_CARD_STRINGS.blobs.sections.fetch },
+  { id: "test", icon: "mdi:flash-outline", label: TOOLS_CARD_STRINGS.blobs.sections.test },
+  { id: "save", icon: "mdi:content-save-outline", label: TOOLS_CARD_STRINGS.blobs.sections.save },
 ];
 
 class SofabatonBlobsTab extends LitElement {
@@ -707,7 +708,7 @@ class SofabatonBlobsTab extends LitElement {
   protected render() {
     if (this.loading) return html`<div class="state">Loading…</div>`;
     if (this.error) return html`<div class="state error">${this.error}</div>`;
-    if (!this.hub) return html`<div class="state">No hubs found.</div>`;
+    if (!this.hub) return html`<div class="state">${TOOLS_CARD_STRINGS.blobs.noHubsFound}</div>`;
     if (this.blockedTitle && this.blockedMessage) {
       return html`
         <div class="tab-panel">
@@ -758,22 +759,22 @@ class SofabatonBlobsTab extends LitElement {
             ? this._renderStatus(
                 "warning",
                 "mdi:database-off-outline",
-                "Enable persistent cache in the Hub tab before using Fetch.",
+                TOOLS_CARD_STRINGS.blobs.fetchCacheDisabled,
               )
             : nothing}
           <div class="control-grid">
             <ha-selector
               .hass=${this.hass}
-              .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "Select one" }, ...deviceOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
-              .label=${"Device"}
+              .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: TOOLS_CARD_STRINGS.blobs.selectOne }, ...deviceOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
+              .label=${TOOLS_CARD_STRINGS.blobs.device}
               .value=${this._selectedDeviceId == null ? "__none__" : String(this._selectedDeviceId)}
               .disabled=${disabled}
               @value-changed=${(event: CustomEvent) => this._handleDeviceChanged(event)}
             ></ha-selector>
             <ha-selector
               .hass=${this.hass}
-              .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "Select one" }, ...commandOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
-              .label=${"Command"}
+              .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: TOOLS_CARD_STRINGS.blobs.selectOne }, ...commandOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
+              .label=${TOOLS_CARD_STRINGS.blobs.command}
               .value=${this._selectedCommandId == null ? "__none__" : String(this._selectedCommandId)}
               .disabled=${disabled || this._selectedDeviceId == null || fetchBlocked === "no_commands"}
               @value-changed=${(event: CustomEvent) => this._handleCommandChanged(event)}
@@ -783,7 +784,7 @@ class SofabatonBlobsTab extends LitElement {
             ? this._renderStatus(
                 "warning",
                 "mdi:refresh-circle",
-                "This device has no cached commands yet. Refresh that device from the Cache tab first.",
+                TOOLS_CARD_STRINGS.blobs.fetchNoCommands,
               )
             : nothing}
           ${this._fetchError
@@ -802,7 +803,7 @@ class SofabatonBlobsTab extends LitElement {
       return this._renderStatus(
         "warning",
         "mdi:file-search-outline",
-        "The hub returned no blob records for this request.",
+        TOOLS_CARD_STRINGS.blobs.fetchNoRecords,
       );
     }
 
@@ -822,10 +823,10 @@ class SofabatonBlobsTab extends LitElement {
           return html`
           <article class="result-card">
             <div class="result-head">
-              <div class="result-title">${String(command.command_label || `Command ${command.command_id ?? "unknown"}`)}</div>
+              <div class="result-title">${String(command.command_label || TOOLS_CARD_STRINGS.blobs.commandFallback(command.command_id ?? TOOLS_CARD_STRINGS.blobs.unknown))}</div>
               <div class="result-badges">
                 <span class="result-badge">${this._deviceClassLabel(command.device_class)}</span>
-                <span class="result-badge">Cmd ${String(command.command_id ?? "?")}</span>
+                <span class="result-badge">${TOOLS_CARD_STRINGS.blobs.cmdBadge(String(command.command_id ?? "?"))}</span>
               </div>
             </div>
             <div class="result-block">
@@ -835,23 +836,23 @@ class SofabatonBlobsTab extends LitElement {
                       <div
                         class="view-toggle"
                         role="tablist"
-                        aria-label="Blob view mode"
+                        aria-label=${TOOLS_CARD_STRINGS.blobs.blobViewMode}
                       >
                         <button
                           class="view-toggle-btn${mode === "descriptor" ? " active" : ""}"
                           role="tab"
                           aria-selected=${mode === "descriptor" ? "true" : "false"}
                           @click=${() => this._setResultViewMode(cmdKey, "descriptor")}
-                        >Descriptor</button>
+                        >${TOOLS_CARD_STRINGS.blobs.descriptor}</button>
                         <button
                           class="view-toggle-btn${mode === "hex" ? " active" : ""}"
                           role="tab"
                           aria-selected=${mode === "hex" ? "true" : "false"}
                           @click=${() => this._setResultViewMode(cmdKey, "hex")}
-                        >Hex</button>
+                        >${TOOLS_CARD_STRINGS.blobs.hex}</button>
                       </div>
                     `
-                  : html`<div class="result-label">Raw Blob</div>`}
+                  : html`<div class="result-label">${TOOLS_CARD_STRINGS.blobs.rawBlob}</div>`}
                 <button
                   class="copy-btn"
                   data-state=${copied ? "success" : "idle"}
@@ -859,7 +860,7 @@ class SofabatonBlobsTab extends LitElement {
                   @click=${() => void this._copyText(copyTarget, cmdKey)}
                 >
                   <ha-icon icon=${copied ? "mdi:check" : "mdi:content-copy"}></ha-icon>
-                  <span>${copied ? "Copied" : "Copy"}</span>
+                  <span>${copied ? TOOLS_CARD_STRINGS.blobs.copied : TOOLS_CARD_STRINGS.blobs.copy}</span>
                 </button>
               </div>
               <pre class="result-pre result-pre--scrollable">${shownText}</pre>
@@ -895,8 +896,8 @@ class SofabatonBlobsTab extends LitElement {
           })}
           <div class="action-row">
             ${this._renderActionButton({
-              label: "Test",
-              busyLabel: "Testing...",
+              label: TOOLS_CARD_STRINGS.blobs.test,
+              busyLabel: TOOLS_CARD_STRINGS.blobs.testing,
               idleIcon: "mdi:flash-outline",
               state: this._buttonState({
                 busy: this._testLoading,
@@ -941,15 +942,15 @@ class SofabatonBlobsTab extends LitElement {
             ? this._renderStatus(
                 "warning",
                 "mdi:refresh-circle",
-                "No IR devices found in the cache. Refresh devices from the Cache tab first.",
+                TOOLS_CARD_STRINGS.blobs.noIrDevices,
               )
             : nothing}
           <div class="control-grid">
             <div class="blob-input-host">
               <ha-selector
                 .hass=${this.hass}
-                .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "Select one" }, ...irDeviceOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
-                .label=${"IR device"}
+                .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: TOOLS_CARD_STRINGS.blobs.selectOne }, ...irDeviceOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
+                .label=${TOOLS_CARD_STRINGS.blobs.irDevice}
                 .value=${this._saveDeviceIdInput && this._saveDeviceIdInput !== "__none__" ? this._saveDeviceIdInput : "__none__"}
                 .disabled=${busy || proxyConnected || irDeviceOptions.length === 0}
                 @value-changed=${(event: CustomEvent) => {
@@ -976,8 +977,8 @@ class SofabatonBlobsTab extends LitElement {
           })}
           <div class="action-row">
             ${this._renderActionButton({
-              label: "Save",
-              busyLabel: "Saving...",
+              label: TOOLS_CARD_STRINGS.blobs.save,
+              busyLabel: TOOLS_CARD_STRINGS.blobs.saving,
               idleIcon: "mdi:content-save-outline",
               state: this._buttonState({
                 busy: this._saveLoading,
@@ -1026,7 +1027,7 @@ class SofabatonBlobsTab extends LitElement {
       return html`
         <div class="blob-input-host">
           <ha-textfield
-            .label=${"Command name"}
+            .label=${TOOLS_CARD_STRINGS.blobs.commandName}
             .maxLength=${20}
             .value=${this._saveCommandName}
             .disabled=${disabled}

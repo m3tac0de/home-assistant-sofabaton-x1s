@@ -17,6 +17,7 @@ import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
+import { TOOLS_CARD_STRINGS } from "./strings";
 import "./tabs/blobs-tab";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
@@ -34,16 +35,16 @@ const LOADED_TOOLS_FRONTEND_VERSION = resolveLoadedToolsFrontendVersion();
 const TOOLS_VERSION = LOADED_TOOLS_FRONTEND_VERSION;
 const DOC_LINKS: Partial<Record<TabId, { href: string; label: string }>> = {
   wifi_commands: {
-    href: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
-    label: "Wifi Commands documentation",
+    href: TOOLS_CARD_STRINGS.docs.wifiCommandsUrl,
+    label: TOOLS_CARD_STRINGS.tabDocs.wifi_commands,
   },
   backup: {
-    href: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md",
-    label: "Backup documentation",
+    href: TOOLS_CARD_STRINGS.docs.backupUrl,
+    label: TOOLS_CARD_STRINGS.tabDocs.backup,
   },
   blobs: {
-    href: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/blobs.md",
-    label: "Blobs documentation",
+    href: TOOLS_CARD_STRINGS.docs.blobsUrl,
+    label: TOOLS_CARD_STRINGS.tabDocs.blobs,
   },
 };
 

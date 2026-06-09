@@ -11,6 +11,7 @@ import type {
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { formatError } from "../shared/utils/control-panel-selectors";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
+import { TOOLS_CARD_STRINGS } from "../strings";
 import {
   assertBackupBundleRestoreCompatible,
   activityQuickAccessItems,
@@ -1351,7 +1352,7 @@ class SofabatonBackupTab extends LitElement {
       return html`<div class="tab-panel"><div class="state error">${this.error}</div></div>`;
     }
     if (!this.hub || !this.hass) {
-      return html`<div class="tab-panel"><div class="state">Select a hub to manage backups.</div></div>`;
+      return html`<div class="tab-panel"><div class="state">${TOOLS_CARD_STRINGS.backup.selectHub}</div></div>`;
     }
     if (this.blockedTitle && this.blockedMessage) {
       return html`
@@ -1409,13 +1410,13 @@ class SofabatonBackupTab extends LitElement {
         content: html`
             <div class="backup-drawer-sub">
               ${isRunning
-                ? "The hub is creating your backup."
+                ? TOOLS_CARD_STRINGS.backup.creatingSubtitle
                 : isSuccess
-                  ? "Your backup is ready."
-                  : "Choose what to include in this backup."}
+                  ? TOOLS_CARD_STRINGS.backup.readySubtitle
+                  : TOOLS_CARD_STRINGS.backup.chooseSubtitle}
             </div>
             ${!this.persistentCacheEnabled || !this.cacheHub
-              ? this._renderStatus("warning", "mdi:database-off-outline", "Enable persistent cache to choose backup contents from the card.")
+              ? this._renderStatus("warning", "mdi:database-off-outline", TOOLS_CARD_STRINGS.backup.enablePersistentCache)
               : nothing}
             ${this._backupError
               ? this._renderStatus("error", "mdi:alert-circle-outline", this._backupError)
@@ -1430,24 +1431,24 @@ class SofabatonBackupTab extends LitElement {
                     return html`
                   <div class="backup-complete-card">
                     <div class="backup-complete-icon"><ha-icon icon="mdi:check-decagram-outline"></ha-icon></div>
-                    <div class="backup-complete-title">Backup completed</div>
+                    <div class="backup-complete-title">${TOOLS_CARD_STRINGS.backup.completedTitle}</div>
                     <div class="backup-complete-sub">${summary}</div>
                     ${expired
                       ? html`<div class="backup-expired-note">
                           <ha-icon icon="mdi:clock-alert-outline"></ha-icon>
-                          Backup expired. Start a new backup to download again.
+                          ${TOOLS_CARD_STRINGS.backup.expired}
                         </div>`
                       : wasDownloaded
                         ? html`<div class="backup-downloaded-note">
                             <ha-icon icon="mdi:check-circle-outline"></ha-icon>
-                            Downloaded
+                            ${TOOLS_CARD_STRINGS.backup.downloaded}
                           </div>`
                         : nothing}
                     <div class="action-row">
                       <button class="primary-btn" ?disabled=${!hasBundle} @click=${this._downloadLatestBackup}>
-                        ${wasDownloaded ? "Download again" : "Download backup"}
+                        ${wasDownloaded ? TOOLS_CARD_STRINGS.backup.downloadAgain : TOOLS_CARD_STRINGS.backup.downloadBackup}
                       </button>
-                      <button class="secondary-btn" @click=${() => void this._completeBackupResult()}>Complete</button>
+                      <button class="secondary-btn" @click=${() => void this._completeBackupResult()}>${TOOLS_CARD_STRINGS.backup.complete}</button>
                     </div>
                   </div>
                 `;
@@ -1459,8 +1460,8 @@ class SofabatonBackupTab extends LitElement {
                       value: this._backupScope,
                       disabled: this._backupLocked() || !this.cacheHub,
                       options: [
-                        { value: "whole_hub", label: "Entire hub" },
-                        { value: "individual_devices", label: "Selected devices" },
+                        { value: "whole_hub", label: TOOLS_CARD_STRINGS.backup.entireHub },
+                        { value: "individual_devices", label: TOOLS_CARD_STRINGS.backup.selectedDevices },
                       ],
                       onChange: (next) => this._setBackupScope(next),
                     })}
@@ -1468,11 +1469,11 @@ class SofabatonBackupTab extends LitElement {
                   ${!wholeHub ? html`
                     <div class="backup-devices-head">
                       <div class="backup-devices-head-main">
-                        <div class="backup-section-title">Devices to include</div>
-                        <div class="backup-selected-count">${this._backupDeviceIds.length} selected</div>
+                        <div class="backup-section-title">${TOOLS_CARD_STRINGS.backup.devicesToInclude}</div>
+                        <div class="backup-selected-count">${TOOLS_CARD_STRINGS.backup.selectedCount(this._backupDeviceIds.length)}</div>
                       </div>
                       <button class="backup-link-btn" ?disabled=${this._backupLocked() || !this.cacheHub} @click=${this._toggleAllBackupDevices}>
-                        ${allDevicesSelected ? "Deselect all" : "Select all"}
+                        ${allDevicesSelected ? TOOLS_CARD_STRINGS.backup.deselectAll : TOOLS_CARD_STRINGS.backup.selectAll}
                       </button>
                     </div>
                     <div class="selection-card">
@@ -1497,7 +1498,7 @@ class SofabatonBackupTab extends LitElement {
                                 ${device.meta ? html`<span class="selection-meta">${device.meta}</span>` : nothing}
                               </div>
                             `)
-                          : html`<div class="selection-empty">No devices available.</div>`}
+                          : html`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noDevicesAvailable}</div>`}
                       </div>
                     </div>
                   ` : nothing}
@@ -1507,7 +1508,7 @@ class SofabatonBackupTab extends LitElement {
                       ?disabled=${this._backupActionDisabled()}
                       @click=${() => void this._runBackup()}
                     >
-                      ${isRunning ? "Working" : "Start backup"}
+                      ${isRunning ? TOOLS_CARD_STRINGS.backup.working : TOOLS_CARD_STRINGS.backup.startBackup}
                     </button>
                   </div>
                   </div>
@@ -1536,10 +1537,10 @@ class SofabatonBackupTab extends LitElement {
             ` : html`
               <div class="edit-config-view">
                 <div class="backup-drawer-sub">
-                  Load a backup file, then choose an Activity or Device to edit.
+                  ${TOOLS_CARD_STRINGS.backup.editLoadPrompt}
                 </div>
                 <div class="restore-action-row">
-                  <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
+                  <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || TOOLS_CARD_STRINGS.backup.chooseBackupFile}</button>
                 </div>
               </div>
             `}
@@ -1571,18 +1572,18 @@ class SofabatonBackupTab extends LitElement {
     return html`
       <div class="edit-config-view">
         <div class="backup-drawer-sub">
-          Load a backup file, then choose an Activity or Device to edit.
+          ${TOOLS_CARD_STRINGS.backup.editLoadPrompt}
           ${this._haSortableReady
-            ? " Drag the handle on any row to reorder Activities and Devices to match how they appear on your hub."
+            ? TOOLS_CARD_STRINGS.backup.reorderHint
             : ""}
         </div>
         <div class="edit-hub-name-row" title="Hub name is only applied at restore time when the user opts to wipe the hub.">
-          <span class="edit-hub-name-label">Hub name</span>
-          <span class="edit-hub-name-value">${hubName || "(not set)"}</span>
+          <span class="edit-hub-name-label">${TOOLS_CARD_STRINGS.backup.hubName}</span>
+          <span class="edit-hub-name-value">${hubName || TOOLS_CARD_STRINGS.backup.hubNameNotSet}</span>
           <button
             class="icon-btn"
             @click=${this._openHubNameRenameDialog}
-            aria-label="Rename Hub"
+            aria-label=${TOOLS_CARD_STRINGS.backup.renameHub}
           >
             <ha-icon icon="mdi:pencil"></ha-icon>
           </button>
@@ -1591,7 +1592,7 @@ class SofabatonBackupTab extends LitElement {
           <div class="selection-list">
             ${params.activityOptions.length
               ? html`
-                  <div class="selection-group-header">Activities</div>
+                  <div class="selection-group-header">${TOOLS_CARD_STRINGS.backup.activities}</div>
                   ${activitiesSortable
                     ? html`
                         <ha-sortable
@@ -1608,10 +1609,10 @@ class SofabatonBackupTab extends LitElement {
                       `
                     : renderActivityRows()}
                 `
-              : html`<div class="selection-empty">This backup file has no activities.</div>`}
+              : html`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noActivitiesInFile}</div>`}
             ${params.deviceOptions.length
               ? html`
-                  <div class="selection-group-header">Devices</div>
+                  <div class="selection-group-header">${TOOLS_CARD_STRINGS.backup.devices}</div>
                   ${devicesSortable
                     ? html`
                         <ha-sortable
@@ -1628,14 +1629,14 @@ class SofabatonBackupTab extends LitElement {
                       `
                     : renderDeviceRows()}
                 `
-              : html`<div class="selection-empty">This backup file has no devices.</div>`}
+              : html`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noDevicesInFile}</div>`}
           </div>
         </div>
         ${this._editBundleDirty
           ? html`
               <div class="edit-unsaved-banner" role="status">
                 <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>Unsaved changes. Click <strong>Download edited backup</strong> to save them to a file.</span>
+                <span>${TOOLS_CARD_STRINGS.backup.unsavedChanges}<strong>${TOOLS_CARD_STRINGS.backup.downloadEditedBackupStrong}</strong>${TOOLS_CARD_STRINGS.backup.unsavedChangesSuffix}</span>
               </div>
             `
           : nothing}
@@ -1643,8 +1644,8 @@ class SofabatonBackupTab extends LitElement {
           <button
             class="primary-btn${this._editBundleDirty ? " primary-btn--unsaved" : ""}"
             @click=${this._downloadEditedBundle}
-          >Download edited backup</button>
-          <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || "Choose backup file"}</button>
+          >${TOOLS_CARD_STRINGS.backup.downloadEditedBackup}</button>
+          <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || TOOLS_CARD_STRINGS.backup.chooseBackupFile}</button>
         </div>
       </div>
     `;
@@ -2697,7 +2698,7 @@ class SofabatonBackupTab extends LitElement {
   private _renderProgressCard(progress: BackupProgressEvent, mode: "backup" | "restore") {
     return renderOperationProgress({
       mode,
-      title: mode === "backup" ? "Creating backup" : "Restoring backup",
+      title: mode === "backup" ? TOOLS_CARD_STRINGS.progress.backupTitle : TOOLS_CARD_STRINGS.progress.restoreTitle,
       message: String(progress.message || "Working…"),
     });
   }

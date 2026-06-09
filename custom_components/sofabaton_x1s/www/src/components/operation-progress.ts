@@ -1,5 +1,6 @@
 import { css, html, type TemplateResult } from "lit";
 import { hubIcon } from "../shared/utils/control-panel-selectors";
+import { TOOLS_CARD_STRINGS } from "../strings";
 
 export type OperationProgressMode = "backup" | "restore" | "wifi-deploy";
 
@@ -116,7 +117,7 @@ export function renderOperationProgress(view: OperationProgressViewModel): Templ
       <div class="progress-stage">
         <div class="progress-node home">
           <div class="progress-disc"><ha-icon icon="mdi:home-assistant"></ha-icon></div>
-          <div class="progress-node-label">Home Assistant</div>
+          <div class="progress-node-label">${TOOLS_CARD_STRINGS.progress.homeAssistant}</div>
         </div>
         <div class="progress-route" aria-hidden="true">
           <i class="packet"></i>
@@ -125,7 +126,7 @@ export function renderOperationProgress(view: OperationProgressViewModel): Templ
         </div>
         <div class="progress-node hub">
           <div class="progress-disc">${hubIcon("hero", "progress-hub-svg")}</div>
-          <div class="progress-node-label">Sofabaton Hub</div>
+          <div class="progress-node-label">${TOOLS_CARD_STRINGS.progress.sofabatonHub}</div>
         </div>
       </div>
       <div class="progress-copy">
