@@ -135,8 +135,20 @@ def test_ws_command_sync_progress_uses_success_hash_to_clear_sync_needed(monkeyp
     async def fake_resolve(_hass, _data):
         return hub
 
+    # After a successful sync the hub has a managed device on the remote, so
+    # the post-Jun-6 guard requires either deployed_device_id or
+    # deployed_commands_hash to be set before sync_needed is cleared. This
+    # test exercises the "progress hash matches commands_hash" path, so we
+    # surface a deployed_device_id (the sibling deployed_hash test covers the
+    # deployed_commands_hash path).
+    class _DeployedStore(_Store):
+        async def async_get_hub_config(self, entry_id, **kwargs):
+            payload = await super().async_get_hub_config(entry_id, **kwargs)
+            payload["deployed_device_id"] = 22
+            return payload
+
     async def fake_store(_hass):
-        return _Store()
+        return _DeployedStore()
 
     monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
     monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)

@@ -113,7 +113,14 @@ class _FakeHass:
         if lovelace is not None:
             self.data["lovelace"] = lovelace
         self.bus = SimpleNamespace(async_listen_once=lambda *args, **kwargs: None)
-        self.http = SimpleNamespace(async_register_static_paths=self._register_static_paths)
+        self._registered_views: list[object] = []
+        self.http = SimpleNamespace(
+            async_register_static_paths=self._register_static_paths,
+            # async_setup() registers SofabatonBackupDownloadView via
+            # hass.http.register_view; a no-op recorder is enough for the
+            # tests in this file (none of them assert on the registered view).
+            register_view=self._registered_views.append,
+        )
         self.config = SimpleNamespace(path=lambda *parts: str(Path("config").joinpath(*parts)))
         self.config_entries = SimpleNamespace(
             async_forward_entry_setups=self._async_forward_entry_setups,

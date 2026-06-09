@@ -1,6 +1,7 @@
 // tests/frontend/control-panel-store.test.ts
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { setMaxListeners } from "node:events";
 
 // custom_components/sofabaton_x1s/www/src/shared/api/control-panel-api.ts
 var ControlPanelApi = class {
@@ -2169,6 +2170,7 @@ var ControlPanelStore = class {
 };
 
 // tests/frontend/control-panel-store.test.ts
+setMaxListeners(0);
 var VIEW_STATE_STORAGE_KEY2 = "sofabaton_x1s:tools_card:view_state:v1";
 var baseState = {
   persistent_cache_enabled: true,
@@ -2242,10 +2244,18 @@ function restoreGlobal(name, descriptor) {
   }
   delete globalThis[name];
 }
+var liveStores = [];
 beforeEach(() => {
   installStorage();
 });
 afterEach(() => {
+  while (liveStores.length) {
+    const store = liveStores.pop();
+    try {
+      store?.disconnected();
+    } catch {
+    }
+  }
   restoreGlobal("window", originalWindowDescriptor);
   restoreGlobal("localStorage", originalLocalStorageDescriptor);
 });
@@ -2272,6 +2282,7 @@ function createStore() {
   const store = new ControlPanelStore((snapshot) => snapshots.push(snapshot), {
     loadedFrontendVersion: "dev"
   });
+  liveStores.push(store);
   return { store, snapshots };
 }
 function flush() {
@@ -2306,6 +2317,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
   const store = new ControlPanelStore(() => void 0, {
     loadedFrontendVersion: "dev"
   });
+  liveStores.push(store);
   store.connected();
   store.setHass(
     createHass({
@@ -2346,6 +2358,7 @@ test("loadState falls back to the first available hub when the saved hub no long
   const store = new ControlPanelStore(() => void 0, {
     loadedFrontendVersion: "dev"
   });
+  liveStores.push(store);
   store.connected();
   store.setHass(createHass());
   await store.loadState();
@@ -2389,9 +2402,12 @@ test("selectHub and selectTab persist the updated view state", async () => {
     {
       selectedHubEntryId: "hub-2",
       selectedTab: "wifi_commands",
-      openSection: "activities",
-      openBackupSection: "make",
-      openBlobsSection: "fetch"
+      // Keys renamed from open* to selected* in the tools-card refactor; the
+      // store now persists the active per-tab section under selectedCacheSection
+      // (cache panel), selectedBackupSection, selectedBlobsSection.
+      selectedCacheSection: "activities",
+      selectedBackupSection: "make",
+      selectedBlobsSection: "fetch"
     }
   );
 });
@@ -2408,6 +2424,7 @@ test("loadState blocks tools card when backend expects a different frontend vers
   const store = new ControlPanelStore(() => void 0, {
     loadedFrontendVersion: "2026.5.0"
   });
+  liveStores.push(store);
   store.connected();
   store.setHass(
     createHass({

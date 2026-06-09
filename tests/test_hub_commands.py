@@ -473,6 +473,14 @@ def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypat
 
     assert result is not None
     assert result["complete"] is True
+    # Device-255 macro entries are firmware "delay/wait" sentinel rows
+    # (head byte 0xFF, delay byte carries the pause). Commit 0700430
+    # ("Evolved backup edit … Fixed issue in backup/restore where macro
+    # delays weren't being backed up and restored") deliberately stopped
+    # filtering them — they're preserved verbatim through backup→restore
+    # so the firmware can replay inter-step pauses. They're still excluded
+    # from referenced_source_device_ids because they don't point at a real
+    # source device.
     assert result["macros"] == [
         {
             "button_id": 0xC6,
@@ -482,6 +490,13 @@ def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypat
                     "device_id": 11,
                     "command_id": 1,
                     "button_code": 0x4E21,
+                    "duration": 0,
+                    "delay": 0xFF,
+                },
+                {
+                    "device_id": 0xFF,
+                    "command_id": 2,
+                    "button_code": 0x4E22,
                     "duration": 0,
                     "delay": 0xFF,
                 },
@@ -739,6 +754,10 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "tail_marker": 0,
         "extras": None,
     }
+    # restore_data now carries a `decoded` block alongside the raw bytes —
+    # the same IR descriptor decoder that the fetch-blob path uses. This is
+    # the canonical view for descriptive IR blobs and is what restore reads
+    # when rewriting the body for the destination hub.
     assert result["commands"] == [
         {
             "command_id": 18,
@@ -748,6 +767,11 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
                 "library_type": 0x0D,
                 "button_code": 0,
                 "data_hex": blob_body.hex(" "),
+                "decoded": {
+                    "class": "ir",
+                    "trailer_hex": "00 00 00 00",
+                    "fields": {"descriptor": "P:Sony12 R:40000 D:1 F:18 MUL:2"},
+                },
             },
         }
     ]
@@ -1379,7 +1403,11 @@ def test_async_persist_ir_blob_refreshes_commands_and_returns_result(monkeypatch
         "page_count": 4,
     }
     assert full_refresh_calls == [(11, 10.0)]
-    assert single_refresh_calls == [(11, 112, 10.0, True)]
+    # Post-persist single-command refresh now runs as background housekeeping
+    # with a capped budget (refresh_budget = min(2.0, wait_timeout)) and
+    # force_refresh=False — the persist itself has already settled on the
+    # hub, so this pass just re-pulls the metadata on a best-effort basis.
+    assert single_refresh_calls == [(11, 112, 2.0, False)]
 
     loop.close()
 

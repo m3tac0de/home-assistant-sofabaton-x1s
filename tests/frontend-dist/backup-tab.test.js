@@ -3871,6 +3871,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                 </div>
               </div>
             `}
+            ${this._renderEditRenameDialog()}
         `
     })}
     `;

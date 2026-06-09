@@ -22,3 +22,4 @@ pytest.ini
 node_modules/
 playwright-report/
 test-results/
+artifacts/
