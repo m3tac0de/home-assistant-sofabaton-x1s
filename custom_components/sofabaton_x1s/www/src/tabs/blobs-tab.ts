@@ -65,6 +65,14 @@ class SofabatonBlobsTab extends LitElement {
 
   static styles = [secondaryTabStyles, css`
     :host { display: flex; flex: 1; min-height: 0; }
+    :host {
+      --blob-console-radius: 10px;
+      --blob-console-bg-top: #16202b;
+      --blob-console-bg-bottom: #0f151d;
+      --blob-console-border: rgba(143, 179, 217, 0.16);
+      --blob-console-text: #e6eef8;
+      --blob-console-muted: rgba(230, 238, 248, 0.5);
+    }
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
     .state.error { color: var(--error-color, #db4437); }
@@ -404,14 +412,18 @@ class SofabatonBlobsTab extends LitElement {
     }
     .result-pre {
       margin: 0;
-      border: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color));
-      border-radius: var(--ha-card-border-radius, 12px);
-      background: color-mix(in srgb, #05070b 94%, var(--card-background-color, #fff));
-      color: #e7edf6;
+      border: 1px solid var(--blob-console-border);
+      border-radius: var(--blob-console-radius);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--blob-console-bg-top) 96%, black), color-mix(in srgb, var(--blob-console-bg-bottom) 98%, black));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.03),
+        inset 0 0 0 1px rgba(120, 150, 190, 0.04);
+      color: var(--blob-console-text);
       font-family: "SF Mono", "Fira Code", Consolas, monospace;
       font-size: 12px;
       line-height: 1.55;
-      padding: 10px 12px;
+      padding: 11px 13px;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       user-select: text;
@@ -432,26 +444,32 @@ class SofabatonBlobsTab extends LitElement {
       min-height: 132px;
       resize: vertical;
       margin: 0;
-      border: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color));
-      border-radius: var(--ha-card-border-radius, 12px);
-      background: color-mix(in srgb, #05070b 94%, var(--card-background-color, #fff));
-      color: #e7edf6;
-      caret-color: #e7edf6;
+      border: 1px solid var(--blob-console-border);
+      border-radius: var(--blob-console-radius);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--blob-console-bg-top) 96%, black), color-mix(in srgb, var(--blob-console-bg-bottom) 98%, black));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.03),
+        inset 0 0 0 1px rgba(120, 150, 190, 0.04);
+      color: var(--blob-console-text);
+      caret-color: var(--blob-console-text);
       font-family: "SF Mono", "Fira Code", Consolas, monospace;
       font-size: 12px;
       line-height: 1.55;
-      padding: 10px 12px;
+      padding: 11px 13px;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
     .test-textarea::placeholder {
-      color: color-mix(in srgb, #e7edf6 45%, transparent);
+      color: var(--blob-console-muted);
     }
     .test-textarea:focus {
       outline: none;
-      border-color: color-mix(in srgb, var(--primary-color) 65%, transparent);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 35%, transparent),
-                  inset 0 0 0 1px color-mix(in srgb, #05070b 100%, transparent);
+      border-color: color-mix(in srgb, var(--primary-color) 58%, var(--blob-console-border));
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--primary-color) 30%, transparent),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        inset 0 0 0 1px rgba(120, 150, 190, 0.05);
     }
     .test-textarea:disabled {
       opacity: 0.55;

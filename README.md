@@ -187,7 +187,7 @@ type: custom:sofabaton-control-panel
 The Control Panel card is the central management UI for the integration. Its main features are:
 
 - **Wifi Commands** — Configure and deploy Wifi Devices and their commands (see below). Up to 5 Wifi Devices per hub.
-- **Backup** — Create fully local backups, restore backups across hub versions, restore a whole hub or just add individual devices from a backup.
+- **Backup** — Create fully local backups, restore onto the same or a newer hub version family (`X1` → `X1S`/`X2`, `X1S` → `X2`), restore a whole hub or just add individual devices from a backup.
 - **Blobs** — Generate, test, save, and share IR command blobs for your hub. See [`docs/blobs.md`](docs/blobs.md).
 - **Persistent Cache** — Enable **persistent cache** in the **Settings** tab so data retrieved from the hub survives a restart. With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable.
 - **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.

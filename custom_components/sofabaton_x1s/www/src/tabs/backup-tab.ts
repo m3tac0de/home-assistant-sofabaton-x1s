@@ -1200,6 +1200,10 @@ class SofabatonBackupTab extends LitElement {
   private _haSortableReady = Boolean(customElements.get("ha-sortable"));
   private readonly _backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
   private _editSessionRestoreTried = false;
+  // entry_id of the hub the currently-loaded restore bundle was picked
+  // against. Used to detect hub-picker switches and drop a bundle that is no
+  // longer valid for the now-selected hub.
+  private _restoreHubEntryId: string | null = null;
   private static readonly _EDIT_SESSION_TTL_MS = 60 * 60 * 1000;
   private static readonly _EDIT_SESSION_KEY_PREFIX = "sofabaton.backup-edit-session.v1.";
 
@@ -1222,6 +1226,18 @@ class SofabatonBackupTab extends LitElement {
       void this._syncBackupOperationState();
       // Hub identity changed — re-attempt restore against the new hub's session.
       this._editSessionRestoreTried = false;
+      // A loaded restore bundle is hub-specific: it was validated against the
+      // previously-selected hub's firmware version when the file was picked.
+      // Carrying it across a hub switch would let the user sidestep the
+      // newer-hub-onto-older-hub guard (e.g. open an X2 bundle on an X2, then
+      // switch the picker to an X1 and hit Start restore). Drop any pending
+      // bundle when the entry_id actually changes from one real hub to another
+      // so the user is forced to re-pick the file against the new hub.
+      const nextEntryId = String(this.hub?.entry_id || "").trim() || null;
+      if (this._restoreHubEntryId && nextEntryId !== this._restoreHubEntryId) {
+        this._resetRestoreBundleForHubSwitch();
+      }
+      this._restoreHubEntryId = nextEntryId;
     }
     if (changed.has("cacheHub") && this.cacheHub && !this._backupDeviceIds.length) {
       this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
@@ -3003,6 +3019,20 @@ class SofabatonBackupTab extends LitElement {
     this._restoreProgress = null;
     this._restoreMode = "merge";
   };
+
+  // Drop the picked-but-not-yet-started restore bundle and its UI-side
+  // selection. Server-side state (an in-progress restore, success/failure
+  // results) is not touched — that's reconciled by _syncBackupOperationState
+  // against the new hub.
+  private _resetRestoreBundleForHubSwitch() {
+    this._restoreBundle = null;
+    this._restoreFilename = "";
+    this._restoreActivityIds = [];
+    this._restoreManualDeviceIds = [];
+    this._restoreMode = "merge";
+    this._restoreError = null;
+    this._restoreSuccess = null;
+  }
 
   private async _completeRestoreResult() {
     // Mirror of _completeBackupResult: drop the server-side op record

@@ -61,6 +61,19 @@ rejects backups from newer schema versions, and it also refuses to restore a
 backup onto an **older** hub model. For example, a backup created on an `X2`
 hub will not restore onto an `X1S`.
 
+The important detail is that this compatibility check is about the Sofabaton
+hub **model/version family** recorded in the bundle's `hub.version` field:
+`X1`, `X1S`, or `X2`. It is not comparing firmware build numbers.
+
+In practice, transporting a backup between hub versions works like this:
+
+- Backup from `X1`: can restore onto `X1`, `X1S`, or `X2`
+- Backup from `X1S`: can restore onto `X1S` or `X2`
+- Backup from `X2`: can restore only onto `X2`
+
+So the rule is: **same model is allowed, moving upward is allowed, moving
+downward is blocked**.
+
 ## How restore behaves
 
 By default, restore adds the selected backup items alongside what is already on

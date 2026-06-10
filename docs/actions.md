@@ -508,6 +508,12 @@ Devices are restored first; the action auto-builds the
 `source_device_id -> new_device_id` map. Activities are restored second
 using that map.
 
+The bundle also records the source hub model in `backup.hub.version`
+(`X1`, `X1S`, or `X2`). In the Control Panel UI, compatibility is checked
+against the destination hub before restore starts: restoring to the same
+model is allowed, restoring to a newer model is allowed, and restoring to
+an older model is blocked.
+
 There are two modes, picked automatically from the bundle's contents:
 
 - **Append mode** -- bundle has `activities: []`. The listed devices are

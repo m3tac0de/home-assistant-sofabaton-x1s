@@ -1050,7 +1050,7 @@ var cardStyles = [secondaryTabStyles, i`
   .logs-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
   .logs-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
   .logs-subtitle, .logs-empty, .cache-state, .entity-count, .refresh-list-label, .stale-banner { color: var(--secondary-text-color); }
-  .logs-console { flex: 1; min-height: 0; border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: radial-gradient(circle at top, color-mix(in srgb, var(--primary-color) 6%, transparent), transparent 45%), color-mix(in srgb, #05070b 92%, var(--card-background-color, #fff)); font-family: "SF Mono", "Fira Code", Consolas, monospace; padding: 10px 0; user-select: text; -webkit-user-select: text; }
+  .logs-console { flex: 1; min-height: 0; border: 1px solid color-mix(in srgb, #8fb3d9 16%, var(--divider-color)); border-radius: 10px; background: linear-gradient(180deg, color-mix(in srgb, #16202b 92%, black), color-mix(in srgb, #0f151d 96%, black)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), inset 0 0 0 1px rgba(120, 150, 190, 0.04); font-family: "SF Mono", "Fira Code", Consolas, monospace; padding: 10px 0; user-select: text; -webkit-user-select: text; }
   .logs-empty { padding: 12px 14px; font-size: 12px; }
   .logs-empty.error, .cache-state.error { color: var(--error-color, #db4437); }
   .log-line { padding: 1px 14px; font-size: 11px; line-height: 1.45; color: color-mix(in srgb, var(--primary-text-color) 94%, white); white-space: normal; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
@@ -4105,6 +4105,14 @@ SofabatonBlobsTab.properties = {
 };
 SofabatonBlobsTab.styles = [secondaryTabStyles, i`
     :host { display: flex; flex: 1; min-height: 0; }
+    :host {
+      --blob-console-radius: 10px;
+      --blob-console-bg-top: #16202b;
+      --blob-console-bg-bottom: #0f151d;
+      --blob-console-border: rgba(143, 179, 217, 0.16);
+      --blob-console-text: #e6eef8;
+      --blob-console-muted: rgba(230, 238, 248, 0.5);
+    }
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
     .state.error { color: var(--error-color, #db4437); }
@@ -4444,14 +4452,18 @@ SofabatonBlobsTab.styles = [secondaryTabStyles, i`
     }
     .result-pre {
       margin: 0;
-      border: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color));
-      border-radius: var(--ha-card-border-radius, 12px);
-      background: color-mix(in srgb, #05070b 94%, var(--card-background-color, #fff));
-      color: #e7edf6;
+      border: 1px solid var(--blob-console-border);
+      border-radius: var(--blob-console-radius);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--blob-console-bg-top) 96%, black), color-mix(in srgb, var(--blob-console-bg-bottom) 98%, black));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.03),
+        inset 0 0 0 1px rgba(120, 150, 190, 0.04);
+      color: var(--blob-console-text);
       font-family: "SF Mono", "Fira Code", Consolas, monospace;
       font-size: 12px;
       line-height: 1.55;
-      padding: 10px 12px;
+      padding: 11px 13px;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       user-select: text;
@@ -4472,26 +4484,32 @@ SofabatonBlobsTab.styles = [secondaryTabStyles, i`
       min-height: 132px;
       resize: vertical;
       margin: 0;
-      border: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color));
-      border-radius: var(--ha-card-border-radius, 12px);
-      background: color-mix(in srgb, #05070b 94%, var(--card-background-color, #fff));
-      color: #e7edf6;
-      caret-color: #e7edf6;
+      border: 1px solid var(--blob-console-border);
+      border-radius: var(--blob-console-radius);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--blob-console-bg-top) 96%, black), color-mix(in srgb, var(--blob-console-bg-bottom) 98%, black));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.03),
+        inset 0 0 0 1px rgba(120, 150, 190, 0.04);
+      color: var(--blob-console-text);
+      caret-color: var(--blob-console-text);
       font-family: "SF Mono", "Fira Code", Consolas, monospace;
       font-size: 12px;
       line-height: 1.55;
-      padding: 10px 12px;
+      padding: 11px 13px;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
     .test-textarea::placeholder {
-      color: color-mix(in srgb, #e7edf6 45%, transparent);
+      color: var(--blob-console-muted);
     }
     .test-textarea:focus {
       outline: none;
-      border-color: color-mix(in srgb, var(--primary-color) 65%, transparent);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 35%, transparent),
-                  inset 0 0 0 1px color-mix(in srgb, #05070b 100%, transparent);
+      border-color: color-mix(in srgb, var(--primary-color) 58%, var(--blob-console-border));
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--primary-color) 30%, transparent),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        inset 0 0 0 1px rgba(120, 150, 190, 0.05);
     }
     .test-textarea:disabled {
       opacity: 0.55;
@@ -5226,6 +5244,10 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     this._haSortableReady = Boolean(customElements.get("ha-sortable"));
     this._backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
     this._editSessionRestoreTried = false;
+    // entry_id of the hub the currently-loaded restore bundle was picked
+    // against. Used to detect hub-picker switches and drop a bundle that is no
+    // longer valid for the now-selected hub.
+    this._restoreHubEntryId = null;
     this._handleDecodedFieldInput = (event, fieldKey) => {
       const input = event.currentTarget;
       this._editRenameDialogDecodedDrafts = {
@@ -5449,6 +5471,11 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     if (changed.has("hub")) {
       void this._syncBackupOperationState();
       this._editSessionRestoreTried = false;
+      const nextEntryId = String(this.hub?.entry_id || "").trim() || null;
+      if (this._restoreHubEntryId && nextEntryId !== this._restoreHubEntryId) {
+        this._resetRestoreBundleForHubSwitch();
+      }
+      this._restoreHubEntryId = nextEntryId;
     }
     if (changed.has("cacheHub") && this.cacheHub && !this._backupDeviceIds.length) {
       this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
@@ -6749,6 +6776,19 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     } catch {
     }
     this._resetBackupComposer();
+  }
+  // Drop the picked-but-not-yet-started restore bundle and its UI-side
+  // selection. Server-side state (an in-progress restore, success/failure
+  // results) is not touched — that's reconciled by _syncBackupOperationState
+  // against the new hub.
+  _resetRestoreBundleForHubSwitch() {
+    this._restoreBundle = null;
+    this._restoreFilename = "";
+    this._restoreActivityIds = [];
+    this._restoreManualDeviceIds = [];
+    this._restoreMode = "merge";
+    this._restoreError = null;
+    this._restoreSuccess = null;
   }
   async _completeRestoreResult() {
     const operationId = String(this._restoreProgress?.operation_id || "").trim();

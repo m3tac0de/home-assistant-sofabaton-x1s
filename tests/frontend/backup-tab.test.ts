@@ -108,6 +108,58 @@ test("backup tab rejects restore files from newer hub generations", async () => 
   assert.equal(input.value, "");
 });
 
+test("backup tab drops a loaded restore bundle when the hub picker switches hubs", () => {
+  const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
+  // Simulate first mount on hub-1 (X2) with a successfully picked bundle.
+  element.hub = { entry_id: "hub-1", version: "X2" };
+  element._restoreBundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X2" },
+    devices: [],
+    activities: [],
+  };
+  element._restoreFilename = "x2-backup.json";
+  element._restoreActivityIds = [1, 2];
+  element._restoreManualDeviceIds = [10];
+  // The first hub assignment recorded entry_id; mirror that bookkeeping.
+  (element as any)._restoreHubEntryId = "hub-1";
+
+  // Switch the picker to a different hub. The bundle was validated against
+  // hub-1's X2 firmware and would sidestep the X2-onto-X1S guard if it stuck
+  // around, so the tab should drop it.
+  element.hub = { entry_id: "hub-2", version: "X1S" };
+  (element as any).updated(new Map<string, unknown>([["hub", undefined]]));
+
+  assert.equal(element._restoreBundle, null);
+  assert.equal(element._restoreFilename, "");
+  assert.deepEqual(element._restoreActivityIds, []);
+  assert.deepEqual(element._restoreManualDeviceIds, []);
+  assert.equal((element as any)._restoreHubEntryId, "hub-2");
+});
+
+test("backup tab keeps the loaded restore bundle on a no-op hub update", () => {
+  const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
+  element.hub = { entry_id: "hub-1", version: "X2" };
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X2" },
+    devices: [],
+    activities: [],
+  };
+  element._restoreBundle = bundle;
+  element._restoreFilename = "x2-backup.json";
+  (element as any)._restoreHubEntryId = "hub-1";
+
+  // Hub object changes (e.g. state refresh) but entry_id stays the same.
+  element.hub = { entry_id: "hub-1", version: "X2", refreshed: true };
+  (element as any).updated(new Map<string, unknown>([["hub", undefined]]));
+
+  assert.equal(element._restoreBundle, bundle);
+  assert.equal(element._restoreFilename, "x2-backup.json");
+});
+
 test("backup tab renders native radios for scope selection", () => {
   const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
 

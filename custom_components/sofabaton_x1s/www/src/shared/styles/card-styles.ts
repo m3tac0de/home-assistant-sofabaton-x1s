@@ -186,7 +186,7 @@ export const cardStyles = [secondaryTabStyles, css`
   .logs-title-row .acc-header-icon { color: var(--primary-color); display: inline-flex; flex: 0 0 auto; }
   .logs-title-row .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
   .logs-subtitle, .logs-empty, .cache-state, .entity-count, .refresh-list-label, .stale-banner { color: var(--secondary-text-color); }
-  .logs-console { flex: 1; min-height: 0; border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: radial-gradient(circle at top, color-mix(in srgb, var(--primary-color) 6%, transparent), transparent 45%), color-mix(in srgb, #05070b 92%, var(--card-background-color, #fff)); font-family: "SF Mono", "Fira Code", Consolas, monospace; padding: 10px 0; user-select: text; -webkit-user-select: text; }
+  .logs-console { flex: 1; min-height: 0; border: 1px solid color-mix(in srgb, #8fb3d9 16%, var(--divider-color)); border-radius: 10px; background: linear-gradient(180deg, color-mix(in srgb, #16202b 92%, black), color-mix(in srgb, #0f151d 96%, black)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), inset 0 0 0 1px rgba(120, 150, 190, 0.04); font-family: "SF Mono", "Fira Code", Consolas, monospace; padding: 10px 0; user-select: text; -webkit-user-select: text; }
   .logs-empty { padding: 12px 14px; font-size: 12px; }
   .logs-empty.error, .cache-state.error { color: var(--error-color, #db4437); }
   .log-line { padding: 1px 14px; font-size: 11px; line-height: 1.45; color: color-mix(in srgb, var(--primary-text-color) 94%, white); white-space: normal; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }

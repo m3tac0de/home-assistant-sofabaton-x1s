@@ -2583,6 +2583,10 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._haSortableReady = Boolean(customElements.get("ha-sortable"));
     this._backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
     this._editSessionRestoreTried = false;
+    // entry_id of the hub the currently-loaded restore bundle was picked
+    // against. Used to detect hub-picker switches and drop a bundle that is no
+    // longer valid for the now-selected hub.
+    this._restoreHubEntryId = null;
     this._handleDecodedFieldInput = (event, fieldKey) => {
       const input = event.currentTarget;
       this._editRenameDialogDecodedDrafts = {
@@ -3877,6 +3881,11 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     if (changed.has("hub")) {
       void this._syncBackupOperationState();
       this._editSessionRestoreTried = false;
+      const nextEntryId = String(this.hub?.entry_id || "").trim() || null;
+      if (this._restoreHubEntryId && nextEntryId !== this._restoreHubEntryId) {
+        this._resetRestoreBundleForHubSwitch();
+      }
+      this._restoreHubEntryId = nextEntryId;
     }
     if (changed.has("cacheHub") && this.cacheHub && !this._backupDeviceIds.length) {
       this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
@@ -5178,6 +5187,19 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     }
     this._resetBackupComposer();
   }
+  // Drop the picked-but-not-yet-started restore bundle and its UI-side
+  // selection. Server-side state (an in-progress restore, success/failure
+  // results) is not touched — that's reconciled by _syncBackupOperationState
+  // against the new hub.
+  _resetRestoreBundleForHubSwitch() {
+    this._restoreBundle = null;
+    this._restoreFilename = "";
+    this._restoreActivityIds = [];
+    this._restoreManualDeviceIds = [];
+    this._restoreMode = "merge";
+    this._restoreError = null;
+    this._restoreSuccess = null;
+  }
   async _completeRestoreResult() {
     const operationId = String(this._restoreProgress?.operation_id || "").trim();
     if (operationId) {
@@ -5340,6 +5362,46 @@ test("backup tab rejects restore files from newer hub generations", async () => 
   assert.equal(element._restoreFilename, "");
   assert.match(String(element._restoreError || ""), /cannot be restored onto a Sofabaton X1S hub/i);
   assert.equal(input.value, "");
+});
+test("backup tab drops a loaded restore bundle when the hub picker switches hubs", () => {
+  const element = new BackupTabElement();
+  element.hub = { entry_id: "hub-1", version: "X2" };
+  element._restoreBundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X2" },
+    devices: [],
+    activities: []
+  };
+  element._restoreFilename = "x2-backup.json";
+  element._restoreActivityIds = [1, 2];
+  element._restoreManualDeviceIds = [10];
+  element._restoreHubEntryId = "hub-1";
+  element.hub = { entry_id: "hub-2", version: "X1S" };
+  element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
+  assert.equal(element._restoreBundle, null);
+  assert.equal(element._restoreFilename, "");
+  assert.deepEqual(element._restoreActivityIds, []);
+  assert.deepEqual(element._restoreManualDeviceIds, []);
+  assert.equal(element._restoreHubEntryId, "hub-2");
+});
+test("backup tab keeps the loaded restore bundle on a no-op hub update", () => {
+  const element = new BackupTabElement();
+  element.hub = { entry_id: "hub-1", version: "X2" };
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X2" },
+    devices: [],
+    activities: []
+  };
+  element._restoreBundle = bundle;
+  element._restoreFilename = "x2-backup.json";
+  element._restoreHubEntryId = "hub-1";
+  element.hub = { entry_id: "hub-1", version: "X2", refreshed: true };
+  element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
+  assert.equal(element._restoreBundle, bundle);
+  assert.equal(element._restoreFilename, "x2-backup.json");
 });
 test("backup tab renders native radios for scope selection", () => {
   const element = new BackupTabElement();
