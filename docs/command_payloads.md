@@ -134,8 +134,6 @@ If a row has no decoded block, treat it as raw-only.
   is editable.
 - `trailer_hex` is not intended as a user-facing setting.
 - Raw-only payloads should not be hand-converted into made-up decoded blocks.
-- The built-in **Edit** section in the Backup tab does not edit payload fields;
-  it only renames the hub, devices, and activities.
 
 ## Related docs
 
