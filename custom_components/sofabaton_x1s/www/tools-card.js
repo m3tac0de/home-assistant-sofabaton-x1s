@@ -550,6 +550,43 @@ var o4 = s3.litElementPolyfillSupport;
 o4?.({ LitElement: i4 });
 (s3.litElementVersions ?? (s3.litElementVersions = [])).push("4.2.2");
 
+// node_modules/lit-html/directive.js
+var e4 = (t4) => (...e5) => ({ _$litDirective$: t4, values: e5 });
+var i5 = class {
+  constructor(t4) {
+  }
+  get _$AU() {
+    return this._$AM._$AU;
+  }
+  _$AT(t4, e5, i7) {
+    this._$Ct = t4, this._$AM = e5, this._$Ci = i7;
+  }
+  _$AS(t4, e5) {
+    return this.update(t4, e5);
+  }
+  update(t4, e5) {
+    return this.render(...e5);
+  }
+};
+
+// node_modules/lit-html/directive-helpers.js
+var { I: t3 } = j;
+var m2 = {};
+var p3 = (o5, t4 = m2) => o5._$AH = t4;
+
+// node_modules/lit-html/directives/keyed.js
+var i6 = e4(class extends i5 {
+  constructor() {
+    super(...arguments), this.key = A;
+  }
+  render(r4, t4) {
+    return this.key = r4, t4;
+  }
+  update(r4, [t4, e5]) {
+    return t4 !== this.key && (p3(r4), this.key = t4), e5;
+  }
+});
+
 // custom_components/sofabaton_x1s/www/src/components/secondary-tab.ts
 var secondaryTabStyles = i`
   .secondary-view-shell {
@@ -1006,6 +1043,51 @@ var cardStyles = [secondaryTabStyles, i`
     0%, 100% { filter: brightness(1); }
     50% { filter: brightness(1.35); }
   }
+  /* Wifi command press wipe — a soft primary-tinted band sweeps left
+     to right across the bottom dock when the user pushes a Wifi
+     Command on their physical remote. No alarm semantics: it borrows
+     the dock's existing primary-color language, the motion is one
+     pass (no pulse), and pointer-events:none keeps the dock
+     interactive while it plays. Keyed on the event timestamp so each
+     fresh press cleanly remounts and restarts the sweep. */
+  .card-bottom-dock-ir-flash {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    overflow: hidden;
+  }
+  .card-bottom-dock-ir-flash::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 38%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--primary-color) 22%, transparent) 35%,
+      color-mix(in srgb, var(--primary-color) 38%, transparent) 50%,
+      color-mix(in srgb, var(--primary-color) 22%, transparent) 65%,
+      transparent 100%
+    );
+    box-shadow: 0 0 18px color-mix(in srgb, var(--primary-color) 22%, transparent);
+    transform: translateX(-100%);
+    animation: dockIrWipe 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards;
+  }
+  @keyframes dockIrWipe {
+    0%   { transform: translateX(-100%); opacity: 0; }
+    15%  { opacity: 1; }
+    85%  { opacity: 1; }
+    100% { transform: translateX(280%); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card-bottom-dock-ir-flash::before {
+      animation: none;
+      opacity: 0;
+    }
+  }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
   .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
   .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-start; }
@@ -1377,6 +1459,14 @@ var ControlPanelApi = class {
       ...deviceIds?.length ? { device_ids: deviceIds } : {}
     });
   }
+  stashEditedBackup(entryId, backup, filename) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/backup/stash_edited",
+      entry_id: entryId,
+      backup,
+      filename
+    });
+  }
   startBackupRestore(entryId, backup, mode) {
     return this.hass.callWS({
       type: "sofabaton_x1s/backup/restore",
@@ -1449,6 +1539,15 @@ var ControlPanelApi = class {
     return this.hass.connection.subscribeMessage(
       onMessage,
       { type: "sofabaton_x1s/logs/subscribe", entry_id: entryId }
+    );
+  }
+  subscribeWifiPresses(entryId, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error("Wifi press events are unavailable without a websocket connection"));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/wifi_presses/subscribe", entry_id: entryId }
     );
   }
 };
@@ -1842,7 +1941,9 @@ var INITIAL_SNAPSHOT = {
   logsSubscribedEntryId: null,
   logsStickToBottom: true,
   logsScrollBehavior: "auto",
-  pendingScrollEntityKey: null
+  pendingScrollEntityKey: null,
+  lastWifiPress: null,
+  wifiPressSubscribedEntryId: null
 };
 var ControlPanelStore = class {
   constructor(onChange, options = {}) {
@@ -1865,6 +1966,8 @@ var ControlPanelStore = class {
     this._backupOpId = null;
     this._runtimeStatePollTimer = null;
     this._runtimeCompletionTimer = null;
+    this._wifiPressUnsub = null;
+    this._wifiPressSubscribeSeq = 0;
     this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
     this._snapshot = {
       ...INITIAL_SNAPSHOT,
@@ -1883,6 +1986,7 @@ var ControlPanelStore = class {
       this._scheduleBackendRetry();
     }
     void this._syncBackupOperationFeed();
+    void this._syncWifiPressFeed();
     this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -1894,12 +1998,14 @@ var ControlPanelStore = class {
       ...this._snapshot,
       externalHubCommandBusy: false,
       externalHubCommandLabel: null,
-      runtimeCompletionNotice: null
+      runtimeCompletionNotice: null,
+      lastWifiPress: null
     };
     this._clearRuntimeStatePoll();
     this._clearRuntimeCompletionTimer();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
+    void this._teardownWifiPressFeed();
     void this.unsubscribeLogs();
   }
   _clearBackendRetry() {
@@ -2011,16 +2117,19 @@ var ControlPanelStore = class {
       logsScrollBehavior: "auto",
       externalHubCommandBusy: false,
       externalHubCommandLabel: null,
-      runtimeCompletionNotice: null
+      runtimeCompletionNotice: null,
+      lastWifiPress: null
     };
     this._clearRuntimeCompletionTimer();
     this.persistViewState();
     this.emit();
     void (async () => {
       await this._teardownBackupOperationFeed();
+      await this._teardownWifiPressFeed();
       await this.unsubscribeLogs();
       await this.loadControlPanelState();
       await this._syncBackupOperationFeed();
+      await this._syncWifiPressFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
   }
@@ -2113,6 +2222,7 @@ var ControlPanelStore = class {
         this.syncSelection();
         this._clearBackendUnavailable();
         await this._syncBackupOperationFeed();
+        await this._syncWifiPressFeed();
       } catch (error) {
         if (isBackendUnavailableError(error, this._snapshot.hass)) {
           this._markBackendUnavailable();
@@ -2137,6 +2247,7 @@ var ControlPanelStore = class {
       this.syncSelection();
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
+      await this._syncWifiPressFeed();
       this.emit();
     } catch (error) {
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
@@ -2522,6 +2633,73 @@ var ControlPanelStore = class {
     this._backupOpUnsub = null;
     this._backupOpEntryId = null;
     this._backupOpId = null;
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+    }
+  }
+  async _syncWifiPressFeed() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id || "").trim() || null;
+    if (!this._isConnected || !entryId || !this._snapshot.hass) {
+      await this._teardownWifiPressFeed();
+      return;
+    }
+    if (this._snapshot.wifiPressSubscribedEntryId === entryId && this._wifiPressUnsub) {
+      return;
+    }
+    await this._teardownWifiPressFeed();
+    const subscribeSeq = ++this._wifiPressSubscribeSeq;
+    this._snapshot = { ...this._snapshot, wifiPressSubscribedEntryId: entryId };
+    try {
+      const unsubscribe = await this.api().subscribeWifiPresses(entryId, (payload) => {
+        if (subscribeSeq !== this._wifiPressSubscribeSeq) return;
+        if (this._snapshot.wifiPressSubscribedEntryId !== entryId) return;
+        this._handleWifiPressMessage(entryId, payload);
+      });
+      if (subscribeSeq !== this._wifiPressSubscribeSeq) {
+        try {
+          unsubscribe();
+        } catch {
+        }
+        return;
+      }
+      this._wifiPressUnsub = unsubscribe;
+    } catch {
+      if (subscribeSeq === this._wifiPressSubscribeSeq) {
+        this._snapshot = { ...this._snapshot, wifiPressSubscribedEntryId: null };
+      }
+    }
+  }
+  _handleWifiPressMessage(entryId, payload) {
+    const message = payload && typeof payload === "object" ? payload : null;
+    if (!message) return;
+    const timestamp = Number(message.timestamp);
+    if (!Number.isFinite(timestamp)) return;
+    const pressType = message.press_type === "long" ? "long" : "short";
+    const commandIndex = typeof message.command_index === "number" && message.command_index >= 0 ? Math.trunc(message.command_index) : null;
+    const event = {
+      entryId,
+      deviceId: typeof message.device_id === "number" ? message.device_id : null,
+      deviceName: typeof message.device_name === "string" && message.device_name.trim() ? String(message.device_name) : null,
+      commandIndex,
+      commandLabel: typeof message.command_label === "string" ? String(message.command_label) : "",
+      pressType,
+      timestamp,
+      // The server timestamp drives identity (so a card reopened mid-pulse
+      // doesn't re-trigger); receivedAt drives the animation epoch so the
+      // dock pulse restarts cleanly on every fresh press, even repeats.
+      receivedAt: Date.now()
+    };
+    this._snapshot = { ...this._snapshot, lastWifiPress: event };
+    this.emit();
+  }
+  async _teardownWifiPressFeed() {
+    this._wifiPressSubscribeSeq++;
+    const unsub = this._wifiPressUnsub;
+    this._wifiPressUnsub = null;
+    this._snapshot = { ...this._snapshot, wifiPressSubscribedEntryId: null };
     if (!unsub) return;
     try {
       await unsub();
@@ -5225,6 +5403,11 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     this._editRenameDialogDraft = "";
     this._editRenameDialogError = "";
     this._editRenameDialogTarget = null;
+    // Whether the structured-payload form is expanded inside the
+    // rename dialog. Defaults to collapsed because payload editing is
+    // an advanced use case — most users only want to rename. Reset on
+    // every dialog open / close so each session starts collapsed.
+    this._decodedFormExpanded = false;
     // True when `_editBundle` has user-made changes that have not yet
     // been downloaded. Flipped on by every edit handler (rename, reorder,
     // decoded payload, IP, etc.) and on session restore (those ARE
@@ -5293,6 +5476,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       this._editRenameDialogTarget = null;
       this._editRenameDialogDecodedDrafts = {};
       this._editRenameDialogDecodedSnapshot = null;
+      this._decodedFormExpanded = false;
     };
     this._openEditFilePicker = () => {
       this.renderRoot.querySelector("#edit-file-input")?.click();
@@ -5411,19 +5595,43 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
         nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
       ));
     };
-    this._downloadEditedBundle = () => {
-      if (!this._editBundle) return;
-      const json = JSON.stringify(this._editBundle, null, 2);
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
+    this._downloadEditedBundle = async () => {
+      if (!this._editBundle || !this.hass || !this.hub) return;
       const base = this._editFilename.replace(/\.json$/i, "") || "sofabaton_backup";
+      const filename = `${base}_edited.json`;
+      let operationId = "";
+      try {
+        const result = await this.api().stashEditedBackup(this.hub.entry_id, this._editBundle, filename);
+        operationId = String(result?.operation_id || "");
+      } catch (error) {
+        this._editError = formatError(error);
+        return;
+      }
+      if (!operationId) {
+        this._editError = "Failed to prepare edited backup for download.";
+        return;
+      }
+      const path = `/api/sofabaton_x1s/backup/download/${encodeURIComponent(operationId)}`;
+      let url = path;
+      try {
+        const signed = await this.hass.callWS({
+          type: "auth/sign_path",
+          path,
+          expires: 600
+        });
+        if (signed?.path) url = signed.path;
+      } catch (error) {
+        console.error("[sofabaton] auth/sign_path failed", error);
+        this._editError = formatError(error);
+        return;
+      }
       const anchor = document.createElement("a");
+      anchor.target = "_blank";
       anchor.href = url;
-      anchor.download = `${base}_edited.json`;
+      anchor.download = filename;
       document.body.appendChild(anchor);
       anchor.dispatchEvent(new MouseEvent("click"));
       document.body.removeChild(anchor);
-      setTimeout(() => URL.revokeObjectURL(url), 0);
       this._clearEditSession();
       this._editBundleDirty = false;
     };
@@ -6104,7 +6312,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     }}
                   ></ha-input>
                 `}
-            ${decoded ? this._renderDecodedPayloadForm(decoded.className) : A}
+            ${decoded ? this._renderAdvancedPayloadFoldout(decoded.className) : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._editRenameDialogError}</div>
@@ -6114,6 +6322,37 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
             </div>
           </div>
         </div>
+      </div>
+    `;
+  }
+  /**
+   * Mirror the Wifi-Commands "Advanced" foldout: the structured-
+   * payload editor is rarely needed (renames are the common case),
+   * so it sits behind a collapsed toggle. Open / close persists for
+   * the current dialog session; close resets it back to collapsed.
+   */
+  _renderAdvancedPayloadFoldout(className) {
+    const expanded = this._decodedFormExpanded;
+    return b2`
+      <div class="advanced-section">
+        <button
+          class="advanced-toggle ${expanded ? "expanded" : ""}"
+          type="button"
+          @click=${() => {
+      this._decodedFormExpanded = !this._decodedFormExpanded;
+    }}
+          aria-expanded=${String(expanded)}
+        >
+          <span class="advanced-toggle-copy">
+            <span>Advanced</span>
+          </span>
+          <ha-icon icon="mdi:chevron-down"></ha-icon>
+        </button>
+        ${expanded ? b2`
+          <div class="advanced-panel">
+            ${this._renderDecodedPayloadForm(className)}
+          </div>
+        ` : A}
       </div>
     `;
   }
@@ -6170,7 +6409,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     if (target.kind === "favorite") return "Rename Favorite";
     if (target.kind === "device_ip") return "Edit IP address";
     if (target.kind === "hub_name") return "Rename Hub";
-    return "Rename Command";
+    return "Change Command";
   }
   /** Per-target label & max length used by the dialog's primary text input. */
   _editRenameFieldLabel() {
@@ -6242,6 +6481,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     const decoded = commandDecodedBlock(this._editBundle, deviceId, normalizedCommandId);
     this._editRenameDialogDecodedSnapshot = decoded;
     this._editRenameDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
+    this._decodedFormExpanded = false;
     this._editRenameDialogOpen = true;
   }
   _initialDecodedDrafts(decoded) {
@@ -6899,6 +7139,7 @@ _SofabatonBackupTab.properties = {
   _editRenameDialogTarget: { state: true },
   _editRenameDialogDecodedDrafts: { state: true },
   _editRenameDialogDecodedSnapshot: { state: true },
+  _decodedFormExpanded: { state: true },
   _editBundleDirty: { state: true },
   _haSortableReady: { state: true }
 };
@@ -7291,20 +7532,22 @@ _SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    /* Match the Wifi Commands tab's detail-view back button so the
+       affordance is identical across the card: padded pill with a
+       bold label-weight, content-sized (not a fixed square). */
     .back-btn {
       border: 1px solid var(--divider-color);
       border-radius: var(--backup-radius-sm);
       background: transparent;
       color: var(--primary-text-color);
       font: inherit;
-      width: 36px;
-      height: 36px;
-      padding: 0;
+      font-weight: 700;
+      padding: 8px 12px;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
+      gap: 8px;
       flex: 0 0 auto;
-      justify-content: center;
     }
     .back-btn:hover {
       border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
@@ -7532,13 +7775,43 @@ _SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, i`
     .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog.medium { width: min(640px, calc(100vw - 36px)); }
-    .decoded-form {
+    /* "Advanced" foldout that wraps the structured-payload form
+       inside the Change Command dialog. Mirrors the Wifi Commands
+       command-config popup so the affordance reads the same way
+       across the card. */
+    .advanced-section {
       display: flex;
       flex-direction: column;
       gap: 10px;
       margin-top: 6px;
       padding-top: 10px;
       border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+    }
+    .advanced-toggle {
+      width: fit-content;
+      border: 0;
+      background: transparent;
+      color: var(--secondary-text-color);
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-align: left;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+    }
+    .advanced-toggle:hover { color: var(--primary-text-color); }
+    .advanced-toggle-copy { display: block; }
+    .advanced-toggle ha-icon { --mdc-icon-size: 18px; transition: transform 120ms ease; }
+    .advanced-toggle.expanded ha-icon { transform: rotate(180deg); }
+    .advanced-panel { display: grid; gap: 14px; padding-top: 2px; }
+    .decoded-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
     .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
     .decoded-form-title {
@@ -7925,43 +8198,6 @@ if (!customElements.get("sofabaton-backup-tab")) {
   customElements.define("sofabaton-backup-tab", SofabatonBackupTab);
 }
 
-// node_modules/lit-html/directive.js
-var e4 = (t4) => (...e5) => ({ _$litDirective$: t4, values: e5 });
-var i5 = class {
-  constructor(t4) {
-  }
-  get _$AU() {
-    return this._$AM._$AU;
-  }
-  _$AT(t4, e5, i7) {
-    this._$Ct = t4, this._$AM = e5, this._$Ci = i7;
-  }
-  _$AS(t4, e5) {
-    return this.update(t4, e5);
-  }
-  update(t4, e5) {
-    return this.render(...e5);
-  }
-};
-
-// node_modules/lit-html/directive-helpers.js
-var { I: t3 } = j;
-var m2 = {};
-var p3 = (o5, t4 = m2) => o5._$AH = t4;
-
-// node_modules/lit-html/directives/keyed.js
-var i6 = e4(class extends i5 {
-  constructor() {
-    super(...arguments), this.key = A;
-  }
-  render(r4, t4) {
-    return this.key = r4, t4;
-  }
-  update(r4, [t4, e5]) {
-    return t4 !== this.key && (p3(r4), this.key = t4), e5;
-  }
-});
-
 // custom_components/sofabaton_x1s/www/src/tabs/wifi-commands-state.ts
 function findRunningWifiDevice(devices, selectedDeviceKey, selectedSyncStatus, selectedDeviceName = "") {
   const runningDevice = devices.find((device) => String(device?.status || "") === "running");
@@ -8093,6 +8329,9 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     this.hubCommandBusyLabel = null;
     this.blockedTitle = null;
     this.blockedMessage = null;
+    this.lastWifiPress = null;
+    this._irFlashClearTimer = null;
+    this._irFlashClearForReceivedAt = null;
     this._commandsData = this._normalizeCommandsForStorage([]);
     this._wifiDevices = [];
     this._selectedDeviceKey = null;
@@ -8196,6 +8435,13 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       if (this._syncState.status !== "running") {
         this._syncState = this._defaultSyncState();
       }
+      const key = this._deviceSessionStorageKey();
+      if (key) {
+        try {
+          window.localStorage?.removeItem(key);
+        } catch {
+        }
+      }
     };
     this._openCreateDeviceModal = () => {
       if (this._hubCommandLocked()) return;
@@ -8269,6 +8515,11 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._clearPollTimer();
+    if (this._irFlashClearTimer) {
+      clearTimeout(this._irFlashClearTimer);
+      this._irFlashClearTimer = null;
+      this._irFlashClearForReceivedAt = null;
+    }
   }
   updated(changed) {
     if (changed.has("hub")) this._deviceSessionRestoreTried = false;
@@ -8356,7 +8607,10 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       message: String(this._syncState.message || TOOLS_CARD_STRINGS.wifiCommands.syncInProgress)
     }) : b2`
                     <div class="command-grid">
-                      ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
+                      ${(() => {
+      const press = this._activeWifiPressFlash();
+      return this._commandsList().map((command, idx) => this._renderSlot(command, idx, press));
+    })()}
                     </div>
                   `}
           </div>
@@ -8371,6 +8625,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   }
   _renderDeviceListView() {
     const canAdd = this._wifiDevices.length < this._maxWifiDevices;
+    const irFlash = this._activeWifiPressFlash();
     return b2`
       <div class="list-scroll">
         <div class="list-header">
@@ -8415,6 +8670,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
                     <ha-icon icon="mdi:trash-can-outline"></ha-icon>
                   </button>
                 </div>
+                ${irFlash && this._pressMatchesDevice(irFlash, device) ? i6(irFlash.receivedAt, b2`<div class="wifi-ir-flash" aria-hidden="true"></div>`) : A}
               </div>
             `)}
           </div>
@@ -8529,9 +8785,10 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       </div>
     `;
   }
-  _renderSlot(command, idx) {
+  _renderSlot(command, idx, irFlash = null) {
     const isConfirming = this._confirmClearSlot === idx;
     const configured = this._isCommandConfigured(command, idx);
+    const flashOverlay = irFlash && this._pressMatchesSlot(irFlash, idx) ? i6(irFlash.receivedAt, b2`<div class="wifi-ir-flash" aria-hidden="true"></div>`) : A;
     if (isConfirming) {
       return b2`
         <div class="slot-btn slot-confirming">
@@ -8543,6 +8800,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       }}>${TOOLS_CARD_STRINGS.wifiCommands.clearSlotNo}</button>
             <button class="dialog-btn dialog-btn-primary" @click=${() => this._clearSlot(idx)}>${TOOLS_CARD_STRINGS.wifiCommands.clearSlotYes}</button>
           </div>
+          ${flashOverlay}
         </div>
       `;
     }
@@ -8553,6 +8811,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
             <div style="font-size:28px;color:var(--secondary-text-color)">+</div>
             <div class="slot-name">${TOOLS_CARD_STRINGS.wifiCommands.makeCommand}</div>
           </div>
+          ${flashOverlay}
         </button>
       `;
     }
@@ -8587,6 +8846,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     }}>
           ${details.commandSummary === TOOLS_CARD_STRINGS.wifiCommands.noActionConfigured ? TOOLS_CARD_STRINGS.wifiCommands.noActionConfigured : `> ${details.service}`}
         </button>
+        ${flashOverlay}
       </div>
     `;
   }
@@ -9933,6 +10193,46 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       this._commandSyncPollTimer = null;
     }
   }
+  /** Active press for the current hub, while still inside the 720ms flash
+   *  window. Returns null otherwise. Side-effect: schedules a single
+   *  setTimeout to drop the overlay once the window closes so the slot
+   *  / device-card DOM stays clean and the next press cleanly remounts
+   *  via the `keyed(receivedAt, ...)` wrapper. */
+  _activeWifiPressFlash() {
+    const press = this.lastWifiPress;
+    if (!press) return null;
+    const entryId = this.hub?.entry_id ?? null;
+    if (!entryId || press.entryId !== entryId) return null;
+    const elapsed = Date.now() - press.receivedAt;
+    if (elapsed < 0 || elapsed >= _SofabatonWifiCommandsTab._IR_FLASH_DURATION_MS) return null;
+    if (this._irFlashClearForReceivedAt !== press.receivedAt) {
+      if (this._irFlashClearTimer) clearTimeout(this._irFlashClearTimer);
+      this._irFlashClearForReceivedAt = press.receivedAt;
+      this._irFlashClearTimer = setTimeout(() => {
+        this._irFlashClearTimer = null;
+        this._irFlashClearForReceivedAt = null;
+        this.requestUpdate();
+      }, _SofabatonWifiCommandsTab._IR_FLASH_DURATION_MS - elapsed + 16);
+    }
+    return press;
+  }
+  /** True when the press belongs to the given hub device id. Used both
+   *  for the device-card glow (list view) and to gate the slot glow
+   *  (detail view), so we never flash a slot on the wrong device. */
+  _pressMatchesDevice(press, device) {
+    if (!device || press.deviceId == null) return false;
+    const deployedId = device.deployed_device_id;
+    if (typeof deployedId !== "number") return false;
+    return deployedId === press.deviceId;
+  }
+  /** True when the press targets the slot at `idx` of the currently
+   *  selected device. Matches by command_index (authoritative — the
+   *  same index the hub uses to dispatch the HTTP callback). */
+  _pressMatchesSlot(press, idx) {
+    if (press.commandIndex == null) return false;
+    if (press.commandIndex !== idx) return false;
+    return this._pressMatchesDevice(press, this._selectedWifiDevice());
+  }
   _hideUiActionTypeSelector(actionSelector) {
     const hideInNode = (node) => {
       if (!node || typeof node.querySelectorAll !== "function") return;
@@ -9968,11 +10268,14 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   }
 };
 _SofabatonWifiCommandsTab._DEVICE_SESSION_KEY_PREFIX = "sofabaton_x1s:wifi_commands:selected_device:";
+// Matches the dock wipe (and the slot/card glow keyframes) at 720ms.
+_SofabatonWifiCommandsTab._IR_FLASH_DURATION_MS = 720;
 _SofabatonWifiCommandsTab.properties = {
   hass: { attribute: false },
   hub: { attribute: false },
   setHubCommandBusy: { attribute: false },
   refreshControlPanelState: { attribute: false },
+  lastWifiPress: { attribute: false },
   hubCommandBusy: { type: Boolean },
   hubCommandBusyLabel: { type: String },
   loading: { type: Boolean },
@@ -10041,9 +10344,35 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .list-header-copy .section-subtitle { margin-top: 0; }
     .list-header-action { grid-column: 2; grid-row: 1; align-self: start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     .device-list { display: grid; gap: 6px; }
-    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); padding: 9px 10px 9px 12px; background: var(--secondary-background-color, var(--ha-card-background)); text-align: left; display: flex; align-items: center; gap: 10px; cursor: pointer; overflow: hidden; box-shadow: none; transition: border-color 120ms ease, background-color 120ms ease; }
+    .device-card { position: relative; width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); padding: 9px 10px 9px 12px; background: var(--secondary-background-color, var(--ha-card-background)); text-align: left; display: flex; align-items: center; gap: 10px; cursor: pointer; overflow: hidden; box-shadow: none; transition: border-color 120ms ease, background-color 120ms ease; }
     .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
     .device-card.pending-delete { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 45%, var(--divider-color)); }
+    /* Wifi command press glow — a soft one-shot primary-color ring on
+       the device card (list view) or the slot tile (detail view) when
+       the matching command is pressed on the physical remote. Same
+       720ms timing as the dock wipe and the same color language, so
+       the three signals read as one feature. */
+    .wifi-ir-flash {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-radius: inherit;
+      box-shadow:
+        inset 0 0 0 2px color-mix(in srgb, var(--primary-color) 75%, transparent),
+        inset 0 0 14px color-mix(in srgb, var(--primary-color) 22%, transparent),
+        0 0 14px color-mix(in srgb, var(--primary-color) 30%, transparent);
+      opacity: 0;
+      animation: wifiIrGlow 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards;
+    }
+    @keyframes wifiIrGlow {
+      0% { opacity: 0; }
+      18% { opacity: 1; }
+      80% { opacity: 0.7; }
+      100% { opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .wifi-ir-flash { animation: none; opacity: 0; }
+    }
     .device-card:hover, .back-btn:hover, .list-action-btn:hover, .detail-sync-btn:hover, .device-delete-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
     .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
     .device-card-lead { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
@@ -10444,13 +10773,15 @@ function logOnce() {
     blue
   );
 }
-var SofabatonControlPanelCard = class extends i4 {
+var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
   constructor() {
     super();
     this._config = {};
     this._hubPickerOpen = false;
     this._toolsMenuOpen = false;
     this._lastRenderedTab = null;
+    this._irFlashClearTimer = null;
+    this._irFlashClearForReceivedAt = null;
     this._pendingCacheScrollSnapshot = null;
     this._boundHandleDocumentPointerDown = (event) => {
       this.handleDocumentPointerDown(event);
@@ -10493,6 +10824,11 @@ var SofabatonControlPanelCard = class extends i4 {
     document.removeEventListener("pointerdown", this._boundHandleDocumentPointerDown, true);
     this._hubPickerOpen = false;
     this._toolsMenuOpen = false;
+    if (this._irFlashClearTimer) {
+      clearTimeout(this._irFlashClearTimer);
+      this._irFlashClearTimer = null;
+      this._irFlashClearForReceivedAt = null;
+    }
   }
   willUpdate() {
     if (this._lastRenderedTab === "cache") {
@@ -10625,6 +10961,7 @@ var SofabatonControlPanelCard = class extends i4 {
     const statusText = runtimeState ? runtimeState.detail || runtimeState.label : null;
     const progressPercent = runtimeState?.kind === "operation_running" ? runtimeState.progress.percent : null;
     const dockClass = runtimeState?.kind === "completion" ? `card-bottom-dock card-bottom-dock--${runtimeState.tone}` : "card-bottom-dock";
+    const irFlash = this._activeIrFlash(hub?.entry_id ?? null);
     return b2`
       <div class=${dockClass}>
         ${runtimeState?.kind === "operation_running" ? b2`
@@ -10634,6 +10971,16 @@ var SofabatonControlPanelCard = class extends i4 {
                 style=${runtimeState.progress.indeterminate || progressPercent == null ? "width: 35%" : `width:${progressPercent}%`}
               ></div>
             ` : null}
+        ${irFlash ? i6(
+      irFlash.receivedAt,
+      b2`
+                <div
+                  class="card-bottom-dock-ir-flash"
+                  title=${this._irFlashTitle(irFlash)}
+                  aria-hidden="true"
+                ></div>
+              `
+    ) : A}
         <div class="card-bottom-dock-center">
           ${runtimeState ? b2`<span class="card-bottom-dock-status">${statusText}</span>` : docLink ? b2`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>` : A}
         </div>
@@ -10642,6 +10989,27 @@ var SofabatonControlPanelCard = class extends i4 {
         </div>
       </div>
     `;
+  }
+  _activeIrFlash(selectedEntryId) {
+    const press = this._snapshot.lastWifiPress;
+    if (!press || !selectedEntryId || press.entryId !== selectedEntryId) return null;
+    const elapsed = Date.now() - press.receivedAt;
+    if (elapsed < 0 || elapsed >= _SofabatonControlPanelCard._IR_FLASH_DURATION_MS) return null;
+    if (this._irFlashClearForReceivedAt !== press.receivedAt) {
+      if (this._irFlashClearTimer) clearTimeout(this._irFlashClearTimer);
+      this._irFlashClearForReceivedAt = press.receivedAt;
+      this._irFlashClearTimer = setTimeout(() => {
+        this._irFlashClearTimer = null;
+        this._irFlashClearForReceivedAt = null;
+        this.requestUpdate();
+      }, _SofabatonControlPanelCard._IR_FLASH_DURATION_MS - elapsed + 16);
+    }
+    return press;
+  }
+  _irFlashTitle(press) {
+    const device = press.deviceName?.trim() || "Wifi device";
+    const command = press.commandLabel?.trim() || "Wifi command";
+    return press.pressType === "long" ? `${device} \u2022 ${command} (long press)` : `${device} \u2022 ${command}`;
   }
   renderBackendUnavailable(height) {
     return b2`
@@ -10754,6 +11122,7 @@ var SofabatonControlPanelCard = class extends i4 {
           .hass=${this._snapshot.hass}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
+          .lastWifiPress=${this._snapshot.lastWifiPress}
           .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-wifi-commands-tab>
@@ -10853,7 +11222,12 @@ var SofabatonControlPanelCard = class extends i4 {
     `;
   }
 };
-SofabatonControlPanelCard.styles = [cardStyles];
+_SofabatonControlPanelCard.styles = [cardStyles];
+// Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
+// drop the overlay nodes so they don't sit in the DOM forever and so
+// the next animation cleanly restarts via Lit's keyed remount.
+_SofabatonControlPanelCard._IR_FLASH_DURATION_MS = 720;
+var SofabatonControlPanelCard = _SofabatonControlPanelCard;
 var SofabatonControlPanelEditor = class extends HTMLElement {
   constructor() {
     super(...arguments);

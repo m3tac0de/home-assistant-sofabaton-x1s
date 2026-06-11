@@ -1501,6 +1501,14 @@ var ControlPanelApi = class {
       ...deviceIds?.length ? { device_ids: deviceIds } : {}
     });
   }
+  stashEditedBackup(entryId, backup, filename) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/backup/stash_edited",
+      entry_id: entryId,
+      backup,
+      filename
+    });
+  }
   startBackupRestore(entryId, backup, mode) {
     return this.hass.callWS({
       type: "sofabaton_x1s/backup/restore",
@@ -1573,6 +1581,15 @@ var ControlPanelApi = class {
     return this.hass.connection.subscribeMessage(
       onMessage,
       { type: "sofabaton_x1s/logs/subscribe", entry_id: entryId }
+    );
+  }
+  subscribeWifiPresses(entryId, onMessage) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error("Wifi press events are unavailable without a websocket connection"));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/wifi_presses/subscribe", entry_id: entryId }
     );
   }
 };
@@ -2564,6 +2581,11 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._editRenameDialogDraft = "";
     this._editRenameDialogError = "";
     this._editRenameDialogTarget = null;
+    // Whether the structured-payload form is expanded inside the
+    // rename dialog. Defaults to collapsed because payload editing is
+    // an advanced use case — most users only want to rename. Reset on
+    // every dialog open / close so each session starts collapsed.
+    this._decodedFormExpanded = false;
     // True when `_editBundle` has user-made changes that have not yet
     // been downloaded. Flipped on by every edit handler (rename, reorder,
     // decoded payload, IP, etc.) and on session restore (those ARE
@@ -2632,6 +2654,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._editRenameDialogTarget = null;
       this._editRenameDialogDecodedDrafts = {};
       this._editRenameDialogDecodedSnapshot = null;
+      this._decodedFormExpanded = false;
     };
     this._openEditFilePicker = () => {
       this.renderRoot.querySelector("#edit-file-input")?.click();
@@ -2750,19 +2773,43 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
       ));
     };
-    this._downloadEditedBundle = () => {
-      if (!this._editBundle) return;
-      const json = JSON.stringify(this._editBundle, null, 2);
-      const blob = new Blob([json], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
+    this._downloadEditedBundle = async () => {
+      if (!this._editBundle || !this.hass || !this.hub) return;
       const base = this._editFilename.replace(/\.json$/i, "") || "sofabaton_backup";
+      const filename = `${base}_edited.json`;
+      let operationId = "";
+      try {
+        const result = await this.api().stashEditedBackup(this.hub.entry_id, this._editBundle, filename);
+        operationId = String(result?.operation_id || "");
+      } catch (error) {
+        this._editError = formatError(error);
+        return;
+      }
+      if (!operationId) {
+        this._editError = "Failed to prepare edited backup for download.";
+        return;
+      }
+      const path = `/api/sofabaton_x1s/backup/download/${encodeURIComponent(operationId)}`;
+      let url = path;
+      try {
+        const signed = await this.hass.callWS({
+          type: "auth/sign_path",
+          path,
+          expires: 600
+        });
+        if (signed?.path) url = signed.path;
+      } catch (error) {
+        console.error("[sofabaton] auth/sign_path failed", error);
+        this._editError = formatError(error);
+        return;
+      }
       const anchor = document.createElement("a");
+      anchor.target = "_blank";
       anchor.href = url;
-      anchor.download = `${base}_edited.json`;
+      anchor.download = filename;
       document.body.appendChild(anchor);
       anchor.dispatchEvent(new MouseEvent("click"));
       document.body.removeChild(anchor);
-      setTimeout(() => URL.revokeObjectURL(url), 0);
       this._clearEditSession();
       this._editBundleDirty = false;
     };
@@ -2837,6 +2884,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       _editRenameDialogTarget: { state: true },
       _editRenameDialogDecodedDrafts: { state: true },
       _editRenameDialogDecodedSnapshot: { state: true },
+      _decodedFormExpanded: { state: true },
       _editBundleDirty: { state: true },
       _haSortableReady: { state: true }
     };
@@ -3231,20 +3279,22 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    /* Match the Wifi Commands tab's detail-view back button so the
+       affordance is identical across the card: padded pill with a
+       bold label-weight, content-sized (not a fixed square). */
     .back-btn {
       border: 1px solid var(--divider-color);
       border-radius: var(--backup-radius-sm);
       background: transparent;
       color: var(--primary-text-color);
       font: inherit;
-      width: 36px;
-      height: 36px;
-      padding: 0;
+      font-weight: 700;
+      padding: 8px 12px;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
+      gap: 8px;
       flex: 0 0 auto;
-      justify-content: center;
     }
     .back-btn:hover {
       border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
@@ -3472,13 +3522,43 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog.medium { width: min(640px, calc(100vw - 36px)); }
-    .decoded-form {
+    /* "Advanced" foldout that wraps the structured-payload form
+       inside the Change Command dialog. Mirrors the Wifi Commands
+       command-config popup so the affordance reads the same way
+       across the card. */
+    .advanced-section {
       display: flex;
       flex-direction: column;
       gap: 10px;
       margin-top: 6px;
       padding-top: 10px;
       border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+    }
+    .advanced-toggle {
+      width: fit-content;
+      border: 0;
+      background: transparent;
+      color: var(--secondary-text-color);
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-align: left;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+    }
+    .advanced-toggle:hover { color: var(--primary-text-color); }
+    .advanced-toggle-copy { display: block; }
+    .advanced-toggle ha-icon { --mdc-icon-size: 18px; transition: transform 120ms ease; }
+    .advanced-toggle.expanded ha-icon { transform: rotate(180deg); }
+    .advanced-panel { display: grid; gap: 14px; padding-top: 2px; }
+    .decoded-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
     }
     .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
     .decoded-form-title {
@@ -4514,7 +4594,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     }}
                   ></ha-input>
                 `}
-            ${decoded ? this._renderDecodedPayloadForm(decoded.className) : A}
+            ${decoded ? this._renderAdvancedPayloadFoldout(decoded.className) : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._editRenameDialogError}</div>
@@ -4524,6 +4604,37 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
             </div>
           </div>
         </div>
+      </div>
+    `;
+  }
+  /**
+   * Mirror the Wifi-Commands "Advanced" foldout: the structured-
+   * payload editor is rarely needed (renames are the common case),
+   * so it sits behind a collapsed toggle. Open / close persists for
+   * the current dialog session; close resets it back to collapsed.
+   */
+  _renderAdvancedPayloadFoldout(className) {
+    const expanded = this._decodedFormExpanded;
+    return T`
+      <div class="advanced-section">
+        <button
+          class="advanced-toggle ${expanded ? "expanded" : ""}"
+          type="button"
+          @click=${() => {
+      this._decodedFormExpanded = !this._decodedFormExpanded;
+    }}
+          aria-expanded=${String(expanded)}
+        >
+          <span class="advanced-toggle-copy">
+            <span>Advanced</span>
+          </span>
+          <ha-icon icon="mdi:chevron-down"></ha-icon>
+        </button>
+        ${expanded ? T`
+          <div class="advanced-panel">
+            ${this._renderDecodedPayloadForm(className)}
+          </div>
+        ` : A}
       </div>
     `;
   }
@@ -4580,7 +4691,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     if (target.kind === "favorite") return "Rename Favorite";
     if (target.kind === "device_ip") return "Edit IP address";
     if (target.kind === "hub_name") return "Rename Hub";
-    return "Rename Command";
+    return "Change Command";
   }
   /** Per-target label & max length used by the dialog's primary text input. */
   _editRenameFieldLabel() {
@@ -4652,6 +4763,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     const decoded = commandDecodedBlock(this._editBundle, deviceId, normalizedCommandId);
     this._editRenameDialogDecodedSnapshot = decoded;
     this._editRenameDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
+    this._decodedFormExpanded = false;
     this._editRenameDialogOpen = true;
   }
   _initialDecodedDrafts(decoded) {

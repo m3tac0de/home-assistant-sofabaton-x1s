@@ -142,6 +142,51 @@ export const cardStyles = [secondaryTabStyles, css`
     0%, 100% { filter: brightness(1); }
     50% { filter: brightness(1.35); }
   }
+  /* Wifi command press wipe — a soft primary-tinted band sweeps left
+     to right across the bottom dock when the user pushes a Wifi
+     Command on their physical remote. No alarm semantics: it borrows
+     the dock's existing primary-color language, the motion is one
+     pass (no pulse), and pointer-events:none keeps the dock
+     interactive while it plays. Keyed on the event timestamp so each
+     fresh press cleanly remounts and restarts the sweep. */
+  .card-bottom-dock-ir-flash {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    overflow: hidden;
+  }
+  .card-bottom-dock-ir-flash::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 38%;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      color-mix(in srgb, var(--primary-color) 22%, transparent) 35%,
+      color-mix(in srgb, var(--primary-color) 38%, transparent) 50%,
+      color-mix(in srgb, var(--primary-color) 22%, transparent) 65%,
+      transparent 100%
+    );
+    box-shadow: 0 0 18px color-mix(in srgb, var(--primary-color) 22%, transparent);
+    transform: translateX(-100%);
+    animation: dockIrWipe 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards;
+  }
+  @keyframes dockIrWipe {
+    0%   { transform: translateX(-100%); opacity: 0; }
+    15%  { opacity: 1; }
+    85%  { opacity: 1; }
+    100% { transform: translateX(280%); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card-bottom-dock-ir-flash::before {
+      animation: none;
+      opacity: 0;
+    }
+  }
   .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; }
   .tab-panel.scrollable, .acc-body, .logs-console { overflow-y: auto; }
   .hub-picker { position: relative; display: flex; flex-direction: column; align-items: flex-start; }

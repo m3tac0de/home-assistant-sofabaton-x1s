@@ -10,6 +10,7 @@ import type {
   SectionId,
   SettingKey,
   TabId,
+  WifiPressEvent,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import {
@@ -137,6 +138,8 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   logsStickToBottom: true,
   logsScrollBehavior: "auto",
   pendingScrollEntityKey: null,
+  lastWifiPress: null,
+  wifiPressSubscribedEntryId: null,
 };
 
 interface ControlPanelStoreOptions {
@@ -162,6 +165,8 @@ export class ControlPanelStore {
   private _backupOpId: string | null = null;
   private _runtimeStatePollTimer: ReturnType<typeof setTimeout> | null = null;
   private _runtimeCompletionTimer: ReturnType<typeof setTimeout> | null = null;
+  private _wifiPressUnsub: (() => void) | null = null;
+  private _wifiPressSubscribeSeq = 0;
   private readonly _loadedFrontendVersion: string;
 
   constructor(
@@ -188,6 +193,7 @@ export class ControlPanelStore {
       this._scheduleBackendRetry();
     }
     void this._syncBackupOperationFeed();
+    void this._syncWifiPressFeed();
     this._scheduleRuntimeStatePoll();
     if (this._snapshot.selectedTab === "logs") {
       void this.syncLogsFeed();
@@ -201,11 +207,13 @@ export class ControlPanelStore {
       externalHubCommandBusy: false,
       externalHubCommandLabel: null,
       runtimeCompletionNotice: null,
+      lastWifiPress: null,
     };
     this._clearRuntimeStatePoll();
     this._clearRuntimeCompletionTimer();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
+    void this._teardownWifiPressFeed();
     void this.unsubscribeLogs();
   }
 
@@ -345,15 +353,18 @@ export class ControlPanelStore {
       externalHubCommandBusy: false,
       externalHubCommandLabel: null,
       runtimeCompletionNotice: null,
+      lastWifiPress: null,
     };
     this._clearRuntimeCompletionTimer();
     this.persistViewState();
     this.emit();
     void (async () => {
       await this._teardownBackupOperationFeed();
+      await this._teardownWifiPressFeed();
       await this.unsubscribeLogs();
       await this.loadControlPanelState();
       await this._syncBackupOperationFeed();
+      await this._syncWifiPressFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
   }
@@ -455,6 +466,7 @@ export class ControlPanelStore {
         this.syncSelection();
         this._clearBackendUnavailable();
         await this._syncBackupOperationFeed();
+        await this._syncWifiPressFeed();
       } catch (error) {
         if (isBackendUnavailableError(error, this._snapshot.hass)) {
           this._markBackendUnavailable();
@@ -480,6 +492,7 @@ export class ControlPanelStore {
       this.syncSelection();
       this._clearBackendUnavailable();
       await this._syncBackupOperationFeed();
+      await this._syncWifiPressFeed();
       this.emit();
     } catch (error) {
       if (isBackendUnavailableError(error, this._snapshot.hass)) {
@@ -913,6 +926,86 @@ export class ControlPanelStore {
     this._backupOpUnsub = null;
     this._backupOpEntryId = null;
     this._backupOpId = null;
+    if (!unsub) return;
+    try {
+      await unsub();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  private async _syncWifiPressFeed() {
+    const hub = selectedHub(this._snapshot);
+    const entryId = String(hub?.entry_id || "").trim() || null;
+
+    if (!this._isConnected || !entryId || !this._snapshot.hass) {
+      await this._teardownWifiPressFeed();
+      return;
+    }
+    if (this._snapshot.wifiPressSubscribedEntryId === entryId && this._wifiPressUnsub) {
+      return;
+    }
+
+    await this._teardownWifiPressFeed();
+    const subscribeSeq = ++this._wifiPressSubscribeSeq;
+    this._snapshot = { ...this._snapshot, wifiPressSubscribedEntryId: entryId };
+
+    try {
+      const unsubscribe = await this.api().subscribeWifiPresses(entryId, (payload) => {
+        if (subscribeSeq !== this._wifiPressSubscribeSeq) return;
+        if (this._snapshot.wifiPressSubscribedEntryId !== entryId) return;
+        this._handleWifiPressMessage(entryId, payload);
+      });
+      if (subscribeSeq !== this._wifiPressSubscribeSeq) {
+        try { unsubscribe(); } catch { /* ignore */ }
+        return;
+      }
+      this._wifiPressUnsub = unsubscribe;
+    } catch {
+      // Wifi-press events are a UX-only enhancement; if the subscription
+      // fails (older backend, transient WS error) we silently degrade
+      // and the dock simply won't pulse — no user-visible error.
+      if (subscribeSeq === this._wifiPressSubscribeSeq) {
+        this._snapshot = { ...this._snapshot, wifiPressSubscribedEntryId: null };
+      }
+    }
+  }
+
+  private _handleWifiPressMessage(entryId: string, payload: unknown) {
+    const message = (payload && typeof payload === "object") ? (payload as Record<string, unknown>) : null;
+    if (!message) return;
+    const timestamp = Number(message.timestamp);
+    if (!Number.isFinite(timestamp)) return;
+    const pressType = message.press_type === "long" ? "long" : "short";
+    const commandIndex =
+      typeof message.command_index === "number" && message.command_index >= 0
+        ? Math.trunc(message.command_index)
+        : null;
+    const event: WifiPressEvent = {
+      entryId,
+      deviceId: typeof message.device_id === "number" ? message.device_id : null,
+      deviceName:
+        typeof message.device_name === "string" && message.device_name.trim()
+          ? String(message.device_name)
+          : null,
+      commandIndex,
+      commandLabel: typeof message.command_label === "string" ? String(message.command_label) : "",
+      pressType,
+      timestamp,
+      // The server timestamp drives identity (so a card reopened mid-pulse
+      // doesn't re-trigger); receivedAt drives the animation epoch so the
+      // dock pulse restarts cleanly on every fresh press, even repeats.
+      receivedAt: Date.now(),
+    };
+    this._snapshot = { ...this._snapshot, lastWifiPress: event };
+    this.emit();
+  }
+
+  private async _teardownWifiPressFeed() {
+    this._wifiPressSubscribeSeq++;
+    const unsub = this._wifiPressUnsub;
+    this._wifiPressUnsub = null;
+    this._snapshot = { ...this._snapshot, wifiPressSubscribedEntryId: null };
     if (!unsub) return;
     try {
       await unsub();

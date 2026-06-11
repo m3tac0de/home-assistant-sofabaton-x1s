@@ -208,16 +208,17 @@ def _detach_capture(hass: HomeAssistant) -> None:
 
 
 def async_disable_hex_logging_capture(hass: HomeAssistant, entry_id: str) -> None:
-    """Stop capturing logs if no entries have hex logging enabled."""
+    """Drop this entry from the hex-capture set.
+
+    Does NOT detach the in-memory handler — that lifetime is now bound to
+    integration setup/teardown so the Logs tab always has a populated
+    history buffer regardless of the hex toggle. The hub-side hex frame
+    emission is gated separately by ``set_diag_dump``.
+    """
 
     domain_data = hass.data.get(DOMAIN, {})
     active_entries: set[str] = domain_data.get("_hex_capture_entries", set())
     active_entries.discard(entry_id)
-
-    if active_entries or int(domain_data.get("_live_log_subscribers", 0)) > 0:
-        return
-
-    _detach_capture(hass)
 
 
 def _sanitize_log_record(payload: dict[str, Any], entry: ConfigEntry) -> dict[str, Any]:
@@ -270,9 +271,10 @@ def async_subscribe_hub_log_lines(
         handler.remove_subscriber(token)
         next_count = max(0, int(domain_data.get("_live_log_subscribers", 0)) - 1)
         domain_data["_live_log_subscribers"] = next_count
-        active_entries: set[str] = domain_data.get("_hex_capture_entries", set())
-        if not active_entries and next_count == 0:
-            _detach_capture(hass)
+        # Handler lifetime is now tied to integration setup/teardown — see
+        # async_setup_diagnostics — so we no longer detach when the last
+        # subscriber drops. Keeps the in-memory buffer warm for the next
+        # Logs-tab open without forcing the user to toggle hex first.
 
     return _unsubscribe
 
@@ -288,13 +290,21 @@ def async_teardown_diagnostics(hass: HomeAssistant) -> None:
 
 
 def async_setup_diagnostics(hass: HomeAssistant) -> None:
-    """Ensure our in-memory log handler is registered once."""
+    """Ensure our in-memory log handler is registered and capturing.
 
-    if hass.data.get(DOMAIN, {}).get("_diag_handler"):
-        return
+    Attaches unconditionally — independent of the hex-logging toggle and
+    of any live Logs-tab subscriber — so the bounded buffer is filling
+    from the moment the integration loads. Otherwise users who never
+    enabled hex would open the Logs tab and see nothing until the next
+    log line happened to fire (on a quiet hub: possibly never).
+    Idempotent: ``_attach_capture`` is safe to call repeatedly.
+    """
 
+    first_time = not hass.data.get(DOMAIN, {}).get("_diag_handler")
     handler = _get_handler(hass)
-    _LOGGER.debug("Diagnostics log handler registered: %s", handler)
+    _attach_capture(hass)
+    if first_time:
+        _LOGGER.debug("Diagnostics log handler registered: %s", handler)
 
 
 def _sanitize_log_lines(lines: Iterable[str], entry: ConfigEntry) -> list[str]:

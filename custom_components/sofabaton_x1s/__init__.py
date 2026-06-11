@@ -21,6 +21,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, cal
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
@@ -38,6 +39,7 @@ from .const import (
     CONF_ROKU_LISTEN_PORT,
     DEFAULT_ROKU_LISTEN_PORT,
     format_hub_entry_title,
+    signal_ip_commands,
     HVER_BY_HUB_VERSION,
     HUB_VERSION_BY_HVER,
 )
@@ -339,7 +341,8 @@ class SofabatonBackupDownloadView(HomeAssistantView):
             _LOGGER.warning("[%s] backup download: unknown operation_id=%s", DOMAIN, operation_id)
             return web.Response(status=404, text="unknown operation")
         state = operation.get("state") or {}
-        if str(state.get("kind") or "") != "backup_export":
+        kind = str(state.get("kind") or "")
+        if kind not in {"backup_export", "backup_edited"}:
             return web.Response(status=404, text="not a backup")
         if str(state.get("status") or "") != "success":
             return web.Response(status=404, text="backup not ready")
@@ -353,7 +356,8 @@ class SofabatonBackupDownloadView(HomeAssistantView):
         # Flag the bundle as downloaded for the UI's "✓ Downloaded"
         # indicator. Does NOT shorten the retention timer — the user can
         # re-download for the full original 300s window if their first
-        # save-as didn't land.
+        # save-as didn't land. Only meaningful for backup_export ops; the
+        # Edit screen doesn't subscribe to a stashed-edited op's progress.
         registry.flag_backup_downloaded(operation_id)
         return web.Response(
             body=body,
@@ -1642,6 +1646,46 @@ async def _ws_backup_restore(hass: HomeAssistant, connection, msg: dict[str, Any
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/backup/stash_edited",
+        vol.Required("entry_id"): str,
+        vol.Required("backup"): dict,
+        vol.Required("filename"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_backup_stash_edited(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # The Edit screen mutates the bundle entirely in-browser. To hand
+    # the JSON to the user through the same authenticated download path
+    # the Make screen uses (so HA mobile WebView delegates can intercept
+    # Content-Disposition and surface a native save dialog), the
+    # frontend stashes the edited bundle here. Parked in the operation
+    # registry under a dedicated backup_edited kind — same 300s TTL as
+    # backup_export, served by the same view — and the returned
+    # operation_id is immediately consumed by
+    # /api/sofabaton_x1s/backup/download/{op_id}.
+    payload = msg.get("backup")
+    if not isinstance(payload, dict):
+        connection.send_error(msg["id"], "invalid_payload", "backup must be an object")
+        return
+    filename = str(msg.get("filename") or "").strip() or "sofabaton_backup_edited.json"
+    registry = _backup_operation_registry(hass)
+    operation_id = registry.create(
+        kind="backup_edited",
+        entry_id=str(msg["entry_id"]),
+        initial_state={},
+    )
+    registry.update(
+        operation_id,
+        status="success",
+        phase="complete",
+        filename=filename,
+        backup=payload,
+    )
+    connection.send_result(msg["id"], {"operation_id": operation_id})
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/backup/progress_subscribe",
         vol.Required("operation_id"): str,
     }
@@ -1770,6 +1814,74 @@ async def _ws_subscribe_hub_logs(
         connection.send_message(websocket_api.event_message(msg["id"], payload))
 
     connection.subscriptions[msg["id"]] = async_subscribe_hub_log_lines(hass, entry, _forward)
+    connection.send_result(msg["id"])
+
+
+def _build_wifi_press_event(record: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Project a hub IP-command record into the small payload pushed to the card.
+
+    The card only needs the bits required to label and dedupe a press;
+    we deliberately drop the HTTP envelope (headers, body, source_ip,
+    raw path) so the WS frame stays tiny and we don't leak request
+    internals through the control-panel surface.
+    """
+
+    if not isinstance(record, dict):
+        return None
+    timestamp = record.get("timestamp")
+    if not isinstance(timestamp, (int, float)):
+        return None
+    raw_command_index = record.get("command_index")
+    command_index = (
+        int(raw_command_index)
+        if isinstance(raw_command_index, int) and raw_command_index >= 0
+        else None
+    )
+    return {
+        "device_id": record.get("entity_id"),
+        "device_name": record.get("entity_name"),
+        "command_index": command_index,
+        "command_label": record.get("command_label") or record.get("button_label") or "",
+        "press_type": record.get("press_type") or "short",
+        "timestamp": float(timestamp),
+    }
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/wifi_presses/subscribe",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_subscribe_wifi_presses(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Forward physical-remote Wifi Command presses to a subscribed card.
+
+    Mirrors the lifecycle of the logs subscription: one subscription per
+    hub, fan-out via the existing ``signal_ip_commands`` dispatcher so
+    we don't duplicate the press-tracking state the
+    :class:`SofabatonIpCommandsSensor` already owns. The card uses the
+    event purely to drive a transient bottom-dock pulse; the
+    automation-facing sensor is still the source of truth for state.
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    @callback
+    def _forward() -> None:
+        payload = _build_wifi_press_event(hub.get_last_ip_command())
+        if payload is None:
+            return
+        connection.send_message(websocket_api.event_message(msg["id"], payload))
+
+    connection.subscriptions[msg["id"]] = async_dispatcher_connect(
+        hass, signal_ip_commands(hub.entry_id), _forward
+    )
     connection.send_result(msg["id"])
 
 
@@ -1929,11 +2041,13 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_persist_ir_blob)
     websocket_api.async_register_command(hass, _ws_backup_export)
     websocket_api.async_register_command(hass, _ws_backup_restore)
+    websocket_api.async_register_command(hass, _ws_backup_stash_edited)
     websocket_api.async_register_command(hass, _ws_backup_progress_subscribe)
     websocket_api.async_register_command(hass, _ws_backup_state)
     websocket_api.async_register_command(hass, _ws_backup_clear_result)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
+    websocket_api.async_register_command(hass, _ws_subscribe_wifi_presses)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache)
     websocket_api.async_register_command(hass, _ws_set_persistent_cache)
     websocket_api.async_register_command(hass, _ws_refresh_persistent_cache_entry)

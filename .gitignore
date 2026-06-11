@@ -23,3 +23,5 @@ node_modules/
 playwright-report/
 test-results/
 artifacts/
+docs/internal/
+pytest.cmd

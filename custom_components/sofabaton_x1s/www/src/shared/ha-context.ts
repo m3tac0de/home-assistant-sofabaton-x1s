@@ -293,6 +293,17 @@ export interface RuntimeCompletionNotice {
   label: string;
 }
 
+export interface WifiPressEvent {
+  entryId: string;
+  deviceId: number | null;
+  deviceName: string | null;
+  commandIndex: number | null;
+  commandLabel: string;
+  pressType: "short" | "long";
+  timestamp: number;
+  receivedAt: number;
+}
+
 export interface ControlPanelSnapshot {
   hass: HassLike | null;
   state: ControlPanelStateResponse | null;
@@ -325,4 +336,6 @@ export interface ControlPanelSnapshot {
   logsStickToBottom: boolean;
   logsScrollBehavior: ScrollBehavior;
   pendingScrollEntityKey: string | null;
+  lastWifiPress: WifiPressEvent | null;
+  wifiPressSubscribedEntryId: string | null;
 }

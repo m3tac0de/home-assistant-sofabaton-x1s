@@ -2,7 +2,7 @@
 import { keyed } from "lit/directives/keyed.js";
 import { renderSecondaryTabShell, renderSecondaryViewBody, secondaryTabStyles } from "../components/secondary-tab";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
-import type { ControlPanelHubState, HassLike } from "../shared/ha-context";
+import type { ControlPanelHubState, HassLike, WifiPressEvent } from "../shared/ha-context";
 import { entityForHub, proxyClientConnected, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
 import {
   findRunningWifiDevice,
@@ -164,11 +164,15 @@ interface WifiDeviceSummary extends SyncState {
 class SofabatonWifiCommandsTab extends LitElement {
   private static readonly _DEVICE_SESSION_KEY_PREFIX = "sofabaton_x1s:wifi_commands:selected_device:";
 
+  // Matches the dock wipe (and the slot/card glow keyframes) at 720ms.
+  private static readonly _IR_FLASH_DURATION_MS = 720;
+
   static properties = {
     hass: { attribute: false },
     hub: { attribute: false },
     setHubCommandBusy: { attribute: false },
     refreshControlPanelState: { attribute: false },
+    lastWifiPress: { attribute: false },
     hubCommandBusy: { type: Boolean },
     hubCommandBusyLabel: { type: String },
     loading: { type: Boolean },
@@ -238,9 +242,35 @@ class SofabatonWifiCommandsTab extends LitElement {
     .list-header-copy .section-subtitle { margin-top: 0; }
     .list-header-action { grid-column: 2; grid-row: 1; align-self: start; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
     .device-list { display: grid; gap: 6px; }
-    .device-card { width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); padding: 9px 10px 9px 12px; background: var(--secondary-background-color, var(--ha-card-background)); text-align: left; display: flex; align-items: center; gap: 10px; cursor: pointer; overflow: hidden; box-shadow: none; transition: border-color 120ms ease, background-color 120ms ease; }
+    .device-card { position: relative; width: 100%; max-width: 100%; box-sizing: border-box; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); padding: 9px 10px 9px 12px; background: var(--secondary-background-color, var(--ha-card-background)); text-align: left; display: flex; align-items: center; gap: 10px; cursor: pointer; overflow: hidden; box-shadow: none; transition: border-color 120ms ease, background-color 120ms ease; }
     .device-card[aria-disabled="true"] { cursor: default; opacity: 0.72; }
     .device-card.pending-delete { border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 45%, var(--divider-color)); }
+    /* Wifi command press glow — a soft one-shot primary-color ring on
+       the device card (list view) or the slot tile (detail view) when
+       the matching command is pressed on the physical remote. Same
+       720ms timing as the dock wipe and the same color language, so
+       the three signals read as one feature. */
+    .wifi-ir-flash {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      border-radius: inherit;
+      box-shadow:
+        inset 0 0 0 2px color-mix(in srgb, var(--primary-color) 75%, transparent),
+        inset 0 0 14px color-mix(in srgb, var(--primary-color) 22%, transparent),
+        0 0 14px color-mix(in srgb, var(--primary-color) 30%, transparent);
+      opacity: 0;
+      animation: wifiIrGlow 720ms cubic-bezier(0.22, 0.61, 0.36, 1) 1 forwards;
+    }
+    @keyframes wifiIrGlow {
+      0% { opacity: 0; }
+      18% { opacity: 1; }
+      80% { opacity: 0.7; }
+      100% { opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .wifi-ir-flash { animation: none; opacity: 0; }
+    }
     .device-card:hover, .back-btn:hover, .list-action-btn:hover, .detail-sync-btn:hover, .device-delete-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
     .device-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 10px; }
     .device-card-lead { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
@@ -602,6 +632,9 @@ class SofabatonWifiCommandsTab extends LitElement {
   declare error: string | null;
   blockedTitle: string | null = null;
   blockedMessage: string | null = null;
+  lastWifiPress: WifiPressEvent | null = null;
+  private _irFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
+  private _irFlashClearForReceivedAt: number | null = null;
 
   private _commandsData: WifiCommandSlot[] = this._normalizeCommandsForStorage([]);
   private _wifiDevices: WifiDeviceSummary[] = [];
@@ -641,6 +674,11 @@ class SofabatonWifiCommandsTab extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this._clearPollTimer();
+    if (this._irFlashClearTimer) {
+      clearTimeout(this._irFlashClearTimer);
+      this._irFlashClearTimer = null;
+      this._irFlashClearForReceivedAt = null;
+    }
   }
 
   protected updated(changed: Map<string, unknown>) {
@@ -744,7 +782,10 @@ class SofabatonWifiCommandsTab extends LitElement {
                   })
                 : html`
                     <div class="command-grid">
-                      ${this._commandsList().map((command, idx) => this._renderSlot(command, idx))}
+                      ${(() => {
+                        const press = this._activeWifiPressFlash();
+                        return this._commandsList().map((command, idx) => this._renderSlot(command, idx, press));
+                      })()}
                     </div>
                   `}
           </div>
@@ -760,6 +801,7 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _renderDeviceListView() {
     const canAdd = this._wifiDevices.length < this._maxWifiDevices;
+    const irFlash = this._activeWifiPressFlash();
     return html`
       <div class="list-scroll">
         <div class="list-header">
@@ -799,6 +841,9 @@ class SofabatonWifiCommandsTab extends LitElement {
                     <ha-icon icon="mdi:trash-can-outline"></ha-icon>
                   </button>
                 </div>
+                ${irFlash && this._pressMatchesDevice(irFlash, device)
+                  ? keyed(irFlash.receivedAt, html`<div class="wifi-ir-flash" aria-hidden="true"></div>`)
+                  : nothing}
               </div>
             `)}
           </div>
@@ -908,9 +953,12 @@ class SofabatonWifiCommandsTab extends LitElement {
     `;
   }
 
-  private _renderSlot(command: WifiCommandSlot, idx: number) {
+  private _renderSlot(command: WifiCommandSlot, idx: number, irFlash: WifiPressEvent | null = null) {
     const isConfirming = this._confirmClearSlot === idx;
     const configured = this._isCommandConfigured(command, idx);
+    const flashOverlay = irFlash && this._pressMatchesSlot(irFlash, idx)
+      ? keyed(irFlash.receivedAt, html`<div class="wifi-ir-flash" aria-hidden="true"></div>`)
+      : nothing;
     if (isConfirming) {
       return html`
         <div class="slot-btn slot-confirming">
@@ -920,6 +968,7 @@ class SofabatonWifiCommandsTab extends LitElement {
             <button class="dialog-btn" @click=${() => { this._confirmClearSlot = null; }}>${TOOLS_CARD_STRINGS.wifiCommands.clearSlotNo}</button>
             <button class="dialog-btn dialog-btn-primary" @click=${() => this._clearSlot(idx)}>${TOOLS_CARD_STRINGS.wifiCommands.clearSlotYes}</button>
           </div>
+          ${flashOverlay}
         </div>
       `;
     }
@@ -931,6 +980,7 @@ class SofabatonWifiCommandsTab extends LitElement {
             <div style="font-size:28px;color:var(--secondary-text-color)">+</div>
             <div class="slot-name">${TOOLS_CARD_STRINGS.wifiCommands.makeCommand}</div>
           </div>
+          ${flashOverlay}
         </button>
       `;
     }
@@ -969,6 +1019,7 @@ class SofabatonWifiCommandsTab extends LitElement {
         <button class="slot-action-btn" @click=${(event: Event) => { event.stopPropagation(); this._openCommandActionEditor(idx); }}>
           ${details.commandSummary === TOOLS_CARD_STRINGS.wifiCommands.noActionConfigured ? TOOLS_CARD_STRINGS.wifiCommands.noActionConfigured : `> ${details.service}`}
         </button>
+        ${flashOverlay}
       </div>
     `;
   }
@@ -2430,6 +2481,21 @@ class SofabatonWifiCommandsTab extends LitElement {
     if (this._syncState.status !== "running") {
       this._syncState = this._defaultSyncState();
     }
+    // Clear the stored selection unconditionally. We can't rely on the
+    // `updated()` persist hook for this — when the back-click update
+    // happens to coincide with a parent re-render that sends a new hub
+    // reference (common, since `hub` is rebuilt from a snapshot),
+    // `_deviceSessionRestoreTried` is reset to false in the same cycle
+    // and the persist guard skips the removeItem. Next remount would
+    // then restore the stale detail view.
+    const key = this._deviceSessionStorageKey();
+    if (key) {
+      try {
+        window.localStorage?.removeItem(key);
+      } catch {
+        // Ignore localStorage failures.
+      }
+    }
   };
 
   private _openCreateDeviceModal = () => {
@@ -2636,6 +2702,52 @@ class SofabatonWifiCommandsTab extends LitElement {
   private _submitHubVersionModal = async () => {
     this._hubVersionModalOpen = false;
   };
+
+  /** Active press for the current hub, while still inside the 720ms flash
+   *  window. Returns null otherwise. Side-effect: schedules a single
+   *  setTimeout to drop the overlay once the window closes so the slot
+   *  / device-card DOM stays clean and the next press cleanly remounts
+   *  via the `keyed(receivedAt, ...)` wrapper. */
+  private _activeWifiPressFlash(): WifiPressEvent | null {
+    const press = this.lastWifiPress;
+    if (!press) return null;
+    const entryId = this.hub?.entry_id ?? null;
+    if (!entryId || press.entryId !== entryId) return null;
+    const elapsed = Date.now() - press.receivedAt;
+    if (elapsed < 0 || elapsed >= SofabatonWifiCommandsTab._IR_FLASH_DURATION_MS) return null;
+    if (this._irFlashClearForReceivedAt !== press.receivedAt) {
+      if (this._irFlashClearTimer) clearTimeout(this._irFlashClearTimer);
+      this._irFlashClearForReceivedAt = press.receivedAt;
+      this._irFlashClearTimer = setTimeout(() => {
+        this._irFlashClearTimer = null;
+        this._irFlashClearForReceivedAt = null;
+        this.requestUpdate();
+      }, SofabatonWifiCommandsTab._IR_FLASH_DURATION_MS - elapsed + 16);
+    }
+    return press;
+  }
+
+  /** True when the press belongs to the given hub device id. Used both
+   *  for the device-card glow (list view) and to gate the slot glow
+   *  (detail view), so we never flash a slot on the wrong device. */
+  private _pressMatchesDevice(
+    press: WifiPressEvent,
+    device: WifiDeviceSummary | null | undefined,
+  ): boolean {
+    if (!device || press.deviceId == null) return false;
+    const deployedId = device.deployed_device_id;
+    if (typeof deployedId !== "number") return false;
+    return deployedId === press.deviceId;
+  }
+
+  /** True when the press targets the slot at `idx` of the currently
+   *  selected device. Matches by command_index (authoritative — the
+   *  same index the hub uses to dispatch the HTTP callback). */
+  private _pressMatchesSlot(press: WifiPressEvent, idx: number): boolean {
+    if (press.commandIndex == null) return false;
+    if (press.commandIndex !== idx) return false;
+    return this._pressMatchesDevice(press, this._selectedWifiDevice());
+  }
 
   private _hideUiActionTypeSelector(actionSelector: HTMLElement) {
     const hideInNode = (node: ParentNode | null | undefined) => {

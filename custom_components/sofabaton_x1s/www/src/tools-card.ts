@@ -1,4 +1,5 @@
 import { LitElement, html, nothing } from "lit";
+import { keyed } from "lit/directives/keyed.js";
 import { cardStyles } from "./shared/styles/card-styles";
 import type { BackupSectionId, BlobsSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
 import { ControlPanelStore } from "./state/control-panel-store";
@@ -82,12 +83,19 @@ function logOnce() {
 class SofabatonControlPanelCard extends LitElement {
   static styles = [cardStyles];
 
+  // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
+  // drop the overlay nodes so they don't sit in the DOM forever and so
+  // the next animation cleanly restarts via Lit's keyed remount.
+  private static readonly _IR_FLASH_DURATION_MS = 720;
+
   private _config: Record<string, unknown> = {};
   private _snapshot;
   private readonly _store;
   private _hubPickerOpen = false;
   private _toolsMenuOpen = false;
   private _lastRenderedTab: TabId | null = null;
+  private _irFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
+  private _irFlashClearForReceivedAt: number | null = null;
   private _pendingCacheScrollSnapshot: {
     section: string | null;
     sectionTop: number;
@@ -144,6 +152,11 @@ class SofabatonControlPanelCard extends LitElement {
     document.removeEventListener("pointerdown", this._boundHandleDocumentPointerDown, true);
     this._hubPickerOpen = false;
     this._toolsMenuOpen = false;
+    if (this._irFlashClearTimer) {
+      clearTimeout(this._irFlashClearTimer);
+      this._irFlashClearTimer = null;
+      this._irFlashClearForReceivedAt = null;
+    }
   }
 
   protected willUpdate() {
@@ -305,6 +318,7 @@ class SofabatonControlPanelCard extends LitElement {
     const dockClass = runtimeState?.kind === "completion"
       ? `card-bottom-dock card-bottom-dock--${runtimeState.tone}`
       : "card-bottom-dock";
+    const irFlash = this._activeIrFlash(hub?.entry_id ?? null);
 
     return html`
       <div class=${dockClass}>
@@ -317,6 +331,18 @@ class SofabatonControlPanelCard extends LitElement {
               ></div>
             `
           : null}
+        ${irFlash
+          ? keyed(
+              irFlash.receivedAt,
+              html`
+                <div
+                  class="card-bottom-dock-ir-flash"
+                  title=${this._irFlashTitle(irFlash)}
+                  aria-hidden="true"
+                ></div>
+              `,
+            )
+          : nothing}
         <div class="card-bottom-dock-center">
           ${runtimeState
             ? html`<span class="card-bottom-dock-status">${statusText}</span>`
@@ -329,6 +355,29 @@ class SofabatonControlPanelCard extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  private _activeIrFlash(selectedEntryId: string | null) {
+    const press = this._snapshot.lastWifiPress;
+    if (!press || !selectedEntryId || press.entryId !== selectedEntryId) return null;
+    const elapsed = Date.now() - press.receivedAt;
+    if (elapsed < 0 || elapsed >= SofabatonControlPanelCard._IR_FLASH_DURATION_MS) return null;
+    if (this._irFlashClearForReceivedAt !== press.receivedAt) {
+      if (this._irFlashClearTimer) clearTimeout(this._irFlashClearTimer);
+      this._irFlashClearForReceivedAt = press.receivedAt;
+      this._irFlashClearTimer = setTimeout(() => {
+        this._irFlashClearTimer = null;
+        this._irFlashClearForReceivedAt = null;
+        this.requestUpdate();
+      }, SofabatonControlPanelCard._IR_FLASH_DURATION_MS - elapsed + 16);
+    }
+    return press;
+  }
+
+  private _irFlashTitle(press: NonNullable<ReturnType<typeof this._activeIrFlash>>) {
+    const device = press.deviceName?.trim() || "Wifi device";
+    const command = press.commandLabel?.trim() || "Wifi command";
+    return press.pressType === "long" ? `${device} • ${command} (long press)` : `${device} • ${command}`;
   }
 
   private renderBackendUnavailable(height: number) {
@@ -452,6 +501,7 @@ class SofabatonControlPanelCard extends LitElement {
           .hass=${this._snapshot.hass}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
+          .lastWifiPress=${this._snapshot.lastWifiPress}
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-wifi-commands-tab>

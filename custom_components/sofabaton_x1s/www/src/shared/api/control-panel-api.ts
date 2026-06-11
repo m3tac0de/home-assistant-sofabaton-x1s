@@ -83,6 +83,15 @@ export class ControlPanelApi {
     });
   }
 
+  stashEditedBackup(entryId: string, backup: BackupBundlePayload, filename: string) {
+    return this.hass.callWS<{ operation_id: string }>({
+      type: "sofabaton_x1s/backup/stash_edited",
+      entry_id: entryId,
+      backup,
+      filename,
+    });
+  }
+
   startBackupRestore(entryId: string, backup: BackupBundlePayload, mode: "replace" | "merge") {
     return this.hass.callWS<BackupOperationStartResponse>({
       type: "sofabaton_x1s/backup/restore",
@@ -173,6 +182,16 @@ export class ControlPanelApi {
     return this.hass.connection.subscribeMessage(
       onMessage,
       { type: "sofabaton_x1s/logs/subscribe", entry_id: entryId },
+    );
+  }
+
+  subscribeWifiPresses(entryId: string, onMessage: (payload: unknown) => void) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error("Wifi press events are unavailable without a websocket connection"));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/wifi_presses/subscribe", entry_id: entryId },
     );
   }
 }

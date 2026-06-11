@@ -3128,6 +3128,7 @@ class SofabatonHub:
             "entity_kind": "device",
             "entity_name": resolved_device_name,
             "command_id": command_label,
+            "command_index": command_index,
             "command_label": command_label,
             "button_label": command_label,
             "press_type": press_type,
