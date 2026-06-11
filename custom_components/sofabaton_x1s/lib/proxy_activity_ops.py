@@ -18,6 +18,7 @@ import time
 from typing import Any
 
 from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from ..logging_utils import LogTag
 from .device_create import build_button_binding_step, synthesize_command_code
 from .protocol_const import (
     BUTTONNAME_BY_CODE,
@@ -319,7 +320,7 @@ class ActivityOpsMixin:
                 len(page_payloads),
             )
             if self.diag_dump:
-                self._log.info("[ACTIVITY_ASSIGN] save macro payload %s", updated_payload.hex(" "))
+                self._log.info("[ACTIVITY_ASSIGN] save macro payload (%dB)", len(updated_payload))
 
             macro_ack = self._send_paged_macro_save(
                 payload=updated_payload,
@@ -716,8 +717,9 @@ class ActivityOpsMixin:
                 fav_id
                 for fav_id, _slot in sorted(existing_order, key=lambda x: x[1])
             ]
-            log.info(
-                "[WIFI][STEP] favorite-map[act=0x%02X] x1 pre-existing order: %s",
+            self._log.info(
+                "%s[STEP] favorite-map[act=0x%02X] x1 pre-existing order: %s",
+                LogTag.ACTIVITY,
                 act_lo,
                 x1_existing_fav_ids,
             )
@@ -733,8 +735,9 @@ class ActivityOpsMixin:
         )
         map_ack: tuple[int, bytes] | None = None
         for attempt in range(1, 3):  # retries=1 → 2 attempts total
-            log.info(
-                "[WIFI][STEP] %s tx family=0x3E expect_ack=0x013E attempt=%d/2",
+            self._log.info(
+                "%s[STEP] %s tx family=0x3E expect_ack=0x013E attempt=%d/2",
+                LogTag.ACTIVITY,
                 map_step,
                 attempt,
             )
@@ -746,13 +749,13 @@ class ActivityOpsMixin:
                 not_before=send_ts,
             )
             if map_ack is not None:
-                log.info("[WIFI][STEP] %s acked via 0x%04X", map_step, map_ack[0])
+                self._log.info("%s[STEP] %s acked via 0x%04X", LogTag.ACTIVITY, map_step, map_ack[0])
                 break
             if attempt < 2:
-                log.warning("[WIFI][STEP] %s retrying after ack timeout", map_step)
+                self._log.warning("%s[STEP] %s retrying after ack timeout", LogTag.ACTIVITY, map_step)
                 time.sleep(0.15)
         if map_ack is None:
-            log.warning("[WIFI][STEP] %s failed waiting ack=0x013E", map_step)
+            self._log.warning("%s[STEP] %s failed waiting ack=0x013E", LogTag.ACTIVITY, map_step)
             return None
 
         # The 0x013E ACK payload's first byte is the hub-assigned fav_id.
@@ -891,7 +894,7 @@ class ActivityOpsMixin:
                 cmd_lo,
             )
         if self.diag_dump:
-            self._log.info("[KEYMAP_WRITE] 193E payload %s", payload.hex(" "))
+            self._log.info("[KEYMAP_WRITE] 193E payload (%dB)", len(payload))
 
         self.reset_ack_queues()
 

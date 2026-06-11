@@ -5,6 +5,7 @@ import type {
   ControlPanelLogLine,
   ControlPanelSnapshot,
   HassLike,
+  TabId,
 } from "../ha-context";
 
 const BUTTON_NAMES: Record<number, string> = {
@@ -223,6 +224,161 @@ export function hubConnected(hass: HassLike | null, hub: ControlPanelHubState | 
 
 export function canRunHubActions(hass: HassLike | null, hub: ControlPanelHubState | null) {
   return remoteAvailableForHub(hass, hub);
+}
+
+export type CardGateState =
+  | { kind: "version_mismatch" }
+  | { kind: "backend_unavailable" }
+  | { kind: "hub_unavailable" }
+  | { kind: "pass" };
+
+export type RuntimeState =
+  | {
+      kind: "app_connected";
+      label: string;
+      detail?: string | null;
+    }
+  | {
+      kind: "operation_running";
+      operation: "backup_export" | "backup_restore" | "wifi_deploy";
+      label: string;
+      detail: string;
+      progress: {
+        current: number | null;
+        total: number | null;
+        percent: number | null;
+        indeterminate: boolean;
+      };
+    }
+  | {
+      kind: "completion";
+      tone: "success" | "error";
+      label: string;
+      detail?: string | null;
+    }
+  | {
+      kind: "notice";
+      label: string;
+      detail?: string | null;
+    };
+
+export type TabAvailabilityState =
+  | { kind: "available" }
+  | { kind: "blocked"; title: string; message: string };
+
+export function resolveCardGateState(snapshot: ControlPanelSnapshot): CardGateState {
+  if (snapshot.toolsFrontendVersionMismatch) return { kind: "version_mismatch" };
+  if (snapshot.backendUnavailable) return { kind: "backend_unavailable" };
+  const hub = selectedHub(snapshot);
+  if (hub && !hubConnected(snapshot.hass, hub)) return { kind: "hub_unavailable" };
+  return { kind: "pass" };
+}
+
+export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeState | null {
+  const hub = selectedHub(snapshot);
+  if (snapshot.runtimeCompletionNotice) {
+    return {
+      kind: "completion",
+      tone: snapshot.runtimeCompletionNotice.tone,
+      label: snapshot.runtimeCompletionNotice.label,
+      detail: null,
+    };
+  }
+
+  const hubRuntime = hub?.runtime_state;
+  if (hubRuntime?.kind === "operation_running") {
+    const total = Number(hubRuntime.total_steps || 0);
+    const current = Number(hubRuntime.current_step || 0);
+    const percent = total > 0
+      ? Math.max(0, Math.min(100, Math.round((Math.max(0, current) / total) * 100)))
+      : null;
+    return {
+      kind: "operation_running",
+      operation: hubRuntime.operation === "backup_restore"
+        ? "backup_restore"
+        : hubRuntime.operation === "backup_export"
+          ? "backup_export"
+          : "wifi_deploy",
+      label: String(hubRuntime.label || "Operation running"),
+      detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
+      progress: {
+        current: Number.isFinite(current) ? current : null,
+        total: Number.isFinite(total) && total > 0 ? total : null,
+        percent,
+        indeterminate: !total || total <= 0,
+      },
+    };
+  }
+  if (hubRuntime?.kind === "app_connected") {
+    return {
+      kind: "app_connected",
+      label: String(hubRuntime.label || "Only Logs is available while the Sofabaton app is connected."),
+      detail: String(hubRuntime.detail || ""),
+    };
+  }
+
+  if (hub && proxyClientConnected(snapshot.hass, hub)) {
+    return {
+      kind: "app_connected",
+      label: "Only Logs is available while the Sofabaton app is connected.",
+      detail: null,
+    };
+  }
+
+  if (snapshot.externalHubCommandBusy) {
+    return {
+      kind: "notice",
+      label: String(snapshot.externalHubCommandLabel || "Hub command in progress..."),
+      detail: null,
+    };
+  }
+
+  if (snapshot.refreshBusy) {
+    return {
+      kind: "notice",
+      label: "Refreshing cache...",
+      detail: null,
+    };
+  }
+
+  return null;
+}
+
+export function resolveTabAvailability(snapshot: ControlPanelSnapshot, tabId: TabId): TabAvailabilityState {
+  const gateState = resolveCardGateState(snapshot);
+  if (gateState.kind !== "pass") {
+    return {
+      kind: "blocked",
+      title: gateState.kind === "hub_unavailable" ? "Hub unavailable" : "Unavailable",
+      message:
+        gateState.kind === "version_mismatch"
+          ? "Refresh the dashboard to load the updated Sofabaton Control Panel card."
+          : gateState.kind === "backend_unavailable"
+            ? "Waiting for the Sofabaton X1S integration to finish starting."
+            : "This hub is not connected, so the control panel is unavailable until the hub reconnects.",
+    };
+  }
+
+  if (tabId === "logs" || tabId === "settings" || tabId === "cache") {
+    return { kind: "available" };
+  }
+
+  const hub = selectedHub(snapshot);
+  if (hub && proxyClientConnected(snapshot.hass, hub)) {
+    const title = tabId === "wifi_commands"
+      ? "Wifi Commands unavailable"
+      : tabId === "backup"
+        ? "Backup unavailable"
+        : "Blobs unavailable";
+    const message = tabId === "wifi_commands"
+      ? "Wifi Commands cannot be used while the Sofabaton app is connected to the hub through the proxy."
+      : tabId === "backup"
+        ? "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy."
+        : "Blobs cannot be used while the Sofabaton app is connected to the hub through the proxy.";
+    return { kind: "blocked", title, message };
+  }
+
+  return { kind: "available" };
 }
 
 export function cacheGenerationSnapshot(hass: HassLike | null) {

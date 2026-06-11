@@ -42,6 +42,7 @@ from .device_create import (
     run_device_create,
     synthesize_command_code,
 )
+from .blob_decoders import encode_decoded_blob, try_decode_blob
 from .devices import device_config_from_backup
 from .inputs import ControlKeyBlock, FavoriteSlot, InputEntry, build_inputs_write
 from .protocol_const import (
@@ -121,6 +122,50 @@ class RestoreMixin:
     def _command_restore_data(command_row: dict[str, Any]) -> dict[str, Any] | None:
         restore_data = command_row.get("restore_data")
         return dict(restore_data) if isinstance(restore_data, dict) else None
+
+    @staticmethod
+    def _edited_command_data_hex(
+        restore_data: dict[str, Any],
+        command_id: int,
+    ) -> str | None:
+        # When a backup row carries ``decoded.edited = true`` the user has
+        # hand-modified the structured payload; re-encode from ``decoded``
+        # and verify the encoder is round-trip-stable before letting those
+        # bytes near the hub. Returns the new hex string, or ``None`` if
+        # the row is a pristine capture (the common case). Raises
+        # ``ValueError`` on any encode / round-trip failure so a silent
+        # fallback to the stale ``data_hex`` cannot mask a dropped edit.
+        #
+        # Round-trip verification keys off ``decoded["class"]`` — the
+        # decoded block is self-describing, and the outer device-level
+        # ``device_class`` is not guaranteed to be present in
+        # hand-edited bundles.
+        decoded = restore_data.get("decoded")
+        if not isinstance(decoded, dict):
+            return None
+        if not bool(decoded.get("edited")):
+            return None
+        try:
+            encoded = encode_decoded_blob(decoded)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ValueError(
+                f"command_id {command_id}: edited decoded block could not be "
+                f"re-encoded ({exc})"
+            ) from exc
+        verify = try_decode_blob(decoded.get("class"), encoded)
+        if verify is None:
+            raise ValueError(
+                f"command_id {command_id}: edited decoded block failed "
+                f"round-trip self-check"
+            )
+        if verify.get("fields") != decoded.get("fields") or verify.get(
+            "trailer_hex", ""
+        ) != decoded.get("trailer_hex", ""):
+            raise ValueError(
+                f"command_id {command_id}: edited decoded block does not "
+                f"round-trip to the same fields"
+            )
+        return encoded.hex()
 
     def _validate_restore_capabilities(
         self,
@@ -431,7 +476,11 @@ class RestoreMixin:
                     )
                 continue
 
-            data_hex = str(restore_data.get("data_hex") or "").strip()
+            edited_hex = self._edited_command_data_hex(restore_data, command_id)
+            if edited_hex is not None:
+                data_hex = edited_hex
+            else:
+                data_hex = str(restore_data.get("data_hex") or "").strip()
             if not data_hex:
                 if strict:
                     raise ValueError(
@@ -1003,9 +1052,25 @@ class RestoreMixin:
                     if not isinstance(entry, dict):
                         continue
                     raw_command_id = entry.get("command_id")
+                    raw_command_lo = int(raw_command_id or 0) & 0xFF
+                    if raw_command_lo == 0xFF:
+                        # Delay/wait row: emit the firmware sentinel
+                        # record. All head bytes are 0xFF (dev_id,
+                        # cmd_id, the 6-byte fid, and the duration
+                        # byte); the last byte holds the pause length.
+                        step_records.extend(
+                            build_macro_step_record(
+                                device_id=0xFF,
+                                command_id=0xFF,
+                                fid=0xFFFFFFFFFFFF,
+                                duration=0xFF,
+                                delay=int(entry.get("delay", 0xFF)) & 0xFF,
+                            )
+                        )
+                        continue
                     mapped_command_id = _map_command_id(raw_command_id)
                     if mapped_command_id is None:
-                        if int(raw_command_id or 0) & 0xFF != 0:
+                        if raw_command_lo != 0:
                             self._log.warning(
                                 "[RESTORE] macro key=0x%02X skipped step "
                                 "with unmapped command_id=%r",
@@ -1201,9 +1266,25 @@ class RestoreMixin:
                     if not isinstance(entry, dict):
                         continue
                     raw_command_id = entry.get("command_id")
+                    raw_command_lo = int(raw_command_id or 0) & 0xFF
+                    if raw_command_lo == 0xFF:
+                        # Delay/wait row: emit the firmware sentinel
+                        # record. All head bytes are 0xFF (dev_id,
+                        # cmd_id, the 6-byte fid, and the duration
+                        # byte); the last byte holds the pause length.
+                        step_records.extend(
+                            build_macro_step_record(
+                                device_id=0xFF,
+                                command_id=0xFF,
+                                fid=0xFFFFFFFFFFFF,
+                                duration=0xFF,
+                                delay=int(entry.get("delay", 0xFF)) & 0xFF,
+                            )
+                        )
+                        continue
                     mapped_command_id = _map_command_id(raw_command_id)
                     if mapped_command_id is None:
-                        if int(raw_command_id or 0) & 0xFF != 0:
+                        if raw_command_lo != 0:
                             self._log.warning(
                                 "[RESTORE] macro key=0x%02X skipped step "
                                 "with unmapped command_id=%r",
@@ -1731,6 +1812,23 @@ class RestoreMixin:
                     if not isinstance(entry, dict):
                         continue
                     raw_device = entry.get("device_id")
+                    raw_device_lo = int(raw_device or 0) & 0xFF
+                    raw_step_command_lo = int(entry.get("command_id", 0)) & 0xFF
+                    if raw_device_lo == 0xFF or raw_step_command_lo == 0xFF:
+                        # Delay/wait row inside an activity power macro:
+                        # emit the firmware sentinel record verbatim.
+                        # All head bytes are 0xFF (incl. fid and the
+                        # duration byte); the last byte holds the pause.
+                        step_records.extend(
+                            build_macro_step_record(
+                                device_id=0xFF,
+                                command_id=0xFF,
+                                fid=0xFFFFFFFFFFFF,
+                                duration=0xFF,
+                                delay=int(entry.get("delay", 0xFF)) & 0xFF,
+                            )
+                        )
+                        continue
                     new_step_device = _map_device_id(raw_device)
                     if new_step_device is None:
                         # E6 silent-drop fix (activity-side): a step
@@ -1882,7 +1980,8 @@ class RestoreMixin:
                 value = int(raw) & 0xFF
             except (TypeError, ValueError):
                 return
-            if value != 0:
+            # 0x00 = unset; 0xFF = delay/wait sentinel (no real device).
+            if value != 0 and value != 0xFF:
                 referenced.add(value)
 
         for row in payload.get("button_bindings") or []:

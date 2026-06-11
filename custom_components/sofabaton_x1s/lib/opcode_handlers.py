@@ -633,6 +633,26 @@ class ActivateRequestHandler(BaseFrameHandler):
         )
 
 
+@register_handler(opcode_families_low=(0x67,), directions=("H→A",))
+class OtaUpdatePushHandler(BaseFrameHandler):
+    """Handle the hub's OTA-in-progress push (opcode-lo 0x67).
+
+    The hub emits this frame when it begins a firmware update and then
+    goes silent for several minutes. We notify listeners so the
+    integration can tear down the session, back off reconnects, and
+    surface a notification to the user.
+    """
+
+    def handle(self, frame: FrameContext) -> None:
+        proxy: X1Proxy = frame.proxy
+        proxy._log.warning(
+            "[OTA] H→A OTA-update push (opcode=0x%04X len=%d)",
+            frame.opcode,
+            len(frame.payload),
+        )
+        proxy.notify_ota_in_progress()
+
+
 @register_handler(opcodes=(OP_ACK_READY,), directions=("H→A",))
 class AckReadyHandler(BaseFrameHandler):
     """Handle ACK_READY frames and optionally trigger data refreshes."""
@@ -987,7 +1007,6 @@ class RequestActivityMapHandler(BaseFrameHandler):
         payload = frame.payload
         act_id = payload[0] if payload else 0
         proxy._log.info("[ACTMAP] A→H requesting mapping act=0x%02X (%d)", act_id, act_id)
-        proxy._log.info("[ACTMAP] A→H request %s", frame.raw.hex(" "))
 
 
 @register_handler(opcodes=(OP_ACTIVITY_MAP_PAGE, OP_ACTIVITY_MAP_PAGE_X1S), directions=("H→A",))
@@ -1000,8 +1019,6 @@ class ActivityMapHandler(BaseFrameHandler):
 
         if len(payload) < 8:
             return
-        proxy._log.info("[ACTMAP] H→A response %s", frame.raw.hex(" "))
-
         act_lo = self._burst_activity(proxy)
         if act_lo is None:
             act_lo = self._pending_activity(proxy)

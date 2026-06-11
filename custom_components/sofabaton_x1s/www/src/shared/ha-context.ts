@@ -1,6 +1,6 @@
 export type TabId = "settings" | "wifi_commands" | "blobs" | "backup" | "cache" | "logs";
 export type SectionId = "activities" | "devices";
-export type BackupSectionId = "make" | "restore";
+export type BackupSectionId = "make" | "edit" | "restore";
 export type BlobsSectionId = "fetch" | "test" | "save";
 export type SettingKey =
   | "persistent_cache"
@@ -57,12 +57,24 @@ export interface ControlPanelHubState {
     Array<{ command_id: number; name?: string; label?: string }>
   >;
   active_backup_operation?: BackupProgressEvent | null;
+  runtime_state?: ControlPanelRuntimeState | null;
 }
 
 export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
   tools_frontend_version: string;
   hubs: ControlPanelHubState[];
+}
+
+export interface ControlPanelRuntimeState {
+  kind: "idle" | "app_connected" | "operation_running";
+  operation?: "wifi_deploy" | "backup_export" | "backup_restore" | null;
+  label?: string | null;
+  detail?: string | null;
+  current_step?: number | null;
+  total_steps?: number | null;
+  device_key?: string | null;
+  device_name?: string | null;
 }
 
 export interface CacheHubState {
@@ -109,6 +121,24 @@ export interface LogsResponse {
   lines: ControlPanelLogLine[];
 }
 
+/**
+ * Structural view of a virtual-device command blob (wifi_ip, wifi_roku,
+ * wifi_hue, wifi_sonos). Populated by the hub when the device class is
+ * decodable and the decoder's round-trip verifier passes; null otherwise.
+ *
+ * The Fetch Blob view uses this as the "Descriptor" mode for these
+ * classes, the same way the existing toggle works for X2 descriptive
+ * IR payloads (which surface as `parsed_blob`). For the structural
+ * classes the rendered descriptor text already lives in `parsed_blob`
+ * — this field exposes the raw structured fields for editor surfaces
+ * downstream.
+ */
+export interface BlobFetchDecodedBlock {
+  class: string;
+  trailer_hex: string;
+  fields: Record<string, unknown>;
+}
+
 export interface BlobFetchCommandResult {
   command_label?: string | null;
   device_id: number;
@@ -117,6 +147,7 @@ export interface BlobFetchCommandResult {
   blob_kind?: string | null;
   command_blob?: string | null;
   parsed_blob?: string | null;
+  decoded?: BlobFetchDecodedBlock | null;
   replay_tail_checksum?: number | null;
   command_checksum?: number | null;
 }
@@ -149,12 +180,50 @@ export interface BackupBundleDeviceBlock {
   device_class?: string | null;
   device_class_code?: number | null;
   entity_type?: string | null;
+  // Byte 6 of the wire device record. The hub uses this as the display
+  // order in the app / on the physical remote (within a list of devices
+  // and within the activity-device list). Lower value sorts first.
+  sort?: number | null;
+  // Dotted-decimal IPv4 address stored in the device head's tail slot.
+  // Populated for the network-IP device classes (wifi_hue / wifi_roku /
+  // wifi_sonos rely on this for Host headers and replay addressing);
+  // null / empty for non-network devices. wifi_ip carries its IP inside
+  // each command blob instead, not here.
+  ip_address?: string | null;
 }
 
 export interface BackupBundleDevicePayload {
   kind?: string | null;
   complete?: boolean;
   device?: BackupBundleDeviceBlock | null;
+  commands?: BackupBundleCommandRow[] | null;
+}
+
+export interface BackupBundleCommandRow {
+  command_id?: number | null;
+  name?: string | null;
+  restore_data?: Record<string, unknown> | null;
+}
+
+export interface BackupBundleFavoriteSlot {
+  button_id?: number | null;
+  device_id?: number | null;
+  command_id?: number | null;
+  name?: string | null;
+}
+
+export interface BackupBundleMacroStep {
+  device_id?: number | null;
+  command_id?: number | null;
+  button_code?: number | null;
+  duration?: number | null;
+  delay?: number | null;
+}
+
+export interface BackupBundleMacroRow {
+  button_id?: number | null;
+  name?: string | null;
+  steps?: BackupBundleMacroStep[] | null;
 }
 
 export interface BackupBundleActivityPayload {
@@ -162,6 +231,8 @@ export interface BackupBundleActivityPayload {
   complete?: boolean;
   device?: BackupBundleDeviceBlock | null;
   referenced_source_device_ids?: number[] | null;
+  favorite_slots?: BackupBundleFavoriteSlot[] | null;
+  macros?: BackupBundleMacroRow[] | null;
 }
 
 export interface BackupBundlePayload {
@@ -217,6 +288,22 @@ export interface BackupOperationStateResponse {
   active_operation?: BackupProgressEvent | null;
 }
 
+export interface RuntimeCompletionNotice {
+  tone: "success" | "error";
+  label: string;
+}
+
+export interface WifiPressEvent {
+  entryId: string;
+  deviceId: number | null;
+  deviceName: string | null;
+  commandIndex: number | null;
+  commandLabel: string;
+  pressType: "short" | "long";
+  timestamp: number;
+  receivedAt: number;
+}
+
 export interface ControlPanelSnapshot {
   hass: HassLike | null;
   state: ControlPanelStateResponse | null;
@@ -229,15 +316,16 @@ export interface ControlPanelSnapshot {
   backendUnavailable: boolean;
   selectedHubEntryId: string | null;
   selectedTab: TabId;
-  openSection: SectionId | null;
-  openBackupSection: BackupSectionId;
-  openBlobsSection: BlobsSectionId | null;
+  selectedCacheSection: SectionId;
+  selectedBackupSection: BackupSectionId;
+  selectedBlobsSection: BlobsSectionId;
   openEntity: string | null;
   staleData: boolean;
   refreshBusy: boolean;
   activeRefreshLabel: string | null;
   externalHubCommandBusy: boolean;
   externalHubCommandLabel: string | null;
+  runtimeCompletionNotice: RuntimeCompletionNotice | null;
   pendingSettingKey: SettingKey | null;
   pendingActionKey: HubAction | null;
   logsLines: ControlPanelLogLine[];
@@ -248,4 +336,6 @@ export interface ControlPanelSnapshot {
   logsStickToBottom: boolean;
   logsScrollBehavior: ScrollBehavior;
   pendingScrollEntityKey: string | null;
+  lastWifiPress: WifiPressEvent | null;
+  wifiPressSubscribedEntryId: string | null;
 }

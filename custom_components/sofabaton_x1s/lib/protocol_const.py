@@ -139,6 +139,11 @@ OP_IPCMD_ROW_D = 0x0DAE
 
 # H→A responses (from hub to app/client)
 OP_ACK_READY = 0x0160
+# H→A push emitted when the hub begins a firmware OTA update. The hub goes
+# silent for a few minutes while the update runs and does not actively
+# manage the connection during that window, so receivers are expected to
+# tear down the session and stay disconnected until the hub comes back.
+OP_OTA_UPDATE = 0x0167
 OP_MARKER = 0x0C3D  # segment marker before continuation
 
 OP_CATALOG_ROW_DEVICE = 0xD50B  # Row from list of devices
@@ -246,6 +251,7 @@ OPNAMES: Dict[int, str] = {
     OP_STATUS_ACK: "STATUS_ACK",
     OP_ACTIVITY_CREATE_ACK: "ACTIVITY_CREATE_ACK",
     OP_ACK_READY: "ACK_READY",
+    OP_OTA_UPDATE: "OTA_UPDATE",
     OP_MARKER: "REQ_BUTTONS_MARKER_X1S_X2",
     OP_CATALOG_ROW_DEVICE: "CATALOG_ROW_DEVICE",
     OP_CATALOG_ROW_ACTIVITY: "CATALOG_ROW_ACTIVITY",
@@ -355,10 +361,13 @@ PLAY_BLOB_PAGE_HEADER_LEN = 3         # [0x01, 0x00, page_no_lo] preface per fra
 PLAY_BLOB_BODY_HEADER_LEN = 12        # body bytes preceding library_data
 PLAY_BLOB_CHUNK_SIZE = PLAY_BLOB_MAX_PAYLOAD - PLAY_BLOB_PAGE_HEADER_LEN  # 247B body slice per frame
 
+FAMILY_BLOB_ROW = 0x0D  # IP-command sync rows, input-config refresh, REQ_BLOB dump pages
+
 FAMILY_NAMES: Dict[int, str] = {
     FAMILY_STATUS_ACK: "STATUS_ACK",
     FAMILY_HUB_NAME_REPLY: "HUB_NAME_REPLY",
     FAMILY_DEV_ROW: "DEVICE_ROW",
+    FAMILY_BLOB_ROW: "BLOB_ROW",
     FAMILY_PLAY_BLOB: "PLAY_BLOB",
     FAMILY_FAV_DELETE: "FAV_DELETE",
     FAMILY_MACROS: "MACROS",
@@ -384,6 +393,7 @@ DEVICE_CLASS_CODE_BLUETOOTH = 0x03
 DEVICE_CLASS_CODE_WIFI_ROKU = 0x0A
 DEVICE_CLASS_CODE_IR = 0x0D
 DEVICE_CLASS_CODE_WIFI_HUE = 0x1A
+DEVICE_CLASS_CODE_WIFI_SONOS = 0x1B
 DEVICE_CLASS_CODE_WIFI_IP = 0x1C
 DEVICE_CLASS_CODE_WIFI_MQTT = 0x20
 
@@ -392,6 +402,7 @@ DEVICE_CLASS_BY_CODE: Dict[int, str] = {
     DEVICE_CLASS_CODE_WIFI_ROKU: DEVICE_CLASS_WIFI_ROKU,
     DEVICE_CLASS_CODE_IR: DEVICE_CLASS_IR,
     DEVICE_CLASS_CODE_WIFI_HUE: DEVICE_CLASS_WIFI_HUE,
+    DEVICE_CLASS_CODE_WIFI_SONOS: DEVICE_CLASS_WIFI_SONOS,
     DEVICE_CLASS_CODE_WIFI_IP: DEVICE_CLASS_WIFI_IP,
     DEVICE_CLASS_CODE_WIFI_MQTT: DEVICE_CLASS_WIFI_MQTT,
 }
@@ -508,6 +519,7 @@ __all__ = [
     "DEVICE_CLASS_CODE_WIFI_ROKU",
     "DEVICE_CLASS_CODE_IR",
     "DEVICE_CLASS_CODE_WIFI_HUE",
+    "DEVICE_CLASS_CODE_WIFI_SONOS",
     "DEVICE_CLASS_CODE_WIFI_IP",
     "DEVICE_CLASS_CODE_WIFI_MQTT",
     "DEVICE_CLASS_BY_CODE",
@@ -547,6 +559,7 @@ __all__ = [
     "OP_IPCMD_ROW_C",
     "OP_IPCMD_ROW_D",
     "OP_ACK_READY",
+    "OP_OTA_UPDATE",
     "OP_MARKER",
     "OP_CATALOG_ROW_DEVICE",
     "OP_CATALOG_ROW_ACTIVITY",

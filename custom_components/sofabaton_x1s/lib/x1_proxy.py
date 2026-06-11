@@ -80,7 +80,6 @@ from .protocol_const import (
     normalize_device_class,
     opcode_family,
     opcode_family_name,
-    opcode_hi,
     opcode_lo,
     OP_ACK_READY,
     OP_BANNER,
@@ -151,6 +150,7 @@ from .state_helpers import (
     BurstScheduler,
     normalize_device_entry,
 )
+from .deframer import Deframer
 from .transport_bridge import TransportBridge
 from .proxy_restore import RestoreMixin
 from .proxy_wifi_device import WifiDeviceMixin
@@ -335,51 +335,7 @@ def _enable_keepalive(sock: socket.socket, *, idle: int = 30, interval: int = 10
 
 
 
-# ============================================================================
-# Deframer
-# ============================================================================
-class Deframer:
-    def __init__(self) -> None:
-        self.buf = bytearray()
-        self._cur_start_cid: Optional[int] = None
-
-    def feed(self, data: bytes, cid: int) -> List[Tuple[int, bytes, bytes, int, int]]:
-        out: List[Tuple[int, bytes, bytes, int, int]] = []
-        if not data: return out
-        self.buf.extend(data)
-        if len(self.buf) > 1_000_000: del self.buf[:500_000]
-
-        while True:
-            start = self.buf.find(bytes([SYNC0, SYNC1]))
-            if start < 0:
-                self.buf.clear(); self._cur_start_cid = None
-                break
-            if start:
-                del self.buf[:start]
-                self._cur_start_cid = self._cur_start_cid or cid
-            if len(self.buf) < 5: break
-            if self._cur_start_cid is None: self._cur_start_cid = cid
-
-            nxt = self.buf.find(bytes([SYNC0, SYNC1]), 2)
-            if nxt != -1:
-                cand = bytes(self.buf[:nxt])
-                if cand and cand[-1] == (_sum8(cand[:-1]) & 0xFF):
-                    opcode = (cand[2] << 8) | cand[3]
-                    out.append((opcode, cand, cand[4:-1], self._cur_start_cid or cid, cid))
-                    del self.buf[:nxt]; self._cur_start_cid = None
-                    continue
-                del self.buf[0]
-                if not (len(self.buf) >= 2 and self.buf[0] == SYNC0 and self.buf[1] == SYNC1):
-                    self._cur_start_cid = None
-                continue
-
-            cand = bytes(self.buf)
-            if len(cand) >= 5 and cand[0] == SYNC0 and cand[1] == SYNC1 and cand[-1] == (_sum8(cand[:-1]) & 0xFF):
-                opcode = (cand[2] << 8) | cand[3]
-                out.append((opcode, cand, cand[4:-1], self._cur_start_cid or cid, cid))
-                self.buf.clear(); self._cur_start_cid = None
-            break
-        return out
+# Deframer moved to lib/deframer.py — re-exported above.
 
 # ============================================================================
 # Proxy
@@ -475,6 +431,7 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         self._activity_list_update_listeners: list[Callable[[], None]] = []
         self._hub_state_listeners: list[callable] = []
         self._client_state_listeners: list[callable] = []
+        self._ota_update_listeners: list[callable] = []
         self._activation_listeners: list[callable] = []
         self._app_devices_deadline: float | None = None
         self._app_devices_retry_sent = False
@@ -737,11 +694,10 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
                 )
                 if is_status_reject:
                     self._log.warning(
-                        "%s[STEP] %s hub rejected status=0x%02X payload=%s",
+                        "%s[STEP] %s hub rejected status=0x%02X",
                         LogTag.WIFI,
                         step_name,
                         first_byte,
-                        matched_payload.hex(" "),
                     )
                     return SendStepResult(
                         outcome=AckOutcome.rejected,
@@ -803,7 +759,6 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         expects_burst: bool = False,
         burst_kind: str | None = None,
     ) -> bool:
-        frame = self._build_frame(opcode, payload) if self.diag_dump else None
         sent = self._burst.queue_or_send(
             opcode=opcode,
             payload=payload,
@@ -814,8 +769,6 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         )
         if sent:
             self._log.debug("%s queued %s (0x%04X) %dB", LogTag.CMD, OPNAMES.get(opcode, f"OP_{opcode:04X}"), opcode, len(payload))
-            if frame is not None:
-                self._log.debug("%s queued %s", LogTag.WIRE, _hexdump(frame))
         else:
             self._log.debug(
                 "%s ignoring %s: proxy client is connected",
@@ -833,6 +786,19 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         """cb(connected: bool)"""
         self._client_state_listeners.append(cb)
         cb(self._client_connected)
+
+    def on_ota_update(self, cb) -> None:
+        """cb()  Fired when the hub announces an OTA firmware update (opcode 0x0167)."""
+        self._ota_update_listeners.append(cb)
+
+    def notify_ota_in_progress(self) -> None:
+        """Dispatch the OTA-in-progress event to registered listeners."""
+        self._log.warning("[OTA] hub announced firmware update — pausing reconnects")
+        for cb in self._ota_update_listeners:
+            try:
+                cb()
+            except Exception:
+                self._log.exception("ota update listener failed")
 
     def on_activity_change(self, cb) -> None:
         """cb(new_id: int | None, old_id: int | None, name: str | None)"""
@@ -1228,7 +1194,13 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
     
     def send_command(self, ent_id: int, key_code: int) -> bool:
         if not self.can_issue_commands():
-            self._log.info("[CMD] send_command ignored: proxy client is connected"); return False
+            self._log.info(
+                "[CMD] send_command ignored: transport not ready "
+                "(hub_connected=%s, client_connected=%s)",
+                self.transport.is_hub_connected,
+                self.transport.is_client_connected,
+            )
+            return False
 
         if key_code == ButtonName.POWER_ON:
             self.state.set_hint(ent_id)
@@ -1802,7 +1774,7 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         )
         self.transport.send_local(frame)
         if self.diag_dump:
-            self._log.debug("%s →hub %s", LogTag.WIRE, _hexdump(frame))
+            self._log.debug("%s A→H %s", LogTag.WIRE, _hexdump(frame))
 
     def _handle_hub_frame(self, data: bytes, cid: int) -> None:
         if self.diag_dump:
@@ -1870,9 +1842,8 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
             if debug_enabled:
                 name = OPNAMES.get(op)
                 fam_name = opcode_family_name(op)
-                hi = opcode_hi(op)
                 fam = opcode_family(op)
-                note = f"#{scid}→#{ecid}" if scid != ecid else f"#{ecid}"
+                note = f"chunk={scid}→{ecid}" if scid != ecid else f"chunk={ecid}"
                 parsed = parse_command_burst_frame(
                     op,
                     raw,
@@ -1883,17 +1854,24 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
                     name = parsed_macro.display_name
 
                 # Lead with the most specific label we can resolve: a named opcode,
-                # else its family, else an explicit "unmapped" marker. We long ago
-                # classified most traffic by family, so "unmapped" is now reserved
+                # else its family, else an explicit "unknown" marker. We long ago
+                # classified most traffic by family, so "unknown" is now reserved
                 # for genuinely unknown low-bytes rather than the default.
+                #
+                # Each branch produces a self-contained label that includes the
+                # opcode hex exactly once — don't re-append (0x%04X) outside.
                 if name is not None:
-                    label = name if fam_name is None else f"{name} fam={fam_name}"
+                    label = (
+                        f"{name} (0x{op:04X})"
+                        if fam_name is None
+                        else f"{name} (0x{op:04X}) family={fam_name}"
+                    )
                 elif fam_name is not None:
-                    label = f"{fam_name} op=0x{op:04X}"
+                    label = f"family={fam_name} op=0x{op:04X}"
                 else:
-                    label = f"unmapped op=0x{op:04X} hi=0x{hi:02X} fam=0x{fam:02X}"
+                    label = f"unknown op=0x{op:04X}"
                 self._log.debug(
-                    "%s %s %s (0x%04X) len=%d %s", LogTag.FRAME, direction, label, op, len(raw), note
+                    "%s %s %s len=%d %s", LogTag.FRAME, direction, label, len(raw), note
                 )
                 if parsed is not None:
                     totals = (

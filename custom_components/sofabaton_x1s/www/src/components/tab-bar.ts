@@ -1,5 +1,6 @@
 import { html } from "lit";
 import type { TabId } from "../shared/ha-context";
+import { TOOLS_CARD_STRINGS } from "../strings";
 
 export function renderTabBar(params: {
   selectedTab: TabId;
@@ -8,10 +9,10 @@ export function renderTabBar(params: {
   onToggleToolsMenu: () => void;
 }) {
   const tabs: Array<{ id: TabId; label: string; shortLabel?: string; disabled: boolean }> = [
-    { id: "cache", label: "Cache", disabled: false },
-    { id: "wifi_commands", label: "Wifi Commands", shortLabel: "Wifi", disabled: false },
-    { id: "backup", label: "Backup", disabled: false },
-    { id: "blobs", label: "Blobs", disabled: false },
+    { id: "cache", label: TOOLS_CARD_STRINGS.tabs.cache, disabled: false },
+    { id: "wifi_commands", label: TOOLS_CARD_STRINGS.tabs.wifiCommands, shortLabel: TOOLS_CARD_STRINGS.tabs.wifiShort, disabled: false },
+    { id: "backup", label: TOOLS_CARD_STRINGS.tabs.backup, disabled: false },
+    { id: "blobs", label: TOOLS_CARD_STRINGS.tabs.blobs, disabled: false },
   ];
   const toolsMenuActive = params.selectedTab === "settings" || params.selectedTab === "logs";
 
@@ -54,7 +55,7 @@ export function renderTabBar(params: {
                   aria-checked=${String(params.selectedTab === "settings")}
                   @click=${() => params.onSelect("settings")}
                 >
-                  Settings
+                  ${TOOLS_CARD_STRINGS.tabs.settings}
                 </button>
                 <button
                   class="tab-menu-item${params.selectedTab === "logs" ? " active" : ""}"
@@ -63,7 +64,7 @@ export function renderTabBar(params: {
                   aria-checked=${String(params.selectedTab === "logs")}
                   @click=${() => params.onSelect("logs")}
                 >
-                  Logs
+                  ${TOOLS_CARD_STRINGS.tabs.logs}
                 </button>
               </div>
             `
@@ -72,4 +73,3 @@ export function renderTabBar(params: {
     </div>
   `;
 }
-

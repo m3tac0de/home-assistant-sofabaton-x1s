@@ -868,6 +868,27 @@ def build_command_write_steps(
     return steps
 
 
+def encode_command_sort_body(
+    ordered_pairs: list[tuple[int, int]],
+) -> bytes:
+    """Encode the inner key-sort body as a flat stream of ``(command_id,
+    sort_id)`` pairs.
+
+    The hub stores a per-device display ordering for the physical
+    remote's device-browse screen as a sequence of 2-byte pairs --
+    ``(command_id, sort_position)`` -- carried inside the family-0x61
+    paged write body (the portion between the device id and the
+    trailing checksum byte). Each entry is byte-clamped to fit the
+    wire field width.
+    """
+
+    out = bytearray(len(ordered_pairs) * 2)
+    for index, (command_id, sort_id) in enumerate(ordered_pairs):
+        out[index * 2] = command_id & 0xFF
+        out[index * 2 + 1] = sort_id & 0xFF
+    return bytes(out)
+
+
 def build_key_sort_steps(
     *,
     device_id: int,
@@ -1142,6 +1163,7 @@ __all__ = [
     "build_device_update_step",
     "build_command_write_steps",
     "build_key_sort_steps",
+    "encode_command_sort_body",
     "build_macro_step_record",
     "build_macro_step",
     "build_remote_sync_step",

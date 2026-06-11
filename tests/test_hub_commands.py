@@ -184,6 +184,16 @@ def test_async_fetch_blob_normalizes_tail_and_descriptor(monkeypatch):
                 "blob_kind": "descriptive",
                 "command_blob": blob_body.hex(" "),
                 "parsed_blob": "P:Sony12 R:40000 D:1 F:18 MUL:2",
+                # IR descriptive payloads now ride the same `decoded`
+                # block shape as the wifi virtual device classes — the
+                # decoder is content-sniffed via the magic prefix and
+                # returns None for non-descriptive IR blobs, so this
+                # field is populated here and empty for raw IR rows.
+                "decoded": {
+                    "class": "ir",
+                    "trailer_hex": "00 00 00 00",
+                    "fields": {"descriptor": "P:Sony12 R:40000 D:1 F:18 MUL:2"},
+                },
                 "replay_tail_checksum": replay_tail,
                 "command_checksum": replay_tail,
             }
@@ -191,6 +201,195 @@ def test_async_fetch_blob_normalizes_tail_and_descriptor(monkeypatch):
     }
 
     loop.close()
+
+
+def test_async_fetch_blob_decoded_block_for_wifi_ip(monkeypatch):
+    """Fetch Blob attaches a `decoded` block for virtual-device classes.
+
+    Locks in the wifi_ip end-to-end path: the hub readback flow surfaces
+    both the raw `command_blob` hex (for the Hex view) and a decoded
+    structural block (for the Descriptor view). Both must come out of
+    the same dump so the descriptive/hex toggle stays in sync.
+    """
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    hub._proxy.state.devices[12] = {"device_class": "wifi_ip"}
+
+    # Real-hub wifi_ip sample, transcribed from
+    # docs/protocol/command-blob-decoders.md. The Fetch Blob path
+    # always splits off the trailing replay-tail byte before
+    # decoding, so the bytes the decoder sees end at `0d 0a` (with the
+    # `f1` trailer consumed as the replay-tail checksum).
+    wifi_ip_full_hex = (
+        "c0 a8 02 4d 1f 7c 00 78 50 4f 53 54 20 2f 6c 61 "
+        "75 6e 63 68 2f 66 63 30 31 32 63 33 39 64 33 39 "
+        "30 2f 31 2f 30 2f 73 68 6f 72 74 20 48 54 54 50 "
+        "2f 31 2e 31 0d 0a 48 6f 73 74 3a 31 39 32 2e 31 "
+        "36 38 2e 32 2e 37 37 3a 38 30 36 30 0d 0a 43 6f "
+        "6e 74 65 6e 74 2d 54 79 70 65 3a 61 70 70 6c 69 "
+        "63 61 74 69 6f 6e 2f 78 2d 77 77 77 2d 66 6f 72 "
+        "6d 2d 75 72 6c 65 6e 63 6f 64 65 64 0d 0a 0d 0a "
+        "f1"
+    )
+
+    async def _dump_ir_commands(*, device_id: int, command_id: int | None = None, wait_timeout: float = 10.0):
+        return {
+            "device_id": device_id,
+            "requested_command_id": command_id,
+            "total_commands": 1,
+            "received_command_count": 1,
+            "complete": True,
+            "commands": [
+                {
+                    "command_id": 1,
+                    "device_id": device_id,
+                    "label": "Launch app",
+                    "ir_blob_hex": wifi_ip_full_hex,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(hub, "async_dump_ir_commands", _dump_ir_commands)
+
+    result = loop.run_until_complete(hub.async_fetch_blob(device_id=12))
+
+    command_row = result["commands"][0]
+    assert command_row["blob_kind"] == "decoded"
+
+    decoded = command_row["decoded"]
+    assert isinstance(decoded, dict)
+    assert decoded["class"] == "wifi_ip"
+    fields = decoded["fields"]
+    assert fields["host"] == "192.168.2.77"
+    assert fields["port"] == 8060
+    assert fields["method"] == "POST"
+    assert fields["path"] == "/launch/fc012c39d390/1/0/short"
+    assert fields["content_type"] == "application/x-www-form-urlencoded"
+    assert fields["body"] == ""
+    # Replay-tail byte was consumed by the splitter, so the decoder's
+    # trailer is empty for this sample. (The backup path, which uses
+    # the unstripped blob, will carry the `f1` trailer instead.)
+    assert decoded["trailer_hex"] == ""
+
+    # `parsed_blob` carries the formatted descriptor text used by the
+    # tool's Descriptor view. Hex view continues to read
+    # `command_blob`, which is the stripped wire blob exactly like it
+    # is for IR commands today.
+    assert "host: 192.168.2.77" in command_row["parsed_blob"]
+    assert command_row["command_blob"] is not None
+    assert "f1" not in command_row["command_blob"]  # trailing byte was stripped
+
+    loop.close()
+
+
+def test_build_hub_code_record_restore_data_attaches_decoded_for_wifi_ip():
+    """`restore_data` for virtual classes carries the decoded block.
+
+    The block is purely additive — `data_hex` stays byte-identical to
+    what backups produce today, so older restore paths (which only
+    read `data_hex`) keep working. This test pins the additive shape
+    explicitly so a future refactor cannot quietly start mutating
+    `data_hex` based on the decoded view.
+    """
+
+    wifi_ip_full_hex = (
+        "c0 a8 02 4d 1f 7c 00 78 50 4f 53 54 20 2f 6c 61 "
+        "75 6e 63 68 2f 66 63 30 31 32 63 33 39 64 33 39 "
+        "30 2f 31 2f 30 2f 73 68 6f 72 74 20 48 54 54 50 "
+        "2f 31 2e 31 0d 0a 48 6f 73 74 3a 31 39 32 2e 31 "
+        "36 38 2e 32 2e 37 37 3a 38 30 36 30 0d 0a 43 6f "
+        "6e 74 65 6e 74 2d 54 79 70 65 3a 61 70 70 6c 69 "
+        "63 61 74 69 6f 6e 2f 78 2d 77 77 77 2d 66 6f 72 "
+        "6d 2d 75 72 6c 65 6e 63 6f 64 65 64 0d 0a 0d 0a "
+        "f1"
+    )
+    # The page-1 metadata only needs to be long enough for the method
+    # to extract library_type + command_code; the actual restore-side
+    # value of `data_hex` is what the test focuses on.
+    page_one_payload = bytes(
+        [0x00] * 8 + [0x1C] + [0x00, 0x00, 0x00, 0x00, 0x00, 0x00] + [0x00] * 16
+    )
+    command = {
+        "ir_blob_hex": wifi_ip_full_hex,
+        "pages": [{"payload_hex": page_one_payload.hex(" ")}],
+    }
+
+    restore_data = SofabatonHub._build_hub_code_record_restore_data(
+        command, device_class="wifi_ip"
+    )
+
+    assert restore_data is not None
+    # data_hex preserved verbatim — restore path keeps working.
+    assert restore_data["data_hex"] == wifi_ip_full_hex
+    assert restore_data["transport"] == "hub_code_record"
+    assert restore_data["library_type"] == 0x1C
+
+    decoded = restore_data["decoded"]
+    assert decoded["class"] == "wifi_ip"
+    assert decoded["trailer_hex"] == "f1"  # unstripped path keeps the byte
+    assert decoded["fields"]["host"] == "192.168.2.77"
+    assert decoded["fields"]["port"] == 8060
+    assert decoded["fields"]["path"] == "/launch/fc012c39d390/1/0/short"
+
+
+def test_ir_decoder_attaches_block_for_descriptive_payload():
+    """IR descriptive payloads round-trip through the same registry path.
+
+    The IR backup branch in :meth:`async_backup_device` attaches a
+    ``decoded`` block on the row by calling
+    ``try_decode_command_blob("ir", blob_hex)``. That single call —
+    the actual integration point — is exercised here. End-to-end
+    backup-pipeline integration is covered by the bundle tests.
+    """
+
+    from custom_components.sofabaton_x1s.lib.blob_decoders import try_decode_blob
+
+    descriptor = "P:Sony12 R:40000 D:1 F:18 MUL:2"
+    blob_hex = build_descriptive_ir_blob_body(descriptor).hex(" ")
+
+    decoded = try_decode_blob("ir", blob_hex)
+    assert decoded == {
+        "class": "ir",
+        "trailer_hex": "00 00 00 00",
+        "fields": {"descriptor": descriptor},
+    }
+
+    # Non-descriptive IR blobs (raw learned / database captures) keep
+    # raw-only restore_data exactly like before, because the decoder
+    # content-sniff fails and the branch leaves `decoded` off the row.
+    raw_ir = "00 00 00 00 00 00 9c 40 " + "00 " * 16
+    assert try_decode_blob("ir", raw_ir) is None
+
+
+def test_build_hub_code_record_restore_data_no_decoded_for_unsupported_class():
+    """Bluetooth / RF / MQTT command rows keep raw-only restore_data."""
+
+    command = {
+        "ir_blob_hex": "0c 00 30 74",
+        "pages": [{"payload_hex": bytes(30).hex(" ")}],
+    }
+    restore_data = SofabatonHub._build_hub_code_record_restore_data(
+        command, device_class="bluetooth"
+    )
+    assert restore_data is not None
+    assert restore_data["data_hex"] == "0c 00 30 74"
+    assert "decoded" not in restore_data
 
 
 def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypatch):
@@ -274,6 +473,14 @@ def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypat
 
     assert result is not None
     assert result["complete"] is True
+    # Device-255 macro entries are firmware "delay/wait" sentinel rows
+    # (head byte 0xFF, delay byte carries the pause). Commit 0700430
+    # ("Evolved backup edit … Fixed issue in backup/restore where macro
+    # delays weren't being backed up and restored") deliberately stopped
+    # filtering them — they're preserved verbatim through backup→restore
+    # so the firmware can replay inter-step pauses. They're still excluded
+    # from referenced_source_device_ids because they don't point at a real
+    # source device.
     assert result["macros"] == [
         {
             "button_id": 0xC6,
@@ -283,6 +490,13 @@ def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypat
                     "device_id": 11,
                     "command_id": 1,
                     "button_code": 0x4E21,
+                    "duration": 0,
+                    "delay": 0xFF,
+                },
+                {
+                    "device_id": 0xFF,
+                    "command_id": 2,
+                    "button_code": 0x4E22,
                     "duration": 0,
                     "delay": 0xFF,
                 },
@@ -540,6 +754,10 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         "tail_marker": 0,
         "extras": None,
     }
+    # restore_data now carries a `decoded` block alongside the raw bytes —
+    # the same IR descriptor decoder that the fetch-blob path uses. This is
+    # the canonical view for descriptive IR blobs and is what restore reads
+    # when rewriting the body for the destination hub.
     assert result["commands"] == [
         {
             "command_id": 18,
@@ -549,6 +767,11 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
                 "library_type": 0x0D,
                 "button_code": 0,
                 "data_hex": blob_body.hex(" "),
+                "decoded": {
+                    "class": "ir",
+                    "trailer_hex": "00 00 00 00",
+                    "fields": {"descriptor": "P:Sony12 R:40000 D:1 F:18 MUL:2"},
+                },
             },
         }
     ]
@@ -1180,7 +1403,11 @@ def test_async_persist_ir_blob_refreshes_commands_and_returns_result(monkeypatch
         "page_count": 4,
     }
     assert full_refresh_calls == [(11, 10.0)]
-    assert single_refresh_calls == [(11, 112, 10.0, True)]
+    # Post-persist single-command refresh now runs as background housekeeping
+    # with a capped budget (refresh_budget = min(2.0, wait_timeout)) and
+    # force_refresh=False — the persist itself has already settled on the
+    # hub, so this pass just re-pulls the metadata on a best-effort basis.
+    assert single_refresh_calls == [(11, 112, 2.0, False)]
 
     loop.close()
 

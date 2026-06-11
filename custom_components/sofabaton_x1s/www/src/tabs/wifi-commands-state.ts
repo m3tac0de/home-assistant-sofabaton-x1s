@@ -2,6 +2,9 @@ export interface WifiDeviceSyncLike {
   device_key?: string | null;
   device_name?: string | null;
   status?: string | null;
+  message?: string | null;
+  current_step?: number | null;
+  total_steps?: number | null;
 }
 
 export function findRunningWifiDevice(

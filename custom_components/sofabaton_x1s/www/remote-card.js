@@ -1450,6 +1450,14 @@ function logPillsOnce() {
     blue
   );
 }
+function stableJsonSignature(value) {
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value);
+  } catch (_err) {
+    return String(value);
+  }
+}
 logPillsOnce();
 var SofabatonRemoteCard = class extends HTMLElement {
   setConfig(config) {
@@ -1493,9 +1501,11 @@ var SofabatonRemoteCard = class extends HTMLElement {
     this._lastActivityLabel = null;
     this._lastActivityId = null;
     this._lastPoweredOff = null;
+    this._invalidateUpdateFingerprint();
     this._initPromise = this._initPromise || this._ensureHaElements();
     this._initPromise.then(() => {
       this._render();
+      this._invalidateUpdateFingerprint();
       this._update();
     });
   }
@@ -1503,6 +1513,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
     this._hass = hass;
     (this._initPromise || Promise.resolve()).then(async () => {
       await this._ensureIntegration();
+      if (!this._shouldUpdateForHass(hass)) return;
       this._update();
     });
   }
@@ -1511,6 +1522,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
     if (this._editMode && this._automationAssistActive) {
       this._setAutomationAssistActive(false);
     }
+    this._invalidateUpdateFingerprint();
     this._update();
     this._updateAutomationAssistUI();
   }
@@ -1549,6 +1561,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
       this._integrationEntityId = entityId;
     } finally {
       this._integrationDetectingFor = null;
+      this._invalidateUpdateFingerprint();
     }
   }
   _isHubIntegration() {
@@ -1693,6 +1706,48 @@ var SofabatonRemoteCard = class extends HTMLElement {
       overlay.classList.add("layout-overlay--fade");
     });
     setTimeout(cleanup, 320);
+  }
+  _invalidateUpdateFingerprint() {
+    this._lastUpdateFingerprint = null;
+  }
+  _shouldUpdateForHass(hass) {
+    const nextFingerprint = this._updateFingerprint(hass);
+    if (nextFingerprint === this._lastUpdateFingerprint) return false;
+    this._lastUpdateFingerprint = nextFingerprint;
+    return true;
+  }
+  _updateFingerprint(hass = this._hass) {
+    const entityId = String(this._config?.entity || "");
+    const remote = entityId ? hass?.states?.[entityId] : null;
+    const attrs = remote?.attributes || {};
+    const themeName = String(this._config?.theme || "");
+    const themeDef = themeName ? hass?.themes?.themes?.[themeName] : null;
+    const themeMode = hass?.themes?.darkMode ? "dark" : "light";
+    return [
+      entityId,
+      String(remote?.state ?? ""),
+      String(attrs?.current_activity_id ?? ""),
+      String(attrs?.current_activity ?? ""),
+      String(attrs?.load_state ?? ""),
+      String(attrs?.hub_version ?? ""),
+      stableJsonSignature(attrs?.activities),
+      stableJsonSignature(attrs?.assigned_keys),
+      stableJsonSignature(attrs?.macro_keys),
+      stableJsonSignature(attrs?.favorite_keys),
+      stableJsonSignature(this._config?.background_override),
+      themeName,
+      themeMode,
+      stableJsonSignature(themeDef),
+      this._editMode ? "1" : "0",
+      String(this._previewActivity ?? ""),
+      this._integrationDomain || ""
+    ].join("|");
+  }
+  _syncElementHass(el) {
+    if (!el) return;
+    if (el.__sbHass === this._hass) return;
+    el.hass = this._hass;
+    el.__sbHass = this._hass;
   }
   // ---------- Hub request queue (prevents parallel requests) ----------
   _hubInitState() {
@@ -2882,6 +2937,8 @@ var SofabatonRemoteCard = class extends HTMLElement {
       }
     }
     if (!radius) radius = "18px";
+    if (this._lastGroupRadius === radius) return;
+    this._lastGroupRadius = radius;
     this._root.style.setProperty("--sb-group-radius", radius);
     this._appliedThemeVars = this._appliedThemeVars || [];
     if (!this._appliedThemeVars.includes("--sb-group-radius")) {
@@ -2959,7 +3016,10 @@ var SofabatonRemoteCard = class extends HTMLElement {
           return;
         }
         this._previewActivity = detail.previewActivity ?? "";
-        if (this._editMode) this._update();
+        if (this._editMode) {
+          this._invalidateUpdateFingerprint();
+          this._update();
+        }
       };
     }
     window.addEventListener(
@@ -4348,7 +4408,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
     const pendingActivity = this._pendingActivity;
     const pendingAge = this._pendingActivityAt ? Date.now() - this._pendingActivityAt : null;
     const pendingExpired = pendingAge != null && pendingAge > 15e3;
-    this._activitySelect.hass = this._hass;
+    this._syncElementHass(this._activitySelect);
     if (isUnavailable) {
       this._activitySelect.disabled = true;
       this._activitySelect.innerHTML = "";
@@ -4480,14 +4540,14 @@ var SofabatonRemoteCard = class extends HTMLElement {
     this._setVisible(this._colorsEl, layoutConfig.show_colors);
     this._setVisible(this._abcEl, layoutConfig.show_abc && isX2);
     if (this._macrosButton) {
-      this._macrosButton.hass = this._hass;
+      this._syncElementHass(this._macrosButton);
       this._macrosButtonWrap.classList.toggle(
         "disabled",
         drawerDisplayState.macrosDisabled
       );
     }
     if (this._favoritesButton) {
-      this._favoritesButton.hass = this._hass;
+      this._syncElementHass(this._favoritesButton);
       this._favoritesButtonWrap.classList.toggle(
         "disabled",
         drawerDisplayState.favoritesDisabled
@@ -4508,7 +4568,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
       this._macrosOverlayGrid.innerHTML = "";
       macros.forEach((macro) => {
         const btn = this._mkDrawerButton(macro, "macros");
-        btn.hass = this._hass;
+        this._syncElementHass(btn);
         this._macrosOverlayGrid.appendChild(btn);
       });
     }
@@ -4517,12 +4577,12 @@ var SofabatonRemoteCard = class extends HTMLElement {
       this._favoritesOverlayGrid.innerHTML = "";
       customFavorites.forEach((fav) => {
         const btn = this._mkCustomFavoriteButton(fav);
-        btn.hass = this._hass;
+        this._syncElementHass(btn);
         this._favoritesOverlayGrid.appendChild(btn);
       });
       favorites.forEach((fav) => {
         const btn = this._mkDrawerButton(fav, "favorites");
-        btn.hass = this._hass;
+        this._syncElementHass(btn);
         this._favoritesOverlayGrid.appendChild(btn);
       });
     }
@@ -4540,7 +4600,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
         } else {
           macros.forEach((macro) => {
             const btn = this._mkDrawerButton(macro, "macros");
-            btn.hass = this._hass;
+            this._syncElementHass(btn);
             this._macrosInlineGrid.appendChild(btn);
           });
         }
@@ -4561,12 +4621,12 @@ var SofabatonRemoteCard = class extends HTMLElement {
         } else {
           customFavorites.forEach((fav) => {
             const btn = this._mkCustomFavoriteButton(fav);
-            btn.hass = this._hass;
+            this._syncElementHass(btn);
             this._favoritesInlineGrid.appendChild(btn);
           });
           favorites.forEach((fav) => {
             const btn = this._mkDrawerButton(fav, "favorites");
-            btn.hass = this._hass;
+            this._syncElementHass(btn);
             this._favoritesInlineGrid.appendChild(btn);
           });
         }
@@ -4590,7 +4650,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
     this._updateDrawerDirection();
     this._applyDrawerVisuals();
     for (const k of this._keys) {
-      k.btn.hass = this._hass;
+      this._syncElementHass(k.btn);
       const layoutVisible = this._buttonVisibility && k.key in this._buttonVisibility ? this._buttonVisibility[k.key] : true;
       const shouldShow = k.isX2Only ? isX2 && layoutVisible : layoutVisible;
       this._setVisible(k.wrap, shouldShow);

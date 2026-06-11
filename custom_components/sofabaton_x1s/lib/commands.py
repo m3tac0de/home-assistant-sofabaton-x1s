@@ -73,6 +73,7 @@ class CommandRecord:
     command_id: int
     control: bytes
     label: str
+    sort_id: int = 0
 
 
 @dataclass(slots=True)
@@ -427,6 +428,7 @@ def iter_command_records_from_assembled(
             command_id=record[1],
             control=bytes(record[2 : COMMAND_RECORD_LABEL_OFFSET]),
             label=label,
+            sort_id=record[stride - 1] & 0xFF,
         )
 
 
@@ -811,7 +813,23 @@ def _canonicalize_denonk_descriptor(descriptor: str) -> str:
 
 
 def build_descriptive_ir_blob_body(descriptor: str) -> bytes:
-    """Build a descriptive replay-blob body without the final replay-tail byte."""
+    """Build a descriptive replay-blob body without the final replay-tail byte.
+
+    Synthesis path for the Test / Save Blob flows: normalizes
+    whitespace, validates the ``P:`` prefix, canonicalizes DenonK
+    descriptors (which adds a ``CHECKSUM:`` field when missing), then
+    emits the canonical byte layout via
+    :func:`blob_decoders.render_ir_descriptive_blob_body` followed by
+    the writer's four trailing ``0x00`` bytes.
+
+    Round-trip callers MUST NOT go through this entry point because
+    the DenonK canonicalization mutates the descriptor and would
+    break byte-for-byte round-trip equality with a captured blob;
+    the backup-decoder round-trip path
+    (:func:`blob_decoders._encode_descriptive_ir`) uses
+    ``render_ir_descriptive_blob_body`` directly and re-emits whatever
+    trailer was captured.
+    """
 
     text = re.sub(r"\s+", " ", str(descriptor or "").strip())
     if not text:
@@ -820,13 +838,12 @@ def build_descriptive_ir_blob_body(descriptor: str) -> bytes:
         raise ValueError("descriptor text must start with 'P:'")
 
     text = _canonicalize_denonk_descriptor(text)
-    descriptor_bytes = text.encode("ascii")
-    return (
-        len(descriptor_bytes).to_bytes(2, "big")
-        + b"\x00\x00\x11\x00\x94\x70"
-        + descriptor_bytes
-        + b"\x00\x00\x00\x00"
-    )
+    # Import locally to avoid a circular import at module load time:
+    # blob_decoders only imports from protocol_const, but commands is
+    # a heavy dependency that some early-loaded modules pull in.
+    from .blob_decoders import render_ir_descriptive_blob_body
+
+    return render_ir_descriptive_blob_body(text) + b"\x00\x00\x00\x00"
 
 
 def denonk_checksum(c0: int, c1: int, c2: int, d: int, s: int, f: int) -> int:

@@ -21,7 +21,11 @@ import time
 from typing import Any
 
 from .commands import descriptive_play_blob_text, looks_like_descriptive_play_blob
-from .device_create import build_command_write_steps
+from .device_create import (
+    build_command_write_steps,
+    build_key_sort_steps,
+    encode_command_sort_body,
+)
 from .protocol_const import (
     FAMILY_PLAY_BLOB,
     PLAY_BLOB_BODY_HEADER_LEN,
@@ -205,13 +209,12 @@ class IrBlobMixin:
         if not result.success:
             if result.rejected:
                 self._log.warning(
-                    "[%s] hub rejected page %d/%d dev=0x%02X lib=0x%02X reject=%s",
+                    "[%s] hub rejected page %d/%d dev=0x%02X lib=0x%02X",
                     log_prefix,
                     (result.failed_index or 0) + 1,
                     len(steps),
                     device_id & 0xFF,
                     library_type & 0xFF,
-                    (result.reject_payload or b"").hex(" "),
                 )
             else:
                 self._log.warning(
@@ -277,12 +280,106 @@ class IrBlobMixin:
             str(command_name or "").strip() or f"Command {new_command_id}"
         )
         self._commands_complete.add(dev_lo)
+
+        # The save above leaves the new command with sort_id=0, which
+        # keeps it off the physical remote's device-browse screen even
+        # though it plays back fine when bound to a button or invoked
+        # by name. Push an updated per-device sort table so the new
+        # entry takes the next free display slot. Failure here is not
+        # fatal -- the command itself is already saved.
+        self._register_command_in_device_sort(
+            dev_lo=dev_lo,
+            new_command_id=new_command_id,
+            ack_timeout=ack_timeout,
+        )
+
         return {
             "status": "success",
             "device_id": dev_lo,
             "command_id": new_command_id,
             "command_name": device_commands[new_command_id],
             "page_count": outcome["page_count"],
+        }
+
+    def _register_command_in_device_sort(
+        self,
+        *,
+        dev_lo: int,
+        new_command_id: int,
+        ack_timeout: float,
+    ) -> None:
+        """Append the freshly-saved command to the device's display order.
+
+        Re-emits the full family-0x61 ``(command_id, sort_position)``
+        table for ``dev_lo`` with the new command tacked onto the end
+        at the next free position. Existing commands keep whatever
+        positions the hub had already assigned them; commands the hub
+        has on record but that have never been assigned a position
+        (sort_id==0) are folded in after the previously-positioned
+        ones so the table stays a complete enumeration.
+        """
+
+        metadata = self.state.command_metadata.get(dev_lo) or {}
+        known_command_ids = set(metadata.keys())
+        device_commands = self.state.commands.get(dev_lo) or {}
+        known_command_ids.update(device_commands.keys())
+        known_command_ids.add(new_command_id)
+
+        positioned: list[tuple[int, int]] = []
+        unpositioned: list[int] = []
+        for command_id in known_command_ids:
+            if command_id == new_command_id:
+                continue
+            entry = metadata.get(command_id) or {}
+            sort_id = int(entry.get("sort_id", 0)) & 0xFF
+            if sort_id:
+                positioned.append((command_id & 0xFF, sort_id))
+            else:
+                unpositioned.append(command_id & 0xFF)
+
+        positioned.sort(key=lambda pair: pair[1])
+        next_position = (positioned[-1][1] if positioned else 0) + 1
+        ordered_pairs: list[tuple[int, int]] = list(positioned)
+        for command_id in sorted(unpositioned):
+            ordered_pairs.append((command_id, next_position))
+            next_position += 1
+        ordered_pairs.append((new_command_id & 0xFF, next_position))
+
+        try:
+            body = encode_command_sort_body(ordered_pairs)
+            steps = build_key_sort_steps(
+                device_id=dev_lo,
+                msg_hex=body.hex(),
+                ack_timeout=ack_timeout,
+            )
+        except ValueError as exc:
+            self._log.warning(
+                "[PERSIST_IR_BLOB] could not build sort write dev=0x%02X: %s",
+                dev_lo,
+                exc,
+            )
+            return
+
+        self.clear_ack_queue()
+        result = _run_create_sequence(self, steps)
+        if not result.success:
+            self._log.warning(
+                "[PERSIST_IR_BLOB] sort write %s dev=0x%02X page=%d/%d "
+                "(command still saved, may not appear in the remote's "
+                "device-browse list until the next reorder)",
+                "rejected" if result.rejected else "timed out",
+                dev_lo,
+                (result.failed_index or 0) + 1,
+                len(steps),
+            )
+            return
+
+        # Mirror the position we just told the hub about so a follow-up
+        # save against the same device doesn't reuse the same slot.
+        bucket = self.state.command_metadata.setdefault(dev_lo, {})
+        bucket[new_command_id & 0xFF] = {
+            **(bucket.get(new_command_id & 0xFF) or {}),
+            "sort_id": ordered_pairs[-1][1] & 0xFF,
         }
 
     def persist_command_record(

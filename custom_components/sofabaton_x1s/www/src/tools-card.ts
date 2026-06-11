@@ -1,13 +1,24 @@
-import { LitElement, html } from "lit";
+import { LitElement, html, nothing } from "lit";
+import { keyed } from "lit/directives/keyed.js";
 import { cardStyles } from "./shared/styles/card-styles";
 import type { BackupSectionId, BlobsSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
 import { ControlPanelStore } from "./state/control-panel-store";
-import { hubConnected, persistentCacheEnabled, proxyClientConnected, selectedHub, selectedHubCache } from "./shared/utils/control-panel-selectors";
+import {
+  hubConnected,
+  persistentCacheEnabled,
+  proxyClientConnected,
+  resolveCardGateState,
+  resolveRuntimeState,
+  resolveTabAvailability,
+  selectedHub,
+  selectedHubCache,
+} from "./shared/utils/control-panel-selectors";
 import { renderHubPicker } from "./components/hub-picker";
 import { renderTabBar } from "./components/tab-bar";
 import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
+import { TOOLS_CARD_STRINGS } from "./strings";
 import "./tabs/blobs-tab";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
@@ -23,6 +34,20 @@ function resolveLoadedToolsFrontendVersion() {
 
 const LOADED_TOOLS_FRONTEND_VERSION = resolveLoadedToolsFrontendVersion();
 const TOOLS_VERSION = LOADED_TOOLS_FRONTEND_VERSION;
+const DOC_LINKS: Partial<Record<TabId, { href: string; label: string }>> = {
+  wifi_commands: {
+    href: TOOLS_CARD_STRINGS.docs.wifiCommandsUrl,
+    label: TOOLS_CARD_STRINGS.tabDocs.wifi_commands,
+  },
+  backup: {
+    href: TOOLS_CARD_STRINGS.docs.backupUrl,
+    label: TOOLS_CARD_STRINGS.tabDocs.backup,
+  },
+  blobs: {
+    href: TOOLS_CARD_STRINGS.docs.blobsUrl,
+    label: TOOLS_CARD_STRINGS.tabDocs.blobs,
+  },
+};
 
 function logOnce() {
   const windowWithFlag = window as Window & Record<string, unknown>;
@@ -58,12 +83,19 @@ function logOnce() {
 class SofabatonControlPanelCard extends LitElement {
   static styles = [cardStyles];
 
+  // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
+  // drop the overlay nodes so they don't sit in the DOM forever and so
+  // the next animation cleanly restarts via Lit's keyed remount.
+  private static readonly _IR_FLASH_DURATION_MS = 720;
+
   private _config: Record<string, unknown> = {};
   private _snapshot;
   private readonly _store;
   private _hubPickerOpen = false;
   private _toolsMenuOpen = false;
   private _lastRenderedTab: TabId | null = null;
+  private _irFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
+  private _irFlashClearForReceivedAt: number | null = null;
   private _pendingCacheScrollSnapshot: {
     section: string | null;
     sectionTop: number;
@@ -120,6 +152,11 @@ class SofabatonControlPanelCard extends LitElement {
     document.removeEventListener("pointerdown", this._boundHandleDocumentPointerDown, true);
     this._hubPickerOpen = false;
     this._toolsMenuOpen = false;
+    if (this._irFlashClearTimer) {
+      clearTimeout(this._irFlashClearTimer);
+      this._irFlashClearTimer = null;
+      this._irFlashClearForReceivedAt = null;
+    }
   }
 
   protected willUpdate() {
@@ -202,17 +239,19 @@ class SofabatonControlPanelCard extends LitElement {
 
   private captureCacheScrollState() {
     const state = {
-      section: this._snapshot.openSection || null,
+      section: this._snapshot.selectedCacheSection || null,
       sectionTop: 0,
       panelTop: 0,
     };
-    const body = state.section
-      ? this.renderRoot.querySelector<HTMLElement>(`#acc-body-${state.section}`)
-      : null;
+    const body = this.cacheScrollBody();
     const panel = this.renderRoot.querySelector<HTMLElement>(".tab-panel");
     if (body) state.sectionTop = body.scrollTop || 0;
     if (panel) state.panelTop = panel.scrollTop || 0;
     return state;
+  }
+
+  private cacheScrollBody() {
+    return this.renderRoot.querySelector<HTMLElement>(".cache-panel-body");
   }
 
   private restoreCacheScrollState(
@@ -230,9 +269,7 @@ class SofabatonControlPanelCard extends LitElement {
       const panel = this.renderRoot.querySelector<HTMLElement>(".tab-panel");
       if (panel) panel.scrollTop = Number(snapshot.panelTop || 0);
 
-      const body = snapshot.section
-        ? this.renderRoot.querySelector<HTMLElement>(`#acc-body-${snapshot.section}`)
-        : null;
+      const body = this.cacheScrollBody();
       if (body) body.scrollTop = Number(snapshot.sectionTop || 0);
 
       if (pendingEntityKey) {
@@ -244,7 +281,7 @@ class SofabatonControlPanelCard extends LitElement {
   private scrollEntityToTop(key: string) {
     const entity = this.renderRoot.querySelector<HTMLElement>(`#entity-${key}`);
     if (!entity) return;
-    const body = entity.closest(".acc-body") as HTMLElement | null;
+    const body = entity.closest(".cache-panel-body, .secondary-panel-body, .acc-body") as HTMLElement | null;
     if (!body) return;
     const entityTop = entity.getBoundingClientRect().top;
     const bodyTop = body.getBoundingClientRect().top;
@@ -254,18 +291,14 @@ class SofabatonControlPanelCard extends LitElement {
     });
   }
 
-  private renderHeaderStatus(hub: ReturnType<typeof selectedHub>) {
+  private renderConnectivityPill(hub: ReturnType<typeof selectedHub>) {
     if (!hub) return null;
     const connected = hubConnected(this._snapshot.hass, hub);
     const proxyOn = proxyClientConnected(this._snapshot.hass, hub);
     return html`
-      <div class="card-header-status">
-        <div class="dock-pill ${connected ? "dock-pill--hub-on" : "dock-pill--hub-off"}">
-          <span>HUB</span>
-        </div>
-        <div class="dock-pill ${proxyOn ? "dock-pill--app-on" : "dock-pill--app-off"}">
-          <span>APP</span>
-        </div>
+      <div class="dock-pill-pair" role="group" aria-label="Connectivity">
+        <span class="dock-pill-half ${connected ? "dock-pill-half--hub-on" : "dock-pill-half--hub-off"}">HUB</span>
+        <span class="dock-pill-half ${proxyOn ? "dock-pill-half--app-on" : "dock-pill-half--app-off"}">APP</span>
       </div>
     `;
   }
@@ -277,13 +310,80 @@ class SofabatonControlPanelCard extends LitElement {
     return html`<div class="card-brand">SOFABATON CONTROL PANEL - v${version}</div>`;
   }
 
+  private renderBottomDock(hub: ReturnType<typeof selectedHub>) {
+    const runtimeState = resolveRuntimeState(this._snapshot);
+    const docLink = runtimeState ? null : DOC_LINKS[this._snapshot.selectedTab] ?? null;
+    const statusText = runtimeState ? runtimeState.detail || runtimeState.label : null;
+    const progressPercent = runtimeState?.kind === "operation_running" ? runtimeState.progress.percent : null;
+    const dockClass = runtimeState?.kind === "completion"
+      ? `card-bottom-dock card-bottom-dock--${runtimeState.tone}`
+      : "card-bottom-dock";
+    const irFlash = this._activeIrFlash(hub?.entry_id ?? null);
+
+    return html`
+      <div class=${dockClass}>
+        ${runtimeState?.kind === "operation_running"
+          ? html`
+              <div
+                class="card-bottom-dock-progress-line"
+                data-indeterminate=${runtimeState.progress.indeterminate ? "true" : "false"}
+                style=${runtimeState.progress.indeterminate || progressPercent == null ? "width: 35%" : `width:${progressPercent}%`}
+              ></div>
+            `
+          : null}
+        ${irFlash
+          ? keyed(
+              irFlash.receivedAt,
+              html`
+                <div
+                  class="card-bottom-dock-ir-flash"
+                  title=${this._irFlashTitle(irFlash)}
+                  aria-hidden="true"
+                ></div>
+              `,
+            )
+          : nothing}
+        <div class="card-bottom-dock-center">
+          ${runtimeState
+            ? html`<span class="card-bottom-dock-status">${statusText}</span>`
+            : docLink
+              ? html`<a class="card-bottom-dock-link" href=${docLink.href} target="_blank" rel="noreferrer noopener">${docLink.label}</a>`
+              : nothing}
+        </div>
+        <div class="card-bottom-dock-right">
+          ${this.renderConnectivityPill(hub)}
+        </div>
+      </div>
+    `;
+  }
+
+  private _activeIrFlash(selectedEntryId: string | null) {
+    const press = this._snapshot.lastWifiPress;
+    if (!press || !selectedEntryId || press.entryId !== selectedEntryId) return null;
+    const elapsed = Date.now() - press.receivedAt;
+    if (elapsed < 0 || elapsed >= SofabatonControlPanelCard._IR_FLASH_DURATION_MS) return null;
+    if (this._irFlashClearForReceivedAt !== press.receivedAt) {
+      if (this._irFlashClearTimer) clearTimeout(this._irFlashClearTimer);
+      this._irFlashClearForReceivedAt = press.receivedAt;
+      this._irFlashClearTimer = setTimeout(() => {
+        this._irFlashClearTimer = null;
+        this._irFlashClearForReceivedAt = null;
+        this.requestUpdate();
+      }, SofabatonControlPanelCard._IR_FLASH_DURATION_MS - elapsed + 16);
+    }
+    return press;
+  }
+
+  private _irFlashTitle(press: NonNullable<ReturnType<typeof this._activeIrFlash>>) {
+    const device = press.deviceName?.trim() || "Wifi device";
+    const command = press.commandLabel?.trim() || "Wifi command";
+    return press.pressType === "long" ? `${device} • ${command} (long press)` : `${device} • ${command}`;
+  }
+
   private renderBackendUnavailable(height: number) {
     return html`
       <ha-card>
         <div class="card-inner" style=${`height:${height}px`}>
-          <div class="card-header">
-            <span class="card-title">Sofabaton Control Panel</span>
-          </div>
           <div class="card-body">
             <div class="backend-unavailable-state">
               <div class="backend-unavailable-icon"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
@@ -349,26 +449,26 @@ class SofabatonControlPanelCard extends LitElement {
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
     const hubs = this._snapshot.state?.hubs ?? [];
     const height = Number(this._config.card_height ?? 600);
-    const selectedHubConnected = !hub || hubConnected(this._snapshot.hass, hub);
-    if (this._snapshot.toolsFrontendVersionMismatch) {
+    const cardGateState = resolveCardGateState(this._snapshot);
+    if (cardGateState.kind === "version_mismatch") {
       return this.renderVersionMismatch(height);
     }
-    if (this._snapshot.backendUnavailable) {
+    if (cardGateState.kind === "backend_unavailable") {
       return this.renderBackendUnavailable(height);
     }
+    const selectedHubConnected = cardGateState.kind !== "hub_unavailable";
     const activeBackupOperation = hub?.active_backup_operation;
-    const backupBusy =
-      !!activeBackupOperation &&
-      ["pending", "running"].includes(String(activeBackupOperation.status || ""));
+    const runtimeState = resolveRuntimeState(this._snapshot);
+    const runtimeOperationBusy = runtimeState?.kind === "operation_running";
     const sharedHubCommandBusy = Boolean(
+      runtimeOperationBusy ||
       this._snapshot.refreshBusy ||
       this._snapshot.externalHubCommandBusy ||
-      this._snapshot.pendingActionKey ||
-      backupBusy,
+      this._snapshot.pendingActionKey,
     );
-    const sharedHubCommandLabel = this._snapshot.externalHubCommandLabel
+    const sharedHubCommandLabel = (runtimeOperationBusy ? (runtimeState!.detail || runtimeState!.label) : null)
+      || this._snapshot.externalHubCommandLabel
       || (this._snapshot.refreshBusy ? "Refreshing cache…" : null)
-      || (backupBusy ? String(activeBackupOperation?.message || "Backup or restore in progress…") : null)
       || (this._snapshot.pendingActionKey ? "Hub command in progress…" : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
@@ -390,40 +490,50 @@ class SofabatonControlPanelCard extends LitElement {
         error: this._snapshot.logsError,
       });
     } else if (this._snapshot.selectedTab === "wifi_commands") {
+      const availability = resolveTabAvailability(this._snapshot, "wifi_commands");
       activeTab = html`
         <sofabaton-wifi-commands-tab
           .loading=${this._snapshot.loading}
           .error=${this._snapshot.loadError}
+          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
+          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
           .hub=${hub}
           .hass=${this._snapshot.hass}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
+          .lastWifiPress=${this._snapshot.lastWifiPress}
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-wifi-commands-tab>
       `;
     } else if (this._snapshot.selectedTab === "blobs") {
+      const availability = resolveTabAvailability(this._snapshot, "blobs");
       activeTab = html`
         <sofabaton-blobs-tab
           .loading=${this._snapshot.loading}
           .error=${this._snapshot.loadError}
+          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
+          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
           .hub=${hub}
           .cacheHub=${cacheHub}
           .hass=${this._snapshot.hass}
           .persistentCacheEnabled=${cacheEnabled}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
-          .openSection=${this._snapshot.openBlobsSection}
-          .toggleOpenSection=${(section: BlobsSectionId) => this._store.toggleBlobsSection(section)}
+          .selectedSection=${this._snapshot.selectedBlobsSection}
+          .setSelectedSection=${(section: BlobsSectionId) => this._store.setSelectedBlobsSection(section)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
-          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {
+      const availability = resolveTabAvailability(this._snapshot, "backup");
       activeTab = html`
         <sofabaton-backup-tab
           .loading=${this._snapshot.loading}
           .error=${this._snapshot.loadError}
+          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
+          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
           .hub=${hub}
           .cacheHub=${cacheHub}
           .hass=${this._snapshot.hass}
@@ -431,8 +541,8 @@ class SofabatonControlPanelCard extends LitElement {
           .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
-          .openSection=${this._snapshot.openBackupSection}
-          .setOpenSection=${(section: BackupSectionId) => this._store.setBackupSection(section)}
+          .selectedSection=${this._snapshot.selectedBackupSection}
+          .setSelectedSection=${(section: BackupSectionId) => this._store.setSelectedBackupSection(section)}
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-backup-tab>
@@ -447,13 +557,13 @@ class SofabatonControlPanelCard extends LitElement {
         refreshBusy: this._snapshot.refreshBusy,
         hubCommandBusy: sharedHubCommandBusy,
         activeRefreshLabel: this._snapshot.activeRefreshLabel,
-        openSection: this._snapshot.openSection,
+        selectedSection: this._snapshot.selectedCacheSection,
         openEntity: this._snapshot.openEntity,
         selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
         enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
         onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
         onRefreshStale: () => void this._store.refreshStale(),
-        onToggleSection: (sectionId) => this._store.toggleSection(sectionId),
+        onSelectSection: (sectionId) => this._store.selectCacheSection(sectionId),
         onToggleEntity: (key) => this._store.toggleEntity(key),
         onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
         onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
@@ -465,7 +575,6 @@ class SofabatonControlPanelCard extends LitElement {
         <div class="card-inner" style=${`height:${height}px`}>
           <div class="card-topbar">
             ${this.renderBrandLabel()}
-            ${this.renderHeaderStatus(hub)}
             ${hubs.length > 1
               ? renderHubPicker({
                   interactive: true,
@@ -489,6 +598,7 @@ class SofabatonControlPanelCard extends LitElement {
             onToggleToolsMenu: () => this.toggleToolsMenu(),
           })}
           ${selectedHubConnected ? html`<div class="card-body">${activeTab}</div>` : this.renderHubUnavailable()}
+          ${this.renderBottomDock(hub)}
         </div>
       </ha-card>
     `;

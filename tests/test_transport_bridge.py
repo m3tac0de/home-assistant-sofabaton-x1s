@@ -79,148 +79,69 @@ def test_notify_listener_stops_when_connecting(monkeypatch):
     assert stopped
 
 
-def test_claim_once_handles_bind_address_in_use(monkeypatch):
+def test_install_hub_socket_configures_socket_and_notifies_state():
     bridge = TransportBridge(
         "192.168.2.10", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
     )
-
-    class FailingSocket:
-        def __init__(self, *_args, **_kwargs):
-            self.closed = False
-
-        def setsockopt(self, *_args, **_kwargs):
-            pass
-
-        def bind(self, *_args, **_kwargs):
-            raise OSError("address in use")
-
-        def close(self):
-            self.closed = True
-
-    created = []
-
-    def fake_socket(*_args, **_kwargs):
-        sock = FailingSocket()
-        created.append(sock)
-        return sock
-
-    monkeypatch.setattr(transport_bridge.socket, "socket", fake_socket)
-
-    assert bridge._claim_once() is False
-    assert created
-    assert all(sock.closed for sock in created)
-
-
-def test_claim_once_handles_listen_address_in_use(monkeypatch):
-    bridge = TransportBridge(
-        "192.168.2.10", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
-    )
-
-    class BoundSocket:
-        def __init__(self, *_args, **_kwargs):
-            self.closed = False
-            self.listen_calls = 0
-
-        def listen(self, *_args, **_kwargs):
-            self.listen_calls += 1
-            raise OSError("address in use")
-
-        def settimeout(self, *_args, **_kwargs):
-            raise AssertionError("settimeout should not be called when listen fails")
-
-        def close(self):
-            self.closed = True
-
-    sock = BoundSocket()
-    monkeypatch.setattr(transport_bridge, "_bind_port_near", lambda base: (sock, base + 1))
-
-    assert bridge._claim_once() is False
-    assert sock.closed
-    assert sock.listen_calls == 1
-
-
-def test_bind_port_near_returns_reserved_socket(monkeypatch):
-    occupied = set()
 
     class FakeSocket:
-        def __init__(self, *_args, **_kwargs):
-            self.bound_port = None
+        def __init__(self):
+            self.timeout = None
+            self.sockopts = []
+            self.closed = False
 
-        def setsockopt(self, *_args, **_kwargs):
-            pass
+        def settimeout(self, value):
+            self.timeout = value
 
-        def bind(self, addr):
-            port = addr[1]
-            if port in occupied:
-                raise OSError("busy")
-            occupied.add(port)
-            self.bound_port = port
+        def setsockopt(self, *args):
+            self.sockopts.append(args)
 
         def close(self):
-            if self.bound_port is not None:
-                occupied.discard(self.bound_port)
-                self.bound_port = None
+            self.closed = True
 
-    monkeypatch.setattr(transport_bridge.socket, "socket", lambda *a, **k: FakeSocket())
-
-    sock_one, port_one = transport_bridge._bind_port_near(8200)
-    sock_two, port_two = transport_bridge._bind_port_near(8200)
-    try:
-        assert port_one == 8200
-        assert port_two == 8201
-    finally:
-        sock_one.close()
-        sock_two.close()
-
-
-def test_bind_port_near_closes_sockets_when_range_exhausted(monkeypatch):
-    closed = []
-
-    class FailingSocket:
-        def setsockopt(self, *_args, **_kwargs):
+        def shutdown(self, *_):
             pass
 
-        def bind(self, *_args, **_kwargs):
-            raise OSError("busy")
+    states = []
+    bridge.on_hub_state(lambda c: states.append(c))
 
-        def close(self):
-            closed.append(True)
+    sock = FakeSocket()
+    bridge._install_hub_socket(sock, ("192.168.2.10", 51234))
 
-    monkeypatch.setattr(transport_bridge.socket, "socket", lambda *a, **k: FailingSocket())
-
-    try:
-        transport_bridge._bind_port_near(8200, tries=3)
-    except OSError as exc:
-        assert "No free port near 8200" in str(exc)
-    else:
-        raise AssertionError("expected _bind_port_near to raise when every port is busy")
-
-    assert len(closed) == 3
+    assert bridge.is_hub_connected is True
+    assert sock.timeout == 0.0
+    assert states[-1] is True
 
 
-def test_hub_guard_loop_retries_after_unexpected_claim_error(monkeypatch):
+def test_install_hub_socket_replaces_existing_socket():
     bridge = TransportBridge(
         "192.168.2.10", 8102, 8102, 8200, proxy_id="proxy", mdns_instance="proxy", mdns_txt={}
     )
-    attempts = 0
-    sleeps = []
 
-    def fake_claim_once():
-        nonlocal attempts
-        attempts += 1
-        raise RuntimeError("boom")
+    class FakeSocket:
+        def __init__(self):
+            self.closed = False
 
-    def fake_sleep(seconds):
-        sleeps.append(seconds)
-        bridge._stop.set()
+        def settimeout(self, *_):
+            pass
 
-    monkeypatch.setattr(bridge, "_claim_once", fake_claim_once)
-    monkeypatch.setattr(transport_bridge.time, "sleep", fake_sleep)
+        def setsockopt(self, *_):
+            pass
 
-    bridge._hub_guard_loop()
+        def shutdown(self, *_):
+            pass
 
-    assert attempts == 1
-    assert sleeps == [0.5]
+        def close(self):
+            self.closed = True
+
+    old = FakeSocket()
+    bridge._hub_sock = old  # type: ignore[assignment]
+
+    new = FakeSocket()
+    bridge._install_hub_socket(new, ("192.168.2.10", 51235))
+
+    assert old.closed is True
+    assert bridge._hub_sock is new
 
 
 def test_flush_buffer_retries_after_blocking():

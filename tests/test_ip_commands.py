@@ -5,7 +5,6 @@ from __future__ import annotations
 from custom_components.sofabaton_x1s.lib.frame_handlers import FrameContext
 from custom_components.sofabaton_x1s.lib.opcode_handlers import IpCommandSyncRowHandler
 from custom_components.sofabaton_x1s.lib.protocol_const import (
-    OP_DEFINE_IP_CMD_EXISTING,
     OP_IPCMD_ROW_A,
     OP_IPCMD_ROW_B,
     OP_IPCMD_ROW_C,
@@ -84,29 +83,13 @@ def test_ip_command_sync_rows_decode_http_metadata() -> None:
     }
 
 
-def test_build_existing_device_frame_encodes_http_request() -> None:
-    proxy = X1Proxy(
-        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
-    )
-
-    opcode, payload = proxy._build_existing_device_frame(
-        device_id=8,
-        button_id=4,
-        button_name="tst4",
-        method="GET",
-        url="http://example.local/api",
-        headers={"Content-Type": "application/json"},
-    )
-
-    assert opcode == OP_DEFINE_IP_CMD_EXISTING
-    assert payload[0] == 4
-    assert payload[6] == 8
-    assert payload[7] == 4
-
-    name_blob = proxy._utf16le_padded("tst4", length=64)
-    assert payload[16 : 16 + 64] == name_blob
-
-    http_blob = proxy._encode_http_request(
-        "GET", "http://example.local/api", {"Content-Type": "application/json"}
-    )
-    assert payload.endswith(http_blob)
+# NOTE: ``test_build_existing_device_frame_encodes_http_request`` was
+# removed alongside the ``create_ip_button`` service handler and the
+# proxy helpers it drove (``add_ip_button_to_device``,
+# ``_build_existing_device_frame``, ``_encode_http_request``,
+# ``_build_virtual_device_frames``, ``create_ip_button``). That chain
+# was reachable only via a service registration that had been
+# commented out for the entire current cycle; the canonical wifi_ip
+# HTTP-text writer in ``lib.blob_decoders.render_wifi_ip_http_text``
+# is now the single source of truth for the bytes that flow into
+# wifi_ip command records.

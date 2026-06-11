@@ -227,12 +227,49 @@ def _install_homeassistant_stubs() -> None:
             self.path = path
             self.cache_headers = cache_headers
 
+    class HomeAssistantView:  # pragma: no cover - only used as stub
+        url = ""
+        name = ""
+        requires_auth = True
+
     http.StaticPathConfig = StaticPathConfig
+    http.HomeAssistantView = HomeAssistantView
     sys.modules.setdefault("homeassistant.components.http", http)
+
+    # Minimal aiohttp.web stub — the integration imports ``web.Request``
+    # and constructs ``web.Response``. Tests that don't actually serve
+    # HTTP can use these inert placeholders, and the import succeeds.
+    aiohttp = types.ModuleType("aiohttp")
+    aiohttp_web = types.ModuleType("aiohttp.web")
+
+    class _AiohttpRequest:  # pragma: no cover - only used as stub
+        pass
+
+    class _AiohttpResponse:  # pragma: no cover - only used as stub
+        def __init__(self, *args, **kwargs) -> None:
+            self.status = kwargs.get("status", 200)
+            self.body = kwargs.get("body")
+            self.text = kwargs.get("text")
+            self.headers = kwargs.get("headers", {})
+
+    aiohttp_web.Request = _AiohttpRequest
+    aiohttp_web.Response = _AiohttpResponse
+    aiohttp.web = aiohttp_web
+    sys.modules.setdefault("aiohttp", aiohttp)
+    sys.modules.setdefault("aiohttp.web", aiohttp_web)
 
     zeroconf = types.ModuleType("homeassistant.components.zeroconf")
     zeroconf.async_get_instance = lambda *args, **kwargs: None
     sys.modules.setdefault("homeassistant.components.zeroconf", zeroconf)
+
+    persistent_notification = types.ModuleType(
+        "homeassistant.components.persistent_notification"
+    )
+    persistent_notification.async_create = lambda *args, **kwargs: None
+    persistent_notification.async_dismiss = lambda *args, **kwargs: None
+    sys.modules.setdefault(
+        "homeassistant.components.persistent_notification", persistent_notification
+    )
 
 
 _install_homeassistant_stubs()

@@ -18,7 +18,7 @@ sequenceDiagram
     rect rgb(240, 255, 240)
         Note over Hub, HA: Connect
         HA->>Hub: UDP 8102 (CALL_ME)
-        Hub->>HA: TCP 8200..8231 (Connect back to Proxy)
+        Hub->>HA: TCP 8200 (Connect back to Proxy)
     end
 
     rect rgb(255, 245, 230)
@@ -63,7 +63,7 @@ The integration discovers the physical hub and then keeps a bidirectional sessio
 ### Connect flow
 
 1. **CALL_ME over UDP**: Home Assistant sends a short "call me" packet to the hub's advertised UDP port (usually `8102`).
-2. **TCP connect-back**: The hub opens a TCP session back to Home Assistant on the proxy's listen port. The integration tries up to 32 sequential TCP ports starting from the configured base port (8200 by default), so multiple hubs can coexist without clashes.
+2. **TCP connect-back**: The hub opens a TCP session back to Home Assistant on the proxy's listen port (8200 by default). All configured hubs share the same listener; the proxy dispatches each accepted connection to the right hub by peer IP.
 
 ### Optional / Wifi Commands
 
@@ -73,7 +73,7 @@ When using this integration's "[Wifi Commands](wifi_commands.md)" feature, the h
 
 - mDNS/Bonjour from hub → Home Assistant (or mDNS forwarded across VLANs).
 - UDP from Home Assistant → hub on the Sofabaton UDP port (`8102` by default).
-- TCP from hub → Home Assistant on the proxy listen range (the configured base port plus up to 31 additional ports for other hubs).
+- TCP from hub → Home Assistant on the proxy listen port (8200 by default), shared by all configured hubs.
 
 If discovery works but the integration never shows the hub as connected, the TCP connect-back from the hub to Home Assistant is usually being blocked.
 
@@ -133,7 +133,7 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 ## Multiple hubs and VLANs checklist
 
 - Ensure each hub's mDNS traffic reaches Home Assistant (multicast forwarding or manual configuration).
-- Reserve a contiguous TCP port range large enough for your hubs (base port + up to 31). Avoid collisions with other services on the host.
+- Reserve the TCP listener port (8200 by default) for hub connect-back. Avoid collisions with other services on the host.
 - If you split hubs and apps across VLANs:
   - For Android / mDNS-based discovery, make sure multicast is forwarded (e.g. mDNS
     reflector) and UDP/TCP paths are allowed.
@@ -150,7 +150,7 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 - **Seen in discovery but never connects:** likely missing TCP allow rule from hub to Home Assistant.
 - **No discovery across VLANs:** forward mDNS or configure the hub manually.
 - **App cannot find the proxy:** confirm the proxy UDP port is reachable (and set to 8102 for iOS).
-- **Port already in use:** pick a different TCP base port; the integration will try the next 31 ports automatically.
+- **Port already in use:** pick a different TCP listener port in the integration options.
 - **iOS app can’t discover across VLANs but manual connections work:** this is expected
   without a UDP broadcast relay. iOS discovery uses broadcast, which does not cross VLAN
   boundaries by default.
@@ -164,7 +164,7 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 | Hub network   | HA host       | UDP      | 5353                 | mDNS `_x1hub._udp.local.` hub advert.         | Hub discovery by integration for X1(S)|
 | Hub network   | HA host       | UDP      | 5353                 | mDNS `_sofabaton_hub._udp.local.` hub advert. | Hub discovery by integration for X2   |
 | HA host       | Hub network   | UDP      | 8102                 | `CALL_ME` from proxy to hub                   | Hub connect flow                      |
-| Hub network   | HA host       | TCP      | 8200-8231*           | Hub connects back to proxy                    | Hub control and status                |
+| Hub network   | HA host       | TCP      | 8200*                | Hub connects back to proxy                    | Hub control and status                |
 | Hub network   | HA host       | TCP      | 8060**               | Hub makes HTTP requests back to integration   | Wifi Commands feature                 |
 | HA host       | App network   | UDP      | 5353                 | mDNS `_x1hub._udp.local.` to app              | Sofabaton Android app (blue arrow)    |
 | App network   | HA host       | UDP      | 8102                 | iOS broadcast discovery to proxy              | Sofabaton iOS app (red arrow)         |

@@ -8,6 +8,7 @@ from functools import partial
 from typing import Any, Dict, Optional
 from urllib.parse import unquote
 
+from homeassistant.components import persistent_notification
 from homeassistant.components.zeroconf import async_get_instance
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -60,7 +61,12 @@ from .lib.protocol_const import (
     DEVICE_CLASS_WIFI_SONOS,
     normalize_device_class,
 )
-from .lib.commands import descriptive_play_blob_text, looks_like_descriptive_play_blob, split_play_blob_tail
+from .lib.blob_decoders import (
+    format_decoded_for_display as decoded_blob_display_text,
+    is_decodable_class as is_blob_decodable_class,
+    try_decode_blob as try_decode_command_blob,
+)
+from .lib.commands import split_play_blob_tail
 from .lib.devices import DeviceConfig, parse_device_record
 from .lib.x1_proxy import X1Proxy
 from .command_config import (
@@ -192,6 +198,13 @@ class SofabatonHub:
         self.production_batch: str | None = None
         self.activities_ready: bool = False
         self.devices_ready: bool = False
+        # Set while the hub is doing a firmware OTA (opcode 0x0167); we
+        # suppress reconnect attempts and post a persistent notification
+        # so the user knows to come back in a few minutes. Cleared on the
+        # next successful hub connection.
+        self._ota_in_progress: bool = False
+        self._ota_notification_id = f"sofabaton_x1s_ota_{entry_id}"
+        self._ota_pause_seconds: float = 300.0
         self._devices_generation: int = 0
         self._activities_generation: int = 0
         self._cache_generation: int = 0
@@ -386,45 +399,6 @@ class SofabatonHub:
 
         return banner_changed or identity_changed
 
-    async def async_sync_authoritative_identity_before_setup(
-        self,
-        *,
-        wait_timeout: float = 5.0,
-        poll_interval: float = 0.1,
-    ) -> bool:
-        """Settle a banner-driven rename before entities/platforms are set up.
-
-        We only force the early propagation path when the live banner name
-        actually diverges from the name already in memory.
-        """
-
-        current_name = str(self.name or "").strip()
-        deadline = monotonic() + max(wait_timeout, 0.0)
-
-        while monotonic() < deadline:
-            if self._proxy.can_issue_commands():
-                remaining = max(0.1, min(1.0, deadline - monotonic()))
-                banner_info, banner_ready = await self.hass.async_add_executor_job(
-                    partial(self._proxy.fetch_banner_info, force_refresh=True, timeout=remaining)
-                )
-                if banner_ready and isinstance(banner_info, dict):
-                    banner_name = str(banner_info.get("name") or "").strip()
-                    if banner_name and banner_name != current_name:
-                        changed = await self._async_sync_authoritative_identity(banner_info)
-                        if changed:
-                            self._bump_cache_generation()
-                            async_dispatcher_send(self.hass, signal_hub(self.entry_id))
-                        return changed
-                    if banner_name:
-                        return False
-
-            sleep_for = min(poll_interval, max(0.0, deadline - monotonic()))
-            if sleep_for <= 0:
-                break
-            await asyncio.sleep(sleep_for)
-
-        return False
-
     async def _async_get_persistent_cache_store(self) -> PersistentCacheStore:
         domain_data = self.hass.data.setdefault(DOMAIN, {})
         store = domain_data.get("persistent_cache_store")
@@ -482,10 +456,12 @@ class SofabatonHub:
         proxy.on_burst_end("buttons", self._on_buttons_burst)
         proxy.on_client_state_change(self._on_client_state_change)
         proxy.on_hub_state_change(self._on_hub_state_change)
+        proxy.on_ota_update(self._on_ota_update)
         proxy.on_burst_end("devices", self._on_devices_burst)
         proxy.on_burst_end("commands", self._on_commands_burst)
         proxy.on_burst_end("macros", self._on_macros_burst)
         proxy.on_app_activation(self._on_app_activation)
+        proxy.transport.set_busy_gate(self.is_long_running_task_active)
         return proxy
 
     async def async_start(self) -> None:
@@ -676,8 +652,57 @@ class SofabatonHub:
             async_dispatcher_send(self.hass, signal_hub(self.entry_id))
 
             if connected:
+                if self._ota_in_progress:
+                    self._ota_in_progress = False
+                    self._log.info(
+                        "[%s] Hub reconnected after OTA pause; dismissing notification",
+                        self.entry_id,
+                    )
+                    persistent_notification.async_dismiss(
+                        self.hass, self._ota_notification_id
+                    )
                 self._log.debug("[%s] Hub connected, doing initial sync", self.entry_id)
                 self.hass.async_create_task(self._async_initial_sync())
+        self.hass.loop.call_soon_threadsafe(_inner)
+
+    def _on_ota_update(self) -> None:
+        """Handle the hub's OTA-update push: pause reconnects and notify the user.
+
+        On opcode 0x0167 the hub goes silent for several minutes while
+        applying a firmware update. We trip a backoff in the transport
+        bridge so reconnect attempts are suppressed during that window
+        and surface a persistent notification so HA users understand why
+        the hub went unavailable.
+        """
+
+        def _inner() -> None:
+            if self._ota_in_progress:
+                return
+            self._ota_in_progress = True
+            self._log.warning(
+                "[%s] Hub announced OTA firmware update; pausing reconnects for %.0fs",
+                self.entry_id,
+                self._ota_pause_seconds,
+            )
+            try:
+                self._proxy.transport.pause_for_ota(self._ota_pause_seconds)
+            except Exception:
+                self._log.exception(
+                    "[%s] Failed to arm OTA pause on transport", self.entry_id
+                )
+            minutes = max(1, int(round(self._ota_pause_seconds / 60.0)))
+            persistent_notification.async_create(
+                self.hass,
+                (
+                    f"The SofaBaton hub **{self.name}** is installing a firmware "
+                    f"update and will be unavailable for several minutes. Home "
+                    f"Assistant will reconnect automatically; please come back "
+                    f"in about {minutes} minutes."
+                ),
+                title="SofaBaton hub firmware update in progress",
+                notification_id=self._ota_notification_id,
+            )
+
         self.hass.loop.call_soon_threadsafe(_inner)
 
     def _on_devices_burst(self, key: str) -> None:
@@ -1245,25 +1270,50 @@ class SofabatonHub:
             replay_tail_checksum: int | None = None
             blob_kind = "raw"
             parsed_blob: str | None = None
-
-            if blob_bytes:
-                blob_body, replay_tail_checksum = split_play_blob_tail(blob_bytes)
-                if looks_like_descriptive_play_blob(blob_body):
-                    blob_kind = "descriptive"
-                    parsed_blob = descriptive_play_blob_text(blob_body)
+            decoded_block: dict[str, Any] | None = None
 
             command_device_id = command.get("device_id")
             normalized_device_id = int(command_device_id) if command_device_id is not None else device_id
+            cached_device_class = self._get_cached_device_class(normalized_device_id)
+
+            if blob_bytes:
+                blob_body, replay_tail_checksum = split_play_blob_tail(blob_bytes)
+                # One uniform decoder path for every class that can
+                # carry user-meaningful structure: descriptive IR
+                # payloads (P:Sony12 etc.), wifi_ip, wifi_roku,
+                # wifi_hue, wifi_sonos. Each runs a strict round-trip
+                # verifier internally; on any mismatch (including
+                # non-descriptive IR blobs that fail the magic-prefix
+                # sniff) the decoder returns None and the row falls
+                # back to the raw-hex view, exactly like a row whose
+                # class has no decoder at all.
+                if blob_body and is_blob_decodable_class(cached_device_class):
+                    candidate = try_decode_command_blob(cached_device_class, blob_body)
+                    if candidate is not None:
+                        decoded_block = candidate
+                        # Two blob_kind values are exposed:
+                        #   "descriptive" — preserved for IR
+                        #     descriptors so the existing UI / tests
+                        #     stay valid for the historical IR case.
+                        #   "decoded"    — used for the four
+                        #     virtual-device classes that newly gain
+                        #     structured fields.
+                        if candidate.get("class") == DEVICE_CLASS_IR:
+                            blob_kind = "descriptive"
+                        else:
+                            blob_kind = "decoded"
+                        parsed_blob = decoded_blob_display_text(candidate)
 
             commands_out.append(
                 {
                     "command_label": command.get("label"),
                     "device_id": normalized_device_id,
                     "command_id": command.get("command_id"),
-                    "device_class": self._get_cached_device_class(normalized_device_id),
+                    "device_class": cached_device_class,
                     "blob_kind": blob_kind,
                     "command_blob": blob_body.hex(" ") if blob_body else None,
                     "parsed_blob": parsed_blob,
+                    "decoded": decoded_block,
                     "replay_tail_checksum": replay_tail_checksum,
                     "command_checksum": replay_tail_checksum,
                 }
@@ -1279,8 +1329,23 @@ class SofabatonHub:
         }
 
     @staticmethod
-    def _build_hub_code_record_restore_data(command: dict[str, Any]) -> dict[str, Any] | None:
-        """Extract opaque command-record metadata from a raw 0x020C dump result."""
+    def _build_hub_code_record_restore_data(
+        command: dict[str, Any],
+        *,
+        device_class: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Extract opaque command-record metadata from a raw 0x020C dump result.
+
+        For the virtual-device classes that carry user-meaningful
+        structure inside the blob (``wifi_ip``, ``wifi_roku``,
+        ``wifi_hue``, ``wifi_sonos``), the result also gains a
+        ``decoded`` block whose ``fields`` describe the host / port /
+        URL path / HTTP method / headers / body. The ``decoded`` block
+        is purely additive: the wire-faithful ``data_hex`` remains the
+        only input the restore path reads, so older backups (no
+        ``decoded`` block) and forward backups round-trip the same
+        bytes through the same code path.
+        """
 
         pages = command.get("pages")
         if not isinstance(pages, list) or not pages:
@@ -1303,12 +1368,23 @@ class SofabatonHub:
         if not data_hex:
             return None
 
-        return {
+        restore_data: dict[str, Any] = {
             "transport": "hub_code_record",
             "library_type": payload[8],
             "command_code": payload[9:15].hex(" "),
             "data_hex": data_hex,
         }
+
+        if device_class and is_blob_decodable_class(device_class):
+            # Round-trip verifier inside try_decode_command_blob
+            # guarantees that any non-None result re-encodes to exactly
+            # data_hex; on any mismatch we leave the row carrying raw
+            # data_hex only, which is the same shape backups have today.
+            decoded_block = try_decode_command_blob(device_class, data_hex)
+            if decoded_block is not None:
+                restore_data["decoded"] = decoded_block
+
+        return restore_data
 
     async def async_backup_device(
         self,
@@ -1504,19 +1580,35 @@ class SofabatonHub:
                 if blob_hex:
                     meta = command_meta_for_device.get(command_id)
                     meta_dict = meta if isinstance(meta, dict) else {}
-                    row["restore_data"] = {
+                    restore_data = {
                         "transport": "hub_code_record",
                         "library_type": int(meta_dict.get("library_type", 0x0D)) & 0xFF,
                         "button_code": int(meta_dict.get("button_code", 0)) & 0xFFFFFFFFFFFF,
                         "data_hex": blob_hex,
                     }
+                    # Descriptive IR payloads (P:Sony12 etc.) ride the
+                    # same `decoded` block shape as the wifi virtual
+                    # device classes. The decoder content-sniffs the
+                    # magic prefix and returns None for non-descriptive
+                    # blobs (raw learned-IR, database-style captures),
+                    # so those rows keep the raw-only restore_data
+                    # shape they had before. `data_hex` is never
+                    # mutated; `decoded` is purely additive metadata.
+                    decoded_block = try_decode_command_blob(
+                        DEVICE_CLASS_IR, blob_hex
+                    )
+                    if decoded_block is not None:
+                        restore_data["decoded"] = decoded_block
+                    row["restore_data"] = restore_data
             elif uses_raw_command_dump:
                 # BT, RF, and the wifi network-callback variants all
                 # share the family-0x0E record shape; the page-one
                 # extractor pulls library_type / command_code /
                 # data_hex straight from the dump so backup→restore is
                 # transport-agnostic.
-                restore_data = self._build_hub_code_record_restore_data(blob_command)
+                restore_data = self._build_hub_code_record_restore_data(
+                    blob_command, device_class=normalized_device_class,
+                )
                 if restore_data is not None:
                     row["restore_data"] = restore_data
             # Device classes that produce neither a hub_code_record nor a
@@ -1554,7 +1646,11 @@ class SofabatonHub:
         for record in macro_records:
             # Device-level macro steps target the device's own commands;
             # restore re-derives the step device id and the 48-bit fid
-            # from the restored command, so neither is stored.
+            # from the restored command, so neither is stored for real
+            # rows. Delay/wait rows (command_id == 0xFF) are a firmware
+            # sentinel: dev_id=0xFF, cmd_id=0xFF, fid=0xFFFFFFFFFFFF,
+            # duration=0xFF, delay=<pause>. They are preserved verbatim
+            # and re-emitted with the full sentinel on restore.
             macro_rows.append(
                 {
                     "button_id": record.key_id & 0xFF,
@@ -1566,8 +1662,6 @@ class SofabatonHub:
                             "delay": entry.delay & 0xFF,
                         }
                         for entry in record.key_sequence
-                        if (entry.key_id & 0xFF) != 0xFF
-                        and (entry.device_id & 0xFF) != 0xFF
                     ],
                 }
             )
@@ -1724,13 +1818,14 @@ class SofabatonHub:
             for entry in record.key_sequence:
                 step_device_id = entry.device_id & 0xFF
                 step_command_id = entry.key_id & 0xFF
-                if step_device_id == 0xFF or step_command_id == 0xFF:
-                    # The hub can emit internal power-macro rows with
-                    # device_id=255 or command_id=255 (delay-only / no-op
-                    # entries). Those rows are rejected if replayed during
-                    # restore, so they must not be exported.
-                    continue
-                if step_device_id != 0:
+                is_delay_step = step_device_id == 0xFF or step_command_id == 0xFF
+                # Delay/wait rows are a firmware sentinel record (all
+                # head bytes 0xFF; the last byte carries the pause).
+                # They are preserved verbatim through backup -> restore
+                # so the firmware can replay the macro's inter-step
+                # pauses. They don't reference any source device, so
+                # don't add to ``referenced_source_device_ids``.
+                if not is_delay_step and step_device_id != 0:
                     referenced_source_device_ids.add(step_device_id)
                 step_entries.append(
                     {
@@ -2281,29 +2376,73 @@ class SofabatonHub:
         if result is None:
             return None
 
+        # Decouple post-save housekeeping (refresh + cache persist) from
+        # the action's return value. The save and the sort-table write
+        # have already landed on the hub at this point, so the caller
+        # has everything it needs to report success. Running the refresh
+        # in the foreground was prone to wedging the websocket action's
+        # completion -- the family-0x61 sort write can leave the proxy's
+        # burst tracker briefly mid-stream on an unsolicited commands
+        # burst, which then stalls the verification round-trip. Move
+        # housekeeping to a background task so nothing downstream of
+        # this point can block the action from settling.
+        self.hass.async_create_task(
+            self._async_post_persist_housekeeping(device_id, result, wait_timeout)
+        )
+
+        return result
+
+    async def _async_post_persist_housekeeping(
+        self,
+        device_id: int,
+        result: dict[str, Any],
+        wait_timeout: float,
+    ) -> None:
+        """Refresh cached command metadata and persist the catalog cache.
+
+        Runs in the background after ``async_persist_ir_blob`` has
+        already returned. Any failure is logged at debug level and
+        swallowed -- the user-visible save action has already
+        succeeded, and the cache will catch up on the next normal
+        refresh cycle if this pass times out.
+        """
+
+        refresh_budget = min(2.0, wait_timeout)
         try:
             command_id = result.get("command_id")
             if isinstance(command_id, int):
-                await self.async_fetch_single_device_command(
-                    device_id,
-                    command_id,
-                    wait_timeout=wait_timeout,
-                    force_refresh=True,
+                await asyncio.wait_for(
+                    self.async_fetch_single_device_command(
+                        device_id,
+                        command_id,
+                        wait_timeout=refresh_budget,
+                        force_refresh=False,
+                    ),
+                    timeout=refresh_budget + 0.5,
                 )
             else:
-                await self.async_fetch_device_commands(
-                    device_id,
-                    wait_timeout=wait_timeout,
+                await asyncio.wait_for(
+                    self.async_fetch_device_commands(
+                        device_id,
+                        wait_timeout=refresh_budget,
+                    ),
+                    timeout=refresh_budget + 0.5,
                 )
         except Exception:
             self._log.debug(
-                "[BLOBS] persist_ir_blob refresh failed for device %s",
+                "[BLOBS] persist_ir_blob background refresh failed for device %s",
                 device_id,
                 exc_info=True,
             )
 
-        await self._async_persist_cache_if_enabled()
-        return result
+        try:
+            await self._async_persist_cache_if_enabled()
+        except Exception:
+            self._log.debug(
+                "[BLOBS] persist_ir_blob background cache persist failed for device %s",
+                device_id,
+                exc_info=True,
+            )
 
     async def async_create_wifi_device(
         self,
@@ -2989,6 +3128,7 @@ class SofabatonHub:
             "entity_kind": "device",
             "entity_name": resolved_device_name,
             "command_id": command_label,
+            "command_index": command_index,
             "command_label": command_label,
             "button_label": command_label,
             "press_type": press_type,
@@ -3024,6 +3164,25 @@ class SofabatonHub:
     @property
     def is_sync_in_progress(self) -> bool:
         return self._command_sync_lock.locked()
+
+    def is_long_running_task_active(self) -> bool:
+        """True while a backup, restore, or command-config sync is running.
+
+        Wired into the transport bridge as the CALL_ME busy gate so proxy
+        clients are ignored without tearing down mDNS/broadcast discovery.
+        """
+
+        if self._command_sync_lock.locked():
+            return True
+        try:
+            from . import _backup_operation_registry  # local import to avoid cycle
+        except Exception:
+            return False
+        try:
+            registry = _backup_operation_registry(self.hass)
+        except Exception:
+            return False
+        return bool(registry.has_running_for_entry(self.entry_id))
 
     def get_command_sync_progress(self, device_key: str | None = None) -> dict[str, Any]:
         normalized_key = "".join(ch for ch in str(device_key or DEFAULT_WIFI_DEVICE_KEY).lower() if ch.isalnum()) or DEFAULT_WIFI_DEVICE_KEY

@@ -10,7 +10,8 @@ import threading
 import time
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
-from ..logging_utils import HubLogger, get_hub_logger
+from ..logging_utils import HubLogger, LogTag, get_hub_logger
+from .hub_listener import get_hub_listener
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 from .notify_demuxer import (
     BROADCAST_LISTEN_PORT,
@@ -38,23 +39,6 @@ def _route_local_ip(peer_ip: str) -> str:
             s.close()
         except Exception:
             pass
-
-
-def _bind_port_near(base: int, tries: int = 64) -> tuple[socket.socket, int]:
-    for i in range(tries):
-        cand = base + i
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            s.bind(("0.0.0.0", cand))
-            return s, cand
-        except OSError:
-            try:
-                s.close()
-            except Exception:
-                pass
-            continue
-    raise OSError("No free port near %d" % base)
 
 
 def _enable_keepalive(
@@ -102,8 +86,6 @@ def _flush_buffer(
     """Try to write the entire buffer to the given socket."""
 
     logger = logger or log
-    total = 0
-    chunks = 0
 
     while buf:
         try:
@@ -112,27 +94,17 @@ def _flush_buffer(
             break
         except OSError as exc:
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("[TCP][%s] send failed", label, exc_info=exc)
+                logger.debug("%s[%s] send failed", LogTag.TRANSPORT, label, exc_info=exc)
             buf.clear()
             return True
 
         if not sent:
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug("[TCP][%s] socket closed during send", label)
+                logger.debug("%s[%s] socket closed during send", LogTag.TRANSPORT, label)
             buf.clear()
             return True
 
-            break
-
-        total += sent
-        chunks += 1
         del buf[:sent]
-
-    if total and logger.isEnabledFor(logging.DEBUG):
-        if chunks == 1:
-            logger.debug("[TCP][%s] sent %dB", label, total)
-        else:
-            logger.debug("[TCP][%s] sent %dB in %d chunks", label, total, chunks)
 
     return False
 
@@ -177,12 +149,12 @@ class TransportBridge:
         self._app_lock = threading.Lock()
         self._wake_lock = threading.Lock()
 
-        self._claim_thr: Optional[threading.Thread] = None
+        self._call_me_thr: Optional[threading.Thread] = None
         self._bridge_thr: Optional[threading.Thread] = None
         self._notify_registered = False
+        self._listener_registered = False
         self._discovery_enabled = False
 
-        self._hub_listen_port: Optional[int] = None
         self._local_to_hub = bytearray()
         self._wake_reader: Optional[socket.socket] = None
         self._wake_writer: Optional[socket.socket] = None
@@ -198,6 +170,12 @@ class TransportBridge:
 
         self._chunk_id = 0
         self._proxy_enabled = True
+        self._busy_gate: Optional[Callable[[], bool]] = None
+        # When set in the future, suppress CALL_ME pings and refuse hub-
+        # initiated reconnects until the deadline passes. Used to honour
+        # the hub's OTA-update push (opcode 0x0167): stay disconnected
+        # for several minutes while the firmware update runs.
+        self._ota_pause_until: float = 0.0
 
     # ------------------------------------------------------------------
     # Callback registration
@@ -232,19 +210,61 @@ class TransportBridge:
         with self._app_lock:
             return self._app_sock is not None
 
+    def pause_for_ota(self, seconds: float) -> None:
+        """Drop the hub session and refuse reconnects for ``seconds`` seconds.
+
+        Invoked when the hub announces a firmware OTA update. The hub may
+        still dial us back during this window; we silently drop those
+        connections and stop sending CALL_ME pings until the pause
+        expires.
+        """
+
+        deadline = time.time() + max(0.0, float(seconds))
+        if deadline > self._ota_pause_until:
+            self._ota_pause_until = deadline
+            self._log.warning(
+                "%s OTA pause armed for %.0fs (until %.0f)",
+                LogTag.TRANSPORT,
+                seconds,
+                deadline,
+            )
+        existing: Optional[socket.socket] = None
+        with self._hub_lock:
+            existing = self._hub_sock
+            self._hub_sock = None
+        if existing is not None:
+            try:
+                existing.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                existing.close()
+            except Exception:
+                pass
+            self._notify_hub_state(False)
+            self._signal_wake()
+
+    def _ota_pause_active(self) -> bool:
+        return self._ota_pause_until > time.time()
+
     def enable_proxy(self) -> None:
         self._proxy_enabled = True
-        self._log.info("[PROXY] enabled")
+        self._log.info("%s enabled", LogTag.PROXY)
         if self._discovery_enabled and not self._notify_registered and not self.is_client_connected:
             self._register_demuxer()
 
     def disable_proxy(self) -> None:
         self._proxy_enabled = False
-        self._log.info("[PROXY] disabled (existing TCP sessions stay alive)")
+        self._log.info("%s disabled (existing TCP sessions stay alive)", LogTag.PROXY)
         self._stop_notify_listener()
 
     def can_issue_commands(self) -> bool:
-        return not self.is_client_connected
+        # Two preconditions: the hub must be TCP-connected (otherwise
+        # frames go into _local_to_hub and are silently discarded by the
+        # bridge loop when it notices there's no hub socket), and the
+        # real Sofabaton app must NOT be attached to the proxy (when it
+        # is, the app owns the session and the proxy must not race it).
+        return self.is_hub_connected and not self.is_client_connected
 
     def send_local(self, payload: bytes) -> None:
         self._local_to_hub.extend(payload)
@@ -261,10 +281,20 @@ class TransportBridge:
         demuxer = get_notify_demuxer(self.proxy_udp_port)
         self.proxy_udp_port = demuxer.listen_port
 
-        self._claim_thr = threading.Thread(
-            target=self._hub_guard_loop, name="x1proxy-hub-guard", daemon=True
+        # Hand the inbound TCP socket off to the shared listener; it
+        # dispatches by peer IP and calls _install_hub_socket on accept.
+        listener = get_hub_listener(self.hub_listen_base)
+        self.hub_listen_base = listener.register_hub(
+            proxy_id=self.proxy_id,
+            real_hub_ip=self.real_hub_ip,
+            on_socket=self._install_hub_socket,
         )
-        self._claim_thr.start()
+        self._listener_registered = True
+
+        self._call_me_thr = threading.Thread(
+            target=self._call_me_loop, name="x1proxy-call-me", daemon=True
+        )
+        self._call_me_thr.start()
 
         self._bridge_thr = threading.Thread(
             target=self._bridge_forever, name="x1proxy-bridge", daemon=True
@@ -275,6 +305,12 @@ class TransportBridge:
         self._stop.set()
         self._signal_wake()
         self._stop_notify_listener()
+        if self._listener_registered:
+            try:
+                get_hub_listener().unregister_hub(self.proxy_id)
+            except Exception:
+                self._log.exception("%s hub listener unregister failed", LogTag.TRANSPORT)
+            self._listener_registered = False
 
         with self._hub_lock:
             if self._hub_sock:
@@ -303,7 +339,7 @@ class TransportBridge:
                 self._notify_client_state(False)
 
         self._close_wake_channel()
-        self._log.info("[STOP] transport stopped")
+        self._log.info("%s stopped", LogTag.TRANSPORT)
 
     # ------------------------------------------------------------------
     # Internals
@@ -336,14 +372,41 @@ class TransportBridge:
         self._discovery_enabled = False
         self._stop_notify_listener()
 
+    def set_busy_gate(self, gate: Optional[Callable[[], bool]]) -> None:
+        """Register a callable that suppresses CALL_ME handling when truthy.
+
+        Used to ignore proxy-client CALL_ME pings while the hub is occupied
+        with a long-running task (backup, restore, command-config sync) so
+        the in-flight TCP session is not interrupted.
+        """
+
+        self._busy_gate = gate
+
     def _handle_call_me(
         self, src_ip: str, src_port: int, app_ip: str, app_port: int
     ) -> None:
         if not self._proxy_enabled or self._stop.is_set():
             return
 
+        gate = self._busy_gate
+        if gate is not None:
+            try:
+                busy = bool(gate())
+            except Exception:
+                self._log.exception("%s busy gate raised", LogTag.TRANSPORT)
+                busy = False
+            if busy:
+                self._log.info(
+                    "%s APP CALL_ME from %s:%d ignored (hub busy with long-running task)",
+                    LogTag.TRANSPORT,
+                    src_ip,
+                    src_port,
+                )
+                return
+
         self._log.info(
-            "[UDP] APP CALL_ME from %s:%d -> app tcp %s:%d",
+            "%s APP CALL_ME from %s:%d -> app tcp %s:%d",
+            LogTag.TRANSPORT,
             src_ip,
             src_port,
             app_ip,
@@ -356,82 +419,112 @@ class TransportBridge:
             daemon=True,
         ).start()
 
-    def _hub_guard_loop(self) -> None:
-        while not self._stop.is_set():
-            if not self.is_hub_connected:
-                try:
-                    ok = self._claim_once()
-                except Exception:
-                    self._log.exception("[TCP] unexpected hub claim failure; will retry")
-                    time.sleep(0.5)
-                    continue
-                if not ok:
-                    time.sleep(0.2)
-                    continue
-            else:
-                time.sleep(0.3)
+    def _call_me_loop(self) -> None:
+        """Send periodic UDP CALL_ME pings while the hub is not connected.
 
-    def _claim_once(self) -> bool:
-        srv: Optional[socket.socket] = None
-        try:
-            srv, self._hub_listen_port = _bind_port_near(self.hub_listen_base)
-            srv.listen(1)
-            srv.settimeout(1.0)
-        except OSError as exc:
-            self._log.warning(
-                "[TCP] failed to open hub listener near *:%d (%s); will retry",
-                self.hub_listen_base,
-                exc,
-            )
-            try:
-                if srv is not None:
-                    srv.close()
-            except Exception:
-                pass
-            return False
-        self._log.info("[TCP] waiting <- HUB on *:%d (claim)", self._hub_listen_port)
+        The hub responds by dialling back to the shared TCP listener
+        (see ``hub_listener.py``), which hands the accepted socket to
+        :meth:`_install_hub_socket`. This loop owns only the UDP side;
+        TCP accept lives in the shared :class:`HubListener`.
+        """
 
         udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        my_ip = _route_local_ip(self.real_hub_ip)
-        payload = b"\x00" * 6 + socket.inet_aton(my_ip) + struct.pack(">H", self._hub_listen_port)
-        frame = bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF]) + payload
-        frame += bytes([_sum8(frame)])
-
-        last = 0.0
-        hub_sock = None
         try:
-            while hub_sock is None and not self._stop.is_set():
+            last = 0.0
+            while not self._stop.is_set():
+                if self.is_hub_connected:
+                    time.sleep(0.3)
+                    continue
+                if self._ota_pause_active():
+                    time.sleep(0.5)
+                    continue
                 now = time.time()
                 if now - last >= 2.0 + random.uniform(-0.25, 0.25):
-                    udp.sendto(frame, (self.real_hub_ip, self.real_hub_udp_port))
+                    try:
+                        my_ip = _route_local_ip(self.real_hub_ip)
+                        payload = (
+                            b"\x00" * 6
+                            + socket.inet_aton(my_ip)
+                            + struct.pack(">H", self.hub_listen_base)
+                        )
+                        frame = (
+                            bytes([SYNC0, SYNC1, (OP_CALL_ME >> 8) & 0xFF, OP_CALL_ME & 0xFF])
+                            + payload
+                        )
+                        frame += bytes([_sum8(frame)])
+                        udp.sendto(frame, (self.real_hub_ip, self.real_hub_udp_port))
+                    except OSError:
+                        self._log.debug("%s CALL_ME send failed", LogTag.TRANSPORT, exc_info=True)
                     last = now
-                try:
-                    hub_sock, hub_addr = srv.accept()
-                except socket.timeout:
-                    continue
-
-            if hub_sock is None:
-                return False
-
-            hub_sock.settimeout(0.0)
-            _disable_nagle(hub_sock)
-            _enable_keepalive(
-                hub_sock, idle=self.ka_idle, interval=self.ka_interval, count=self.ka_count
-            )
-            with self._hub_lock:
-                self._hub_sock = hub_sock
-            self._notify_hub_state(True)
-            self._log.info("[TCP] connected <- HUB %s:%d (claimed)", *hub_addr)
-            return True
+                time.sleep(0.2)
         finally:
-            try:
-                srv.close()
-            except Exception:
-                pass
             try:
                 udp.close()
             except Exception:
                 pass
+
+    def _install_hub_socket(
+        self, hub_sock: socket.socket, hub_addr: Tuple[str, int]
+    ) -> None:
+        """Callback invoked by :class:`HubListener` when the hub TCP-connects."""
+
+        if self._ota_pause_active():
+            self._log.info(
+                "%s rejecting hub TCP from %s:%d during OTA pause (%.0fs left)",
+                LogTag.TRANSPORT,
+                hub_addr[0],
+                hub_addr[1],
+                self._ota_pause_until - time.time(),
+            )
+            try:
+                hub_sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                hub_sock.close()
+            except Exception:
+                pass
+            return
+
+        try:
+            hub_sock.settimeout(0.0)
+            _disable_nagle(hub_sock)
+            _enable_keepalive(
+                hub_sock,
+                idle=self.ka_idle,
+                interval=self.ka_interval,
+                count=self.ka_count,
+            )
+        except Exception:
+            self._log.exception("%s failed to configure hub socket", LogTag.TRANSPORT)
+            try:
+                hub_sock.close()
+            except Exception:
+                pass
+            return
+
+        existing: Optional[socket.socket] = None
+        with self._hub_lock:
+            existing = self._hub_sock
+            self._hub_sock = hub_sock
+        if existing is not None:
+            self._log.warning(
+                "%s replacing existing hub socket on new connection from %s:%d",
+                LogTag.TRANSPORT,
+                *hub_addr,
+            )
+            try:
+                existing.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                existing.close()
+            except Exception:
+                pass
+
+        self._notify_hub_state(True)
+        self._signal_wake()
+        self._log.info("%s connected <- HUB %s:%d (shared listener)", LogTag.TRANSPORT, *hub_addr)
 
     def _handle_app_session(self, app_addr: Tuple[str, int]) -> None:
         self._stop_notify_listener()
@@ -455,7 +548,7 @@ class TransportBridge:
                     except Exception:
                         pass
                 self._app_sock = s
-            self._log.info("[TCP] connected -> APP %s:%d", *app_addr)
+            self._log.info("%s connected -> APP %s:%d", LogTag.TRANSPORT, *app_addr)
             self._notify_client_state(True)
             self._emit_connect_ready_beacon(app_addr[0])
         except Exception:
@@ -465,7 +558,7 @@ class TransportBridge:
                 pass
             if self._proxy_enabled:
                 self._register_demuxer()
-            self._log.exception("[TCP] failed to connect -> APP %s:%d", *app_addr)
+            self._log.exception("%s failed to connect -> APP %s:%d", LogTag.TRANSPORT, *app_addr)
             return
 
     def _emit_connect_ready_beacon(self, app_ip: str) -> None:
@@ -520,7 +613,7 @@ class TransportBridge:
                     if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
                         data = None
                     else:
-                        self._log.debug("[TCP] hub recv failed", exc_info=exc)
+                        self._log.debug("%s hub recv failed", LogTag.TRANSPORT, exc_info=exc)
                         data = b""
                 if data is None:
                     pass
@@ -554,7 +647,7 @@ class TransportBridge:
                     if exc.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
                         data = None
                     else:
-                        self._log.debug("[TCP] app recv failed", exc_info=exc)
+                        self._log.debug("%s app recv failed", LogTag.TRANSPORT, exc_info=exc)
                         data = b""
                 if data is None:
                     pass
@@ -578,80 +671,76 @@ class TransportBridge:
                     cid = self._chunk_id
                     for cb in self._app_frame_cbs:
                         cb(data, cid)
-                    buffer = app_partial_frame + data
+                    # Split the app-side stream into whole frames using
+                    # the opcode-hi length invariant (frame_len = 5 +
+                    # buf[2]). See docs/protocol/frame-format.md.
+                    buffer = bytearray(app_partial_frame)
+                    buffer.extend(data)
                     app_partial_frame.clear()
 
-                    sync = bytes([SYNC0, SYNC1])
-                    if buffer.startswith(sync + sync):
-                        # Drop duplicate sync marker created by preserving a
-                        # partial frame boundary across reads.
-                        buffer = buffer[len(sync) :]
-                    start = buffer.find(sync)
-
-                    if start == -1:
-                        app_partial_frame.extend(buffer)
-                    else:
-                        frames_to_send: list[bytes] = []
-                        if start:
-                            buffer = buffer[start:]
-                        frame_start = 0
-                        while True:
-                            next_frame = buffer.find(sync, frame_start + len(sync))
-                            if next_frame == -1:
-                                remaining = buffer[frame_start:]
-                                if (
-                                    len(remaining) >= 5
-                                    and remaining[0] == SYNC0
-                                    and remaining[1] == SYNC1
-                                    and remaining[-1] == (_sum8(remaining[:-1]) & 0xFF)
-                                ):
-                                    frames_to_send.append(remaining)
-                                    app_partial_frame.clear()
+                    frames_to_send: list[bytes] = []
+                    while True:
+                        if len(buffer) < 2:
+                            break
+                        if buffer[0] != SYNC0 or buffer[1] != SYNC1:
+                            idx = buffer.find(bytes([SYNC0, SYNC1]))
+                            if idx < 0:
+                                # Keep a trailing lone SYNC0 across reads.
+                                if buffer and buffer[-1] == SYNC0:
+                                    del buffer[:-1]
                                 else:
-                                    app_partial_frame.extend(remaining)
+                                    buffer.clear()
                                 break
-
-                            frame = buffer[frame_start:next_frame]
-                            if (
-                                len(frame) >= 5
-                                and frame[0] == SYNC0
-                                and frame[1] == SYNC1
-                                and frame[-1] == (_sum8(frame[:-1]) & 0xFF)
-                            ):
-                                frames_to_send.append(frame)
-                            elif frame and self._log.isEnabledFor(logging.DEBUG):
+                            if idx and self._log.isEnabledFor(logging.DEBUG):
                                 self._log.debug(
-                                    "[TCP→HUB][client] drop malformed fragment len=%d",
-                                    len(frame),
+                                    "%s drop %dB junk before sync (client→hub)",
+                                    LogTag.PARSE,
+                                    idx,
                                 )
-                            frame_start = next_frame
+                            del buffer[:idx]
+                        if len(buffer) < 5:
+                            break
+                        frame_len = 5 + buffer[2]
+                        if len(buffer) < frame_len:
+                            break
+                        cand = bytes(buffer[:frame_len])
+                        if cand[-1] == (_sum8(cand[:-1]) & 0xFF):
+                            frames_to_send.append(cand)
+                            del buffer[:frame_len]
+                            continue
+                        # Bad checksum at this sync — drop one byte and
+                        # rescan for the next sync pair.
+                        if self._log.isEnabledFor(logging.DEBUG):
+                            self._log.debug(
+                                "%s drop malformed frame len=%d (client→hub)",
+                                LogTag.PARSE,
+                                frame_len,
+                            )
+                        del buffer[0]
 
-                        # If nothing was emitted but the buffer starts with SYNC,
-                        # ensure the leading marker is preserved for the next read.
-                        if not app_to_hub and not app_partial_frame and buffer.startswith(sync):
-                            app_partial_frame.extend(sync)
+                    app_partial_frame.extend(buffer)
 
-                        for idx, frame in enumerate(frames_to_send):
-                            app_to_hub.extend(frame)
-                            if hub is not None:
-                                if _flush_buffer(hub, app_to_hub, "client", self._log):
-                                    with self._hub_lock:
-                                        try:
-                                            hub.shutdown(socket.SHUT_RDWR)
-                                        except Exception:
-                                            pass
-                                        try:
-                                            hub.close()
-                                        except Exception:
-                                            pass
-                                        self._hub_sock = None
-                                    self._notify_hub_state(False)
-                                    break
-                                if (
-                                    self._inter_command_gap > 0
-                                    and idx + 1 < len(frames_to_send)
-                                ):
-                                    time.sleep(self._inter_command_gap)
+                    for idx, frame in enumerate(frames_to_send):
+                        app_to_hub.extend(frame)
+                        if hub is not None:
+                            if _flush_buffer(hub, app_to_hub, "client", self._log):
+                                with self._hub_lock:
+                                    try:
+                                        hub.shutdown(socket.SHUT_RDWR)
+                                    except Exception:
+                                        pass
+                                    try:
+                                        hub.close()
+                                    except Exception:
+                                        pass
+                                    self._hub_sock = None
+                                self._notify_hub_state(False)
+                                break
+                            if (
+                                self._inter_command_gap > 0
+                                and idx + 1 < len(frames_to_send)
+                            ):
+                                time.sleep(self._inter_command_gap)
 
             if hub is not None and hub in w:
                 if self._local_to_hub:

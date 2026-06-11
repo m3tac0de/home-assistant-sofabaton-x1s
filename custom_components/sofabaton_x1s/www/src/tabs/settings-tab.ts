@@ -2,6 +2,7 @@ import { html, nothing } from "lit";
 import type { ControlPanelHubState, HassLike, HubAction, SettingKey } from "../shared/ha-context";
 import { canRunHubActions, hubConnected, hubIcon, proxyClientConnected } from "../shared/utils/control-panel-selectors";
 import { renderSettingTile } from "../components/setting-tile";
+import { TOOLS_CARD_STRINGS } from "../strings";
 
 export function renderSettingsTab(params: {
   loading: boolean;
@@ -15,9 +16,9 @@ export function renderSettingsTab(params: {
   onToggleSetting: (setting: SettingKey, enabled: boolean) => void;
   onRunAction: (action: HubAction) => void;
 }) {
-  if (params.loading) return html`<div class="cache-state">Loading…</div>`;
+  if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.settings.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
-  if (!params.hub) return html`<div class="cache-state">No hubs found.</div>`;
+  if (!params.hub) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.settings.noHubsFound}</div>`;
 
   const hub = params.hub;
   const connected = hubConnected(params.hass, hub);
@@ -42,7 +43,7 @@ export function renderSettingsTab(params: {
               </div>
             </div>
             <div class="hub-compact-text">
-              <div class="hub-compact-name">${hub.name || "Unknown"}</div>
+              <div class="hub-compact-name">${hub.name || TOOLS_CARD_STRINGS.settings.unknownHubName}</div>
               ${versionLine ? html`<div class="hub-compact-meta">${versionLine}</div>` : nothing}
               ${hub.ip_address ? html`<div class="hub-compact-meta">${hub.ip_address}</div>` : nothing}
             </div>
@@ -52,7 +53,7 @@ export function renderSettingsTab(params: {
               <span class="hub-compact-stat-icon">${hubIcon("activities", "hub-compact-stat-svg")}</span>
               <div class="hub-compact-stat-text">
                 <div class="hub-compact-stat-value">${Number(hub.activity_count || 0)}</div>
-                <div class="hub-compact-stat-label">Activities</div>
+                <div class="hub-compact-stat-label">${TOOLS_CARD_STRINGS.settings.activities}</div>
               </div>
             </div>
             <div class="hub-compact-divider"></div>
@@ -60,7 +61,7 @@ export function renderSettingsTab(params: {
               <span class="hub-compact-stat-icon">${hubIcon("devices", "hub-compact-stat-svg")}</span>
               <div class="hub-compact-stat-text">
                 <div class="hub-compact-stat-value">${Number(hub.device_count || 0)}</div>
-                <div class="hub-compact-stat-label">Devices</div>
+                <div class="hub-compact-stat-label">${TOOLS_CARD_STRINGS.settings.devices}</div>
               </div>
             </div>
           </div>
@@ -70,44 +71,44 @@ export function renderSettingsTab(params: {
         <div class="settings-content">
           <div class="settings-list">
             ${renderSettingTile({
-              title: "Persistent Cache",
-              description: "Store activity and device data locally for faster access.",
+              title: TOOLS_CARD_STRINGS.settings.persistentCacheTitle,
+              description: TOOLS_CARD_STRINGS.settings.persistentCacheDescription,
               classes: `toggle${busy ? " disabled" : ""}`,
-              footerLabel: "GLOBAL",
+              footerLabel: TOOLS_CARD_STRINGS.settings.persistentCacheFooter,
               control: html`<ha-switch .checked=${params.persistentCacheEnabled} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("persistent_cache", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
               onClick: busy ? undefined : () => params.onToggleSetting("persistent_cache", !params.persistentCacheEnabled),
             })}
             ${renderSettingTile({
-              title: "Hex Logging",
-              description: "Log raw hex traffic between hub, integration, and app.",
+              title: TOOLS_CARD_STRINGS.settings.hexLoggingTitle,
+              description: TOOLS_CARD_STRINGS.settings.hexLoggingDescription,
               classes: `toggle${busy ? " disabled" : ""}`,
               control: html`<ha-switch .checked=${settingValue("hex_logging_enabled")} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("hex_logging_enabled", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
               onClick: busy ? undefined : () => params.onToggleSetting("hex_logging_enabled", !settingValue("hex_logging_enabled")),
             })}
             ${renderSettingTile({
-              title: "Proxy",
-              description: "Let the official Sofabaton app share the hub connection with HA simultaneously.",
+              title: TOOLS_CARD_STRINGS.settings.proxyTitle,
+              description: TOOLS_CARD_STRINGS.settings.proxyDescription,
               classes: `toggle${busy ? " disabled" : ""}`,
               control: html`<ha-switch .checked=${settingValue("proxy_enabled")} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("proxy_enabled", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
               onClick: busy ? undefined : () => params.onToggleSetting("proxy_enabled", !settingValue("proxy_enabled")),
             })}
             ${renderSettingTile({
-              title: "WiFi Device",
-              description: "Enable the HTTP listener that captures remote button presses and routes them to HA actions.",
+              title: TOOLS_CARD_STRINGS.settings.wifiDeviceTitle,
+              description: TOOLS_CARD_STRINGS.settings.wifiDeviceDescription,
               classes: `toggle${busy ? " disabled" : ""}`,
               control: html`<ha-switch .checked=${settingValue("wifi_device_enabled")} .disabled=${busy} @change=${(event: Event) => { event.stopPropagation(); params.onToggleSetting("wifi_device_enabled", !!(event.currentTarget as HTMLInputElement).checked); }}></ha-switch>`,
               onClick: busy ? undefined : () => params.onToggleSetting("wifi_device_enabled", !settingValue("wifi_device_enabled")),
             })}
             ${renderSettingTile({
-              title: "Find Remote",
-              description: "Make the remote beep so you can locate it.",
+              title: TOOLS_CARD_STRINGS.settings.findRemoteTitle,
+              description: TOOLS_CARD_STRINGS.settings.findRemoteDescription,
               classes: `action${canAct ? "" : " disabled"}`,
               control: html`<ha-icon class="setting-icon" icon="mdi:bell-ring-outline"></ha-icon>`,
               onClick: canAct ? () => params.onRunAction("find_remote") : undefined,
             })}
             ${renderSettingTile({
-              title: "Sync Remote",
-              description: "Push the latest configuration to the physical remote.",
+              title: TOOLS_CARD_STRINGS.settings.syncRemoteTitle,
+              description: TOOLS_CARD_STRINGS.settings.syncRemoteDescription,
               classes: `action${canAct ? "" : " disabled"}`,
               control: html`<ha-icon class="setting-icon" icon="mdi:sync"></ha-icon>`,
               onClick: canAct ? () => params.onRunAction("sync_remote") : undefined,

@@ -720,7 +720,7 @@
 
   <!-- Card bundle — runs after stubs module above.
        The ?v= bust forces browsers to skip cache when the file is updated. -->
-  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=27"></script>
+  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=61"></script>
 
   <!-- Harness logic — runs after both modules above -->
   <script type="module">
@@ -806,7 +806,7 @@
     // tools_frontend_version must match the ?v= cache-bust on the script tag.
     // The store compares this against LOADED_TOOLS_FRONTEND_VERSION (read from the
     // script URL's ?v= param) and sets toolsFrontendVersionMismatch if they differ.
-    const TOOLS_FRONTEND_VERSION = "27";
+    const TOOLS_FRONTEND_VERSION = "61";
 
     const BASE_STATE = {
       persistent_cache_enabled: true,
@@ -1186,6 +1186,7 @@
       const host = document.getElementById("card-host");
       host.innerHTML = "";
 
+      await customElements.whenDefined("sofabaton-control-panel");
       const card = document.createElement("sofabaton-control-panel");
       card.setConfig({});
       window._harnessCard = card;
@@ -1207,15 +1208,34 @@
 
     // ── postLoad helpers ──────────────────────────────────────────────────────────
 
+    // Settings + Logs moved into a tools-menu dropdown in the c49f180 refactor;
+    // the main tab bar only carries Cache / Wifi Commands / Backup / Blobs now.
+    // To click one of the menu items, we have to open the dropdown first.
     async function clickTab(card, label) {
-      const btn = [...card.shadowRoot.querySelectorAll(".tab-btn")]
+      const top = [...card.shadowRoot.querySelectorAll(".tab-btn")]
         .find(b => {
           const span = b.querySelector(".tab-btn-label");
-          return (span ? span.textContent : b.textContent).trim() === label;
+          return span && span.textContent.trim() === label;
         });
-      if (!btn) { console.warn(`clickTab: tab "${label}" not found`); return; }
-      btn.click();
-      await card.updateComplete;
+      if (top) {
+        top.click();
+        await card.updateComplete;
+        return;
+      }
+      // Fall back to the tools-menu dropdown (Settings / Logs).
+      const menuBtn = card.shadowRoot.querySelector("#tools-tab-menu-btn");
+      if (menuBtn) {
+        menuBtn.click();
+        await card.updateComplete;
+        const item = [...card.shadowRoot.querySelectorAll(".tab-menu-item")]
+          .find(b => b.textContent.trim() === label);
+        if (item) {
+          item.click();
+          await card.updateComplete;
+          return;
+        }
+      }
+      console.warn(`clickTab: tab "${label}" not found`);
     }
 
     async function clickAccordion(card, sectionId) {
@@ -1327,8 +1347,12 @@
       await new Promise(r => setTimeout(r, 80));
       const tab = backupTab(card);
       if (!tab) { console.warn("openBackupTab: backup tab not found"); return null; }
-      tab.openSection = section;
-      tab.requestUpdate();
+      // backup-tab now reads `selectedSection` (was `openSection` in earlier
+      // revisions). The card owns the value via the store and pushes it down
+      // as a property, so we drive it through the store and let the card
+      // re-render the tab with the new selectedSection prop.
+      card._store.setSelectedBackupSection(section);
+      await card.updateComplete;
       await tab.updateComplete;
       return tab;
     }
@@ -1354,16 +1378,19 @@
         id: 1, group: "Hub Status",
         label: "1. Connected",
         states: STATES_CONNECTED,
+        postLoad: card => clickTab(card, "Settings"),
       },
       {
         id: 2, group: "Hub Status",
         label: "2. Disconnected",
         states: {},
+        postLoad: card => clickTab(card, "Settings"),
       },
       {
         id: 3, group: "Hub Status",
         label: "3. Proxy bridged",
         states: STATES_PROXY,
+        postLoad: card => clickTab(card, "Settings"),
       },
 
       // ── B: Settings ────────────────────────────────────────────────────────────
@@ -1372,6 +1399,7 @@
         id: 4, group: "Settings",
         label: "4. All settings off",
         states: STATES_CONNECTED,
+        postLoad: card => clickTab(card, "Settings"),
       },
       {
         id: 5, group: "Settings",
@@ -1381,6 +1409,7 @@
           ...BASE_STATE,
           hubs: [{ ...HUB_1, settings: { ...HUB_1.settings, wifi_device_enabled: true } }],
         },
+        postLoad: card => clickTab(card, "Settings"),
       },
       {
         id: 6, group: "Settings",
@@ -1390,6 +1419,7 @@
           "sofabaton_x1s/control_panel/set_setting": () => new Promise(() => {}),
         },
         async postLoad(card) {
+          await clickTab(card, "Settings");
           // Trigger the WiFi Device tile toggle. We look for ha-switch elements
           // inside the Settings tab panel; the wifi_device toggle is the last one.
           // Our ha-switch stub uses a .track div (not <input>), so click the track.
@@ -1407,6 +1437,7 @@
         id: 7, group: "Settings",
         label: "7. Hub not connected (actions disabled)",
         states: {},
+        postLoad: card => clickTab(card, "Settings"),
       },
 
       // ── C: Cache Tab ───────────────────────────────────────────────────────────

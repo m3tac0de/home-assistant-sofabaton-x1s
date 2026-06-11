@@ -83,6 +83,15 @@ export class ControlPanelApi {
     });
   }
 
+  stashEditedBackup(entryId: string, backup: BackupBundlePayload, filename: string) {
+    return this.hass.callWS<{ operation_id: string }>({
+      type: "sofabaton_x1s/backup/stash_edited",
+      entry_id: entryId,
+      backup,
+      filename,
+    });
+  }
+
   startBackupRestore(entryId: string, backup: BackupBundlePayload, mode: "replace" | "merge") {
     return this.hass.callWS<BackupOperationStartResponse>({
       type: "sofabaton_x1s/backup/restore",
@@ -109,7 +118,25 @@ export class ControlPanelApi {
     });
   }
 
+  getWifiCommandDevices(entityId: string) {
+    return this.hass.callWS<{ devices?: Array<Record<string, unknown>>; max_devices?: number }>({
+      type: "sofabaton_x1s/command_devices/list",
+      entity_id: entityId,
+    });
+  }
+
   clearBackupResult(operationId: string) {
+    return this.hass.callWS<{ ok: boolean }>({
+      type: "sofabaton_x1s/backup/clear_result",
+      operation_id: operationId,
+    });
+  }
+
+  clearRestoreResult(operationId: string) {
+    // Server-side ``backup/clear_result`` is generic — it fully drops
+    // any terminal op (backup_export or backup_restore). Wrapping it
+    // here for call-site readability and to give the two screens an
+    // obvious symmetric pair.
     return this.hass.callWS<{ ok: boolean }>({
       type: "sofabaton_x1s/backup/clear_result",
       operation_id: operationId,
@@ -155,6 +182,16 @@ export class ControlPanelApi {
     return this.hass.connection.subscribeMessage(
       onMessage,
       { type: "sofabaton_x1s/logs/subscribe", entry_id: entryId },
+    );
+  }
+
+  subscribeWifiPresses(entryId: string, onMessage: (payload: unknown) => void) {
+    if (!this.hass.connection?.subscribeMessage) {
+      return Promise.reject(new Error("Wifi press events are unavailable without a websocket connection"));
+    }
+    return this.hass.connection.subscribeMessage(
+      onMessage,
+      { type: "sofabaton_x1s/wifi_presses/subscribe", entry_id: entryId },
     );
   }
 }

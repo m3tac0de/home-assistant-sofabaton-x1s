@@ -136,7 +136,7 @@ def test_ws_refresh_persistent_cache_entry(monkeypatch):
     try:
         loop.run_until_complete(
             integration._ws_refresh_persistent_cache_entry(
-                SimpleNamespace(),
+                SimpleNamespace(data={}),
                 conn,
                 {
                     "id": 2,
@@ -279,7 +279,7 @@ def test_ws_refresh_persistent_cache_entry_by_entry_id(monkeypatch):
     try:
         loop.run_until_complete(
             integration._ws_refresh_persistent_cache_entry(
-                SimpleNamespace(),
+                SimpleNamespace(data={}),
                 conn,
                 {
                     "id": 4,
@@ -313,7 +313,9 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
     hass = SimpleNamespace(
         data={},
         config_entries=SimpleNamespace(
-            async_get_entry=lambda _entry_id: SimpleNamespace()
+            # _resolve_roku_listen_port reads entry.options; provide an empty
+            # mapping so it falls through to DEFAULT_ROKU_LISTEN_PORT.
+            async_get_entry=lambda _entry_id: SimpleNamespace(options={})
         ),
     )
 
@@ -357,6 +359,20 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
                         "can_find_remote": True,
                         "can_sync_remote": True,
                     },
+                    "active_backup_operation": None,
+                    # runtime_state was added to the hub payload alongside the
+                    # long-running backup/restore work; defaults to an idle
+                    # record when no operation is in flight.
+                    "runtime_state": {
+                        "kind": "idle",
+                        "operation": None,
+                        "label": None,
+                        "detail": None,
+                        "current_step": None,
+                        "total_steps": None,
+                        "device_key": None,
+                        "device_name": None,
+                    },
                 }
             ],
         },
@@ -378,7 +394,9 @@ def test_ws_get_control_panel_state_disables_actions_when_client_connected(monke
     hass = SimpleNamespace(
         data={},
         config_entries=SimpleNamespace(
-            async_get_entry=lambda _entry_id: SimpleNamespace()
+            # _resolve_roku_listen_port reads entry.options; provide an empty
+            # mapping so it falls through to DEFAULT_ROKU_LISTEN_PORT.
+            async_get_entry=lambda _entry_id: SimpleNamespace(options={})
         ),
     )
 
@@ -416,7 +434,7 @@ def test_ws_control_panel_set_setting_updates_hub_setting(monkeypatch):
     try:
         loop.run_until_complete(
             integration._ws_control_panel_set_setting(
-                SimpleNamespace(),
+                SimpleNamespace(data={}),
                 conn,
                 {
                     "id": 42,
@@ -448,7 +466,7 @@ def test_ws_control_panel_run_action_triggers_hub_action(monkeypatch):
     try:
         loop.run_until_complete(
             integration._ws_control_panel_run_action(
-                SimpleNamespace(),
+                SimpleNamespace(data={}),
                 conn,
                 {
                     "id": 43,

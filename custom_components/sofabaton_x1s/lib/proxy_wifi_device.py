@@ -1,18 +1,23 @@
 """Wifi-device create flow mixin for :class:`X1Proxy`.
 
-Provides the user-facing ``create_wifi_device`` / ``create_ip_button``
-entry points together with the multi-step orchestration helpers they
-rely on (input configuration writes, power-button bindings, IP-callback
-finalize). The X1 and X1S/X2 variants share the high-level shape but
-differ in the family-0x08 finalize and the slot stride; the variant
-branch is taken in :meth:`create_wifi_device` based on
-``self.hub_version`` rather than from any payload heuristic.
+Provides the user-facing ``create_wifi_device`` entry point together
+with the multi-step orchestration helpers it relies on (input
+configuration writes, power-button bindings, IP-callback finalize).
+The X1 and X1S/X2 variants share the high-level shape but differ in
+the family-0x08 finalize and the slot stride; the variant branch is
+taken in :meth:`create_wifi_device` based on ``self.hub_version``
+rather than from any payload heuristic.
 
 The constants near the top of the module describe the wire layout of
 the user-defined wifi command slots and the X1S/X2 finalize bookends.
 Everything else in this file is high-level orchestration that delegates
 its wire-building back to :mod:`lib.inputs`, :mod:`lib.macros` and the
 ``_build_wifi_device_payload`` helper preserved on the mixin.
+
+HTTP request text for the ``DEFINE_IP_CMD`` payloads is rendered via
+:func:`lib.blob_decoders.render_wifi_ip_http_text`, the same canonical
+writer the backup encoder uses, so wifi-create output and backup-decoder
+round-trip stay byte-aligned by construction.
 """
 
 from __future__ import annotations
@@ -23,6 +28,7 @@ import time
 from typing import Any
 
 from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from .blob_decoders import render_wifi_ip_http_text, render_wifi_roku_blob_body
 from .device_create import DeviceCreateRequest, DeviceCreateResult, run_device_create
 from .devices import DeviceConfig, build_device_create_payload
 from .inputs import InputEntry, build_inputs_write
@@ -31,14 +37,8 @@ from .protocol_const import (
     ButtonName,
     DEVICE_CLASS_WIFI_IP,
     DEVICE_CLASS_WIFI_ROKU,
-    OP_CREATE_DEVICE_HEAD,
-    OP_DEFINE_IP_CMD,
-    OP_DEFINE_IP_CMD_EXISTING,
-    OP_FINALIZE_DEVICE,
-    OP_PREPARE_SAVE,
     OP_REQ_ACTIVITY_INPUTS,
     OP_REQ_BLOB,
-    OP_SAVE_COMMIT,
 )
 from .state_helpers import normalize_device_entry
 
@@ -749,13 +749,21 @@ class WifiDeviceMixin:
                 name_blob = name_blob.ljust(60, b"\x00")
             else:
                 name_blob = name.encode("ascii", errors="ignore")[:30].ljust(30, b"\x00")
-            action_blob = action.encode("ascii", errors="ignore")[:255]
+            # Cap the path at 255 bytes so render_wifi_roku_blob_body's
+            # 1-byte length prefix never overflows. The canonical
+            # writer in blob_decoders is what backups round-trip
+            # against, so going through it here keeps wifi-create
+            # output and backup-decoder input byte-identical for the
+            # same path string.
+            safe_action = action.encode("ascii", errors="ignore")[:255].decode(
+                "ascii", errors="ignore"
+            )
+            roku_blob_body = render_wifi_roku_blob_body(path=safe_action)
             payload_base = (
                 bytes([slot, 0x00, 0x01, 0x21, 0x00, 0x01, device_id, 0x00, 0x0A, 0x00, 0x00, 0x00, 0x00])
                 + code.to_bytes(2, "big")
                 + name_blob
-                + bytes([len(action_blob)])
-                + action_blob
+                + roku_blob_body
             )
             payload_token = (sum(payload_base) - (slot + 1)) & 0xFF
             payload = payload_base + bytes([payload_token])
@@ -1062,13 +1070,21 @@ class WifiDeviceMixin:
         return f"launch/{hub_action_id}/{device_id}/{command_index}/{normalized_press_type}"
 
     def _build_virtual_ip_http_request(self, host: str, port: int, path: str) -> bytes:
-        normalized_path = f"/{path.lstrip('/')}"
-        return (
-            f"POST {normalized_path} HTTP/1.1\r\n"
-            f"Host:{host}:{int(port) & 0xFFFF}\r\n"
-            "Content-Type:application/x-www-form-urlencoded\r\n"
-            "\r\n"
-        ).encode("ascii")
+        # Specialization of the canonical wifi_ip HTTP-text writer for
+        # the "launch app" command pattern this flow uses (POST,
+        # x-www-form-urlencoded Content-Type, no body). Both this site
+        # and the backup encoder route through render_wifi_ip_http_text
+        # so the bytes the hub stores after wifi-create are guaranteed
+        # to be the same bytes the backup decoder round-trips.
+        return render_wifi_ip_http_text(
+            host=host,
+            port=int(port) & 0xFFFF,
+            method="POST",
+            path=f"/{path.lstrip('/')}",
+            header="",
+            content_type="application/x-www-form-urlencoded",
+            body="",
+        )
 
     def _stable_hub_action_id(self) -> str:
         """Return a stable hub identifier for WiFi command actions."""
@@ -1080,163 +1096,6 @@ class WifiDeviceMixin:
                 return normalized_mac
 
         return str(self.proxy_id).strip()
-
-    def _build_virtual_device_frames(
-        self,
-        *,
-        device_name: str,
-        button_name: str,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-    ) -> list[tuple[int, bytes]]:
-        name_blob = self._utf16le_padded(device_name, length=64)
-        button_blob = self._utf16le_padded(button_name, length=64)
-        method_blob = method.encode("utf-8")
-        url_blob = url.encode("utf-8")
-        header_blob = self._encode_headers(headers)
-
-        create_payload = b"\x01\x00\x00\x00" + name_blob
-        define_payload = (
-            button_blob
-            + self._encode_len_prefixed(method_blob)
-            + self._encode_len_prefixed(url_blob)
-            + self._encode_len_prefixed(header_blob)
-        )
-        prepare_payload = b"\x01\x00"
-        finalize_payload = name_blob[:8] + button_blob[:8]
-
-        return [
-            (OP_CREATE_DEVICE_HEAD, create_payload),
-            (OP_DEFINE_IP_CMD, define_payload),
-            (OP_PREPARE_SAVE, prepare_payload),
-            (OP_FINALIZE_DEVICE, finalize_payload),
-            (OP_SAVE_COMMIT, b""),
-        ]
-
-    def _encode_http_request(self, method: str, url: str, headers: dict[str, str]) -> bytes:
-        header_lines = "".join(f"{k}:{v}\r\n" for k, v in headers.items())
-        request = f"{method} {url} HTTP/1.1\r\n{header_lines}\r\n"
-        return request.encode("utf-8")
-
-    def _build_existing_device_frame(
-        self,
-        *,
-        device_id: int,
-        button_id: int,
-        button_name: str,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-    ) -> tuple[int, bytes]:
-        """Construct the opcode/payload needed to add an IP command to an existing device."""
-
-        header = bytes(
-            [
-                button_id & 0xFF,
-                0x00,
-                0x01,
-                0x01,
-                0x00,
-                0x01,
-                device_id & 0xFF,
-                button_id & 0xFF,
-                0x1C,
-            ]
-        ) + b"\x00" * 7
-
-        payload = bytearray(header)
-        payload.extend(self._utf16le_padded(button_name, length=64))
-        payload.extend(self._encode_http_request(method, url, headers))
-        return OP_DEFINE_IP_CMD_EXISTING, bytes(payload)
-
-    def create_ip_button(
-        self,
-        *,
-        device_name: str,
-        button_name: str,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-    ) -> dict[str, Any] | None:
-        if not self.can_issue_commands():
-            self._log.info("[CREATE] create_ip_button ignored: proxy client is connected")
-            return None
-
-        frames = self._build_virtual_device_frames(
-            device_name=device_name,
-            button_name=button_name,
-            method=method,
-            url=url,
-            headers=headers,
-        )
-
-        self.start_virtual_device(
-            device_name=device_name,
-            button_name=button_name,
-            method=method,
-            url=url,
-            headers=headers,
-        )
-
-        for opcode, payload in frames:
-            self._send_cmd_frame(opcode, payload)
-            time.sleep(0.05)
-
-        result = self.wait_for_virtual_device(timeout=3.0)
-        if result and result.get("device_id") is not None:
-            self._log.info(
-                "[CREATE] virtual dev=0x%04X btn=%s method=%s url=%s",
-                result.get("device_id", 0),
-                result.get("button_id"),
-                result.get("method"),
-                result.get("url"),
-            )
-        return result
-
-    def add_ip_button_to_device(
-        self,
-        *,
-        device_id: int,
-        button_name: str,
-        method: str,
-        url: str,
-        headers: dict[str, str],
-    ) -> dict[str, Any] | None:
-        """Add an IP-backed command to an existing device."""
-
-        if not self.can_issue_commands():
-            self._log.info("[CREATE] add_ip_button_to_device ignored: proxy client is connected")
-            return None
-
-        self.request_ip_commands_for_device(device_id, wait=True)
-        existing = self.state.ip_buttons.get(device_id & 0xFF, {})
-        next_button_id = (max(existing.keys()) + 1) if existing else 1
-
-        device_name = self.state.entities("device").get(device_id & 0xFF, {}).get("name", f"Device {device_id}")
-
-        opcode, payload = self._build_existing_device_frame(
-            device_id=device_id,
-            button_id=next_button_id,
-            button_name=button_name,
-            method=method,
-            url=url,
-            headers=headers,
-        )
-
-        self.start_virtual_device(
-            device_name=device_name,
-            button_name=button_name,
-            method=method,
-            url=url,
-            headers=headers,
-        )
-
-        self._send_cmd_frame(opcode, payload)
-
-        result = self.wait_for_virtual_device(timeout=3.0)
-        self.request_ip_commands_for_device(device_id, wait=True)
-        return result
 
 
 __all__ = ["WifiDeviceMixin"]

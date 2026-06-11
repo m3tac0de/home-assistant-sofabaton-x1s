@@ -78,7 +78,7 @@ class AckWaitersMixin:
                 detail = "empty-payload"
             else:
                 detail = f"status=0x{status:02X}"
-            self._log.info("[ACK] %s (0x%04X) payload=%s %s", name, opcode, payload.hex(" "), detail)
+            self._log.info("[ACK] %s (0x%04X) %s", name, opcode, detail)
             # If we are waiting on REQ_ACTIVITY_INPUTS and no inputs frame has
             # arrived yet, a non-zero STATUS_ACK is the hub's rejection of
             # that request (commonly status=0x07 for "device not configured
@@ -91,7 +91,7 @@ class AckWaitersMixin:
                         self._inputs_burst_reject_pending = True
                         self._activity_inputs_event.set()
             return
-        self._log.info("[ACK] %s (0x%04X) payload=%s", name, opcode, payload.hex(" "))
+        self._log.info("[ACK] %s (0x%04X) payload_len=%d", name, opcode, len(payload))
 
     def clear_ack_queue(self) -> None:
         with self._ack_queue_lock:

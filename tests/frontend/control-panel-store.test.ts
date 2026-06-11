@@ -1,5 +1,16 @@
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { setMaxListeners } from "node:events";
+
+// node:test in Node 20.2 attaches a fresh abort listener to the parent test
+// AbortSignal per hook invocation (TestHook.run does `once(signal, 'abort')`
+// without ever removing it). With our 12 tests × 2 hooks each that pushes past
+// EventTarget's default 10-listener warning threshold and trips
+// MaxListenersExceededWarning. This is a runner bug, not a real leak — but the
+// warning surfaces as a fake "1 fail" in directory-mode summaries. Bumping the
+// signal's allowed listener count to unlimited makes the warning (and the
+// noisy fake failure) go away.
+setMaxListeners(0);
 import { ControlPanelStore } from "../../custom_components/sofabaton_x1s/www/src/state/control-panel-store";
 import { deviceClassIcon } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import type { HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
@@ -98,11 +109,24 @@ function restoreGlobal(name: "window" | "localStorage", descriptor?: PropertyDes
   delete (globalThis as TestGlobals)[name];
 }
 
+// Stores started via createStore() register themselves here so afterEach can
+// call disconnected() on them. Without that teardown, each test leaves a
+// repeating runtime-state-poll setTimeout alive; Node's test runner attaches an
+// abort listener per test to chain cancellation, and 11+ accumulated listeners
+// on the same AbortSignal trip MaxListenersExceededWarning. Visible as the
+// suite hanging after the last named test in directory-mode (`node --test
+// tests/frontend-dist`) because the timers keep the event loop alive.
+const liveStores: { disconnected(): void }[] = [];
+
 beforeEach(() => {
   installStorage();
 });
 
 afterEach(() => {
+  while (liveStores.length) {
+    const store = liveStores.pop();
+    try { store?.disconnected(); } catch { /* ignore teardown errors */ }
+  }
   restoreGlobal("window", originalWindowDescriptor);
   restoreGlobal("localStorage", originalLocalStorageDescriptor);
 });
@@ -137,6 +161,7 @@ function createStore() {
   const store = new ControlPanelStore((snapshot) => snapshots.push(snapshot), {
     loadedFrontendVersion: "dev",
   });
+  liveStores.push(store);
   return { store, snapshots };
 }
 
@@ -176,6 +201,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
   const store = new ControlPanelStore(() => undefined, {
     loadedFrontendVersion: "dev",
   });
+  liveStores.push(store);
   store.connected();
   store.setHass(
     createHass({
@@ -219,6 +245,7 @@ test("loadState falls back to the first available hub when the saved hub no long
   const store = new ControlPanelStore(() => undefined, {
     loadedFrontendVersion: "dev",
   });
+  liveStores.push(store);
   store.connected();
   store.setHass(createHass());
 
@@ -267,9 +294,12 @@ test("selectHub and selectTab persist the updated view state", async () => {
     {
       selectedHubEntryId: "hub-2",
       selectedTab: "wifi_commands",
-      openSection: "activities",
-      openBackupSection: "make",
-      openBlobsSection: "fetch",
+      // Keys renamed from open* to selected* in the tools-card refactor; the
+      // store now persists the active per-tab section under selectedCacheSection
+      // (cache panel), selectedBackupSection, selectedBlobsSection.
+      selectedCacheSection: "activities",
+      selectedBackupSection: "make",
+      selectedBlobsSection: "fetch",
     },
   );
 });
@@ -290,6 +320,7 @@ test("loadState blocks tools card when backend expects a different frontend vers
   const store = new ControlPanelStore(() => undefined, {
     loadedFrontendVersion: "2026.5.0",
   });
+  liveStores.push(store);
   store.connected();
   store.setHass(
     createHass({

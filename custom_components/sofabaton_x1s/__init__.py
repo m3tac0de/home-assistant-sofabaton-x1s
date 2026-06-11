@@ -11,14 +11,17 @@ from uuid import uuid4
 
 import voluptuous as vol
 
+from aiohttp import web
+
 from homeassistant.components import frontend
-from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
@@ -36,6 +39,7 @@ from .const import (
     CONF_ROKU_LISTEN_PORT,
     DEFAULT_ROKU_LISTEN_PORT,
     format_hub_entry_title,
+    signal_ip_commands,
     HVER_BY_HUB_VERSION,
     HUB_VERSION_BY_HVER,
 )
@@ -150,9 +154,10 @@ class _BackupOperationRegistry:
         operation["state"] = state
         self._notify(operation_id)
         if str(state.get("status") or "") in {"success", "failed"}:
-            keep_result = bool(state.get("backup")) and str(state.get("kind") or "") == "backup_export"
-            if not keep_result:
-                self._schedule_cleanup(operation_id)
+            # Every terminal operation gets the same 300s retention. The
+            # bundle (if any) ages out on its own — we don't shorten the
+            # timer post-download because that races in-flight clients.
+            self._schedule_cleanup(operation_id)
 
     def update_from_thread(self, operation_id: str, **payload: Any) -> None:
         self.hass.loop.call_soon_threadsafe(lambda: self.update(operation_id, **payload))
@@ -195,6 +200,48 @@ class _BackupOperationRegistry:
         return True
 
     @callback
+    def dismiss_operation(self, operation_id: str) -> bool:
+        # Full drop of a terminal operation: cancels any pending cleanup
+        # timer and removes the op from the registry entirely. After this
+        # returns True, ``latest_for_entry`` will no longer surface the
+        # op, so a card refresh cannot snap a "Complete" view back to a
+        # stale success/failure record. Refuses to drop pending/running
+        # ops — those have to terminate naturally first.
+        operation = self._ops.get(operation_id)
+        if operation is None:
+            return False
+        state = operation.get("state") or {}
+        if str(state.get("status") or "") in {"pending", "running"}:
+            return False
+        cleanup_unsub = operation.get("cleanup_unsub")
+        if callable(cleanup_unsub):
+            try:
+                cleanup_unsub()
+            except Exception:
+                pass
+        self._ops.pop(operation_id, None)
+        return True
+
+    @callback
+    def flag_backup_downloaded(self, operation_id: str) -> bool:
+        """Mark a backup as downloaded so the UI can show a confirmation.
+
+        Does NOT touch the cleanup timer — the bundle ages out on the
+        original 300s schedule so the user can re-download within that
+        window if their first save-as didn't land.
+        """
+        operation = self._ops.get(operation_id)
+        if operation is None:
+            return False
+        state = dict(operation.get("state") or {})
+        if state.get("backup_downloaded"):
+            return True
+        state["backup_downloaded"] = True
+        operation["state"] = state
+        self._notify(operation_id)
+        return True
+
+    @callback
     def _notify(self, operation_id: str) -> None:
         operation = self._ops.get(operation_id)
         if operation is None:
@@ -220,6 +267,18 @@ class _BackupOperationRegistry:
 
         @callback
         def _cleanup(_now) -> None:
+            op = self._ops.get(operation_id)
+            if op is not None:
+                state = dict(op.get("state") or {})
+                # If the bundle is still present, let subscribers know it's
+                # being thrown away. The UI uses this to swap the
+                # "Download backup" button for an "expired" note instead
+                # of failing silently with a stale enabled button.
+                if state.get("backup"):
+                    state.pop("backup", None)
+                    state["backup_expired"] = True
+                    op["state"] = state
+                    self._notify(operation_id)
             self._ops.pop(operation_id, None)
 
         operation["cleanup_unsub"] = async_call_later(self.hass, delay_seconds, _cleanup)
@@ -249,6 +308,63 @@ def _backup_operation_registry(hass: HomeAssistant) -> _BackupOperationRegistry:
     registry = _BackupOperationRegistry(hass)
     domain_data[_BACKUP_OPERATIONS_KEY] = registry
     return registry
+
+
+class SofabatonBackupDownloadView(HomeAssistantView):
+    """Serve completed backup bundles from the in-memory registry.
+
+    Mirrors HA core's pattern (backup / diagnostics / camera snapshot):
+    server endpoint returning Content-Disposition: attachment, fetched
+    via auth/sign_path + fileDownload helper on the frontend. The HA
+    mobile apps' WebView delegates (setDownloadListener on Android,
+    WKDownloadDelegate on iOS) intercept the response and surface it as
+    a native download. Blob URLs do not trigger those delegates.
+    """
+
+    url = "/api/sofabaton_x1s/backup/download/{operation_id}"
+    name = "api:sofabaton_x1s:backup_download"
+    requires_auth = True
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.hass = hass
+
+    async def get(self, request: web.Request, operation_id: str) -> web.Response:
+        _LOGGER.info(
+            "[%s] backup download view hit: operation_id=%s authenticated=%s",
+            DOMAIN,
+            operation_id,
+            request.get("ha_authenticated", "unknown"),
+        )
+        registry = _backup_operation_registry(self.hass)
+        operation = registry.get(operation_id)
+        if operation is None:
+            _LOGGER.warning("[%s] backup download: unknown operation_id=%s", DOMAIN, operation_id)
+            return web.Response(status=404, text="unknown operation")
+        state = operation.get("state") or {}
+        kind = str(state.get("kind") or "")
+        if kind not in {"backup_export", "backup_edited"}:
+            return web.Response(status=404, text="not a backup")
+        if str(state.get("status") or "") != "success":
+            return web.Response(status=404, text="backup not ready")
+        bundle = state.get("backup")
+        if not bundle:
+            _LOGGER.warning("[%s] backup download: bundle already cleared for %s", DOMAIN, operation_id)
+            return web.Response(status=410, text="backup no longer available")
+        filename = str(state.get("filename") or "sofabaton_backup.json")
+        body = json.dumps(bundle, indent=2).encode("utf-8")
+        _LOGGER.info("[%s] backup download: serving %s (%d bytes)", DOMAIN, filename, len(body))
+        # Flag the bundle as downloaded for the UI's "✓ Downloaded"
+        # indicator. Does NOT shorten the retention timer — the user can
+        # re-download for the full original 300s window if their first
+        # save-as didn't land. Only meaningful for backup_export ops; the
+        # Edit screen doesn't subscribe to a stashed-edited op's progress.
+        registry.flag_backup_downloaded(operation_id)
+        return web.Response(
+            body=body,
+            content_type="application/json",
+            charset="utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
 
 def _hub_supports_unicode_wifi_names(hub: SofabatonHub) -> bool:
@@ -541,7 +657,12 @@ def _build_wifi_device_sync_payload(
         (configured_slots > 0 and bool(commands_hash) and commands_hash != deployed_commands_hash)
         or (configured_slots == 0 and (has_deployed_device or bool(deployed_commands_hash)))
     )
-    if commands_hash and str(progress.get("status") or "") == "success" and progress_hash == commands_hash:
+    if (
+        commands_hash
+        and str(progress.get("status") or "") == "success"
+        and progress_hash == commands_hash
+        and (has_deployed_device or bool(deployed_commands_hash))
+    ):
         sync_needed = False
     return {
         **progress,
@@ -562,7 +683,74 @@ async def _async_wifi_listener_needed(hass: HomeAssistant, entry_id: str) -> boo
     return any(wifi_device_requires_listener(device) for device in devices)
 
 
-def _build_control_panel_hub_payload(
+async def _async_build_control_panel_runtime_payload(
+    hass: HomeAssistant,
+    hub: SofabatonHub,
+) -> dict[str, Any]:
+    registry = _backup_operation_registry(hass)
+    active_backup_operation = registry.running_for_entry(hub.entry_id)
+    if active_backup_operation:
+        kind = str(active_backup_operation.get("kind") or "").strip().lower()
+        operation = "backup_restore" if kind == "backup_restore" else "backup_export"
+        return {
+            "kind": "operation_running",
+            "operation": operation,
+            "label": "Restoring backup" if operation == "backup_restore" else "Creating backup",
+            "detail": str(
+                active_backup_operation.get("message")
+                or active_backup_operation.get("phase")
+                or "Working..."
+            ),
+            "current_step": active_backup_operation.get("completed_steps"),
+            "total_steps": active_backup_operation.get("total_steps"),
+            "device_key": None,
+            "device_name": None,
+        }
+
+    if bool(getattr(hub, "client_connected", False)):
+        return {
+            "kind": "app_connected",
+            "operation": None,
+            "label": "Only Logs is available while the Sofabaton app is connected.",
+            "detail": None,
+            "current_step": None,
+            "total_steps": None,
+            "device_key": None,
+            "device_name": None,
+        }
+
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    devices = await store.async_list_hub_devices(hub.entry_id, roku_listen_port=roku_listen_port)
+    for device in devices:
+        device_key = str(device.get("device_key") or "")
+        sync_payload = _build_wifi_device_sync_payload(hub, device, device_key=device_key)
+        if str(sync_payload.get("status") or "").strip().lower() != "running":
+            continue
+        return {
+            "kind": "operation_running",
+            "operation": "wifi_deploy",
+            "label": "Deploying Wifi commands",
+            "detail": str(sync_payload.get("message") or "Sync in progress"),
+            "current_step": sync_payload.get("current_step"),
+            "total_steps": sync_payload.get("total_steps"),
+            "device_key": device_key or None,
+            "device_name": str(device.get("device_name") or "").strip() or None,
+        }
+
+    return {
+        "kind": "idle",
+        "operation": None,
+        "label": None,
+        "detail": None,
+        "current_step": None,
+        "total_steps": None,
+        "device_key": None,
+        "device_name": None,
+    }
+
+
+async def _async_build_control_panel_hub_payload(
     hass: HomeAssistant,
     hub: SofabatonHub,
     *,
@@ -578,6 +766,7 @@ def _build_control_panel_hub_payload(
     activities = getattr(hub, "activities", {}) or {}
     devices = getattr(hub, "devices", {}) or {}
     active_backup_operation = registry.running_for_entry(hub.entry_id)
+    runtime_state = await _async_build_control_panel_runtime_payload(hass, hub)
     return {
         "entry_id": hub.entry_id,
         "name": hub.name,
@@ -599,6 +788,7 @@ def _build_control_panel_hub_payload(
             "can_sync_remote": can_run_hub_actions,
         },
         "active_backup_operation": active_backup_operation,
+        "runtime_state": runtime_state,
     }
 
 
@@ -887,17 +1077,20 @@ async def _ws_get_control_panel_state(
 ) -> None:
     store = await _async_get_persistent_cache_store(hass)
     tools_frontend_version = await _async_get_integration_version(hass)
-    payload = {
-        "persistent_cache_enabled": store.enabled,
-        "tools_frontend_version": tools_frontend_version,
-        "hubs": [
-            _build_control_panel_hub_payload(
+    hubs = await asyncio.gather(
+        *[
+            _async_build_control_panel_hub_payload(
                 hass,
                 hub,
                 persistent_cache_enabled=store.enabled,
             )
             for hub in _get_hubs(hass.data.get(DOMAIN, {}))
-        ],
+        ]
+    )
+    payload = {
+        "persistent_cache_enabled": store.enabled,
+        "tools_frontend_version": tools_frontend_version,
+        "hubs": hubs,
     }
     connection.send_result(msg["id"], payload)
 
@@ -1138,7 +1331,11 @@ async def _run_backup_restore_operation(
             return merged
         return dict(payload_update)
 
+    progress_seen = False
+
     def _progress(payload: dict[str, Any] | None = None, **payload_update: Any) -> None:
+        nonlocal progress_seen
+        progress_seen = True
         registry.update_from_thread(
             operation_id,
             **_normalize_progress_payload(payload, **payload_update),
@@ -1175,6 +1372,26 @@ async def _run_backup_restore_operation(
                 success_payload["total_steps"] = int(result["_progress_total_steps"])
         registry.update(operation_id, **success_payload)
     except Exception as err:
+        # Pre-flight failures (validator round-trip rejection, malformed
+        # bundle, schema mismatch) raise before any progress callback
+        # fires — there's no "operation in a failed state" to persist
+        # because no wire writes happened. Surface the error to the
+        # active subscriber, then dismiss the op so a card refresh does
+        # not snap a stale failure record back onto the UI. In-flight
+        # failures (progress already started, hub disconnected midway,
+        # etc.) take the normal failed-status path so the user can
+        # navigate away and come back to the error report.
+        if not progress_seen:
+            registry.update(
+                operation_id,
+                status="failed",
+                phase="failed",
+                message=str(err) or "Restore failed",
+                error=str(err) or "Restore failed",
+                transient=True,
+            )
+            registry.dismiss_operation(operation_id)
+            return
         registry.update(
             operation_id,
             status="failed",
@@ -1429,6 +1646,46 @@ async def _ws_backup_restore(hass: HomeAssistant, connection, msg: dict[str, Any
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/backup/stash_edited",
+        vol.Required("entry_id"): str,
+        vol.Required("backup"): dict,
+        vol.Required("filename"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_backup_stash_edited(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # The Edit screen mutates the bundle entirely in-browser. To hand
+    # the JSON to the user through the same authenticated download path
+    # the Make screen uses (so HA mobile WebView delegates can intercept
+    # Content-Disposition and surface a native save dialog), the
+    # frontend stashes the edited bundle here. Parked in the operation
+    # registry under a dedicated backup_edited kind — same 300s TTL as
+    # backup_export, served by the same view — and the returned
+    # operation_id is immediately consumed by
+    # /api/sofabaton_x1s/backup/download/{op_id}.
+    payload = msg.get("backup")
+    if not isinstance(payload, dict):
+        connection.send_error(msg["id"], "invalid_payload", "backup must be an object")
+        return
+    filename = str(msg.get("filename") or "").strip() or "sofabaton_backup_edited.json"
+    registry = _backup_operation_registry(hass)
+    operation_id = registry.create(
+        kind="backup_edited",
+        entry_id=str(msg["entry_id"]),
+        initial_state={},
+    )
+    registry.update(
+        operation_id,
+        status="success",
+        phase="complete",
+        filename=filename,
+        backup=payload,
+    )
+    connection.send_result(msg["id"], {"operation_id": operation_id})
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/backup/progress_subscribe",
         vol.Required("operation_id"): str,
     }
@@ -1488,10 +1745,24 @@ async def _ws_backup_state(hass: HomeAssistant, connection, msg: dict[str, Any])
 )
 @websocket_api.async_response
 async def _ws_backup_clear_result(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # Full-drop the completed op from the registry. The "Complete"
+    # button on backup/restore screens calls this — the op must vanish
+    # so a card refresh does not snap the success view back from
+    # cached server state. Returns ok even if the op is already gone
+    # (idempotent — covers double-clicks and races with the auto-300s
+    # cleanup timer).
     registry = _backup_operation_registry(hass)
-    if not registry.clear_backup_result(msg["operation_id"]):
-        connection.send_error(msg["id"], "not_found", "Could not resolve backup result")
+    operation = registry.get(msg["operation_id"])
+    if operation is None:
+        connection.send_result(msg["id"], {"ok": True, "already_dismissed": True})
         return
+    state = operation.get("state") or {}
+    if str(state.get("status") or "") in {"pending", "running"}:
+        connection.send_error(
+            msg["id"], "still_running", "Operation is still running"
+        )
+        return
+    registry.dismiss_operation(msg["operation_id"])
     connection.send_result(msg["id"], {"ok": True})
 
 
@@ -1543,6 +1814,74 @@ async def _ws_subscribe_hub_logs(
         connection.send_message(websocket_api.event_message(msg["id"], payload))
 
     connection.subscriptions[msg["id"]] = async_subscribe_hub_log_lines(hass, entry, _forward)
+    connection.send_result(msg["id"])
+
+
+def _build_wifi_press_event(record: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Project a hub IP-command record into the small payload pushed to the card.
+
+    The card only needs the bits required to label and dedupe a press;
+    we deliberately drop the HTTP envelope (headers, body, source_ip,
+    raw path) so the WS frame stays tiny and we don't leak request
+    internals through the control-panel surface.
+    """
+
+    if not isinstance(record, dict):
+        return None
+    timestamp = record.get("timestamp")
+    if not isinstance(timestamp, (int, float)):
+        return None
+    raw_command_index = record.get("command_index")
+    command_index = (
+        int(raw_command_index)
+        if isinstance(raw_command_index, int) and raw_command_index >= 0
+        else None
+    )
+    return {
+        "device_id": record.get("entity_id"),
+        "device_name": record.get("entity_name"),
+        "command_index": command_index,
+        "command_label": record.get("command_label") or record.get("button_label") or "",
+        "press_type": record.get("press_type") or "short",
+        "timestamp": float(timestamp),
+    }
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/wifi_presses/subscribe",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_subscribe_wifi_presses(
+    hass: HomeAssistant, connection, msg: dict[str, Any]
+) -> None:
+    """Forward physical-remote Wifi Command presses to a subscribed card.
+
+    Mirrors the lifecycle of the logs subscription: one subscription per
+    hub, fan-out via the existing ``signal_ip_commands`` dispatcher so
+    we don't duplicate the press-tracking state the
+    :class:`SofabatonIpCommandsSensor` already owns. The card uses the
+    event purely to drive a transient bottom-dock pulse; the
+    automation-facing sensor is still the source of truth for state.
+    """
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    @callback
+    def _forward() -> None:
+        payload = _build_wifi_press_event(hub.get_last_ip_command())
+        if payload is None:
+            return
+        connection.send_message(websocket_api.event_message(msg["id"], payload))
+
+    connection.subscriptions[msg["id"]] = async_dispatcher_connect(
+        hass, signal_ip_commands(hub.entry_id), _forward
+    )
     connection.send_result(msg["id"])
 
 
@@ -1702,11 +2041,13 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_persist_ir_blob)
     websocket_api.async_register_command(hass, _ws_backup_export)
     websocket_api.async_register_command(hass, _ws_backup_restore)
+    websocket_api.async_register_command(hass, _ws_backup_stash_edited)
     websocket_api.async_register_command(hass, _ws_backup_progress_subscribe)
     websocket_api.async_register_command(hass, _ws_backup_state)
     websocket_api.async_register_command(hass, _ws_backup_clear_result)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
+    websocket_api.async_register_command(hass, _ws_subscribe_wifi_presses)
     websocket_api.async_register_command(hass, _ws_get_persistent_cache)
     websocket_api.async_register_command(hass, _ws_set_persistent_cache)
     websocket_api.async_register_command(hass, _ws_refresh_persistent_cache_entry)
@@ -1738,6 +2079,10 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.data.setdefault(DOMAIN, {})
 
     _register_websocket_commands(hass)
+
+    if not hass.data[DOMAIN].get("backup_download_view_registered"):
+        hass.http.register_view(SofabatonBackupDownloadView(hass))
+        hass.data[DOMAIN]["backup_download_view_registered"] = True
 
     if not hass.data[DOMAIN].get("stop_listener_registered"):
         async def _async_handle_hass_stop(_event: Any) -> None:
@@ -1952,7 +2297,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await hub.async_restore_persistent_cache(cache_payload)
 
     await hub.async_start()
-    await hub.async_sync_authoritative_identity_before_setup()
 
     if not hass.services.has_service(DOMAIN, "fetch_device_commands"):
         hass.services.async_register(DOMAIN, "fetch_device_commands", _async_handle_fetch_device_commands)
@@ -2011,8 +2355,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.services.async_register(DOMAIN, "command_to_button", _async_handle_command_to_button)
     if not hass.services.has_service(DOMAIN, "sync_command_config"):
         hass.services.async_register(DOMAIN, "sync_command_config", _async_handle_sync_command_config)
-    #if not hass.services.has_service(DOMAIN, "create_ip_button"):
-    #    hass.services.async_register(DOMAIN, "create_ip_button", _async_handle_create_ip_button)
 
     hass.data[DOMAIN][entry.entry_id] = hub
 
@@ -2070,7 +2412,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             hass.services.async_remove(DOMAIN, "delete_favorite")
             hass.services.async_remove(DOMAIN, "command_to_button")
             hass.services.async_remove(DOMAIN, "sync_command_config")
-            #hass.services.async_remove(DOMAIN, "create_ip_button")
             async_teardown_diagnostics(hass)
             if _get_lovelace_resource_mode(hass) == _LOVELACE_STORAGE_MODE:
                 if hass.data[DOMAIN].get("storage_resources_registered"):
@@ -2574,51 +2915,6 @@ async def _async_handle_sync_command_config(call: ServiceCall):
         device_key=str(payload.get("device_key") or device_key or ""),
         device_name=device_name,
     )
-
-async def _async_handle_create_ip_button(call: ServiceCall):
-    hass = call.hass
-    hub = await _async_resolve_hub_from_call(hass, call)
-    if hub is None:
-        raise ValueError("Could not resolve Sofabaton hub from service call")
-
-    device_id = call.data.get("device_id")
-    device_name = call.data["device_name"].strip()
-    button_name = call.data["button_name"].strip()
-    method = call.data.get("method", "GET").upper()
-    url = call.data["url"]
-    headers = {str(k): str(v) for k, v in (call.data.get("headers") or {}).items()}
-
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("URL must include scheme and host (http/https)")
-
-    allowed_methods = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
-    if method not in allowed_methods:
-        raise ValueError(f"Unsupported HTTP method '{method}'")
-
-    if not isinstance(headers, dict):
-        raise ValueError("headers must be a mapping")
-
-    if device_id is not None:
-        result = await hass.async_add_executor_job(
-            hub._proxy.add_ip_button_to_device,
-            int(device_id),
-            button_name,
-            method,
-            url,
-            headers,
-        )
-    else:
-        result = await hass.async_add_executor_job(
-            hub._proxy.create_ip_button,
-            device_name,
-            button_name,
-            method,
-            url,
-            headers,
-        )
-
-    return result or {}
 
 async def _async_resolve_hub_from_call(hass: HomeAssistant, call: ServiceCall):
     return await _async_resolve_hub_from_data(hass, call.data)

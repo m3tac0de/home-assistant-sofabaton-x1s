@@ -9,6 +9,7 @@ await build({
     "tests/frontend/backup-tab.test.ts",
     "tests/frontend/blobs-state.test.ts",
     "tests/frontend/control-panel-store.test.ts",
+    "tests/frontend/wifi-commands-tab.test.ts",
     "tests/frontend/wifi-commands-state.test.ts",
   ],
   outdir: "tests/frontend-dist",

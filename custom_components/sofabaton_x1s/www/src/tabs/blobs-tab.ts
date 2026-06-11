@@ -1,7 +1,8 @@
 import { LitElement, css, html, nothing } from "lit";
+import { renderSecondaryTabContent, renderSecondaryTabShell, secondaryTabStyles, type SecondaryTabItem } from "../components/secondary-tab";
 import type {
+  BlobFetchCommandResult,
   BlobFetchResponse,
-  BlobPersistResponse,
   BlobsSectionId,
   CacheHubState,
   ControlPanelHubState,
@@ -16,6 +17,13 @@ import {
   type BlobCommandOption,
   type BlobDeviceOption,
 } from "./blobs-state";
+import { TOOLS_CARD_STRINGS } from "../strings";
+
+const BLOBS_SECTION_ITEMS: SecondaryTabItem<BlobsSectionId>[] = [
+  { id: "fetch", icon: "mdi:cloud-download-outline", label: TOOLS_CARD_STRINGS.blobs.sections.fetch },
+  { id: "test", icon: "mdi:flash-outline", label: TOOLS_CARD_STRINGS.blobs.sections.test },
+  { id: "save", icon: "mdi:content-save-outline", label: TOOLS_CARD_STRINGS.blobs.sections.save },
+];
 
 class SofabatonBlobsTab extends LitElement {
   static properties = {
@@ -29,6 +37,8 @@ class SofabatonBlobsTab extends LitElement {
     loading: { type: Boolean },
     error: { type: String },
     persistentCacheEnabled: { type: Boolean },
+    blockedTitle: { type: String },
+    blockedMessage: { type: String },
     _selectedDeviceId: { state: true },
     _selectedCommandId: { state: true },
     _fetchLoading: { state: true },
@@ -44,18 +54,25 @@ class SofabatonBlobsTab extends LitElement {
     _saveLoading: { state: true },
     _saveError: { state: true },
     _saveSuccess: { state: true },
-    _saveResult: { state: true },
     _loadedEntryId: { state: true },
-    openSection: { attribute: false },
-    toggleOpenSection: { attribute: false },
+    selectedSection: { attribute: false },
+    setSelectedSection: { attribute: false },
     _testFlash: { state: true },
     _saveFlash: { state: true },
     _copyFlashKey: { state: true },
     _resultViewMode: { state: true },
   };
 
-  static styles = css`
+  static styles = [secondaryTabStyles, css`
     :host { display: flex; flex: 1; min-height: 0; }
+    :host {
+      --blob-console-radius: 10px;
+      --blob-console-bg-top: #16202b;
+      --blob-console-bg-bottom: #0f151d;
+      --blob-console-border: rgba(143, 179, 217, 0.16);
+      --blob-console-text: #e6eef8;
+      --blob-console-muted: rgba(230, 238, 248, 0.5);
+    }
     .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
     .state.error { color: var(--error-color, #db4437); }
@@ -93,19 +110,6 @@ class SofabatonBlobsTab extends LitElement {
       container-type: inline-size;
       container-name: blob-panel;
     }
-    .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
-    .accordion-section:first-child { border-top: none; }
-    .accordion-section.open { flex: 1; }
-    .acc-header { flex-shrink: 0; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 16px; cursor: pointer; user-select: none; transition: background-color 120ms ease; }
-    .acc-header-icon { color: var(--secondary-text-color); display: inline-flex; flex: 0 0 auto; }
-    .acc-header-icon ha-icon { --mdc-icon-size: 18px; }
-    .accordion-section.open .acc-header-icon { color: var(--primary-color); }
-    .acc-header:hover { background: color-mix(in srgb, var(--primary-color) 6%, var(--ha-card-background, var(--card-background-color))); }
-    .acc-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color); }
-    .flex-spacer { flex: 1; }
-    .chevron { font-size: 9px; color: var(--secondary-text-color); transition: transform 150ms; }
-    .accordion-section.open .chevron { transform: rotate(180deg); }
-    .acc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; display: grid; gap: 6px; align-content: start; }
     .blob-section-content { display: flex; flex-direction: column; gap: 14px; padding-top: 0; min-width: 0; }
     .blob-section-subtitle {
       display: flex;
@@ -408,14 +412,18 @@ class SofabatonBlobsTab extends LitElement {
     }
     .result-pre {
       margin: 0;
-      border: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color));
-      border-radius: var(--ha-card-border-radius, 12px);
-      background: color-mix(in srgb, #05070b 94%, var(--card-background-color, #fff));
-      color: #e7edf6;
+      border: 1px solid var(--blob-console-border);
+      border-radius: var(--blob-console-radius);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--blob-console-bg-top) 96%, black), color-mix(in srgb, var(--blob-console-bg-bottom) 98%, black));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.03),
+        inset 0 0 0 1px rgba(120, 150, 190, 0.04);
+      color: var(--blob-console-text);
       font-family: "SF Mono", "Fira Code", Consolas, monospace;
       font-size: 12px;
       line-height: 1.55;
-      padding: 10px 12px;
+      padding: 11px 13px;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       user-select: text;
@@ -436,26 +444,32 @@ class SofabatonBlobsTab extends LitElement {
       min-height: 132px;
       resize: vertical;
       margin: 0;
-      border: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color));
-      border-radius: var(--ha-card-border-radius, 12px);
-      background: color-mix(in srgb, #05070b 94%, var(--card-background-color, #fff));
-      color: #e7edf6;
-      caret-color: #e7edf6;
+      border: 1px solid var(--blob-console-border);
+      border-radius: var(--blob-console-radius);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--blob-console-bg-top) 96%, black), color-mix(in srgb, var(--blob-console-bg-bottom) 98%, black));
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.03),
+        inset 0 0 0 1px rgba(120, 150, 190, 0.04);
+      color: var(--blob-console-text);
+      caret-color: var(--blob-console-text);
       font-family: "SF Mono", "Fira Code", Consolas, monospace;
       font-size: 12px;
       line-height: 1.55;
-      padding: 10px 12px;
+      padding: 11px 13px;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
     .test-textarea::placeholder {
-      color: color-mix(in srgb, #e7edf6 45%, transparent);
+      color: var(--blob-console-muted);
     }
     .test-textarea:focus {
       outline: none;
-      border-color: color-mix(in srgb, var(--primary-color) 65%, transparent);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 35%, transparent),
-                  inset 0 0 0 1px color-mix(in srgb, #05070b 100%, transparent);
+      border-color: color-mix(in srgb, var(--primary-color) 58%, var(--blob-console-border));
+      box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--primary-color) 30%, transparent),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04),
+        inset 0 0 0 1px rgba(120, 150, 190, 0.05);
     }
     .test-textarea:disabled {
       opacity: 0.55;
@@ -491,7 +505,7 @@ class SofabatonBlobsTab extends LitElement {
         grid-template-columns: 1fr;
       }
     }
-  `;
+  `];
 
   hass: HassLike | null = null;
   hub: ControlPanelHubState | null = null;
@@ -503,6 +517,8 @@ class SofabatonBlobsTab extends LitElement {
   loading = false;
   error: string | null = null;
   persistentCacheEnabled = false;
+  blockedTitle: string | null = null;
+  blockedMessage: string | null = null;
 
   private _selectedDeviceId: number | null = null;
   private _selectedCommandId: number | null = null;
@@ -519,10 +535,9 @@ class SofabatonBlobsTab extends LitElement {
   private _saveLoading = false;
   private _saveError = "";
   private _saveSuccess = "";
-  private _saveResult: BlobPersistResponse | null = null;
   private _loadedEntryId = "";
-  openSection: BlobsSectionId | null = "fetch";
-  toggleOpenSection: (section: BlobsSectionId) => void = () => {};
+  selectedSection: BlobsSectionId | null = "fetch";
+  setSelectedSection: (section: BlobsSectionId) => void = () => {};
   private _testFlash = false;
   private _saveFlash = false;
   private _copyFlashKey: string | null = null;
@@ -547,7 +562,22 @@ class SofabatonBlobsTab extends LitElement {
     return String(remoteAttrsForHub(this.hass, this.hub)?.hub_version || this.hub?.version || "").toUpperCase();
   }
 
-  /** Descriptor parsing (P:Sony12 R:... strings) is X2-only on the hub side. */
+  /**
+   * Descriptor view applicability for the Test / Save subtitles.
+   *
+   * Two parser paths feed the Descriptor view:
+   *   1. X2-only descriptive IR strings (P:Sony12 R:... etc.), which
+   *      the hub parses out of the captured IR blob body.
+   *   2. The virtual device classes (wifi_ip, wifi_roku, wifi_hue,
+   *      wifi_sonos), whose blobs carry structural fields the
+   *      integration decodes on every hub version.
+   *
+   * Path (2) only matters in the Fetch view — the Test / Save inputs
+   * are IR-only, so the subtitles below still gate their descriptor
+   * sentence on hub version. The Fetch results render the toggle
+   * whenever the row carries a non-empty `parsed_blob`, so no
+   * version gate is needed there.
+   */
   private _supportsDescriptors() {
     return this._hubVersion().includes("X2");
   }
@@ -696,30 +726,38 @@ class SofabatonBlobsTab extends LitElement {
   protected render() {
     if (this.loading) return html`<div class="state">Loading…</div>`;
     if (this.error) return html`<div class="state error">${this.error}</div>`;
-    if (!this.hub) return html`<div class="state">No hubs found.</div>`;
-    if (proxyClientConnected(this.hass, this.hub)) {
+    if (!this.hub) return html`<div class="state">${TOOLS_CARD_STRINGS.blobs.noHubsFound}</div>`;
+    if (this.blockedTitle && this.blockedMessage) {
       return html`
         <div class="tab-panel">
           <div class="blocked-state">
-            <div class="blocked-state-title">Blobs unavailable</div>
-            <div class="blocked-state-sub">Blobs cannot be used while the Sofabaton app is connected to the hub through the proxy.</div>
+            <div class="blocked-state-title">${this.blockedTitle}</div>
+            <div class="blocked-state-sub">${this.blockedMessage}</div>
           </div>
         </div>
       `;
     }
 
+    const selectedSection = this.selectedSection ?? "fetch";
     return html`
       <div class="tab-panel">
-        <div class="blob-panel">
-          ${this._renderFetchSection(this.openSection === "fetch")}
-          ${this._renderTestSection(this.openSection === "test")}
-          ${this._renderSaveSection(this.openSection === "save")}
-        </div>
+        ${renderSecondaryTabShell({
+          items: BLOBS_SECTION_ITEMS,
+          selectedId: selectedSection,
+          onSelect: (section) => this.setSelectedSection(section),
+          connected: true,
+          shellClassName: "blob-panel secondary-view-shell--edge",
+          content: selectedSection === "fetch"
+            ? this._renderFetchSectionContent()
+            : selectedSection === "test"
+              ? this._renderTestSectionContent()
+              : this._renderSaveSectionContent(),
+        })}
       </div>
     `;
   }
 
-  private _renderFetchSection(isOpen: boolean) {
+  private _renderFetchSectionContent() {
     const deviceOptions = this._deviceOptions();
     const commandOptions = this._commandOptions();
     const fetchBlocked = blobFetchBlockedReason({
@@ -730,37 +768,31 @@ class SofabatonBlobsTab extends LitElement {
     const disabled = this._busy() || !this.persistentCacheEnabled;
 
     return html`
-      <div class="accordion-section${isOpen ? " open" : ""}" id="acc-fetch">
-        <div class="acc-header" @click=${() => this.toggleOpenSection("fetch")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:cloud-download-outline"></ha-icon></span>
-          <span class="acc-title">Fetch From Hub</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? html`
-        <div class="acc-body" id="acc-body-fetch">
-          <div class="blob-section-content">
+      ${renderSecondaryTabContent({
+        connected: true,
+        content: html`
+        <div class="blob-section-content">
           ${this._fetchSubtitle()}
           ${fetchBlocked === "cache_disabled"
             ? this._renderStatus(
                 "warning",
                 "mdi:database-off-outline",
-                "Enable persistent cache in the Hub tab before using Fetch.",
+                TOOLS_CARD_STRINGS.blobs.fetchCacheDisabled,
               )
             : nothing}
           <div class="control-grid">
             <ha-selector
               .hass=${this.hass}
-              .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "Select one" }, ...deviceOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
-              .label=${"Device"}
+              .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: TOOLS_CARD_STRINGS.blobs.selectOne }, ...deviceOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
+              .label=${TOOLS_CARD_STRINGS.blobs.device}
               .value=${this._selectedDeviceId == null ? "__none__" : String(this._selectedDeviceId)}
               .disabled=${disabled}
               @value-changed=${(event: CustomEvent) => this._handleDeviceChanged(event)}
             ></ha-selector>
             <ha-selector
               .hass=${this.hass}
-              .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "Select one" }, ...commandOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
-              .label=${"Command"}
+              .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: TOOLS_CARD_STRINGS.blobs.selectOne }, ...commandOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
+              .label=${TOOLS_CARD_STRINGS.blobs.command}
               .value=${this._selectedCommandId == null ? "__none__" : String(this._selectedCommandId)}
               .disabled=${disabled || this._selectedDeviceId == null || fetchBlocked === "no_commands"}
               @value-changed=${(event: CustomEvent) => this._handleCommandChanged(event)}
@@ -770,17 +802,16 @@ class SofabatonBlobsTab extends LitElement {
             ? this._renderStatus(
                 "warning",
                 "mdi:refresh-circle",
-                "This device has no cached commands yet. Refresh that device from the Cache tab first.",
+                TOOLS_CARD_STRINGS.blobs.fetchNoCommands,
               )
             : nothing}
           ${this._fetchError
             ? this._renderStatus("error", "mdi:alert-circle-outline", this._fetchError)
             : nothing}
           ${this._fetchResponse ? this._renderFetchResults() : nothing}
-          </div>
         </div>
-        ` : nothing}
-      </div>
+        `,
+      })}
     `;
   }
 
@@ -790,7 +821,7 @@ class SofabatonBlobsTab extends LitElement {
       return this._renderStatus(
         "warning",
         "mdi:file-search-outline",
-        "The hub returned no blob records for this request.",
+        TOOLS_CARD_STRINGS.blobs.fetchNoRecords,
       );
     }
 
@@ -799,7 +830,7 @@ class SofabatonBlobsTab extends LitElement {
         ${commands.map((command) => {
           const cmdKey = `cmd-${command.device_id ?? "?"}-${command.command_id ?? "?"}`;
           const copied = this._copyFlashKey === cmdKey;
-          const descriptor = String(command.parsed_blob ?? "").trim();
+          const descriptor = this._renderableDescriptor(command);
           const rawBlob = String(command.command_blob ?? "");
           const hasDescriptor = descriptor !== "";
           const mode: "descriptor" | "hex" = hasDescriptor
@@ -810,10 +841,10 @@ class SofabatonBlobsTab extends LitElement {
           return html`
           <article class="result-card">
             <div class="result-head">
-              <div class="result-title">${String(command.command_label || `Command ${command.command_id ?? "unknown"}`)}</div>
+              <div class="result-title">${String(command.command_label || TOOLS_CARD_STRINGS.blobs.commandFallback(command.command_id ?? TOOLS_CARD_STRINGS.blobs.unknown))}</div>
               <div class="result-badges">
                 <span class="result-badge">${this._deviceClassLabel(command.device_class)}</span>
-                <span class="result-badge">Cmd ${String(command.command_id ?? "?")}</span>
+                <span class="result-badge">${TOOLS_CARD_STRINGS.blobs.cmdBadge(String(command.command_id ?? "?"))}</span>
               </div>
             </div>
             <div class="result-block">
@@ -823,23 +854,23 @@ class SofabatonBlobsTab extends LitElement {
                       <div
                         class="view-toggle"
                         role="tablist"
-                        aria-label="Blob view mode"
+                        aria-label=${TOOLS_CARD_STRINGS.blobs.blobViewMode}
                       >
                         <button
                           class="view-toggle-btn${mode === "descriptor" ? " active" : ""}"
                           role="tab"
                           aria-selected=${mode === "descriptor" ? "true" : "false"}
                           @click=${() => this._setResultViewMode(cmdKey, "descriptor")}
-                        >Descriptor</button>
+                        >${TOOLS_CARD_STRINGS.blobs.descriptor}</button>
                         <button
                           class="view-toggle-btn${mode === "hex" ? " active" : ""}"
                           role="tab"
                           aria-selected=${mode === "hex" ? "true" : "false"}
                           @click=${() => this._setResultViewMode(cmdKey, "hex")}
-                        >Hex</button>
+                        >${TOOLS_CARD_STRINGS.blobs.hex}</button>
                       </div>
                     `
-                  : html`<div class="result-label">Raw Blob</div>`}
+                  : html`<div class="result-label">${TOOLS_CARD_STRINGS.blobs.rawBlob}</div>`}
                 <button
                   class="copy-btn"
                   data-state=${copied ? "success" : "idle"}
@@ -847,7 +878,7 @@ class SofabatonBlobsTab extends LitElement {
                   @click=${() => void this._copyText(copyTarget, cmdKey)}
                 >
                   <ha-icon icon=${copied ? "mdi:check" : "mdi:content-copy"}></ha-icon>
-                  <span>${copied ? "Copied" : "Copy"}</span>
+                  <span>${copied ? TOOLS_CARD_STRINGS.blobs.copied : TOOLS_CARD_STRINGS.blobs.copy}</span>
                 </button>
               </div>
               <pre class="result-pre result-pre--scrollable">${shownText}</pre>
@@ -859,22 +890,16 @@ class SofabatonBlobsTab extends LitElement {
     `;
   }
 
-  private _renderTestSection(isOpen: boolean) {
+  private _renderTestSectionContent() {
     const proxyConnected = proxyClientConnected(this.hass, this.hub);
     const busy = this._busy();
     const canSubmit = !busy && !proxyConnected && String(this._testBlobInput || "").trim() !== "";
 
     return html`
-      <div class="accordion-section${isOpen ? " open" : ""}" id="acc-test">
-        <div class="acc-header" @click=${() => this.toggleOpenSection("test")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:flash-outline"></ha-icon></span>
-          <span class="acc-title">Test A Blob</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? html`
-        <div class="acc-body" id="acc-body-test">
-          <div class="blob-section-content">
+      ${renderSecondaryTabContent({
+        connected: true,
+        content: html`
+        <div class="blob-section-content">
           ${this._testSubtitle()}
           ${this._renderBlobTextarea({
             value: this._testBlobInput,
@@ -889,8 +914,8 @@ class SofabatonBlobsTab extends LitElement {
           })}
           <div class="action-row">
             ${this._renderActionButton({
-              label: "Test",
-              busyLabel: "Testing…",
+              label: TOOLS_CARD_STRINGS.blobs.test,
+              busyLabel: TOOLS_CARD_STRINGS.blobs.testing,
               idleIcon: "mdi:flash-outline",
               state: this._buttonState({
                 busy: this._testLoading,
@@ -904,14 +929,13 @@ class SofabatonBlobsTab extends LitElement {
           ${this._testError
             ? this._renderStatus("error", "mdi:alert-circle-outline", this._testError)
             : nothing}
-          </div>
         </div>
-        ` : nothing}
-      </div>
+        `,
+      })}
     `;
   }
 
-  private _renderSaveSection(isOpen: boolean) {
+  private _renderSaveSectionContent() {
     const proxyConnected = proxyClientConnected(this.hass, this.hub);
     const busy = this._busy();
     const parsedDeviceId = Number.parseInt(String(this._saveDeviceIdInput || "").trim(), 10);
@@ -927,30 +951,24 @@ class SofabatonBlobsTab extends LitElement {
       && String(this._saveBlobInput || "").trim() !== "";
 
     return html`
-      <div class="accordion-section${isOpen ? " open" : ""}" id="acc-save">
-        <div class="acc-header" @click=${() => this.toggleOpenSection("save")}>
-          <span class="acc-header-icon"><ha-icon icon="mdi:content-save-outline"></ha-icon></span>
-          <span class="acc-title">Save To Hub</span>
-          <span class="flex-spacer"></span>
-          <span class="chevron">▼</span>
-        </div>
-        ${isOpen ? html`
-        <div class="acc-body" id="acc-body-save">
-          <div class="blob-section-content">
+      ${renderSecondaryTabContent({
+        connected: true,
+        content: html`
+        <div class="blob-section-content">
           ${this._saveSubtitle()}
           ${irDeviceOptions.length === 0 && !proxyConnected
             ? this._renderStatus(
                 "warning",
                 "mdi:refresh-circle",
-                "No IR devices found in the cache. Refresh devices from the Cache tab first.",
+                TOOLS_CARD_STRINGS.blobs.noIrDevices,
               )
             : nothing}
           <div class="control-grid">
             <div class="blob-input-host">
               <ha-selector
                 .hass=${this.hass}
-                .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: "Select one" }, ...irDeviceOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
-                .label=${"IR device"}
+                .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: TOOLS_CARD_STRINGS.blobs.selectOne }, ...irDeviceOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
+                .label=${TOOLS_CARD_STRINGS.blobs.irDevice}
                 .value=${this._saveDeviceIdInput && this._saveDeviceIdInput !== "__none__" ? this._saveDeviceIdInput : "__none__"}
                 .disabled=${busy || proxyConnected || irDeviceOptions.length === 0}
                 @value-changed=${(event: CustomEvent) => {
@@ -958,7 +976,6 @@ class SofabatonBlobsTab extends LitElement {
                   this._saveDeviceIdInput = raw && raw !== "__none__" ? raw : "";
                   this._saveError = "";
                   this._saveSuccess = "";
-                  this._saveResult = null;
                   this._saveFlash = false;
                 }}
               ></ha-selector>
@@ -973,14 +990,13 @@ class SofabatonBlobsTab extends LitElement {
               this._saveBlobInput = value;
               this._saveError = "";
               this._saveSuccess = "";
-              this._saveResult = null;
               this._saveFlash = false;
             },
           })}
           <div class="action-row">
             ${this._renderActionButton({
-              label: "Save",
-              busyLabel: "Saving…",
+              label: TOOLS_CARD_STRINGS.blobs.save,
+              busyLabel: TOOLS_CARD_STRINGS.blobs.saving,
               idleIcon: "mdi:content-save-outline",
               state: this._buttonState({
                 busy: this._saveLoading,
@@ -1002,25 +1018,12 @@ class SofabatonBlobsTab extends LitElement {
           ${this._saveError
             ? this._renderStatus("error", "mdi:alert-circle-outline", this._saveError)
             : nothing}
-          </div>
         </div>
-        ` : nothing}
-      </div>
+        `,
+      })}
     `;
   }
 
-/**
-   * Command-name input that matches the Wifi Commands tab character allow-list
-   * and length cap exactly:
-   *   - X1S/X2: Unicode letters/numbers/marks + ` +&.'()_-`
-   *   - X1:    `[A-Za-z0-9 ]`
-   *   - Max 20 chars
-   * Pattern follows wifi-commands-tab._sanitizeCommandName via shared logic.
-   *
-   * The @input handler only rewrites the live DOM value (no state update) to
-   * avoid a state-driven re-render every keystroke (which would reset cursor
-   * position). State commits on @change.
-   */
   private _renderCommandNameInput(busy: boolean, proxyConnected: boolean) {
     const onInputLive = (event: Event) => {
       const input = event.currentTarget as HTMLElement & { value: string };
@@ -1034,7 +1037,6 @@ class SofabatonBlobsTab extends LitElement {
       this._saveCommandName = value;
       this._saveError = "";
       this._saveSuccess = "";
-      this._saveResult = null;
       this._saveFlash = false;
     };
     const disabled = busy || proxyConnected;
@@ -1043,7 +1045,7 @@ class SofabatonBlobsTab extends LitElement {
       return html`
         <div class="blob-input-host">
           <ha-textfield
-            .label=${"Command name"}
+            .label=${TOOLS_CARD_STRINGS.blobs.commandName}
             .maxLength=${20}
             .value=${this._saveCommandName}
             .disabled=${disabled}
@@ -1211,7 +1213,6 @@ class SofabatonBlobsTab extends LitElement {
     this._saveLoading = false;
     this._saveError = "";
     this._saveSuccess = "";
-    this._saveResult = null;
     this._testFlash = false;
     this._saveFlash = false;
     if (this._testFlashTimer) { clearTimeout(this._testFlashTimer); this._testFlashTimer = null; }
@@ -1272,6 +1273,38 @@ class SofabatonBlobsTab extends LitElement {
   private _setResultViewMode(cmdKey: string, mode: "descriptor" | "hex") {
     if (this._resultViewMode[cmdKey] === mode) return;
     this._resultViewMode = { ...this._resultViewMode, [cmdKey]: mode };
+  }
+
+  /**
+   * Build the text shown in the Descriptor view (and used by Copy).
+   *
+   * For wifi_hue / wifi_sonos the hub's pre-formatted `parsed_blob`
+   * splits `body_block` across rendered newlines and indents each
+   * line. That looks tidy but obscures the wire reality: `body_block`
+   * is a single opaque string where every `\r` / `\n` byte is part of
+   * the device-side protocol (it carries its own Content-Length
+   * declaration, line separators, and body bytes). We rebuild the
+   * descriptor client-side so the body_block surfaces as one literal
+   * string with `\r` / `\n` shown as their two-char escape sequences,
+   * matching the editor's "raw wire string" rendering.
+   *
+   * Every other class (wifi_ip, wifi_roku, ir descriptive, and any
+   * non-decodable case) keeps the hub's `parsed_blob` as-is.
+   */
+  private _renderableDescriptor(command: BlobFetchCommandResult): string {
+    const className = String(command.decoded?.class ?? "").toLowerCase();
+    if (className === "wifi_hue" || className === "wifi_sonos") {
+      const fields = (command.decoded?.fields ?? {}) as Record<string, unknown>;
+      const path = String(fields.path ?? "");
+      const bodyBlock = String(fields.body_block ?? "");
+      const lines: string[] = [`path: ${path}`];
+      if (bodyBlock) {
+        const escaped = bodyBlock.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+        lines.push(`body_block: ${escaped}`);
+      }
+      return lines.join("\n");
+    }
+    return String(command.parsed_blob ?? "").trim();
   }
 
   private async _copyText(value: string, flashKey: string) {
@@ -1377,10 +1410,9 @@ class SofabatonBlobsTab extends LitElement {
     this._saveLoading = true;
     this._saveError = "";
     this._saveSuccess = "";
-    this._saveResult = null;
     this._setSharedBusy(true, "Saving blob…");
       try {
-        this._saveResult = await this._api().persistIrBlob(
+        const result = await this._api().persistIrBlob(
           entryId,
           deviceId,
           this._saveCommandName,
@@ -1388,7 +1420,7 @@ class SofabatonBlobsTab extends LitElement {
         );
         await this._refreshControlPanelState();
         this._saveSuccess =
-          `Saved command ${this._saveResult.command_name} as id ${this._saveResult.command_id} on device ${this._saveResult.device_id}.`;
+          `Saved command ${result.command_name} as id ${result.command_id} on device ${result.device_id}.`;
         this._scheduleSuccessRevert("save");
       } catch (error) {
         this._saveError = formatError(error);
