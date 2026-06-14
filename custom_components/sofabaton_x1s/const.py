@@ -1,12 +1,31 @@
 # const.py
+# Hub-version classification, mDNS service types, backup schema versions
+# and default ports moved into the standalone library; they are
+# re-exported here so integration call sites keep importing from const.
+from .lib.hub_versions import (  # noqa: F401
+    ACTIVITY_BACKUP_SCHEMA_VERSION,
+    DEFAULT_HUB_LISTEN_BASE,
+    DEFAULT_PROXY_UDP_PORT,
+    DEVICE_BACKUP_SCHEMA_VERSION,
+    HUB_BUNDLE_SCHEMA_VERSION,
+    HUB_VERSION_BY_HVER,
+    HUB_VERSION_X1,
+    HUB_VERSION_X1S,
+    HUB_VERSION_X2,
+    HVER_BY_HUB_VERSION,
+    HVER_X1,
+    HVER_X1S,
+    HVER_X2,
+    MDNS_SERVICE_TYPE_BY_VERSION,
+    MDNS_SERVICE_TYPE_X1,
+    MDNS_SERVICE_TYPE_X2,
+    MDNS_SERVICE_TYPES,
+    classify_hub_version,
+    mdns_service_type_for_props,
+)
+
 DOMAIN = "sofabaton_x1s"
 
-MDNS_SERVICE_TYPES: tuple[str, ...] = (
-    "_x1hub._udp.local.",
-    "_sofabaton_hub._udp.local.",
-)
-MDNS_SERVICE_TYPE_X1 = MDNS_SERVICE_TYPES[0]
-MDNS_SERVICE_TYPE_X2 = MDNS_SERVICE_TYPES[1]
 CONF_MAC = "mac"
 CONF_HOST = "host"
 CONF_PORT = "port"
@@ -20,45 +39,6 @@ CONF_ROKU_LISTEN_PORT = "roku_listen_port"
 CONF_ENABLE_X2_DISCOVERY = "enable_x2_discovery"
 CONF_PERSISTENT_CACHE_ENABLED = "persistent_cache_enabled"
 
-# Hub version classification
-HVER_X1 = "1"
-HVER_X1S = "2"
-HVER_X2 = "3"
-
-HUB_VERSION_X1 = "X1"
-HUB_VERSION_X1S = "X1S"
-HUB_VERSION_X2 = "X2"
-
-# Backup-format schema versions. These gate restore: a payload whose
-# schema_version does not match is rejected so the slim, hand-editable
-# format stays an exact contract (no silent reads of a stale verbose
-# dump). Bump the matching constant whenever the corresponding export
-# shape changes, and update the restore gate + fixtures together.
-DEVICE_BACKUP_SCHEMA_VERSION = 4
-ACTIVITY_BACKUP_SCHEMA_VERSION = 4
-HUB_BUNDLE_SCHEMA_VERSION = 5
-
-HUB_VERSION_BY_HVER = {
-    HVER_X1: HUB_VERSION_X1,
-    HVER_X1S: HUB_VERSION_X1S,
-    HVER_X2: HUB_VERSION_X2,
-}
-
-HVER_BY_HUB_VERSION = {
-    HUB_VERSION_X1: HVER_X1,
-    HUB_VERSION_X1S: HVER_X1S,
-    HUB_VERSION_X2: HVER_X2,
-}
-
-MDNS_SERVICE_TYPE_BY_VERSION = {
-    HUB_VERSION_X1: MDNS_SERVICE_TYPE_X1,
-    HUB_VERSION_X1S: MDNS_SERVICE_TYPE_X1,
-    # X2 hubs continue to use the legacy _x1hub._udp.local. advertisement for compatibility
-    HUB_VERSION_X2: MDNS_SERVICE_TYPE_X1,
-}
-
-DEFAULT_PROXY_UDP_PORT = 8102
-DEFAULT_HUB_LISTEN_BASE = 8200
 DEFAULT_ROKU_LISTEN_PORT = 8060
 WIFI_DEVICE_ENABLE_DOCS_URL = (
     "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md"
@@ -117,53 +97,6 @@ def signal_wifi_device(entry_id: str) -> str:
 
 def signal_command_sync(entry_id: str) -> str:
     return f"sofabaton_x1s_command_sync_{entry_id}"
-
-
-def classify_hub_version(props: dict[str, str]) -> str:
-    """Determine hub version from advertised mDNS / banner properties.
-
-    Raises :class:`ValueError` when ``props`` carries no ``HVER`` key
-    or its value does not map to a known hub line. The integration
-    deliberately refuses to default to a previously-known variant in
-    that case: a missing or unfamiliar advertisement signals either an
-    upstream firmware change or a misconfigured manual entry, and
-    silently inheriting the X1 layout would corrupt every write to
-    that hub. Callers that cannot guarantee an ``HVER`` (e.g. fully
-    manual entry before first connect) must pick a known variant
-    explicitly rather than relying on this helper.
-    """
-
-    hver = props.get("HVER")
-    if hver is None:
-        raise ValueError(
-            "classify_hub_version: advertisement is missing HVER; "
-            "cannot identify hub variant."
-        )
-    version = HUB_VERSION_BY_HVER.get(str(hver).strip())
-    if not version:
-        known = ", ".join(sorted(HUB_VERSION_BY_HVER))
-        raise ValueError(
-            f"classify_hub_version: unknown HVER={hver!r}; "
-            f"expected one of {known}."
-        )
-    return version
-
-
-def mdns_service_type_for_props(props: dict[str, str]) -> str:
-    """Map hub properties to the correct mDNS service type.
-
-    The integration advertises the same service type for every known
-    variant, so an unclassifiable advertisement falls back to the
-    shared narrow-line type rather than refusing to advertise -- the
-    transport envelope is byte-compatible across the family and the
-    connect banner reclassifies authoritatively.
-    """
-
-    try:
-        version = classify_hub_version(props)
-    except ValueError:
-        return MDNS_SERVICE_TYPE_X1
-    return MDNS_SERVICE_TYPE_BY_VERSION.get(version, MDNS_SERVICE_TYPE_X1)
 
 
 def format_hub_entry_title(version: str | None, host: str | None, mac: str | None) -> str:

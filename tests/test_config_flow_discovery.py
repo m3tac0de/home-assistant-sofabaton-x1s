@@ -79,7 +79,9 @@ def test_prepare_discovered_hub_rejects_proxy_advertisement() -> None:
 
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # asyncio.run (not the legacy get_event_loop) so these tests don't
+    # depend on no other test having created/closed an event loop first.
+    return asyncio.run(coro)
 
 def _flow_with_x2_enabled(enabled: bool) -> ConfigFlow:
     flow = ConfigFlow()

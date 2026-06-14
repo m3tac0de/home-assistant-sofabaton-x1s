@@ -1,0 +1,466 @@
+# aio.py — asyncio facade over the threaded proxy core.
+#
+# The engine stays thread-based (sockets, ack waiters, mDNS); this module
+# owns NO protocol logic. It does exactly two things:
+#
+#   * runs blocking proxy calls in the event loop's default executor, and
+#   * marshals listener callbacks from engine threads onto the loop
+#     (plain callables via ``call_soon_threadsafe``, coroutine functions
+#     via ``run_coroutine_threadsafe``),
+#
+# mirroring the executor-job pattern the Home Assistant integration uses
+# around ``X1Proxy`` today.
+from __future__ import annotations
+
+import asyncio
+import functools
+import inspect
+from typing import Any, Callable, Iterable, Optional
+
+from .discovery import (
+    DEFAULT_DISCOVERY_TIMEOUT,
+    DiscoveredHub,
+    HubBrowser,
+    discover_hubs,
+)
+from .protocol_const import ButtonName
+from .x1_proxy import X1Proxy
+
+__all__ = [
+    "AsyncX1Proxy",
+    "AsyncHubBrowser",
+    "async_discover_hubs",
+]
+
+# Default deadline for an awaited read that has to fetch from the hub.
+DEFAULT_FETCH_TIMEOUT = 10.0
+
+
+def _marshal_callback(loop: asyncio.AbstractEventLoop, callback: Callable) -> Callable:
+    """Wrap ``callback`` so engine-thread invocations land on ``loop``.
+
+    Sync callables are queued with ``call_soon_threadsafe``; coroutine
+    functions are scheduled as tasks via ``run_coroutine_threadsafe``.
+    """
+
+    if inspect.iscoroutinefunction(callback):
+
+        def relay(*args: Any, **kwargs: Any) -> None:
+            asyncio.run_coroutine_threadsafe(callback(*args, **kwargs), loop)
+
+    else:
+
+        def relay(*args: Any, **kwargs: Any) -> None:
+            loop.call_soon_threadsafe(functools.partial(callback, *args, **kwargs))
+
+    functools.update_wrapper(relay, callback)
+    return relay
+
+
+class AsyncX1Proxy:
+    """Asyncio wrapper around :class:`X1Proxy`.
+
+    Construct with the same keyword arguments as ``X1Proxy`` (must happen
+    inside a running event loop, or pass ``loop=``), or wrap an existing
+    engine with :meth:`wrap`.
+
+    The common surface is a small set of explicit, human-readable
+    coroutines:
+
+    * **read** — :meth:`activities`, :meth:`devices`, :meth:`commands`,
+      :meth:`buttons`, :meth:`macros`, :meth:`favorites`. These return
+      the data directly (no ``(data, ready)`` tuple): cached results
+      come back immediately, otherwise the call fetches from the hub and
+      awaits completion, raising :class:`RuntimeError` when the hub is
+      held by a connected app client and nothing is cached, or
+      :class:`TimeoutError` when the fetch never lands.
+    * **control** — :meth:`press`, :meth:`start_activity`,
+      :meth:`stop_activity`, :meth:`find_remote`.
+
+    Anything else in :data:`PROXY_METHODS` (provisioning, cache export,
+    explicit requests) is awaitable too and delegates to the engine in
+    the executor. Listener registration (``on_*``) accepts plain
+    callables and coroutine functions and always delivers on the event
+    loop. ``.sync`` exposes the underlying engine for the raw surface
+    (including the ``get_*`` snapshot getters that return tuples).
+    """
+
+    # Engine methods exposed as bare awaitable executor delegates. The
+    # human read/control surface (activities/devices/commands/buttons/
+    # macros/favorites/press/start_activity/stop_activity) is defined as
+    # explicit methods below and intentionally NOT listed here. Tests
+    # assert every entry exists on X1Proxy so the list cannot drift.
+    PROXY_METHODS: frozenset[str] = frozenset(
+        {
+            # advanced getters (already return plain data, not tuples)
+            "get_cached_macro_records",
+            "get_cached_activity_detail_ids",
+            "get_known_device_ids",
+            "get_known_activity_ids",
+            "get_banner_info",
+            "get_app_activations",
+            # live in-memory cache invalidation (NOT persistence: the
+            # library never writes to disk, and the cache-snapshot
+            # (de)serializers stay off the public surface — reach them
+            # via .sync if a warm-start dump is genuinely needed).
+            "clear_entity_cache",
+            "clear_devices_catalog",
+            "clear_activities_catalog",
+            # explicit hub requests
+            "request_activities",
+            "request_devices",
+            "request_activity_mapping",
+            "request_ir_command_dump",
+            "fetch_banner_info",
+            "fetch_device_input_record",
+            "fetch_device_key_sort",
+            # actions
+            "find_remote",
+            "set_hub_name",
+            "set_diag_dump",
+            "resync_remote",
+            "update_discovery_identity",
+            "enable_proxy",
+            "disable_proxy",
+            # provisioning / mutation
+            "create_wifi_device",
+            "delete_device",
+            "delete_favorite",
+            "reorder_favorites",
+            "command_to_favorite",
+            "command_to_button",
+            "add_device_to_activity",
+            "play_ir_blob",
+            "persist_ir_blob",
+            "restore_hub_bundle",
+            "erase_configuration",
+        }
+    )
+
+    _LISTENER_METHODS: frozenset[str] = frozenset(
+        {
+            "on_activity_change",
+            "on_activity_list_update",
+            "on_client_state_change",
+            "on_hub_state_change",
+            "on_ota_update",
+            "on_app_activation",
+        }
+    )
+
+    def __init__(
+        self, *, loop: Optional[asyncio.AbstractEventLoop] = None, **proxy_kwargs: Any
+    ) -> None:
+        self._loop = loop or asyncio.get_running_loop()
+        self._proxy = X1Proxy(**proxy_kwargs)
+        self._init_burst_state()
+
+    @classmethod
+    def wrap(
+        cls, proxy: X1Proxy, *, loop: Optional[asyncio.AbstractEventLoop] = None
+    ) -> "AsyncX1Proxy":
+        """Wrap an already-constructed engine (e.g. mid-migration code)."""
+
+        self = object.__new__(cls)
+        self._loop = loop or asyncio.get_running_loop()
+        self._proxy = proxy
+        self._init_burst_state()
+        return self
+
+    def _init_burst_state(self) -> None:
+        # Per-entity futures awaiting a burst completion, keyed by the
+        # engine's burst key (e.g. "commands:5", "activities"). One
+        # persistent dispatcher is registered per burst-kind on first use
+        # so awaited reads never leak listeners.
+        self._burst_waiters: dict[str, list[asyncio.Future]] = {}
+        self._burst_dispatch_kinds: set[str] = set()
+
+    # -- escape hatches ----------------------------------------------------
+
+    @property
+    def sync(self) -> X1Proxy:
+        """The underlying threaded engine."""
+
+        return self._proxy
+
+    @property
+    def state(self) -> Any:
+        """The engine's :class:`ActivityCache` (read on the loop thread)."""
+
+        return self._proxy.state
+
+    async def run(self, func: Callable, /, *args: Any, **kwargs: Any) -> Any:
+        """Run an arbitrary callable in the executor (escape hatch)."""
+
+        return await self._loop.run_in_executor(
+            None, functools.partial(func, *args, **kwargs)
+        )
+
+    # -- lifecycle -----------------------------------------------------------
+
+    async def start(self) -> None:
+        await self.run(self._proxy.start)
+
+    async def stop(self) -> None:
+        await self.run(self._proxy.stop)
+
+    async def __aenter__(self) -> "AsyncX1Proxy":
+        await self.start()
+        return self
+
+    async def __aexit__(self, *exc_info: Any) -> None:
+        await self.stop()
+
+    def set_zeroconf(self, zc: Any) -> None:
+        """Adopt a shared Zeroconf instance (cheap; no executor needed)."""
+
+        self._proxy.set_zeroconf(zc)
+
+    # -- listeners ------------------------------------------------------------
+
+    def on_burst_end(self, key: str, callback: Callable) -> None:
+        """Register a burst-end listener; delivered on the event loop."""
+
+        self._proxy.on_burst_end(key, _marshal_callback(self._loop, callback))
+
+    # -- read surface --------------------------------------------------------
+
+    async def activities(
+        self, *, timeout: float = DEFAULT_FETCH_TIMEOUT
+    ) -> dict[int, dict]:
+        """Return ``{activity_id: {name, active, ...}}`` for all activities."""
+
+        return await self._read(self._proxy.get_activities, "activities", timeout=timeout)
+
+    async def devices(
+        self, *, timeout: float = DEFAULT_FETCH_TIMEOUT
+    ) -> dict[int, dict]:
+        """Return ``{device_id: {name, brand, ...}}`` for all devices."""
+
+        return await self._read(self._proxy.get_devices, "devices", timeout=timeout)
+
+    async def commands(
+        self, device_id: int, *, timeout: float = DEFAULT_FETCH_TIMEOUT
+    ) -> dict[int, str]:
+        """Return ``{command_code: label}`` for a device."""
+
+        return await self._read(
+            self._proxy.get_commands_for_entity,
+            f"commands:{device_id & 0xFF}",
+            device_id,
+            timeout=timeout,
+        )
+
+    async def buttons(
+        self, entity_id: int, *, timeout: float = DEFAULT_FETCH_TIMEOUT
+    ) -> list[int]:
+        """Return the button codes bound to an activity or device."""
+
+        return await self._read(
+            self._proxy.get_buttons_for_entity,
+            f"buttons:{entity_id & 0xFF}",
+            entity_id,
+            timeout=timeout,
+        )
+
+    async def macros(
+        self, activity_id: int, *, timeout: float = DEFAULT_FETCH_TIMEOUT
+    ) -> list[dict]:
+        """Return an activity's macros as ``[{command_id, label}, ...]``."""
+
+        return await self._read(
+            self._proxy.get_macros_for_activity,
+            f"macros:{activity_id & 0xFF}",
+            activity_id,
+            timeout=timeout,
+        )
+
+    async def favorites(self, activity_id: int) -> list[tuple[int, int]]:
+        """Return an activity's favorites ordering as ``[(fav_id, slot), ...]``.
+
+        Unlike the other reads this is a single blocking request to the
+        hub; raises :class:`TimeoutError` if the hub does not answer. An
+        activity with no favorites returns an empty list.
+        """
+
+        order = await self.run(self._proxy.request_favorites_order, activity_id)
+        if order is None:
+            raise TimeoutError(
+                f"timed out fetching favorites for activity {activity_id}"
+            )
+        return order
+
+    # -- control surface -----------------------------------------------------
+
+    async def press(self, entity_id: int, button: int) -> bool:
+        """Send a button/command press to an activity or device.
+
+        Returns ``False`` if the proxy refused (a real app client holds
+        the hub).
+        """
+
+        return await self.run(self._proxy.send_command, entity_id, button)
+
+    async def start_activity(self, activity_id: int) -> bool:
+        """Switch to an activity (sends its power-on)."""
+
+        return await self.run(self._proxy.send_command, activity_id, ButtonName.POWER_ON)
+
+    async def stop_activity(self, activity_id: int) -> bool:
+        """Power off an activity."""
+
+        return await self.run(self._proxy.send_command, activity_id, ButtonName.POWER_OFF)
+
+    # -- lazy-read plumbing --------------------------------------------------
+
+    async def _read(
+        self, getter: Callable, key: str, *args: Any, timeout: float
+    ) -> Any:
+        """Resolve a lazy ``(data, ready)`` getter to complete data.
+
+        Returns cached data when already complete; otherwise kicks a hub
+        fetch and awaits the matching burst. Raises ``RuntimeError`` when
+        the hub can't be queried and nothing is cached, ``TimeoutError``
+        when the burst never lands.
+        """
+
+        data, ready = await self.run(getter, *args, fetch_if_missing=False)
+        if ready:
+            return data
+        if not self._proxy.can_issue_commands():
+            raise RuntimeError(
+                f"cannot fetch {key!r}: the hub is held by a connected app client"
+            )
+
+        future = self._loop.create_future()
+        self._burst_waiters.setdefault(key, []).append(future)
+        self._ensure_burst_dispatch(key.split(":", 1)[0])
+
+        await self.run(getter, *args, fetch_if_missing=True)
+        try:
+            await asyncio.wait_for(future, timeout)
+        except TimeoutError:
+            pending = self._burst_waiters.get(key)
+            if pending and future in pending:
+                pending.remove(future)
+            raise TimeoutError(f"timed out after {timeout}s fetching {key!r}")
+
+        data, _ = await self.run(getter, *args, fetch_if_missing=False)
+        return data
+
+    def _ensure_burst_dispatch(self, kind: str) -> None:
+        if kind in self._burst_dispatch_kinds:
+            return
+        self._burst_dispatch_kinds.add(kind)
+
+        def dispatcher(full_key: str) -> None:
+            # Fires on the engine thread; hop to the loop to resolve.
+            self._loop.call_soon_threadsafe(self._resolve_burst, full_key)
+
+        self._proxy.on_burst_end(kind, dispatcher)
+
+    def _resolve_burst(self, full_key: str) -> None:
+        for future in self._burst_waiters.pop(full_key, []):
+            if not future.done():
+                future.set_result(None)
+
+    def __getattr__(self, name: str) -> Any:
+        # Note: only consulted for names not found on the class/instance,
+        # so explicit methods above always win.
+        if name in self.PROXY_METHODS:
+            target = getattr(self._proxy, name)
+
+            async def delegate(*args: Any, **kwargs: Any) -> Any:
+                return await self._loop.run_in_executor(
+                    None, functools.partial(target, *args, **kwargs)
+                )
+
+            functools.update_wrapper(delegate, target)
+            return delegate
+        if name in self._LISTENER_METHODS:
+            register = getattr(self._proxy, name)
+
+            def add_listener(callback: Callable) -> None:
+                register(_marshal_callback(self._loop, callback))
+
+            functools.update_wrapper(add_listener, register)
+            return add_listener
+        raise AttributeError(
+            f"{type(self).__name__!s} has no attribute {name!r}; "
+            "use .sync to reach the underlying X1Proxy"
+        )
+
+
+class AsyncHubBrowser:
+    """Asyncio wrapper around :class:`HubBrowser`.
+
+    Accepts the same callbacks (sync or async); they are delivered on
+    the event loop instead of the zeroconf engine thread. Start/stop run
+    in the executor because zeroconf engine setup/teardown blocks.
+    """
+
+    def __init__(
+        self,
+        *,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+        zc: Any = None,
+        include_proxies: bool = False,
+        service_types: Optional[Iterable[str]] = None,
+        on_added: Optional[Callable] = None,
+        on_updated: Optional[Callable] = None,
+        on_removed: Optional[Callable] = None,
+    ) -> None:
+        self._loop = loop or asyncio.get_running_loop()
+        kwargs: dict[str, Any] = {
+            "zc": zc,
+            "include_proxies": include_proxies,
+            "on_added": self._wrap(on_added),
+            "on_updated": self._wrap(on_updated),
+            "on_removed": self._wrap(on_removed),
+        }
+        if service_types is not None:
+            kwargs["service_types"] = service_types
+        self._browser = HubBrowser(**kwargs)
+
+    def _wrap(self, callback: Optional[Callable]) -> Optional[Callable]:
+        if callback is None:
+            return None
+        return _marshal_callback(self._loop, callback)
+
+    @property
+    def sync(self) -> HubBrowser:
+        return self._browser
+
+    @property
+    def hubs(self) -> list[DiscoveredHub]:
+        return self._browser.hubs
+
+    async def start(self) -> "AsyncHubBrowser":
+        await self._loop.run_in_executor(None, self._browser.start)
+        return self
+
+    async def stop(self) -> None:
+        await self._loop.run_in_executor(None, self._browser.stop)
+
+    async def __aenter__(self) -> "AsyncHubBrowser":
+        return await self.start()
+
+    async def __aexit__(self, *exc_info: Any) -> None:
+        await self.stop()
+
+
+async def async_discover_hubs(
+    timeout: float = DEFAULT_DISCOVERY_TIMEOUT,
+    *,
+    zc: Any = None,
+    include_proxies: bool = False,
+) -> list[DiscoveredHub]:
+    """Async one-shot hub scan; the blocking browse runs in the executor."""
+
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None,
+        functools.partial(
+            discover_hubs, timeout=timeout, zc=zc, include_proxies=include_proxies
+        ),
+    )

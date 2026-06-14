@@ -27,7 +27,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Final, Mapping
 
-from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 
 
 class InputEntryLayout(Enum):

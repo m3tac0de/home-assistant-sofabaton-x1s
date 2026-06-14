@@ -3452,6 +3452,7 @@ class SofabatonHub:
         return sorted(hashes)
 
     async def _async_execute_action_config(self, action_config: dict[str, Any]) -> None:
+        self._log.warning("[WIFI_ACTION_DEBUG] action_config=%r", action_config)
         action = str(action_config.get("action") or "").lower().strip()
         implicit_service = (not action or action == "default") and (
             action_config.get("service") or action_config.get("perform_action")

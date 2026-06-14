@@ -1,0 +1,81 @@
+# CI for the standalone sofapython library (custom_components/sofabaton_x1s/lib,
+# published via the root pyproject.toml). Runs on every change that can affect
+# the published package: library boundary lint, lib tests across supported
+# Python versions, full suite, and a build + install smoke test of the wheel.
+name: sofapython CI
+
+on:
+  pull_request:
+    paths:
+      - "custom_components/sofabaton_x1s/lib/**"
+      - "sofapython/**"
+      - "pyproject.toml"
+      - "tests/**"
+      - ".github/workflows/sofapython-ci.yml"
+  push:
+    branches: [main, dev]
+    paths:
+      - "custom_components/sofabaton_x1s/lib/**"
+      - "sofapython/**"
+      - "pyproject.toml"
+      - ".github/workflows/sofapython-ci.yml"
+
+jobs:
+  lib-tests:
+    name: lib tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor matches requires-python in pyproject.toml.
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install pytest
+      - name: Boundary lint + library tests
+        run: pytest tests/lib -q
+
+  full-suite:
+    name: full integration suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pytest
+      - name: Full pytest suite
+        run: pytest tests -q
+
+  build-smoke:
+    name: build + install smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install build
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Install wheel and smoke-test the public API
+        run: |
+          pip install dist/*.whl
+          python -c "
+          import sofapython
+          missing = [n for n in sofapython.__all__ if not hasattr(sofapython, n)]
+          assert not missing, missing
+          from sofapython import X1Proxy, AsyncX1Proxy, discover_hubs
+          print('sofapython', sofapython.__version__, 'OK:', len(sofapython.__all__), 'public names')
+          "
+      - name: Console script smoke test
+        run: |
+          sofapython --help
+          sofapython discover --timeout 0.1 --json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sofapython-dist
+          path: dist/

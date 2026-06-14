@@ -1,0 +1,60 @@
+# Packaging metadata for the standalone "sofapython" library.
+#
+# The library's source of truth is custom_components/sofabaton_x1s/lib;
+# at build time hatchling remaps that directory into the wheel as the
+# top-level package "sofapython" (see docs/sofapython_library_plan.md).
+# The Home Assistant integration itself is NOT part of this distribution.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sofapython"
+dynamic = ["version"]
+description = "Unofficial protocol library and man-in-the-middle proxy for Sofabaton X1 / X1S / X2 universal remote hubs"
+readme = "sofapython/README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "m3tac0de" }]
+keywords = ["sofabaton", "x1", "x1s", "x2", "universal-remote", "proxy", "mdns", "home-automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Home Automation",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "zeroconf>=0.131",
+]
+
+[project.urls]
+Homepage = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s"
+Issues = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues"
+Documentation = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/docs"
+
+[project.scripts]
+sofapython = "sofapython.cli:main"
+
+[tool.hatch.version]
+path = "custom_components/sofabaton_x1s/lib/version.py"
+
+[tool.hatch.build.targets.wheel]
+# The in-tree package directory ships as top-level "sofapython".
+[tool.hatch.build.targets.wheel.force-include]
+"custom_components/sofabaton_x1s/lib" = "sofapython"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "custom_components/sofabaton_x1s/lib/**",
+    "sofapython/README.md",
+    "sofapython/examples/**",
+    "LICENSE",
+    "docs/sofapython_library_plan.md",
+]

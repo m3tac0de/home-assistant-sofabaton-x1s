@@ -16,12 +16,8 @@ import threading
 import time
 from typing import Dict
 
-if __package__:
-    from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
-    from .x1_proxy import X1Proxy
-else:  # pragma: no cover - exercised by direct script usage
-    from protocol_const import BUTTONNAME_BY_CODE, ButtonName
-    from x1_proxy import X1Proxy
+from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
+from .x1_proxy import X1Proxy
 
 # ----------------- helpers -----------------
 
@@ -249,14 +245,63 @@ class X1Shell:
             meth(rest)
 
 
-def main() -> None:
-    
+def _main_discover(argv: list[str]) -> None:
+    """One-shot mDNS scan for physical hubs (and optionally proxies)."""
+
+    ap = argparse.ArgumentParser(
+        prog="sofapython discover",
+        description="Discover Sofabaton hubs on the local network via mDNS",
+    )
+    ap.add_argument("--timeout", type=float, default=5.0, help="scan duration in seconds (default 5)")
+    ap.add_argument(
+        "--include-proxies",
+        action="store_true",
+        help="also list proxy advertisements (TXT %s=1)" % "HA_PROXY",
+    )
+    ap.add_argument("--json", action="store_true", help="emit one JSON object per hub")
+    args = ap.parse_args(argv)
+
+    from .discovery import discover_hubs
+
+    hubs = discover_hubs(timeout=args.timeout, include_proxies=args.include_proxies)
+    if args.json:
+        import json as _json
+
+        for hub in hubs:
+            print(
+                _json.dumps(
+                    {
+                        "host": hub.host,
+                        "port": hub.port,
+                        "name": hub.name,
+                        "mac": hub.mac,
+                        "hub_version": hub.hub_version,
+                        "is_proxy": hub.is_proxy,
+                        "service_type": hub.service_type,
+                        "txt": hub.txt,
+                    }
+                )
+            )
+        return
+
+    if not hubs:
+        print(f"no hubs found in {args.timeout:g}s")
+        return
+    print(f"{'host':15}  {'port':5}  {'ver':4}  {'proxy':5}  name")
+    for hub in hubs:
+        print(
+            f"{hub.host:15}  {hub.port:5d}  {hub.hub_version or '?':4}  "
+            f"{'yes' if hub.is_proxy else 'no':5}  {hub.name}"
+        )
+
+
+def _main_run(argv: list[str]) -> None:
     logging.basicConfig(
         level=logging.DEBUG,
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
-    
-    ap = argparse.ArgumentParser(description="X1 proxy CLI")
+
+    ap = argparse.ArgumentParser(prog="sofapython run", description="X1 proxy CLI")
     ap.add_argument("--hub", required=True, help="real hub IP (the real device)")
     ap.add_argument("--hub-udp", type=int, default=8102)
     ap.add_argument(
@@ -271,7 +316,7 @@ def main() -> None:
     ap.add_argument("--mdns-name", default="X1-HUB-PROXY")
     ap.add_argument("--no-dump", dest="diag_dump", action="store_false")
     ap.add_argument("--no-parse", dest="diag_parse", action="store_false")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     mdns_txt = _kv_list_to_dict(args.mdns_txt)
 
@@ -295,6 +340,36 @@ def main() -> None:
         shell.loop()
     finally:
         proxy.stop()
+
+
+_SUBCOMMANDS = ("run", "discover")
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Entry point with subcommands.
+
+    ``sofapython discover [...]`` scans for hubs; ``sofapython run
+    --hub IP [...]`` starts the proxy shell. For backward compatibility
+    a missing subcommand defaults to ``run`` (so the historical
+    ``--hub IP`` invocation keeps working).
+    """
+
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] in (["-h"], ["--help"]):
+        print(
+            "usage: sofapython [run|discover] ...\n\n"
+            "subcommands:\n"
+            "  run       start the proxy + interactive shell (default; see 'run -h')\n"
+            "  discover  scan the LAN for Sofabaton hubs (see 'discover -h')"
+        )
+        return
+    command = "run"
+    if args and args[0] in _SUBCOMMANDS:
+        command = args.pop(0)
+    if command == "discover":
+        _main_discover(args)
+    else:
+        _main_run(args)
 
 
 if __name__ == "__main__":

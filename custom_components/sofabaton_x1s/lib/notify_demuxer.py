@@ -9,8 +9,8 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional
 
-from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version
-from ..logging_utils import get_hub_logger
+from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version
+from .hub_logging import get_hub_logger
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 
 log = logging.getLogger("x1proxy.notify")

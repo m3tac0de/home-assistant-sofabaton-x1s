@@ -27,7 +27,7 @@ import re
 import time
 from typing import Any
 
-from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 from .blob_decoders import render_wifi_ip_http_text, render_wifi_roku_blob_body
 from .device_create import DeviceCreateRequest, DeviceCreateResult, run_device_create
 from .devices import DeviceConfig, build_device_create_payload

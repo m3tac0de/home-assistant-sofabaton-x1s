@@ -24,7 +24,7 @@ import threading
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Tuple
 
-from ..logging_utils import get_hub_logger
+from .hub_logging import get_hub_logger
 
 log = logging.getLogger("x1proxy.listener")
 

@@ -13,8 +13,16 @@ from collections import defaultdict, deque
 from dataclasses import replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
-from ..logging_utils import LogTag, get_hub_logger
+from .hub_versions import (
+    HUB_VERSION_X1,
+    HUB_VERSION_X1S,
+    HUB_VERSION_X2,
+    PROXY_TXT_KEY,
+    PROXY_TXT_VALUE,
+    classify_hub_version,
+    mdns_service_type_for_props,
+)
+from .hub_logging import LogTag, get_hub_logger
 from .frame_handlers import FrameContext, frame_handler_registry
 from .ack import AckOutcome, InputsBurstResult, SendStepResult
 from .commands import (
@@ -1558,6 +1566,10 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         host = (self.mdns_host or instance) + "."
 
         props = {k: v.encode("utf-8") for k, v in self.mdns_txt.items()}
+        # Always self-mark the advertisement as a proxy so discovery
+        # (ours or any consumer's) can tell it apart from a physical
+        # hub. Callers may still pre-set the key via mdns_txt.
+        props.setdefault(PROXY_TXT_KEY, PROXY_TXT_VALUE.encode("utf-8"))
 
         # reset any previous registrations in case of restart
         self._mdns_infos = []

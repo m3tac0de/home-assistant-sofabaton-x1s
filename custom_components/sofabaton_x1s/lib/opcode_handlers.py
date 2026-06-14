@@ -7,7 +7,7 @@ import time
 import unicodedata
 from typing import TYPE_CHECKING
 
-from ..const import HUB_VERSION_X1
+from .hub_versions import HUB_VERSION_X1
 from .commands import decode_burst_frame, parse_ir_command_dump_frame
 from .frame_handlers import BaseFrameHandler, FrameContext, register_handler
 from .macros import (

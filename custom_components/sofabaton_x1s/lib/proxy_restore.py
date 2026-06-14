@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-from ..const import (
+from .hub_versions import (
     ACTIVITY_BACKUP_SCHEMA_VERSION,
     DEVICE_BACKUP_SCHEMA_VERSION,
     HUB_BUNDLE_SCHEMA_VERSION,
