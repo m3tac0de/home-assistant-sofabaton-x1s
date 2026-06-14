@@ -1,11 +1,15 @@
+import os
+import shutil
 import subprocess
 from pathlib import Path
 
 
 def test_tools_card_frontend_behavior_suite() -> None:
     repo = Path(__file__).resolve().parents[1]
+    npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
+    assert npm is not None, "npm executable not found"
     result = subprocess.run(
-        ["npm.cmd", "run", "test:frontend"],
+        [npm, "run", "test:frontend"],
         cwd=repo,
         capture_output=True,
         text=True,

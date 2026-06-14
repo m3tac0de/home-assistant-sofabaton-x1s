@@ -82,6 +82,7 @@ from .protocol_const import (
     known_public_device_classes,
     OPNAMES,
     normalize_device_class,
+    opcode_family,
     opcode_lo,
     OP_ACK_READY,
     OP_BANNER,
