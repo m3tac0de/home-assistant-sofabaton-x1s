@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-"""Run a proxy in front of a physical hub and send a command.
+"""Take control of a hub: proxy it, read its catalog, switch an activity.
 
-The proxy advertises itself via mDNS exactly like the hub it fronts,
-so the official Sofabaton app keeps working — pointed at the proxy —
-while this process observes and injects traffic.
+The proxy advertises itself via mDNS exactly like the hub it fronts, so
+the official Sofabaton app keeps working — pointed at the proxy — while
+this process observes and injects traffic.
 
-Discovery feeds the proxy: the TXT records of the discovered hub tell
-the proxy which variant (X1/X1S/X2) to speak.
+This is a *control-mode* example: the interesting operations (fresh
+reads, sending commands, switching activities) require the proxy to own
+the hub, which means the hub is connected AND no official app is
+attached. ``wait_until_controllable()`` blocks until that holds. To
+instead *watch* a live session while the app is connected, see
+``watch.py``.
 
-This uses the asyncio facade (``AsyncX1Proxy``): blocking calls run in
-the event loop's executor and listener callbacks — plain functions or
-coroutines — are delivered on the loop, so you never touch the engine
-threads. A synchronous ``X1Proxy`` with the same surface is also
-available if you prefer.
+Uses the asyncio facade (``AsyncX1Proxy``): blocking calls run in the
+loop's executor and callbacks are delivered on the loop. A synchronous
+``X1Proxy`` with the same surface is also available.
 """
 
 import asyncio
 
-from sofapython import AsyncX1Proxy, ButtonName, async_discover_hubs
+from sofapython import AsyncX1Proxy, async_discover_hubs
 
 
 async def main() -> None:
@@ -37,14 +39,10 @@ async def main() -> None:
     proxy.on_hub_state_change(lambda up: print("hub:", "up" if up else "down"))
     proxy.on_client_state_change(lambda up: print("app:", "connected" if up else "gone"))
 
-    async def on_activity(new_id, old_id, name):   # coroutine callbacks work too
-        print(f"activity -> {name} ({new_id})")
-
-    proxy.on_activity_change(on_activity)
-    proxy.on_burst_end("activities", lambda *a, **k: print("activity catalog updated"))
-
     async with proxy:
-        # Catalogs are fetched from the hub when no real app is connected.
+        if not await proxy.wait_until_controllable(timeout=30):
+            raise SystemExit("hub not controllable (not connected, or an app is attached)")
+
         activities = await proxy.activities()
         print("activities:", {aid: info.get("name") for aid, info in activities.items()})
 
@@ -53,13 +51,11 @@ async def main() -> None:
 
         if activities:
             target = next(iter(activities))
-            # Press a button on an activity or device. Returns False if
-            # refused (a real app client is connected through the proxy).
-            if await proxy.press(target, ButtonName.OK):
-                print(f"sent OK to {target}")
-            # Switching activities is a named operation:
-            #   await proxy.start_activity(target)
-            #   await proxy.stop_activity(target)
+            # Switch to an activity (sends its power-on). Returns False if
+            # refused. Other control verbs: proxy.press(ent, button),
+            # proxy.stop_activity(act), proxy.find_remote().
+            if await proxy.start_activity(target):
+                print(f"started activity {target} ({activities[target].get('name')})")
 
 
 if __name__ == "__main__":

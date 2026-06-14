@@ -52,9 +52,14 @@ class FakeProxy:
     (optionally from a worker thread) emulate the hub reply landing.
     """
 
+    class _Transport:
+        is_hub_connected = True
+        is_client_connected = False
+
     def __init__(self) -> None:
         self._listeners: dict[str, list] = {}
         self.hub_state_listeners: list = []
+        self.client_state_listeners: list = []
         self.burst_listeners: dict[str, list] = {}
         self.can_issue = True
         self.started = False
@@ -62,11 +67,24 @@ class FakeProxy:
         self.sent: list[tuple[int, int]] = []
         self.fetch_calls: list[tuple[str, int | None]] = []
         self.favorites_reply: list[tuple[int, int]] | None = []
+        self.transport = FakeProxy._Transport()
         self._ready: dict[str, dict] = {"commands": {}, "macros": {}, "activities": None, "devices": None}
 
     # -- listener registration ------------------------------------------
     def on_hub_state_change(self, cb) -> None:
         self.hub_state_listeners.append(cb)
+
+    def on_client_state_change(self, cb) -> None:
+        self.client_state_listeners.append(cb)
+
+    def set_connected(self, *, hub: bool, client: bool = False) -> None:
+        self.transport.is_hub_connected = hub
+        self.transport.is_client_connected = client
+        self.can_issue = hub and not client
+        for cb in list(self.hub_state_listeners):
+            cb(hub)
+        for cb in list(self.client_state_listeners):
+            cb(client)
 
     def on_burst_end(self, key, cb) -> None:
         self._listeners.setdefault(key, []).append(cb)
@@ -187,6 +205,7 @@ def test_human_surface_delegates_to_real_engine_methods() -> None:
         "press",
         "start_activity",
         "stop_activity",
+        "find_remote",
     ):
         assert callable(getattr(aio.AsyncX1Proxy, name, None)), f"missing facade method {name}"
 
@@ -244,7 +263,7 @@ def test_read_fetches_then_awaits_burst() -> None:
 def test_read_raises_when_app_connected_and_uncached() -> None:
     async def main():
         fake = FakeProxy()
-        fake.can_issue = False
+        fake.set_connected(hub=True, client=True)  # app holds the hub
         proxy = _wrap(fake)
         try:
             await proxy.commands(5)
@@ -253,6 +272,52 @@ def test_read_raises_when_app_connected_and_uncached() -> None:
         else:
             raise AssertionError("expected RuntimeError")
         assert fake.fetch_calls == []  # never tried to fetch
+
+    asyncio.run(main())
+
+
+def test_read_error_distinguishes_hub_not_connected() -> None:
+    async def main():
+        fake = FakeProxy()
+        fake.set_connected(hub=False)  # not connected yet, no app
+        proxy = _wrap(fake)
+        try:
+            await proxy.commands(5)
+        except RuntimeError as err:
+            assert "not connected" in str(err)
+            assert "app client" not in str(err)
+        else:
+            raise AssertionError("expected RuntimeError")
+
+    asyncio.run(main())
+
+
+def test_wait_until_controllable_resolves_on_state_change() -> None:
+    async def main():
+        fake = FakeProxy()
+        fake.set_connected(hub=False)  # start: not controllable
+        proxy = _wrap(fake)
+
+        async def connect_later():
+            await asyncio.sleep(0.05)
+            t = threading.Thread(target=fake.set_connected, kwargs={"hub": True})
+            t.start()
+            t.join()
+
+        asyncio.ensure_future(connect_later())
+        assert await proxy.wait_until_controllable(timeout=5) is True
+
+    asyncio.run(main())
+
+
+def test_wait_connected_true_in_observe_mode() -> None:
+    async def main():
+        fake = FakeProxy()
+        # Hub up but app attached: connected (observe) yet not controllable.
+        fake.set_connected(hub=True, client=True)
+        proxy = _wrap(fake)
+        assert await proxy.wait_connected(timeout=1) is True
+        assert await proxy.wait_until_controllable(timeout=0.2) is False
 
     asyncio.run(main())
 
@@ -368,7 +433,7 @@ def test_cache_snapshot_serializers_are_not_on_facade() -> None:
     # async surface; only reachable through .sync.
     async def main():
         proxy = _wrap(FakeProxy())
-        for name in ("export_cache_state", "import_cache_state", "clear_persistent_cache_for"):
+        for name in ("export_cache_state", "import_cache_state", "clear_cached_entity_detail"):
             assert name not in aio.AsyncX1Proxy.PROXY_METHODS
             try:
                 getattr(proxy, name)

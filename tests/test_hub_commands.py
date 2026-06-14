@@ -9,6 +9,9 @@ from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 from custom_components.sofabaton_x1s.lib.commands import build_descriptive_ir_blob_body
 from custom_components.sofabaton_x1s.lib.devices import DeviceConfig, build_device_create_payload
 from custom_components.sofabaton_x1s.lib.macros import MacroKeyEntry, MacroRecord
+from custom_components.sofabaton_x1s.lib.backup_export import (
+    build_hub_code_record_restore_data,
+)
 
 
 class FakeHass:
@@ -330,7 +333,7 @@ def test_build_hub_code_record_restore_data_attaches_decoded_for_wifi_ip():
         "pages": [{"payload_hex": page_one_payload.hex(" ")}],
     }
 
-    restore_data = SofabatonHub._build_hub_code_record_restore_data(
+    restore_data = build_hub_code_record_restore_data(
         command, device_class="wifi_ip"
     )
 
@@ -384,7 +387,7 @@ def test_build_hub_code_record_restore_data_no_decoded_for_unsupported_class():
         "ir_blob_hex": "0c 00 30 74",
         "pages": [{"payload_hex": bytes(30).hex(" ")}],
     }
-    restore_data = SofabatonHub._build_hub_code_record_restore_data(
+    restore_data = build_hub_code_record_restore_data(
         command, device_class="bluetooth"
     )
     assert restore_data is not None
@@ -413,24 +416,6 @@ def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypat
     act_id = 0x65
     act_lo = act_id & 0xFF
 
-    async def _refresh_activities_snapshot(timeout_seconds: float = 15.0):
-        return {
-            act_lo: {
-                "name": "Watch TV",
-                "device_class": "activity",
-                "device_class_code": 0x00,
-                "raw_body": None,
-            }
-        }
-
-    async def _wait_ready(*args, **kwargs):
-        return None
-
-    monkeypatch.setattr(hub, "_async_refresh_activities_snapshot", _refresh_activities_snapshot)
-    monkeypatch.setattr(hub, "_reset_entity_cache", lambda *args, **kwargs: None)
-    monkeypatch.setattr(hub, "_async_wait_for_buttons_ready", _wait_ready)
-    monkeypatch.setattr(hub, "_async_wait_for_macros_ready", _wait_ready)
-
     hub._proxy.state.activities[act_lo] = {
         "name": "Watch TV",
         "device_class": "activity",
@@ -438,7 +423,9 @@ def test_async_backup_activity_filters_internal_power_macro_device_255(monkeypat
         "raw_body": None,
     }
     hub._proxy.state.button_details[act_lo] = {}
+    hub._proxy.state.buttons[act_lo] = set()
     hub._proxy.state.activity_favorite_slots[act_lo] = []
+    hub._proxy._macros_complete.add(act_lo)
 
     monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -561,24 +548,12 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
     device_payload = build_device_create_payload(device_config, hub_version="X1")
     device_raw_body = device_payload[3:]
 
-    async def _refresh_devices_snapshot(timeout_seconds: float = 15.0):
-        return {
-            11: {
-                "name": "TV",
-                "brand": "Sony",
-                "device_class": "IR",
-                "device_class_code": 0x10,
-                "raw_body": device_raw_body,
-            }
-        }
-
-    async def _wait_ready(*args, **kwargs):
-        return None
-
     blob_body = build_descriptive_ir_blob_body("P:Sony12 R:40000 D:1 F:18 MUL:2")
     replay_tail = (sum(blob_body) + 2) & 0xFF
 
-    async def _fetch_blob(*, device_id: int, command_id: int | None = None, wait_timeout: float = 10.0):
+    def _ir_dump(device_id, command_id=None, *, timeout=10.0):
+        # Raw 0x020C dump shape; the library normalizes it (splits the
+        # replay tail) into the command_blob the backup rows carry.
         return {
             "device_id": device_id,
             "requested_command_id": command_id,
@@ -587,25 +562,15 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
             "complete": True,
             "commands": [
                 {
-                    "command_label": "Input",
+                    "label": "Input",
                     "device_id": device_id,
                     "command_id": 18,
-                    "device_class": "IR",
-                    "blob_kind": "descriptive",
-                    "command_blob": blob_body.hex(" "),
-                    "parsed_blob": "P:Sony12 R:40000 D:1 F:18 MUL:2",
-                    "replay_tail_checksum": replay_tail,
-                    "command_checksum": replay_tail,
+                    "ir_blob_hex": (blob_body + bytes([replay_tail])).hex(),
                 }
             ],
         }
 
-    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices_snapshot)
-    monkeypatch.setattr(hub, "_reset_entity_cache", lambda *args, **kwargs: None)
-    monkeypatch.setattr(hub, "_async_wait_for_command_fetch_complete", _wait_ready)
-    monkeypatch.setattr(hub, "_async_wait_for_buttons_ready", _wait_ready)
-    monkeypatch.setattr(hub, "_async_wait_for_macros_ready", _wait_ready)
-    monkeypatch.setattr(hub, "async_fetch_blob", _fetch_blob)
+    monkeypatch.setattr(hub._proxy, "request_ir_command_dump", _ir_dump)
 
     hub._proxy.state.devices[11] = {
         "name": "TV",
@@ -622,6 +587,7 @@ def test_async_backup_device_returns_restore_oriented_payload(monkeypatch):
         {"button_id": 18, "device_id": 11, "command_id": 18, "source": "keymap"}
     ]
     hub._proxy._macros_complete.add(11)
+    hub._proxy._commands_complete.add(11)
 
     monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -972,27 +938,7 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
         False,
     )
 
-    async def _refresh_devices_snapshot(timeout_seconds: float = 15.0):
-        return {
-            9: {
-                "name": "Living Room Audio",
-                "brand": "Brand",
-                "device_class": "wifi_sonos",
-                "device_class_code": 0x1C,
-                "raw_body": None,
-            }
-        }
-
-    async def _wait_ready(*args, **kwargs):
-        return None
-
-    fetch_blob_calls: list[int] = []
-
-    async def _fetch_blob(*, device_id: int, command_id: int | None = None, wait_timeout: float = 10.0):
-        fetch_blob_calls.append(device_id)
-        return None
-
-    async def _dump_ir_commands(*, device_id: int, command_id: int | None = None, wait_timeout: float = 10.0):
+    def _ir_dump(device_id, command_id=None, *, timeout=10.0):
         return {
             "device_id": device_id,
             "requested_command_id": command_id,
@@ -1014,13 +960,7 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
             ],
         }
 
-    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices_snapshot)
-    monkeypatch.setattr(hub, "_reset_entity_cache", lambda *args, **kwargs: None)
-    monkeypatch.setattr(hub, "_async_wait_for_command_fetch_complete", _wait_ready)
-    monkeypatch.setattr(hub, "_async_wait_for_buttons_ready", _wait_ready)
-    monkeypatch.setattr(hub, "_async_wait_for_macros_ready", _wait_ready)
-    monkeypatch.setattr(hub, "async_fetch_blob", _fetch_blob)
-    monkeypatch.setattr(hub, "async_dump_ir_commands", _dump_ir_commands)
+    monkeypatch.setattr(hub._proxy, "request_ir_command_dump", _ir_dump)
 
     hub._proxy.state.devices[9] = {
         "name": "Living Room Audio",
@@ -1028,6 +968,9 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
         "device_class": "wifi_sonos",
         "device_class_code": 0x1C,
     }
+    hub._proxy.state.buttons[9] = set()
+    hub._proxy._commands_complete.add(9)
+    hub._proxy._macros_complete.add(9)
 
     monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -1046,7 +989,7 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
         lambda ent_id, fetch_if_missing=True: ([], True),
     )
     monkeypatch.setattr(hub._proxy, "get_cached_macro_records", lambda ent_id: [])
-    monkeypatch.setattr(hub._proxy, "fetch_device_input_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(hub._proxy, "fetch_device_input_record", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         hub._proxy,
         "fetch_device_key_sort",
@@ -1058,7 +1001,6 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
     assert result is not None
     assert result["complete"] is True
     assert "restore_profile" not in result
-    assert fetch_blob_calls == [], "wifi devices must skip the IR-blob fetch path"
     assert result["commands"] == [
         {
             "command_id": 3,
@@ -1104,21 +1046,7 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
         False,
     )
 
-    async def _refresh_devices_snapshot(timeout_seconds: float = 15.0):
-        return {
-            7: {
-                "name": "Speaker",
-                "brand": "Brand",
-                "device_class": device_class,
-                "device_class_code": device_class_code,
-                "raw_body": None,
-            }
-        }
-
-    async def _wait_ready(*args, **kwargs):
-        return None
-
-    async def _dump_ir_commands(*, device_id: int, command_id: int | None = None, wait_timeout: float = 10.0):
+    def _ir_dump(device_id, command_id=None, *, timeout=10.0):
         return {
             "device_id": device_id,
             "requested_command_id": command_id,
@@ -1140,12 +1068,7 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
             ],
         }
 
-    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices_snapshot)
-    monkeypatch.setattr(hub, "_reset_entity_cache", lambda *args, **kwargs: None)
-    monkeypatch.setattr(hub, "_async_wait_for_command_fetch_complete", _wait_ready)
-    monkeypatch.setattr(hub, "_async_wait_for_buttons_ready", _wait_ready)
-    monkeypatch.setattr(hub, "_async_wait_for_macros_ready", _wait_ready)
-    monkeypatch.setattr(hub, "async_dump_ir_commands", _dump_ir_commands)
+    monkeypatch.setattr(hub._proxy, "request_ir_command_dump", _ir_dump)
 
     hub._proxy.state.devices[7] = {
         "name": "Speaker",
@@ -1153,6 +1076,9 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
         "device_class": device_class,
         "device_class_code": device_class_code,
     }
+    hub._proxy.state.buttons[7] = set()
+    hub._proxy._commands_complete.add(7)
+    hub._proxy._macros_complete.add(7)
 
     monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -1171,7 +1097,7 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
         lambda ent_id, fetch_if_missing=True: ([], True),
     )
     monkeypatch.setattr(hub._proxy, "get_cached_macro_records", lambda ent_id: [])
-    monkeypatch.setattr(hub._proxy, "fetch_device_input_entries", lambda *args, **kwargs: [])
+    monkeypatch.setattr(hub._proxy, "fetch_device_input_record", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         hub._proxy,
         "fetch_device_key_sort",
@@ -1249,32 +1175,14 @@ def test_async_backup_device_skips_macros_and_inputs_when_unconfigured(monkeypat
     device_payload = build_device_create_payload(device_config, hub_version="X1")
     device_raw_body = device_payload[3:]
 
-    async def _refresh_devices_snapshot(timeout_seconds: float = 15.0):
-        return {
-            2: {
-                "name": "Denon avr tst",
-                "brand": "Denon",
-                "device_class": "IR",
-                "device_class_code": 0x07,
-                "raw_body": device_raw_body,
-            }
-        }
-
-    async def _wait_ready(*args, **kwargs):
-        return None
-
-    async def _fetch_blob(*, device_id: int, command_id: int | None = None, wait_timeout: float = 10.0):
+    def _ir_dump(device_id, command_id=None, *, timeout=10.0):
         return {
             "device_id": device_id,
             "complete": True,
             "commands": [],
         }
 
-    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices_snapshot)
-    monkeypatch.setattr(hub, "_reset_entity_cache", lambda *args, **kwargs: None)
-    monkeypatch.setattr(hub, "_async_wait_for_command_fetch_complete", _wait_ready)
-    monkeypatch.setattr(hub, "_async_wait_for_buttons_ready", _wait_ready)
-    monkeypatch.setattr(hub, "async_fetch_blob", _fetch_blob)
+    monkeypatch.setattr(hub._proxy, "request_ir_command_dump", _ir_dump)
 
     hub._proxy.state.devices[2] = {
         "name": "Denon avr tst",
@@ -1285,6 +1193,7 @@ def test_async_backup_device_skips_macros_and_inputs_when_unconfigured(monkeypat
     }
     hub._proxy.state.commands[2] = {}
     hub._proxy.state.buttons[2] = set()
+    hub._proxy._commands_complete.add(2)
 
     monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -2584,10 +2493,10 @@ def test_clear_cache_for_executor_job_uses_partial_not_kwargs(monkeypatch):
 
     cleared: list[tuple[int, str]] = []
 
-    def _clear_persistent_cache_for(ent_id, *, kind):
+    def _clear_cached_entity_detail(ent_id, *, kind):
         cleared.append((ent_id, kind))
 
-    hub._proxy.clear_persistent_cache_for = _clear_persistent_cache_for  # type: ignore[method-assign]
+    hub._proxy.clear_cached_entity_detail = _clear_cached_entity_detail  # type: ignore[method-assign]
     hub._proxy.get_devices = lambda: ({}, True)  # type: ignore[method-assign]
 
     sent_signals: list[tuple[str, str]] = []
@@ -4473,7 +4382,7 @@ def test_clear_cache_for_device_requests_fresh_devices(monkeypatch):
 
     monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _fake_refresh_devices_snapshot)
 
-    hub._proxy.clear_persistent_cache_for = lambda ent_id, *, kind: None  # type: ignore[method-assign]
+    hub._proxy.clear_cached_entity_detail = lambda ent_id, *, kind: None  # type: ignore[method-assign]
     hub._proxy.get_devices = lambda: ({}, True)  # type: ignore[method-assign]
 
     monkeypatch.setattr("custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None)
@@ -4654,10 +4563,10 @@ def test_async_request_catalog_prunes_auxiliary_only_removed_activity_ids(monkey
 
     cleared: list[tuple[int, str]] = []
 
-    def _clear_persistent_cache_for(ent_id, *, kind):
+    def _clear_cached_entity_detail(ent_id, *, kind):
         cleared.append((ent_id, kind))
 
-    hub._proxy.clear_persistent_cache_for = _clear_persistent_cache_for  # type: ignore[method-assign]
+    hub._proxy.clear_cached_entity_detail = _clear_cached_entity_detail  # type: ignore[method-assign]
 
     def _fake_get_known_activity_ids():
         if hub._activities_generation == 2:

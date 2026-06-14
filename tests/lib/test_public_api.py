@@ -63,8 +63,6 @@ CURATED_EXPORTS = {
     "is_proxy_advertisement",
     "mdns_service_type_for_props",
     # hub_logging
-    "HubLogger",
-    "LogTag",
     "get_hub_logger",
     # proxy
     "X1Proxy",

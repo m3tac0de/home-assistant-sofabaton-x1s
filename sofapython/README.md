@@ -66,6 +66,7 @@ async def main():
     proxy.on_activity_change(lambda new, old, name: print(f"activity -> {name}"))
 
     async with proxy:
+        await proxy.wait_until_controllable()      # own the hub (see below)
         activities = await proxy.activities()      # {id: {name, active, ...}}
         for dev_id in await proxy.devices():
             print(dev_id, await proxy.commands(dev_id))   # {code: label}
@@ -82,6 +83,24 @@ app-builder surface is a handful of coroutines: `activities()`,
 `favorites(act)` to read; `press(ent, button)`, `start_activity(act)`,
 `stop_activity(act)`, `find_remote()` to control.
 
+### Two modes
+
+The proxy sits transparently between the hub and the official app, which
+gives it two distinct modes:
+
+- **Observe** — the app is connected through the proxy. You watch
+  activity changes, connects and OTA events in real time, but the app
+  owns the hub, so you can't issue commands. Gate on
+  `await proxy.wait_connected()`.
+- **Control** — no app attached; the proxy owns the hub, so reads fetch
+  fresh and commands/backup work. Gate on
+  `await proxy.wait_until_controllable()`.
+
+`start()` only spawns the transport; the connect handshake happens
+afterwards, so await the matching readiness primitive before reading or
+acting (otherwise a read raises with the reason — hub not connected, or
+an app holds it).
+
 A synchronous core (`X1Proxy`, `discover_hubs`) is also available for
 scripts and REPL use; the async class is a facade over it (its raw
 `get_*` snapshot getters are reachable via `proxy.sync`).
@@ -96,9 +115,10 @@ x1> activities
 x1> send 101 POWER_ON
 ```
 
-Runnable examples (discovery, minimal proxy, reading per-entity detail —
-commands/macros/favorites, and building an HTTP callback listener on top
-of the library) live in
+Runnable examples — discovery, watching a live session (observe mode),
+taking control of a hub, reading per-entity detail
+(commands/macros/favorites), schema-versioned backup/restore, and
+building an HTTP callback listener on top of the library — live in
 [`sofapython/examples/`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofapython/examples).
 
 ## Stability

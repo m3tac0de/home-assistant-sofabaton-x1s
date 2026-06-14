@@ -8,11 +8,11 @@ entities; the interesting data hangs off each one:
   * activities -> macros     (multi-step sequences)
   * activities -> favorites  (the quick-access ordering)
 
-Each read returns its data directly. Under the hood the first read of a
-cold entity fetches from the hub and awaits the reply; that only works
-while no official app is connected through the proxy (the proxy yields
-the hub to a real client), in which case an uncached read raises
-``RuntimeError``.
+This is a *control-mode* example: it needs to own the hub (no official
+app connected through the proxy), so it waits for
+``wait_until_controllable()`` before reading. Each read returns its data
+directly — the first read of a cold entity fetches from the hub and
+awaits the reply.
 """
 
 import asyncio
@@ -35,6 +35,10 @@ async def main() -> None:
     )
 
     async with proxy:
+        # Own the hub before reading (no app attached, hub connected).
+        if not await proxy.wait_until_controllable(timeout=30):
+            raise SystemExit("hub not controllable (not connected, or an app is attached)")
+
         # --- commands on each device -------------------------------------
         print("== DEVICES ==")
         for dev_id, dev in sorted((await proxy.devices()).items()):

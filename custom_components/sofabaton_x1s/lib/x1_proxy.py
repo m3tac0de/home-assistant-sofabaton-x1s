@@ -163,6 +163,7 @@ from .transport_bridge import TransportBridge
 from .proxy_restore import RestoreMixin
 from .proxy_wifi_device import WifiDeviceMixin
 from .proxy_backup import CacheBackupMixin
+from .proxy_backup_export import BackupExportMixin
 from .proxy_activity_ops import ActivityOpsMixin
 from .proxy_ack_waiters import AckWaitersMixin
 from .proxy_catalog import CatalogMixin
@@ -348,7 +349,7 @@ def _enable_keepalive(sock: socket.socket, *, idle: int = 30, interval: int = 10
 # ============================================================================
 # Proxy
 # ============================================================================
-class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, CacheBackupMixin, WifiDeviceMixin, RestoreMixin):
+class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, CacheBackupMixin, WifiDeviceMixin, RestoreMixin, BackupExportMixin):
     def __init__(
         self,
         real_hub_ip: str,

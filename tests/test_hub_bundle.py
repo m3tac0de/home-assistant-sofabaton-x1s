@@ -152,16 +152,10 @@ def _run(coro):
 def test_backup_hub_wraps_single_device_in_bundle(monkeypatch) -> None:
     """``device_ids=[N]`` produces a hub_bundle with one device, no activities."""
 
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
-
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Sofabaton"
-    hub.version = HUB_VERSION_X1S
-
+    proxy = _proxy(monkeypatch)
     backed_up: list[int] = []
 
-    async def _async_backup_device(*, device_id: int, wait_timeout: float = 10.0):
+    def _backup_device(device_id, *, wait_timeout: float = 10.0):
         backed_up.append(device_id)
         return {
             "kind": "device_backup",
@@ -169,13 +163,16 @@ def test_backup_hub_wraps_single_device_in_bundle(monkeypatch) -> None:
             "device": {"device_id": device_id, "name": f"Device {device_id}"},
         }
 
-    async def _async_backup_activity(*, activity_id: int, wait_timeout: float = 10.0):
+    def _backup_activity(activity_id, *, wait_timeout: float = 10.0):
         raise AssertionError("activities must not be backed up in subset mode")
 
-    hub.async_backup_device = _async_backup_device  # type: ignore[assignment]
-    hub.async_backup_activity = _async_backup_activity  # type: ignore[assignment]
+    monkeypatch.setattr(proxy, "backup_device", _backup_device)
+    monkeypatch.setattr(proxy, "backup_activity", _backup_activity)
 
-    result = _run(hub.async_backup_hub(device_ids=[7]))
+    result = proxy.backup_hub_bundle(
+        device_ids=[7],
+        hub_info={"entry_id": "entry-1", "name": "Sofabaton", "version": HUB_VERSION_X1S},
+    )
 
     assert result["kind"] == "hub_bundle"
     assert result["schema_version"] == 5
@@ -187,31 +184,19 @@ def test_backup_hub_wraps_single_device_in_bundle(monkeypatch) -> None:
 def test_backup_hub_rejects_empty_after_validation(monkeypatch) -> None:
     """Empty ``device_ids`` list raises (caller should pass ``None`` for whole-hub)."""
 
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
-
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Sofabaton"
-    hub.version = HUB_VERSION_X1S
-
+    proxy = _proxy(monkeypatch)
     with pytest.raises(ValueError, match="must contain at least one device id"):
-        _run(hub.async_backup_hub(device_ids=[]))
+        proxy.backup_hub_bundle(device_ids=[])
 
 
-def test_backup_hub_rejects_out_of_range_device_id() -> None:
+def test_backup_hub_rejects_out_of_range_device_id(monkeypatch) -> None:
     """Each entry must be in 1..255."""
 
-    from custom_components.sofabaton_x1s.hub import SofabatonHub
-
-    hub = SofabatonHub.__new__(SofabatonHub)
-    hub.entry_id = "entry-1"
-    hub.name = "Sofabaton"
-    hub.version = HUB_VERSION_X1S
-
+    proxy = _proxy(monkeypatch)
     with pytest.raises(ValueError, match="must be in 1..255"):
-        _run(hub.async_backup_hub(device_ids=[0]))
+        proxy.backup_hub_bundle(device_ids=[0])
     with pytest.raises(ValueError, match="must be in 1..255"):
-        _run(hub.async_backup_hub(device_ids=[300]))
+        proxy.backup_hub_bundle(device_ids=[300])
 
 
 # ---------------------------------------------------------------------------

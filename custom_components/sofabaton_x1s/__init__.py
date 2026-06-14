@@ -1281,7 +1281,9 @@ async def _run_backup_export_operation(
         return dict(payload_update)
 
     def _progress(payload: dict[str, Any] | None = None, **payload_update: Any) -> None:
-        registry.update(
+        # The library runs the backup in an executor and invokes this from
+        # that thread, so marshal onto the loop.
+        registry.update_from_thread(
             operation_id,
             **_normalize_progress_payload(payload, **payload_update),
         )

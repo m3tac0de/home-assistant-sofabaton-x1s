@@ -24,10 +24,8 @@ import asyncio
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from sofapython import AsyncX1Proxy
+from sofapython import AsyncX1Proxy, async_discover_hubs
 
-HUB_IP = "192.168.1.50"
-HUB_TXT = {"HVER": "2"}  # X1S; take this from discovery in real code
 LISTEN_PORT = 8060
 
 COMMANDS = [
@@ -56,13 +54,24 @@ class HubCallbackHandler(BaseHTTPRequestHandler):
 
 async def main() -> None:
     loop = asyncio.get_running_loop()
-    proxy = AsyncX1Proxy(real_hub_ip=HUB_IP, mdns_txt=HUB_TXT)
+    hubs = await async_discover_hubs(timeout=5.0)
+    if not hubs:
+        raise SystemExit("no hub found")
+    hub = hubs[0]
+
+    proxy = AsyncX1Proxy(
+        real_hub_ip=hub.host,
+        mdns_instance=hub.name,
+        mdns_txt=hub.txt,
+        hub_version=hub.hub_version,
+    )
     server = ThreadingHTTPServer(("0.0.0.0", LISTEN_PORT), HubCallbackHandler)
     async with proxy:
-        await asyncio.sleep(10)  # let the proxy connect & sync before provisioning
+        # Provisioning writes to the hub, so own it first (no app attached).
+        if not await proxy.wait_until_controllable(timeout=30):
+            raise SystemExit("hub not controllable (not connected, or an app is attached)")
 
         # One-time provisioning (idempotent re-runs update the device).
-        # Refused (returns None) while a real app client is connected.
         created = await proxy.create_wifi_device(
             device_name="My Bridge",
             commands=COMMANDS,

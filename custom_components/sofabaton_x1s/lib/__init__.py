@@ -49,8 +49,9 @@ from .hub_versions import (  # noqa: F401
     mdns_service_type_for_props,
 )
 
-# Per-hub logging helpers (prefixing + canonical subsystem tags).
-from .hub_logging import HubLogger, LogTag, get_hub_logger  # noqa: F401
+# Per-hub logging helper. LogTag/HubLogger remain importable from
+# sofapython.hub_logging but are internal plumbing, not public API.
+from .hub_logging import get_hub_logger  # noqa: F401
 
 # The proxy engine.
 from .x1_proxy import X1Proxy  # noqa: F401
@@ -105,8 +106,6 @@ _CURATED = [
     "is_proxy_advertisement",
     "mdns_service_type_for_props",
     # hub_logging
-    "HubLogger",
-    "LogTag",
     "get_hub_logger",
     # proxy
     "X1Proxy",

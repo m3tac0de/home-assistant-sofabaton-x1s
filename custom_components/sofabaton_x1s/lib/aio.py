@@ -115,7 +115,6 @@ class AsyncX1Proxy:
             "fetch_device_input_record",
             "fetch_device_key_sort",
             # actions
-            "find_remote",
             "set_hub_name",
             "set_diag_dump",
             "resync_remote",
@@ -132,8 +131,14 @@ class AsyncX1Proxy:
             "add_device_to_activity",
             "play_ir_blob",
             "persist_ir_blob",
-            "restore_hub_bundle",
             "erase_configuration",
+            # backup / restore (symmetric, schema-versioned)
+            "backup_device",
+            "backup_activity",
+            "backup_hub_bundle",
+            "restore_device",
+            "restore_activity",
+            "restore_hub_bundle",
         }
     )
 
@@ -174,6 +179,9 @@ class AsyncX1Proxy:
         # so awaited reads never leak listeners.
         self._burst_waiters: dict[str, list[asyncio.Future]] = {}
         self._burst_dispatch_kinds: set[str] = set()
+        # Set on any hub/client connection-state change (lazily wired) so
+        # the readiness waiters can wake.
+        self._state_event: Optional[asyncio.Event] = None
 
     # -- escape hatches ----------------------------------------------------
 
@@ -215,6 +223,71 @@ class AsyncX1Proxy:
         """Adopt a shared Zeroconf instance (cheap; no executor needed)."""
 
         self._proxy.set_zeroconf(zc)
+
+    # -- readiness -----------------------------------------------------------
+    #
+    # ``start()`` only spawns the transport thread; the hub TCP connect and
+    # banner handshake happen asynchronously after it returns. The proxy
+    # has two operating modes, and these waiters gate them:
+    #
+    #   * observe mode  — the official app is connected through the proxy;
+    #     you can watch activity/state changes but cannot issue commands
+    #     (the app owns the hub). Gate on :meth:`wait_connected`.
+    #   * control mode  — no app attached; the proxy owns the hub, so reads
+    #     fetch fresh and commands/backup work. Gate on
+    #     :meth:`wait_until_controllable`.
+
+    def _ensure_state_watcher(self) -> None:
+        if self._state_event is not None:
+            return
+        self._state_event = asyncio.Event()
+
+        def _on_change(*_args: Any) -> None:
+            # Fires on the engine thread; wake the loop.
+            self._loop.call_soon_threadsafe(self._state_event.set)
+
+        self._proxy.on_hub_state_change(_on_change)
+        self._proxy.on_client_state_change(_on_change)
+
+    async def _wait_for_state(
+        self, predicate: Callable[[], bool], timeout: float
+    ) -> bool:
+        if predicate():
+            return True
+        self._ensure_state_watcher()
+        assert self._state_event is not None
+        deadline = self._loop.time() + timeout
+        while not predicate():
+            remaining = deadline - self._loop.time()
+            if remaining <= 0:
+                return predicate()
+            self._state_event.clear()
+            if predicate():
+                return True
+            try:
+                await asyncio.wait_for(self._state_event.wait(), remaining)
+            except TimeoutError:
+                return predicate()
+        return True
+
+    async def wait_connected(self, timeout: float = 30.0) -> bool:
+        """Wait until the hub is connected (observe mode can begin).
+
+        Returns ``False`` on timeout.
+        """
+
+        return await self._wait_for_state(
+            lambda: self._proxy.transport.is_hub_connected, timeout
+        )
+
+    async def wait_until_controllable(self, timeout: float = 30.0) -> bool:
+        """Wait until the proxy owns the hub (connected, no app attached).
+
+        Reads fetch fresh and commands/backup work once this returns
+        ``True``; returns ``False`` on timeout.
+        """
+
+        return await self._wait_for_state(self._proxy.can_issue_commands, timeout)
 
     # -- listeners ------------------------------------------------------------
 
@@ -311,6 +384,14 @@ class AsyncX1Proxy:
 
         return await self.run(self._proxy.send_command, activity_id, ButtonName.POWER_OFF)
 
+    async def find_remote(self) -> bool:
+        """Trigger the hub's find-my-remote signal.
+
+        Returns ``False`` if refused (a real app client holds the hub).
+        """
+
+        return await self.run(self._proxy.find_remote)
+
     # -- lazy-read plumbing --------------------------------------------------
 
     async def _read(
@@ -328,8 +409,13 @@ class AsyncX1Proxy:
         if ready:
             return data
         if not self._proxy.can_issue_commands():
+            if not self._proxy.transport.is_hub_connected:
+                raise RuntimeError(
+                    f"cannot fetch {key!r}: the hub is not connected yet "
+                    "(await wait_until_controllable() first)"
+                )
             raise RuntimeError(
-                f"cannot fetch {key!r}: the hub is held by a connected app client"
+                f"cannot fetch {key!r}: an app client is connected and holds the hub"
             )
 
         future = self._loop.create_future()
