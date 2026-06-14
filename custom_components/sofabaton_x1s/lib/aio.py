@@ -23,7 +23,7 @@ from .discovery import (
     HubBrowser,
     discover_hubs,
 )
-from .protocol_const import ButtonName
+from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
 from .x1_proxy import X1Proxy
 
 __all__ = [
@@ -303,76 +303,150 @@ class AsyncX1Proxy:
     ) -> dict[int, dict]:
         """Return ``{activity_id: {name, active, ...}}`` for all activities."""
 
-        return await self._read(self._proxy.get_activities, "activities", timeout=timeout)
+        # The catalog getters gate fetching on ``force_refresh``, not
+        # ``fetch_if_missing`` (which the per-entity getters use).
+        return await self._read(
+            self._proxy.get_activities, "activities", timeout=timeout, fetch_kw="force_refresh"
+        )
 
     async def devices(
         self, *, timeout: float = DEFAULT_FETCH_TIMEOUT
     ) -> dict[int, dict]:
         """Return ``{device_id: {name, brand, ...}}`` for all devices."""
 
-        return await self._read(self._proxy.get_devices, "devices", timeout=timeout)
+        return await self._read(
+            self._proxy.get_devices, "devices", timeout=timeout, fetch_kw="force_refresh"
+        )
 
     async def commands(
         self, device_id: int, *, timeout: float = DEFAULT_FETCH_TIMEOUT
-    ) -> dict[int, str]:
-        """Return ``{command_code: label}`` for a device."""
+    ) -> list[dict]:
+        """Return a device's commands as ``[{command_id, label}, ...]``.
 
-        return await self._read(
+        Send one with ``send(device_id, command_id)``.
+        """
+
+        cmds = await self._read(
             self._proxy.get_commands_for_entity,
             f"commands:{device_id & 0xFF}",
             device_id,
             timeout=timeout,
         )
+        return [
+            {"command_id": cid, "label": label}
+            for cid, label in sorted(dict(cmds).items())
+        ]
 
     async def buttons(
         self, entity_id: int, *, timeout: float = DEFAULT_FETCH_TIMEOUT
-    ) -> list[int]:
-        """Return the button codes bound to an activity or device."""
+    ) -> list[dict]:
+        """Return the buttons bound to an activity or device.
 
-        return await self._read(
+        Each item is ``{button_code, name, device_id, command_id}`` — the
+        button code you can send to ``entity_id`` plus the underlying
+        target device command it maps to (``device_id``/``command_id`` are
+        ``None`` for unbound slots).
+        """
+
+        codes = await self._read(
             self._proxy.get_buttons_for_entity,
             f"buttons:{entity_id & 0xFF}",
             entity_id,
             timeout=timeout,
         )
+        details = await self.run(
+            lambda: dict(self._proxy.state.button_details.get(entity_id & 0xFF, {}))
+        )
+        out: list[dict] = []
+        for code in codes:
+            bound = details.get(code, {})
+            out.append(
+                {
+                    "button_code": code,
+                    "name": BUTTONNAME_BY_CODE.get(code),
+                    "device_id": bound.get("device_id"),
+                    "command_id": bound.get("command_id"),
+                }
+            )
+        return out
 
     async def macros(
         self, activity_id: int, *, timeout: float = DEFAULT_FETCH_TIMEOUT
     ) -> list[dict]:
-        """Return an activity's macros as ``[{command_id, label}, ...]``."""
+        """Return an activity's macros as ``[{command_id, label}, ...]``.
 
-        return await self._read(
+        Send one with ``send(activity_id, command_id)``.
+        """
+
+        macros = await self._read(
             self._proxy.get_macros_for_activity,
             f"macros:{activity_id & 0xFF}",
             activity_id,
             timeout=timeout,
         )
+        return [
+            {"command_id": m.get("command_id"), "label": m.get("label")}
+            for m in macros
+        ]
 
-    async def favorites(self, activity_id: int) -> list[tuple[int, int]]:
-        """Return an activity's favorites ordering as ``[(fav_id, slot), ...]``.
+    async def favorites(
+        self, activity_id: int, *, timeout: float = DEFAULT_FETCH_TIMEOUT
+    ) -> list[dict]:
+        """Return an activity's favorites as ``[{device_id, command_id, label}]``.
 
-        Unlike the other reads this is a single blocking request to the
-        hub; raises :class:`TimeoutError` if the hub does not answer. An
-        activity with no favorites returns an empty list.
+        Each favorite is a device command; send one with
+        ``send(device_id, command_id)``. Returns an empty list when the
+        activity has no favorites.
         """
 
-        order = await self.run(self._proxy.request_favorites_order, activity_id)
-        if order is None:
-            raise TimeoutError(
-                f"timed out fetching favorites for activity {activity_id}"
+        # The favorite slots come from the activity keymap; fetching the
+        # buttons populates them (best-effort — don't fail favorites if the
+        # keymap can't be fetched).
+        try:
+            await self.buttons(activity_id, timeout=timeout)
+        except (RuntimeError, TimeoutError):
+            pass
+
+        # ensure_commands_for_activity resolves each favorite's command
+        # label, but the per-command fetches it kicks complete
+        # asynchronously — poll until it reports ready (or timeout).
+        deadline = self._loop.time() + timeout
+        while True:
+            _, ready = await self.run(
+                self._proxy.ensure_commands_for_activity,
+                activity_id,
+                fetch_if_missing=True,
             )
-        return order
+            if ready or self._loop.time() >= deadline:
+                break
+            await asyncio.sleep(0.2)
+
+        rich = await self.run(
+            self._proxy.state.get_activity_favorite_labels, activity_id & 0xFF
+        )
+        return [
+            {
+                "device_id": fav.get("device_id"),
+                "command_id": fav.get("command_id"),
+                "label": fav.get("name"),
+            }
+            for fav in rich
+        ]
 
     # -- control surface -----------------------------------------------------
 
-    async def press(self, entity_id: int, button: int) -> bool:
-        """Send a button/command press to an activity or device.
+    async def send(self, entity_id: int, command_id: int) -> bool:
+        """Send a command to a device or activity.
 
-        Returns ``False`` if the proxy refused (a real app client holds
-        the hub).
+        ``command_id`` is the id from :meth:`commands`/:meth:`macros`/
+        :meth:`favorites` (or a button code from :meth:`buttons`). Returns
+        ``False`` if refused (a real app client holds the hub).
         """
 
-        return await self.run(self._proxy.send_command, entity_id, button)
+        return await self.run(self._proxy.send_command, entity_id, command_id)
+
+    # ``press`` is the remote-button-oriented alias of :meth:`send`.
+    press = send
 
     async def start_activity(self, activity_id: int) -> bool:
         """Switch to an activity (sends its power-on)."""
@@ -395,17 +469,24 @@ class AsyncX1Proxy:
     # -- lazy-read plumbing --------------------------------------------------
 
     async def _read(
-        self, getter: Callable, key: str, *args: Any, timeout: float
+        self,
+        getter: Callable,
+        key: str,
+        *args: Any,
+        timeout: float,
+        fetch_kw: str = "fetch_if_missing",
     ) -> Any:
         """Resolve a lazy ``(data, ready)`` getter to complete data.
 
         Returns cached data when already complete; otherwise kicks a hub
-        fetch and awaits the matching burst. Raises ``RuntimeError`` when
-        the hub can't be queried and nothing is cached, ``TimeoutError``
-        when the burst never lands.
+        fetch and awaits the matching burst. ``fetch_kw`` names the
+        getter's "trigger a fetch" keyword — ``fetch_if_missing`` for the
+        per-entity getters, ``force_refresh`` for the catalog getters.
+        Raises ``RuntimeError`` when the hub can't be queried and nothing
+        is cached, ``TimeoutError`` when the burst never lands.
         """
 
-        data, ready = await self.run(getter, *args, fetch_if_missing=False)
+        data, ready = await self.run(getter, *args, **{fetch_kw: False})
         if ready:
             return data
         if not self._proxy.can_issue_commands():
@@ -422,7 +503,7 @@ class AsyncX1Proxy:
         self._burst_waiters.setdefault(key, []).append(future)
         self._ensure_burst_dispatch(key.split(":", 1)[0])
 
-        await self.run(getter, *args, fetch_if_missing=True)
+        await self.run(getter, *args, **{fetch_kw: True})
         try:
             await asyncio.wait_for(future, timeout)
         except TimeoutError:
@@ -431,7 +512,7 @@ class AsyncX1Proxy:
                 pending.remove(future)
             raise TimeoutError(f"timed out after {timeout}s fetching {key!r}")
 
-        data, _ = await self.run(getter, *args, fetch_if_missing=False)
+        data, _ = await self.run(getter, *args, **{fetch_kw: False})
         return data
 
     def _ensure_burst_dispatch(self, kind: str) -> None:

@@ -46,10 +46,18 @@ class _Transport:
     is_client_connected = False
 
 
+class _State:
+    button_details: dict = {}
+    def get_activity_favorite_labels(self, act_lo):
+        return []
+
+
 class FakeProxy:
     def __init__(self, *, controllable=True):
         self.transport = _Transport()
         self._controllable = controllable
+        self.hub_version = "X1"
+        self.state = _State()
         self.sent: list[tuple[int, int]] = []
         self.found = 0
         self.proxy_enabled = True
@@ -64,12 +72,16 @@ class FakeProxy:
     def can_issue_commands(self): return self._controllable
 
     # cached getters (ready=True when controllable; observe mode keeps cache)
-    def get_activities(self, *, fetch_if_missing=True): return (self._acts, True)
-    def get_devices(self, *, fetch_if_missing=True): return ({5: {"name": "TV", "brand": "Sony"}}, True)
+    # Catalog getters gate on force_refresh, matching the real engine.
+    def get_activities(self, *, force_refresh=True):
+        return ({}, False) if force_refresh else (self._acts, True)
+    def get_devices(self, *, force_refresh=False):
+        return ({}, False) if force_refresh else ({5: {"name": "TV", "brand": "Sony"}}, True)
     def get_commands_for_entity(self, ent, *, fetch_if_missing=True):
         return (self._cmds, self._controllable)
-    def get_buttons_for_entity(self, ent, *, fetch_if_missing=True): return ([0x58], True)
+    def get_buttons_for_entity(self, ent, *, fetch_if_missing=True): return ([0x58], self._controllable)
     def get_macros_for_activity(self, act, *, fetch_if_missing=True): return ([], True)
+    def ensure_commands_for_activity(self, act, *, fetch_if_missing=True): return ({}, True)
 
     # actions
     def send_command(self, ent, btn): self.sent.append((ent, btn)); return self._controllable
@@ -144,16 +156,25 @@ def test_press_refused_in_observe_mode(capsys):
     assert "refused" in out
 
 
-def test_commands_falls_back_to_cache_in_observe_mode(capsys):
-    # Not controllable + uncached -> facade raises RuntimeError; shell
-    # should catch it and show the cached snapshot instead.
+def test_commands_lists_send_pairs_as_ints(capsys):
+    fake = FakeProxy()
+    fake._cmds = {12: "Sleep"}
+    async def main():
+        await _shell(fake).cmd_commands("5")
+    asyncio.run(main())
+    out = capsys.readouterr().out
+    assert "command_id=12" in out and "Sleep" in out
+    assert "press 5 <command_id>" in out  # tells the user how to send
+
+
+def test_commands_reports_error_in_observe_mode(capsys):
+    # Not controllable + not ready -> facade raises; shell reports cleanly.
     fake = FakeProxy(controllable=False)
     async def main():
         await _shell(fake).cmd_commands("5")
     asyncio.run(main())
     out = capsys.readouterr().out
-    assert "showing cached" in out
-    assert "Power" in out
+    assert "[commands]" in out
 
 
 def test_unknown_button_reports(capsys):

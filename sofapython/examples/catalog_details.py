@@ -39,34 +39,32 @@ async def main() -> None:
         if not await proxy.wait_until_controllable(timeout=30):
             raise SystemExit("hub not controllable (not connected, or an app is attached)")
 
+        # Every browse yields the (entity_id, command_id) you send with
+        # proxy.send(entity_id, command_id).
+
         # --- commands on each device -------------------------------------
         print("== DEVICES ==")
         for dev_id, dev in sorted((await proxy.devices()).items()):
-            commands = await proxy.commands(dev_id)
+            commands = await proxy.commands(dev_id)   # [{command_id, label}]
             print(f"[{dev_id}] {dev.get('name', '?')}: {len(commands)} commands")
-            for code, label in sorted(commands.items()):
-                print(f"    0x{code:04X}  {label}")
+            for cmd in commands:
+                print(f"    send({dev_id}, {cmd['command_id']})  {cmd['label']}")
 
         # --- macros and favorites on each activity -----------------------
         print("\n== ACTIVITIES ==")
         for act_id, act in sorted((await proxy.activities()).items()):
             print(f"[{act_id}] {act.get('name', '?')}")
 
-            for macro in await proxy.macros(act_id):
-                # macro dicts carry {'command_id': int, 'label': str}
-                print(f"    macro: {macro.get('label', '')} (id={macro.get('command_id')})")
+            for macro in await proxy.macros(act_id):   # [{command_id, label}]
+                print(f"    macro: send({act_id}, {macro['command_id']})  {macro.get('label')}")
 
-            # favorites -> [(fav_id, slot), ...] sorted by slot, or
-            # TimeoutError if the hub doesn't answer. The fav_id
-            # cross-references a macro command_id or a button; resolve
-            # labels against the macros above / proxy.buttons(act_id).
-            try:
-                favorites = await proxy.favorites(act_id)
-            except TimeoutError:
-                favorites = []
-            if favorites:
-                order = ", ".join(f"slot {slot}=0x{fid:02X}" for fid, slot in favorites)
-                print(f"    favorites: {order}")
+            # favorites -> [{device_id, command_id, label}]; each is a
+            # device command you fire with send(device_id, command_id).
+            for fav in await proxy.favorites(act_id):
+                print(
+                    f"    favorite: send({fav['device_id']}, {fav['command_id']})"
+                    f"  {fav.get('label')}"
+                )
 
 
 if __name__ == "__main__":

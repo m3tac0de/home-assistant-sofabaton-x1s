@@ -56,6 +56,14 @@ class FakeProxy:
         is_hub_connected = True
         is_client_connected = False
 
+    class _State:
+        def __init__(self, proxy):
+            self._p = proxy
+            self.button_details: dict[int, dict] = {}
+
+        def get_activity_favorite_labels(self, act_lo):
+            return list(self._p.favorite_labels.get(act_lo, []))
+
     def __init__(self) -> None:
         self._listeners: dict[str, list] = {}
         self.hub_state_listeners: list = []
@@ -66,8 +74,10 @@ class FakeProxy:
         self.stopped = False
         self.sent: list[tuple[int, int]] = []
         self.fetch_calls: list[tuple[str, int | None]] = []
-        self.favorites_reply: list[tuple[int, int]] | None = []
+        self.buttons_ready: dict[int, list] = {}
+        self.favorite_labels: dict[int, list] = {}
         self.transport = FakeProxy._Transport()
+        self.state = FakeProxy._State(self)
         self._ready: dict[str, dict] = {"commands": {}, "macros": {}, "activities": None, "devices": None}
 
     # -- listener registration ------------------------------------------
@@ -114,21 +124,21 @@ class FakeProxy:
         self.stopped = True
 
     # -- lazy getters ----------------------------------------------------
-    def get_activities(self, *, fetch_if_missing=True):
-        data = self._ready["activities"]
-        if data is not None:
-            return (data, True)
-        if fetch_if_missing:
+    # NOTE: catalog getters gate on force_refresh (matching the real
+    # engine); per-entity getters below gate on fetch_if_missing.
+    def get_activities(self, *, force_refresh=True):
+        if force_refresh:
             self.fetch_calls.append(("activities", None))
-        return ({}, False)
+            return ({}, False)
+        data = self._ready["activities"]
+        return (data, True) if data is not None else ({}, False)
 
-    def get_devices(self, *, fetch_if_missing=True):
-        data = self._ready["devices"]
-        if data is not None:
-            return (data, True)
-        if fetch_if_missing:
+    def get_devices(self, *, force_refresh=False):
+        if force_refresh:
             self.fetch_calls.append(("devices", None))
-        return ({}, False)
+            return ({}, False)
+        data = self._ready["devices"]
+        return (data, True) if data is not None else ({}, False)
 
     def get_commands_for_entity(self, ent_id, *, fetch_if_missing=True):
         lo = ent_id & 0xFF
@@ -146,8 +156,16 @@ class FakeProxy:
             self.fetch_calls.append(("macros", lo))
         return ([], False)
 
-    def request_favorites_order(self, act_id):
-        return self.favorites_reply
+    def get_buttons_for_entity(self, ent_id, *, fetch_if_missing=True):
+        lo = ent_id & 0xFF
+        if lo in self.buttons_ready:
+            return (list(self.buttons_ready[lo]), True)
+        if fetch_if_missing:
+            self.fetch_calls.append(("buttons", lo))
+        return ([], False)
+
+    def ensure_commands_for_activity(self, act_id, *, fetch_if_missing=True):
+        return ({}, True)
 
     def send_command(self, ent_id, key_code) -> bool:
         self.sent.append((ent_id, key_code))
@@ -188,7 +206,7 @@ def test_human_surface_delegates_to_real_engine_methods() -> None:
         "get_commands_for_entity",
         "get_buttons_for_entity",
         "get_macros_for_activity",
-        "request_favorites_order",
+        "ensure_commands_for_activity",
         "send_command",
         "can_issue_commands",
     ]
@@ -228,12 +246,27 @@ def test_unknown_attribute_raises_with_hint() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_activities_devices_read_cached_via_force_refresh() -> None:
+    # Locks in that the facade uses force_refresh (not fetch_if_missing)
+    # for the catalog getters — the real engine signature.
+    async def main():
+        fake = FakeProxy()
+        fake.make_activities_ready({1: {"name": "Watch TV"}})
+        fake._ready["devices"] = {5: {"name": "TV"}}
+        proxy = _wrap(fake)
+        assert await proxy.activities() == {1: {"name": "Watch TV"}}
+        assert await proxy.devices() == {5: {"name": "TV"}}
+        assert fake.fetch_calls == []  # cached: no refresh fetch kicked
+
+    asyncio.run(main())
+
+
 def test_read_returns_cached_without_fetch() -> None:
     async def main():
         fake = FakeProxy()
         fake.make_commands_ready(5, {0xC6: "Power"})
         proxy = _wrap(fake)
-        assert await proxy.commands(5) == {0xC6: "Power"}
+        assert await proxy.commands(5) == [{"command_id": 0xC6, "label": "Power"}]
         assert fake.fetch_calls == []  # already cached: no hub fetch
 
     asyncio.run(main())
@@ -254,7 +287,7 @@ def test_read_fetches_then_awaits_burst() -> None:
 
         asyncio.ensure_future(land_later())
         result = await proxy.commands(5)
-        assert result == {0xC6: "Power"}
+        assert result == [{"command_id": 0xC6, "label": "Power"}]
         assert ("commands", 5) in fake.fetch_calls  # fetch was kicked
 
     asyncio.run(main())
@@ -328,7 +361,7 @@ def test_read_returns_cached_even_when_app_connected() -> None:
         fake.can_issue = False
         fake.make_commands_ready(5, {0xC6: "Power"})
         proxy = _wrap(fake)
-        assert await proxy.commands(5) == {0xC6: "Power"}
+        assert await proxy.commands(5) == [{"command_id": 0xC6, "label": "Power"}]
 
     asyncio.run(main())
 
@@ -348,20 +381,36 @@ def test_read_timeout_cleans_up_waiter() -> None:
     asyncio.run(main())
 
 
-def test_favorites_returns_list_or_raises() -> None:
+def test_favorites_returns_rich_device_command_label() -> None:
     async def main():
         fake = FakeProxy()
-        fake.favorites_reply = [(0xA1, 0), (0xA2, 1)]
+        fake.buttons_ready[101] = []  # keymap fetched (no buttons), so no wait
+        fake.favorite_labels[101] = [
+            {"name": "Denon Power", "device_id": 3, "command_id": 45}
+        ]
         proxy = _wrap(fake)
-        assert await proxy.favorites(3) == [(0xA1, 0), (0xA2, 1)]
+        assert await proxy.favorites(101) == [
+            {"device_id": 3, "command_id": 45, "label": "Denon Power"}
+        ]
 
-        fake.favorites_reply = None  # hub timeout
-        try:
-            await proxy.favorites(3)
-        except TimeoutError:
-            pass
-        else:
-            raise AssertionError("expected TimeoutError")
+    asyncio.run(main())
+
+
+def test_commands_and_buttons_return_send_pairs() -> None:
+    async def main():
+        fake = FakeProxy()
+        fake.make_commands_ready(5, {12: "Sleep"})
+        fake.buttons_ready[101] = [174]
+        fake.state.button_details = {101: {174: {"device_id": 3, "command_id": 20}}}
+        proxy = _wrap(fake)
+
+        assert await proxy.commands(5) == [{"command_id": 12, "label": "Sleep"}]
+
+        btns = await proxy.buttons(101)
+        assert btns == [
+            {"button_code": 174, "name": btns[0]["name"], "device_id": 3, "command_id": 20}
+        ]
+        assert set(btns[0]) == {"button_code", "name", "device_id", "command_id"}
 
     asyncio.run(main())
 

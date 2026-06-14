@@ -16,6 +16,7 @@ import sys
 from typing import Awaitable, Callable, Dict, Optional
 
 from .aio import AsyncX1Proxy, async_discover_hubs
+from .hub_versions import HVER_BY_HUB_VERSION
 from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
 
 # ----------------- helpers -----------------
@@ -94,6 +95,8 @@ class AsyncShell:
             "stop": self.cmd_stop,
             "find": self.cmd_find,
             "proxy": self.cmd_proxy,
+            "backup": self.cmd_backup,
+            "restore": self.cmd_restore,
             "quit": self.cmd_quit,
             "exit": self.cmd_quit,
         }
@@ -105,117 +108,102 @@ class AsyncShell:
             lambda new, old, name: print(f"\n[event] activity -> {name or '?'} ({old} -> {new})")
         )
 
-    # ----- read commands (facade-first, cached fallback in observe mode) ---
+    # ----- read commands ----------------------------------------------------
+    #
+    # Browsing is for retrieving the (entity_id, command_id) pairs you send
+    # with ``press``/``send``. IDs are shown as decimal ints throughout.
 
-    async def _read(self, label: str, fresh, cached):
+    async def _safe(self, label: str, coro):
         try:
-            return await fresh()
-        except RuntimeError as err:
-            print(f"[{label}] {err}; showing cached")
-            return cached()
-        except TimeoutError as err:
+            return await coro
+        except (RuntimeError, TimeoutError) as err:
             print(f"[{label}] {err}")
             return None
 
     async def cmd_status(self, _args: str) -> None:
         p = self.p.sync
-        acts, _ = p.get_activities(fetch_if_missing=False)
-        devs, _ = p.get_devices(fetch_if_missing=False)
+        acts, _ = p.get_activities(force_refresh=False)
+        devs, _ = p.get_devices(force_refresh=False)
         print("== status ==")
         print(f"hub connected   : {p.transport.is_hub_connected}")
         print(f"app connected   : {p.transport.is_client_connected}")
         print(f"controllable    : {p.can_issue_commands()}")
+        print(f"hub version     : {p.hub_version}")
         print(f"activities      : {len(acts)} cached")
         print(f"devices         : {len(devs)} cached")
 
     async def cmd_activities(self, _args: str) -> None:
-        acts = await self._read(
-            "activities",
-            self.p.activities,
-            lambda: self.p.sync.get_activities(fetch_if_missing=False)[0],
-        )
+        acts = await self._safe("activities", self.p.activities())
         if not acts:
-            print("no activities")
+            print("no activities (need control mode?)")
             return
-        print("id   active  name")
+        print("activity_id  active  name")
         for act_id, info in sorted(acts.items()):
-            print(f"{act_id:<4} {'*' if info.get('active') else ' ':^6}  {info.get('name', '')}")
+            print(f"{act_id:<11}  {'*' if info.get('active') else ' ':^6}  {info.get('name', '')}")
 
     async def cmd_devices(self, _args: str) -> None:
-        devs = await self._read(
-            "devices",
-            self.p.devices,
-            lambda: self.p.sync.get_devices(fetch_if_missing=False)[0],
-        )
+        devs = await self._safe("devices", self.p.devices())
         if not devs:
-            print("no devices")
+            print("no devices (need control mode?)")
             return
-        print("id   name (brand)")
+        print("device_id  name  (brand)")
         for dev_id, info in sorted(devs.items()):
-            print(f"{dev_id:<4} {info.get('name', '?')} ({info.get('brand', '')})")
+            print(f"{dev_id:<9}  {info.get('name', '?')}  ({info.get('brand', '')})")
 
     async def cmd_commands(self, args: str) -> None:
         if not args.strip():
             print("usage: commands <device_id>")
             return
         dev = parse_int(args)
-        cmds = await self._read(
-            "commands",
-            lambda: self.p.commands(dev),
-            lambda: self.p.sync.get_commands_for_entity(dev, fetch_if_missing=False)[0],
-        )
+        cmds = await self._safe("commands", self.p.commands(dev))
         if not cmds:
-            print("no commands")
+            print("no commands (need control mode?)")
             return
-        for code, label in sorted(cmds.items()):
-            print(f"  0x{code:04X}  {label}")
+        print(f"send with: press {dev} <command_id>")
+        for c in cmds:
+            print(f"  command_id={c['command_id']:<5} {c['label']}")
 
     async def cmd_buttons(self, args: str) -> None:
         if not args.strip():
             print("usage: buttons <activity_or_device_id>")
             return
         ent = parse_int(args)
-        btns = await self._read(
-            "buttons",
-            lambda: self.p.buttons(ent),
-            lambda: self.p.sync.get_buttons_for_entity(ent, fetch_if_missing=False)[0],
-        )
+        btns = await self._safe("buttons", self.p.buttons(ent))
         if not btns:
-            print("no buttons")
+            print("no buttons (need control mode?)")
             return
+        print(f"send with: press {ent} <button_code>")
         for b in btns:
-            print(f"  {b:3d} ({BUTTONNAME_BY_CODE.get(b, f'0x{b:02X}')})")
+            target = ""
+            if b.get("device_id") and b.get("command_id") is not None:
+                target = f"   -> device_id={b['device_id']} command_id={b['command_id']}"
+            print(f"  button_code={b['button_code']:<5} {b.get('name') or '':<10}{target}")
 
     async def cmd_macros(self, args: str) -> None:
         if not args.strip():
             print("usage: macros <activity_id>")
             return
         act = parse_int(args)
-        macros = await self._read(
-            "macros",
-            lambda: self.p.macros(act),
-            lambda: self.p.sync.get_macros_for_activity(act, fetch_if_missing=False)[0],
-        )
+        macros = await self._safe("macros", self.p.macros(act))
         if not macros:
-            print("no macros")
+            print("no macros (need control mode?)")
             return
+        print(f"send with: press {act} <command_id>")
         for m in macros:
-            print(f"  {m.get('label', '')} (id={m.get('command_id')})")
+            print(f"  command_id={m['command_id']:<5} {m.get('label') or ''}")
 
     async def cmd_favorites(self, args: str) -> None:
         if not args.strip():
             print("usage: favorites <activity_id>")
             return
         act = parse_int(args)
-        try:
-            favs = await self.p.favorites(act)
-        except (RuntimeError, TimeoutError) as err:
-            print(f"[favorites] {err}")
-            return
+        favs = await self._safe("favorites", self.p.favorites(act))
         if not favs:
-            print("no favorites")
+            print("no favorites (need control mode?)")
             return
-        print("  " + ", ".join(f"slot {slot}=0x{fid:02X}" for fid, slot in favs))
+        print("send with: press <device_id> <command_id>")
+        for f in favs:
+            print(f"  device_id={f['device_id']:<5} command_id={f['command_id']:<5} {f.get('label') or ''}")
 
     # ----- control commands -------------------------------------------------
 
@@ -261,20 +249,57 @@ class AsyncShell:
         else:
             print("usage: proxy on|off")
 
+    async def cmd_backup(self, args: str) -> None:
+        import json
+
+        path = args.strip() or "hub_backup.json"
+        print("backing up the whole hub (this fetches every device + activity)...")
+        bundle = await self._safe("backup", self.p.backup_hub_bundle())
+        if bundle is None:
+            return
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(bundle, fh, indent=2)
+        print(
+            f"wrote {path}: schema v{bundle['schema_version']}, "
+            f"{len(bundle['devices'])} devices, {len(bundle['activities'])} activities, "
+            f"complete={bundle['complete']}"
+        )
+
+    async def cmd_restore(self, args: str) -> None:
+        import json
+
+        path = args.strip()
+        if not path:
+            print("usage: restore <file.json>")
+            return
+        try:
+            with open(path, encoding="utf-8") as fh:
+                bundle = json.load(fh)
+        except (OSError, ValueError) as err:
+            print(f"cannot read {path}: {err}")
+            return
+        print(f"restoring {path} onto the hub...")
+        result = await self._safe("restore", self.p.restore_hub_bundle(bundle))
+        if result is not None:
+            print("restore result:", result)
+
     # ----- meta -------------------------------------------------------------
 
     async def cmd_help(self, _args: str) -> None:
         print("commands:")
-        print("  status                         hub/app state + cached counts")
-        print("  activities | devices           list catalogs")
-        print("  commands <dev> | buttons <ent> per-entity detail")
-        print("  macros <act> | favorites <act> activity detail")
-        print("  press <ent> <button>           send a button (alias: send)")
+        print("  status                         hub/app state, version, cached counts")
+        print("  activities | devices           list catalogs (-> ids)")
+        print("  commands <dev>                 device commands (-> command_id)")
+        print("  buttons <ent>                  buttons + their device/command mapping")
+        print("  macros <act> | favorites <act> activity detail (-> device_id/command_id)")
+        print("  press <ent> <id-or-button>     send a command/button (alias: send)")
         print("  start <act> | stop <act>       switch activity power")
         print("  find                           find-my-remote")
         print("  proxy on|off                   toggle pass-through")
+        print("  backup [file] | restore <file> hub config backup/restore (JSON)")
         print("  quit                           exit")
-        print("\nreads need control mode (no app attached); otherwise cached is shown.")
+        print("\nBrowse to get (entity_id, command_id); send with: press <entity_id> <command_id>.")
+        print("Reads/sends need control mode (no app attached through the proxy).")
 
     async def cmd_quit(self, _args: str) -> None:
         self._stop = True
@@ -304,8 +329,12 @@ class AsyncShell:
 # ----------------- subcommands -----------------
 
 
-async def _main_discover(argv: list[str]) -> None:
-    """One-shot mDNS scan for physical hubs (and optionally proxies)."""
+def _main_discover(argv: list[str]) -> None:
+    """One-shot mDNS scan for physical hubs (and optionally proxies).
+
+    Synchronous on purpose: ``discover_hubs`` spins up its own ``Zeroconf``
+    and blocks, which does not work inside a running asyncio loop.
+    """
 
     ap = argparse.ArgumentParser(
         prog="sofapython discover",
@@ -358,10 +387,20 @@ async def _main_run(argv: list[str]) -> None:
     ap.add_argument("--hub-udp", type=int, default=8102)
     ap.add_argument("--proxy-udp", type=int, default=8102, help="CALL_ME/NOTIFY_ME UDP port (8102 for iOS)")
     ap.add_argument("--listen-base", type=int, default=8200)
-    ap.add_argument("--mdns-txt", action="append", help="TXT kv pair, e.g. HVER=2 (repeatable); used with --hub")
+    ap.add_argument(
+        "--hub-version",
+        choices=["X1", "X1S", "X2"],
+        help="hub model; auto-detected from discovery/banner if omitted",
+    )
+    ap.add_argument("--mdns-txt", action="append", help="raw TXT kv pair, e.g. HVER=2 (repeatable)")
     ap.add_argument("--mdns-name", default="X1-HUB-PROXY")
     ap.add_argument("--disable-proxy", action="store_true", help="start with pass-through disabled")
-    ap.add_argument("--connect-timeout", type=float, default=15.0, help="seconds to wait for the hub to connect")
+    ap.add_argument(
+        "--connect-timeout",
+        type=float,
+        default=40.0,
+        help="seconds to wait for the hub to connect (the hub's CALL_ME cycle can take ~30s)",
+    )
     ap.add_argument("--debug", action="store_true", help="verbose engine logging")
     ap.add_argument("--no-dump", dest="diag_dump", action="store_false")
     ap.add_argument("--no-parse", dest="diag_parse", action="store_false")
@@ -372,23 +411,47 @@ async def _main_run(argv: list[str]) -> None:
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
 
+    # Always scan first: it both picks a hub (when --hub is omitted) and
+    # supplies the hub version, so X2 hubs parse correctly without the
+    # obtuse --mdns-txt HVER=3.
+    print("discovering hubs...")
+    found = await async_discover_hubs(timeout=6.0)
+    hub_version = args.hub_version  # explicit override wins
+
     if args.hub:
         real_hub_ip = args.hub
-        mdns_txt = _kv_list_to_dict(args.mdns_txt)
         mdns_instance = args.mdns_name
-        hub_version = None
+        match = next((h for h in found if h.host == args.hub), None)
+        if match is not None:
+            mdns_txt = dict(match.txt)
+            mdns_instance = match.name
+            if hub_version is None:
+                hub_version = match.hub_version
+                print(f"detected {hub_version} for {args.hub} from discovery")
+        else:
+            mdns_txt = _kv_list_to_dict(args.mdns_txt)
+            if hub_version is None:
+                print(
+                    f"warning: {args.hub} not found in discovery and no --hub-version "
+                    "given; will confirm the version from the hub banner after connect "
+                    "(pass --hub-version X1|X1S|X2 if reads look wrong)."
+                )
     else:
-        print("discovering hubs...")
-        found = await async_discover_hubs(timeout=5.0)
-        if not found:
-            print("no hubs found; pass --hub IP")
+        physical = [h for h in found if not h.is_proxy] or found
+        if not physical:
+            print("no hubs found; pass --hub IP (and --hub-version if it's an X2)")
             return
-        hub = found[0]
+        hub = physical[0]
         real_hub_ip = hub.host
         mdns_txt = dict(hub.txt)
         mdns_instance = hub.name
-        hub_version = hub.hub_version
-        print(f"using {hub.name} ({hub.hub_version}) at {hub.host}")
+        if hub_version is None:
+            hub_version = hub.hub_version
+        print(f"using {hub.name} ({hub_version}) at {hub.host}")
+
+    # Keep the advertisement's HVER consistent with the chosen version.
+    if hub_version and "HVER" not in mdns_txt:
+        mdns_txt["HVER"] = HVER_BY_HUB_VERSION[hub_version]
 
     proxy = AsyncX1Proxy(
         real_hub_ip=real_hub_ip,
@@ -406,10 +469,17 @@ async def _main_run(argv: list[str]) -> None:
     async with proxy:
         print("proxy started; waiting for the hub...")
         if await proxy.wait_connected(timeout=args.connect_timeout):
-            controllable = proxy.sync.can_issue_commands()
-            print(f"hub connected ({'control mode' if controllable else 'observe mode — an app is attached'})")
+            # Let the connect banner settle/correct the version before
+            # serving commands (authoritative over discovery/flag guesses).
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 5.0
+            while not proxy.sync.has_banner_identity() and loop.time() < deadline:
+                await asyncio.sleep(0.2)
+            version = proxy.sync.hub_version
+            mode = "control mode" if proxy.sync.can_issue_commands() else "observe mode — an app is attached"
+            print(f"hub connected — version {version} ({mode})")
         else:
-            print("hub not connected yet (the shell still works; events will appear when it connects)")
+            print("hub not connected yet (the shell still works; events appear when it connects)")
         try:
             await AsyncShell(proxy).loop()
         except (KeyboardInterrupt, asyncio.CancelledError):
@@ -436,7 +506,7 @@ def main(argv: list[str] | None = None) -> None:
         command = args.pop(0)
     try:
         if command == "discover":
-            asyncio.run(_main_discover(args))
+            _main_discover(args)  # sync: blocking zeroconf, no event loop
         else:
             asyncio.run(_main_run(args))
     except KeyboardInterrupt:

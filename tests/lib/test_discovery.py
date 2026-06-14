@@ -236,6 +236,18 @@ def test_browser_stop_closes_owned_engine_only() -> None:
     assert injected.closed is False  # injected engines are caller-owned
 
 
+def test_discover_hubs_refuses_inside_event_loop() -> None:
+    import asyncio
+
+    import pytest
+
+    async def main():
+        with pytest.raises(RuntimeError, match="async_discover_hubs"):
+            discovery.discover_hubs(timeout=0.1)
+
+    asyncio.run(main())
+
+
 def test_discover_hubs_one_shot(monkeypatch) -> None:
     name = "DEN._x1hub._udp.local."
     infos = {name: FakeServiceInfo(properties={b"HVER": b"2", b"NAME": b"Den"})}

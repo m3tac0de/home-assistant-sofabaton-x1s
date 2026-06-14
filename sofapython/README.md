@@ -69,19 +69,28 @@ async def main():
         await proxy.wait_until_controllable()      # own the hub (see below)
         activities = await proxy.activities()      # {id: {name, active, ...}}
         for dev_id in await proxy.devices():
-            print(dev_id, await proxy.commands(dev_id))   # {code: label}
+            for cmd in await proxy.commands(dev_id):   # [{command_id, label}]
+                await proxy.send(dev_id, cmd["command_id"])   # fire a command
 
         await proxy.start_activity(next(iter(activities)))
 
 asyncio.run(main())
 ```
 
-The reads return data directly — a cached result comes back immediately,
-otherwise the call fetches from the hub and awaits completion. The whole
-app-builder surface is a handful of coroutines: `activities()`,
-`devices()`, `commands(dev)`, `buttons(ent)`, `macros(act)`,
-`favorites(act)` to read; `press(ent, button)`, `start_activity(act)`,
-`stop_activity(act)`, `find_remote()` to control.
+Everything is keyed on **`(entity_id, command_id)`** — you browse to get
+those ids, then `send(entity_id, command_id)`. The reads return them
+directly (cached if available, else fetched):
+
+| read | returns |
+|------|---------|
+| `activities()` / `devices()` | `{id: {name, ...}}` |
+| `commands(device_id)` | `[{command_id, label}]` |
+| `macros(activity_id)` | `[{command_id, label}]` |
+| `favorites(activity_id)` | `[{device_id, command_id, label}]` |
+| `buttons(entity_id)` | `[{button_code, name, device_id, command_id}]` |
+
+Control: `send(entity_id, command_id)` (alias `press`),
+`start_activity(act)`, `stop_activity(act)`, `find_remote()`.
 
 ### Two modes
 

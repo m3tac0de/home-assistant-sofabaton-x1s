@@ -10,6 +10,7 @@
 # advertising path).
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 import time
@@ -304,7 +305,24 @@ def discover_hubs(
     the normalized advertisements seen. Pass an existing ``Zeroconf``
     instance via ``zc`` to share an engine; otherwise one is created and
     torn down for the scan.
+
+    This is the **synchronous** API and blocks the calling thread. It must
+    not be called from a thread with a running asyncio event loop (the
+    blocking sleep starves zeroconf and the scan silently finds nothing) —
+    use :func:`async_discover_hubs` in async code instead.
     """
+
+    if zc is None:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError(
+                "discover_hubs() is blocking and cannot run inside an asyncio "
+                "event loop; use async_discover_hubs() in async code (or pass "
+                "your own zc=)."
+            )
 
     browser = HubBrowser(zc=zc, include_proxies=include_proxies)
     browser.start()
