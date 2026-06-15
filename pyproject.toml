@@ -35,9 +35,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s"
+Homepage = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofapython"
 Issues = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues"
-Documentation = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/docs"
+# The published package is built from the in-tree library directory
+# (remapped to top-level "sofapython" at build time), which isn't obvious
+# from the repo layout — link it directly.
+Source = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/custom_components/sofabaton_x1s/lib"
 
 [project.scripts]
 sofapython = "sofapython.cli:main"
