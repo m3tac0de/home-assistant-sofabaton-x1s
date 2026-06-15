@@ -51,13 +51,13 @@ the loop, so application code never touches the engine threads:
 
 ```python
 import asyncio
-from sofabaton import AsyncX1Proxy, async_discover_hubs
+from sofabaton import AsyncXProxy, async_discover_hubs
 
 async def main():
     hubs = await async_discover_hubs(timeout=5.0)   # physical hubs; proxies filtered
     hub = hubs[0]
 
-    proxy = AsyncX1Proxy(
+    proxy = AsyncXProxy(
         hub_ip=hub.host,                # the physical hub's IP
         mdns_instance=hub.name,
         mdns_txt=hub.txt,               # carries HVER -> X1/X1S/X2 classification

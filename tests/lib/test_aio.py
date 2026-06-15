@@ -204,8 +204,8 @@ class FakeProxy:
         self._ready["activities"] = data
 
 
-def _wrap(fake: FakeProxy) -> "aio.AsyncX1Proxy":
-    return aio.AsyncX1Proxy.wrap(fake)
+def _wrap(fake: FakeProxy) -> "aio.AsyncXProxy":
+    return aio.AsyncXProxy.wrap(fake)
 
 
 # ---------------------------------------------------------------------------
@@ -216,7 +216,7 @@ def _wrap(fake: FakeProxy) -> "aio.AsyncX1Proxy":
 def test_proxy_methods_exist_on_real_engine() -> None:
     missing = [
         name
-        for name in aio.AsyncX1Proxy.PROXY_METHODS
+        for name in aio.AsyncXProxy.PROXY_METHODS
         if not callable(getattr(x1_proxy_mod.X1Proxy, name, None))
     ]
     assert not missing, f"PROXY_METHODS drifted from X1Proxy: {sorted(missing)}"
@@ -250,7 +250,7 @@ def test_human_surface_delegates_to_real_engine_methods() -> None:
         "stop_activity",
         "find_remote",
     ):
-        assert callable(getattr(aio.AsyncX1Proxy, name, None)), f"missing facade method {name}"
+        assert callable(getattr(aio.AsyncXProxy, name, None)), f"missing facade method {name}"
 
 
 def test_unknown_attribute_raises_with_hint() -> None:
@@ -554,7 +554,7 @@ def test_cache_snapshot_serializers_are_not_on_facade() -> None:
     async def main():
         proxy = _wrap(FakeProxy())
         for name in ("export_cache_state", "import_cache_state", "clear_cached_entity_detail"):
-            assert name not in aio.AsyncX1Proxy.PROXY_METHODS
+            assert name not in aio.AsyncXProxy.PROXY_METHODS
             try:
                 getattr(proxy, name)
             except AttributeError:

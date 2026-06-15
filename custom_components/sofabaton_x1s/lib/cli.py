@@ -4,7 +4,7 @@
 ``sofabaton discover``  one-shot mDNS scan for hubs.
 ``sofabaton run``       start a proxy and open an interactive shell.
 
-The shell is a thin UI over :class:`AsyncX1Proxy`: it reads input on the
+The shell is a thin UI over :class:`AsyncXProxy`: it reads input on the
 executor so the event loop keeps running, so live hub/app/activity
 events print as they happen, and every command maps to a facade call.
 """
@@ -15,7 +15,7 @@ import logging
 import sys
 from typing import Awaitable, Callable, Dict, Optional
 
-from .aio import AsyncX1Proxy, async_discover_hubs
+from .aio import AsyncXProxy, async_discover_hubs
 from .hub_versions import HVER_BY_HUB_VERSION
 from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
 
@@ -170,11 +170,11 @@ async def _ainput(prompt: str) -> Optional[str]:
 
 
 class AsyncShell:
-    """A small REPL over :class:`AsyncX1Proxy`."""
+    """A small REPL over :class:`AsyncXProxy`."""
 
     prompt = "x1> "
 
-    def __init__(self, proxy: AsyncX1Proxy) -> None:
+    def __init__(self, proxy: AsyncXProxy) -> None:
         self.p = proxy
         self._stop = False
         self._commands: Dict[str, Callable[[str], Awaitable[None]]] = {
@@ -611,7 +611,7 @@ async def _main_run(argv: list[str]) -> None:
     if hub_version and "HVER" not in mdns_txt:
         mdns_txt["HVER"] = HVER_BY_HUB_VERSION[hub_version]
 
-    proxy = AsyncX1Proxy(
+    proxy = AsyncXProxy(
         hub_ip=hub_ip,
         hub_port=args.hub_port,
         app_discovery_port=args.app_discovery_port,

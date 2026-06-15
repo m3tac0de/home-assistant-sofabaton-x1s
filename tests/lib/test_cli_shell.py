@@ -1,7 +1,7 @@
 """Coverage for the async CLI shell (lib/cli.py AsyncShell).
 
 Drives command handlers directly against a fake proxy wrapped in the
-real AsyncX1Proxy facade — no stdin loop — to verify the UI wires
+real AsyncXProxy facade — no stdin loop — to verify the UI wires
 commands to facade/engine calls and degrades gracefully in observe mode.
 """
 
@@ -91,7 +91,7 @@ class FakeProxy:
 
 
 def _shell(fake):
-    proxy = aio.AsyncX1Proxy.wrap(fake)
+    proxy = aio.AsyncXProxy.wrap(fake)
     return cli.AsyncShell(proxy)
 
 
@@ -229,7 +229,7 @@ def test_run_makes_proxy_discoverable_after_connect(monkeypatch):
         async def loop(self):
             return None
 
-    monkeypatch.setattr(cli, "AsyncX1Proxy", _FakeAsyncProxy)
+    monkeypatch.setattr(cli, "AsyncXProxy", _FakeAsyncProxy)
     monkeypatch.setattr(cli, "AsyncShell", _NoopShell)
 
     asyncio.run(cli._main_run(["--hub-ip", "1.2.3.4", "--connect-timeout", "0.1"]))

@@ -12,14 +12,14 @@ attached. ``wait_until_controllable()`` blocks until that holds. To
 instead *watch* a live session while the app is connected, see
 ``watch.py``.
 
-Uses the asyncio facade (``AsyncX1Proxy``): blocking calls run in the
+Uses the asyncio facade (``AsyncXProxy``): blocking calls run in the
 loop's executor and callbacks are delivered on the loop. A synchronous
 ``X1Proxy`` with the same surface is also available.
 """
 
 import asyncio
 
-from sofabaton import AsyncX1Proxy, async_discover_hubs
+from sofabaton import AsyncXProxy, async_discover_hubs
 
 
 async def main() -> None:
@@ -29,7 +29,7 @@ async def main() -> None:
     hub = hubs[0]
     print(f"proxying {hub.name} ({hub.hub_version}) at {hub.host}")
 
-    proxy = AsyncX1Proxy(
+    proxy = AsyncXProxy(
         hub_ip=hub.host,
         mdns_instance=hub.name,
         mdns_txt=hub.txt,          # carries HVER -> variant classification

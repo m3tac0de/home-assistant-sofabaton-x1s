@@ -17,7 +17,7 @@ awaits the reply.
 
 import asyncio
 
-from sofabaton import AsyncX1Proxy, async_discover_hubs
+from sofabaton import AsyncXProxy, async_discover_hubs
 
 
 async def main() -> None:
@@ -27,7 +27,7 @@ async def main() -> None:
     hub = hubs[0]
     print(f"reading {hub.name} ({hub.hub_version}) at {hub.host}\n")
 
-    proxy = AsyncX1Proxy(
+    proxy = AsyncXProxy(
         hub_ip=hub.host,
         mdns_instance=hub.name,
         mdns_txt=hub.txt,

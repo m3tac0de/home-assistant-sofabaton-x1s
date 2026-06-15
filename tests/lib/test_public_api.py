@@ -86,7 +86,7 @@ CURATED_EXPORTS = {
     "SendStepResult",
     # asyncio facade
     "AsyncHubBrowser",
-    "AsyncX1Proxy",
+    "AsyncXProxy",
     "async_discover_hubs",
 }
 

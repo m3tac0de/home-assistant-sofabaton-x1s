@@ -78,7 +78,7 @@ from .device_create import (  # noqa: F401
 from .ack import AckOutcome, InputsBurstResult, SendStepResult  # noqa: F401
 
 # Asyncio facade over the threaded core.
-from .aio import AsyncHubBrowser, AsyncX1Proxy, async_discover_hubs  # noqa: F401
+from .aio import AsyncHubBrowser, AsyncXProxy, async_discover_hubs  # noqa: F401
 
 _CURATED = [
     "__version__",
@@ -129,7 +129,7 @@ _CURATED = [
     "SendStepResult",
     # asyncio facade
     "AsyncHubBrowser",
-    "AsyncX1Proxy",
+    "AsyncXProxy",
     "async_discover_hubs",
 ]
 

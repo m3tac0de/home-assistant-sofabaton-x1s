@@ -18,7 +18,7 @@ delivered on the event loop.
 
 import asyncio
 
-from sofabaton import AsyncX1Proxy, async_discover_hubs
+from sofabaton import AsyncXProxy, async_discover_hubs
 
 
 async def main() -> None:
@@ -27,7 +27,7 @@ async def main() -> None:
         raise SystemExit("no hub found")
     hub = hubs[0]
 
-    proxy = AsyncX1Proxy(
+    proxy = AsyncXProxy(
         hub_ip=hub.host,
         mdns_instance=hub.name,
         mdns_txt=hub.txt,

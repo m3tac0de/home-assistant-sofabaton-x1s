@@ -72,7 +72,7 @@ jobs:
           import sofabaton
           missing = [n for n in sofabaton.__all__ if not hasattr(sofabaton, n)]
           assert not missing, missing
-          from sofabaton import X1Proxy, AsyncX1Proxy, discover_hubs
+          from sofabaton import X1Proxy, AsyncXProxy, discover_hubs
           print('sofabaton', sofabaton.__version__, 'OK:', len(sofabaton.__all__), 'public names')
           "
       - name: Console script smoke test

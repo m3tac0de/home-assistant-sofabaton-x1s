@@ -28,7 +28,7 @@ from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
 from .x1_proxy import X1Proxy
 
 __all__ = [
-    "AsyncX1Proxy",
+    "AsyncXProxy",
     "AsyncHubBrowser",
     "async_discover_hubs",
 ]
@@ -58,7 +58,7 @@ def _marshal_callback(loop: asyncio.AbstractEventLoop, callback: Callable) -> Ca
     return relay
 
 
-class AsyncX1Proxy:
+class AsyncXProxy:
     """Asyncio wrapper around :class:`X1Proxy`.
 
     Construct with the same keyword arguments as ``X1Proxy`` (must happen
@@ -201,7 +201,7 @@ class AsyncX1Proxy:
     @classmethod
     def wrap(
         cls, proxy: X1Proxy, *, loop: Optional[asyncio.AbstractEventLoop] = None
-    ) -> "AsyncX1Proxy":
+    ) -> "AsyncXProxy":
         """Wrap an already-constructed engine (e.g. mid-migration code)."""
 
         self = object.__new__(cls)
@@ -250,7 +250,7 @@ class AsyncX1Proxy:
     async def stop(self) -> None:
         await self.run(self._proxy.stop)
 
-    async def __aenter__(self) -> "AsyncX1Proxy":
+    async def __aenter__(self) -> "AsyncXProxy":
         await self.start()
         return self
 
