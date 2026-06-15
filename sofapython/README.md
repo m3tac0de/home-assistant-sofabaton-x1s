@@ -58,10 +58,10 @@ async def main():
     hub = hubs[0]
 
     proxy = AsyncX1Proxy(
-        real_hub_ip=hub.host,
+        hub_ip=hub.host,                # the physical hub's IP
         mdns_instance=hub.name,
         mdns_txt=hub.txt,               # carries HVER -> X1/X1S/X2 classification
-        hub_version=hub.hub_version,
+        hub_version=hub.hub_version,    # optional; the connect banner confirms it
     )
     proxy.on_activity_change(lambda new, old, name: print(f"activity -> {name}"))
 
@@ -76,6 +76,24 @@ async def main():
 
 asyncio.run(main())
 ```
+
+### Ports
+
+The proxy has two network faces. Apart from `hub_ip`, every port defaults
+to the right value — you usually only touch `hub_listen_port` to avoid a
+local collision:
+
+| Argument | Default | Side | What it is |
+|----------|---------|------|------------|
+| `hub_ip` | — | hub | the physical hub's IPv4 address |
+| `hub_port` | 8102 | hub | UDP port **on the hub** we send `CALL_ME` to (protocol-fixed) |
+| `hub_listen_port` | 8200 | hub | TCP port **on this host** the hub connects back to |
+| `app_discovery_port` | 8102 | app | UDP port **on this host** the app finds + calls us on (keep 8102 for iOS) |
+
+The hub model (X1/X1S/X2) is confirmed from the connect banner, so
+`hub_version` is only a pre-connect hint. See
+[`docs/networking.md`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/networking.md)
+for the complete port map and firewall guidance.
 
 Everything is keyed on **`(entity_id, command_id)`** — you browse to get
 those ids, then `send(entity_id, command_id)`. The reads return them
@@ -117,8 +135,8 @@ scripts and REPL use; the async class is a facade over it (its raw
 A CLI ships as a console script:
 
 ```
-sofapython discover                # scan the LAN for hubs
-sofapython run --hub 192.168.1.50  # proxy + interactive shell
+sofapython discover                   # scan the LAN for hubs
+sofapython run --hub-ip 192.168.1.50  # proxy + interactive shell
 x1> status
 x1> activities
 x1> send 101 POWER_ON
@@ -129,6 +147,23 @@ taking control of a hub, reading per-entity detail
 (commands/macros/favorites), schema-versioned backup/restore, and
 building an HTTP callback listener on top of the library — live in
 [`sofapython/examples/`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofapython/examples).
+
+## Protocol & networking docs
+
+This library is a reverse-engineered implementation; the wire protocol and
+network topology are documented in the repository:
+
+- **Protocol reference** —
+  [`docs/protocol/`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/docs/protocol):
+  [connection flow](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/protocol/connection-flow.md),
+  [frame format](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/protocol/frame-format.md),
+  [opcodes](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/protocol/opcodes.md),
+  [data structures](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/protocol/data-structures.md),
+  [hub versions](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/protocol/hub-versions.md)
+  and more.
+- **Networking guide** —
+  [`docs/networking.md`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/networking.md):
+  the full port map, the two proxy faces, firewall rules and VLAN caveats.
 
 ## Stability
 

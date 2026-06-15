@@ -154,10 +154,48 @@ class AsyncX1Proxy:
     )
 
     def __init__(
-        self, *, loop: Optional[asyncio.AbstractEventLoop] = None, **proxy_kwargs: Any
+        self,
+        *,
+        hub_ip: str,
+        hub_port: int = 8102,
+        hub_listen_port: int = 8200,
+        app_discovery_port: int = 8102,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+        **proxy_kwargs: Any,
     ) -> None:
+        """Construct a proxy for the hub at ``hub_ip``.
+
+        The proxy has two network faces. Only the four arguments below
+        describe them; everything else (``mdns_instance``, ``mdns_txt``,
+        ``hub_version``, ``proxy_enabled``, ``diag_*`` ...) is forwarded
+        verbatim to the engine.
+
+        Hub-facing (the physical hub):
+
+        * ``hub_ip`` — the hub's IPv4 address (from discovery or manual).
+        * ``hub_port`` — UDP port *on the hub* we send ``CALL_ME`` to.
+          Protocol-fixed at ``8102``; you should rarely change it.
+        * ``hub_listen_port`` — TCP port *on this host* the hub connects
+          back to after ``CALL_ME``. Change it to avoid a local port
+          collision; reserve it in your firewall for the hub's connect-back.
+
+        App-facing (the official mobile app):
+
+        * ``app_discovery_port`` — UDP port *on this host* the app uses to
+          discover and call the proxy. Keep it at ``8102``: iOS discovery
+          is lost on any other port.
+
+        See the project's ``docs/networking.md`` for the full port map.
+        """
+
         self._loop = loop or asyncio.get_running_loop()
-        self._proxy = X1Proxy(**proxy_kwargs)
+        self._proxy = X1Proxy(
+            real_hub_ip=hub_ip,
+            real_hub_udp_port=hub_port,
+            hub_listen_base=hub_listen_port,
+            proxy_udp_port=app_discovery_port,
+            **proxy_kwargs,
+        )
         self._init_burst_state()
 
     @classmethod

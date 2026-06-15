@@ -30,7 +30,7 @@ async def main() -> None:
     print(f"proxying {hub.name} ({hub.hub_version}) at {hub.host}")
 
     proxy = AsyncX1Proxy(
-        real_hub_ip=hub.host,
+        hub_ip=hub.host,
         mdns_instance=hub.name,
         mdns_txt=hub.txt,          # carries HVER -> variant classification
         hub_version=hub.hub_version,

@@ -382,15 +382,42 @@ def _main_discover(argv: list[str]) -> None:
 
 
 async def _main_run(argv: list[str]) -> None:
-    ap = argparse.ArgumentParser(prog="sofapython run", description="Proxy a hub + interactive shell")
-    ap.add_argument("--hub", help="real hub IP; omit to auto-discover the first hub")
-    ap.add_argument("--hub-udp", type=int, default=8102)
-    ap.add_argument("--proxy-udp", type=int, default=8102, help="CALL_ME/NOTIFY_ME UDP port (8102 for iOS)")
-    ap.add_argument("--listen-base", type=int, default=8200)
+    ap = argparse.ArgumentParser(
+        prog="sofapython run",
+        description="Proxy a hub + interactive shell",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "ports: the proxy has two faces (see docs/networking.md).\n"
+            "  hub-facing  --hub-ip / --hub-port (we CALL_ME the hub on UDP)\n"
+            "              --hub-listen-port      (the hub connects back on TCP)\n"
+            "  app-facing  --app-discovery-port   (the app finds + calls us on UDP)\n"
+        ),
+    )
+    # The arguments you commonly touch.
+    ap.add_argument("--hub-ip", help="the hub's IP; omit to auto-discover the first hub")
+    ap.add_argument(
+        "--hub-listen-port",
+        type=int,
+        default=8200,
+        help="TCP port on THIS host the hub connects back to (change to avoid a port clash; default 8200)",
+    )
+    # Protocol-fixed ports you should rarely need to change.
+    ap.add_argument(
+        "--hub-port",
+        type=int,
+        default=8102,
+        help="UDP port ON THE HUB we send CALL_ME to (protocol-fixed; default 8102)",
+    )
+    ap.add_argument(
+        "--app-discovery-port",
+        type=int,
+        default=8102,
+        help="UDP port on THIS host the app discovers/calls us on (keep 8102 for iOS; default 8102)",
+    )
     ap.add_argument(
         "--hub-version",
         choices=["X1", "X1S", "X2"],
-        help="hub model; auto-detected from discovery/banner if omitted",
+        help="hub model; confirmed from the connect banner, so only needed to force a guess before connect",
     )
     ap.add_argument("--mdns-txt", action="append", help="raw TXT kv pair, e.g. HVER=2 (repeatable)")
     ap.add_argument("--mdns-name", default="X1-HUB-PROXY")
@@ -411,53 +438,40 @@ async def _main_run(argv: list[str]) -> None:
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
 
-    # Always scan first: it both picks a hub (when --hub is omitted) and
-    # supplies the hub version, so X2 hubs parse correctly without the
-    # obtuse --mdns-txt HVER=3.
-    print("discovering hubs...")
-    found = await async_discover_hubs(timeout=6.0)
-    hub_version = args.hub_version  # explicit override wins
+    # The version is authoritative from the connect banner, so we do not
+    # need mDNS to learn it. A scan is only needed to *pick* a hub when
+    # --hub-ip is omitted; with an explicit hub we connect straight away.
+    hub_version = args.hub_version  # explicit pre-connect guess (banner wins)
 
-    if args.hub:
-        real_hub_ip = args.hub
+    if args.hub_ip:
+        hub_ip = args.hub_ip
         mdns_instance = args.mdns_name
-        match = next((h for h in found if h.host == args.hub), None)
-        if match is not None:
-            mdns_txt = dict(match.txt)
-            mdns_instance = match.name
-            if hub_version is None:
-                hub_version = match.hub_version
-                print(f"detected {hub_version} for {args.hub} from discovery")
-        else:
-            mdns_txt = _kv_list_to_dict(args.mdns_txt)
-            if hub_version is None:
-                print(
-                    f"warning: {args.hub} not found in discovery and no --hub-version "
-                    "given; will confirm the version from the hub banner after connect "
-                    "(pass --hub-version X1|X1S|X2 if reads look wrong)."
-                )
+        mdns_txt = _kv_list_to_dict(args.mdns_txt)
+        print(f"connecting to {hub_ip} (hub version is confirmed from the connect banner)")
     else:
+        print("discovering hubs...")
+        found = await async_discover_hubs(timeout=6.0)
         physical = [h for h in found if not h.is_proxy] or found
         if not physical:
-            print("no hubs found; pass --hub IP (and --hub-version if it's an X2)")
+            print("no hubs found; pass --hub-ip ADDRESS")
             return
         hub = physical[0]
-        real_hub_ip = hub.host
+        hub_ip = hub.host
         mdns_txt = dict(hub.txt)
         mdns_instance = hub.name
         if hub_version is None:
             hub_version = hub.hub_version
         print(f"using {hub.name} ({hub_version}) at {hub.host}")
 
-    # Keep the advertisement's HVER consistent with the chosen version.
+    # Keep the advertisement's HVER consistent with any known version.
     if hub_version and "HVER" not in mdns_txt:
         mdns_txt["HVER"] = HVER_BY_HUB_VERSION[hub_version]
 
     proxy = AsyncX1Proxy(
-        real_hub_ip=real_hub_ip,
-        real_hub_udp_port=args.hub_udp,
-        proxy_udp_port=args.proxy_udp,
-        hub_listen_base=args.listen_base,
+        hub_ip=hub_ip,
+        hub_port=args.hub_port,
+        app_discovery_port=args.app_discovery_port,
+        hub_listen_port=args.hub_listen_port,
         mdns_txt=mdns_txt,
         mdns_instance=mdns_instance,
         hub_version=hub_version,
@@ -476,6 +490,12 @@ async def _main_run(argv: list[str]) -> None:
             while not proxy.sync.has_banner_identity() and loop.time() < deadline:
                 await asyncio.sleep(0.2)
             version = proxy.sync.hub_version
+            # Align the app-facing advertisement with the banner-confirmed
+            # version + hub name (also what starts advertising the proxy).
+            if version:
+                synced_txt = dict(mdns_txt)
+                synced_txt["HVER"] = HVER_BY_HUB_VERSION[version]
+                await proxy.update_discovery_identity(mdns_txt=synced_txt, hub_version=version)
             mode = "control mode" if proxy.sync.can_issue_commands() else "observe mode — an app is attached"
             print(f"hub connected — version {version} ({mode})")
         else:

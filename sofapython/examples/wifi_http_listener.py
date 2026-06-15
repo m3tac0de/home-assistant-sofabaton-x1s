@@ -60,7 +60,7 @@ async def main() -> None:
     hub = hubs[0]
 
     proxy = AsyncX1Proxy(
-        real_hub_ip=hub.host,
+        hub_ip=hub.host,
         mdns_instance=hub.name,
         mdns_txt=hub.txt,
         hub_version=hub.hub_version,
