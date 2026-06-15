@@ -62,6 +62,7 @@ from .command_config import (
 )
 from .cache_store import PersistentCacheStore
 from .lib.commands import build_descriptive_ir_blob_body
+from .lib.hub_listener import bounce_hub_listener
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
@@ -2425,6 +2426,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()
+            # On a user-disable (not a reload/options change/HA shutdown) with
+            # other hubs still sharing the TCP listener, briefly bounce that
+            # listener so the now-disconnected hub's reconnects are refused at
+            # the SYN level and it gives up — otherwise it loops forever on the
+            # still-open shared port and stays invisible to the Sofabaton app.
+            if getattr(entry, "disabled_by", None) is not None:
+                await hass.async_add_executor_job(bounce_hub_listener)
     return unload_ok
 
 
