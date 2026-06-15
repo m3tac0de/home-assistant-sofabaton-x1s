@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Scan the LAN for Sofabaton hubs.
 
-Equivalent to ``sofapython discover``. Proxy advertisements (our own
+Equivalent to ``sofabaton discover``. Proxy advertisements (our own
 mDNS announcements, marked with the PROXY_TXT_KEY TXT record) are
 filtered out by default so you only see physical hubs.
 """
 
 import asyncio
 
-from sofapython import async_discover_hubs
+from sofabaton import async_discover_hubs
 
 
 async def main() -> None:
@@ -23,7 +23,7 @@ async def main() -> None:
 
     # Continuous browsing instead of a one-shot scan:
     #
-    # from sofapython import AsyncHubBrowser
+    # from sofabaton import AsyncHubBrowser
     #
     # async def on_added(hub):
     #     print("found", hub.name)

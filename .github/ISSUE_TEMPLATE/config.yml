@@ -3,6 +3,6 @@ contact_links:
   - name: Documentation
     url: https://github.com/m3tac0de/home-assistant-sofabaton-x1s#readme
     about: Review the README and docs for setup and troubleshooting guidance.
-  - name: sofapython README
-    url: https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofapython#readme
+  - name: sofabaton-x README
+    url: https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x#readme
     about: Standalone Python package install, quickstart, CLI, examples, and API notes.

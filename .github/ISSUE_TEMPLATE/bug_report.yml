@@ -1,5 +1,5 @@
 name: Bug report
-description: Report something that is broken in the Home Assistant integration or sofapython
+description: Report something that is broken in the Home Assistant integration or sofabaton-x
 labels: [bug]
 body:
   - type: markdown
@@ -7,7 +7,7 @@ body:
       value: |
         Thanks for taking the time to report this. Please share what you can; logs and version details are helpful, but do not worry if you cannot collect everything.
 
-        If you are using the standalone `sofapython` package, Home Assistant diagnostics and `switch.<hub>_hex_logging` do not apply.
+        If you are using the standalone `sofabaton-x` package, Home Assistant diagnostics and `switch.<hub>_hex_logging` do not apply.
   - type: dropdown
     id: affected_area
     attributes:
@@ -15,7 +15,7 @@ body:
       description: Pick the closest option.
       options:
         - Home Assistant integration
-        - Standalone sofapython package / CLI
+        - Standalone sofabaton-x package / CLI
         - Documentation
         - Not sure
     validations:
@@ -37,8 +37,8 @@ body:
     id: versions
     attributes:
       label: Versions
-      description: Share any versions you know. Examples include integration version, Home Assistant version, sofapython version, Python version, hub firmware, or install method.
-      placeholder: "Example: HA 2026.6.1, integration v1.2.3, sofapython 0.4.0, Python 3.12, HACS install"
+      description: Share any versions you know. Examples include integration version, Home Assistant version, sofabaton-x version, Python version, hub firmware, or install method.
+      placeholder: "Example: HA 2026.6.1, integration v1.2.3, sofabaton-x 0.4.0, Python 3.12, HACS install"
     validations:
       required: false
   - type: textarea
@@ -73,7 +73,7 @@ body:
         - If possible, enable switch.<hub>_hex_logging, reproduce the issue, then download diagnostics from the integration card.
         - See docs/logging.md for the detailed workflow.
 
-        sofapython users:
+        sofabaton-x users:
         - Paste the command you ran, traceback, terminal output, or a small Python snippet that reproduces the issue.
         - If discovery/proxying is involved, include whether the official app was connected and what mode you expected: observe or control.
     validations:

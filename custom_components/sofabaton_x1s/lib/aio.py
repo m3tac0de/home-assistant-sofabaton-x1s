@@ -23,6 +23,7 @@ from .discovery import (
     HubBrowser,
     discover_hubs,
 )
+from .hub_versions import HVER_BY_HUB_VERSION
 from .protocol_const import BUTTONNAME_BY_CODE, ButtonName
 from .x1_proxy import X1Proxy
 
@@ -111,7 +112,6 @@ class AsyncX1Proxy:
             "request_devices",
             "request_activity_mapping",
             "request_ir_command_dump",
-            "fetch_banner_info",
             "fetch_device_input_record",
             "fetch_device_key_sort",
             # actions
@@ -274,6 +274,10 @@ class AsyncX1Proxy:
     #   * control mode  — no app attached; the proxy owns the hub, so reads
     #     fetch fresh and commands/backup work. Gate on
     #     :meth:`wait_until_controllable`.
+    #
+    # Orthogonal to the mode, :meth:`wait_until_discoverable` gates the
+    # point at which the official app can *find* the proxy over mDNS — use
+    # it when you want the app to attach (e.g. to observe a live session).
 
     def _ensure_state_watcher(self) -> None:
         if self._state_event is not None:
@@ -326,6 +330,66 @@ class AsyncX1Proxy:
         """
 
         return await self._wait_for_state(self._proxy.can_issue_commands, timeout)
+
+    async def wait_until_discoverable(self, timeout: float = 30.0) -> bool:
+        """Wait until the official app can find the proxy over mDNS.
+
+        The app discovers the proxy the same way it discovers a real hub:
+        by its mDNS advertisement. The proxy can only advertise once it
+        knows which hub it is fronting (model and name), which it reads
+        from the hub's connect banner. So this waits for the hub to
+        connect, reads that banner, and brings the advertisement up
+        aligned to it. Call it after entering the proxy to let the app
+        attach (see ``watch``/``minimal_proxy`` examples).
+
+        Returns ``True`` once the proxy is advertising, ``False`` on
+        timeout (e.g. the hub never connected). If an app already holds
+        the hub it drives the banner itself, so this resolves as soon as
+        that identity is known.
+        """
+
+        deadline = self._loop.time() + timeout
+        # Advertising needs the hub connected so we can read its banner.
+        if not await self.wait_connected(timeout=max(0.0, deadline - self._loop.time())):
+            return False
+
+        while True:
+            # In control mode nothing else asks the hub who it is, so do it
+            # ourselves; while an app holds the hub it drives the banner and
+            # we just wait for that identity to land.
+            if self._proxy.can_issue_commands() and not self._proxy.has_banner_identity():
+                await self.run(self._proxy.fetch_banner_info)
+
+            if self._proxy.has_banner_identity():
+                # Publish (or realign) the advertisement to the banner
+                # identity — update_discovery_identity is what actually
+                # starts mDNS once the hub is connected and identified.
+                await self.update_discovery_identity(**self._discovery_identity_from_banner())
+                return True
+
+            if self._loop.time() >= deadline:
+                return False
+            await asyncio.sleep(0.1)
+
+    def _discovery_identity_from_banner(self) -> dict[str, Any]:
+        """Build the advertised identity from the hub's connect banner.
+
+        The banner is authoritative for the hub's model (-> HVER) and
+        name; fold those into the current TXT so the advertisement matches
+        the hub the proxy is fronting. Pure in-memory reads, so no executor
+        hop is needed.
+        """
+
+        info = self._proxy.get_banner_info()
+        model = info.get("model") or self._proxy.hub_version
+        txt = dict(self._proxy.mdns_txt)
+        hver = HVER_BY_HUB_VERSION.get(model)
+        if hver:
+            txt["HVER"] = hver
+        name = str(info.get("name") or "").strip()
+        if name:
+            txt["NAME"] = name
+        return {"mdns_txt": txt, "hub_version": model}
 
     # -- listeners ------------------------------------------------------------
 

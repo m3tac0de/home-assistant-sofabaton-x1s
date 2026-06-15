@@ -1,4 +1,4 @@
-# sofapython
+# sofabaton-x
 
 Unofficial Python library for **Sofabaton X1 / X1S / X2** universal remote
 hubs: a reverse-engineered protocol implementation and a man-in-the-middle
@@ -36,7 +36,7 @@ top — the Home Assistant integration does exactly that.
 ## Install
 
 ```
-pip install sofapython
+pip install sofabaton-x
 ```
 
 Python 3.11+. The only dependency is
@@ -51,7 +51,7 @@ the loop, so application code never touches the engine threads:
 
 ```python
 import asyncio
-from sofapython import AsyncX1Proxy, async_discover_hubs
+from sofabaton import AsyncX1Proxy, async_discover_hubs
 
 async def main():
     hubs = await async_discover_hubs(timeout=5.0)   # physical hubs; proxies filtered
@@ -135,8 +135,8 @@ scripts and REPL use; the async class is a facade over it (its raw
 A CLI ships as a console script:
 
 ```
-sofapython discover                   # scan the LAN for hubs
-sofapython run --hub-ip 192.168.1.50  # proxy + interactive shell
+sofabaton discover                   # scan the LAN for hubs
+sofabaton run --hub-ip 192.168.1.50  # proxy + interactive shell
 x1> status
 x1> activities
 x1> send 101 POWER_ON
@@ -146,7 +146,7 @@ Runnable examples — discovery, watching a live session (observe mode),
 taking control of a hub, reading per-entity detail
 (commands/macros/favorites), schema-versioned backup/restore, and
 building an HTTP callback listener on top of the library — live in
-[`sofapython/examples/`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofapython/examples).
+[`sofabaton-x/examples/`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x/examples).
 
 ## Protocol & networking docs
 
@@ -167,9 +167,9 @@ network topology are documented in the repository:
 
 ## Stability
 
-Names importable from the package root — `from sofapython import ...`,
-the set listed in `sofapython.__all__` — are the supported API and follow
-semver. Everything else (`sofapython.opcode_handlers`, frame parsing,
+Names importable from the package root — `from sofabaton import ...`,
+the set listed in `sofabaton.__all__` — are the supported API and follow
+semver. Everything else (`sofabaton.opcode_handlers`, frame parsing,
 wire schemas, the `proxy_*` mixin modules) is internal and may change
 between minor releases. The library raises stdlib exceptions
 (`ValueError` for malformed/unclassifiable input, `RuntimeError` /

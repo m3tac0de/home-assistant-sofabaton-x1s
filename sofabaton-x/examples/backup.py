@@ -14,7 +14,7 @@ hub (no official app connected through it).
 import asyncio
 import json
 
-from sofapython import AsyncX1Proxy, async_discover_hubs
+from sofabaton import AsyncX1Proxy, async_discover_hubs
 
 
 async def main() -> None:

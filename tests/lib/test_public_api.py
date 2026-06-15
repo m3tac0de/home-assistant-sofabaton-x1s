@@ -1,4 +1,4 @@
-"""Guard the curated public API of the standalone sofapython package.
+"""Guard the curated public API of the standalone sofabaton-x package.
 
 Names exported from the package root (``__all__``) are the semver-stable
 surface. This test fails when an export goes missing (breaking change —
@@ -22,7 +22,7 @@ LIB_DIR = (
 
 
 def _load_package() -> types.ModuleType:
-    name = "sofapython_public_api_test_pkg"
+    name = "sofabaton_public_api_test_pkg"
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(
@@ -35,7 +35,7 @@ def _load_package() -> types.ModuleType:
 
 
 # The frozen stable surface. Removing or renaming any of these is a
-# breaking change for sofapython consumers; additions are fine (add them
+# breaking change for sofabaton-x consumers; additions are fine (add them
 # here when you add them to lib/__init__.py).
 CURATED_EXPORTS = {
     "__version__",

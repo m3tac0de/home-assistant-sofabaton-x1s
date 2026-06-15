@@ -1,7 +1,7 @@
 """Boundary lint for the standalone library package.
 
 custom_components/sofabaton_x1s/lib is published to PyPI as the
-standalone ``sofapython`` package (see docs/sofapython_library_plan.md).
+standalone ``sofabaton-x`` package (see docs/sofabaton-x_library_plan.md).
 For the same files to work both in-tree and as an installed wheel, the
 package must stay self-contained:
 
@@ -65,7 +65,7 @@ def test_lib_package_is_self_contained() -> None:
         problems.extend(_violations_for(path))
     assert not problems, (
         "library boundary violations (lib/ must stay publishable as the "
-        "standalone sofapython package):\n" + "\n".join(problems)
+        "standalone sofabaton-x package):\n" + "\n".join(problems)
     )
 
 
@@ -75,7 +75,7 @@ def test_lib_package_imports_without_home_assistant() -> None:
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
-        "sofapython_boundary_check",
+        "sofabaton_boundary_check",
         LIB_DIR / "__init__.py",
         submodule_search_locations=[str(LIB_DIR)],
     )

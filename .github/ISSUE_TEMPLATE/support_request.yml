@@ -12,7 +12,7 @@ body:
       label: What are you using?
       options:
         - Home Assistant integration
-        - Standalone sofapython package / CLI
+        - Standalone sofabaton-x package / CLI
         - Both
         - Not sure yet
     validations:
@@ -43,8 +43,8 @@ body:
     id: versions
     attributes:
       label: Versions or install method
-      description: Optional. Include Home Assistant, integration, sofapython, Python, hub firmware, HACS, pip, or source checkout details if relevant.
-      placeholder: "Example: pip install sofapython on Python 3.12, or HACS integration on HA 2026.6"
+      description: Optional. Include Home Assistant, integration, sofabaton-x, Python, hub firmware, HACS, pip, or source checkout details if relevant.
+      placeholder: "Example: pip install sofabaton-x on Python 3.12, or HACS integration on HA 2026.6"
     validations:
       required: false
   - type: textarea

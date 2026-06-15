@@ -26,7 +26,7 @@ LIB_DIR = (
 
 
 def _load_lib() -> types.ModuleType:
-    name = "sofapython_aio_test_pkg"
+    name = "sofabaton_aio_test_pkg"
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(
@@ -79,6 +79,14 @@ class FakeProxy:
         self.transport = FakeProxy._Transport()
         self.state = FakeProxy._State(self)
         self._ready: dict[str, dict] = {"commands": {}, "macros": {}, "activities": None, "devices": None}
+        # Discovery surface the facade orchestrates: reading the banner
+        # (fetch_banner_info) yields an identity (has_banner_identity), which
+        # the facade then publishes via update_discovery_identity.
+        self.banner_fetches = 0
+        self.banner_known = False
+        self.advertised: list[tuple[dict, str]] = []
+        self.mdns_txt: dict[str, str] = {}
+        self.hub_version = "X1"
 
     # -- listener registration ------------------------------------------
     def on_hub_state_change(self, cb) -> None:
@@ -116,6 +124,23 @@ class FakeProxy:
     # -- gating / lifecycle ---------------------------------------------
     def can_issue_commands(self) -> bool:
         return self.can_issue
+
+    def has_banner_identity(self) -> bool:
+        return self.banner_known
+
+    def fetch_banner_info(self, *, force_refresh=True, timeout=2.0):
+        # Reading the banner is only possible when we own the hub.
+        self.banner_fetches += 1
+        if self.can_issue:
+            self.banner_known = True
+        return ({}, self.banner_known)
+
+    def get_banner_info(self) -> dict:
+        return {"model": "X1S", "name": "Living Room"} if self.banner_known else {}
+
+    def update_discovery_identity(self, *, mdns_txt, hub_version):
+        # Publishing the advertisement; record what identity we advertised.
+        self.advertised.append((dict(mdns_txt), hub_version))
 
     def start(self) -> None:
         self.started = True
@@ -339,6 +364,52 @@ def test_wait_until_controllable_resolves_on_state_change() -> None:
 
         asyncio.ensure_future(connect_later())
         assert await proxy.wait_until_controllable(timeout=5) is True
+
+    asyncio.run(main())
+
+
+def test_wait_until_discoverable_reads_banner_then_advertises() -> None:
+    async def main():
+        fake = FakeProxy()
+        fake.set_connected(hub=True)  # control mode, not yet advertising
+        proxy = _wrap(fake)
+        assert await proxy.wait_until_discoverable(timeout=2) is True
+        # It drove the banner read once, then published the advertisement
+        # aligned to the banner identity (model X1S -> HVER "2").
+        assert fake.banner_fetches == 1
+        assert len(fake.advertised) == 1
+        txt, hub_version = fake.advertised[0]
+        assert hub_version == "X1S"
+        assert txt["HVER"] == "2"
+        assert txt["NAME"] == "Living Room"
+
+    asyncio.run(main())
+
+
+def test_wait_until_discoverable_publishes_without_refetch_when_identity_known() -> None:
+    async def main():
+        fake = FakeProxy()
+        # App attached (observe mode): it drove the banner, so identity is
+        # already known but we can't issue commands.
+        fake.set_connected(hub=True, client=True)
+        fake.banner_known = True
+        proxy = _wrap(fake)
+        assert await proxy.wait_until_discoverable(timeout=2) is True
+        # No banner read needed; we just (re)published the advertisement.
+        assert fake.banner_fetches == 0
+        assert len(fake.advertised) == 1
+
+    asyncio.run(main())
+
+
+def test_wait_until_discoverable_false_when_hub_never_connects() -> None:
+    async def main():
+        fake = FakeProxy()
+        fake.set_connected(hub=False)
+        proxy = _wrap(fake)
+        assert await proxy.wait_until_discoverable(timeout=0.2) is False
+        assert fake.banner_fetches == 0
+        assert fake.advertised == []
 
     asyncio.run(main())
 

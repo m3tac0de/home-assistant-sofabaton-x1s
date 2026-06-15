@@ -23,7 +23,7 @@ LIB_DIR = (
 
 
 def _load_lib() -> types.ModuleType:
-    name = "sofapython_cli_test_pkg"
+    name = "sofabaton_cli_test_pkg"
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(
@@ -182,3 +182,56 @@ def test_unknown_button_reports(capsys):
         await _shell(FakeProxy()).cmd_press("101 NOPENOTABUTTON")
     asyncio.run(main())
     assert "unknown button" in capsys.readouterr().out
+
+
+def test_run_makes_proxy_discoverable_after_connect(monkeypatch):
+    """`run` must make the proxy discoverable once the hub connects.
+
+    The run path should express that intent through the facade gate
+    (``wait_until_discoverable``) rather than poking the banner/advertising
+    mechanics itself — that's what lets the official app find and attach to
+    the proxy.
+    """
+
+    calls: list[str] = []
+
+    class _Sync:
+        hub_version = "X1"
+
+        def has_banner_identity(self) -> bool:
+            return True
+
+        def can_issue_commands(self) -> bool:
+            return True
+
+    class _FakeAsyncProxy:
+        def __init__(self, **_kwargs):
+            self.sync = _Sync()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def wait_connected(self, timeout):
+            calls.append("wait_connected")
+            return True
+
+        async def wait_until_discoverable(self, timeout):
+            calls.append("wait_until_discoverable")
+            return True
+
+    class _NoopShell:
+        def __init__(self, _proxy):
+            pass
+
+        async def loop(self):
+            return None
+
+    monkeypatch.setattr(cli, "AsyncX1Proxy", _FakeAsyncProxy)
+    monkeypatch.setattr(cli, "AsyncShell", _NoopShell)
+
+    asyncio.run(cli._main_run(["--hub-ip", "1.2.3.4", "--connect-timeout", "0.1"]))
+
+    assert calls == ["wait_connected", "wait_until_discoverable"]

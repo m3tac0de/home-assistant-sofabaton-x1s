@@ -17,7 +17,7 @@ awaits the reply.
 
 import asyncio
 
-from sofapython import AsyncX1Proxy, async_discover_hubs
+from sofabaton import AsyncX1Proxy, async_discover_hubs
 
 
 async def main() -> None:

@@ -1,19 +1,19 @@
-# Release pipeline for the standalone sofapython library.
+# Release pipeline for the standalone sofabaton-x library.
 #
-# Trigger: push a tag named sofapython-vX.Y.Z (after bumping
+# Trigger: push a tag named sofabaton-x-vX.Y.Z (after bumping
 # custom_components/sofabaton_x1s/lib/version.py to X.Y.Z — the
 # verify-version step refuses mismatched tags).
 #
 # Publishing uses PyPI trusted publishing (OIDC): no tokens or secrets.
 # One-time setup on pypi.org -> Publishing -> pending publisher:
-#   project sofapython, owner m3tac0de, repo home-assistant-sofabaton-x1s,
-#   workflow sofapython-release.yml, environment pypi.
-name: sofapython release
+#   project sofabaton-x, owner m3tac0de, repo home-assistant-sofabaton-x1s,
+#   workflow sofabaton-x-release.yml, environment pypi.
+name: sofabaton-x release
 
 on:
   push:
     tags:
-      - "sofapython-v*"
+      - "sofabaton-x-v*"
 
 jobs:
   test:
@@ -44,7 +44,7 @@ jobs:
           python-version: "3.13"
       - name: Verify tag matches lib/version.py
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#sofapython-v}"
+          TAG_VERSION="${GITHUB_REF_NAME#sofabaton-x-v}"
           PKG_VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' custom_components/sofabaton_x1s/lib/version.py)"
           echo "tag=$TAG_VERSION package=$PKG_VERSION"
           test -n "$PKG_VERSION"
@@ -54,11 +54,11 @@ jobs:
       - name: Install wheel and smoke-test
         run: |
           pip install dist/*.whl
-          python -c "import sofapython; assert all(hasattr(sofapython, n) for n in sofapython.__all__); print('OK', sofapython.__version__)"
-          sofapython --help
+          python -c "import sofabaton; assert all(hasattr(sofabaton, n) for n in sofabaton.__all__); print('OK', sofabaton.__version__)"
+          sofabaton --help
       - uses: actions/upload-artifact@v6
         with:
-          name: sofapython-dist
+          name: sofabaton-x-dist
           path: dist/
 
   publish:
@@ -67,12 +67,12 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/project/sofapython/
+      url: https://pypi.org/project/sofabaton-x/
     permissions:
       id-token: write  # OIDC for PyPI trusted publishing
     steps:
       - uses: actions/download-artifact@v7
         with:
-          name: sofapython-dist
+          name: sofabaton-x-dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1

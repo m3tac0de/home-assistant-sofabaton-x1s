@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""sofapython CLI — discover hubs and drive a proxy interactively.
+"""sofabaton CLI — discover hubs and drive a proxy interactively.
 
-``sofapython discover``  one-shot mDNS scan for hubs.
-``sofapython run``       start a proxy and open an interactive shell.
+``sofabaton discover``  one-shot mDNS scan for hubs.
+``sofabaton run``       start a proxy and open an interactive shell.
 
 The shell is a thin UI over :class:`AsyncX1Proxy`: it reads input on the
 executor so the event loop keeps running, so live hub/app/activity
@@ -481,7 +481,7 @@ def _main_discover(argv: list[str]) -> None:
     """
 
     ap = argparse.ArgumentParser(
-        prog="sofapython discover",
+        prog="sofabaton discover",
         description="Discover Sofabaton hubs on the local network via mDNS",
     )
     ap.add_argument("--timeout", type=float, default=5.0, help="scan duration in seconds (default 5)")
@@ -527,7 +527,7 @@ def _main_discover(argv: list[str]) -> None:
 
 async def _main_run(argv: list[str]) -> None:
     ap = argparse.ArgumentParser(
-        prog="sofapython run",
+        prog="sofabaton run",
         description="Proxy a hub + interactive shell",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
@@ -627,19 +627,11 @@ async def _main_run(argv: list[str]) -> None:
     async with proxy:
         print("proxy started; waiting for the hub...")
         if await proxy.wait_connected(timeout=args.connect_timeout):
-            # Let the connect banner settle/correct the version before
-            # serving commands (authoritative over discovery/flag guesses).
-            loop = asyncio.get_running_loop()
-            deadline = loop.time() + 5.0
-            while not proxy.sync.has_banner_identity() and loop.time() < deadline:
-                await asyncio.sleep(0.2)
+            # Make the proxy discoverable so the official app can attach to
+            # it. This reads the hub's connect banner (authoritative for the
+            # version and name) and brings the mDNS advertisement up.
+            await proxy.wait_until_discoverable(timeout=5.0)
             version = proxy.sync.hub_version
-            # Align the app-facing advertisement with the banner-confirmed
-            # version + hub name (also what starts advertising the proxy).
-            if version:
-                synced_txt = dict(mdns_txt)
-                synced_txt["HVER"] = HVER_BY_HUB_VERSION[version]
-                await proxy.update_discovery_identity(mdns_txt=synced_txt, hub_version=version)
             mode = "control mode" if proxy.sync.can_issue_commands() else "observe mode — an app is attached"
             print(f"hub connected — version {version} ({mode})")
         else:
@@ -659,7 +651,7 @@ def main(argv: list[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
     if args[:1] in (["-h"], ["--help"]):
         print(
-            "usage: sofapython [run|discover] ...\n\n"
+            "usage: sofabaton [run|discover] ...\n\n"
             "subcommands:\n"
             "  run       proxy a hub + interactive shell (default; see 'run -h')\n"
             "  discover  scan the LAN for Sofabaton hubs (see 'discover -h')"

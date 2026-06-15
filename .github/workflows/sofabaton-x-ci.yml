@@ -1,24 +1,24 @@
-# CI for the standalone sofapython library (custom_components/sofabaton_x1s/lib,
+# CI for the standalone sofabaton-x library (custom_components/sofabaton_x1s/lib,
 # published via the root pyproject.toml). Runs on every change that can affect
 # the published package: library boundary lint, lib tests across supported
 # Python versions, full suite, and a build + install smoke test of the wheel.
-name: sofapython CI
+name: sofabaton-x CI
 
 on:
   pull_request:
     paths:
       - "custom_components/sofabaton_x1s/lib/**"
-      - "sofapython/**"
+      - "sofabaton-x/**"
       - "pyproject.toml"
       - "tests/**"
-      - ".github/workflows/sofapython-ci.yml"
+      - ".github/workflows/sofabaton-x-ci.yml"
   push:
     branches: [main, dev]
     paths:
       - "custom_components/sofabaton_x1s/lib/**"
-      - "sofapython/**"
+      - "sofabaton-x/**"
       - "pyproject.toml"
-      - ".github/workflows/sofapython-ci.yml"
+      - ".github/workflows/sofabaton-x-ci.yml"
 
 jobs:
   lib-tests:
@@ -69,17 +69,17 @@ jobs:
         run: |
           pip install dist/*.whl
           python -c "
-          import sofapython
-          missing = [n for n in sofapython.__all__ if not hasattr(sofapython, n)]
+          import sofabaton
+          missing = [n for n in sofabaton.__all__ if not hasattr(sofabaton, n)]
           assert not missing, missing
-          from sofapython import X1Proxy, AsyncX1Proxy, discover_hubs
-          print('sofapython', sofapython.__version__, 'OK:', len(sofapython.__all__), 'public names')
+          from sofabaton import X1Proxy, AsyncX1Proxy, discover_hubs
+          print('sofabaton', sofabaton.__version__, 'OK:', len(sofabaton.__all__), 'public names')
           "
       - name: Console script smoke test
         run: |
-          sofapython --help
-          sofapython discover --timeout 0.1 --json
+          sofabaton --help
+          sofabaton discover --timeout 0.1 --json
       - uses: actions/upload-artifact@v6
         with:
-          name: sofapython-dist
+          name: sofabaton-x-dist
           path: dist/

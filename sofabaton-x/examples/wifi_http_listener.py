@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a WiFi-command HTTP listener ON TOP of sofapython.
+"""Build a WiFi-command HTTP listener ON TOP of sofabaton.
 
 Executing HTTP callbacks is deliberately out of scope for the library —
 it only carries the protocol side. This sketch shows the full pattern
@@ -24,7 +24,7 @@ import asyncio
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from sofapython import AsyncX1Proxy, async_discover_hubs
+from sofabaton import AsyncX1Proxy, async_discover_hubs
 
 LISTEN_PORT = 8060
 

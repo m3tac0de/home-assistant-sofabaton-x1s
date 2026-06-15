@@ -1,7 +1,7 @@
-"""sofapython — unofficial Sofabaton X1/X1S/X2 protocol library and proxy.
+"""sofabaton — unofficial Sofabaton X1/X1S/X2 protocol library and proxy.
 
 This module is the curated public API: every name exported here (see
-``__all__``) is semver-stable for the ``sofapython`` distribution.
+``__all__``) is semver-stable for the ``sofabaton-x`` distribution.
 Submodule internals (``opcode_handlers``, frame parsing, wire schemas,
 the ``proxy_*`` mixins, ...) remain importable but are NOT a stable
 surface and may change between minor releases.
@@ -12,7 +12,7 @@ ack failures) rather than custom exception types.
 
 In-tree, this package doubles as ``custom_components.sofabaton_x1s.lib``
 for the Home Assistant integration; the wheel build remaps it to the
-top-level ``sofapython`` package (see pyproject.toml).
+top-level ``sofabaton`` package (see pyproject.toml).
 """
 
 from .version import __version__  # noqa: F401
@@ -50,7 +50,7 @@ from .hub_versions import (  # noqa: F401
 )
 
 # Per-hub logging helper. LogTag/HubLogger remain importable from
-# sofapython.hub_logging but are internal plumbing, not public API.
+# sofabaton.hub_logging but are internal plumbing, not public API.
 from .hub_logging import get_hub_logger  # noqa: F401
 
 # The proxy engine.

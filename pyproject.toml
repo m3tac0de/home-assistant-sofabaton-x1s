@@ -1,8 +1,8 @@
-# Packaging metadata for the standalone "sofapython" library.
+# Packaging metadata for the standalone "sofabaton-x" library.
 #
 # The library's source of truth is custom_components/sofabaton_x1s/lib;
 # at build time hatchling remaps that directory into the wheel as the
-# top-level package "sofapython" (see docs/sofapython_library_plan.md).
+# top-level package "sofabaton" (see docs/sofabaton-x_library_plan.md).
 # The Home Assistant integration itself is NOT part of this distribution.
 
 [build-system]
@@ -10,10 +10,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "sofapython"
+name = "sofabaton-x"
 dynamic = ["version"]
 description = "Unofficial protocol library and man-in-the-middle proxy for Sofabaton X1 / X1S / X2 universal remote hubs"
-readme = "sofapython/README.md"
+readme = "sofabaton-x/README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "m3tac0de" }]
@@ -35,29 +35,29 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofapython"
+Homepage = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x"
 Issues = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues"
 # The published package is built from the in-tree library directory
-# (remapped to top-level "sofapython" at build time), which isn't obvious
+# (remapped to top-level "sofabaton" at build time), which isn't obvious
 # from the repo layout — link it directly.
 Source = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/custom_components/sofabaton_x1s/lib"
 
 [project.scripts]
-sofapython = "sofapython.cli:main"
+sofabaton = "sofabaton.cli:main"
 
 [tool.hatch.version]
 path = "custom_components/sofabaton_x1s/lib/version.py"
 
 [tool.hatch.build.targets.wheel]
-# The in-tree package directory ships as top-level "sofapython".
+# The in-tree package directory ships as top-level "sofabaton".
 [tool.hatch.build.targets.wheel.force-include]
-"custom_components/sofabaton_x1s/lib" = "sofapython"
+"custom_components/sofabaton_x1s/lib" = "sofabaton"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "custom_components/sofabaton_x1s/lib/**",
-    "sofapython/README.md",
-    "sofapython/examples/**",
+    "sofabaton-x/README.md",
+    "sofabaton-x/examples/**",
     "LICENSE",
-    "docs/sofapython_library_plan.md",
+    "docs/sofabaton-x_library_plan.md",
 ]

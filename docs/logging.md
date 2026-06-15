@@ -2,7 +2,7 @@
 
 This guide shows how to enable detailed logging for the Home Assistant integration, capture the Home Assistant log file or diagnostics, and safely share them. Paths and menu names match Home Assistant 2025.x.
 
-These Home Assistant diagnostics do not apply to standalone `sofapython` users. If you are opening an issue for `sofapython`, include the command you ran, terminal output or traceback, package version, Python version, and a small reproduction snippet if possible.
+These Home Assistant diagnostics do not apply to standalone `sofabaton-x` users. If you are opening an issue for `sofabaton-x`, include the command you ran, terminal output or traceback, package version, Python version, and a small reproduction snippet if possible.
 
 ## Recommended way to gather Home Assistant logs
 

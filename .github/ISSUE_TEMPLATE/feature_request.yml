@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an enhancement for the Home Assistant integration, sofapython, or the docs
+description: Suggest an enhancement for the Home Assistant integration, sofabaton-x, or the docs
 labels: [enhancement]
 body:
   - type: markdown
@@ -12,7 +12,7 @@ body:
       label: What should this improve?
       options:
         - Home Assistant integration
-        - Standalone sofapython package / CLI
+        - Standalone sofabaton-x package / CLI
         - Documentation
         - Hub compatibility
         - Not sure

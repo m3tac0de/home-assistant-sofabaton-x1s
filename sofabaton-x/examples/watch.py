@@ -18,7 +18,7 @@ delivered on the event loop.
 
 import asyncio
 
-from sofapython import AsyncX1Proxy, async_discover_hubs
+from sofabaton import AsyncX1Proxy, async_discover_hubs
 
 
 async def main() -> None:
@@ -43,9 +43,12 @@ async def main() -> None:
     proxy.on_ota_update(lambda *a, **k: print("hub OTA update in progress"))
 
     async with proxy:
-        if not await proxy.wait_connected(timeout=30):
+        # Wait until the proxy is advertising itself over mDNS — that's what
+        # lets the official app discover it and point at it. Until then there
+        # is nothing to watch. (Returns False if the hub never connects.)
+        if not await proxy.wait_until_discoverable(timeout=30):
             raise SystemExit("hub never connected")
-        print(f"watching {hub.name} — use your remote; Ctrl+C to stop")
+        print(f"watching {hub.name} — point the app here and use your remote; Ctrl+C to stop")
         try:
             while True:
                 await asyncio.sleep(3600)

@@ -22,7 +22,7 @@ LIB_DIR = (
 
 
 def _load_lib() -> types.ModuleType:
-    name = "sofapython_discovery_test_pkg"
+    name = "sofabaton_discovery_test_pkg"
     if name in sys.modules:
         return sys.modules[name]
     spec = importlib.util.spec_from_file_location(

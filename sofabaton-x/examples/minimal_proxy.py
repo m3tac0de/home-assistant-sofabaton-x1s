@@ -19,7 +19,7 @@ loop's executor and callbacks are delivered on the loop. A synchronous
 
 import asyncio
 
-from sofapython import AsyncX1Proxy, async_discover_hubs
+from sofabaton import AsyncX1Proxy, async_discover_hubs
 
 
 async def main() -> None:
@@ -42,6 +42,12 @@ async def main() -> None:
     async with proxy:
         if not await proxy.wait_until_controllable(timeout=30):
             raise SystemExit("hub not controllable (not connected, or an app is attached)")
+
+        # Bring the proxy's mDNS advertisement up so the official app can
+        # keep working while pointed at it. The reads/commands below would
+        # work without this, but the proxy stays invisible to the app until
+        # it advertises.
+        await proxy.wait_until_discoverable(timeout=5)
 
         activities = await proxy.activities()
         print("activities:", {aid: info.get("name") for aid, info in activities.items()})
