@@ -35,9 +35,14 @@ async def main() -> None:
         if not await proxy.wait_until_controllable(timeout=30):
             raise SystemExit("hub not controllable (not connected, or an app is attached)")
 
-        # Whole-hub bundle (every device + activity). Pass device_ids=[...]
-        # to back up only specific devices.
+        # Whole-hub bundle: every device + activity.
         bundle = await proxy.backup_hub_bundle()
+
+        # To back up only specific devices, pass device_ids. A device-only
+        # bundle carries no activities (activities reference devices, so a
+        # partial set isn't independently restorable):
+        #   bundle = await proxy.backup_hub_bundle(device_ids=[5, 7])
+
         with open("hub_backup.json", "w", encoding="utf-8") as fh:
             json.dump(bundle, fh, indent=2)
         print(
@@ -46,9 +51,28 @@ async def main() -> None:
             f"complete={bundle['complete']}"
         )
 
-        # ... later, to restore onto a hub:
-        # with open("hub_backup.json", encoding="utf-8") as fh:
-        #     await proxy.restore_hub_bundle(json.load(fh))
+        # ... later, to restore onto a hub. The bundle is plain JSON, so
+        # restoring a subset is just pruning its 'devices'/'activities'
+        # lists before handing it back — the restore engine is unchanged:
+        #
+        #   with open("hub_backup.json", encoding="utf-8") as fh:
+        #       bundle = json.load(fh)
+        #
+        #   # Keep only the devices/activities you want (omit a filter to
+        #   # keep all of that kind). Note: an activity references devices
+        #   # by id, so keep every device its buttons/macros/favorites
+        #   # point at, or the hub will reject it.
+        #   keep_devices = {5, 7}
+        #   bundle["devices"] = [
+        #       d for d in bundle["devices"]
+        #       if d["device"]["device_id"] in keep_devices
+        #   ]
+        #
+        #   # Erase first for "replace" semantics: wipe the hub's tables,
+        #   # then lay the bundle down on a clean slate. Skip the erase to
+        #   # merge the bundle into whatever is already on the hub.
+        #   await proxy.erase_configuration()
+        #   await proxy.restore_hub_bundle(bundle)
 
 
 if __name__ == "__main__":

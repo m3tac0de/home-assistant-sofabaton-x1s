@@ -56,6 +56,104 @@ def _kv_list_to_dict(items) -> Dict[str, str]:
     return out
 
 
+def _parse_shell_args(rest: str) -> tuple[Optional[str], Dict[str, str], set[str]]:
+    """Split a REPL argument string into (path, key=value opts, bare flags).
+
+    Tokens shaped ``key=value`` land in the opts dict; a bare ``erase``
+    token becomes a flag; the first remaining token is treated as the
+    file path. This keeps ``backup``/``restore`` feeling like a CLI
+    without pulling argparse into the interactive loop.
+    """
+
+    path: Optional[str] = None
+    opts: Dict[str, str] = {}
+    flags: set[str] = set()
+    for tok in rest.split():
+        if "=" in tok:
+            key, value = tok.split("=", 1)
+            opts[key.strip().lower()] = value.strip()
+        elif tok.lower() == "erase":
+            flags.add("erase")
+        elif path is None:
+            path = tok
+    return path, opts, flags
+
+
+def _parse_id_csv(value: Optional[str]) -> list[int]:
+    """Parse ``5,7,0x0A`` into a de-duplicated list of 8-bit ids."""
+
+    ids: list[int] = []
+    for part in (value or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        ident = parse_int(part) & 0xFF
+        if ident and ident not in ids:
+            ids.append(ident)
+    return ids
+
+
+def _bundle_entity_id(entry: Dict) -> int:
+    """Read the source id off a bundle device/activity payload."""
+
+    block = entry.get("device") if isinstance(entry, dict) else None
+    return int((block or {}).get("device_id", 0)) & 0xFF
+
+
+def _activity_referenced_device_ids(activity: Dict) -> set[int]:
+    """Source device ids an activity payload points at (buttons/macros/favs).
+
+    Mirrors the library's own reference walk so the CLI can warn when a
+    selective restore would drop a device an activity still needs.
+    """
+
+    refs: set[int] = set()
+
+    def _add(raw) -> None:
+        try:
+            value = int(raw) & 0xFF
+        except (TypeError, ValueError):
+            return
+        if value and value != 0xFF:  # 0 = unset, 0xFF = delay sentinel
+            refs.add(value)
+
+    for row in activity.get("button_bindings") or []:
+        if isinstance(row, dict):
+            _add(row.get("device_id"))
+            _add(row.get("long_press_device_id"))
+    for row in activity.get("macros") or []:
+        if isinstance(row, dict):
+            for step in row.get("steps") or []:
+                if isinstance(step, dict):
+                    _add(step.get("device_id"))
+    for row in activity.get("favorite_slots") or []:
+        if isinstance(row, dict):
+            _add(row.get("device_id"))
+    return refs
+
+
+def _filter_bundle(
+    bundle: Dict, device_ids: list[int], activity_ids: list[int]
+) -> Dict:
+    """Return a copy of a hub_bundle keeping only the selected entities.
+
+    An empty id list means "keep all" for that kind, so callers can
+    subset devices, activities, or both. The bundle is plain JSON, so
+    this is just list filtering — no library round-trip needed.
+    """
+
+    filtered = dict(bundle)
+    devices = list(bundle.get("devices") or [])
+    activities = list(bundle.get("activities") or [])
+    if device_ids:
+        devices = [d for d in devices if _bundle_entity_id(d) in device_ids]
+    if activity_ids:
+        activities = [a for a in activities if _bundle_entity_id(a) in activity_ids]
+    filtered["devices"] = devices
+    filtered["activities"] = activities
+    return filtered
+
+
 async def _ainput(prompt: str) -> Optional[str]:
     """Read a line without blocking the event loop. None on EOF."""
 
@@ -252,9 +350,18 @@ class AsyncShell:
     async def cmd_backup(self, args: str) -> None:
         import json
 
-        path = args.strip() or "hub_backup.json"
-        print("backing up the whole hub (this fetches every device + activity)...")
-        bundle = await self._safe("backup", self.p.backup_hub_bundle())
+        path, opts, _flags = _parse_shell_args(args)
+        path = path or "hub_backup.json"
+        # device_ids=None backs up the whole hub; a list narrows to those
+        # devices (the library omits activities for a device-only bundle).
+        device_ids = _parse_id_csv(opts.get("devices"))
+        if device_ids:
+            print(f"backing up devices {device_ids} only (no activities)...")
+        else:
+            print("backing up the whole hub (this fetches every device + activity)...")
+        bundle = await self._safe(
+            "backup", self.p.backup_hub_bundle(device_ids=device_ids or None)
+        )
         if bundle is None:
             return
         with open(path, "w", encoding="utf-8") as fh:
@@ -268,9 +375,12 @@ class AsyncShell:
     async def cmd_restore(self, args: str) -> None:
         import json
 
-        path = args.strip()
+        path, opts, flags = _parse_shell_args(args)
         if not path:
-            print("usage: restore <file.json>")
+            print(
+                "usage: restore <file.json> [devices=ID,..] "
+                "[activities=ID,..] [erase]"
+            )
             return
         try:
             with open(path, encoding="utf-8") as fh:
@@ -278,6 +388,38 @@ class AsyncShell:
         except (OSError, ValueError) as err:
             print(f"cannot read {path}: {err}")
             return
+
+        # Selective restore is just pruning the (plain-JSON) bundle before
+        # handing it to the library; the restore engine is unchanged.
+        device_ids = _parse_id_csv(opts.get("devices"))
+        activity_ids = _parse_id_csv(opts.get("activities"))
+        if device_ids or activity_ids:
+            bundle = _filter_bundle(bundle, device_ids, activity_ids)
+            kept_devices = {_bundle_entity_id(d) for d in bundle["devices"]}
+            dangling: set[int] = set()
+            for activity in bundle["activities"]:
+                dangling |= _activity_referenced_device_ids(activity) - kept_devices
+            if dangling:
+                missing = ", ".join(str(d) for d in sorted(dangling))
+                print(
+                    f"warning: selected activities reference devices not in the "
+                    f"restore set ({missing}); the hub may reject them — add them "
+                    f"to devices=..."
+                )
+            print(
+                f"restoring subset: {len(bundle['devices'])} device(s), "
+                f"{len(bundle['activities'])} activity(ies)"
+            )
+
+        # erase first = "replace" semantics: wipe the hub's tables, then
+        # lay the (possibly subset) bundle down on a clean slate.
+        if "erase" in flags:
+            print("erasing the hub's configuration first (wipes all devices + activities)...")
+            erased = await self._safe("erase", self.p.erase_configuration())
+            if not erased:
+                print("erase failed or refused (need control mode) — restore aborted")
+                return
+
         print(f"restoring {path} onto the hub...")
         result = await self._safe("restore", self.p.restore_hub_bundle(bundle))
         if result is not None:
@@ -296,7 +438,9 @@ class AsyncShell:
         print("  start <act> | stop <act>       switch activity power")
         print("  find                           find-my-remote")
         print("  proxy on|off                   toggle pass-through")
-        print("  backup [file] | restore <file> hub config backup/restore (JSON)")
+        print("  backup [file] [devices=ID,..]  back up the hub (subset = devices only)")
+        print("  restore <file> [devices=ID,..] [activities=ID,..] [erase]")
+        print("                                 restore a bundle; optionally a subset / erase-first")
         print("  quit                           exit")
         print("\nBrowse to get (entity_id, command_id); send with: press <entity_id> <command_id>.")
         print("Reads/sends need control mode (no app attached through the proxy).")
