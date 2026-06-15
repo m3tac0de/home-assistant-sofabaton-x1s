@@ -2436,6 +2436,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return unload_ok
 
 
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Release a hub when its config entry is deleted.
+
+    Removal isn't distinguishable from a reload inside ``async_unload_entry``
+    (neither sets ``disabled_by``), so it gets its own hook. By the time this
+    runs the bridge has already been stopped and unregistered by the unload,
+    leaving the physical hub looping on the still-open shared listener — a
+    bounce refuses it at the SYN level so it gives up and becomes reachable by
+    the Sofabaton app. The bounce is a no-op if no other hubs keep the shared
+    listener alive (last hub removed → port already closed).
+    """
+
+    await hass.async_add_executor_job(bounce_hub_listener)
+
+
 
 def _raise_if_sync_in_progress(hub: SofabatonHub, operation: str) -> None:
     if bool(getattr(hub, "is_sync_in_progress", False)):

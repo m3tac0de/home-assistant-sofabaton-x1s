@@ -12,6 +12,7 @@ from custom_components.sofabaton_x1s.__init__ import (
     _get_lovelace_resource_mode,
     _inspect_frontend_dir,
     _reconcile_version_metadata,
+    async_remove_entry,
     async_setup_entry,
     async_unload_entry,
     async_setup,
@@ -689,6 +690,20 @@ def test_async_unload_entry_unregisters_frontend_resources_when_last_hub_is_remo
     assert asyncio.run(async_unload_entry(hass, entry)) is True
     assert resources.deleted == [1]
     assert hass.data["sofabaton_x1s"]["storage_resources_registered"] is False
+
+
+def test_async_remove_entry_bounces_shared_listener(monkeypatch) -> None:
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.__init__.bounce_hub_listener",
+        lambda *args, **kwargs: calls.append(True),
+    )
+    hass = _FakeHass()
+    entry = SimpleNamespace(entry_id="entry-1")
+
+    asyncio.run(async_remove_entry(hass, entry))
+
+    assert calls == [True]
 
 
 async def _async_noop(*args, **kwargs):
