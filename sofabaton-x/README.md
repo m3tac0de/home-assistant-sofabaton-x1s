@@ -106,6 +106,11 @@ directly (cached if available, else fetched):
 | `macros(activity_id)` | `[{command_id, label}]` |
 | `favorites(activity_id)` | `[{device_id, command_id, label}]` |
 | `buttons(entity_id)` | `[{button_code, name, device_id, command_id}]` |
+| `current_activity()` | `{activity_id, name}` or `None` when idle |
+
+`current_activity()` is the exception to the table above — it reads the
+hub's **live** running-activity state (no fetch) and works in observe mode
+too; subscribe to changes with `on_activity_change(cb)`.
 
 Control: `send(entity_id, command_id)` (alias `press`),
 `start_activity(act)`, `stop_activity(act)`, `find_remote()`.
@@ -116,9 +121,9 @@ The proxy sits transparently between the hub and the official app, which
 gives it two distinct modes:
 
 - **Observe** — the app is connected through the proxy. You watch
-  activity changes, connects and OTA events in real time, but the app
-  owns the hub, so you can't issue commands. Gate on
-  `await proxy.wait_connected()`.
+  activity changes (`current_activity()` / `on_activity_change`), connects
+  and OTA events in real time, but the app owns the hub, so you can't issue
+  commands. Gate on `await proxy.wait_connected()`.
 - **Control** — no app attached; the proxy owns the hub, so reads fetch
   fresh and commands/backup work. Gate on
   `await proxy.wait_until_controllable()`.
@@ -128,18 +133,14 @@ afterwards, so await the matching readiness primitive before reading or
 acting (otherwise a read raises with the reason — hub not connected, or
 an app holds it).
 
-A synchronous core (`X1Proxy`, `discover_hubs`) is also available for
-scripts and REPL use; the async class is a facade over it (its raw
-`get_*` snapshot getters are reachable via `proxy.sync`).
-
 A CLI ships as a console script:
 
 ```
 sofabaton discover                   # scan the LAN for hubs
 sofabaton run --hub-ip 192.168.1.50  # proxy + interactive shell
-x1> status
-x1> activities
-x1> send 101 POWER_ON
+x> status
+x> activities
+x> send 101 POWER_ON
 ```
 
 Runnable examples — discovery, watching a live session (observe mode),

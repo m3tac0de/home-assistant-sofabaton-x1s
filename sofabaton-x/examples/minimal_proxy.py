@@ -13,8 +13,7 @@ instead *watch* a live session while the app is connected, see
 ``watch.py``.
 
 Uses the asyncio facade (``AsyncXProxy``): blocking calls run in the
-loop's executor and callbacks are delivered on the loop. A synchronous
-``X1Proxy`` with the same surface is also available.
+loop's executor and callbacks are delivered on the loop.
 """
 
 import asyncio

@@ -172,7 +172,7 @@ async def _ainput(prompt: str) -> Optional[str]:
 class AsyncShell:
     """A small REPL over :class:`AsyncXProxy`."""
 
-    prompt = "x1> "
+    prompt = "x> "
 
     def __init__(self, proxy: AsyncXProxy) -> None:
         self.p = proxy
@@ -227,6 +227,9 @@ class AsyncShell:
         print(f"app connected   : {p.transport.is_client_connected}")
         print(f"controllable    : {p.can_issue_commands()}")
         print(f"hub version     : {p.hub_version}")
+        cur = await self.p.current_activity()
+        running = f"{cur['name'] or '?'} (id {cur['activity_id']})" if cur else "(none)"
+        print(f"running activity: {running}")
         print(f"activities      : {len(acts)} cached")
         print(f"devices         : {len(devs)} cached")
 

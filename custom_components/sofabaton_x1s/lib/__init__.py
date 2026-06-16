@@ -18,9 +18,11 @@ top-level ``sofabaton`` package (see pyproject.toml).
 from .version import __version__  # noqa: F401
 
 # Protocol constants (ButtonName, BUTTONNAME_BY_CODE, DEVICE_CLASS_*,
-# opcode helpers, ...). Star re-export predates the curated API and is
-# kept for backward compatibility; protocol_const defines __all__.
-from . import protocol_const as _protocol_const
+# opcode helpers, ...). The star re-export keeps every protocol constant
+# importable from the package root for backward compatibility, but only
+# the genuinely user-facing names (ButtonName, BUTTONNAME_BY_CODE) are
+# advertised in __all__ below — the rest stay importable without
+# cluttering the public surface / autocomplete.
 from .protocol_const import *  # noqa: F401,F403
 
 # Hub-variant classification and shared defaults.
@@ -52,9 +54,6 @@ from .hub_versions import (  # noqa: F401
 # Per-hub logging helper. LogTag/HubLogger remain importable from
 # sofabaton.hub_logging but are internal plumbing, not public API.
 from .hub_logging import get_hub_logger  # noqa: F401
-
-# The proxy engine.
-from .x1_proxy import X1Proxy  # noqa: F401
 
 # LAN discovery of physical hubs.
 from .discovery import (  # noqa: F401
@@ -107,8 +106,10 @@ _CURATED = [
     "mdns_service_type_for_props",
     # hub_logging
     "get_hub_logger",
-    # proxy
-    "X1Proxy",
+    # protocol constants (curated public subset; the rest stay importable
+    # from the root via the star re-export but are not advertised here)
+    "ButtonName",
+    "BUTTONNAME_BY_CODE",
     # discovery
     "DEFAULT_DISCOVERY_TIMEOUT",
     "DiscoveredHub",
@@ -133,4 +134,4 @@ _CURATED = [
     "async_discover_hubs",
 ]
 
-__all__ = list(getattr(_protocol_const, "__all__", [])) + _CURATED
+__all__ = list(_CURATED)

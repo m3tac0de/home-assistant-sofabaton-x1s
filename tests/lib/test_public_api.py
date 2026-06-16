@@ -64,8 +64,9 @@ CURATED_EXPORTS = {
     "mdns_service_type_for_props",
     # hub_logging
     "get_hub_logger",
-    # proxy
-    "X1Proxy",
+    # protocol constants (curated public subset)
+    "ButtonName",
+    "BUTTONNAME_BY_CODE",
     # discovery
     "DEFAULT_DISCOVERY_TIMEOUT",
     "DiscoveredHub",
@@ -90,11 +91,12 @@ CURATED_EXPORTS = {
     "async_discover_hubs",
 }
 
-# Long-standing protocol_const names that consumers (including the HA
-# integration) rely on via the package root.
-PROTOCOL_CONST_SPOT_CHECKS = {
-    "ButtonName",
-    "BUTTONNAME_BY_CODE",
+# Protocol_const names that are NOT part of the advertised public surface
+# (not in __all__) but must stay importable from the package root via the
+# star re-export, so older code doing ``from sofabaton import <const>``
+# keeps working. The HA integration imports these from the submodule
+# (``from .lib.protocol_const import ...``), not the root.
+PROTOCOL_CONST_BACK_COMPAT = {
     "DEVICE_CLASS_IR",
     "DEVICE_CLASS_BLUETOOTH",
     "OPNAMES",
@@ -111,11 +113,22 @@ def test_curated_exports_present_and_resolvable() -> None:
     assert not unresolvable, f"__all__ names that do not resolve: {unresolvable}"
 
 
-def test_protocol_const_star_export_still_works() -> None:
+def test_protocol_const_back_compat_importable_but_not_advertised() -> None:
     pkg = _load_package()
     exported = set(pkg.__all__)
-    missing = PROTOCOL_CONST_SPOT_CHECKS - exported
-    assert not missing, f"protocol_const names missing from __all__: {sorted(missing)}"
+    # Still importable from the root (star re-export keeps them in the namespace)...
+    unresolvable = [n for n in PROTOCOL_CONST_BACK_COMPAT if not hasattr(pkg, n)]
+    assert not unresolvable, f"back-compat names no longer importable: {unresolvable}"
+    # ...but deliberately kept out of the advertised public surface.
+    leaked = PROTOCOL_CONST_BACK_COMPAT & exported
+    assert not leaked, f"internal protocol_const names leaked into __all__: {sorted(leaked)}"
+
+
+def test_public_surface_is_small_and_curated() -> None:
+    # Guards the __all__ cleanup: the advertised surface is the curated
+    # list only, not the full ~128-name protocol_const star export.
+    pkg = _load_package()
+    assert set(pkg.__all__) == CURATED_EXPORTS
 
 
 def test_version_matches_version_module() -> None:

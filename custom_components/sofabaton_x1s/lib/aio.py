@@ -535,6 +535,28 @@ class AsyncXProxy:
             for fav in rich
         ]
 
+    async def current_activity(self) -> dict | None:
+        """Return the activity currently running on the hub, or ``None`` when idle.
+
+        ``{"activity_id": int, "name": str | None}`` — ``activity_id``
+        matches the keys of :meth:`activities`. Tracked live from the hub's
+        activity-state frames, so it needs no fetch and is available in both
+        observe and control mode; transitions also fire
+        :meth:`on_activity_change`.
+        """
+
+        def _read() -> dict | None:
+            act = self._proxy.state.current_activity
+            if act is None:
+                return None
+            act &= 0xFF
+            return {
+                "activity_id": act,
+                "name": self._proxy.state.get_activity_name(act),
+            }
+
+        return await self.run(_read)
+
     # -- control surface -----------------------------------------------------
 
     async def send(self, entity_id: int, command_id: int) -> bool:

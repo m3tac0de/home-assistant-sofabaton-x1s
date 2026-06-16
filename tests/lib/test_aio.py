@@ -60,9 +60,16 @@ class FakeProxy:
         def __init__(self, proxy):
             self._p = proxy
             self.button_details: dict[int, dict] = {}
+            self.current_activity: int | None = None
+            self.activity_names: dict[int, str] = {}
 
         def get_activity_favorite_labels(self, act_lo):
             return list(self._p.favorite_labels.get(act_lo, []))
+
+        def get_activity_name(self, act_id):
+            if act_id is None:
+                return None
+            return self.activity_names.get(act_id & 0xFF)
 
     def __init__(self) -> None:
         self._listeners: dict[str, list] = {}
@@ -245,6 +252,7 @@ def test_human_surface_delegates_to_real_engine_methods() -> None:
         "buttons",
         "macros",
         "favorites",
+        "current_activity",
         "press",
         "start_activity",
         "stop_activity",
@@ -282,6 +290,24 @@ def test_activities_devices_read_cached_via_force_refresh() -> None:
         assert await proxy.activities() == {1: {"name": "Watch TV"}}
         assert await proxy.devices() == {5: {"name": "TV"}}
         assert fake.fetch_calls == []  # cached: no refresh fetch kicked
+
+    asyncio.run(main())
+
+
+def test_current_activity_reports_live_state_without_fetch() -> None:
+    # current_activity reads the live engine state (no catalog fetch) and
+    # is available even in observe mode (app holds the hub).
+    async def main():
+        fake = FakeProxy()
+        fake.set_connected(hub=True, client=True)  # observe mode
+        fake.state.activity_names = {1: "Watch TV"}
+        proxy = _wrap(fake)
+
+        assert await proxy.current_activity() is None  # idle
+
+        fake.state.current_activity = 1
+        assert await proxy.current_activity() == {"activity_id": 1, "name": "Watch TV"}
+        assert fake.fetch_calls == []  # never triggers a hub fetch
 
     asyncio.run(main())
 

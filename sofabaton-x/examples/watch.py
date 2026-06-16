@@ -48,6 +48,10 @@ async def main() -> None:
         # is nothing to watch. (Returns False if the hub never connects.)
         if not await proxy.wait_until_discoverable(timeout=30):
             raise SystemExit("hub never connected")
+        # Read what's already running right now (live state, no fetch —
+        # works even though the app owns the hub in observe mode).
+        running = await proxy.current_activity()
+        print(f"currently running: {running['name'] if running else '(nothing)'}")
         print(f"watching {hub.name} — point the app here and use your remote; Ctrl+C to stop")
         try:
             while True:

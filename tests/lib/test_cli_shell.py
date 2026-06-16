@@ -48,8 +48,12 @@ class _Transport:
 
 class _State:
     button_details: dict = {}
+    current_activity: int | None = None
+    activity_names: dict = {1: "Watch TV"}
     def get_activity_favorite_labels(self, act_lo):
         return []
+    def get_activity_name(self, act_id):
+        return self.activity_names.get(act_id & 0xFF) if act_id is not None else None
 
 
 class FakeProxy:
