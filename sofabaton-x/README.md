@@ -143,10 +143,11 @@ x> activities
 x> send 101 POWER_ON
 ```
 
-Runnable examples — discovery, watching a live session (observe mode),
-taking control of a hub, reading per-entity detail
-(commands/macros/favorites), schema-versioned backup/restore, and
-building an HTTP callback listener on top of the library — live in
+Runnable examples — discovery, watching a live session, taking control
+of a hub, reading per-entity detail (commands/macros/favorites),
+schema-versioned backup/restore, provisioning a WiFi-IP device from
+scratch via restore, and building an HTTP callback listener on top of the
+library — live in
 [`sofabaton-x/examples/`](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x/examples).
 
 ## Protocol & networking docs

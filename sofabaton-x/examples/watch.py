@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Watch a live session: react to what the user does on their remote.
+"""Watch a live session: a real-time feed of hub events.
 
-This is the proxy's signature trick. Point the official Sofabaton app at
-this proxy (it's advertised over mDNS like a real hub), then use your
-remote normally — every activity switch, app connect/disconnect and OTA
-event is surfaced here in real time. You observe a *live* session
-without the app noticing anything changed.
+The proxy sits between the hub and the official Sofabaton app, so it sees
+the hub's events whether or not the app is connected through it. That's
+the point of this demo: every activity switch, OTA update and hub up/down
+is surfaced here regardless of the app. Attach the app and use your
+remote, or leave the app closed entirely — either way the events show up.
+(``on_client_state_change`` is the one signal that depends on the app: it
+fires when the app connects to or disconnects from the proxy.)
 
-This is *observe mode*: while the app is connected it owns the hub, so
+When the app *is* connected it owns the hub, so this is *observe mode*:
 you can watch but not issue commands (reads come from cache, and
-``press``/``start_activity`` would be refused). To take control instead,
-disconnect the app and see ``minimal_proxy.py``.
+``press``/``start_activity`` would be refused). With no app attached the
+proxy owns the hub and you can both watch and control it — see
+``minimal_proxy.py``.
 
 Callbacks may be plain functions or coroutines; either way they are
 delivered on the event loop.
@@ -43,16 +46,18 @@ async def main() -> None:
     proxy.on_ota_update(lambda *a, **k: print("hub OTA update in progress"))
 
     async with proxy:
-        # Wait until the proxy is advertising itself over mDNS — that's what
-        # lets the official app discover it and point at it. Until then there
-        # is nothing to watch. (Returns False if the hub never connects.)
+        # Wait until the proxy is up and the hub has connected to it — until
+        # the hub is attached there are no events to surface. (This is also
+        # when the proxy starts advertising over mDNS so the official app can
+        # find it, but that's optional. Returns False if the hub never
+        # connects.)
         if not await proxy.wait_until_discoverable(timeout=30):
             raise SystemExit("hub never connected")
         # Read what's already running right now (live state, no fetch —
-        # works even though the app owns the hub in observe mode).
+        # works whether or not an app is attached).
         running = await proxy.current_activity()
         print(f"currently running: {running['name'] if running else '(nothing)'}")
-        print(f"watching {hub.name} — point the app here and use your remote; Ctrl+C to stop")
+        print(f"watching {hub.name} — events show up with or without the app connected; Ctrl+C to stop")
         try:
             while True:
                 await asyncio.sleep(3600)
