@@ -59,11 +59,13 @@ def _marshal_callback(loop: asyncio.AbstractEventLoop, callback: Callable) -> Ca
 
 
 class AsyncXProxy:
-    """Asyncio wrapper around :class:`X1Proxy`.
+    """Asyncio proxy for a Sofabaton X1/X1S/X2 hub — the library's entry point.
 
-    Construct with the same keyword arguments as ``X1Proxy`` (must happen
-    inside a running event loop, or pass ``loop=``), or wrap an existing
-    engine with :meth:`wrap`.
+    Construct it with the hub's connection details (the ``hub_ip=`` /
+    ``mdns_instance=`` / ``mdns_txt=`` / ``hub_version=`` keywords shown in
+    the README quickstart). Construction must happen inside a running event
+    loop (or pass ``loop=``). Blocking work runs in the loop's executor and
+    listener callbacks are marshaled back onto the loop.
 
     The common surface is a small set of explicit, human-readable
     coroutines:

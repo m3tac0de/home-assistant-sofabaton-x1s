@@ -19,7 +19,7 @@ license = { text = "MIT" }
 authors = [{ name = "m3tac0de" }]
 keywords = ["sofabaton", "x1", "x1s", "x2", "universal-remote", "proxy", "mdns", "home-automation"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
