@@ -197,6 +197,21 @@ export interface BackupBundleDevicePayload {
   complete?: boolean;
   device?: BackupBundleDeviceBlock | null;
   commands?: BackupBundleCommandRow[] | null;
+  button_bindings?: BackupBundleButtonBinding[] | null;
+}
+
+// A physical-button binding. At the device level a binding plays one of
+// the device's own commands (no `device_id`; long-press is same-device).
+// At the activity level it targets a command on some source device, so it
+// carries `device_id` (and `long_press_device_id` for the long press).
+export interface BackupBundleButtonBinding {
+  button_id?: number | null;
+  button_name?: string | null;
+  device_id?: number | null;
+  command_id?: number | null;
+  command_name?: string | null;
+  long_press_device_id?: number | null;
+  long_press_command_id?: number | null;
 }
 
 export interface BackupBundleCommandRow {
@@ -233,6 +248,7 @@ export interface BackupBundleActivityPayload {
   referenced_source_device_ids?: number[] | null;
   favorite_slots?: BackupBundleFavoriteSlot[] | null;
   macros?: BackupBundleMacroRow[] | null;
+  button_bindings?: BackupBundleButtonBinding[] | null;
 }
 
 export interface BackupBundlePayload {

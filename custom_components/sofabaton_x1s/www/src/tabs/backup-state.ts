@@ -1,10 +1,12 @@
 import type {
   BackupBundleActivityPayload,
+  BackupBundleButtonBinding,
   BackupBundleCommandRow,
   BackupBundleDeviceBlock,
   BackupBundleDevicePayload,
   BackupBundleFavoriteSlot,
   BackupBundleMacroRow,
+  BackupBundleMacroStep,
   BackupBundlePayload,
   CacheHubState,
 } from "../shared/ha-context";
@@ -759,6 +761,9 @@ export function reorderBundleActivityQuickAccess(
   for (const row of activity.favorite_slots ?? []) {
     favoritesByButtonId.set(Number(row?.button_id || 0), row);
   }
+  const orderedMacroButtonIds = new Set(
+    orderedItems.filter((item) => item.kind === "macro").map((item) => Number(item.buttonId)),
+  );
   const macroRows: BackupBundleMacroRow[] = [];
   const favoriteRows: BackupBundleFavoriteSlot[] = [];
   orderedItems.forEach((item, index) => {
@@ -771,11 +776,922 @@ export function reorderBundleActivityQuickAccess(
     const row = favoritesByButtonId.get(Number(item.buttonId));
     if (row) favoriteRows.push({ ...row, button_id: nextButtonId });
   });
+  // Re-append macros the caller did not reorder. Internal power macros
+  // (button 198 / 199) are filtered out of the editable quick-access list
+  // and so never appear in `orderedItems`; rebuilding `macros` from the
+  // ordered editable rows alone would silently drop them and lose them on
+  // a Replace restore. Their reserved button_ids don't collide with the
+  // 1..N editable range, so they pass through untouched, in original order.
+  for (const row of activity.macros ?? []) {
+    if (!orderedMacroButtonIds.has(Number(row?.button_id || 0))) {
+      macroRows.push(row);
+    }
+  }
   return updateActivity(bundle, normalizedActivityId, (current) => ({
     ...current,
     macros: macroRows,
     favorite_slots: favoriteRows,
   }));
+}
+
+/**
+ * Identifies a single entity the Edit view can delete from a loaded
+ * bundle. Mirrors the shapes already used by the rename dialog so the
+ * view can pass a target straight through to {@link applyBundleDelete}
+ * and {@link bundleDeleteImpact}.
+ */
+export type BackupDeleteTarget =
+  | { kind: "activity"; activityId: number }
+  | { kind: "device"; deviceId: number }
+  | { kind: "command"; deviceId: number; commandId: number }
+  | { kind: "favorite"; activityId: number; buttonId: number }
+  | { kind: "macro"; activityId: number; buttonId: number }
+  | { kind: "activity_binding"; activityId: number; buttonId: number }
+  | { kind: "device_binding"; deviceId: number; buttonId: number };
+
+/**
+ * Cascade impact of a delete, surfaced in the confirm dialog so the
+ * user is never surprised by references that disappear elsewhere in the
+ * bundle. All counts are zero for targets that have no downward
+ * references (activities, and individual favorites / macros).
+ */
+export interface BackupDeleteImpact {
+  /** favorite_slots that will be removed as a side effect. */
+  favorites: number;
+  /** macro steps that will be removed as a side effect. */
+  macroSteps: number;
+  /** activities whose referenced_source_device_ids point at the device. */
+  activities: number;
+  /** button bindings removed, or whose long-press is cleared, as a side effect. */
+  bindings: number;
+}
+
+function stepMatchesDevice(step: BackupBundleMacroStep, deviceId: number): boolean {
+  return Number(step?.device_id || 0) === deviceId;
+}
+
+function stepMatchesCommand(step: BackupBundleMacroStep, deviceId: number, commandId: number): boolean {
+  return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
+}
+
+// A pure wait/delay macro step uses 0xFF (255) as a sentinel in its
+// device_id / command_id slots (mirrors `is_delay_step` in
+// backup_export.py). A delay row trails the command step it belongs to.
+const MACRO_DELAY_SENTINEL = 255;
+
+function isMacroDelayStep(step: BackupBundleMacroStep): boolean {
+  return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL
+    || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
+}
+
+/**
+ * Filter macro steps, dropping every step the predicate matches AND any
+ * delay/wait row(s) immediately following it. A trailing delay belongs
+ * to the command it sits behind, so removing that command must take its
+ * wait along rather than leaving an orphaned pause at the front of the
+ * next action. Delays that follow a surviving step are left untouched.
+ */
+function filterMacroSteps(
+  steps: BackupBundleMacroStep[] | null | undefined,
+  shouldRemove: (step: BackupBundleMacroStep) => boolean,
+): BackupBundleMacroStep[] {
+  const list = steps ?? [];
+  const result: BackupBundleMacroStep[] = [];
+  for (let index = 0; index < list.length; index += 1) {
+    if (shouldRemove(list[index])) {
+      while (index + 1 < list.length && isMacroDelayStep(list[index + 1])) {
+        index += 1;
+      }
+      continue;
+    }
+    result.push(list[index]);
+  }
+  return result;
+}
+
+/** Count of steps a `shouldRemove` predicate strips, including consumed delays. */
+function countRemovedMacroSteps(
+  steps: BackupBundleMacroStep[] | null | undefined,
+  shouldRemove: (step: BackupBundleMacroStep) => boolean,
+): number {
+  const original = (steps ?? []).length;
+  return original - filterMacroSteps(steps, shouldRemove).length;
+}
+
+function clearBindingLongPress(binding: BackupBundleButtonBinding): BackupBundleButtonBinding {
+  const { long_press_device_id, long_press_command_id, ...rest } = binding;
+  return rest;
+}
+
+/**
+ * Resolve how an activity button binding reacts to a target device being
+ * deleted: drop it entirely when its short press targets that device, or
+ * just clear the long press when only that references the device. Returns
+ * the same reference when untouched (so callers can cheaply detect change).
+ */
+function cascadeBindingForDeletedDevice(
+  binding: BackupBundleButtonBinding,
+  deviceId: number,
+): BackupBundleButtonBinding | null {
+  if (Number(binding?.device_id || 0) === deviceId) return null;
+  if (Number(binding?.long_press_device_id || 0) === deviceId) return clearBindingLongPress(binding);
+  return binding;
+}
+
+/**
+ * How a button binding reacts to a command being deleted. `deviceScoped`
+ * is true for device-level bindings (command refers to the owning device,
+ * so the `deviceId` match is implicit); false for activity-level bindings
+ * (which must match both the target device and the command).
+ */
+function cascadeBindingForDeletedCommand(
+  binding: BackupBundleButtonBinding,
+  deviceId: number,
+  commandId: number,
+  deviceScoped: boolean,
+): BackupBundleButtonBinding | null {
+  const shortMatches = deviceScoped
+    ? Number(binding?.command_id || 0) === commandId
+    : Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId;
+  if (shortMatches) return null;
+  const longMatches = deviceScoped
+    ? Number(binding?.long_press_command_id || 0) === commandId
+    : Number(binding?.long_press_device_id || 0) === deviceId
+      && Number(binding?.long_press_command_id || 0) === commandId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
+
+/** Apply a binding-cascade transform to a list, dropping the nulls. */
+function applyBindingCascade(
+  bindings: BackupBundleButtonBinding[] | null | undefined,
+  transform: (binding: BackupBundleButtonBinding) => BackupBundleButtonBinding | null,
+): BackupBundleButtonBinding[] {
+  const result: BackupBundleButtonBinding[] = [];
+  for (const binding of bindings ?? []) {
+    const next = transform(binding);
+    if (next !== null) result.push(next);
+  }
+  return result;
+}
+
+/** Count bindings a cascade transform drops (→ null) or modifies (→ new ref). */
+function countAffectedBindings(
+  bindings: BackupBundleButtonBinding[] | null | undefined,
+  transform: (binding: BackupBundleButtonBinding) => BackupBundleButtonBinding | null,
+): number {
+  let count = 0;
+  for (const binding of bindings ?? []) {
+    const next = transform(binding);
+    if (next === null || next !== binding) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Count the references a delete will clear elsewhere in the bundle.
+ * Pure read — does not mutate. Drives the confirm dialog's impact list.
+ */
+export function bundleDeleteImpact(
+  bundle: BackupBundlePayload | null,
+  target: BackupDeleteTarget,
+): BackupDeleteImpact {
+  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  if (!bundle) return empty;
+  if (target.kind === "device") {
+    const deviceId = Number(target.deviceId);
+    let favorites = 0;
+    let macroSteps = 0;
+    let activities = 0;
+    let bindings = 0;
+    for (const activity of bundle.activities ?? []) {
+      if ((activity?.referenced_source_device_ids ?? []).some((id) => Number(id) === deviceId)) {
+        activities += 1;
+      }
+      for (const slot of activity?.favorite_slots ?? []) {
+        if (Number(slot?.device_id || 0) === deviceId) favorites += 1;
+      }
+      for (const macro of activity?.macros ?? []) {
+        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId));
+      }
+      bindings += countAffectedBindings(
+        activity?.button_bindings,
+        (binding) => cascadeBindingForDeletedDevice(binding, deviceId),
+      );
+    }
+    return { favorites, macroSteps, activities, bindings };
+  }
+  if (target.kind === "command") {
+    const deviceId = Number(target.deviceId);
+    const commandId = Number(target.commandId);
+    let favorites = 0;
+    let macroSteps = 0;
+    let bindings = 0;
+    for (const activity of bundle.activities ?? []) {
+      for (const slot of activity?.favorite_slots ?? []) {
+        if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) {
+          favorites += 1;
+        }
+      }
+      for (const macro of activity?.macros ?? []) {
+        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, deviceId, commandId));
+      }
+      bindings += countAffectedBindings(
+        activity?.button_bindings,
+        (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, false),
+      );
+    }
+    // Device-level bindings on the owning device that play this command.
+    const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === deviceId);
+    bindings += countAffectedBindings(
+      device?.button_bindings,
+      (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true),
+    );
+    return { favorites, macroSteps, activities: 0, bindings };
+  }
+  return empty;
+}
+
+/** True when at least one reference will be cleared as a side effect. */
+export function backupDeleteHasCascade(impact: BackupDeleteImpact): boolean {
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+}
+
+/** Remove a top-level Activity. Activities are referenced by nothing else. */
+export function deleteBundleActivity(bundle: BackupBundlePayload, activityId: number): BackupBundlePayload {
+  const id = Number(activityId);
+  return {
+    ...bundle,
+    activities: (bundle.activities ?? []).filter((activity) => Number(activity?.device?.device_id || 0) !== id),
+  };
+}
+
+function stripDeviceFromActivity(
+  activity: BackupBundleActivityPayload,
+  deviceId: number,
+): BackupBundleActivityPayload {
+  return {
+    ...activity,
+    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
+      (id) => Number(id) !== deviceId,
+    ),
+    favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.device_id || 0) !== deviceId),
+    macros: (activity.macros ?? []).map((macro) => ({
+      ...macro,
+      steps: filterMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId)),
+    })),
+    button_bindings: applyBindingCascade(
+      activity.button_bindings,
+      (binding) => cascadeBindingForDeletedDevice(binding, deviceId),
+    ),
+  };
+}
+
+/**
+ * Remove a top-level Device and clear every reference to it: the
+ * `referenced_source_device_ids` entry on each Activity, any favorite
+ * slots that target it, and any macro steps that play one of its
+ * commands. Removed rows leave their `button_id`s as-is — gaps are
+ * harmless and self-heal the next time the user reorders.
+ */
+export function deleteBundleDevice(bundle: BackupBundlePayload, deviceId: number): BackupBundlePayload {
+  const id = Number(deviceId);
+  const next: BackupBundlePayload = {
+    ...bundle,
+    devices: (bundle.devices ?? []).filter((device) => Number(device?.device?.device_id || 0) !== id),
+    activities: (bundle.activities ?? []).map((activity) => stripDeviceFromActivity(activity, id)),
+  };
+  return reconcileBundlePowerMacros(next);
+}
+
+/**
+ * Remove a single command from a Device and clear the favorites / macro
+ * steps that referenced exactly that command. Other commands on the
+ * device, and references to them, are untouched.
+ */
+export function deleteBundleDeviceCommand(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+): BackupBundlePayload {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  const next: BackupBundlePayload = {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).filter((command) => Number(command?.command_id || 0) !== cId),
+        button_bindings: applyBindingCascade(
+          device.button_bindings,
+          (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true),
+        ),
+      };
+    }),
+    activities: (bundle.activities ?? []).map((activity) => ({
+      ...activity,
+      favorite_slots: (activity.favorite_slots ?? []).filter(
+        (slot) => !(Number(slot?.device_id || 0) === dId && Number(slot?.command_id || 0) === cId),
+      ),
+      macros: (activity.macros ?? []).map((macro) => ({
+        ...macro,
+        steps: filterMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, dId, cId)),
+      })),
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, false),
+      ),
+    })),
+  };
+  return reconcileBundlePowerMacros(next);
+}
+
+/**
+ * Remove a single quick-access entry (a favorite slot or a whole macro)
+ * from an Activity by its `button_id`. Surgical by design: it touches
+ * only the targeted row, so internal power macros (button 198 / 199,
+ * filtered out of the editable list) are preserved. We deliberately do
+ * NOT renumber the survivors — the resulting gap is harmless and the
+ * existing reorder path renumbers contiguously on the next drag.
+ */
+export function deleteBundleActivityQuickAccess(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  kind: "favorite" | "macro",
+  buttonId: number,
+): BackupBundlePayload {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => {
+    if (kind === "favorite") {
+      return {
+        ...activity,
+        favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.button_id || 0) !== bId),
+      };
+    }
+    return {
+      ...activity,
+      macros: (activity.macros ?? []).filter((macro) => Number(macro?.button_id || 0) !== bId),
+    };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+
+/**
+ * Next free quick-access `button_id` for an Activity: one past the
+ * highest editable slot in use. Internal power macros (198 / 199) live
+ * in their own reserved range and never count toward the editable max.
+ */
+function nextQuickAccessButtonId(activity: BackupBundleActivityPayload): number {
+  let max = 0;
+  const consider = (value: number) => {
+    if (value > 0 && !INTERNAL_POWER_MACRO_BUTTON_IDS.has(value) && value > max) max = value;
+  };
+  for (const slot of activity.favorite_slots ?? []) consider(Number(slot?.button_id || 0));
+  for (const macro of activity.macros ?? []) consider(Number(macro?.button_id || 0));
+  return max + 1;
+}
+
+/**
+ * Append a favorite that plays `commandId` on `deviceId` to an
+ * Activity, at the next free quick-access slot. No-op when the device
+ * or command id is missing. `name` is the favorite's display label;
+ * blank falls back to the command name at render time.
+ */
+export function addBundleActivityFavorite(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  deviceId: number,
+  commandId: number,
+  name: string,
+): BackupBundlePayload {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  if (dId <= 0 || cId <= 0) return bundle;
+  const trimmed = String(name ?? "").trim();
+  const next = updateActivity(bundle, activityId, (activity) => {
+    const slot: BackupBundleFavoriteSlot = {
+      button_id: nextQuickAccessButtonId(activity),
+      device_id: dId,
+      command_id: cId,
+      name: trimmed,
+    };
+    return { ...activity, favorite_slots: [...(activity.favorite_slots ?? []), slot] };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+
+/** Dispatch a {@link BackupDeleteTarget} to the matching delete helper. */
+export function applyBundleDelete(
+  bundle: BackupBundlePayload,
+  target: BackupDeleteTarget,
+): BackupBundlePayload {
+  switch (target.kind) {
+    case "activity":
+      return deleteBundleActivity(bundle, target.activityId);
+    case "device":
+      return deleteBundleDevice(bundle, target.deviceId);
+    case "command":
+      return deleteBundleDeviceCommand(bundle, target.deviceId, target.commandId);
+    case "favorite":
+      return deleteBundleActivityQuickAccess(bundle, target.activityId, "favorite", target.buttonId);
+    case "macro":
+      return deleteBundleActivityQuickAccess(bundle, target.activityId, "macro", target.buttonId);
+    case "activity_binding":
+      return deleteActivityButtonBinding(bundle, target.activityId, target.buttonId);
+    case "device_binding":
+      return deleteDeviceButtonBinding(bundle, target.deviceId, target.buttonId);
+  }
+}
+
+// ── Activity power-macro invariant ──────────────────────────────────
+//
+// The hub requires every device an Activity uses to be represented in
+// that Activity's POWER_ON (button 198 / 0xC6) and POWER_OFF (199 / 0xC7)
+// macros. Each step references the device's OWN power macros / inputs by
+// ordinal — it does not store the device's power command directly:
+//
+//   POWER_ON, per device D:
+//     {D, command_id 0xC6}  → play D's power-on        (button_code 0)
+//     delay row             → 1s pause                 (byte 100)
+//     {D, command_id 0xC5}  → select D's input N       (duration = 1-based
+//                              ordinal into D's input_record; 0 = unset)
+//     delay row             → 0
+//   POWER_OFF, per device D:
+//     {D, command_id 0xC7}  → play D's power-off        (button_code 0)
+//     delay row             → 0
+//
+// Membership = devices referenced by the Activity's favorites, button
+// bindings (incl. long-press targets), and user-macro steps. Devices are
+// added when first referenced and removed when their last reference goes.
+// button_code is forced to 0 for 0xC5/0xC6/0xC7 (mirrors macros.py:471);
+// delay/wait rows use device_id/command_id 0xFF with the pause in `delay`.
+const POWER_ON_MACRO_BUTTON_ID = 198;
+const POWER_OFF_MACRO_BUTTON_ID = 199;
+const DEVICE_POWER_ON_REF_COMMAND = 0xC6;
+const DEVICE_POWER_OFF_REF_COMMAND = 0xC7;
+const DEVICE_INPUT_REF_COMMAND = 0xC5;
+const POWER_MACRO_DELAY_BUTTON_CODE = 0xFFFFFFFFFFFF;
+// Wire delay byte is ~10ms units, so 100 ≈ 1 second.
+const POWER_ON_TO_INPUT_DELAY = 100;
+const POWER_MACRO_TAIL_DELAY = 0;
+
+function powerMacroDelayRow(delay: number): BackupBundleMacroStep {
+  return {
+    device_id: 0xFF,
+    command_id: 0xFF,
+    button_code: POWER_MACRO_DELAY_BUTTON_CODE,
+    duration: 0xFF,
+    delay: delay & 0xFF,
+  };
+}
+
+function powerOnBlock(deviceId: number, inputOrdinal: number): BackupBundleMacroStep[] {
+  return [
+    { device_id: deviceId, command_id: DEVICE_POWER_ON_REF_COMMAND, button_code: 0, duration: 0, delay: 0 },
+    powerMacroDelayRow(POWER_ON_TO_INPUT_DELAY),
+    { device_id: deviceId, command_id: DEVICE_INPUT_REF_COMMAND, button_code: 0, duration: inputOrdinal & 0xFF, delay: 0 },
+    powerMacroDelayRow(POWER_MACRO_TAIL_DELAY),
+  ];
+}
+
+function powerOffBlock(deviceId: number): BackupBundleMacroStep[] {
+  return [
+    { device_id: deviceId, command_id: DEVICE_POWER_OFF_REF_COMMAND, button_code: 0, duration: 0, delay: 0 },
+    powerMacroDelayRow(POWER_MACRO_TAIL_DELAY),
+  ];
+}
+
+/**
+ * Devices an Activity uses — its favorites, button bindings (short- AND
+ * long-press targets), and user-macro command steps. Deliberately ignores
+ * the power macros (198/199) themselves so membership stays acyclic.
+ */
+function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[] {
+  const ids = new Set<number>();
+  const add = (value: unknown) => {
+    const id = Number(value || 0);
+    if (id > 0) ids.add(id);
+  };
+  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
+  for (const binding of activity.button_bindings ?? []) {
+    add(binding?.device_id);
+    add(binding?.long_press_device_id);
+  }
+  for (const macro of activity.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId === POWER_ON_MACRO_BUTTON_ID || buttonId === POWER_OFF_MACRO_BUTTON_ID) continue;
+    for (const step of macro?.steps ?? []) {
+      if (isMacroDelayStep(step)) continue;
+      add(step?.device_id);
+    }
+  }
+  return [...ids].sort((left, right) => left - right);
+}
+
+/**
+ * Split a power macro's flat step list into per-device segments. A new
+ * segment begins at each device-power reference step (`refCommand`); any
+ * steps before the first reference are kept as a preamble. Used so the
+ * reconcile can preserve existing per-device blocks (and their configured
+ * input ordinals / pause bytes) verbatim rather than rewriting them.
+ */
+function segmentPowerMacro(
+  steps: BackupBundleMacroStep[] | null | undefined,
+  refCommand: number,
+): { preamble: BackupBundleMacroStep[]; segments: Array<{ deviceId: number; steps: BackupBundleMacroStep[] }> } {
+  const preamble: BackupBundleMacroStep[] = [];
+  const segments: Array<{ deviceId: number; steps: BackupBundleMacroStep[] }> = [];
+  let current: { deviceId: number; steps: BackupBundleMacroStep[] } | null = null;
+  for (const step of steps ?? []) {
+    if (!isMacroDelayStep(step) && Number(step?.command_id || 0) === refCommand) {
+      current = { deviceId: Number(step?.device_id || 0), steps: [step] };
+      segments.push(current);
+    } else if (current) {
+      current.steps.push(step);
+    } else {
+      preamble.push(step);
+    }
+  }
+  return { preamble, segments };
+}
+
+function reconcileOnePowerMacro(
+  existingSteps: BackupBundleMacroStep[] | null | undefined,
+  memberIds: number[],
+  refCommand: number,
+  buildBlock: (deviceId: number) => BackupBundleMacroStep[],
+): BackupBundleMacroStep[] {
+  const { preamble, segments } = segmentPowerMacro(existingSteps, refCommand);
+  const memberSet = new Set(memberIds);
+  const seen = new Set<number>();
+  const out: BackupBundleMacroStep[] = [...preamble];
+  // Keep existing member blocks in their current order, drop the rest.
+  for (const segment of segments) {
+    if (memberSet.has(segment.deviceId) && !seen.has(segment.deviceId)) {
+      out.push(...segment.steps);
+      seen.add(segment.deviceId);
+    }
+  }
+  // Append blocks for newly-referenced devices (default / unconfigured).
+  for (const deviceId of memberIds) {
+    if (!seen.has(deviceId)) {
+      out.push(...buildBlock(deviceId));
+      seen.add(deviceId);
+    }
+  }
+  return out;
+}
+
+/**
+ * Bring an Activity's POWER_ON / POWER_OFF macros (and its
+ * `referenced_source_device_ids`) into line with the devices it actually
+ * uses. Idempotent: an already-consistent Activity is returned unchanged
+ * (existing per-device blocks, input ordinals, and pause bytes are kept).
+ */
+export function reconcileActivityPowerMacros(
+  bundle: BackupBundlePayload,
+  activityId: number,
+): BackupBundlePayload {
+  return updateActivity(bundle, activityId, (activity) => {
+    const members = activityMemberDeviceIds(activity);
+    const macros = [...(activity.macros ?? [])];
+    const ensure = (
+      buttonId: number,
+      name: string,
+      refCommand: number,
+      buildBlock: (deviceId: number) => BackupBundleMacroStep[],
+    ) => {
+      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
+      const existing = index >= 0 ? macros[index] : null;
+      if (!existing && members.length === 0) return;
+      const steps = reconcileOnePowerMacro(existing?.steps, members, refCommand, buildBlock);
+      const next: BackupBundleMacroRow = {
+        ...(existing ?? {}),
+        button_id: buttonId,
+        name: existing?.name ?? name,
+        steps,
+      };
+      if (index >= 0) macros[index] = next;
+      else macros.push(next);
+    };
+    ensure(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", DEVICE_POWER_ON_REF_COMMAND, (deviceId) => powerOnBlock(deviceId, 0));
+    ensure(POWER_OFF_MACRO_BUTTON_ID, "POWER_OFF", DEVICE_POWER_OFF_REF_COMMAND, powerOffBlock);
+    return { ...activity, macros, referenced_source_device_ids: members };
+  });
+}
+
+/** Run {@link reconcileActivityPowerMacros} for every Activity in the bundle. */
+export function reconcileBundlePowerMacros(bundle: BackupBundlePayload): BackupBundlePayload {
+  let next = bundle;
+  for (const activity of bundle.activities ?? []) {
+    const id = Number(activity?.device?.device_id || 0);
+    if (id > 0) next = reconcileActivityPowerMacros(next, id);
+  }
+  return next;
+}
+
+// ── Button bindings ─────────────────────────────────────────────────
+
+export interface ButtonCatalogEntry {
+  /** Wire button code, stored as `button_id`. */
+  code: number;
+  name: string;
+  group: string;
+}
+
+// Physical-button universe, mirroring `ButtonName` in protocol_const.py.
+// POWER_ON / POWER_OFF (0xC6 / 0xC7) are the activity power macros, not
+// bindable buttons, so they're intentionally absent.
+const SHARED_BUTTON_CATALOG: ButtonCatalogEntry[] = [
+  { code: 0xAE, name: "Up", group: "Navigation" },
+  { code: 0xB2, name: "Down", group: "Navigation" },
+  { code: 0xAF, name: "Left", group: "Navigation" },
+  { code: 0xB1, name: "Right", group: "Navigation" },
+  { code: 0xB0, name: "OK", group: "Navigation" },
+  { code: 0xB4, name: "Home", group: "Navigation" },
+  { code: 0xB3, name: "Back", group: "Navigation" },
+  { code: 0xB5, name: "Menu", group: "Navigation" },
+  { code: 0xB6, name: "Volume Up", group: "Volume & Channel" },
+  { code: 0xB9, name: "Volume Down", group: "Volume & Channel" },
+  { code: 0xB8, name: "Mute", group: "Volume & Channel" },
+  { code: 0xB7, name: "Channel Up", group: "Volume & Channel" },
+  { code: 0xBA, name: "Channel Down", group: "Volume & Channel" },
+  { code: 0xBB, name: "Rewind", group: "Transport" },
+  { code: 0xBC, name: "Pause", group: "Transport" },
+  { code: 0xBD, name: "Forward", group: "Transport" },
+  { code: 0xBE, name: "Red", group: "Colour" },
+  { code: 0xBF, name: "Green", group: "Colour" },
+  { code: 0xC0, name: "Yellow", group: "Colour" },
+  { code: 0xC1, name: "Blue", group: "Colour" },
+];
+
+// X2-only extended keys (codes below 0xAE).
+const X2_EXTRA_BUTTON_CATALOG: ButtonCatalogEntry[] = [
+  { code: 0x99, name: "A", group: "Extra" },
+  { code: 0x98, name: "B", group: "Extra" },
+  { code: 0x97, name: "C", group: "Extra" },
+  { code: 0x9A, name: "Exit", group: "Extra" },
+  { code: 0x9B, name: "DVR", group: "Extra" },
+  { code: 0x9C, name: "Play", group: "Extra" },
+  { code: 0x9D, name: "Guide", group: "Extra" },
+];
+
+const BUTTON_NAME_BY_CODE = new Map<number, string>(
+  [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG].map((entry) => [entry.code, entry.name]),
+);
+
+/**
+ * Bindable physical buttons for the bundle's hub model. X2 adds seven
+ * extended keys (A / B / C / Exit / DVR / Play / Guide) on top of the
+ * shared set; X1 / X1S expose the shared set only. Catalog order.
+ */
+export function bundleButtonCatalog(bundle: BackupBundlePayload | null): ButtonCatalogEntry[] {
+  if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
+    return [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG];
+  }
+  return [...SHARED_BUTTON_CATALOG];
+}
+
+/** Resolve a button code to its display name, falling back to a hex label. */
+export function buttonName(code: number): string {
+  return BUTTON_NAME_BY_CODE.get(Number(code)) ?? `Button 0x${Number(code).toString(16).toUpperCase()}`;
+}
+
+export interface BackupButtonBindingItem {
+  buttonId: number;
+  buttonName: string;
+  /** Target device for the short press (activity-level bindings only). */
+  deviceId?: number;
+  commandId: number;
+  /** "<device> · <command>" for activities, "<command>" for devices. */
+  shortPressLabel: string;
+  longPress?: {
+    deviceId?: number;
+    commandId: number;
+    label: string;
+  };
+}
+
+function deviceNameFor(bundle: BackupBundlePayload | null, deviceId: number): string {
+  const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  return String(device?.device?.name || "").trim() || `Device ${Number(deviceId)}`;
+}
+
+function commandNameOrFallback(bundle: BackupBundlePayload, deviceId: number, commandId: number): string {
+  return commandLabelFor(bundle, deviceId, commandId) || `Command ${Number(commandId)}`;
+}
+
+function sortBindingsByButtonId(rows: BackupBundleButtonBinding[] | null | undefined): BackupBundleButtonBinding[] {
+  return [...(rows ?? [])].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+
+/** Configured activity button bindings, sorted by button id, with labels. */
+export function activityButtonBindingItems(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): BackupButtonBindingItem[] {
+  if (!bundle) return [];
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const items: BackupButtonBindingItem[] = [];
+  for (const row of sortBindingsByButtonId(activity.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const deviceId = Number(row?.device_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || deviceId <= 0) continue;
+    const item: BackupButtonBindingItem = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      deviceId,
+      commandId,
+      shortPressLabel: `${deviceNameFor(bundle, deviceId)} · ${commandNameOrFallback(bundle, deviceId, commandId)}`,
+    };
+    const lpDeviceId = Number(row?.long_press_device_id || 0);
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpDeviceId > 0 && lpCommandId > 0) {
+      item.longPress = {
+        deviceId: lpDeviceId,
+        commandId: lpCommandId,
+        label: `${deviceNameFor(bundle, lpDeviceId)} · ${commandNameOrFallback(bundle, lpDeviceId, lpCommandId)}`,
+      };
+    }
+    items.push(item);
+  }
+  return items;
+}
+
+/** Configured device button bindings (bound to the device's own commands). */
+export function deviceButtonBindingItems(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): BackupButtonBindingItem[] {
+  if (!bundle) return [];
+  const normalizedDeviceId = Number(deviceId);
+  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId);
+  if (!device) return [];
+  const items: BackupButtonBindingItem[] = [];
+  for (const row of sortBindingsByButtonId(device.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || commandId <= 0) continue;
+    const item: BackupButtonBindingItem = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      commandId,
+      shortPressLabel: commandNameOrFallback(bundle, normalizedDeviceId, commandId),
+    };
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpCommandId > 0) {
+      item.longPress = {
+        commandId: lpCommandId,
+        label: commandNameOrFallback(bundle, normalizedDeviceId, lpCommandId),
+      };
+    }
+    items.push(item);
+  }
+  return items;
+}
+
+function boundButtonIds(rows: BackupBundleButtonBinding[] | null | undefined): Set<number> {
+  return new Set((rows ?? []).map((row) => Number(row?.button_id || 0)).filter((id) => id > 0));
+}
+
+/** Catalog buttons not yet bound on an Activity (for the Add-binding picker). */
+export function unboundButtonsForActivity(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): ButtonCatalogEntry[] {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const used = boundButtonIds(activity?.button_bindings);
+  return bundleButtonCatalog(bundle).filter((entry) => !used.has(entry.code));
+}
+
+/** Catalog buttons not yet bound on a Device (for the Add-binding picker). */
+export function unboundButtonsForDevice(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): ButtonCatalogEntry[] {
+  const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  const used = boundButtonIds(device?.button_bindings);
+  return bundleButtonCatalog(bundle).filter((entry) => !used.has(entry.code));
+}
+
+function upsertBindingRow(
+  rows: BackupBundleButtonBinding[] | null | undefined,
+  row: BackupBundleButtonBinding,
+): BackupBundleButtonBinding[] {
+  const buttonId = Number(row.button_id || 0);
+  const next = (rows ?? []).filter((entry) => Number(entry?.button_id || 0) !== buttonId);
+  next.push(row);
+  return sortBindingsByButtonId(next);
+}
+
+export interface ActivityBindingInput {
+  buttonId: number;
+  deviceId: number;
+  commandId: number;
+  longPress?: { deviceId: number; commandId: number } | null;
+}
+
+/**
+ * Add or replace (by button id) an Activity button binding. No-op when the
+ * button, target device, or command id is missing. A long press is written
+ * only when both its device and command are present.
+ */
+export function upsertActivityButtonBinding(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  input: ActivityBindingInput,
+): BackupBundlePayload {
+  const buttonId = Number(input.buttonId);
+  const deviceId = Number(input.deviceId);
+  const commandId = Number(input.commandId);
+  if (buttonId <= 0 || deviceId <= 0 || commandId <= 0) return bundle;
+  const row: BackupBundleButtonBinding = {
+    button_id: buttonId,
+    button_name: buttonName(buttonId),
+    device_id: deviceId,
+    command_id: commandId,
+  };
+  const lpDeviceId = Number(input.longPress?.deviceId || 0);
+  const lpCommandId = Number(input.longPress?.commandId || 0);
+  if (lpDeviceId > 0 && lpCommandId > 0) {
+    row.long_press_device_id = lpDeviceId;
+    row.long_press_command_id = lpCommandId;
+  }
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    button_bindings: upsertBindingRow(activity.button_bindings, row),
+  }));
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+
+export interface DeviceBindingInput {
+  buttonId: number;
+  commandId: number;
+  longPressCommandId?: number | null;
+}
+
+/** Add or replace (by button id) a Device button binding (own commands). */
+export function upsertDeviceButtonBinding(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  input: DeviceBindingInput,
+): BackupBundlePayload {
+  const normalizedDeviceId = Number(deviceId);
+  const buttonId = Number(input.buttonId);
+  const commandId = Number(input.commandId);
+  if (buttonId <= 0 || commandId <= 0) return bundle;
+  const row: BackupBundleButtonBinding = {
+    button_id: buttonId,
+    button_name: buttonName(buttonId),
+    command_id: commandId,
+    command_name: commandLabelFor(bundle, normalizedDeviceId, commandId) || undefined,
+  };
+  const lpCommandId = Number(input.longPressCommandId || 0);
+  if (lpCommandId > 0) row.long_press_command_id = lpCommandId;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return { ...device, button_bindings: upsertBindingRow(device.button_bindings, row) };
+    }),
+  };
+}
+
+/** Remove an Activity button binding by button id. */
+export function deleteActivityButtonBinding(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  buttonId: number,
+): BackupBundlePayload {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    button_bindings: (activity.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId),
+  }));
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+
+/** Remove a Device button binding by button id. */
+export function deleteDeviceButtonBinding(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  buttonId: number,
+): BackupBundlePayload {
+  const dId = Number(deviceId);
+  const bId = Number(buttonId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      return {
+        ...device,
+        button_bindings: (device.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId),
+      };
+    }),
+  };
 }
 
 export function assertBackupBundleRestoreCompatible(bundle: BackupBundlePayload, destinationHubVersion: unknown) {

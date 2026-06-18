@@ -720,7 +720,7 @@
 
   <!-- Card bundle — runs after stubs module above.
        The ?v= bust forces browsers to skip cache when the file is updated. -->
-  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=61"></script>
+  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=65"></script>
 
   <!-- Harness logic — runs after both modules above -->
   <script type="module">
@@ -806,7 +806,7 @@
     // tools_frontend_version must match the ?v= cache-bust on the script tag.
     // The store compares this against LOADED_TOOLS_FRONTEND_VERSION (read from the
     // script URL's ?v= param) and sets toolsFrontendVersionMismatch if they differ.
-    const TOOLS_FRONTEND_VERSION = "61";
+    const TOOLS_FRONTEND_VERSION = "65";
 
     const BASE_STATE = {
       persistent_cache_enabled: true,
@@ -869,6 +869,67 @@
       activities: [
         { device: { device_id: 101, name: "Watch TV", entity_type: "activity" }, referenced_source_device_ids: [1, 2] },
         { device: { device_id: 102, name: "Game Mode", entity_type: "activity" }, referenced_source_device_ids: [2, 3] },
+      ],
+    };
+
+    // Rich bundle for exercising the Edit section: devices carry commands,
+    // and activity 101 carries favorites, an editable macro, and the two
+    // internal power macros (198 / 199) that must survive single deletes.
+    const EDIT_BACKUP_BUNDLE = {
+      kind: "hub_bundle",
+      schema_version: 5,
+      hub: { entry_id: "hub-1", name: "Living Room", version: "X1S" },
+      devices: [
+        { device: { device_id: 1, name: "Television", device_class: "ir", sort: 1 },
+          commands: [
+            { command_id: 10, name: "Power" },
+            { command_id: 11, name: "Volume Up" },
+            { command_id: 12, name: "Input HDMI1" },
+          ],
+          button_bindings: [
+            { button_id: 0xB0, button_name: "OK", command_id: 10, long_press_command_id: 11 },
+          ] },
+        { device: { device_id: 2, name: "Soundbar", device_class: "ir", sort: 2 },
+          commands: [
+            { command_id: 20, name: "Power" },
+            { command_id: 21, name: "Volume Up" },
+          ] },
+      ],
+      activities: [
+        { device: { device_id: 101, name: "Watch TV", entity_type: "activity", sort: 1 },
+          referenced_source_device_ids: [1, 2],
+          favorite_slots: [
+            { button_id: 1, device_id: 1, command_id: 10, name: "TV Power" },
+            { button_id: 2, device_id: 2, command_id: 20, name: "Bar Power" },
+          ],
+          macros: [
+            { button_id: 3, name: "Volume Combo", steps: [
+              { device_id: 1, command_id: 11 },
+              { device_id: 2, command_id: 21 },
+            ] },
+            // Proper power macros, but only representing device 1 — device 2 is
+            // referenced (favorite/binding/macro) yet missing here, the exact
+            // inconsistency the reconcile invariant repairs on the next edit.
+            { button_id: 198, name: "POWER_ON", steps: [
+              { device_id: 1, command_id: 0xC6, button_code: 0, duration: 0, delay: 0 },
+              { device_id: 255, command_id: 255, button_code: 281474976710655, duration: 255, delay: 100 },
+              { device_id: 1, command_id: 0xC5, button_code: 0, duration: 0, delay: 0 },
+              { device_id: 255, command_id: 255, button_code: 281474976710655, duration: 255, delay: 0 },
+            ] },
+            { button_id: 199, name: "POWER_OFF", steps: [
+              { device_id: 1, command_id: 0xC7, button_code: 0, duration: 0, delay: 0 },
+              { device_id: 255, command_id: 255, button_code: 281474976710655, duration: 255, delay: 0 },
+            ] },
+          ],
+          button_bindings: [
+            { button_id: 0xB6, button_name: "Volume Up", device_id: 2, command_id: 20 },
+            { button_id: 0xB0, button_name: "OK", device_id: 1, command_id: 10,
+              long_press_device_id: 2, long_press_command_id: 20 },
+          ] },
+        { device: { device_id: 102, name: "Listen to Music", entity_type: "activity", sort: 2 },
+          referenced_source_device_ids: [2],
+          favorite_slots: [],
+          macros: [] },
       ],
     };
 
@@ -1608,6 +1669,25 @@
           if (!tab) return;
           tab._backupProgress = clone(BACKUP_PROGRESS_SUCCESS);
           tab._backupError = null;
+          tab.requestUpdate();
+          await tab.updateComplete;
+        },
+      },
+      {
+        id: "backup-edit", group: "Backup / Restore",
+        label: "Edit — delete & add favorite",
+        states: STATES_CONNECTED,
+        async postLoad(card) {
+          const tab = await openBackupTab(card, "edit");
+          if (!tab) return;
+          tab._editBundle = clone(EDIT_BACKUP_BUNDLE);
+          tab._editFilename = "living-room-backup.json";
+          tab._editBundleDirty = false;
+          tab.requestUpdate();
+          await tab.updateComplete;
+          // Drill into the first activity so the Macros and Favorites
+          // section (delete + add-favorite affordances) shows immediately.
+          tab._openEditDetail("activity", 101, "Watch TV");
           tab.requestUpdate();
           await tab.updateComplete;
         },
