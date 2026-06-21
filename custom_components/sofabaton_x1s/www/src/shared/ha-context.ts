@@ -198,6 +198,29 @@ export interface BackupBundleDevicePayload {
   device?: BackupBundleDeviceBlock | null;
   commands?: BackupBundleCommandRow[] | null;
   button_bindings?: BackupBundleButtonBinding[] | null;
+  // The device's own macros (incl. its power-on/off at button 198/199).
+  // Steps carry no device_id — they play this device's own commands.
+  macros?: BackupBundleMacroRow[] | null;
+  // The device's input list (TV inputs etc.). Activity power-on macros
+  // reference these by 1-based ordinal (input_index) via a 0xC5 step.
+  input_record?: BackupBundleInputRecord | null;
+}
+
+export interface BackupBundleInputEntry {
+  command_id?: number | null;
+  // Synthetic command code; restore falls back to 0x4E20 + command_id.
+  fid?: number | null;
+  // 1-based ordinal an activity power-on 0xC5 step points at.
+  input_index?: number | null;
+  ordinal?: number | null;
+  name?: string | null;
+  label?: string | null;
+}
+
+export interface BackupBundleInputRecord {
+  entries?: BackupBundleInputEntry[] | null;
+  // control_keys / favorites / flags / state_byte are preserved opaquely.
+  [key: string]: unknown;
 }
 
 // A physical-button binding. At the device level a binding plays one of

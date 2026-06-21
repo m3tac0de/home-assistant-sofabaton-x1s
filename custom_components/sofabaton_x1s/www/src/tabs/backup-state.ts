@@ -5,6 +5,8 @@ import type {
   BackupBundleDeviceBlock,
   BackupBundleDevicePayload,
   BackupBundleFavoriteSlot,
+  BackupBundleInputEntry,
+  BackupBundleInputRecord,
   BackupBundleMacroRow,
   BackupBundleMacroStep,
   BackupBundlePayload,
@@ -1232,10 +1234,16 @@ const DEVICE_POWER_ON_REF_COMMAND = 0xC6;
 const DEVICE_POWER_OFF_REF_COMMAND = 0xC7;
 const DEVICE_INPUT_REF_COMMAND = 0xC5;
 const POWER_MACRO_DELAY_BUTTON_CODE = 0xFFFFFFFFFFFF;
-// Wire delay byte is ~10ms units, so 100 ≈ 1 second.
-const POWER_ON_TO_INPUT_DELAY = 100;
-const POWER_MACRO_TAIL_DELAY = 0;
+// Default `delay` byte for a freshly-added power step. Real exports carry
+// 0xFF here (firmware "use default timing"); every power step carries its
+// own delay byte — power macros do NOT use separate wait rows. Power steps
+// for one device are a flat, possibly-interleaved list:
+//   {device_id D, command_id 0xC6}  → play D's power-on
+//   {device_id D, command_id 0xC5, duration=input ordinal}  → set D's input
+//   {device_id D, command_id 0xC7}  → play D's power-off (in POWER_OFF)
+const POWER_STEP_DEFAULT_DELAY = 0xFF;
 
+// Delay/wait row used inside USER macros (a pure pause between steps).
 function powerMacroDelayRow(delay: number): BackupBundleMacroStep {
   return {
     device_id: 0xFF,
@@ -1246,29 +1254,52 @@ function powerMacroDelayRow(delay: number): BackupBundleMacroStep {
   };
 }
 
-function powerOnBlock(deviceId: number, inputOrdinal: number): BackupBundleMacroStep[] {
-  return [
-    { device_id: deviceId, command_id: DEVICE_POWER_ON_REF_COMMAND, button_code: 0, duration: 0, delay: 0 },
-    powerMacroDelayRow(POWER_ON_TO_INPUT_DELAY),
-    { device_id: deviceId, command_id: DEVICE_INPUT_REF_COMMAND, button_code: 0, duration: inputOrdinal & 0xFF, delay: 0 },
-    powerMacroDelayRow(POWER_MACRO_TAIL_DELAY),
-  ];
-}
-
-function powerOffBlock(deviceId: number): BackupBundleMacroStep[] {
-  return [
-    { device_id: deviceId, command_id: DEVICE_POWER_OFF_REF_COMMAND, button_code: 0, duration: 0, delay: 0 },
-    powerMacroDelayRow(POWER_MACRO_TAIL_DELAY),
-  ];
+function powerStep(deviceId: number, commandId: number, duration = 0): BackupBundleMacroStep {
+  return {
+    device_id: Number(deviceId),
+    command_id: commandId,
+    button_code: 0,
+    duration: duration & 0xFF,
+    delay: POWER_STEP_DEFAULT_DELAY,
+  };
 }
 
 /**
- * Devices an Activity uses — its favorites, button bindings (short- AND
- * long-press targets), and user-macro command steps. Deliberately ignores
- * the power macros (198/199) themselves so membership stays acyclic.
+ * Devices already represented in an Activity's power macros — those with a
+ * power-on (0xC6), input (0xC5), or power-off (0xC7) step. Crucially this
+ * includes "power-only" devices (e.g. an AVR/display) that carry no
+ * favorite / binding / macro reference, so the reconcile never drops them.
+ */
+function activityPowerDeviceIds(activity: BackupBundleActivityPayload): Set<number> {
+  const ids = new Set<number>();
+  for (const macro of activity.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID) continue;
+    for (const step of macro?.steps ?? []) {
+      if (isMacroDelayStep(step)) continue;
+      const command = Number(step?.command_id || 0);
+      if (
+        command === DEVICE_POWER_ON_REF_COMMAND
+        || command === DEVICE_INPUT_REF_COMMAND
+        || command === DEVICE_POWER_OFF_REF_COMMAND
+      ) {
+        const deviceId = Number(step?.device_id || 0);
+        if (deviceId > 0) ids.add(deviceId);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Devices an Activity's power macros should contain: every device already
+ * in the power macros (preserving power-only devices) plus every device a
+ * favorite, button binding (incl. long-press), or user-macro step uses.
+ * Membership is additive — a device stays once present and is removed only
+ * by deleting the device itself.
  */
 function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[] {
-  const ids = new Set<number>();
+  const ids = activityPowerDeviceIds(activity);
   const add = (value: unknown) => {
     const id = Number(value || 0);
     if (id > 0) ids.add(id);
@@ -1278,11 +1309,12 @@ function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[
     add(binding?.device_id);
     add(binding?.long_press_device_id);
   }
+  // Real command steps in ANY macro (user macros AND user-added commands in
+  // the power macros) make their device a member. The power-macro ref steps
+  // (0xC5/0xC6/0xC7) are already counted by activityPowerDeviceIds.
   for (const macro of activity.macros ?? []) {
-    const buttonId = Number(macro?.button_id || 0);
-    if (buttonId === POWER_ON_MACRO_BUTTON_ID || buttonId === POWER_OFF_MACRO_BUTTON_ID) continue;
     for (const step of macro?.steps ?? []) {
-      if (isMacroDelayStep(step)) continue;
+      if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
       add(step?.device_id);
     }
   }
@@ -1290,54 +1322,29 @@ function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[
 }
 
 /**
- * Split a power macro's flat step list into per-device segments. A new
- * segment begins at each device-power reference step (`refCommand`); any
- * steps before the first reference are kept as a preamble. Used so the
- * reconcile can preserve existing per-device blocks (and their configured
- * input ordinals / pause bytes) verbatim rather than rewriting them.
+ * Reconcile one power macro's flat step list to `members`: preserve every
+ * existing member step (and any wait rows) verbatim, drop steps for devices
+ * that are no longer members, and append the missing reference commands for
+ * each member (one step per `refCommands` entry it lacks).
  */
-function segmentPowerMacro(
-  steps: BackupBundleMacroStep[] | null | undefined,
-  refCommand: number,
-): { preamble: BackupBundleMacroStep[]; segments: Array<{ deviceId: number; steps: BackupBundleMacroStep[] }> } {
-  const preamble: BackupBundleMacroStep[] = [];
-  const segments: Array<{ deviceId: number; steps: BackupBundleMacroStep[] }> = [];
-  let current: { deviceId: number; steps: BackupBundleMacroStep[] } | null = null;
-  for (const step of steps ?? []) {
-    if (!isMacroDelayStep(step) && Number(step?.command_id || 0) === refCommand) {
-      current = { deviceId: Number(step?.device_id || 0), steps: [step] };
-      segments.push(current);
-    } else if (current) {
-      current.steps.push(step);
-    } else {
-      preamble.push(step);
-    }
-  }
-  return { preamble, segments };
-}
-
-function reconcileOnePowerMacro(
+function reconcilePowerMacroSteps(
   existingSteps: BackupBundleMacroStep[] | null | undefined,
-  memberIds: number[],
-  refCommand: number,
-  buildBlock: (deviceId: number) => BackupBundleMacroStep[],
+  members: number[],
+  refCommands: number[],
 ): BackupBundleMacroStep[] {
-  const { preamble, segments } = segmentPowerMacro(existingSteps, refCommand);
-  const memberSet = new Set(memberIds);
-  const seen = new Set<number>();
-  const out: BackupBundleMacroStep[] = [...preamble];
-  // Keep existing member blocks in their current order, drop the rest.
-  for (const segment of segments) {
-    if (memberSet.has(segment.deviceId) && !seen.has(segment.deviceId)) {
-      out.push(...segment.steps);
-      seen.add(segment.deviceId);
-    }
-  }
-  // Append blocks for newly-referenced devices (default / unconfigured).
-  for (const deviceId of memberIds) {
-    if (!seen.has(deviceId)) {
-      out.push(...buildBlock(deviceId));
-      seen.add(deviceId);
+  const memberSet = new Set(members);
+  const kept = (existingSteps ?? []).filter((step) => {
+    if (isMacroDelayStep(step)) return true;
+    const deviceId = Number(step?.device_id || 0);
+    return deviceId > 0 ? memberSet.has(deviceId) : true;
+  });
+  const out = [...kept];
+  for (const deviceId of members) {
+    for (const command of refCommands) {
+      const present = out.some(
+        (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command,
+      );
+      if (!present) out.push(powerStep(deviceId, command));
     }
   }
   return out;
@@ -1345,9 +1352,9 @@ function reconcileOnePowerMacro(
 
 /**
  * Bring an Activity's POWER_ON / POWER_OFF macros (and its
- * `referenced_source_device_ids`) into line with the devices it actually
- * uses. Idempotent: an already-consistent Activity is returned unchanged
- * (existing per-device blocks, input ordinals, and pause bytes are kept).
+ * `referenced_source_device_ids`) into line with its member devices.
+ * Idempotent and non-destructive: existing steps (inputs, delays, order)
+ * are preserved; only newly-referenced devices are appended.
  */
 export function reconcileActivityPowerMacros(
   bundle: BackupBundlePayload,
@@ -1356,16 +1363,11 @@ export function reconcileActivityPowerMacros(
   return updateActivity(bundle, activityId, (activity) => {
     const members = activityMemberDeviceIds(activity);
     const macros = [...(activity.macros ?? [])];
-    const ensure = (
-      buttonId: number,
-      name: string,
-      refCommand: number,
-      buildBlock: (deviceId: number) => BackupBundleMacroStep[],
-    ) => {
+    const ensure = (buttonId: number, name: string, refCommands: number[]) => {
       const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
       const existing = index >= 0 ? macros[index] : null;
       if (!existing && members.length === 0) return;
-      const steps = reconcileOnePowerMacro(existing?.steps, members, refCommand, buildBlock);
+      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands);
       const next: BackupBundleMacroRow = {
         ...(existing ?? {}),
         button_id: buttonId,
@@ -1375,8 +1377,8 @@ export function reconcileActivityPowerMacros(
       if (index >= 0) macros[index] = next;
       else macros.push(next);
     };
-    ensure(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", DEVICE_POWER_ON_REF_COMMAND, (deviceId) => powerOnBlock(deviceId, 0));
-    ensure(POWER_OFF_MACRO_BUTTON_ID, "POWER_OFF", DEVICE_POWER_OFF_REF_COMMAND, powerOffBlock);
+    ensure(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", [DEVICE_POWER_ON_REF_COMMAND, DEVICE_INPUT_REF_COMMAND]);
+    ensure(POWER_OFF_MACRO_BUTTON_ID, "POWER_OFF", [DEVICE_POWER_OFF_REF_COMMAND]);
     return { ...activity, macros, referenced_source_device_ids: members };
   });
 }
@@ -1389,6 +1391,584 @@ export function reconcileBundlePowerMacros(bundle: BackupBundlePayload): BackupB
     if (id > 0) next = reconcileActivityPowerMacros(next, id);
   }
   return next;
+}
+
+// ── Macro editing ───────────────────────────────────────────────────
+
+// The X1 synthetic command code used by keymap / input / macro writes.
+// Mirrors `synthesize_command_code` in device_create.py. Activity macro
+// steps carry this as `button_code`; restore takes it verbatim (device
+// macros omit it and let restore re-synthesize).
+const SYNTHETIC_COMMAND_CODE_BASE = 0x4E20;
+
+export function synthesizeCommandCode(commandId: number): number {
+  return SYNTHETIC_COMMAND_CODE_BASE + (Number(commandId) & 0xFF);
+}
+
+function findDevice(bundle: BackupBundlePayload | null, deviceId: number): BackupBundleDevicePayload | undefined {
+  return (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+}
+
+function inputEntryOrdinal(entry: BackupBundleInputEntry): number {
+  return Number(entry?.input_index ?? entry?.ordinal ?? 0);
+}
+
+/** A device's configured inputs (TV inputs etc.), sorted by ordinal. */
+export function deviceInputEntries(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): Array<{ commandId: number; ordinal: number; name: string }> {
+  const device = findDevice(bundle, deviceId);
+  const entries = device?.input_record?.entries ?? [];
+  return entries
+    .map((entry) => ({
+      commandId: Number(entry?.command_id || 0),
+      ordinal: inputEntryOrdinal(entry),
+      name: String(entry?.name || entry?.label || "").trim(),
+    }))
+    .filter((entry) => entry.commandId > 0)
+    .sort((left, right) => left.ordinal - right.ordinal);
+}
+
+/**
+ * Ensure `commandId` exists as an input on the device, returning the new
+ * bundle and the input's 1-based ordinal. Reuse-or-append: an existing
+ * input for that command keeps its ordinal; otherwise a fresh entry is
+ * appended (ordinal = max + 1) with the synthetic fid.
+ */
+function ensureDeviceInput(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+): { bundle: BackupBundlePayload; ordinal: number } {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  const device = findDevice(bundle, dId);
+  const existingEntries = device?.input_record?.entries ?? [];
+  const reused = existingEntries.find((entry) => Number(entry?.command_id || 0) === cId);
+  if (reused) {
+    return { bundle, ordinal: inputEntryOrdinal(reused) };
+  }
+  const nextOrdinal = existingEntries.reduce((max, entry) => Math.max(max, inputEntryOrdinal(entry)), 0) + 1;
+  const newEntry: BackupBundleInputEntry = {
+    command_id: cId,
+    fid: synthesizeCommandCode(cId),
+    input_index: nextOrdinal,
+    name: commandLabelFor(bundle, dId, cId) || `Input ${cId}`,
+  };
+  const nextBundle: BackupBundlePayload = {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      if (Number(entry?.device?.device_id || 0) !== dId) return entry;
+      const record: BackupBundleInputRecord = { ...(entry.input_record ?? {}) };
+      record.entries = [...existingEntries, newEntry];
+      return { ...entry, input_record: record };
+    }),
+  };
+  return { bundle: nextBundle, ordinal: nextOrdinal };
+}
+
+export interface BackupActivityPowerDevice {
+  deviceId: number;
+  deviceName: string;
+  /** 1-based input ordinal the device's POWER_ON 0xC5 step points at; 0 = unset. */
+  inputOrdinal: number;
+  inputCommandId: number | null;
+  inputCommandName: string | null;
+}
+
+/**
+ * Per-device view of an Activity's POWER_ON macro for the power editor.
+ * The macro is a flat, interleaved step list, so a device's input is read
+ * from its own `{device_id, command_id 0xC5}` step's `duration` ordinal
+ * (not from any positional grouping). Device order follows first appearance.
+ */
+export function activityPowerDevices(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): BackupActivityPowerDevice[] {
+  if (!bundle) return [];
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const powerOn = (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === POWER_ON_MACRO_BUTTON_ID);
+  const steps = powerOn?.steps ?? [];
+  const order: number[] = [];
+  const seen = new Set<number>();
+  for (const step of steps) {
+    if (isMacroDelayStep(step)) continue;
+    const command = Number(step?.command_id || 0);
+    if (command !== DEVICE_POWER_ON_REF_COMMAND && command !== DEVICE_INPUT_REF_COMMAND) continue;
+    const deviceId = Number(step?.device_id || 0);
+    if (deviceId > 0 && !seen.has(deviceId)) {
+      seen.add(deviceId);
+      order.push(deviceId);
+    }
+  }
+  return order.map((deviceId) => {
+    const inputStep = steps.find(
+      (step) => !isMacroDelayStep(step)
+        && Number(step?.device_id || 0) === deviceId
+        && Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND,
+    );
+    const inputOrdinal = Number(inputStep?.duration || 0);
+    const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === inputOrdinal);
+    return {
+      deviceId,
+      deviceName: deviceNameFor(bundle, deviceId),
+      inputOrdinal,
+      inputCommandId: input?.commandId ?? null,
+      inputCommandName: input?.name || (inputOrdinal > 0 ? `Input ${inputOrdinal}` : null),
+    };
+  });
+}
+
+/**
+ * Point a device's POWER_ON 0xC5 input step at `ordinal` (0 clears it),
+ * appending the step if the device somehow has none. Other devices' steps
+ * are untouched.
+ */
+function setActivityPowerInputOrdinal(
+  activity: BackupBundleActivityPayload,
+  deviceId: number,
+  ordinal: number,
+): BackupBundleActivityPayload {
+  const dId = Number(deviceId);
+  return {
+    ...activity,
+    macros: (activity.macros ?? []).map((macro) => {
+      if (Number(macro?.button_id || 0) !== POWER_ON_MACRO_BUTTON_ID) return macro;
+      let found = false;
+      const steps = (macro.steps ?? []).map((step) => {
+        if (
+          !isMacroDelayStep(step)
+          && Number(step?.device_id || 0) === dId
+          && Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND
+        ) {
+          found = true;
+          return { ...step, duration: ordinal & 0xFF };
+        }
+        return step;
+      });
+      if (!found) steps.push(powerStep(dId, DEVICE_INPUT_REF_COMMAND, ordinal));
+      return { ...macro, steps };
+    }),
+  };
+}
+
+/**
+ * Designate `commandId` as device `deviceId`'s input within Activity
+ * `activityId`'s power-on macro. Adds the command to the device's inputs
+ * (reuse-or-append) and points the device's 0xC5 step at that ordinal.
+ */
+export function setActivityDeviceInput(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  deviceId: number,
+  commandId: number,
+): BackupBundlePayload {
+  const cId = Number(commandId);
+  if (cId <= 0) return bundle;
+  const ensured = ensureDeviceInput(bundle, deviceId, cId);
+  return updateActivity(ensured.bundle, activityId, (activity) =>
+    setActivityPowerInputOrdinal(activity, deviceId, ensured.ordinal),
+  );
+}
+
+/** Clear a device's designated input in an Activity's power-on macro (ordinal 0). */
+export function clearActivityDeviceInput(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  deviceId: number,
+): BackupBundlePayload {
+  return updateActivity(bundle, activityId, (activity) => setActivityPowerInputOrdinal(activity, deviceId, 0));
+}
+
+// ── Device macro step editing ───────────────────────────────────────
+//
+// A macro is a step sequence. Two timing concepts, both in 0.5-second
+// units (matching the Sofabaton app, which labels a command "Click" /
+// "Hold X.Xs" and shows separate "Delay X.Xs" rows):
+//   • a COMMAND step's `duration` is its HOLD time (0 = a single click).
+//     Its own `delay` field is always 0xFF (the firmware "no delay"
+//     sentinel) — real waits are NOT stored there.
+//   • a DELAY step is a standalone wait row (command_id 0xFF) whose `delay`
+//     byte is the wait length in 0.5s units.
+
+// Mandatory activity power-macro components — reorderable, never deletable:
+//   "power" = a device power-on/off reference (0xC6/0xC7); display only.
+//   "input" = a device input reference (0xC5); its target command IS editable
+//             (sets the input), but it can't be deleted.
+export type MacroStepKind = "command" | "delay" | "power" | "input";
+
+export interface BackupMacroStepItem {
+  index: number;
+  kind: MacroStepKind;
+  commandId: number | null;
+  /** Target device for an activity macro command step; null for device macros. */
+  deviceId: number | null;
+  label: string;
+  /** Command-step HOLD byte (0.5s units; 0 = click). 0 for delay steps. */
+  hold: number;
+  /** Delay-step WAIT byte (0.5s units). 0 for command steps. */
+  wait: number;
+  /** Mandatory power-macro ref: reorder allowed, delete/edit not. */
+  protected?: boolean;
+}
+
+/** True for an activity power-macro device reference (0xC5 / 0xC6 / 0xC7). */
+function isPowerRefStep(step: BackupBundleMacroStep): boolean {
+  const command = Number(step?.command_id || 0);
+  return command === DEVICE_INPUT_REF_COMMAND
+    || command === DEVICE_POWER_ON_REF_COMMAND
+    || command === DEVICE_POWER_OFF_REF_COMMAND;
+}
+
+export interface BackupDeviceMacroSummary {
+  buttonId: number;
+  name: string;
+  isPower: boolean;
+  commandStepCount: number;
+}
+
+function defaultMacroName(buttonId: number): string {
+  if (buttonId === POWER_ON_MACRO_BUTTON_ID) return "POWER_ON";
+  if (buttonId === POWER_OFF_MACRO_BUTTON_ID) return "POWER_OFF";
+  return `Macro ${buttonId}`;
+}
+
+function deviceMacroDelayStep(delay: number): BackupBundleMacroStep {
+  return { command_id: 0xFF, duration: 0xFF, delay: Number(delay) & 0xFF };
+}
+
+/** Summaries of a device's macros (its power-on/off plus any user macros). */
+export function deviceMacroSummaries(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): BackupDeviceMacroSummary[] {
+  const device = findDevice(bundle, deviceId);
+  return (device?.macros ?? [])
+    .map((macro) => {
+      const buttonId = Number(macro?.button_id || 0);
+      return {
+        buttonId,
+        name: String(macro?.name || defaultMacroName(buttonId)),
+        isPower: buttonId === POWER_ON_MACRO_BUTTON_ID || buttonId === POWER_OFF_MACRO_BUTTON_ID,
+        commandStepCount: (macro?.steps ?? []).filter((step) => !isMacroDelayStep(step)).length,
+      };
+    })
+    .filter((macro) => macro.buttonId > 0)
+    .sort((left, right) => left.buttonId - right.buttonId);
+}
+
+/** Step list for one of a device's macros, in the shape the editor renders. */
+export function deviceMacroStepItems(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+  buttonId: number,
+): BackupMacroStepItem[] {
+  const device = findDevice(bundle, deviceId);
+  const macro = (device?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  return (macro?.steps ?? []).map((step, index) => {
+    if (isMacroDelayStep(step)) {
+      return { index, kind: "delay", commandId: null, deviceId: null, label: "Wait", hold: 0, wait: Number(step?.delay || 0) };
+    }
+    const commandId = Number(step?.command_id || 0);
+    return {
+      index,
+      kind: "command",
+      commandId,
+      deviceId: null,
+      label: commandNameOrFallback(bundle as BackupBundlePayload, Number(deviceId), commandId),
+      hold: Number(step?.duration || 0),
+      wait: 0,
+    };
+  });
+}
+
+function updateDeviceMacro(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  buttonId: number,
+  transform: (steps: BackupBundleMacroStep[]) => BackupBundleMacroStep[],
+): BackupBundlePayload {
+  const dId = Number(deviceId);
+  const bId = Number(buttonId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      const macros = [...(device.macros ?? [])];
+      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
+      const existing = index >= 0 ? macros[index] : null;
+      const next: BackupBundleMacroRow = {
+        ...(existing ?? {}),
+        button_id: bId,
+        name: existing?.name ?? defaultMacroName(bId),
+        steps: transform(existing?.steps ?? []),
+      };
+      if (index >= 0) macros[index] = next;
+      else macros.push(next);
+      return { ...device, macros };
+    }),
+  };
+}
+
+interface MacroStepPatch {
+  commandId?: number;
+  deviceId?: number;
+  /** Command-step hold byte (duration). */
+  hold?: number;
+  /** Delay-step wait byte (delay). */
+  wait?: number;
+}
+
+function patchMacroStep(
+  step: BackupBundleMacroStep,
+  patch: MacroStepPatch,
+  isActivityMacro: boolean,
+): BackupBundleMacroStep {
+  const next: BackupBundleMacroStep = { ...step };
+  if (isMacroDelayStep(step)) {
+    if (patch.wait !== undefined) next.delay = Number(patch.wait) & 0xFF;
+    return next;
+  }
+  if (patch.commandId !== undefined) {
+    next.command_id = Number(patch.commandId);
+    if (isActivityMacro) next.button_code = synthesizeCommandCode(Number(patch.commandId));
+  }
+  if (patch.deviceId !== undefined && isActivityMacro) next.device_id = Number(patch.deviceId);
+  if (patch.hold !== undefined) next.duration = Number(patch.hold) & 0xFF;
+  return next;
+}
+
+export function addDeviceMacroCommandStep(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  buttonId: number,
+  commandId: number,
+  hold = 0,
+): BackupBundlePayload {
+  if (Number(commandId) <= 0) return bundle;
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => [
+    ...steps,
+    { command_id: Number(commandId), duration: Number(hold) & 0xFF, delay: 0xFF },
+  ]);
+}
+
+export function addDeviceMacroDelayStep(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  buttonId: number,
+  wait: number,
+): BackupBundlePayload {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => [...steps, deviceMacroDelayStep(wait)]);
+}
+
+export function updateDeviceMacroStep(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  buttonId: number,
+  index: number,
+  patch: MacroStepPatch,
+): BackupBundlePayload {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) =>
+    steps.map((step, i) => (i === Number(index) ? patchMacroStep(step, patch, false) : step)),
+  );
+}
+
+export function removeDeviceMacroStep(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  buttonId: number,
+  index: number,
+): BackupBundlePayload {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => steps.filter((_, i) => i !== Number(index)));
+}
+
+export function reorderDeviceMacroSteps(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  buttonId: number,
+  orderedIndices: number[],
+): BackupBundlePayload {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) =>
+    orderedIndices.map((i) => steps[Number(i)]).filter((step): step is BackupBundleMacroStep => Boolean(step)),
+  );
+}
+
+// ── Activity user macro step editing ────────────────────────────────
+//
+// Activity user macros (button_id not 198/199) play commands on member
+// devices. Steps carry `{device_id, command_id, button_code, delay}`;
+// restore takes button_code verbatim, so a new command step synthesizes
+// it. Step edits change device membership, so they re-run the power-macro
+// reconcile. Delay steps use the activity 0xFF/0xFF sentinel form.
+
+export interface BackupActivityMacroSummary {
+  buttonId: number;
+  name: string;
+  commandStepCount: number;
+}
+
+/** A device's user macros (excludes the auto-managed power macros 198/199). */
+export function activityUserMacroSummaries(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): BackupActivityMacroSummary[] {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  return (activity?.macros ?? [])
+    .map((macro) => ({ buttonId: Number(macro?.button_id || 0), macro }))
+    .filter(({ buttonId }) => buttonId > 0 && buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID)
+    .map(({ buttonId, macro }) => ({
+      buttonId,
+      name: String(macro?.name || `Macro ${buttonId}`),
+      commandStepCount: (macro?.steps ?? []).filter((step) => !isMacroDelayStep(step)).length,
+    }))
+    .sort((left, right) => left.buttonId - right.buttonId);
+}
+
+/** Step list for one activity user macro, in the shape the editor renders. */
+export function activityMacroStepItems(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+  buttonId: number,
+): BackupMacroStepItem[] {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  return (macro?.steps ?? []).map((step, index) => {
+    if (isMacroDelayStep(step)) {
+      return { index, kind: "delay", commandId: null, deviceId: null, label: "Wait", hold: 0, wait: Number(step?.delay || 0) };
+    }
+    const deviceId = Number(step?.device_id || 0);
+    const commandId = Number(step?.command_id || 0);
+    const deviceName = deviceNameFor(bundle, deviceId);
+    // Mandatory power-macro references (only present in the 198/199 macros).
+    if (commandId === DEVICE_POWER_ON_REF_COMMAND || commandId === DEVICE_POWER_OFF_REF_COMMAND) {
+      const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? "Power on" : "Power off";
+      return { index, kind: "power", commandId, deviceId, label: `${verb} · ${deviceName}`, hold: 0, wait: 0, protected: true };
+    }
+    if (commandId === DEVICE_INPUT_REF_COMMAND) {
+      const ordinal = Number(step?.duration || 0);
+      const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === ordinal);
+      const inputLabel = input?.name || (ordinal > 0 ? `Input ${ordinal}` : "no input");
+      // commandId carries the resolved input command (or null) so the editor
+      // can pre-select it; the step itself is identified as an input ref.
+      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input · ${deviceName}: ${inputLabel}`, hold: 0, wait: 0, protected: true };
+    }
+    return {
+      index,
+      kind: "command",
+      commandId,
+      deviceId,
+      label: `${deviceName} · ${commandNameOrFallback(bundle as BackupBundlePayload, deviceId, commandId)}`,
+      hold: Number(step?.duration || 0),
+      wait: 0,
+    };
+  });
+}
+
+function updateActivityMacro(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  buttonId: number,
+  transform: (steps: BackupBundleMacroStep[]) => BackupBundleMacroStep[],
+): BackupBundlePayload {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => {
+    const macros = [...(activity.macros ?? [])];
+    const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
+    const existing = index >= 0 ? macros[index] : null;
+    const nextMacro: BackupBundleMacroRow = {
+      ...(existing ?? {}),
+      button_id: bId,
+      name: existing?.name ?? `Macro ${bId}`,
+      steps: transform(existing?.steps ?? []),
+    };
+    if (index >= 0) macros[index] = nextMacro;
+    else macros.push(nextMacro);
+    return { ...activity, macros };
+  });
+  // Step edits can change which devices the activity uses.
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+
+/** Create an empty user macro on an Activity at the next quick-access slot. */
+export function addActivityUserMacro(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  name: string,
+): BackupBundlePayload {
+  return updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: [...(activity.macros ?? []), {
+      button_id: nextQuickAccessButtonId(activity),
+      name: String(name ?? "").trim() || "Macro",
+      steps: [],
+    }],
+  }));
+}
+
+export function addActivityMacroCommandStep(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  buttonId: number,
+  deviceId: number,
+  commandId: number,
+  hold = 0,
+): BackupBundlePayload {
+  if (Number(deviceId) <= 0 || Number(commandId) <= 0) return bundle;
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => [...steps, {
+    device_id: Number(deviceId),
+    command_id: Number(commandId),
+    button_code: synthesizeCommandCode(Number(commandId)),
+    duration: Number(hold) & 0xFF,
+    delay: 0xFF,
+  }]);
+}
+
+export function addActivityMacroDelayStep(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  buttonId: number,
+  wait: number,
+): BackupBundlePayload {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => [...steps, powerMacroDelayRow(Number(wait))]);
+}
+
+export function updateActivityMacroStep(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  buttonId: number,
+  index: number,
+  patch: MacroStepPatch,
+): BackupBundlePayload {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) =>
+    steps.map((step, i) => (i === Number(index) ? patchMacroStep(step, patch, true) : step)),
+  );
+}
+
+export function removeActivityMacroStep(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  buttonId: number,
+  index: number,
+): BackupBundlePayload {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    // Mandatory power-macro refs can be reordered but never deleted.
+    if (isPowerRefStep(steps[Number(index)])) return steps;
+    return steps.filter((_, i) => i !== Number(index));
+  });
+}
+
+export function reorderActivityMacroSteps(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  buttonId: number,
+  orderedIndices: number[],
+): BackupBundlePayload {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) =>
+    orderedIndices.map((i) => steps[Number(i)]).filter((step): step is BackupBundleMacroStep => Boolean(step)),
+  );
 }
 
 // ── Button bindings ─────────────────────────────────────────────────

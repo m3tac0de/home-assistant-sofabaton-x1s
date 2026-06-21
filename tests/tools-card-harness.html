@@ -720,7 +720,7 @@
 
   <!-- Card bundle — runs after stubs module above.
        The ?v= bust forces browsers to skip cache when the file is updated. -->
-  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=65"></script>
+  <script type="module" src="../custom_components/sofabaton_x1s/www/tools-card.js?v=70"></script>
 
   <!-- Harness logic — runs after both modules above -->
   <script type="module">
@@ -806,7 +806,7 @@
     // tools_frontend_version must match the ?v= cache-bust on the script tag.
     // The store compares this against LOADED_TOOLS_FRONTEND_VERSION (read from the
     // script URL's ?v= param) and sets toolsFrontendVersionMismatch if they differ.
-    const TOOLS_FRONTEND_VERSION = "65";
+    const TOOLS_FRONTEND_VERSION = "70";
 
     const BASE_STATE = {
       persistent_cache_enabled: true,
@@ -888,7 +888,17 @@
           ],
           button_bindings: [
             { button_id: 0xB0, button_name: "OK", command_id: 10, long_press_command_id: 11 },
-          ] },
+          ],
+          macros: [
+            // Real timing: duration = hold in 0.5s units (4 = Hold 2.0s),
+            // and a standalone wait row (command_id 255, delay = 0.5s units).
+            { button_id: 198, name: "POWER_ON", steps: [
+              { command_id: 10, duration: 4, delay: 255 },
+              { command_id: 255, duration: 255, delay: 3 },
+              { command_id: 11, duration: 0, delay: 255 },
+            ] },
+          ],
+          input_record: { entries: [{ command_id: 12, input_index: 1, name: "Input HDMI1" }] } },
         { device: { device_id: 2, name: "Soundbar", device_class: "ir", sort: 2 },
           commands: [
             { command_id: 20, name: "Power" },
@@ -907,18 +917,18 @@
               { device_id: 1, command_id: 11 },
               { device_id: 2, command_id: 21 },
             ] },
-            // Proper power macros, but only representing device 1 — device 2 is
-            // referenced (favorite/binding/macro) yet missing here, the exact
-            // inconsistency the reconcile invariant repairs on the next edit.
+            // Real flat power-macro format: per-device 0xC6 (power-on) and
+            // 0xC5 (input, duration = ordinal) steps, no separate delay rows.
+            // Device 1's input is set to ordinal 1 (= Input HDMI1).
             { button_id: 198, name: "POWER_ON", steps: [
-              { device_id: 1, command_id: 0xC6, button_code: 0, duration: 0, delay: 0 },
-              { device_id: 255, command_id: 255, button_code: 281474976710655, duration: 255, delay: 100 },
-              { device_id: 1, command_id: 0xC5, button_code: 0, duration: 0, delay: 0 },
-              { device_id: 255, command_id: 255, button_code: 281474976710655, duration: 255, delay: 0 },
+              { device_id: 1, command_id: 0xC6, button_code: 0, duration: 1, delay: 255 },
+              { device_id: 1, command_id: 0xC5, button_code: 0, duration: 1, delay: 255 },
+              { device_id: 2, command_id: 0xC6, button_code: 0, duration: 0, delay: 255 },
+              { device_id: 2, command_id: 0xC5, button_code: 0, duration: 0, delay: 255 },
             ] },
             { button_id: 199, name: "POWER_OFF", steps: [
-              { device_id: 1, command_id: 0xC7, button_code: 0, duration: 0, delay: 0 },
-              { device_id: 255, command_id: 255, button_code: 281474976710655, duration: 255, delay: 0 },
+              { device_id: 1, command_id: 0xC7, button_code: 0, duration: 0, delay: 255 },
+              { device_id: 2, command_id: 0xC7, button_code: 0, duration: 0, delay: 255 },
             ] },
           ],
           button_bindings: [
