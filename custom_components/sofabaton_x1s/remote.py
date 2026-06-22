@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.components.remote import RemoteEntity, RemoteEntityFeature
@@ -18,6 +19,8 @@ from .const import (
     signal_macros,
 )
 from .hub import get_hub_display_name, get_hub_model
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -184,7 +187,28 @@ class SofabatonRemote(RemoteEntity):
 
     @callback
     def _schedule_update(self) -> None:
+        current_activity = self.current_activity
+        _LOGGER.debug(
+            "[%s] Remote entity update: entity_id=%s unique_id=%s hub_activity=%s current_activity=%s current_activity_id=%s is_on=%s available=%s client_connected=%s",
+            self._hub.entry_id,
+            getattr(self, "entity_id", None),
+            self.unique_id,
+            self._hub.current_activity,
+            current_activity,
+            self._hub.current_activity,
+            self.is_on,
+            self.available,
+            self._hub.client_connected,
+        )
         self.async_write_ha_state()
+        state_obj = self.hass.states.get(self.entity_id) if self.entity_id else None
+        _LOGGER.debug(
+            "[%s] Remote entity HA state after write: entity_id=%s state=%s attributes=%s",
+            self._hub.entry_id,
+            getattr(self, "entity_id", None),
+            getattr(state_obj, "state", None),
+            dict(getattr(state_obj, "attributes", {}) or {}),
+        )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._hub.async_power_off_current()

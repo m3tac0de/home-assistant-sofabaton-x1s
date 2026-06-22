@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 from homeassistant.components.sensor import SensorEntity
@@ -25,6 +26,8 @@ from .const import (
     signal_wifi_device,
 )
 from .hub import SofabatonHub, get_hub_display_name, get_hub_model
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
@@ -188,7 +191,25 @@ class SofabatonActivitySensor(SensorEntity):
 
     @callback
     def _handle_update(self) -> None:
+        exposed_state = self.state
+        _LOGGER.debug(
+            "[%s] Activity sensor update: entity_id=%s unique_id=%s hub_activity=%s exposed_state=%s available=%s",
+            self._hub.entry_id,
+            getattr(self, "entity_id", None),
+            self.unique_id,
+            self._hub.current_activity,
+            exposed_state,
+            self.available,
+        )
         self.async_write_ha_state()
+        state_obj = self.hass.states.get(self.entity_id) if self.entity_id else None
+        _LOGGER.debug(
+            "[%s] Activity sensor HA state after write: entity_id=%s state=%s attributes=%s",
+            self._hub.entry_id,
+            getattr(self, "entity_id", None),
+            getattr(state_obj, "state", None),
+            dict(getattr(state_obj, "attributes", {}) or {}),
+        )
 
     @property
     def available(self) -> bool:
