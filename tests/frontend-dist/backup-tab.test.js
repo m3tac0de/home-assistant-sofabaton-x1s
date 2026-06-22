@@ -3502,6 +3502,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._editError = null;
     this._editDetailKind = null;
     this._editDetailId = null;
+    this._editDetailActiveSection = "power";
     this._editDetailNameDraft = "";
     this._editRenameDialogOpen = false;
     this._editRenameDialogDraft = "";
@@ -3571,6 +3572,32 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     // against. Used to detect hub-picker switches and drop a bundle that is no
     // longer valid for the now-selected hub.
     this._restoreHubEntryId = null;
+    this._handleEditDetailScroll = (event) => {
+      const scrollEl = event.currentTarget;
+      if (!scrollEl) return;
+      const sections = Array.from(
+        scrollEl.querySelectorAll("[data-edit-section]")
+      );
+      if (!sections.length) return;
+      if (scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2) {
+        const lastSection = sections[sections.length - 1];
+        const lastActive = String(lastSection.dataset.editSection || "power");
+        if (lastActive !== this._editDetailActiveSection) {
+          this._editDetailActiveSection = lastActive;
+        }
+        return;
+      }
+      const markerTop = scrollEl.getBoundingClientRect().top + 24;
+      let active = String(sections[0].dataset.editSection || "power");
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top <= markerTop) {
+          active = String(section.dataset.editSection || active);
+        }
+      }
+      if (active !== this._editDetailActiveSection) {
+        this._editDetailActiveSection = active;
+      }
+    };
     this._handleDecodedFieldInput = (event, fieldKey) => {
       const input = event.currentTarget;
       this._editRenameDialogDecodedDrafts = {
@@ -3721,6 +3748,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._closeEditDetail = () => {
       this._editDetailKind = null;
       this._editDetailId = null;
+      this._editDetailActiveSection = "power";
       this._editDetailNameDraft = "";
       this._closeEditRenameDialog();
       this._closeDeleteConfirm();
@@ -4096,6 +4124,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       _editError: { state: true },
       _editDetailKind: { state: true },
       _editDetailId: { state: true },
+      _editDetailActiveSection: { state: true },
       _editDetailNameDraft: { state: true },
       _editRenameDialogOpen: { state: true },
       _editRenameDialogDraft: { state: true },
@@ -4484,7 +4513,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       z-index: 2;
       background: var(--ha-card-background, var(--card-background-color));
     }
-    .sticky-header { top: 0; border-bottom: 1px solid var(--divider-color); padding: 12px 16px; }
+    .sticky-header { top: 0; }
     .detail-scroll {
       flex: 1;
       min-height: 0;
@@ -4500,6 +4529,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       justify-content: space-between;
       gap: 12px;
       min-width: 0;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--divider-color);
     }
     .detail-title-main {
       display: flex;
@@ -4522,6 +4553,58 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    .detail-section-nav {
+      display: flex;
+      align-items: stretch;
+      min-height: 34px;
+      margin: 10px 16px;
+      border: 1px solid color-mix(in srgb, var(--divider-color) 88%, transparent);
+      border-radius: var(--backup-radius-md);
+      overflow: hidden;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 76%, transparent);
+    }
+    .detail-section-nav-btn {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 0 10px;
+      border: none;
+      border-right: 1px solid color-mix(in srgb, var(--divider-color) 82%, transparent);
+      background: transparent;
+      color: color-mix(in srgb, var(--secondary-text-color) 88%, var(--primary-text-color) 12%);
+      font: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .detail-section-nav-btn:last-child {
+      border-right: none;
+    }
+    .detail-section-nav-btn:hover {
+      background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+      color: var(--primary-text-color);
+    }
+    .detail-section-nav-btn.active {
+      color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+      box-shadow: inset 0 -2px 0 var(--primary-color);
+    }
+    .detail-section-nav-btn ha-icon {
+      --mdc-icon-size: 16px;
+      flex: 0 0 auto;
+    }
+    .detail-section-nav-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
     /* Match the Wifi Commands tab's detail-view back button so the
        affordance is identical across the card: padded pill with a
@@ -4704,6 +4787,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     .quick-access-section {
       display: grid;
       gap: 12px;
+      scroll-margin-top: 16px;
     }
     .quick-access-head {
       display: flex;
@@ -5289,6 +5373,18 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         gap: 6px;
         min-width: max-content;
       }
+      .detail-section-nav {
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .detail-section-nav::-webkit-scrollbar {
+        display: none;
+      }
+      .detail-section-nav-btn {
+        flex-basis: auto;
+        min-width: max-content;
+        padding-inline: 12px;
+      }
       .restore-action-row > .primary-btn,
       .restore-action-row > .secondary-btn {
         width: 100%;
@@ -5717,6 +5813,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _renderEditDetailView(params) {
+    const sectionItems = this._editDetailSectionItems(params.kind);
     const activityQuickAccess = params.kind === "activity" && this._editDetailId != null ? activityQuickAccessItems(this._editBundle, this._editDetailId) : [];
     const deviceCommands = params.kind === "device" && this._editDetailId != null ? deviceCommandItems(this._editBundle, this._editDetailId) : [];
     return T`
@@ -5744,8 +5841,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                 </div>
               </div>
             </div>
+            ${this._renderEditDetailSectionNav(sectionItems)}
           </div>
-          <div class="detail-scroll">
+          <div class="detail-scroll" @scroll=${this._handleEditDetailScroll}>
             ${params.kind === "activity" ? T`
                   ${this._renderPowerSetupSection("activity", Number(this._editDetailId))}
                   ${this._renderActivityQuickAccessSection(activityQuickAccess)}
@@ -5765,13 +5863,57 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       </div>
     `;
   }
+  _editDetailSectionItems(kind) {
+    if (kind === "activity") {
+      return [
+        { id: "power", icon: "mdi:power-plug-outline", label: "Power" },
+        { id: "quick_access", icon: "mdi:star-outline", label: "Macros/Favorites" },
+        { id: "bindings", icon: "mdi:gesture-tap-button", label: "Buttons" }
+      ];
+    }
+    const hasNetworkSection = this._editDetailId != null && this._editBundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this._editBundle, Number(this._editDetailId)) ?? "") : false;
+    return [
+      { id: "power", icon: "mdi:power-plug-outline", label: "Power" },
+      ...hasNetworkSection ? [{ id: "network", icon: "mdi:lan-connect", label: "Network" }] : [],
+      { id: "commands", icon: "mdi:format-list-bulleted", label: "Commands" },
+      { id: "bindings", icon: "mdi:gesture-tap-button", label: "Buttons" }
+    ];
+  }
+  _renderEditDetailSectionNav(items) {
+    if (items.length <= 1) return A;
+    const activeId = items.some((item) => item.id === this._editDetailActiveSection) ? this._editDetailActiveSection : items[0].id;
+    return T`
+      <div class="detail-section-nav" role="tablist" aria-label="Detail sections">
+        ${items.map((item) => T`
+          <button
+            class=${`detail-section-nav-btn${item.id === activeId ? " active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected=${item.id === activeId ? "true" : "false"}
+            @click=${() => this._scrollEditDetailSection(item.id)}
+          >
+            <ha-icon icon=${item.icon}></ha-icon>
+            <span class="detail-section-nav-label">${item.label}</span>
+          </button>
+        `)}
+      </div>
+    `;
+  }
+  _scrollEditDetailSection(sectionId) {
+    const scrollEl = this.renderRoot.querySelector(".detail-scroll");
+    const sectionEl = scrollEl?.querySelector(`[data-edit-section="${sectionId}"]`);
+    if (!scrollEl || !sectionEl) return;
+    const targetTop = sectionEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+    scrollEl.scrollTop = Math.max(0, targetTop);
+    this._editDetailActiveSection = sectionId;
+  }
   _renderButtonBindingsSection(kind) {
     if (this._editDetailId == null || !this._editBundle) return A;
     const entityId = Number(this._editDetailId);
     const items = kind === "activity" ? activityButtonBindingItems(this._editBundle, entityId) : deviceButtonBindingItems(this._editBundle, entityId);
     const unbound = kind === "activity" ? unboundButtonsForActivity(this._editBundle, entityId) : unboundButtonsForDevice(this._editBundle, entityId);
     return T`
-      <div class="quick-access-section">
+      <div class="quick-access-section" data-edit-section="bindings">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
             <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.buttonBindingsTitle}</div>
@@ -5845,7 +5987,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     if (!IP_HEAD_DEVICE_CLASSES.has(deviceClass)) return A;
     const ip = deviceIpAddress(this._editBundle, deviceId);
     return T`
-      <div class="quick-access-section">
+      <div class="quick-access-section" data-edit-section="network">
         <div class="quick-access-head">
           <div class="quick-access-title">Network</div>
           <div class="quick-access-sub">
@@ -5882,7 +6024,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   _renderDeviceCommandsSection(items) {
     if (this._editDetailId == null) return A;
     return T`
-      <div class="quick-access-section">
+      <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
@@ -5936,7 +6078,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     if (this._editDetailId == null) return A;
     const rows = items.map((item) => this._renderActivityQuickAccessRow(item));
     return T`
-      <div class="quick-access-section">
+      <div class="quick-access-section" data-edit-section="quick_access">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
             <div class="quick-access-title">Macros and Favorites</div>
@@ -6447,6 +6589,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   _openEditDetail(kind, id, name) {
     this._editDetailKind = kind;
     this._editDetailId = Number(id);
+    this._editDetailActiveSection = "power";
     this._editDetailNameDraft = this._sanitizeBundleName(name);
   }
   _selectedEditTitle() {
@@ -6881,7 +7024,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   _renderPowerSetupSection(scope, entityId) {
     if (this._editDetailId == null || !this._editBundle) return A;
     return T`
-      <div class="quick-access-section">
+      <div class="quick-access-section" data-edit-section="power">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
             <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.powerSetupTitle}</div>
