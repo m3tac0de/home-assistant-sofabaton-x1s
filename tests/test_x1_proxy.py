@@ -163,6 +163,48 @@ def test_status_ack_07_finishes_empty_activities_burst_immediately() -> None:
     assert proxy._activity_retry_due_at is None
 
 
+def test_app_req_activities_arms_snapshot_so_rows_are_not_ghosted() -> None:
+    # While the app drives the session the proxy never sends its own
+    # REQ_ACTIVITIES, so observing the app's request must arm a pending
+    # snapshot; otherwise every row is rejected as a ghost and the running
+    # activity (the `active` flag) never reaches current_activity.
+    from custom_components.sofabaton_x1s.lib.protocol_const import OP_REQ_ACTIVITIES
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    proxy.state.activities = {0x65: {"name": "Watch TV", "active": True, "needs_confirm": False}}
+    proxy.state.set_hint(0x65)
+
+    # No request in flight yet: a row would be ghosted.
+    assert proxy._activity_request_inflight is None
+
+    # Simulate the app asking the hub for the activity list.
+    proxy._handle_app_frames([(OP_REQ_ACTIVITIES, b"", b"", 0, 0)])
+    assert proxy._activity_request_inflight is not None
+
+    # The hub's rows are now adopted instead of discarded.
+    assert proxy.ingest_activity_row(
+        row_idx=1,
+        expected_rows=2,
+        act_id=0x65,
+        activity={"id": 0x65, "name": "Watch TV", "active": False, "needs_confirm": False},
+    )
+    assert proxy.ingest_activity_row(
+        row_idx=2,
+        expected_rows=2,
+        act_id=0x66,
+        activity={"id": 0x66, "name": "Play Xbox", "active": True, "needs_confirm": False},
+    )
+
+    proxy._on_activities_burst_end("activities")
+
+    assert proxy.state.activities == {
+        0x65: {"name": "Watch TV", "active": False, "needs_confirm": False},
+        0x66: {"name": "Play Xbox", "active": True, "needs_confirm": False},
+    }
+    # The newly running activity is reflected in the hint the sensor reads.
+    assert proxy.state.current_activity_hint == 0x66
+
+
 def test_try_finish_devices_burst_ends_burst_once_snapshot_is_complete() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 

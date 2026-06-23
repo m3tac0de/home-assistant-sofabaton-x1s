@@ -15,6 +15,7 @@ from .hub_logging import LogTag
 from .protocol_const import (
     FAMILY_PLAY_BLOB,
     OP_CATALOG_ROW_DEVICE,
+    OP_REQ_ACTIVITIES,
     OP_REQ_DEVICES,
     OPNAMES,
     opcode_family,
@@ -53,6 +54,15 @@ class FrameDecodeMixin:
                 self._begin_device_request()
                 self._app_devices_deadline = self._time_monotonic() + 1.0
                 self._app_devices_retry_sent = False
+            elif opcode == OP_REQ_ACTIVITIES:
+                # When the app drives the session the proxy never issues its
+                # own REQ_ACTIVITIES, so without arming a pending snapshot here
+                # every activity row the hub returns is rejected as a "ghost"
+                # row (see ingest_activity_row). The app refreshes the activity
+                # list after each state change (it does so in response to the
+                # hub's ACK_READY push), so adopting that refresh is how the
+                # running-activity state stays current while connected.
+                self._begin_activity_request()
 
     def _handle_hub_frames(self, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
         for opcode, _raw, _payload, _scid, _ecid in frames:
