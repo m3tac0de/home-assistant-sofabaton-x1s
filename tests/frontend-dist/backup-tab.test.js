@@ -1854,11 +1854,25 @@ var TOOLS_CARD_STRINGS = {
     macrosTitle: "Macros",
     macrosDeviceSub: "Edit the command sequences this device plays, including its power on / off.",
     macroPowerChip: "power",
-    powerSetupTitle: "Power On/Off setup",
-    powerSetupDeviceSub: "The commands this device sends when it is powered on and off.",
+    powerSetupTitle: "Power",
+    powerSetupDeviceSub: "How the hub manages this device's power for Activities, and the sequences it sends to switch it on and off.",
     powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
-    powerOnLabel: "Power on",
-    powerOffLabel: "Power off",
+    powerOnLabel: "Power-on sequence",
+    powerOffLabel: "Power-off sequence",
+    // Automatic-power dropdown (device only). One hub byte encodes the whole
+    // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
+    powerControlTitle: "Automatic power control",
+    powerControlUnset: "Not captured",
+    powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
+    powerControlDisabled: "Don't control power",
+    powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
+    powerControlAutoOff: "Turn off when idle",
+    powerControlAutoOffSub: "Recommended. Powers the device off when no Activity needs it.",
+    powerControlStayOn: "Stay on between Activities",
+    powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
+    powerControlAlwaysOn: "Always stay on",
+    powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
+    powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
     inputStepTitle: "Set input",
     inputStepCommand: "Input command",
     inputStepNone: "\u2014 no input \u2014",
@@ -2543,6 +2557,37 @@ function updateBundleDeviceIp(bundle, deviceId, ip) {
       return {
         ...device,
         device: { ...device.device, ip_address: trimmed || null }
+      };
+    })
+  };
+}
+var IDLE_BEHAVIOR_AUTO_OFF = 1;
+var IDLE_BEHAVIOR_ALWAYS_ON = 2;
+var IDLE_BEHAVIOR_STAY_ON = 3;
+var IDLE_BEHAVIOR_DISABLED = 4;
+function deviceIdleBehavior(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device?.device) return null;
+  const raw = device.device.idle_behavior ?? device.device.power_mode;
+  if (raw == null) return null;
+  const mode = Number(raw);
+  return Number.isFinite(mode) ? mode & 255 : null;
+}
+function updateBundleDeviceIdleBehavior(bundle, deviceId, mode) {
+  const normalizedId = Number(deviceId);
+  const normalizedMode = Number(mode) & 255;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
+      if (!device.device) return device;
+      return {
+        ...device,
+        device: { ...device.device, idle_behavior: normalizedMode }
       };
     })
   };
@@ -3503,6 +3548,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._editDetailKind = null;
     this._editDetailId = null;
     this._editDetailActiveSection = "power";
+    // Whether the power-control option menu (the two-line dropdown in the
+    // device Power section) is expanded. Reset whenever a detail view opens.
+    this._powerControlMenuOpen = false;
     this._editDetailNameDraft = "";
     this._editRenameDialogOpen = false;
     this._editRenameDialogDraft = "";
@@ -3749,6 +3797,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._editDetailKind = null;
       this._editDetailId = null;
       this._editDetailActiveSection = "power";
+      this._powerControlMenuOpen = false;
       this._editDetailNameDraft = "";
       this._closeEditRenameDialog();
       this._closeDeleteConfirm();
@@ -4051,6 +4100,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       const next = editor.scope === "device" ? reorderDeviceMacroSteps(this._editBundle, editor.entityId, editor.buttonId, order) : reorderActivityMacroSteps(this._editBundle, editor.entityId, editor.buttonId, order);
       this._commitEditBundleEdit(next);
     };
+    this._togglePowerControlMenu = () => {
+      this._powerControlMenuOpen = !this._powerControlMenuOpen;
+    };
     this._addActivityMacro = () => {
       if (this._editDetailId == null || !this._editBundle) return;
       const activityId = Number(this._editDetailId);
@@ -4159,7 +4211,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       _stepDelaySeconds: { state: true },
       _stepError: { state: true },
       _editBundleDirty: { state: true },
-      _haSortableReady: { state: true }
+      _haSortableReady: { state: true },
+      _powerControlMenuOpen: { state: true }
     };
   }
   static {
@@ -4500,6 +4553,93 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       justify-content: center;
     }
     .selection-chevron ha-icon { --mdc-icon-size: 18px; }
+
+    /* ── Automatic-power dropdown (device Power section) ─────────────── */
+    /* Genuine overlay popup: the menu is absolutely positioned so opening
+       it never reflows the sequence rows below. A transparent fixed
+       backdrop catches click-away. */
+    /* The control is its own field, a sibling of (not inside) the
+       sequence list, so the list's overflow:hidden can't clip the popup. */
+    .power-control {
+      position: relative;
+      display: block;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-lg);
+      background: var(--ha-card-background, var(--card-background-color));
+    }
+    .power-control-trigger {
+      width: 100%;
+      border: none;
+      border-radius: inherit;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+    .power-control-trigger:hover {
+      background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+    }
+    .power-control-trigger .selection-chevron ha-icon { transition: transform 120ms ease; }
+    .power-control[data-open="true"] .power-control-trigger .selection-chevron ha-icon {
+      transform: rotate(180deg);
+    }
+    .power-control-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: default;
+    }
+    .power-control-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 31;
+      display: flex;
+      flex-direction: column;
+      background: var(--card-background-color, var(--ha-card-background, var(--secondary-background-color, #fff)));
+      border: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
+      border-radius: 10px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+      overflow: hidden;
+    }
+    .power-control-option {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 50%, transparent);
+      cursor: pointer;
+    }
+    .power-control-option:first-child { border-top: none; }
+    .power-control-option:hover {
+      background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+    }
+    .power-control-option[aria-checked="true"] .selection-label { color: var(--primary-color); }
+    .power-control-option .selection-chevron ha-icon { color: var(--primary-color); }
+
+    /* Power-on/off sequence rows, dimmed + inert when power control is off */
+    .power-sequences[data-disabled="true"] { opacity: 0.45; pointer-events: none; }
+    .power-sequences-note {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      line-height: 1.45;
+      padding: 8px 14px 0;
+    }
     .tab-panel--detail { padding: 0; }
     .detail-view {
       min-height: 0;
@@ -5518,6 +5658,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       if (parsed.detail && parsed.detail.kind && Number.isFinite(Number(parsed.detail.id))) {
         this._editDetailKind = parsed.detail.kind;
         this._editDetailId = Number(parsed.detail.id);
+        this._powerControlMenuOpen = false;
       }
       this._editBundleDirty = Boolean(parsed.dirty);
     } catch {
@@ -6590,6 +6731,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._editDetailKind = kind;
     this._editDetailId = Number(id);
     this._editDetailActiveSection = "power";
+    this._powerControlMenuOpen = false;
     this._editDetailNameDraft = this._sanitizeBundleName(name);
   }
   _selectedEditTitle() {
@@ -7007,11 +7149,18 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     if (!this._editBundle) return 0;
     return scope === "device" ? deviceMacroStepItems(this._editBundle, entityId, buttonId).length : activityMacroStepItems(this._editBundle, entityId, buttonId).length;
   }
-  _renderPowerSetupRow(scope, entityId, buttonId, label) {
+  _renderPowerSetupRow(scope, entityId, buttonId, label, disabled) {
     const count = this._powerSetupStepCount(scope, entityId, buttonId);
     return T`
       <div class="quick-access-sortable-item">
-        <button class="edit-selection-row" @click=${() => this._openMacroEditor(scope, entityId, buttonId, label)}>
+        <button
+          class="edit-selection-row"
+          aria-disabled=${disabled ? "true" : "false"}
+          tabindex=${disabled ? "-1" : "0"}
+          @click=${() => {
+      if (!disabled) this._openMacroEditor(scope, entityId, buttonId, label);
+    }}
+        >
           <span class="selection-main">
             <span class="selection-label">${label}</span>
             <span class="selection-sub">${TOOLS_CARD_STRINGS.backup.macroStepsCount(count)}</span>
@@ -7021,24 +7170,113 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       </div>
     `;
   }
+  // The device Power section folds two concepts the hub keeps separate but
+  // the app presents together: the automatic-power / idle-behavior selector
+  // (one 0x0242 byte) and the POWER_ON/POWER_OFF command sequences. Choosing
+  // "Don't control power" makes the hub ignore the sequences, so they render
+  // inert. Activities have no idle behavior, so they get only the sequences.
   _renderPowerSetupSection(scope, entityId) {
     if (this._editDetailId == null || !this._editBundle) return A;
+    const S3 = TOOLS_CARD_STRINGS.backup;
+    const isDevice = scope === "device";
+    const mode = isDevice ? deviceIdleBehavior(this._editBundle, entityId) : null;
+    const sequencesDisabled = isDevice && mode === IDLE_BEHAVIOR_DISABLED;
     return T`
       <div class="quick-access-section" data-edit-section="power">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
-            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.powerSetupTitle}</div>
+            <div class="quick-access-title">${S3.powerSetupTitle}</div>
             <div class="quick-access-sub">
-              ${scope === "device" ? TOOLS_CARD_STRINGS.backup.powerSetupDeviceSub : TOOLS_CARD_STRINGS.backup.powerSetupActivitySub}
+              ${isDevice ? S3.powerSetupDeviceSub : S3.powerSetupActivitySub}
             </div>
           </div>
         </div>
+        ${isDevice ? this._renderPowerControlDropdown(entityId, mode) : A}
         <div class="quick-access-list">
-          <div class="quick-access-sortable-container">
-            ${this._renderPowerSetupRow(scope, entityId, 198, TOOLS_CARD_STRINGS.backup.powerOnLabel)}
-            ${this._renderPowerSetupRow(scope, entityId, 199, TOOLS_CARD_STRINGS.backup.powerOffLabel)}
+          ${sequencesDisabled ? T`<div class="power-sequences-note">${S3.powerSequencesDisabledNote}</div>` : A}
+          <div
+            class="quick-access-sortable-container power-sequences"
+            data-disabled=${sequencesDisabled ? "true" : "false"}
+          >
+            ${this._renderPowerSetupRow(scope, entityId, 198, S3.powerOnLabel, sequencesDisabled)}
+            ${this._renderPowerSetupRow(scope, entityId, 199, S3.powerOffLabel, sequencesDisabled)}
           </div>
         </div>
+      </div>
+    `;
+  }
+  // ── Automatic power control selector (device only) ──────────────────
+  // One hub byte (the 0x0242 reply) encodes both the "Power On/Off Setup"
+  // toggle and the "Idle Behavior" choice, so it surfaces here as a single
+  // two-line dropdown. It lives in its own hub query, not the device
+  // record, so it is captured/restored separately.
+  _powerControlOptions() {
+    const S3 = TOOLS_CARD_STRINGS.backup;
+    return [
+      { mode: IDLE_BEHAVIOR_DISABLED, label: S3.powerControlDisabled, sub: S3.powerControlDisabledSub },
+      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S3.powerControlAutoOff, sub: S3.powerControlAutoOffSub },
+      { mode: IDLE_BEHAVIOR_STAY_ON, label: S3.powerControlStayOn, sub: S3.powerControlStayOnSub },
+      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S3.powerControlAlwaysOn, sub: S3.powerControlAlwaysOnSub }
+    ];
+  }
+  _selectPowerControl(deviceId, mode) {
+    this._powerControlMenuOpen = false;
+    if (!this._editBundle) return;
+    if (deviceIdleBehavior(this._editBundle, deviceId) === mode) return;
+    this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this._editBundle, deviceId, mode));
+  }
+  _renderPowerControlDropdown(deviceId, mode) {
+    const S3 = TOOLS_CARD_STRINGS.backup;
+    const options = this._powerControlOptions();
+    const selected = options.find((opt) => opt.mode === mode) ?? null;
+    const open = this._powerControlMenuOpen;
+    return T`
+      <div class="power-control" data-open=${open ? "true" : "false"}>
+        <button
+          class="power-control-trigger"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded=${open ? "true" : "false"}
+          @click=${this._togglePowerControlMenu}
+        >
+          <span class="selection-main">
+            <span class="selection-label">${selected ? selected.label : S3.powerControlUnset}</span>
+            <span class="selection-sub">${selected ? selected.sub : S3.powerControlUnsetSub}</span>
+          </span>
+          <span class="selection-chevron"><ha-icon icon="mdi:chevron-down"></ha-icon></span>
+        </button>
+        ${open ? T`
+              <button
+                class="power-control-backdrop"
+                type="button"
+                tabindex="-1"
+                aria-hidden="true"
+                @click=${this._togglePowerControlMenu}
+              ></button>
+              <div class="power-control-menu" role="listbox" aria-label=${S3.powerControlTitle}>
+                ${options.map((opt) => {
+      const isSel = opt.mode === mode;
+      return T`
+                    <button
+                      class="power-control-option"
+                      type="button"
+                      role="option"
+                      aria-selected=${isSel ? "true" : "false"}
+                      aria-checked=${isSel ? "true" : "false"}
+                      @click=${() => this._selectPowerControl(deviceId, opt.mode)}
+                    >
+                      <span class="selection-main">
+                        <span class="selection-label">${opt.label}</span>
+                        <span class="selection-sub">${opt.sub}</span>
+                      </span>
+                      <span class="selection-chevron">
+                        ${isSel ? T`<ha-icon icon="mdi:check"></ha-icon>` : A}
+                      </span>
+                    </button>
+                  `;
+    })}
+              </div>
+            ` : A}
       </div>
     `;
   }

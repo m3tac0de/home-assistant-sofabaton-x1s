@@ -50,6 +50,12 @@ import {
   deviceCommandItems,
   deviceMacroStepItems,
   deviceIpAddress,
+  deviceIdleBehavior,
+  updateBundleDeviceIdleBehavior,
+  IDLE_BEHAVIOR_AUTO_OFF,
+  IDLE_BEHAVIOR_ALWAYS_ON,
+  IDLE_BEHAVIOR_STAY_ON,
+  IDLE_BEHAVIOR_DISABLED,
   pruneBackupBundle,
   reconcileRestoreSelection,
   removeActivityMacroStep,
@@ -178,6 +184,7 @@ class SofabatonBackupTab extends LitElement {
     _stepError: { state: true },
     _editBundleDirty: { state: true },
     _haSortableReady: { state: true },
+    _powerControlMenuOpen: { state: true },
   };
 
   static styles = [secondaryTabStyles, operationProgressStyles, css`
@@ -517,6 +524,93 @@ class SofabatonBackupTab extends LitElement {
       justify-content: center;
     }
     .selection-chevron ha-icon { --mdc-icon-size: 18px; }
+
+    /* ── Automatic-power dropdown (device Power section) ─────────────── */
+    /* Genuine overlay popup: the menu is absolutely positioned so opening
+       it never reflows the sequence rows below. A transparent fixed
+       backdrop catches click-away. */
+    /* The control is its own field, a sibling of (not inside) the
+       sequence list, so the list's overflow:hidden can't clip the popup. */
+    .power-control {
+      position: relative;
+      display: block;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-lg);
+      background: var(--ha-card-background, var(--card-background-color));
+    }
+    .power-control-trigger {
+      width: 100%;
+      border: none;
+      border-radius: inherit;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+    .power-control-trigger:hover {
+      background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+    }
+    .power-control-trigger .selection-chevron ha-icon { transition: transform 120ms ease; }
+    .power-control[data-open="true"] .power-control-trigger .selection-chevron ha-icon {
+      transform: rotate(180deg);
+    }
+    .power-control-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: default;
+    }
+    .power-control-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 31;
+      display: flex;
+      flex-direction: column;
+      background: var(--card-background-color, var(--ha-card-background, var(--secondary-background-color, #fff)));
+      border: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
+      border-radius: 10px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+      overflow: hidden;
+    }
+    .power-control-option {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 50%, transparent);
+      cursor: pointer;
+    }
+    .power-control-option:first-child { border-top: none; }
+    .power-control-option:hover {
+      background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+    }
+    .power-control-option[aria-checked="true"] .selection-label { color: var(--primary-color); }
+    .power-control-option .selection-chevron ha-icon { color: var(--primary-color); }
+
+    /* Power-on/off sequence rows, dimmed + inert when power control is off */
+    .power-sequences[data-disabled="true"] { opacity: 0.45; pointer-events: none; }
+    .power-sequences-note {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      line-height: 1.45;
+      padding: 8px 14px 0;
+    }
     .tab-panel--detail { padding: 0; }
     .detail-view {
       min-height: 0;
@@ -1472,6 +1566,9 @@ class SofabatonBackupTab extends LitElement {
   private _editDetailKind: BackupEditTargetKind | null = null;
   private _editDetailId: number | null = null;
   private _editDetailActiveSection: BackupEditDetailSectionId = "power";
+  // Whether the power-control option menu (the two-line dropdown in the
+  // device Power section) is expanded. Reset whenever a detail view opens.
+  private _powerControlMenuOpen = false;
   private _editDetailNameDraft = "";
   private _editRenameDialogOpen = false;
   private _editRenameDialogDraft = "";
@@ -1686,6 +1783,7 @@ class SofabatonBackupTab extends LitElement {
       if (parsed.detail && parsed.detail.kind && Number.isFinite(Number(parsed.detail.id))) {
         this._editDetailKind = parsed.detail.kind;
         this._editDetailId = Number(parsed.detail.id);
+        this._powerControlMenuOpen = false;
       }
       // Restore the dirty flag as it was persisted: a file opened but not
       // yet edited stays clean, while a session with pending edits comes
@@ -3158,6 +3256,7 @@ class SofabatonBackupTab extends LitElement {
     this._editDetailKind = kind;
     this._editDetailId = Number(id);
     this._editDetailActiveSection = "power";
+    this._powerControlMenuOpen = false;
     this._editDetailNameDraft = this._sanitizeBundleName(name);
   }
 
@@ -3165,6 +3264,7 @@ class SofabatonBackupTab extends LitElement {
     this._editDetailKind = null;
     this._editDetailId = null;
     this._editDetailActiveSection = "power";
+    this._powerControlMenuOpen = false;
     this._editDetailNameDraft = "";
     this._closeEditRenameDialog();
     this._closeDeleteConfirm();
@@ -4042,11 +4142,24 @@ class SofabatonBackupTab extends LitElement {
       : activityMacroStepItems(this._editBundle, entityId, buttonId).length;
   }
 
-  private _renderPowerSetupRow(scope: BackupEditTargetKind, entityId: number, buttonId: number, label: string) {
+  private _renderPowerSetupRow(
+    scope: BackupEditTargetKind,
+    entityId: number,
+    buttonId: number,
+    label: string,
+    disabled: boolean,
+  ) {
     const count = this._powerSetupStepCount(scope, entityId, buttonId);
     return html`
       <div class="quick-access-sortable-item">
-        <button class="edit-selection-row" @click=${() => this._openMacroEditor(scope, entityId, buttonId, label)}>
+        <button
+          class="edit-selection-row"
+          aria-disabled=${disabled ? "true" : "false"}
+          tabindex=${disabled ? "-1" : "0"}
+          @click=${() => {
+            if (!disabled) this._openMacroEditor(scope, entityId, buttonId, label);
+          }}
+        >
           <span class="selection-main">
             <span class="selection-label">${label}</span>
             <span class="selection-sub">${TOOLS_CARD_STRINGS.backup.macroStepsCount(count)}</span>
@@ -4057,26 +4170,124 @@ class SofabatonBackupTab extends LitElement {
     `;
   }
 
+  // The device Power section folds two concepts the hub keeps separate but
+  // the app presents together: the automatic-power / idle-behavior selector
+  // (one 0x0242 byte) and the POWER_ON/POWER_OFF command sequences. Choosing
+  // "Don't control power" makes the hub ignore the sequences, so they render
+  // inert. Activities have no idle behavior, so they get only the sequences.
   private _renderPowerSetupSection(scope: BackupEditTargetKind, entityId: number) {
     if (this._editDetailId == null || !this._editBundle) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const isDevice = scope === "device";
+    const mode = isDevice ? deviceIdleBehavior(this._editBundle, entityId) : null;
+    const sequencesDisabled = isDevice && mode === IDLE_BEHAVIOR_DISABLED;
     return html`
       <div class="quick-access-section" data-edit-section="power">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
-            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.powerSetupTitle}</div>
+            <div class="quick-access-title">${S.powerSetupTitle}</div>
             <div class="quick-access-sub">
-              ${scope === "device"
-                ? TOOLS_CARD_STRINGS.backup.powerSetupDeviceSub
-                : TOOLS_CARD_STRINGS.backup.powerSetupActivitySub}
+              ${isDevice ? S.powerSetupDeviceSub : S.powerSetupActivitySub}
             </div>
           </div>
         </div>
+        ${isDevice ? this._renderPowerControlDropdown(entityId, mode) : nothing}
         <div class="quick-access-list">
-          <div class="quick-access-sortable-container">
-            ${this._renderPowerSetupRow(scope, entityId, 198, TOOLS_CARD_STRINGS.backup.powerOnLabel)}
-            ${this._renderPowerSetupRow(scope, entityId, 199, TOOLS_CARD_STRINGS.backup.powerOffLabel)}
+          ${sequencesDisabled
+            ? html`<div class="power-sequences-note">${S.powerSequencesDisabledNote}</div>`
+            : nothing}
+          <div
+            class="quick-access-sortable-container power-sequences"
+            data-disabled=${sequencesDisabled ? "true" : "false"}
+          >
+            ${this._renderPowerSetupRow(scope, entityId, 198, S.powerOnLabel, sequencesDisabled)}
+            ${this._renderPowerSetupRow(scope, entityId, 199, S.powerOffLabel, sequencesDisabled)}
           </div>
         </div>
+      </div>
+    `;
+  }
+
+  // ── Automatic power control selector (device only) ──────────────────
+  // One hub byte (the 0x0242 reply) encodes both the "Power On/Off Setup"
+  // toggle and the "Idle Behavior" choice, so it surfaces here as a single
+  // two-line dropdown. It lives in its own hub query, not the device
+  // record, so it is captured/restored separately.
+  private _powerControlOptions(): Array<{ mode: number; label: string; sub: string }> {
+    const S = TOOLS_CARD_STRINGS.backup;
+    return [
+      { mode: IDLE_BEHAVIOR_DISABLED, label: S.powerControlDisabled, sub: S.powerControlDisabledSub },
+      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S.powerControlAutoOff, sub: S.powerControlAutoOffSub },
+      { mode: IDLE_BEHAVIOR_STAY_ON, label: S.powerControlStayOn, sub: S.powerControlStayOnSub },
+      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S.powerControlAlwaysOn, sub: S.powerControlAlwaysOnSub },
+    ];
+  }
+
+  private _togglePowerControlMenu = () => {
+    this._powerControlMenuOpen = !this._powerControlMenuOpen;
+  };
+
+  private _selectPowerControl(deviceId: number, mode: number) {
+    this._powerControlMenuOpen = false;
+    if (!this._editBundle) return;
+    if (deviceIdleBehavior(this._editBundle, deviceId) === mode) return;
+    this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this._editBundle, deviceId, mode));
+  }
+
+  private _renderPowerControlDropdown(deviceId: number, mode: number | null) {
+    const S = TOOLS_CARD_STRINGS.backup;
+    const options = this._powerControlOptions();
+    const selected = options.find((opt) => opt.mode === mode) ?? null;
+    const open = this._powerControlMenuOpen;
+    return html`
+      <div class="power-control" data-open=${open ? "true" : "false"}>
+        <button
+          class="power-control-trigger"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded=${open ? "true" : "false"}
+          @click=${this._togglePowerControlMenu}
+        >
+          <span class="selection-main">
+            <span class="selection-label">${selected ? selected.label : S.powerControlUnset}</span>
+            <span class="selection-sub">${selected ? selected.sub : S.powerControlUnsetSub}</span>
+          </span>
+          <span class="selection-chevron"><ha-icon icon="mdi:chevron-down"></ha-icon></span>
+        </button>
+        ${open
+          ? html`
+              <button
+                class="power-control-backdrop"
+                type="button"
+                tabindex="-1"
+                aria-hidden="true"
+                @click=${this._togglePowerControlMenu}
+              ></button>
+              <div class="power-control-menu" role="listbox" aria-label=${S.powerControlTitle}>
+                ${options.map((opt) => {
+                  const isSel = opt.mode === mode;
+                  return html`
+                    <button
+                      class="power-control-option"
+                      type="button"
+                      role="option"
+                      aria-selected=${isSel ? "true" : "false"}
+                      aria-checked=${isSel ? "true" : "false"}
+                      @click=${() => this._selectPowerControl(deviceId, opt.mode)}
+                    >
+                      <span class="selection-main">
+                        <span class="selection-label">${opt.label}</span>
+                        <span class="selection-sub">${opt.sub}</span>
+                      </span>
+                      <span class="selection-chevron">
+                        ${isSel ? html`<ha-icon icon="mdi:check"></ha-icon>` : nothing}
+                      </span>
+                    </button>
+                  `;
+                })}
+              </div>
+            `
+          : nothing}
       </div>
     `;
   }

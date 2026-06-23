@@ -77,12 +77,20 @@ def build_device_block(
     device_id: int,
     device_meta: dict[str, Any],
     config: Optional[DeviceConfig],
+    *,
+    idle_behavior: Optional[int] = None,
 ) -> dict[str, Any]:
     """Build the ``device`` block of a backup payload.
 
     ``config`` is the device's parsed schema (from ``parse_device_record``
     on the cached raw record body). When ``None`` the block falls back to
     the minimal four-field shape.
+
+    ``idle_behavior`` is the device's automatic-power / idle-behavior mode
+    byte (the 0x0242 reply). It lives in a separate hub query rather than
+    the device record, so it is threaded in explicitly. ``None`` (the value
+    was not available) omits the field; restore then falls back to the
+    legacy ``power_mode`` reading for older backups.
     """
 
     base: dict[str, Any] = {
@@ -92,6 +100,9 @@ def build_device_block(
         "device_class": device_meta.get("device_class"),
         "device_class_code": device_meta.get("device_class_code"),
     }
+
+    if idle_behavior is not None:
+        base["idle_behavior"] = int(idle_behavior) & 0xFF
 
     if config is None:
         return base

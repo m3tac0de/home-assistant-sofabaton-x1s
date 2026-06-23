@@ -260,7 +260,17 @@ class BackupExportMixin:
             label_map=label_map,
         )
         macro_rows = _bx.build_device_macro_rows(self.get_cached_macro_records(dev_lo))
-        device_block = _bx.build_device_block(dev_lo, device_meta, device_config)
+
+        # Idle / automatic-power behavior lives in its own hub query
+        # (OP_IDLE_BEHAVIOR, 0x0242), not the device record, so it must be
+        # fetched explicitly. ``None`` (no reply) omits the field and lets
+        # restore fall back to the legacy power_mode reading.
+        idle_mode, idle_ready = self.fetch_idle_behavior(dev_lo, timeout=wait_timeout)
+        idle_behavior = idle_mode if idle_ready else None
+
+        device_block = _bx.build_device_block(
+            dev_lo, device_meta, device_config, idle_behavior=idle_behavior
+        )
 
         complete = all(
             [

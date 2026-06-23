@@ -190,6 +190,15 @@ export interface BackupBundleDeviceBlock {
   // null / empty for non-network devices. wifi_ip carries its IP inside
   // each command blob instead, not here.
   ip_address?: string | null;
+  // Automatic-power / idle-behavior mode byte (the hub's 0x0242 reply).
+  // One byte encodes the whole "Power On/Off Setup" + "Idle Behavior"
+  // story. Lives in its own hub query, captured/restored separately from
+  // the device record. Absent on backups that predate idle-behavior
+  // capture, which fall back to `power_mode`.
+  idle_behavior?: number | null;
+  // Legacy device-record power byte; retained for fallback on older
+  // backups that lack `idle_behavior`.
+  power_mode?: number | null;
 }
 
 export interface BackupBundleDevicePayload {

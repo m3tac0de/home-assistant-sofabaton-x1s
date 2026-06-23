@@ -30,6 +30,9 @@ import {
   deleteBundleDevice,
   deleteBundleDeviceCommand,
   deviceButtonBindingItems,
+  deviceIdleBehavior,
+  updateBundleDeviceIdleBehavior,
+  IDLE_BEHAVIOR_DISABLED,
   forcedRestoreDeviceIds,
   normalizeHubVersion,
   pruneBackupBundle,
@@ -184,6 +187,41 @@ test("deleteBundleActivity removes only the targeted activity", () => {
   const next = deleteBundleActivity(editableBundle(), 101);
   assert.deepEqual(next.activities.map((a) => a.device?.device_id), []);
   assert.equal(next.devices.length, 2);
+});
+
+test("deviceIdleBehavior prefers idle_behavior, falls back to power_mode", () => {
+  const b = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1" },
+    devices: [
+      { device: { device_id: 1, idle_behavior: 4, power_mode: 1 } },
+      { device: { device_id: 2, power_mode: 3 } },
+      { device: { device_id: 3 } },
+    ],
+    activities: [],
+  };
+  assert.equal(deviceIdleBehavior(b, 1), 4); // dedicated field wins
+  assert.equal(deviceIdleBehavior(b, 2), 3); // legacy fallback
+  assert.equal(deviceIdleBehavior(b, 3), null); // neither present
+  assert.equal(deviceIdleBehavior(b, 99), null); // missing device
+});
+
+test("updateBundleDeviceIdleBehavior writes the dedicated field only on the target", () => {
+  const b = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1" },
+    devices: [
+      { device: { device_id: 1, power_mode: 1 } },
+      { device: { device_id: 2, idle_behavior: 1 } },
+    ],
+    activities: [],
+  };
+  const next = updateBundleDeviceIdleBehavior(b, 1, IDLE_BEHAVIOR_DISABLED);
+  assert.equal(deviceIdleBehavior(next, 1), IDLE_BEHAVIOR_DISABLED);
+  assert.equal(deviceIdleBehavior(next, 2), 1); // untouched
+  assert.equal(deviceIdleBehavior(b, 1), 1); // original not mutated
 });
 
 test("deleteBundleDevice clears references across activities", () => {

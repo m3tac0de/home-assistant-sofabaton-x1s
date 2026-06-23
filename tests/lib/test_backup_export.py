@@ -144,6 +144,18 @@ def test_build_device_block_minimal_without_config() -> None:
     }
 
 
+def test_build_device_block_includes_idle_behavior_when_supplied() -> None:
+    meta = {"name": "TV", "brand": "Sony", "device_class": "IR", "device_class_code": 0x10}
+    block = bx.build_device_block(11, meta, None, idle_behavior=4)
+    assert block["idle_behavior"] == 4
+
+
+def test_build_device_block_omits_idle_behavior_when_unavailable() -> None:
+    meta = {"name": "TV", "brand": "Sony", "device_class": "IR", "device_class_code": 0x10}
+    block = bx.build_device_block(11, meta, None, idle_behavior=None)
+    assert "idle_behavior" not in block
+
+
 # ---------------------------------------------------------------------------
 # activity row builders + referenced ids
 # ---------------------------------------------------------------------------

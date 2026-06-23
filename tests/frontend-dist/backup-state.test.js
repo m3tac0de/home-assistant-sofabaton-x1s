@@ -1230,6 +1230,34 @@ function commandLabelFor(bundle2, deviceId, commandId) {
   const command = (device?.commands ?? []).find((entry) => Number(entry?.command_id || 0) === Number(commandId));
   return String(command?.name || "").trim();
 }
+var IDLE_BEHAVIOR_DISABLED = 4;
+function deviceIdleBehavior(bundle2, deviceId) {
+  if (!bundle2) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle2.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device?.device) return null;
+  const raw = device.device.idle_behavior ?? device.device.power_mode;
+  if (raw == null) return null;
+  const mode = Number(raw);
+  return Number.isFinite(mode) ? mode & 255 : null;
+}
+function updateBundleDeviceIdleBehavior(bundle2, deviceId, mode) {
+  const normalizedId = Number(deviceId);
+  const normalizedMode = Number(mode) & 255;
+  return {
+    ...bundle2,
+    devices: (bundle2.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
+      if (!device.device) return device;
+      return {
+        ...device,
+        device: { ...device.device, idle_behavior: normalizedMode }
+      };
+    })
+  };
+}
 function reorderBundleActivityQuickAccess(bundle2, activityId, orderedItems) {
   const normalizedActivityId = Number(activityId);
   const activity = (bundle2.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedActivityId);
@@ -2244,6 +2272,39 @@ test("deleteBundleActivity removes only the targeted activity", () => {
   const next = deleteBundleActivity(editableBundle(), 101);
   assert.deepEqual(next.activities.map((a3) => a3.device?.device_id), []);
   assert.equal(next.devices.length, 2);
+});
+test("deviceIdleBehavior prefers idle_behavior, falls back to power_mode", () => {
+  const b3 = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1" },
+    devices: [
+      { device: { device_id: 1, idle_behavior: 4, power_mode: 1 } },
+      { device: { device_id: 2, power_mode: 3 } },
+      { device: { device_id: 3 } }
+    ],
+    activities: []
+  };
+  assert.equal(deviceIdleBehavior(b3, 1), 4);
+  assert.equal(deviceIdleBehavior(b3, 2), 3);
+  assert.equal(deviceIdleBehavior(b3, 3), null);
+  assert.equal(deviceIdleBehavior(b3, 99), null);
+});
+test("updateBundleDeviceIdleBehavior writes the dedicated field only on the target", () => {
+  const b3 = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1" },
+    devices: [
+      { device: { device_id: 1, power_mode: 1 } },
+      { device: { device_id: 2, idle_behavior: 1 } }
+    ],
+    activities: []
+  };
+  const next = updateBundleDeviceIdleBehavior(b3, 1, IDLE_BEHAVIOR_DISABLED);
+  assert.equal(deviceIdleBehavior(next, 1), IDLE_BEHAVIOR_DISABLED);
+  assert.equal(deviceIdleBehavior(next, 2), 1);
+  assert.equal(deviceIdleBehavior(b3, 1), 1);
 });
 test("deleteBundleDevice clears references across activities", () => {
   const next = deleteBundleDevice(editableBundle(), 1);

@@ -220,11 +220,28 @@ export const TOOLS_CARD_STRINGS = {
     macrosTitle: "Macros",
     macrosDeviceSub: "Edit the command sequences this device plays, including its power on / off.",
     macroPowerChip: "power",
-    powerSetupTitle: "Power On/Off setup",
-    powerSetupDeviceSub: "The commands this device sends when it is powered on and off.",
+    powerSetupTitle: "Power",
+    powerSetupDeviceSub:
+      "How the hub manages this device's power for Activities, and the sequences it sends to switch it on and off.",
     powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
-    powerOnLabel: "Power on",
-    powerOffLabel: "Power off",
+    powerOnLabel: "Power-on sequence",
+    powerOffLabel: "Power-off sequence",
+    // Automatic-power dropdown (device only). One hub byte encodes the whole
+    // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
+    powerControlTitle: "Automatic power control",
+    powerControlUnset: "Not captured",
+    powerControlUnsetSub:
+      "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
+    powerControlDisabled: "Don't control power",
+    powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
+    powerControlAutoOff: "Turn off when idle",
+    powerControlAutoOffSub: "Recommended. Powers the device off when no Activity needs it.",
+    powerControlStayOn: "Stay on between Activities",
+    powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
+    powerControlAlwaysOn: "Always stay on",
+    powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
+    powerSequencesDisabledNote:
+      "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
     inputStepTitle: "Set input",
     inputStepCommand: "Input command",
     inputStepNone: "— no input —",

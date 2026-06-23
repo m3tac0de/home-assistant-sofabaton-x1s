@@ -690,6 +690,64 @@ export function updateBundleDeviceIp(
 }
 
 /**
+ * Idle / automatic-power behavior mode bytes (the hub's 0x0242 value).
+ * One byte encodes the whole "Power On/Off Setup" + "Idle Behavior" story:
+ * when automatic power control is disabled the app skips the idle screen
+ * and the hub reports DISABLED.
+ */
+export const IDLE_BEHAVIOR_AUTO_OFF = 1;
+export const IDLE_BEHAVIOR_ALWAYS_ON = 2;
+export const IDLE_BEHAVIOR_STAY_ON = 3;
+export const IDLE_BEHAVIOR_DISABLED = 4;
+
+/**
+ * Read a device's idle/automatic-power mode from the bundle. Prefers the
+ * dedicated `idle_behavior` field; falls back to `power_mode` for older
+ * backups that predate it (mirroring the restore-side resolution). Returns
+ * `null` when the device is absent or carries no usable value.
+ */
+export function deviceIdleBehavior(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): number | null {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId,
+  );
+  if (!device?.device) return null;
+  const raw = device.device.idle_behavior ?? device.device.power_mode;
+  if (raw == null) return null;
+  const mode = Number(raw);
+  return Number.isFinite(mode) ? mode & 0xff : null;
+}
+
+/**
+ * Write a new idle/automatic-power `mode` byte into the device head. Sets
+ * the dedicated `idle_behavior` field so capture, restore, and the editor
+ * all agree on one source of truth. No-op when the device is absent.
+ */
+export function updateBundleDeviceIdleBehavior(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  mode: number,
+): BackupBundlePayload {
+  const normalizedId = Number(deviceId);
+  const normalizedMode = Number(mode) & 0xff;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
+      if (!device.device) return device;
+      return {
+        ...device,
+        device: { ...device.device, idle_behavior: normalizedMode },
+      };
+    }),
+  };
+}
+
+/**
  * Rename a single command on a Device. Mirrors `renameBundleActivityFavorite`
  * but without the activity-side mirroring, since a Device command lives in
  * exactly one place.
