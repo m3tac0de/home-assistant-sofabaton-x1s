@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import logging
-
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -16,8 +14,6 @@ from .const import (
     signal_client,
 )
 from .hub import SofabatonHub, get_hub_display_name, get_hub_model
-
-_LOGGER = logging.getLogger(__name__)
 
 POWERED_OFF = "Powered Off"
 
@@ -83,28 +79,8 @@ class SofabatonActivitySelect(SelectEntity):
 
     @callback
     def _handle_update(self) -> None:
-        current_option = self.current_option
-        _LOGGER.debug(
-            "[%s] Activity select update: entity_id=%s unique_id=%s hub_activity=%s current_option=%s available=%s client_connected=%s options=%s",
-            self._hub.entry_id,
-            getattr(self, "entity_id", None),
-            self.unique_id,
-            self._hub.current_activity,
-            current_option,
-            self.available,
-            self._hub.client_connected,
-            len(self._attr_options),
-        )
         self._rebuild_options()
         self.async_write_ha_state()
-        state_obj = self.hass.states.get(self.entity_id) if self.entity_id else None
-        _LOGGER.debug(
-            "[%s] Activity select HA state after write: entity_id=%s state=%s attributes=%s",
-            self._hub.entry_id,
-            getattr(self, "entity_id", None),
-            getattr(state_obj, "state", None),
-            dict(getattr(state_obj, "attributes", {}) or {}),
-        )
 
     @callback
     def _handle_client_state(self) -> None:
