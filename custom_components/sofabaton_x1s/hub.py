@@ -518,12 +518,12 @@ class SofabatonHub:
 
 
     # ------------------------------------------------------------------
-    # proxy Ã¢â€ â€™ HA
+    # proxy -> HA
     # ------------------------------------------------------------------
     def _on_activity_change(self, new_id: Optional[int], old_id: Optional[int], name: Optional[str]) -> None:
         def _inner() -> None:
             self._log.debug(
-                "[%s] Activity changed: %s Ã¢â€ â€™ %s (%s)",
+                "[%s] Activity changed: %s -> %s (%s)",
                 self.entry_id,
                 old_id,
                 new_id,
@@ -1292,10 +1292,10 @@ class SofabatonHub:
                     if candidate is not None:
                         decoded_block = candidate
                         # Two blob_kind values are exposed:
-                        #   "descriptive" Ã¢â‚¬â€ preserved for IR
+                        #   "descriptive" -- preserved for IR
                         #     descriptors so the existing UI / tests
                         #     stay valid for the historical IR case.
-                        #   "decoded"    Ã¢â‚¬â€ used for the four
+                        #   "decoded"    -- used for the four
                         #     virtual-device classes that newly gain
                         #     structured fields.
                         if candidate.get("class") == DEVICE_CLASS_IR:
@@ -1516,7 +1516,7 @@ class SofabatonHub:
         _progress(
             status="running",
             phase="validation",
-            message="Validating restore bundleÃ¢â‚¬Â¦",
+            message="Validating restore bundle...",
             completed_steps=completed_steps,
             total_steps=total_steps,
         )
@@ -1528,7 +1528,7 @@ class SofabatonHub:
             _progress(
                 status="running",
                 phase="erase",
-                message="Erasing the destination hubÃ¢â‚¬Â¦",
+                message="Erasing the destination hub...",
                 completed_steps=completed_steps,
                 total_steps=total_steps,
             )
@@ -1572,7 +1572,7 @@ class SofabatonHub:
             _progress(
                 status="running",
                 phase="hub",
-                message="Restoring hub nameÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦",
+                message="Restoring hub name...",
                 completed_steps=completed_steps,
                 total_steps=total_steps,
             )
@@ -2296,7 +2296,7 @@ class SofabatonHub:
         for ent_id in self._command_entities:
             cmds, ready = self._proxy.get_commands_for_entity(
                 ent_id,
-                fetch_if_missing=False,  # Ã¢â€ Â important: no queueing
+                fetch_if_missing=False,  # <- important: no queueing
             )
             if ready and cmds:
                 result[ent_id] = cmds
@@ -3412,20 +3412,20 @@ class SofabatonHub:
         if self.current_activity is None:
             raise HomeAssistantError("No activity active")
 
-        # string Ã¢â€ â€™ try to treat as ButtonName first
+        # string -> try to treat as ButtonName first
         if isinstance(key, str):
             norm = key.strip().upper()
             try:
                 btn = getattr(ButtonName, norm)
             except KeyError:
-                # not a ButtonName Ã¢â€ â€™ treat as numeric
+                # not a ButtonName -> treat as numeric
                 code = self._normalize_command_id(key)
                 await self.async_send_raw_command(self.current_activity, code)
             else:
                 await self.async_send_button(btn)
             return
 
-        # int Ã¢â€ â€™ just send as raw command to current activity
+        # int -> just send as raw command to current activity
         await self.async_send_raw_command(self.current_activity, int(key))
 
     def _normalize_command_id(self, key: str | int) -> int:
