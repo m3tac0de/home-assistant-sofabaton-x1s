@@ -948,7 +948,12 @@ class X1CatalogActivityHandler(BaseFrameHandler):
         act_id = int.from_bytes(payload[6:8], "big") if len(payload) >= 8 else None
         active_flag = frame.raw[35] if len(frame.raw) > 35 else 0
         needs_confirm_flag = payload[95] if len(payload) > 95 else 0
-        activity_label = payload[32:].split(b"\x00", 1)[0].decode("utf-8", errors="ignore")
+        activity_label = (
+            payload[32:]
+            .split(b"\x00", 1)[0]
+            .decode("utf-8", errors="ignore")
+            .strip()
+        )
         is_active = active_flag == 1
         needs_confirm = needs_confirm_flag == 1
 
@@ -1652,4 +1657,3 @@ class FavoritesOrderHandler(BaseFrameHandler):
 
         # Signal any waiting request_favorites_order() call
         proxy.notify_ack(self.SYNTHETIC_ACK, bytes([act_lo]))
-
