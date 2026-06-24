@@ -391,7 +391,8 @@ Observed family-`0x02` banner semantics:
   - X1 observed: `00 00`
   - X1S/X2 observed: `01 00`, but other values (e.g. `01 03`) occur
   - these vary across hub models/revisions, so they are **not** used to validate
-    the banner; acceptance keys on a recognised model code plus the frame checksum
+    the banner; acceptance keys on a recognised model code, the BCD production
+    date in `payload[8:12]`, and the frame checksum
 - `payload[15:]` = UTF-8 hub name
 
 Observed `INFO_BANNER` (`0x112F`) semantics:

@@ -184,6 +184,33 @@ def _normalize_banner_model(value: Any) -> str | None:
     return None
 
 
+def _looks_like_production_date(batch: bytes) -> bool:
+    """Return ``True`` when ``batch`` is a BCD-packed CCYYMMDD date.
+
+    The four production-batch bytes in a banner encode the hub's manufacturing
+    date (e.g. ``20 22 11 20`` -> ``2022-11-20``). That shape is intrinsic to a
+    banner and absent from the other H->A frames that share this family's low
+    opcode byte, so it is a stable structural fingerprint -- unlike the
+    device-dependent flag bytes, it never varies into a value that is also a
+    plausible date. Each byte must be valid BCD, the century in 19-21, the month
+    in 01-12 and the day in 01-31.
+    """
+
+    if len(batch) != 4:
+        return False
+
+    def _bcd(value: int) -> int | None:
+        hi, lo = value >> 4, value & 0x0F
+        if hi > 9 or lo > 9:
+            return None
+        return hi * 10 + lo
+
+    century, year, month, day = (_bcd(b) for b in batch)
+    if century is None or year is None or month is None or day is None:
+        return False
+    return 19 <= century <= 21 and 1 <= month <= 12 and 1 <= day <= 31
+
+
 def _sanitize_mdns_label_component(value: str) -> str:
     text = re.sub(r"[^A-Za-z0-9-]+", "-", str(value or "").strip())
     text = re.sub(r"-{2,}", "-", text).strip("-")
@@ -980,20 +1007,23 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
         return True
 
     def record_banner_payload(self, opcode: int, payload: bytes) -> dict[str, Any] | None:
-        # Family 0x02 is the opcode low byte, so this handler also sees unrelated
-        # H->A frames (e.g. save-transaction / IP-command-sync replies). The
-        # identity banner is disambiguated structurally, not by its contents:
+        # This handler matches on the opcode low byte (family 0x02), and frames
+        # dispatch to every matching handler, so other H->A frames sharing that
+        # low byte (e.g. a 0x4102 save-transaction frame) also land here and must
+        # be rejected. The banner is identified by its stable structural fields:
         #   * the frame already passed the deframer's checksum, and
-        #   * payload[7] carries a recognised hub hardware code, and
-        #   * the payload is long enough to hold the fixed identity header.
-        # Bytes 13/14 are hub/firmware-dependent flag bytes (their values differ
-        # across hub models and revisions), so they must NOT gate acceptance --
-        # doing so silently dropped the banner on hubs that report them nonzero.
+        #   * the payload is long enough to hold the fixed identity header, and
+        #   * payload[7] is a recognised hub hardware code, and
+        #   * payload[8:12] is the BCD-packed production date.
+        # Together those make a false match astronomically unlikely. Bytes 13/14
+        # are deliberately *not* part of the gate: they are hub/firmware-dependent
+        # flag bytes whose values differ across models and revisions, and gating
+        # on them silently dropped the banner on hubs that report them nonzero.
         if opcode_family(opcode) != 0x02 or len(payload) < 15:
             return None
 
         model = _HUB_MODEL_BY_CODE.get(payload[7] & 0xFF)
-        if model is None:
+        if model is None or not _looks_like_production_date(payload[8:12]):
             return None
 
         batch = payload[8:12].hex()

@@ -168,13 +168,29 @@ def test_record_banner_payload_accepts_nonzero_flag_bytes() -> None:
 
 def test_record_banner_payload_rejects_unknown_model_code() -> None:
     # A family-0x02 frame that is not an identity banner (e.g. an unrelated H->A
-    # reply) carries an unrecognised value at byte 7, which is what keeps this
-    # handler from misparsing it -- not the flag-byte checks.
+    # reply) carries an unrecognised value at byte 7, which keeps this handler
+    # from misparsing it.
     proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
     assert (
         proxy.record_banner_payload(
             0x1D02,
             bytes.fromhex("e26a44861b45007f20221120050000536f757465727261696e20687562"),
+        )
+        is None
+    )
+
+
+def test_record_banner_payload_rejects_non_banner_family02_frame() -> None:
+    # The handler matches on the opcode low byte (family 0x02), so unrelated
+    # H->A frames such as a 0x4102 save-transaction reply also reach it. Even
+    # when such a frame's byte 7 coincidentally lands on a known model code, its
+    # bytes 8:12 are not a valid production date, so it must be rejected. This
+    # frame has model byte 0x02 (X1S) but a non-date batch (ff ff ff ff).
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+    assert (
+        proxy.record_banner_payload(
+            0x4102,
+            bytes.fromhex("0001020304050002ffffffff050000"),
         )
         is None
     )
