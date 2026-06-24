@@ -3527,7 +3527,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
 
 
  	  .loadIndicator {
-	    display: none;
+	    visibility: hidden;
 	    height: 4px;
 	    width: 100%;
 	    border-radius: 2px;
@@ -3535,7 +3535,7 @@ var SofabatonRemoteCard = class extends HTMLElement {
 	  }
 
 	  .loadIndicator.is-loading {
-	    display: block;
+	    visibility: visible;
 	    background: var(--primary-color, #03a9f4);
 	    background-image: linear-gradient(
   		  90deg,
