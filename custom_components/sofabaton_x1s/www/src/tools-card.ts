@@ -1,10 +1,11 @@
-import { LitElement, html, nothing } from "lit";
+import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { cardStyles } from "./shared/styles/card-styles";
 import type { BackupSectionId, BlobsSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
 import { ControlPanelStore } from "./state/control-panel-store";
 import {
   hubConnected,
+  hubIcon,
   persistentCacheEnabled,
   proxyClientConnected,
   resolveCardGateState,
@@ -80,8 +81,67 @@ function logOnce() {
   );
 }
 
+// Compact, self-contained styling for the card-picker / editor preview, which
+// renders in a narrow (~330px) tile where the full interactive panel does not fit.
+const previewStyles = css`
+  .sb-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+    box-sizing: border-box;
+  }
+  .sb-preview-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .sb-preview-logo {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    color: var(--primary-color);
+  }
+  .sb-preview-hub {
+    width: 52px;
+    height: auto;
+  }
+  .sb-preview-sub {
+    font-size: 12px;
+    line-height: 1.35;
+    color: var(--secondary-text-color);
+  }
+  .sb-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .sb-preview-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: var(--secondary-background-color, rgba(127, 127, 127, 0.12));
+    color: var(--primary-text-color);
+    font-size: 12.5px;
+    font-weight: 500;
+    min-width: 0;
+  }
+  .sb-preview-chip ha-icon {
+    flex: 0 0 auto;
+    color: var(--primary-color);
+    --mdc-icon-size: 18px;
+  }
+  .sb-preview-chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+`;
+
 class SofabatonControlPanelCard extends LitElement {
-  static styles = [cardStyles];
+  static styles = [cardStyles, previewStyles];
 
   // Match the dockIrFlash / dockIrIcon keyframes (720ms). After this we
   // drop the overlay nodes so they don't sit in the DOM forever and so
@@ -89,6 +149,7 @@ class SofabatonControlPanelCard extends LitElement {
   private static readonly _IR_FLASH_DURATION_MS = 720;
 
   private _config: Record<string, unknown> = {};
+  private _preview = false;
   private _snapshot;
   private readonly _store;
   private _hubPickerOpen = false;
@@ -128,8 +189,27 @@ class SofabatonControlPanelCard extends LitElement {
     this._store.setHass(value);
   }
 
+  // HA's hui-card sets `element.preview = true` when rendering inside the card
+  // picker / editor preview. Render a compact branded summary instead of the
+  // full interactive panel, and don't open live backend subscriptions.
+  set preview(value: boolean) {
+    const next = Boolean(value);
+    if (next === this._preview) return;
+    this._preview = next;
+    if (next) {
+      this._store.disconnected();
+    } else if (this.isConnected) {
+      this._store.connected();
+    }
+    this.requestUpdate();
+  }
+
+  get preview() {
+    return this._preview;
+  }
+
   getCardSize() {
-    return 8;
+    return this._preview ? 3 : 8;
   }
 
   static getConfigElement() {
@@ -146,7 +226,7 @@ class SofabatonControlPanelCard extends LitElement {
     super.connectedCallback();
     logOnce();
     document.addEventListener("pointerdown", this._boundHandleDocumentPointerDown, true);
-    this._store.connected();
+    if (!this._preview) this._store.connected();
   }
 
   disconnectedCallback() {
@@ -446,7 +526,41 @@ class SofabatonControlPanelCard extends LitElement {
     `;
   }
 
+  private renderPreview() {
+    const features: Array<{ icon: string; label: string }> = [
+      { icon: "mdi:database-outline", label: TOOLS_CARD_STRINGS.tabs.cache },
+      { icon: "mdi:wifi", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
+      { icon: "mdi:cloud-upload-outline", label: TOOLS_CARD_STRINGS.tabs.backup },
+      { icon: "mdi:file-code-outline", label: TOOLS_CARD_STRINGS.tabs.blobs },
+      { icon: "mdi:cog-outline", label: TOOLS_CARD_STRINGS.tabs.settings },
+      { icon: "mdi:text-box-outline", label: TOOLS_CARD_STRINGS.tabs.logs },
+    ];
+    return html`
+      <ha-card>
+        <div class="sb-preview">
+          <div class="sb-preview-header">
+            <div class="sb-preview-logo">${hubIcon("hero", "sb-preview-hub")}</div>
+            <div class="sb-preview-sub">
+              Tools, cache, backups, logs &amp; Wi-Fi commands for your hub
+            </div>
+          </div>
+          <div class="sb-preview-grid">
+            ${features.map(
+              (feature) => html`
+                <div class="sb-preview-chip">
+                  <ha-icon icon=${feature.icon}></ha-icon>
+                  <span>${feature.label}</span>
+                </div>
+              `,
+            )}
+          </div>
+        </div>
+      </ha-card>
+    `;
+  }
+
   protected render() {
+    if (this._preview) return this.renderPreview();
     const hub = selectedHub(this._snapshot);
     const cacheHub = selectedHubCache(this._snapshot);
     const cacheEnabled = persistentCacheEnabled(this._snapshot);
@@ -661,6 +775,8 @@ const TOOLS_CONTROL_TRANSLATION_KEYS = new Set([
   "find_remote",
   "resync_remote",
   "ip_commands",
+  "client",
+  "hub_connected",
 ]);
 
 interface SuggestionHass {
@@ -681,6 +797,8 @@ if (!window.customCards.some((c) => c.type === TOOLS_TYPE)) {
     name: "Sofabaton Control Panel",
     description:
       "A control panel for Sofabaton hub tools, cache, logs, settings, and Wi-Fi commands.",
+    // No `preview: true`: the "By card" grid renders the *real* card (squished),
+    // not renderPreview() — it only honours `preview` in the by-entity flow.
     // Card picker (HA 2026.6+): recommend this card for the hub-control
     // entities, pre-selecting the hub the entity belongs to.
     getEntitySuggestion: (hass: SuggestionHass, entityId: string) => {
