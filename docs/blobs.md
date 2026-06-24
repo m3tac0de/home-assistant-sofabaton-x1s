@@ -74,7 +74,7 @@ Use **Fetch From Hub** to retrieve a blob from an existing command on your hub.
 This section is driven by the cached hub/device/command data used elsewhere in
 the Control Panel card, so there are two things to know first:
 
-- **Persistent cache must be enabled** in the **Hub** tab
+- **Persistent cache must be enabled** in the **Settings** tab
 - Your device and command lists should be current, so refresh them in the
   **Cache** tab if needed
 
