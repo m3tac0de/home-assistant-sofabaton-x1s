@@ -119,6 +119,9 @@ class SofabatonControlPanelCard extends LitElement {
 
   setConfig(config: Record<string, unknown>) {
     this._config = config || {};
+    // When created from a hub-specific entity (card picker), pre-select that hub.
+    const hub = typeof this._config.hub === "string" ? this._config.hub.trim() : "";
+    this._store.setPreferredHub(hub || null);
   }
 
   set hass(value: HassLike) {
@@ -646,6 +649,31 @@ class SofabatonControlPanelEditor extends HTMLElement {
 if (!customElements.get(TOOLS_TYPE)) customElements.define(TOOLS_TYPE, SofabatonControlPanelCard);
 if (!customElements.get(EDITOR_TYPE)) customElements.define(EDITOR_TYPE, SofabatonControlPanelEditor);
 
+// Sofabaton integration platforms that own the control entities below.
+const SOFABATON_PLATFORMS = new Set(["sofabaton_x1s", "sofabaton_hub"]);
+// translation_key values of the hub-control entities that this card manages.
+// Set on the Python side (switch.py / button.py / sensor.py) precisely so the
+// card picker can recognise them without an async entity-registry lookup.
+const TOOLS_CONTROL_TRANSLATION_KEYS = new Set([
+  "proxy",
+  "hex_logging",
+  "wifi_device",
+  "find_remote",
+  "resync_remote",
+  "ip_commands",
+]);
+
+interface SuggestionHass {
+  entities?: Record<
+    string,
+    { platform?: string; device_id?: string; translation_key?: string } | undefined
+  >;
+  devices?: Record<
+    string,
+    { primary_config_entry?: string | null; config_entries?: string[] } | undefined
+  >;
+}
+
 window.customCards = window.customCards || [];
 if (!window.customCards.some((c) => c.type === TOOLS_TYPE)) {
   window.customCards.push({
@@ -653,5 +681,22 @@ if (!window.customCards.some((c) => c.type === TOOLS_TYPE)) {
     name: "Sofabaton Control Panel",
     description:
       "A control panel for Sofabaton hub tools, cache, logs, settings, and Wi-Fi commands.",
+    // Card picker (HA 2026.6+): recommend this card for the hub-control
+    // entities, pre-selecting the hub the entity belongs to.
+    getEntitySuggestion: (hass: SuggestionHass, entityId: string) => {
+      const entry = hass?.entities?.[entityId];
+      if (!entry) return null;
+      if (!SOFABATON_PLATFORMS.has(String(entry.platform || ""))) return null;
+      if (!TOOLS_CONTROL_TRANSLATION_KEYS.has(String(entry.translation_key || "")))
+        return null;
+      const config: Record<string, unknown> = { type: `custom:${TOOLS_TYPE}` };
+      // Resolve the owning hub (config entry) so the panel opens on the right
+      // hub for multi-hub setups.
+      const device = entry.device_id ? hass?.devices?.[entry.device_id] : undefined;
+      const hubEntryId =
+        device?.primary_config_entry || device?.config_entries?.[0] || null;
+      if (hubEntryId) config.hub = hubEntryId;
+      return { config };
+    },
   });
 }

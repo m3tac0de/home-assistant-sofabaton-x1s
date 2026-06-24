@@ -33,6 +33,9 @@ async def async_setup_entry(
 class SofabatonProxySwitch(SwitchEntity):
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.CONFIG  # ← this makes it show under "Configuration"
+    # Stable identifier surfaced in the frontend entity registry; used by the
+    # Control Panel card's getEntitySuggestion to recommend itself for this entity.
+    _attr_translation_key = "proxy"
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
@@ -66,6 +69,7 @@ class SofabatonProxySwitch(SwitchEntity):
 class SofabatonHexLoggingSwitch(SwitchEntity):
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.CONFIG  # ← this makes it show under "Configuration"
+    _attr_translation_key = "hex_logging"
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
@@ -99,6 +103,7 @@ class SofabatonHexLoggingSwitch(SwitchEntity):
 class SofabatonWifiDeviceSwitch(SwitchEntity):
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_translation_key = "wifi_device"
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub

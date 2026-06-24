@@ -1968,6 +1968,11 @@ var ControlPanelStore = class {
     this._runtimeCompletionTimer = null;
     this._wifiPressUnsub = null;
     this._wifiPressSubscribeSeq = 0;
+    // Hub to pre-select when the card was created from a hub-specific entity (via
+    // the card picker). Applied once when the hub becomes available; the user can
+    // freely switch hubs afterwards.
+    this._preferredHubEntryId = null;
+    this._preferredHubApplied = false;
     this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
     this._snapshot = {
       ...INITIAL_SNAPSHOT,
@@ -2132,6 +2137,22 @@ var ControlPanelStore = class {
       await this._syncWifiPressFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
+  }
+  /**
+   * Pre-select a hub by config-entry id (e.g. when the card was instantiated
+   * from a hub-specific entity). Applied once when the hub is available; the
+   * user can still switch hubs afterwards. Passing null clears the preference.
+   */
+  setPreferredHub(entryId) {
+    const next = String(entryId ?? "").trim() || null;
+    this._preferredHubEntryId = next;
+    this._preferredHubApplied = false;
+    if (!next) return;
+    const hubs = this._snapshot.state?.hubs ?? [];
+    if (hubs.some((hub) => hub.entry_id === next)) {
+      this._preferredHubApplied = true;
+      if (this._snapshot.selectedHubEntryId !== next) this.selectHub(next);
+    }
   }
   selectTab(tabId) {
     this._snapshot = {
@@ -2536,6 +2557,12 @@ var ControlPanelStore = class {
     const hubs = this._snapshot.state?.hubs ?? [];
     if (!hubs.length) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
+      this.persistViewState();
+      return;
+    }
+    if (!this._preferredHubApplied && this._preferredHubEntryId && hubs.some((hub) => hub.entry_id === this._preferredHubEntryId)) {
+      this._preferredHubApplied = true;
+      this._snapshot = { ...this._snapshot, selectedHubEntryId: this._preferredHubEntryId };
       this.persistViewState();
       return;
     }
@@ -10916,12 +10943,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       this._syncWarningOptOut = false;
       this._syncWarningOpen = true;
     };
-    this._openHubVersionModal = () => {
-      this._hubVersionModalOpen = false;
-    };
-    this._submitHubVersionModal = async () => {
-      this._hubVersionModalOpen = false;
-    };
   }
   connectedCallback() {
     super.connectedCallback();
@@ -11567,46 +11588,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       </div>
     `;
   }
-  _renderHubVersionModal() {
-    return A;
-    return b2`
-      <div class="modal-backdrop" @click=${() => {
-      this._hubVersionModalOpen = false;
-    }}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">Unknown hub version</div>
-            <button class="dialog-close" @click=${() => {
-      this._hubVersionModalOpen = false;
-    }}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            <div class="dialog-text">
-              We couldn't automatically detect your hub model. Select the correct version below - the change takes effect immediately, no restart needed.
-            </div>
-            <div class="version-chip-row">
-              ${["X1", "X1S", "X2"].map((version) => b2`
-                <button class="version-chip ${this._hubVersionModalSelectedVersion === version ? "active" : ""}" @click=${() => {
-      this._hubVersionModalSelectedVersion = version;
-    }}>
-                  ${version}
-                </button>
-              `)}
-            </div>
-          </div>
-          <div class="dialog-footer">
-            <div></div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${() => {
-      this._hubVersionModalOpen = false;
-    }}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._submitHubVersionModal}>Confirm</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
   async _ensureLoadedForCurrentHub() {
     const entryId = String(this.hub?.entry_id || "").trim();
     if (!entryId || !this.hass?.callWS) return;
@@ -11689,9 +11670,6 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   }
   _hubVersion() {
     return String(this._remoteAttrs()?.hub_version || this.hub?.version || "").toUpperCase();
-  }
-  _hubVersionConfident() {
-    return true;
   }
   _supportsUnicodeCommandNames() {
     const version = this._hubVersion();
@@ -12918,8 +12896,8 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .list-view .sticky-footer { border-top: none; }
     .wifi-max-devices-note { display: flex; justify-content: center; padding: 8px 16px 4px; font-size: 13px; color: var(--secondary-text-color); }
     .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
-    .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
-    .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .version-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .action-tab { cursor: pointer; }
+    .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
     .sync-btn-primary, .dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
     .sync-static { opacity: 0.65; cursor: default; }
     .command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -13069,9 +13047,9 @@ _SofabatonWifiCommandsTab.styles = [secondaryTabStyles, operationProgressStyles,
     .activities-label, .warning-label, .action-helper { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
     .activities-label.disabled { opacity: 0.55; }
     .input-selector-wrap[disabled] { opacity: 0.6; pointer-events: none; }
-    .activity-chip-row, .version-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    .activity-chip, .version-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; font: inherit; }
-    .activity-chip.active, .version-chip.active, .action-tab.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); color: var(--primary-color); }
+    .activity-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .activity-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; font: inherit; }
+    .activity-chip.active, .action-tab.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); color: var(--primary-color); }
     .activity-chip.disabled,
     .activity-chip:disabled,
     .activity-chip.disabled.active,
@@ -13212,6 +13190,8 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
   }
   setConfig(config) {
     this._config = config || {};
+    const hub = typeof this._config.hub === "string" ? this._config.hub.trim() : "";
+    this._store.setPreferredHub(hub || null);
   }
   set hass(value) {
     this._store.setHass(value);
@@ -13682,11 +13662,34 @@ var SofabatonControlPanelEditor = class extends HTMLElement {
 };
 if (!customElements.get(TOOLS_TYPE)) customElements.define(TOOLS_TYPE, SofabatonControlPanelCard);
 if (!customElements.get(EDITOR_TYPE)) customElements.define(EDITOR_TYPE, SofabatonControlPanelEditor);
+var SOFABATON_PLATFORMS = /* @__PURE__ */ new Set(["sofabaton_x1s", "sofabaton_hub"]);
+var TOOLS_CONTROL_TRANSLATION_KEYS = /* @__PURE__ */ new Set([
+  "proxy",
+  "hex_logging",
+  "wifi_device",
+  "find_remote",
+  "resync_remote",
+  "ip_commands"
+]);
 window.customCards = window.customCards || [];
 if (!window.customCards.some((c4) => c4.type === TOOLS_TYPE)) {
   window.customCards.push({
     type: TOOLS_TYPE,
     name: "Sofabaton Control Panel",
-    description: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wi-Fi commands."
+    description: "A control panel for Sofabaton hub tools, cache, logs, settings, and Wi-Fi commands.",
+    // Card picker (HA 2026.6+): recommend this card for the hub-control
+    // entities, pre-selecting the hub the entity belongs to.
+    getEntitySuggestion: (hass, entityId) => {
+      const entry = hass?.entities?.[entityId];
+      if (!entry) return null;
+      if (!SOFABATON_PLATFORMS.has(String(entry.platform || ""))) return null;
+      if (!TOOLS_CONTROL_TRANSLATION_KEYS.has(String(entry.translation_key || "")))
+        return null;
+      const config = { type: `custom:${TOOLS_TYPE}` };
+      const device = entry.device_id ? hass?.devices?.[entry.device_id] : void 0;
+      const hubEntryId = device?.primary_config_entry || device?.config_entries?.[0] || null;
+      if (hubEntryId) config.hub = hubEntryId;
+      return { config };
+    }
   });
 }

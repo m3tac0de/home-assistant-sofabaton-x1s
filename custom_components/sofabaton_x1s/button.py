@@ -91,6 +91,9 @@ class SofabatonFindRemoteButton(ButtonEntity):
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:remote"
+    # Stable identifier surfaced in the frontend entity registry; used by the
+    # Control Panel card's getEntitySuggestion to recommend itself for this entity.
+    _attr_translation_key = "find_remote"
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
@@ -139,6 +142,7 @@ class SofabatonResyncRemoteButton(ButtonEntity):
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:sync"
+    _attr_translation_key = "resync_remote"
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub

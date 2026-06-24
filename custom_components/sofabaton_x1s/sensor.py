@@ -363,6 +363,10 @@ class SofabatonIpCommandsSensor(SensorEntity):
     _attr_force_update = True
     _attr_has_entity_name = True
     _attr_name = "Wifi Commands"
+    # Stable identifier surfaced in the frontend entity registry; used by the
+    # Control Panel card's getEntitySuggestion to recommend itself for this
+    # entity. The matching translations entry keeps the displayed name intact.
+    _attr_translation_key = "ip_commands"
 
     _DEFAULT_VALUE = "Waiting for button press"
 

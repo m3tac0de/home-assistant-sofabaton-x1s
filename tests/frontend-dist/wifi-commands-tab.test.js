@@ -2310,12 +2310,6 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       this._syncWarningOptOut = false;
       this._syncWarningOpen = true;
     };
-    this._openHubVersionModal = () => {
-      this._hubVersionModalOpen = false;
-    };
-    this._submitHubVersionModal = async () => {
-      this._hubVersionModalOpen = false;
-    };
   }
   static {
     this._DEVICE_SESSION_KEY_PREFIX = "sofabaton_x1s:wifi_commands:selected_device:";
@@ -2560,8 +2554,8 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     .list-view .sticky-footer { border-top: none; }
     .wifi-max-devices-note { display: flex; justify-content: center; padding: 8px 16px 4px; font-size: 13px; color: var(--secondary-text-color); }
     .sync-btn, .dialog-btn, .slot-action-btn, .sync-static { border: 1px solid var(--divider-color); border-radius: var(--tools-radius-sm); padding: 8px 12px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 13px; font-weight: 700; }
-    .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .version-chip, .action-tab { cursor: pointer; }
-    .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .version-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .sync-btn, .dialog-btn, .slot-action-btn, .activity-chip, .checkbox-row, .slot-btn, .icon-btn, .action-tab { cursor: pointer; }
+    .sync-btn:hover, .dialog-btn:hover, .slot-action-btn:hover, .activity-chip:hover, .action-tab:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
     .sync-btn-primary, .dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
     .sync-static { opacity: 0.65; cursor: default; }
     .command-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -2711,9 +2705,9 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     .activities-label, .warning-label, .action-helper { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--secondary-text-color); }
     .activities-label.disabled { opacity: 0.55; }
     .input-selector-wrap[disabled] { opacity: 0.6; pointer-events: none; }
-    .activity-chip-row, .version-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    .activity-chip, .version-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; font: inherit; }
-    .activity-chip.active, .version-chip.active, .action-tab.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); color: var(--primary-color); }
+    .activity-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .activity-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; font: inherit; }
+    .activity-chip.active, .action-tab.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); color: var(--primary-color); }
     .activity-chip.disabled,
     .activity-chip:disabled,
     .activity-chip.disabled.active,
@@ -3425,46 +3419,6 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       </div>
     `;
   }
-  _renderHubVersionModal() {
-    return A;
-    return T`
-      <div class="modal-backdrop" @click=${() => {
-      this._hubVersionModalOpen = false;
-    }}>
-        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">Unknown hub version</div>
-            <button class="dialog-close" @click=${() => {
-      this._hubVersionModalOpen = false;
-    }}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            <div class="dialog-text">
-              We couldn't automatically detect your hub model. Select the correct version below - the change takes effect immediately, no restart needed.
-            </div>
-            <div class="version-chip-row">
-              ${["X1", "X1S", "X2"].map((version) => T`
-                <button class="version-chip ${this._hubVersionModalSelectedVersion === version ? "active" : ""}" @click=${() => {
-      this._hubVersionModalSelectedVersion = version;
-    }}>
-                  ${version}
-                </button>
-              `)}
-            </div>
-          </div>
-          <div class="dialog-footer">
-            <div></div>
-            <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${() => {
-      this._hubVersionModalOpen = false;
-    }}>Cancel</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._submitHubVersionModal}>Confirm</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
   async _ensureLoadedForCurrentHub() {
     const entryId = String(this.hub?.entry_id || "").trim();
     if (!entryId || !this.hass?.callWS) return;
@@ -3547,9 +3501,6 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
   }
   _hubVersion() {
     return String(this._remoteAttrs()?.hub_version || this.hub?.version || "").toUpperCase();
-  }
-  _hubVersionConfident() {
-    return true;
   }
   _supportsUnicodeCommandNames() {
     const version = this._hubVersion();

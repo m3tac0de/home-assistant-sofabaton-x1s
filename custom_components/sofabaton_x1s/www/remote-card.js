@@ -3413,7 +3413,8 @@ var SofabatonRemoteCard = class extends HTMLElement {
       ha-card {
         width: 100%;
         max-width: var(--remote-max-width);
-        zoom: var(--remote-zoom);
+        transform: scale(var(--remote-zoom));
+        transform-origin: top center;
         margin-left: auto;
         margin-right: auto;
         --sb-key-font-size: clamp(11px, 7cqw, 50px);
@@ -3526,26 +3527,24 @@ var SofabatonRemoteCard = class extends HTMLElement {
 
 
  	  .loadIndicator {
+	    display: none;
 	    height: 4px;
 	    width: 100%;
 	    border-radius: 2px;
-	    opacity: 0;
-	    /* Use a transparent base with a bright highlight "shimmering" over it */
-	    background: var(--primary-color, #03a9f4);
-	    background-image: linear-gradient(
-  		  90deg, 
-		  transparent, 
-		  rgba(255, 255, 255, 0.4), 
-		  transparent
-	    );
-	    background-size: 200% 100%;
-	    background-repeat: no-repeat;
-	    transition: opacity 0.3s ease-in-out;
 	    pointer-events: none;
 	  }
 
 	  .loadIndicator.is-loading {
-	    opacity: 1; /* Increased from 0.45 for better visibility */
+	    display: block;
+	    background: var(--primary-color, #03a9f4);
+	    background-image: linear-gradient(
+  		  90deg,
+		  transparent,
+		  rgba(255, 255, 255, 0.4),
+		  transparent
+	    );
+	    background-size: 200% 100%;
+	    background-repeat: no-repeat;
 	    animation: sb-shimmer 1.5s infinite linear;
 	  }
 
@@ -4961,19 +4960,19 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
           .sb-commands-section-help ha-icon { --mdc-icon-size: 16px; }
           .sb-commands-section-subtitle { font-size: 13px; color: var(--secondary-text-color); margin-bottom: 10px; }
           .sb-command-sync-row { margin: 0 0 12px; border: 1px solid var(--divider-color); border-radius: 12px; padding: 10px 12px; display:flex; align-items:center; justify-content:space-between; gap: 10px; }
-          .sb-command-sync-row-running { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
-          .sb-command-sync-row-error { border-color: var(--error-color); background: color-mix(in srgb, var(--error-color) 10%, transparent); }
-          .sb-command-sync-row-ok { border-color: color-mix(in srgb, var(--success-color, #22c55e) 70%, var(--divider-color)); background: color-mix(in srgb, var(--success-color, #22c55e) 12%, transparent); }
+          .sb-command-sync-row-running { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.10); background: color-mix(in srgb, var(--primary-color) 10%, transparent); }
+          .sb-command-sync-row-error { border-color: var(--error-color); background: rgba(var(--rgb-error-color, 219, 68, 55), 0.10); background: color-mix(in srgb, var(--error-color) 10%, transparent); }
+          .sb-command-sync-row-ok { border-color: var(--success-color, #22c55e); border-color: color-mix(in srgb, var(--success-color, #22c55e) 70%, var(--divider-color)); background: rgba(34, 197, 94, 0.12); background: color-mix(in srgb, var(--success-color, #22c55e) 12%, transparent); }
           .sb-command-sync-message-wrap { display:flex; align-items:center; gap: 8px; min-width: 0; }
           .sb-command-sync-message-wrap ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); }
           .sb-command-sync-row-ok .sb-command-sync-message-wrap ha-icon { color: var(--success-color, #22c55e); }
           .sb-command-sync-row-error .sb-command-sync-message-wrap ha-icon { color: var(--error-color); }
           .sb-command-sync-row-running .sb-command-sync-message-wrap ha-icon { color: var(--primary-color); }
           .sb-command-sync-message { font-size: 13px; color: var(--secondary-text-color); }
-          .sb-command-sync-btn { border: 1px solid var(--primary-color); border-radius: 10px; min-height: 34px; padding: 0 12px; background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--primary-text-color); cursor: pointer; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
-          .sb-command-sync-btn:hover { background: color-mix(in srgb, var(--primary-color) 28%, transparent); border-color: color-mix(in srgb, var(--primary-color) 85%, #000); }
+          .sb-command-sync-btn { border: 1px solid var(--primary-color); border-radius: 10px; min-height: 34px; padding: 0 12px; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); color: var(--primary-text-color); cursor: pointer; white-space: nowrap; transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease; }
+          .sb-command-sync-btn:hover { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.28); background: color-mix(in srgb, var(--primary-color) 28%, transparent); border-color: var(--primary-color); border-color: color-mix(in srgb, var(--primary-color) 85%, #000); }
           .sb-command-sync-btn:active { transform: translateY(1px); }
-          .sb-command-sync-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent); }
+          .sb-command-sync-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(var(--rgb-primary-color, 3, 169, 244), 0.45); box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary-color) 45%, transparent); }
           .sb-command-sync-btn[disabled],
           .sb-command-sync-btn.sb-command-sync-btn-static { opacity: 0.6; cursor: default; transform: none; pointer-events: none; }
           .sb-command-sync-btn.sb-command-sync-btn-static { display: inline-flex; align-items: center; }
@@ -5018,31 +5017,31 @@ var SofabatonRemoteCardEditor = class extends HTMLElement {
           .sb-command-dialog-footer-actions { display:flex; align-items:center; justify-content:flex-end; gap: 8px; margin-left: auto; }
           .sb-command-dialog-btn { border: 1px solid var(--divider-color); border-radius: 10px; min-height: 36px; padding: 0 12px; background: var(--ha-card-background, var(--card-background-color)); color: var(--primary-text-color); cursor: pointer; font-size: 14px; }
           .sb-command-dialog-btn:hover { border-color: var(--primary-color); }
-          .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+          .sb-command-dialog-btn-primary { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
           .sb-hub-version-warn-btn { all: unset; cursor: pointer; text-decoration: underline; display: block; }
           .sb-hub-version-chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
           .sb-hub-version-chip { border: 1px solid var(--divider-color); border-radius: 20px; padding: 4px 14px; background: transparent; color: var(--primary-text-color); cursor: pointer; font-size: 13px; }
-          .sb-hub-version-chip.active { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-          .sb-command-dialog-note { border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color)); border-radius: 12px; padding: 12px; background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 13px; line-height: 1.45; display:flex; align-items:flex-start; gap:10px; }
-          .sb-command-dialog-note::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: color-mix(in srgb, var(--info-color, var(--primary-color)) 22%, transparent); flex: 0 0 18px; margin-top: 1px; }
+          .sb-hub-version-chip.active { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+          .sb-command-dialog-note { border: 1px solid var(--divider-color); border: 1px solid color-mix(in srgb, var(--info-color, var(--primary-color)) 42%, var(--divider-color)); border-radius: 12px; padding: 12px; background: var(--ha-card-background, var(--card-background-color)); background: color-mix(in srgb, var(--info-color, var(--primary-color)) 12%, var(--ha-card-background, var(--card-background-color))); color: var(--primary-text-color); font-size: 13px; line-height: 1.45; display:flex; align-items:flex-start; gap:10px; }
+          .sb-command-dialog-note::before { content: ""; width: 18px; height: 18px; border-radius: 50%; background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.22); background: color-mix(in srgb, var(--info-color, var(--primary-color)) 22%, transparent); flex: 0 0 18px; margin-top: 1px; }
           .sb-command-config-block { border: 1px solid var(--divider-color); border-radius: 12px; padding: 12px; display:flex; flex-direction:column; gap:12px; }
           .sb-command-input-row { display:flex; flex-direction:column; gap:6px; }
           .sb-command-input-label { font-size: 12px; opacity: 0.78; }
           .sb-command-name-field { width: 100%; }
           .sb-command-input-select { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, transparent); color: inherit; min-height: 40px; padding: 6px 12px; }
           .sb-command-checkbox { width: 100%; border: 0; background: transparent; padding: 0; display:flex; align-items:center; justify-content:space-between; gap:10px; font-size: 13px; cursor: pointer; color: inherit; }
-          .sb-command-checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: color-mix(in srgb, var(--ha-card-background, transparent) 88%, #000); display:flex; align-items:center; justify-content:center; transition: background-color 120ms ease, border-color 120ms ease; }
+          .sb-command-checkbox-icon { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--divider-color); background: var(--ha-card-background, rgba(0, 0, 0, 0.12)); background: color-mix(in srgb, var(--ha-card-background, transparent) 88%, #000); display:flex; align-items:center; justify-content:center; transition: background-color 120ms ease, border-color 120ms ease; }
           .sb-command-checkbox-icon ha-icon { --mdc-icon-size: 16px; }
           .sb-command-checkbox-left { display:flex; align-items:center; gap:10px; }
-          .sb-command-checkbox.sb-command-favorite-active .sb-command-checkbox-icon { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
+          .sb-command-checkbox.sb-command-favorite-active .sb-command-checkbox-icon { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.20); background: color-mix(in srgb, var(--primary-color) 20%, transparent); }
           .sb-command-helper { font-size: 12px; opacity: 0.8; margin-top: 2px; }
           .sb-command-activity-chip-row { display:flex; flex-wrap:wrap; gap:8px; }
-          .sb-command-activity-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; cursor: pointer; }
-          .sb-command-activity-chip.active { background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); }
+          .sb-command-activity-chip { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, rgba(0, 0, 0, 0.1)); background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 6px 12px; cursor: pointer; }
+          .sb-command-activity-chip.active { background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.20); background: color-mix(in srgb, var(--primary-color) 20%, transparent); border-color: var(--primary-color); }
           .sb-command-action-wrap { display:flex; flex-direction:column; gap:8px; }
           .sb-command-action-tabs { display:flex; gap:8px; }
-          .sb-command-action-tab { border: 1px solid var(--divider-color); border-radius: 999px; background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 8px 12px; cursor:pointer; font: inherit; }
-          .sb-command-action-tab.active { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+          .sb-command-action-tab { border: 1px solid var(--divider-color); border-radius: 999px; background: var(--ha-card-background, rgba(0, 0, 0, 0.1)); background: color-mix(in srgb, var(--ha-card-background, transparent) 90%, #000); color: inherit; padding: 8px 12px; cursor:pointer; font: inherit; }
+          .sb-command-action-tab.active { border-color: var(--primary-color); background: rgba(var(--rgb-primary-color, 3, 169, 244), 0.18); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
           .sb-command-dialog-body ha-textfield,
           .sb-command-dialog-body ha-selector { width: 100%; }
           @media (max-width: 760px) {
@@ -5833,6 +5832,14 @@ if (!window.customCards.some((c) => c.type === TYPE)) {
   window.customCards.push({
     type: TYPE,
     name: "Sofabaton Virtual Remote",
-    description: "A configurable remote for the Sofabaton X1, X1S and X2 integration."
+    description: "A configurable remote for the Sofabaton X1, X1S and X2 integration.",
+    // Card picker (HA 2026.6+): recommend this card for Sofabaton remote
+    // entities, which is exactly what it binds to.
+    getEntitySuggestion: (hass, entityId) => {
+      if (!entityId.startsWith("remote.")) return null;
+      const platform = String(hass?.entities?.[entityId]?.platform || "");
+      if (platform !== "sofabaton_x1s" && platform !== "sofabaton_hub") return null;
+      return { config: { type: `custom:${TYPE}`, entity: entityId } };
+    }
   });
 }
