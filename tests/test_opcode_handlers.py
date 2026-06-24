@@ -147,6 +147,39 @@ def test_record_banner_payload_parses_all_hub_lines() -> None:
     assert x2_proxy.hub_version == "X2"
 
 
+def test_record_banner_payload_accepts_nonzero_flag_bytes() -> None:
+    # Bytes 13/14 are hub/firmware-dependent flag bytes whose values vary across
+    # hub models and revisions. They must not gate acceptance -- earlier builds
+    # required byte 14 == 0x00, which silently dropped the banner (and left the
+    # hub unidentified) on hubs that report it nonzero. This is the X1S capture
+    # with those two bytes forced to 0x07 / 0x03.
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+    parsed = proxy.record_banner_payload(
+        0x1D02,
+        bytes.fromhex("e26a44861b45000220221120050703536f757465727261696e20687562"),
+    )
+    assert parsed == {
+        "model": "X1S",
+        "production_batch": "20221120",
+        "firmware_version": 5,
+        "name": "Souterrain hub",
+    }
+
+
+def test_record_banner_payload_rejects_unknown_model_code() -> None:
+    # A family-0x02 frame that is not an identity banner (e.g. an unrelated H->A
+    # reply) carries an unrecognised value at byte 7, which is what keeps this
+    # handler from misparsing it -- not the flag-byte checks.
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+    assert (
+        proxy.record_banner_payload(
+            0x1D02,
+            bytes.fromhex("e26a44861b45007f20221120050000536f757465727261696e20687562"),
+        )
+        is None
+    )
+
+
 def test_banner_info_roundtrips_through_cache_export() -> None:
     proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
     proxy.record_banner_payload(

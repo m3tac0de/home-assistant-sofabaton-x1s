@@ -980,13 +980,20 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
         return True
 
     def record_banner_payload(self, opcode: int, payload: bytes) -> dict[str, Any] | None:
+        # Family 0x02 is the opcode low byte, so this handler also sees unrelated
+        # H->A frames (e.g. save-transaction / IP-command-sync replies). The
+        # identity banner is disambiguated structurally, not by its contents:
+        #   * the frame already passed the deframer's checksum, and
+        #   * payload[7] carries a recognised hub hardware code, and
+        #   * the payload is long enough to hold the fixed identity header.
+        # Bytes 13/14 are hub/firmware-dependent flag bytes (their values differ
+        # across hub models and revisions), so they must NOT gate acceptance --
+        # doing so silently dropped the banner on hubs that report them nonzero.
         if opcode_family(opcode) != 0x02 or len(payload) < 15:
             return None
 
         model = _HUB_MODEL_BY_CODE.get(payload[7] & 0xFF)
-        trailer_flag = payload[13] & 0xFF
-        trailer_zero = payload[14] & 0xFF
-        if model is None or trailer_zero != 0x00 or trailer_flag not in (0x00, 0x01):
+        if model is None:
             return None
 
         batch = payload[8:12].hex()
