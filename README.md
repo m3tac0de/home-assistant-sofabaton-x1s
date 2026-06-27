@@ -10,8 +10,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 [![HACS Badge](https://img.shields.io/badge/HACS-Default-green.svg)](https://github.com/hacs/integration)
 ![Version](https://img.shields.io/badge/version-0.6.2-blue)
 
-> Protocol communication powered by **[sofabaton-x](sofabaton-x/)**, a standalone Python library for the Sofabaton hub protocol.  
-> Also available on [PyPI](https://pypi.org/project/sofabaton-x/).
+> Powered by **[sofabaton-x](sofabaton-x/)**, a standalone Python library for the Sofabaton hub protocol. Also available on [PyPI](https://pypi.org/project/sofabaton-x/).
 
 ## Start here
 
