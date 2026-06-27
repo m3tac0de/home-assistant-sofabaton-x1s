@@ -118,6 +118,57 @@ def test_unregister_stops_listener_when_idle():
     assert _wait(lambda: listener._thr is None or not listener._thr.is_alive())
 
 
+def _connect_refused(port: float) -> bool:
+    c = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    c.settimeout(1.0)
+    try:
+        c.connect(("127.0.0.1", port))
+        return False
+    except OSError:
+        return True
+    finally:
+        c.close()
+
+
+def test_bounce_refuses_during_window_then_reopens():
+    port = _pick_free_port()
+    listener = HubListener(listen_port=port)
+    listener.register_hub(
+        proxy_id="hubA",
+        real_hub_ip="127.0.0.1",
+        on_socket=lambda s, a: s.close(),
+    )
+    assert _wait(lambda: listener._thr is not None and listener._thr.is_alive())
+
+    try:
+        listener.bounce(downtime=0.5)
+
+        # During the window the port is closed -> connections are refused.
+        assert _wait(lambda: _connect_refused(port), timeout=0.4)
+
+        # After the window the listener comes back on the same port and the
+        # registration is still there.
+        assert _wait(
+            lambda: listener._thr is not None and listener._thr.is_alive(),
+            timeout=2.0,
+        )
+        assert "hubA" in listener._by_proxy
+        assert _wait(lambda: not _connect_refused(port), timeout=1.0)
+    finally:
+        listener.shutdown()
+
+
+def test_bounce_noop_when_no_hubs_registered():
+    port = _pick_free_port()
+    listener = HubListener(listen_port=port)
+    try:
+        listener.bounce(downtime=0.5)
+        assert listener._bouncing is False
+        assert listener._thr is None
+    finally:
+        listener.shutdown()
+
+
 def test_get_hub_listener_singleton_is_shared():
     port = _pick_free_port()
     a = get_hub_listener(port)

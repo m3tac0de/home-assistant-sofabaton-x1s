@@ -21,10 +21,11 @@ from __future__ import annotations
 import logging
 import socket
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional, Tuple
 
-from ..logging_utils import get_hub_logger
+from .hub_logging import get_hub_logger
 
 log = logging.getLogger("x1proxy.listener")
 
@@ -33,6 +34,15 @@ log = logging.getLogger("x1proxy.listener")
 # work — the first registration's port wins (subsequent differing
 # values log a warning, mirroring NotifyDemuxer).
 DEFAULT_HUB_LISTEN_PORT = 8200
+
+# How long the shared listener stays down during a bounce. A disabled hub
+# only stops retrying once its reconnects are refused at the SYN level
+# (i.e. the port is closed), and it tries a handful of times over ~1s — so
+# the window must comfortably outlast that. Established hub sessions are
+# untouched (only the bound listening socket closes), so a longer window is
+# cheap: at worst it delays a hub that happens to drop during it, and that
+# hub self-heals via its own CALL_ME loop afterwards.
+DEFAULT_BOUNCE_DOWNTIME_S = 2.5
 
 
 OnSocketCallback = Callable[[socket.socket, Tuple[str, int]], None]
@@ -58,6 +68,11 @@ class HubListener:
         # Keyed by real_hub_ip so dispatch is O(1) on accept.
         self._by_ip: Dict[str, HubRegistration] = {}
         self._by_proxy: Dict[str, HubRegistration] = {}
+        # Bounce state: while bouncing the listening socket is intentionally
+        # closed and must not be reopened by a stray registration.
+        self._bouncing = False
+        self._bounce_cancel: Optional[threading.Event] = None
+        self._bounce_thr: Optional[threading.Thread] = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -111,14 +126,74 @@ class HubListener:
 
     def shutdown(self) -> None:
         with self._lock:
+            if self._bounce_cancel is not None:
+                self._bounce_cancel.set()
+            self._bouncing = False
             self._by_ip.clear()
             self._by_proxy.clear()
             self._stop_thread_locked()
+
+    def bounce(self, downtime: float = DEFAULT_BOUNCE_DOWNTIME_S) -> None:
+        """Close the listening socket for ``downtime`` seconds, then reopen.
+
+        Used when a hub is disabled in a multi-hub setup: the shared port
+        stays open for the other hubs, so the disabled hub (already dropped
+        and now reconnecting) never sees a refusal and loops forever. By
+        briefly closing the bound socket, its reconnect attempts are refused
+        at the SYN level — the only signal it gives up on — after which it
+        goes idle and becomes reachable by the Sofabaton app again.
+
+        Already-connected hubs are unaffected: only the listening socket is
+        closed, not the accepted sessions, so the still-enabled hubs stay
+        connected straight through the window.
+        """
+
+        with self._lock:
+            if self._bouncing:
+                return
+            if not self._by_proxy:
+                # No hubs left to come back for — the listener is already
+                # (or about to be) stopped, and the closed port refuses the
+                # disabled hub on its own. Nothing to bounce.
+                return
+            self._bouncing = True
+            cancel = threading.Event()
+            self._bounce_cancel = cancel
+            # Stop accepting: close the socket and wind down the accept loop.
+            self._stop_thread_locked()
+            thr = threading.Thread(
+                target=self._bounce_run,
+                args=(downtime, cancel),
+                name="x1proxy-hub-listen-bounce",
+                daemon=True,
+            )
+            self._bounce_thr = thr
+        thr.start()
+
+    def _bounce_run(self, downtime: float, cancel: threading.Event) -> None:
+        log.info("[LISTEN] bounce: refusing new connections for %.1fs", downtime)
+        cancelled = cancel.wait(max(0.0, downtime))
+        with self._lock:
+            if self._bounce_cancel is cancel:
+                self._bouncing = False
+                self._bounce_cancel = None
+                self._bounce_thr = None
+            if cancelled or not self._by_proxy:
+                log.info(
+                    "[LISTEN] bounce: staying down (cancelled=%s, hubs=%d)",
+                    cancelled,
+                    len(self._by_proxy),
+                )
+                return
+            self._ensure_running_locked()
+            log.info("[LISTEN] bounce: listener back up on *:%d", self.listen_port)
 
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
     def _ensure_running_locked(self) -> None:
+        if self._bouncing:
+            return
         if self._thr is not None and self._thr.is_alive():
             return
         self._stop_event = threading.Event()
@@ -230,6 +305,21 @@ def get_hub_listener(listen_port: Optional[int] = None) -> HubListener:
                 listen_port,
             )
         return _GLOBAL_LISTENER
+
+
+def bounce_hub_listener(downtime: float = DEFAULT_BOUNCE_DOWNTIME_S) -> None:
+    """Bounce the process-wide listener if one exists (no-op otherwise).
+
+    Called when a hub is disabled, to release it from the shared listener's
+    reconnect loop. Does not create a listener: if none is running there is
+    nothing to release. Blocks briefly (the accept-thread wind-down); run it
+    off the event loop.
+    """
+
+    with _GLOBAL_LOCK:
+        listener = _GLOBAL_LISTENER
+    if listener is not None:
+        listener.bounce(downtime)
 
 
 def reset_hub_listener_for_tests() -> None:

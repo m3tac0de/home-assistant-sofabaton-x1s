@@ -31,7 +31,7 @@ def test_export_import_roundtrip_preserves_activity_favorites():
     assert restored.state.get_activity_command_refs(0x41) == source.state.get_activity_command_refs(0x41)
 
 
-def test_clear_persistent_cache_for_activity_removes_favorites_only_for_activity():
+def test_clear_cached_entity_detail_activity_removes_favorites_only_for_activity():
     proxy = X1Proxy("127.0.0.1")
 
     proxy.state.activity_favorite_slots[0x41] = [{"button_id": 1, "device_id": 2, "command_id": 3, "source": "activity_map"}]
@@ -42,7 +42,7 @@ def test_clear_persistent_cache_for_activity_removes_favorites_only_for_activity
     proxy.state.activity_members[0x41].add(2)
     proxy.state.activity_favorite_slots[0x42] = [{"button_id": 1, "device_id": 4, "command_id": 5, "source": "activity_map"}]
 
-    proxy.clear_persistent_cache_for(0x41, kind="activity")
+    proxy.clear_cached_entity_detail(0x41, kind="activity")
 
     assert 0x41 not in proxy.state.activity_favorite_slots
     assert 0x41 not in proxy.state.activity_favorite_labels

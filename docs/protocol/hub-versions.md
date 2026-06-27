@@ -62,7 +62,7 @@ Stable field meanings:
 | byte 1 | model code (`0x01` X1, `0x02` X1S, `0x03` X2) |
 | bytes 2-5 | production batch as packed date bytes |
 | byte 6 | hub firmware version |
-| bytes 7-8 | trailing flags (`00 00` on observed X1 TCP banners, `01 00` on observed X1S/X2 banners) |
+| bytes 7-8 | hub/firmware-dependent flag bytes (e.g. `00 00` on observed X1 banners, `01 00` on observed X1S/X2 banners, but other values such as `01 03` occur). These vary across hub models and revisions and must **not** be used to validate or gate the banner — rely on a recognised model code, the BCD-packed production date, and the frame checksum instead. |
 
 Representative observed blocks:
 

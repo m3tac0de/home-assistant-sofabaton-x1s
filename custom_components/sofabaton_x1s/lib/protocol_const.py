@@ -193,6 +193,16 @@ OP_REQ_IDLE_BEHAVIOR = 0x0140  # payload: [dev_lo]; query device idle/power beha
 OP_REQ_ACTIVITY_INPUTS = 0x0148  # payload: [0x01] request activity input candidates
 OP_SET_IDLE_BEHAVIOR = 0x0241  # payload: [dev_lo, mode]; update device idle/power behavior
 OP_IDLE_BEHAVIOR = 0x0242  # H→A payload: [dev_lo, mode] current device idle/power behavior
+
+# Idle-behavior ``mode`` byte values (the 0x0242 reply / 0x0241 write).
+# This single byte encodes the whole "Power On/Off Setup" + "Idle Behavior"
+# story from the app: when automatic power control is disabled the app skips
+# the idle screen entirely and the hub reports ``DISABLED``. Confirmed by
+# wire capture against an X1 hub.
+IDLE_BEHAVIOR_AUTO_OFF = 1  # power on; turn off when not in use (app default)
+IDLE_BEHAVIOR_ALWAYS_ON = 2  # power on; always keep on
+IDLE_BEHAVIOR_STAY_ON = 3  # power on; stay on when switching activities
+IDLE_BEHAVIOR_DISABLED = 4  # automatic power control disabled (Power On/Off = OFF)
 OP_ACTIVITY_DEVICE_CONFIRM = 0x024F  # payload: [dev_lo, include_flag]
 OP_REQ_MACRO_LABELS = 0x024D  # payload: [act_lo, 0xFF]
 OP_REQ_MACROS = OP_REQ_MACRO_LABELS  # backward-compat alias

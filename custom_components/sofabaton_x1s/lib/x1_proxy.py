@@ -13,9 +13,16 @@ from collections import defaultdict, deque
 from dataclasses import replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2, classify_hub_version, mdns_service_type_for_props
-from ..logging_utils import LogTag, get_hub_logger
-from .frame_handlers import FrameContext, frame_handler_registry
+from .hub_versions import (
+    HUB_VERSION_X1,
+    HUB_VERSION_X1S,
+    HUB_VERSION_X2,
+    PROXY_TXT_KEY,
+    PROXY_TXT_VALUE,
+    classify_hub_version,
+    mdns_service_type_for_props,
+)
+from .hub_logging import LogTag, get_hub_logger
 from .ack import AckOutcome, InputsBurstResult, SendStepResult
 from .commands import (
     DeviceButtonAssembler,
@@ -24,8 +31,6 @@ from .commands import (
     extract_ir_dump_blob,
     extract_ir_dump_label_field,
     looks_like_descriptive_play_blob,
-    parse_button_burst_frame,
-    parse_command_burst_frame,
     parse_ir_command_dump_frame,
 )
 from .device_create import (
@@ -60,7 +65,6 @@ from .macros import (
     MacroKeyEntry,
     MacroRecord,
     build_macro_save_payload,
-    parse_macro_burst_frame,
 )
 
 from .protocol_const import (
@@ -79,7 +83,6 @@ from .protocol_const import (
     OPNAMES,
     normalize_device_class,
     opcode_family,
-    opcode_family_name,
     opcode_lo,
     OP_ACK_READY,
     OP_BANNER,
@@ -141,7 +144,6 @@ from .protocol_const import (
     FAMILY_FAV_DELETE,
     FAMILY_FAV_ORDER_REQ,
     FAMILY_HUB_NAME_REPLY,
-    FAMILY_PLAY_BLOB,
     SYNC0,
     SYNC1,
 )
@@ -155,9 +157,11 @@ from .transport_bridge import TransportBridge
 from .proxy_restore import RestoreMixin
 from .proxy_wifi_device import WifiDeviceMixin
 from .proxy_backup import CacheBackupMixin
+from .proxy_backup_export import BackupExportMixin
 from .proxy_activity_ops import ActivityOpsMixin
 from .proxy_ack_waiters import AckWaitersMixin
 from .proxy_catalog import CatalogMixin
+from .proxy_frame_decode import FrameDecodeMixin, _hexdump
 from .proxy_ir_blob import IrBlobMixin
 
 # ============================================================================
@@ -180,6 +184,33 @@ def _normalize_banner_model(value: Any) -> str | None:
     return None
 
 
+def _looks_like_production_date(batch: bytes) -> bool:
+    """Return ``True`` when ``batch`` is a BCD-packed CCYYMMDD date.
+
+    The four production-batch bytes in a banner encode the hub's manufacturing
+    date (e.g. ``20 22 11 20`` -> ``2022-11-20``). That shape is intrinsic to a
+    banner and absent from the other H->A frames that share this family's low
+    opcode byte, so it is a stable structural fingerprint -- unlike the
+    device-dependent flag bytes, it never varies into a value that is also a
+    plausible date. Each byte must be valid BCD, the century in 19-21, the month
+    in 01-12 and the day in 01-31.
+    """
+
+    if len(batch) != 4:
+        return False
+
+    def _bcd(value: int) -> int | None:
+        hi, lo = value >> 4, value & 0x0F
+        if hi > 9 or lo > 9:
+            return None
+        return hi * 10 + lo
+
+    century, year, month, day = (_bcd(b) for b in batch)
+    if century is None or year is None or month is None or day is None:
+        return False
+    return 19 <= century <= 21 and 1 <= month <= 12 and 1 <= day <= 31
+
+
 def _sanitize_mdns_label_component(value: str) -> str:
     text = re.sub(r"[^A-Za-z0-9-]+", "-", str(value or "").strip())
     text = re.sub(r"-{2,}", "-", text).strip("-")
@@ -199,9 +230,6 @@ def _mdns_instance_for_identity(model: str | None, mdns_txt: Dict[str, str]) -> 
     return f"{display_model}-HUB-{_mac_suffix_for_instance(mdns_txt)}"
 
 def _sum8(b: bytes) -> int: return sum(b) & 0xFF
-def _hexdump(data: bytes) -> str: return data.hex(" ")
-
-
 def to_export_view(entry: dict[str, Any]) -> dict[str, Any]:
     """Return a JSON-safe shallow copy of a device / activity entry.
 
@@ -340,7 +368,7 @@ def _enable_keepalive(sock: socket.socket, *, idle: int = 30, interval: int = 10
 # ============================================================================
 # Proxy
 # ============================================================================
-class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, CacheBackupMixin, WifiDeviceMixin, RestoreMixin):
+class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, CacheBackupMixin, WifiDeviceMixin, RestoreMixin, BackupExportMixin):
     def __init__(
         self,
         real_hub_ip: str,
@@ -979,13 +1007,23 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         return True
 
     def record_banner_payload(self, opcode: int, payload: bytes) -> dict[str, Any] | None:
+        # This handler matches on the opcode low byte (family 0x02), and frames
+        # dispatch to every matching handler, so other H->A frames sharing that
+        # low byte (e.g. a 0x4102 save-transaction frame) also land here and must
+        # be rejected. The banner is identified by its stable structural fields:
+        #   * the frame already passed the deframer's checksum, and
+        #   * the payload is long enough to hold the fixed identity header, and
+        #   * payload[7] is a recognised hub hardware code, and
+        #   * payload[8:12] is the BCD-packed production date.
+        # Together those make a false match astronomically unlikely. Bytes 13/14
+        # are deliberately *not* part of the gate: they are hub/firmware-dependent
+        # flag bytes whose values differ across models and revisions, and gating
+        # on them silently dropped the banner on hubs that report them nonzero.
         if opcode_family(opcode) != 0x02 or len(payload) < 15:
             return None
 
         model = _HUB_MODEL_BY_CODE.get(payload[7] & 0xFF)
-        trailer_flag = payload[13] & 0xFF
-        trailer_zero = payload[14] & 0xFF
-        if model is None or trailer_zero != 0x00 or trailer_flag not in (0x00, 0x01):
+        if model is None or not _looks_like_production_date(payload[8:12]):
             return None
 
         batch = payload[8:12].hex()
@@ -1558,6 +1596,10 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         host = (self.mdns_host or instance) + "."
 
         props = {k: v.encode("utf-8") for k, v in self.mdns_txt.items()}
+        # Always self-mark the advertisement as a proxy so discovery
+        # (ours or any consumer's) can tell it apart from a physical
+        # hub. Callers may still pre-set the key via mdns_txt.
+        props.setdefault(PROXY_TXT_KEY, PROXY_TXT_VALUE.encode("utf-8"))
 
         # reset any previous registrations in case of restart
         self._mdns_infos = []
@@ -1776,213 +1818,6 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         if self.diag_dump:
             self._log.debug("%s A→H %s", LogTag.WIRE, _hexdump(frame))
 
-    def _handle_hub_frame(self, data: bytes, cid: int) -> None:
-        if self.diag_dump:
-            self._log.debug("%s #%d H→A %s", LogTag.WIRE, cid, _hexdump(data))
-        frames = self._df_h2a.feed(data, cid)
-        if frames:
-            self._handle_hub_frames(frames)
-            if self.diag_parse:
-                self._log_frames("H→A", frames)
-
-    def _handle_app_frame(self, data: bytes, cid: int) -> None:
-        if self.diag_dump:
-            self._log.debug("%s #%d A→H %s", LogTag.WIRE, cid, _hexdump(data))
-        frames = self._df_a2h.feed(data, cid)
-        if frames:
-            self._handle_app_frames(frames)
-            if self.diag_parse:
-                self._log_frames("A→H", frames)
-
-    def _handle_app_frames(self, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
-        for opcode, _raw, _payload, _scid, _ecid in frames:
-            if opcode == OP_REQ_DEVICES:
-                self._begin_device_request()
-                self._app_devices_deadline = time.monotonic() + 1.0
-                self._app_devices_retry_sent = False
-
-    def _handle_hub_frames(self, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
-        for opcode, _raw, _payload, _scid, _ecid in frames:
-            if opcode == OP_CATALOG_ROW_DEVICE:
-                self._clear_app_device_retry()
-
-    def _clear_app_device_retry(self) -> None:
-        self._app_devices_deadline = None
-        self._app_devices_retry_sent = False
-
-    def parse_device_commands(self, payload: bytes, dev_id: int) -> Dict[int, str]:
-        """Parse an assembled REQ_COMMANDS body using the fixed-width schema.
-
-        Forwards ``self.hub_version`` so
-        :meth:`StateHelpers.parse_device_commands` selects the correct
-        stride and label encoding.
-        """
-
-        return self.state.parse_device_commands(
-            payload, dev_id, hub_version=self.hub_version
-        )
-
-    # ---------------------------------------------------------------------
-    # Structured frame logs
-    # ---------------------------------------------------------------------
-    def _log_frames(self, direction: str, frames: List[Tuple[int, bytes, bytes, int, int]]) -> None:
-        # This method has two responsibilities, only one of which is logging:
-        #   1. dispatch each frame to its registered frame_handler_registry
-        #      handler — that is the path that ingests activities/devices/
-        #      buttons/commands/macros into the proxy state cache;
-        #   2. emit DEBUG-level decoded summaries for the tools-card logs tab
-        #      and the diagnostics download.
-        # The DEBUG-only work is skipped when nothing is listening, but the
-        # handler dispatch must run regardless of log level — gating it would
-        # leave the catalog empty whenever hex logging is off.
-        debug_enabled = self._log.isEnabledFor(logging.DEBUG)
-        for op, raw, payload, scid, ecid in frames:
-            name: str | None = None
-
-            if debug_enabled:
-                name = OPNAMES.get(op)
-                fam_name = opcode_family_name(op)
-                fam = opcode_family(op)
-                note = f"chunk={scid}→{ecid}" if scid != ecid else f"chunk={ecid}"
-                parsed = parse_command_burst_frame(
-                    op,
-                    raw,
-                    hub_version=self.hub_version,
-                )
-                parsed_macro = parse_macro_burst_frame(op, raw)
-                if name is None and parsed_macro is not None:
-                    name = parsed_macro.display_name
-
-                # Lead with the most specific label we can resolve: a named opcode,
-                # else its family, else an explicit "unknown" marker. We long ago
-                # classified most traffic by family, so "unknown" is now reserved
-                # for genuinely unknown low-bytes rather than the default.
-                #
-                # Each branch produces a self-contained label that includes the
-                # opcode hex exactly once — don't re-append (0x%04X) outside.
-                if name is not None:
-                    label = (
-                        f"{name} (0x{op:04X})"
-                        if fam_name is None
-                        else f"{name} (0x{op:04X}) family={fam_name}"
-                    )
-                elif fam_name is not None:
-                    label = f"family={fam_name} op=0x{op:04X}"
-                else:
-                    label = f"unknown op=0x{op:04X}"
-                self._log.debug(
-                    "%s %s %s len=%d %s", LogTag.FRAME, direction, label, len(raw), note
-                )
-                if parsed is not None:
-                    totals = (
-                        f"{parsed.frame_no}/{parsed.total_frames}"
-                        if parsed.total_frames is not None
-                        else f"{parsed.frame_no}"
-                    )
-                    first_cmd = (
-                        f" first_cmd=0x{parsed.first_command_id:02X}"
-                        if parsed.first_command_id is not None
-                        else ""
-                    )
-                    fmt = (
-                        f" fmt=0x{parsed.format_marker:02X}"
-                        if parsed.format_marker is not None
-                        else ""
-                    )
-                    total_commands = (
-                        f" total_cmds={parsed.total_commands}"
-                        if parsed.total_commands is not None
-                        else ""
-                    )
-                    self._log.debug(
-                        f"{LogTag.FRAME} %s REQ_COMMANDS role=%s variant=%s page=%s dev=0x%02X%s%s%s",
-                        note,
-                        parsed.role,
-                        parsed.layout_kind,
-                        totals,
-                        parsed.device_id,
-                        total_commands,
-                        first_cmd,
-                        fmt,
-                    )
-                parsed_buttons = parse_button_burst_frame(op, raw, hub_version=self.hub_version)
-                if parsed_buttons is not None:
-                    totals = (
-                        f"{parsed_buttons.frame_no}/{parsed_buttons.total_frames}"
-                        if parsed_buttons.total_frames is not None
-                        else f"{parsed_buttons.frame_no}"
-                    )
-                    total_rows = (
-                        f" total_rows={parsed_buttons.total_rows}"
-                        if parsed_buttons.total_rows is not None
-                        else ""
-                    )
-                    activity = (
-                        f" act=0x{parsed_buttons.activity_id:02X}"
-                        if parsed_buttons.activity_id is not None
-                        else ""
-                    )
-                    row_data = " row_data=yes" if parsed_buttons.has_row_data else " row_data=no"
-                    self._log.debug(
-                        f"{LogTag.FRAME} %s REQ_BUTTONS role=%s variant=%s page=%s%s%s%s",
-                        note,
-                        parsed_buttons.role,
-                        parsed_buttons.layout_kind,
-                        totals,
-                        activity,
-                        total_rows,
-                        row_data,
-                    )
-
-                if parsed_macro is not None:
-                    frag = (
-                        f"{parsed_macro.fragment_index}/{parsed_macro.total_fragments}"
-                        if parsed_macro.fragment_index is not None and parsed_macro.total_fragments is not None
-                        else (f"{parsed_macro.fragment_index}" if parsed_macro.fragment_index is not None else "?")
-                    )
-                    activity = (
-                        f" act=0x{parsed_macro.activity_id:02X}"
-                        if parsed_macro.activity_id is not None
-                        else ""
-                    )
-                    start_cmd = (
-                        f" start_cmd=0x{parsed_macro.start_command_id:02X}"
-                        if parsed_macro.start_command_id is not None
-                        else ""
-                    )
-                    len_ok = " len_ok=yes" if parsed_macro.payload_length_matches_hi else " len_ok=no"
-                    self._log.debug(
-                        f"{LogTag.FRAME} %s REQ_MACROS role=%s frag=%s%s%s%s",
-                        note,
-                        parsed_macro.role,
-                        frag,
-                        activity,
-                        start_cmd,
-                        len_ok,
-                    )
-
-                if direction == "A→H" and fam == FAMILY_PLAY_BLOB:
-                    blob = self._extract_single_frame_play_blob(payload)
-                    if blob is not None:
-                        descriptor_text = self._descriptive_play_blob_text(blob)
-                        if descriptor_text is not None:
-                            self._log.debug("%s descriptor %s", LogTag.IR, descriptor_text)
-
-            context = FrameContext(
-                proxy=self,
-                opcode=op,
-                direction=direction,
-                payload=payload,
-                raw=raw,
-                name=name,
-            )
-
-            for handler in frame_handler_registry.iter_for(op, direction):
-                try:
-                    handler.handle(context)
-                except Exception:
-                    self._log.debug("%s error while decoding op 0x%04X via %s", LogTag.PARSE, op, handler.__class__.__name__, exc_info=True)
-
     # ---------------------------------------------------------------------
     # Lifecycle
     # ---------------------------------------------------------------------
@@ -1995,7 +1830,7 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
         if not self.has_banner_identity():
             self._log.debug("[MDNS] discovery deferred until banner identity is ready")
             return
-            
+
         self.proxy_udp_port = self.transport.proxy_udp_port
         if not self._start_mdns():
             return
@@ -2033,4 +1868,3 @@ class X1Proxy(IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, Cach
 
 
 from . import opcode_handlers  # noqa: F401  # register frame handlers
-

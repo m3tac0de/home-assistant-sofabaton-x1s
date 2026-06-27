@@ -17,8 +17,8 @@ import logging
 import time
 from typing import Any
 
-from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
-from ..logging_utils import LogTag
+from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from .hub_logging import LogTag
 from .device_create import build_button_binding_step, synthesize_command_code
 from .protocol_const import (
     BUTTONNAME_BY_CODE,

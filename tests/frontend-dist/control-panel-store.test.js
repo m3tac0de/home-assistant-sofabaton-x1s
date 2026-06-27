@@ -1522,6 +1522,11 @@ var ControlPanelStore = class {
     this._runtimeCompletionTimer = null;
     this._wifiPressUnsub = null;
     this._wifiPressSubscribeSeq = 0;
+    // Hub to pre-select when the card was created from a hub-specific entity (via
+    // the card picker). Applied once when the hub becomes available; the user can
+    // freely switch hubs afterwards.
+    this._preferredHubEntryId = null;
+    this._preferredHubApplied = false;
     this._loadedFrontendVersion = normalizeLoadedFrontendVersion(options.loadedFrontendVersion);
     this._snapshot = {
       ...INITIAL_SNAPSHOT,
@@ -1686,6 +1691,22 @@ var ControlPanelStore = class {
       await this._syncWifiPressFeed();
       if (this._snapshot.selectedTab === "logs") await this.syncLogsFeed();
     })();
+  }
+  /**
+   * Pre-select a hub by config-entry id (e.g. when the card was instantiated
+   * from a hub-specific entity). Applied once when the hub is available; the
+   * user can still switch hubs afterwards. Passing null clears the preference.
+   */
+  setPreferredHub(entryId) {
+    const next = String(entryId ?? "").trim() || null;
+    this._preferredHubEntryId = next;
+    this._preferredHubApplied = false;
+    if (!next) return;
+    const hubs = this._snapshot.state?.hubs ?? [];
+    if (hubs.some((hub) => hub.entry_id === next)) {
+      this._preferredHubApplied = true;
+      if (this._snapshot.selectedHubEntryId !== next) this.selectHub(next);
+    }
   }
   selectTab(tabId) {
     this._snapshot = {
@@ -2090,6 +2111,12 @@ var ControlPanelStore = class {
     const hubs = this._snapshot.state?.hubs ?? [];
     if (!hubs.length) {
       this._snapshot = { ...this._snapshot, selectedHubEntryId: null };
+      this.persistViewState();
+      return;
+    }
+    if (!this._preferredHubApplied && this._preferredHubEntryId && hubs.some((hub) => hub.entry_id === this._preferredHubEntryId)) {
+      this._preferredHubApplied = true;
+      this._snapshot = { ...this._snapshot, selectedHubEntryId: this._preferredHubEntryId };
       this.persistViewState();
       return;
     }

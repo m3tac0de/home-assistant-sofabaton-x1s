@@ -147,6 +147,55 @@ def test_record_banner_payload_parses_all_hub_lines() -> None:
     assert x2_proxy.hub_version == "X2"
 
 
+def test_record_banner_payload_accepts_nonzero_flag_bytes() -> None:
+    # Bytes 13/14 are hub/firmware-dependent flag bytes whose values vary across
+    # hub models and revisions. They must not gate acceptance -- earlier builds
+    # required byte 14 == 0x00, which silently dropped the banner (and left the
+    # hub unidentified) on hubs that report it nonzero. This is the X1S capture
+    # with those two bytes forced to 0x07 / 0x03.
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+    parsed = proxy.record_banner_payload(
+        0x1D02,
+        bytes.fromhex("e26a44861b45000220221120050703536f757465727261696e20687562"),
+    )
+    assert parsed == {
+        "model": "X1S",
+        "production_batch": "20221120",
+        "firmware_version": 5,
+        "name": "Souterrain hub",
+    }
+
+
+def test_record_banner_payload_rejects_unknown_model_code() -> None:
+    # A family-0x02 frame that is not an identity banner (e.g. an unrelated H->A
+    # reply) carries an unrecognised value at byte 7, which keeps this handler
+    # from misparsing it.
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+    assert (
+        proxy.record_banner_payload(
+            0x1D02,
+            bytes.fromhex("e26a44861b45007f20221120050000536f757465727261696e20687562"),
+        )
+        is None
+    )
+
+
+def test_record_banner_payload_rejects_non_banner_family02_frame() -> None:
+    # The handler matches on the opcode low byte (family 0x02), so unrelated
+    # H->A frames such as a 0x4102 save-transaction reply also reach it. Even
+    # when such a frame's byte 7 coincidentally lands on a known model code, its
+    # bytes 8:12 are not a valid production date, so it must be rejected. This
+    # frame has model byte 0x02 (X1S) but a non-date batch (ff ff ff ff).
+    proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
+    assert (
+        proxy.record_banner_payload(
+            0x4102,
+            bytes.fromhex("0001020304050002ffffffff050000"),
+        )
+        is None
+    )
+
+
 def test_banner_info_roundtrips_through_cache_export() -> None:
     proxy = X1Proxy("127.0.0.1", hub_version=HUB_VERSION_X1S)
     proxy.record_banner_payload(
@@ -974,7 +1023,7 @@ def test_catalog_device_handler_decodes_shared_device_class_code() -> None:
     }
 
 
-def test_x1_activity_row_updates_state_and_hint() -> None:
+def test_x1_activity_row_updates_state_and_trims_label() -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
     )
@@ -983,7 +1032,7 @@ def test_x1_activity_row_updates_state_and_hint() -> None:
 
     frame = _build_context(
         proxy,
-        "a5 5a 7b 3b 01 00 01 0a 00 01 00 65 02 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4a 65 6c 6c 79 66 69 6e 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 fc 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3c 9c",
+        "a5 5a 7b 3b 01 00 01 0a 00 01 00 65 02 02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 4a 65 6c 6c 79 66 69 6e 20 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 fc 00 fc 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 3c 9c",
         OP_X1_ACTIVITY,
         "X1_ACTIVITY",
     )

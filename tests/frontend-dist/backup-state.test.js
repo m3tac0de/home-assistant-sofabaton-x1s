@@ -1151,6 +1151,7 @@ var HUB_VERSION_RANK = {
   X1S: 2,
   X2: 3
 };
+var INTERNAL_POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
 function forcedRestoreDeviceIds(bundle2, selectedActivityIds) {
   const selected = new Set(selectedActivityIds.map((value) => Number(value)));
   const forced = /* @__PURE__ */ new Set();
@@ -1213,6 +1214,1004 @@ function normalizeHubVersion(value) {
   if (normalized.includes("X2")) return "X2";
   if (normalized.includes("X1")) return "X1";
   return null;
+}
+function updateActivity(bundle2, activityId, updater) {
+  const normalizedId = Number(activityId);
+  return {
+    ...bundle2,
+    activities: (bundle2.activities ?? []).map((activity) => {
+      if (Number(activity?.device?.device_id || 0) !== normalizedId) return activity;
+      return updater(activity);
+    })
+  };
+}
+function commandLabelFor(bundle2, deviceId, commandId) {
+  const device = (bundle2.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  const command = (device?.commands ?? []).find((entry) => Number(entry?.command_id || 0) === Number(commandId));
+  return String(command?.name || "").trim();
+}
+var IDLE_BEHAVIOR_DISABLED = 4;
+function deviceIdleBehavior(bundle2, deviceId) {
+  if (!bundle2) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle2.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device?.device) return null;
+  const raw = device.device.idle_behavior ?? device.device.power_mode;
+  if (raw == null) return null;
+  const mode = Number(raw);
+  return Number.isFinite(mode) ? mode & 255 : null;
+}
+function updateBundleDeviceIdleBehavior(bundle2, deviceId, mode) {
+  const normalizedId = Number(deviceId);
+  const normalizedMode = Number(mode) & 255;
+  return {
+    ...bundle2,
+    devices: (bundle2.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
+      if (!device.device) return device;
+      return {
+        ...device,
+        device: { ...device.device, idle_behavior: normalizedMode }
+      };
+    })
+  };
+}
+function reorderBundleActivityQuickAccess(bundle2, activityId, orderedItems) {
+  const normalizedActivityId = Number(activityId);
+  const activity = (bundle2.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedActivityId);
+  if (!activity) return bundle2;
+  const macrosByButtonId = /* @__PURE__ */ new Map();
+  for (const row of activity.macros ?? []) {
+    macrosByButtonId.set(Number(row?.button_id || 0), row);
+  }
+  const favoritesByButtonId = /* @__PURE__ */ new Map();
+  for (const row of activity.favorite_slots ?? []) {
+    favoritesByButtonId.set(Number(row?.button_id || 0), row);
+  }
+  const orderedMacroButtonIds = new Set(
+    orderedItems.filter((item) => item.kind === "macro").map((item) => Number(item.buttonId))
+  );
+  const macroRows = [];
+  const favoriteRows = [];
+  orderedItems.forEach((item, index) => {
+    const nextButtonId = index + 1;
+    if (item.kind === "macro") {
+      const row2 = macrosByButtonId.get(Number(item.buttonId));
+      if (row2) macroRows.push({ ...row2, button_id: nextButtonId });
+      return;
+    }
+    const row = favoritesByButtonId.get(Number(item.buttonId));
+    if (row) favoriteRows.push({ ...row, button_id: nextButtonId });
+  });
+  for (const row of activity.macros ?? []) {
+    if (!orderedMacroButtonIds.has(Number(row?.button_id || 0))) {
+      macroRows.push(row);
+    }
+  }
+  return updateActivity(bundle2, normalizedActivityId, (current) => ({
+    ...current,
+    macros: macroRows,
+    favorite_slots: favoriteRows
+  }));
+}
+function stepMatchesDevice(step, deviceId) {
+  return Number(step?.device_id || 0) === deviceId;
+}
+function stepMatchesCommand(step, deviceId, commandId) {
+  return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
+}
+var MACRO_DELAY_SENTINEL = 255;
+function isMacroDelayStep(step) {
+  return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
+}
+function filterMacroSteps(steps, shouldRemove) {
+  const list = steps ?? [];
+  const result = [];
+  for (let index = 0; index < list.length; index += 1) {
+    if (shouldRemove(list[index])) {
+      while (index + 1 < list.length && isMacroDelayStep(list[index + 1])) {
+        index += 1;
+      }
+      continue;
+    }
+    result.push(list[index]);
+  }
+  return result;
+}
+function countRemovedMacroSteps(steps, shouldRemove) {
+  const original = (steps ?? []).length;
+  return original - filterMacroSteps(steps, shouldRemove).length;
+}
+function clearBindingLongPress(binding) {
+  const { long_press_device_id, long_press_command_id, ...rest } = binding;
+  return rest;
+}
+function cascadeBindingForDeletedDevice(binding, deviceId) {
+  if (Number(binding?.device_id || 0) === deviceId) return null;
+  if (Number(binding?.long_press_device_id || 0) === deviceId) return clearBindingLongPress(binding);
+  return binding;
+}
+function cascadeBindingForDeletedCommand(binding, deviceId, commandId, deviceScoped) {
+  const shortMatches = deviceScoped ? Number(binding?.command_id || 0) === commandId : Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId;
+  if (shortMatches) return null;
+  const longMatches = deviceScoped ? Number(binding?.long_press_command_id || 0) === commandId : Number(binding?.long_press_device_id || 0) === deviceId && Number(binding?.long_press_command_id || 0) === commandId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
+function cascadeBindingForDeletedMacro(binding, activityId, macroButtonId) {
+  const shortMatches = Number(binding?.device_id || 0) === activityId && Number(binding?.command_id || 0) === macroButtonId;
+  if (shortMatches) return null;
+  const longMatches = Number(binding?.long_press_device_id || 0) === activityId && Number(binding?.long_press_command_id || 0) === macroButtonId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
+function applyBindingCascade(bindings, transform) {
+  const result = [];
+  for (const binding of bindings ?? []) {
+    const next = transform(binding);
+    if (next !== null) result.push(next);
+  }
+  return result;
+}
+function countAffectedBindings(bindings, transform) {
+  let count = 0;
+  for (const binding of bindings ?? []) {
+    const next = transform(binding);
+    if (next === null || next !== binding) count += 1;
+  }
+  return count;
+}
+function bundleDeleteImpact(bundle2, target) {
+  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  if (!bundle2) return empty;
+  if (target.kind === "device") {
+    const deviceId = Number(target.deviceId);
+    let favorites = 0;
+    let macroSteps = 0;
+    let activities = 0;
+    let bindings = 0;
+    for (const activity of bundle2.activities ?? []) {
+      if ((activity?.referenced_source_device_ids ?? []).some((id) => Number(id) === deviceId)) {
+        activities += 1;
+      }
+      for (const slot of activity?.favorite_slots ?? []) {
+        if (Number(slot?.device_id || 0) === deviceId) favorites += 1;
+      }
+      for (const macro of activity?.macros ?? []) {
+        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId));
+      }
+      bindings += countAffectedBindings(
+        activity?.button_bindings,
+        (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
+      );
+    }
+    return { favorites, macroSteps, activities, bindings };
+  }
+  if (target.kind === "command") {
+    const deviceId = Number(target.deviceId);
+    const commandId = Number(target.commandId);
+    let favorites = 0;
+    let macroSteps = 0;
+    let bindings = 0;
+    for (const activity of bundle2.activities ?? []) {
+      for (const slot of activity?.favorite_slots ?? []) {
+        if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) {
+          favorites += 1;
+        }
+      }
+      for (const macro of activity?.macros ?? []) {
+        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, deviceId, commandId));
+      }
+      bindings += countAffectedBindings(
+        activity?.button_bindings,
+        (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, false)
+      );
+    }
+    const device = (bundle2.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === deviceId);
+    bindings += countAffectedBindings(
+      device?.button_bindings,
+      (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true)
+    );
+    return { favorites, macroSteps, activities: 0, bindings };
+  }
+  return empty;
+}
+function deleteBundleActivity(bundle2, activityId) {
+  const id = Number(activityId);
+  return {
+    ...bundle2,
+    activities: (bundle2.activities ?? []).filter((activity) => Number(activity?.device?.device_id || 0) !== id)
+  };
+}
+function stripDeviceFromActivity(activity, deviceId) {
+  return {
+    ...activity,
+    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
+      (id) => Number(id) !== deviceId
+    ),
+    favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.device_id || 0) !== deviceId),
+    macros: (activity.macros ?? []).map((macro) => ({
+      ...macro,
+      steps: filterMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId))
+    })),
+    button_bindings: applyBindingCascade(
+      activity.button_bindings,
+      (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
+    )
+  };
+}
+function deleteBundleDevice(bundle2, deviceId) {
+  const id = Number(deviceId);
+  const next = {
+    ...bundle2,
+    devices: (bundle2.devices ?? []).filter((device) => Number(device?.device?.device_id || 0) !== id),
+    activities: (bundle2.activities ?? []).map((activity) => stripDeviceFromActivity(activity, id))
+  };
+  return reconcileBundlePowerMacros(next);
+}
+function deleteBundleDeviceCommand(bundle2, deviceId, commandId) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  const next = {
+    ...bundle2,
+    devices: (bundle2.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).filter((command) => Number(command?.command_id || 0) !== cId),
+        button_bindings: applyBindingCascade(
+          device.button_bindings,
+          (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true)
+        )
+      };
+    }),
+    activities: (bundle2.activities ?? []).map((activity) => ({
+      ...activity,
+      favorite_slots: (activity.favorite_slots ?? []).filter(
+        (slot) => !(Number(slot?.device_id || 0) === dId && Number(slot?.command_id || 0) === cId)
+      ),
+      macros: (activity.macros ?? []).map((macro) => ({
+        ...macro,
+        steps: filterMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, dId, cId))
+      })),
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, false)
+      )
+    }))
+  };
+  return reconcileBundlePowerMacros(next);
+}
+function deleteBundleActivityQuickAccess(bundle2, activityId, kind, buttonId) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle2, activityId, (activity) => {
+    if (kind === "favorite") {
+      return {
+        ...activity,
+        favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.button_id || 0) !== bId)
+      };
+    }
+    return {
+      ...activity,
+      macros: (activity.macros ?? []).filter((macro) => Number(macro?.button_id || 0) !== bId),
+      // A button bound to this macro now dangles — drop it (or clear the
+      // long press if only that referenced the macro).
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedMacro(binding, Number(activityId), bId)
+      )
+    };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function nextQuickAccessButtonId(activity) {
+  let max = 0;
+  const consider = (value) => {
+    if (value > 0 && !INTERNAL_POWER_MACRO_BUTTON_IDS.has(value) && value > max) max = value;
+  };
+  for (const slot of activity.favorite_slots ?? []) consider(Number(slot?.button_id || 0));
+  for (const macro of activity.macros ?? []) consider(Number(macro?.button_id || 0));
+  return max + 1;
+}
+function addBundleActivityFavorite(bundle2, activityId, deviceId, commandId, name) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  if (dId <= 0 || cId <= 0) return bundle2;
+  const trimmed = String(name ?? "").trim();
+  const next = updateActivity(bundle2, activityId, (activity) => {
+    const slot = {
+      button_id: nextQuickAccessButtonId(activity),
+      device_id: dId,
+      command_id: cId,
+      name: trimmed
+    };
+    return { ...activity, favorite_slots: [...activity.favorite_slots ?? [], slot] };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function applyBundleDelete(bundle2, target) {
+  switch (target.kind) {
+    case "activity":
+      return deleteBundleActivity(bundle2, target.activityId);
+    case "device":
+      return deleteBundleDevice(bundle2, target.deviceId);
+    case "command":
+      return deleteBundleDeviceCommand(bundle2, target.deviceId, target.commandId);
+    case "favorite":
+      return deleteBundleActivityQuickAccess(bundle2, target.activityId, "favorite", target.buttonId);
+    case "macro":
+      return deleteBundleActivityQuickAccess(bundle2, target.activityId, "macro", target.buttonId);
+    case "activity_binding":
+      return deleteActivityButtonBinding(bundle2, target.activityId, target.buttonId);
+    case "device_binding":
+      return deleteDeviceButtonBinding(bundle2, target.deviceId, target.buttonId);
+  }
+}
+var POWER_ON_MACRO_BUTTON_ID = 198;
+var POWER_OFF_MACRO_BUTTON_ID = 199;
+var DEVICE_POWER_ON_REF_COMMAND = 198;
+var DEVICE_POWER_OFF_REF_COMMAND = 199;
+var DEVICE_INPUT_REF_COMMAND = 197;
+var POWER_MACRO_DELAY_BUTTON_CODE = 281474976710655;
+var POWER_STEP_DEFAULT_DELAY = 255;
+function powerMacroDelayRow(delay) {
+  return {
+    device_id: 255,
+    command_id: 255,
+    button_code: POWER_MACRO_DELAY_BUTTON_CODE,
+    duration: 255,
+    delay: delay & 255
+  };
+}
+function powerStep(deviceId, commandId, duration = 0) {
+  return {
+    device_id: Number(deviceId),
+    command_id: commandId,
+    button_code: 0,
+    duration: duration & 255,
+    delay: POWER_STEP_DEFAULT_DELAY
+  };
+}
+function activityPowerDeviceIds(activity) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const macro of activity.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID) continue;
+    for (const step of macro?.steps ?? []) {
+      if (isMacroDelayStep(step)) continue;
+      const command = Number(step?.command_id || 0);
+      if (command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND) {
+        const deviceId = Number(step?.device_id || 0);
+        if (deviceId > 0) ids.add(deviceId);
+      }
+    }
+  }
+  return ids;
+}
+function activityMemberDeviceIds(activity) {
+  const selfId = Number(activity?.device?.device_id || 0);
+  const ids = activityPowerDeviceIds(activity);
+  const add = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && id !== selfId) ids.add(id);
+  };
+  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
+  for (const binding of activity.button_bindings ?? []) {
+    add(binding?.device_id);
+    add(binding?.long_press_device_id);
+  }
+  for (const macro of activity.macros ?? []) {
+    for (const step of macro?.steps ?? []) {
+      if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
+      add(step?.device_id);
+    }
+  }
+  return [...ids].sort((left, right) => left - right);
+}
+function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
+  const memberSet = new Set(members);
+  const kept = (existingSteps ?? []).filter((step) => {
+    if (isMacroDelayStep(step)) return true;
+    const deviceId = Number(step?.device_id || 0);
+    return deviceId > 0 ? memberSet.has(deviceId) : true;
+  });
+  const out = [...kept];
+  for (const deviceId of members) {
+    for (const command of refCommands) {
+      const present = out.some(
+        (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command
+      );
+      if (!present) out.push(powerStep(deviceId, command));
+    }
+  }
+  return out;
+}
+function reconcileActivityPowerMacros(bundle2, activityId) {
+  return updateActivity(bundle2, activityId, (activity) => {
+    const members = activityMemberDeviceIds(activity);
+    const macros = [...activity.macros ?? []];
+    const ensure = (buttonId, name, refCommands) => {
+      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
+      const existing = index >= 0 ? macros[index] : null;
+      if (!existing && members.length === 0) return;
+      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands);
+      const next = {
+        ...existing ?? {},
+        button_id: buttonId,
+        name: existing?.name ?? name,
+        steps
+      };
+      if (index >= 0) macros[index] = next;
+      else macros.push(next);
+    };
+    ensure(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", [DEVICE_POWER_ON_REF_COMMAND, DEVICE_INPUT_REF_COMMAND]);
+    ensure(POWER_OFF_MACRO_BUTTON_ID, "POWER_OFF", [DEVICE_POWER_OFF_REF_COMMAND]);
+    return { ...activity, macros, referenced_source_device_ids: members };
+  });
+}
+function reconcileBundlePowerMacros(bundle2) {
+  let next = bundle2;
+  for (const activity of bundle2.activities ?? []) {
+    const id = Number(activity?.device?.device_id || 0);
+    if (id > 0) next = reconcileActivityPowerMacros(next, id);
+  }
+  return next;
+}
+var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
+function synthesizeCommandCode(commandId) {
+  return SYNTHETIC_COMMAND_CODE_BASE + (Number(commandId) & 255);
+}
+function findDevice(bundle2, deviceId) {
+  return (bundle2?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+}
+function inputEntryOrdinal(entry) {
+  return Number(entry?.input_index ?? entry?.ordinal ?? 0);
+}
+function deviceInputEntries(bundle2, deviceId) {
+  const device = findDevice(bundle2, deviceId);
+  const entries = device?.input_record?.entries ?? [];
+  return entries.map((entry) => ({
+    commandId: Number(entry?.command_id || 0),
+    ordinal: inputEntryOrdinal(entry),
+    name: String(entry?.name || entry?.label || "").trim()
+  })).filter((entry) => entry.commandId > 0).sort((left, right) => left.ordinal - right.ordinal);
+}
+function ensureDeviceInput(bundle2, deviceId, commandId) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  const device = findDevice(bundle2, dId);
+  const existingEntries = device?.input_record?.entries ?? [];
+  const reused = existingEntries.find((entry) => Number(entry?.command_id || 0) === cId);
+  if (reused) {
+    return { bundle: bundle2, ordinal: inputEntryOrdinal(reused) };
+  }
+  const nextOrdinal = existingEntries.reduce((max, entry) => Math.max(max, inputEntryOrdinal(entry)), 0) + 1;
+  const newEntry = {
+    command_id: cId,
+    fid: synthesizeCommandCode(cId),
+    input_index: nextOrdinal,
+    name: commandLabelFor(bundle2, dId, cId) || `Input ${cId}`
+  };
+  const nextBundle = {
+    ...bundle2,
+    devices: (bundle2.devices ?? []).map((entry) => {
+      if (Number(entry?.device?.device_id || 0) !== dId) return entry;
+      const record = { ...entry.input_record ?? {} };
+      record.entries = [...existingEntries, newEntry];
+      return { ...entry, input_record: record };
+    })
+  };
+  return { bundle: nextBundle, ordinal: nextOrdinal };
+}
+function activityPowerDevices(bundle2, activityId) {
+  if (!bundle2) return [];
+  const activity = (bundle2.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const powerOn = (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === POWER_ON_MACRO_BUTTON_ID);
+  const steps = powerOn?.steps ?? [];
+  const order = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const step of steps) {
+    if (isMacroDelayStep(step)) continue;
+    const command = Number(step?.command_id || 0);
+    if (command !== DEVICE_POWER_ON_REF_COMMAND && command !== DEVICE_INPUT_REF_COMMAND) continue;
+    const deviceId = Number(step?.device_id || 0);
+    if (deviceId > 0 && !seen.has(deviceId)) {
+      seen.add(deviceId);
+      order.push(deviceId);
+    }
+  }
+  return order.map((deviceId) => {
+    const inputStep = steps.find(
+      (step) => !isMacroDelayStep(step) && Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND
+    );
+    const inputOrdinal = Number(inputStep?.duration || 0);
+    const input = deviceInputEntries(bundle2, deviceId).find((entry) => entry.ordinal === inputOrdinal);
+    return {
+      deviceId,
+      deviceName: deviceNameFor(bundle2, deviceId),
+      inputOrdinal,
+      inputCommandId: input?.commandId ?? null,
+      inputCommandName: input?.name || (inputOrdinal > 0 ? `Input ${inputOrdinal}` : null)
+    };
+  });
+}
+function setActivityPowerInputOrdinal(activity, deviceId, ordinal) {
+  const dId = Number(deviceId);
+  return {
+    ...activity,
+    macros: (activity.macros ?? []).map((macro) => {
+      if (Number(macro?.button_id || 0) !== POWER_ON_MACRO_BUTTON_ID) return macro;
+      let found = false;
+      const steps = (macro.steps ?? []).map((step) => {
+        if (!isMacroDelayStep(step) && Number(step?.device_id || 0) === dId && Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND) {
+          found = true;
+          return { ...step, duration: ordinal & 255 };
+        }
+        return step;
+      });
+      if (!found) steps.push(powerStep(dId, DEVICE_INPUT_REF_COMMAND, ordinal));
+      return { ...macro, steps };
+    })
+  };
+}
+function setActivityDeviceInput(bundle2, activityId, deviceId, commandId) {
+  const cId = Number(commandId);
+  if (cId <= 0) return bundle2;
+  const ensured = ensureDeviceInput(bundle2, deviceId, cId);
+  return updateActivity(
+    ensured.bundle,
+    activityId,
+    (activity) => setActivityPowerInputOrdinal(activity, deviceId, ensured.ordinal)
+  );
+}
+function clearActivityDeviceInput(bundle2, activityId, deviceId) {
+  return updateActivity(bundle2, activityId, (activity) => setActivityPowerInputOrdinal(activity, deviceId, 0));
+}
+function isPowerRefStep(step) {
+  const command = Number(step?.command_id || 0);
+  return command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND;
+}
+function defaultMacroName(buttonId) {
+  if (buttonId === POWER_ON_MACRO_BUTTON_ID) return "POWER_ON";
+  if (buttonId === POWER_OFF_MACRO_BUTTON_ID) return "POWER_OFF";
+  return `Macro ${buttonId}`;
+}
+function deviceMacroDelayStep(delay) {
+  return { command_id: 255, duration: 255, delay: Number(delay) & 255 };
+}
+function groupMacroSteps(steps) {
+  const prefix = [];
+  const groups = [];
+  for (const step of steps ?? []) {
+    if (isMacroDelayStep(step)) {
+      if (groups.length === 0) prefix.push(step);
+      else groups[groups.length - 1].trailing.push(step);
+    } else {
+      groups.push({ head: step, trailing: [] });
+    }
+  }
+  return { prefix, groups };
+}
+function flattenMacroGroups(prefix, groups) {
+  const out = [...prefix];
+  for (const group of groups) out.push(group.head, ...group.trailing);
+  return out;
+}
+function groupWait(group) {
+  return group.trailing.length > 0 ? Number(group.trailing[0]?.delay || 0) : 0;
+}
+function applyGroupWait(group, waitByte, isActivity) {
+  const value = Number(waitByte) & 255;
+  if (group.trailing.length > 0) {
+    group.trailing = [{ ...group.trailing[0], delay: value }, ...group.trailing.slice(1)];
+  } else if (value > 0) {
+    group.trailing = [isActivity ? powerMacroDelayRow(value) : deviceMacroDelayStep(value)];
+  }
+}
+function deviceMacroStepItems(bundle2, deviceId, buttonId) {
+  const device = findDevice(bundle2, deviceId);
+  const macro = (device?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const commandId = Number(group.head?.command_id || 0);
+    return {
+      index,
+      kind: "command",
+      commandId,
+      deviceId: null,
+      label: commandNameOrFallback(bundle2, Number(deviceId), commandId),
+      hold: Number(group.head?.duration || 0),
+      wait: groupWait(group)
+    };
+  });
+}
+function updateDeviceMacro(bundle2, deviceId, buttonId, transform) {
+  const dId = Number(deviceId);
+  const bId = Number(buttonId);
+  return {
+    ...bundle2,
+    devices: (bundle2.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      const macros = [...device.macros ?? []];
+      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
+      const existing = index >= 0 ? macros[index] : null;
+      const next = {
+        ...existing ?? {},
+        button_id: bId,
+        name: existing?.name ?? defaultMacroName(bId),
+        steps: transform(existing?.steps ?? [])
+      };
+      if (index >= 0) macros[index] = next;
+      else macros.push(next);
+      return { ...device, macros };
+    })
+  };
+}
+function patchMacroStep(step, patch, isActivityMacro) {
+  const next = { ...step };
+  if (isMacroDelayStep(step)) {
+    if (patch.wait !== void 0) next.delay = Number(patch.wait) & 255;
+    return next;
+  }
+  if (patch.commandId !== void 0) {
+    next.command_id = Number(patch.commandId);
+    if (isActivityMacro) next.button_code = synthesizeCommandCode(Number(patch.commandId));
+  }
+  if (patch.deviceId !== void 0 && isActivityMacro) next.device_id = Number(patch.deviceId);
+  if (patch.hold !== void 0) next.duration = Number(patch.hold) & 255;
+  return next;
+}
+function addDeviceMacroCommandStep(bundle2, deviceId, buttonId, commandId, hold = 0) {
+  if (Number(commandId) <= 0) return bundle2;
+  return updateDeviceMacro(bundle2, deviceId, buttonId, (steps) => [
+    ...steps,
+    { command_id: Number(commandId), duration: Number(hold) & 255, delay: 255 }
+  ]);
+}
+function updateDeviceMacroStep(bundle2, deviceId, buttonId, index, patch) {
+  return updateDeviceMacro(bundle2, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, false);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function setDeviceMacroStepWait(bundle2, deviceId, buttonId, index, wait) {
+  return updateDeviceMacro(bundle2, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, false);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function removeDeviceMacroStep(bundle2, deviceId, buttonId, index) {
+  return updateDeviceMacro(bundle2, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    if (Number(index) < 0 || Number(index) >= groups.length) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function reorderDeviceMacroSteps(bundle2, deviceId, buttonId, orderedIndices) {
+  return updateDeviceMacro(bundle2, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices.map((i4) => groups[Number(i4)]).filter((group) => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
+}
+function activityMacroStepItems(bundle2, activityId, buttonId) {
+  const activity = (bundle2?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const head = group.head;
+    const wait = groupWait(group);
+    const deviceId = Number(head?.device_id || 0);
+    const commandId = Number(head?.command_id || 0);
+    const deviceName = deviceNameFor(bundle2, deviceId);
+    if (commandId === DEVICE_POWER_ON_REF_COMMAND || commandId === DEVICE_POWER_OFF_REF_COMMAND) {
+      const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? "Power on" : "Power off";
+      return { index, kind: "power", commandId, deviceId, label: `${verb} \xB7 ${deviceName}`, hold: 0, wait, protected: true };
+    }
+    if (commandId === DEVICE_INPUT_REF_COMMAND) {
+      const ordinal = Number(head?.duration || 0);
+      const input = deviceInputEntries(bundle2, deviceId).find((entry) => entry.ordinal === ordinal);
+      const inputLabel = input?.name || (ordinal > 0 ? `Input ${ordinal}` : "no input");
+      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input \xB7 ${deviceName}: ${inputLabel}`, hold: 0, wait, protected: true };
+    }
+    return {
+      index,
+      kind: "command",
+      commandId,
+      deviceId,
+      label: `${deviceName} \xB7 ${commandNameOrFallback(bundle2, deviceId, commandId)}`,
+      hold: Number(head?.duration || 0),
+      wait
+    };
+  });
+}
+function updateActivityMacro(bundle2, activityId, buttonId, transform) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle2, activityId, (activity) => {
+    const macros = [...activity.macros ?? []];
+    const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
+    const existing = index >= 0 ? macros[index] : null;
+    const nextMacro = {
+      ...existing ?? {},
+      button_id: bId,
+      name: existing?.name ?? `Macro ${bId}`,
+      steps: transform(existing?.steps ?? [])
+    };
+    if (index >= 0) macros[index] = nextMacro;
+    else macros.push(nextMacro);
+    return { ...activity, macros };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function addActivityUserMacro(bundle2, activityId, name) {
+  return updateActivity(bundle2, activityId, (activity) => ({
+    ...activity,
+    macros: [...activity.macros ?? [], {
+      button_id: nextQuickAccessButtonId(activity),
+      name: String(name ?? "").trim() || "Macro",
+      steps: []
+    }]
+  }));
+}
+function addActivityMacroCommandStep(bundle2, activityId, buttonId, deviceId, commandId, hold = 0) {
+  if (Number(deviceId) <= 0 || Number(commandId) <= 0) return bundle2;
+  return updateActivityMacro(bundle2, activityId, buttonId, (steps) => [...steps, {
+    device_id: Number(deviceId),
+    command_id: Number(commandId),
+    button_code: synthesizeCommandCode(Number(commandId)),
+    duration: Number(hold) & 255,
+    delay: 255
+  }]);
+}
+function updateActivityMacroStep(bundle2, activityId, buttonId, index, patch) {
+  return updateActivityMacro(bundle2, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, true);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function setActivityMacroStepWait(bundle2, activityId, buttonId, index, wait) {
+  return updateActivityMacro(bundle2, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, true);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function removeActivityMacroStep(bundle2, activityId, buttonId, index) {
+  return updateActivityMacro(bundle2, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    if (isPowerRefStep(group.head)) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function reorderActivityMacroSteps(bundle2, activityId, buttonId, orderedIndices) {
+  return updateActivityMacro(bundle2, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices.map((i4) => groups[Number(i4)]).filter((group) => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
+}
+var SHARED_BUTTON_CATALOG = [
+  { code: 174, name: "Up", group: "Navigation" },
+  { code: 178, name: "Down", group: "Navigation" },
+  { code: 175, name: "Left", group: "Navigation" },
+  { code: 177, name: "Right", group: "Navigation" },
+  { code: 176, name: "OK", group: "Navigation" },
+  { code: 180, name: "Home", group: "Navigation" },
+  { code: 179, name: "Back", group: "Navigation" },
+  { code: 181, name: "Menu", group: "Navigation" },
+  { code: 182, name: "Volume Up", group: "Volume & Channel" },
+  { code: 185, name: "Volume Down", group: "Volume & Channel" },
+  { code: 184, name: "Mute", group: "Volume & Channel" },
+  { code: 183, name: "Channel Up", group: "Volume & Channel" },
+  { code: 186, name: "Channel Down", group: "Volume & Channel" },
+  { code: 187, name: "Rewind", group: "Transport" },
+  { code: 188, name: "Pause", group: "Transport" },
+  { code: 189, name: "Forward", group: "Transport" },
+  { code: 190, name: "Red", group: "Colour" },
+  { code: 191, name: "Green", group: "Colour" },
+  { code: 192, name: "Yellow", group: "Colour" },
+  { code: 193, name: "Blue", group: "Colour" }
+];
+var X2_EXTRA_BUTTON_CATALOG = [
+  { code: 153, name: "A", group: "Extra" },
+  { code: 152, name: "B", group: "Extra" },
+  { code: 151, name: "C", group: "Extra" },
+  { code: 154, name: "Exit", group: "Extra" },
+  { code: 155, name: "DVR", group: "Extra" },
+  { code: 156, name: "Play", group: "Extra" },
+  { code: 157, name: "Guide", group: "Extra" }
+];
+var BUTTON_NAME_BY_CODE = new Map(
+  [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG].map((entry) => [entry.code, entry.name])
+);
+function bundleButtonCatalog(bundle2) {
+  if (normalizeHubVersion(bundle2?.hub?.version) === "X2") {
+    return [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG];
+  }
+  return [...SHARED_BUTTON_CATALOG];
+}
+function buttonName(code) {
+  return BUTTON_NAME_BY_CODE.get(Number(code)) ?? `Button 0x${Number(code).toString(16).toUpperCase()}`;
+}
+function deviceNameFor(bundle2, deviceId) {
+  const device = (bundle2?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  return String(device?.device?.name || "").trim() || `Device ${Number(deviceId)}`;
+}
+function commandNameOrFallback(bundle2, deviceId, commandId) {
+  return commandLabelFor(bundle2, deviceId, commandId) || `Command ${Number(commandId)}`;
+}
+function activityMacroName(bundle2, activityId, buttonId) {
+  const activity = (bundle2?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  return String(macro?.name || "").trim() || `Macro ${Number(buttonId)}`;
+}
+function activityBindingTargetLabel(bundle2, activityId, targetDeviceId, targetCommandId) {
+  if (targetDeviceId === Number(activityId)) {
+    return `Macro \xB7 ${activityMacroName(bundle2, activityId, targetCommandId)}`;
+  }
+  return `${deviceNameFor(bundle2, targetDeviceId)} \xB7 ${commandNameOrFallback(bundle2, targetDeviceId, targetCommandId)}`;
+}
+function sortBindingsByButtonId(rows) {
+  return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+function activityButtonBindingItems(bundle2, activityId) {
+  if (!bundle2) return [];
+  const activity = (bundle2.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const items = [];
+  for (const row of sortBindingsByButtonId(activity.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const deviceId = Number(row?.device_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || deviceId <= 0) continue;
+    const item = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      deviceId,
+      commandId,
+      isMacroTarget: deviceId === Number(activityId),
+      shortPressLabel: activityBindingTargetLabel(bundle2, Number(activityId), deviceId, commandId)
+    };
+    const lpDeviceId = Number(row?.long_press_device_id || 0);
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpDeviceId > 0 && lpCommandId > 0) {
+      item.longPress = {
+        deviceId: lpDeviceId,
+        commandId: lpCommandId,
+        isMacroTarget: lpDeviceId === Number(activityId),
+        label: activityBindingTargetLabel(bundle2, Number(activityId), lpDeviceId, lpCommandId)
+      };
+    }
+    items.push(item);
+  }
+  return items;
+}
+function deviceButtonBindingItems(bundle2, deviceId) {
+  if (!bundle2) return [];
+  const normalizedDeviceId = Number(deviceId);
+  const device = (bundle2.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId);
+  if (!device) return [];
+  const items = [];
+  for (const row of sortBindingsByButtonId(device.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || commandId <= 0) continue;
+    const item = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      commandId,
+      shortPressLabel: commandNameOrFallback(bundle2, normalizedDeviceId, commandId)
+    };
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpCommandId > 0) {
+      item.longPress = {
+        commandId: lpCommandId,
+        label: commandNameOrFallback(bundle2, normalizedDeviceId, lpCommandId)
+      };
+    }
+    items.push(item);
+  }
+  return items;
+}
+function boundButtonIds(rows) {
+  return new Set((rows ?? []).map((row) => Number(row?.button_id || 0)).filter((id) => id > 0));
+}
+function unboundButtonsForActivity(bundle2, activityId) {
+  const activity = (bundle2?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const used = boundButtonIds(activity?.button_bindings);
+  return bundleButtonCatalog(bundle2).filter((entry) => !used.has(entry.code));
+}
+function upsertBindingRow(rows, row) {
+  const buttonId = Number(row.button_id || 0);
+  const next = (rows ?? []).filter((entry) => Number(entry?.button_id || 0) !== buttonId);
+  next.push(row);
+  return sortBindingsByButtonId(next);
+}
+function upsertActivityButtonBinding(bundle2, activityId, input) {
+  const buttonId = Number(input.buttonId);
+  const deviceId = Number(input.deviceId);
+  const commandId = Number(input.commandId);
+  if (buttonId <= 0 || deviceId <= 0 || commandId <= 0) return bundle2;
+  const row = {
+    button_id: buttonId,
+    button_name: buttonName(buttonId),
+    device_id: deviceId,
+    command_id: commandId
+  };
+  const lpDeviceId = Number(input.longPress?.deviceId || 0);
+  const lpCommandId = Number(input.longPress?.commandId || 0);
+  if (lpDeviceId > 0 && lpCommandId > 0) {
+    row.long_press_device_id = lpDeviceId;
+    row.long_press_command_id = lpCommandId;
+  }
+  const next = updateActivity(bundle2, activityId, (activity) => ({
+    ...activity,
+    button_bindings: upsertBindingRow(activity.button_bindings, row)
+  }));
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function upsertDeviceButtonBinding(bundle2, deviceId, input) {
+  const normalizedDeviceId = Number(deviceId);
+  const buttonId = Number(input.buttonId);
+  const commandId = Number(input.commandId);
+  if (buttonId <= 0 || commandId <= 0) return bundle2;
+  const row = {
+    button_id: buttonId,
+    button_name: buttonName(buttonId),
+    command_id: commandId,
+    command_name: commandLabelFor(bundle2, normalizedDeviceId, commandId) || void 0
+  };
+  const lpCommandId = Number(input.longPressCommandId || 0);
+  if (lpCommandId > 0) row.long_press_command_id = lpCommandId;
+  return {
+    ...bundle2,
+    devices: (bundle2.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return { ...device, button_bindings: upsertBindingRow(device.button_bindings, row) };
+    })
+  };
+}
+function deleteActivityButtonBinding(bundle2, activityId, buttonId) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle2, activityId, (activity) => ({
+    ...activity,
+    button_bindings: (activity.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
+  }));
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function deleteDeviceButtonBinding(bundle2, deviceId, buttonId) {
+  const dId = Number(deviceId);
+  const bId = Number(buttonId);
+  return {
+    ...bundle2,
+    devices: (bundle2.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      return {
+        ...device,
+        button_bindings: (device.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
+      };
+    })
+  };
 }
 function assertBackupBundleRestoreCompatible(bundle2, destinationHubVersion) {
   const sourceVersion = normalizeHubVersion(bundle2?.hub?.version);
@@ -1316,4 +2315,642 @@ test("assertBackupBundleRestoreCompatible rejects missing source or destination 
     () => assertBackupBundleRestoreCompatible(bundle, ""),
     /destination hub model is unknown/i
   );
+});
+function editableBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 1, name: "TV", device_class: "ir" },
+        commands: [
+          { command_id: 10, name: "Power" },
+          { command_id: 11, name: "Volume Up" }
+        ]
+      },
+      { device: { device_id: 2, name: "AVR", device_class: "ir" }, commands: [{ command_id: 20, name: "Power" }] }
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+        referenced_source_device_ids: [1, 2],
+        favorite_slots: [
+          { button_id: 1, device_id: 1, command_id: 10, name: "TV Power" },
+          { button_id: 2, device_id: 2, command_id: 20, name: "AVR Power" }
+        ],
+        macros: [
+          { button_id: 3, name: "Combo", steps: [
+            { device_id: 1, command_id: 11 },
+            { device_id: 2, command_id: 20 }
+          ] },
+          { button_id: 198, name: "POWER_ON", steps: [{ device_id: 1, command_id: 10 }] }
+        ]
+      }
+    ]
+  };
+}
+function activity101(b3) {
+  return (b3.activities ?? []).find((a3) => a3.device?.device_id === 101);
+}
+test("deleteBundleActivity removes only the targeted activity", () => {
+  const next = deleteBundleActivity(editableBundle(), 101);
+  assert.deepEqual(next.activities.map((a3) => a3.device?.device_id), []);
+  assert.equal(next.devices.length, 2);
+});
+test("deviceIdleBehavior prefers idle_behavior, falls back to power_mode", () => {
+  const b3 = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1" },
+    devices: [
+      { device: { device_id: 1, idle_behavior: 4, power_mode: 1 } },
+      { device: { device_id: 2, power_mode: 3 } },
+      { device: { device_id: 3 } }
+    ],
+    activities: []
+  };
+  assert.equal(deviceIdleBehavior(b3, 1), 4);
+  assert.equal(deviceIdleBehavior(b3, 2), 3);
+  assert.equal(deviceIdleBehavior(b3, 3), null);
+  assert.equal(deviceIdleBehavior(b3, 99), null);
+});
+test("updateBundleDeviceIdleBehavior writes the dedicated field only on the target", () => {
+  const b3 = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1" },
+    devices: [
+      { device: { device_id: 1, power_mode: 1 } },
+      { device: { device_id: 2, idle_behavior: 1 } }
+    ],
+    activities: []
+  };
+  const next = updateBundleDeviceIdleBehavior(b3, 1, IDLE_BEHAVIOR_DISABLED);
+  assert.equal(deviceIdleBehavior(next, 1), IDLE_BEHAVIOR_DISABLED);
+  assert.equal(deviceIdleBehavior(next, 2), 1);
+  assert.equal(deviceIdleBehavior(b3, 1), 1);
+});
+test("deleteBundleDevice clears references across activities", () => {
+  const next = deleteBundleDevice(editableBundle(), 1);
+  assert.deepEqual(next.devices.map((d3) => d3.device?.device_id), [2]);
+  const act = activity101(next);
+  assert.deepEqual(act.referenced_source_device_ids, [2]);
+  assert.deepEqual(act.favorite_slots?.map((s4) => s4.device_id), [2]);
+  assert.deepEqual(act.macros?.find((m3) => m3.button_id === 3)?.steps?.map((s4) => s4.device_id), [2]);
+});
+test("deleteBundleDeviceCommand removes the command and its exact references", () => {
+  const next = deleteBundleDeviceCommand(editableBundle(), 1, 10);
+  const device1 = next.devices.find((d3) => d3.device?.device_id === 1);
+  assert.deepEqual(device1.commands?.map((c4) => c4.command_id), [11]);
+  const act = activity101(next);
+  assert.deepEqual(act.favorite_slots?.map((s4) => [s4.device_id, s4.command_id]), [[2, 20]]);
+  assert.deepEqual(act.macros?.find((m3) => m3.button_id === 3)?.steps?.map((s4) => s4.command_id), [11, 20]);
+});
+test("deleteBundleDeviceCommand also removes the deleted command's trailing delay row", () => {
+  const b3 = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [{
+      device: { device_id: 1, name: "TV", device_class: "ir" },
+      commands: [{ command_id: 10, name: "Power" }, { command_id: 11, name: "Vol Up" }]
+    }],
+    activities: [{
+      device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+      referenced_source_device_ids: [1],
+      favorite_slots: [],
+      macros: [{ button_id: 3, name: "Seq", steps: [
+        { device_id: 1, command_id: 10 },
+        { device_id: 255, command_id: 255, delay: 5 },
+        { device_id: 1, command_id: 11 },
+        { device_id: 255, command_id: 255, delay: 3 }
+      ] }]
+    }]
+  };
+  const next = deleteBundleDeviceCommand(b3, 1, 10);
+  assert.deepEqual(next.activities[0].macros[0].steps, [
+    { device_id: 1, command_id: 11 },
+    { device_id: 255, command_id: 255, delay: 3 }
+  ]);
+  assert.deepEqual(
+    bundleDeleteImpact(b3, { kind: "command", deviceId: 1, commandId: 10 }),
+    { favorites: 0, macroSteps: 2, activities: 0, bindings: 0 }
+  );
+});
+test("deleteBundleActivityQuickAccess removes one row and preserves power macros", () => {
+  const noFav = deleteBundleActivityQuickAccess(editableBundle(), 101, "favorite", 1);
+  assert.deepEqual(activity101(noFav).favorite_slots?.map((s4) => s4.button_id), [2]);
+  const macroIds = activity101(deleteBundleActivityQuickAccess(editableBundle(), 101, "macro", 3)).macros?.map((m3) => m3.button_id);
+  assert.equal(macroIds?.includes(3), false);
+  assert.equal(macroIds?.includes(198), true);
+  assert.equal(macroIds?.includes(199), true);
+});
+test("addBundleActivityFavorite appends at the next editable slot", () => {
+  const next = addBundleActivityFavorite(editableBundle(), 101, 1, 11, "Vol Up");
+  const slots = activity101(next).favorite_slots;
+  assert.deepEqual(slots[slots.length - 1], { button_id: 4, device_id: 1, command_id: 11, name: "Vol Up" });
+  const noop = addBundleActivityFavorite(editableBundle(), 101, 0, 11, "x");
+  assert.equal(activity101(noop).favorite_slots?.length, 2);
+});
+test("bundleDeleteImpact counts cascade references", () => {
+  const b3 = editableBundle();
+  assert.deepEqual(bundleDeleteImpact(b3, { kind: "device", deviceId: 1 }), { favorites: 1, macroSteps: 2, activities: 1, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b3, { kind: "command", deviceId: 2, commandId: 20 }), { favorites: 1, macroSteps: 1, activities: 0, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b3, { kind: "activity", activityId: 101 }), { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 });
+});
+test("reorderBundleActivityQuickAccess preserves internal power macros", () => {
+  const next = reorderBundleActivityQuickAccess(editableBundle(), 101, [
+    { kind: "macro", buttonId: 3 },
+    { kind: "favorite", buttonId: 1 },
+    { kind: "favorite", buttonId: 2 }
+  ]);
+  const act = activity101(next);
+  const power = act.macros?.find((m3) => m3.button_id === 198);
+  assert.ok(power, "power macro 198 should survive the reorder");
+  assert.deepEqual(power?.steps, [{ device_id: 1, command_id: 10 }]);
+  assert.equal(act.macros?.find((m3) => m3.name === "Combo")?.button_id, 1);
+  assert.deepEqual(act.favorite_slots?.map((s4) => s4.button_id), [2, 3]);
+});
+test("applyBundleDelete dispatches by target kind", () => {
+  const next = applyBundleDelete(editableBundle(), { kind: "command", deviceId: 1, commandId: 10 });
+  assert.deepEqual(
+    next.devices.find((d3) => d3.device?.device_id === 1)?.commands?.map((c4) => c4.command_id),
+    [11]
+  );
+});
+function bindingBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X2" },
+    devices: [
+      {
+        device: { device_id: 1, name: "TV", device_class: "ir" },
+        commands: [{ command_id: 10, name: "Power" }, { command_id: 11, name: "Vol Up" }],
+        button_bindings: [
+          { button_id: 176, button_name: "OK", command_id: 10, long_press_command_id: 11 }
+        ]
+      },
+      {
+        device: { device_id: 2, name: "Soundbar", device_class: "ir" },
+        commands: [{ command_id: 20, name: "Power" }]
+      }
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+        referenced_source_device_ids: [1, 2],
+        button_bindings: [
+          { button_id: 182, button_name: "Volume Up", device_id: 2, command_id: 20 },
+          {
+            button_id: 176,
+            button_name: "OK",
+            device_id: 1,
+            command_id: 10,
+            long_press_device_id: 2,
+            long_press_command_id: 20
+          }
+        ]
+      }
+    ]
+  };
+}
+test("bundleButtonCatalog adapts to hub model", () => {
+  assert.equal(bundleButtonCatalog({ ...bindingBundle(), hub: { version: "X1S" } }).length, 20);
+  assert.equal(bundleButtonCatalog(bindingBundle()).length, 27);
+});
+test("activityButtonBindingItems resolves labels and long-press, sorted by button id", () => {
+  const items = activityButtonBindingItems(bindingBundle(), 101);
+  assert.deepEqual(items.map((i4) => i4.buttonName), ["OK", "Volume Up"]);
+  const ok = items.find((i4) => i4.buttonName === "OK");
+  assert.equal(ok.shortPressLabel, "TV \xB7 Power");
+  assert.equal(ok.longPress?.label, "Soundbar \xB7 Power");
+});
+function activityWithMacroBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X2" },
+    devices: [
+      { device: { device_id: 1, name: "TV", device_class: "ir" }, commands: [{ command_id: 10, name: "Power" }] }
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+        referenced_source_device_ids: [1],
+        button_bindings: [],
+        macros: [
+          { button_id: 5, name: "Movie Night", steps: [
+            { device_id: 1, command_id: 10, button_code: 19978, duration: 0, delay: 255 }
+          ] }
+        ]
+      }
+    ]
+  };
+}
+test("activityButtonBindingItems labels a macro binding (device_id == activity id)", () => {
+  const b3 = upsertActivityButtonBinding(activityWithMacroBundle(), 101, { buttonId: 174, deviceId: 101, commandId: 5 });
+  const item = activityButtonBindingItems(b3, 101).find((i4) => i4.buttonId === 174);
+  assert.equal(item.isMacroTarget, true);
+  assert.equal(item.shortPressLabel, "Macro \xB7 Movie Night");
+});
+test("binding a macro does not add the activity's own id to power-macro membership", () => {
+  const b3 = upsertActivityButtonBinding(activityWithMacroBundle(), 101, { buttonId: 174, deviceId: 101, commandId: 5 });
+  assert.equal(b3.activities[0].referenced_source_device_ids.includes(101), false);
+  assert.deepEqual(b3.activities[0].referenced_source_device_ids, [1]);
+});
+test("deleting a macro drops a button bound to it and clears a long-press to it", () => {
+  let b3 = upsertActivityButtonBinding(activityWithMacroBundle(), 101, { buttonId: 174, deviceId: 101, commandId: 5 });
+  b3 = upsertActivityButtonBinding(b3, 101, {
+    buttonId: 178,
+    deviceId: 1,
+    commandId: 10,
+    longPress: { deviceId: 101, commandId: 5 }
+  });
+  const after = deleteBundleActivityQuickAccess(b3, 101, "macro", 5).activities[0].button_bindings;
+  assert.deepEqual(after.map((r4) => r4.button_id), [178]);
+  const survivor = after.find((r4) => r4.button_id === 178);
+  assert.equal(survivor.long_press_command_id ?? null, null);
+  assert.equal(survivor.long_press_device_id ?? null, null);
+});
+test("deviceButtonBindingItems resolves own-command labels", () => {
+  const items = deviceButtonBindingItems(bindingBundle(), 1);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].shortPressLabel, "Power");
+  assert.equal(items[0].longPress?.label, "Vol Up");
+});
+test("unboundButtonsForActivity excludes already-bound buttons", () => {
+  const unbound = unboundButtonsForActivity(bindingBundle(), 101).map((b3) => b3.code);
+  assert.equal(unbound.includes(176), false);
+  assert.equal(unbound.includes(182), false);
+  assert.equal(unbound.includes(174), true);
+});
+test("upsertActivityButtonBinding adds, then replaces by button id", () => {
+  let b3 = upsertActivityButtonBinding(bindingBundle(), 101, { buttonId: 174, deviceId: 1, commandId: 11 });
+  assert.equal(b3.activities[0].button_bindings.length, 3);
+  b3 = upsertActivityButtonBinding(b3, 101, { buttonId: 176, deviceId: 1, commandId: 11 });
+  assert.equal(b3.activities[0].button_bindings.length, 3);
+  const ok = b3.activities[0].button_bindings.find((r4) => r4.button_id === 176);
+  assert.equal(ok.command_id, 11);
+  assert.equal(ok.long_press_command_id, void 0);
+});
+test("upsertDeviceButtonBinding writes a device-level binding", () => {
+  const b3 = upsertDeviceButtonBinding(bindingBundle(), 2, { buttonId: 184, commandId: 20 });
+  const dev2 = b3.devices.find((d3) => d3.device?.device_id === 2);
+  assert.deepEqual(dev2.button_bindings.map((r4) => [r4.button_id, r4.command_id]), [[184, 20]]);
+});
+test("deleteActivityButtonBinding removes one binding", () => {
+  const b3 = deleteActivityButtonBinding(bindingBundle(), 101, 176);
+  assert.deepEqual(b3.activities[0].button_bindings.map((r4) => r4.button_id), [182]);
+});
+test("deleting a device cascades to activity button bindings", () => {
+  const b3 = bindingBundle();
+  assert.equal(bundleDeleteImpact(b3, { kind: "device", deviceId: 2 }).bindings, 2);
+  const bindings = deleteBundleDevice(b3, 2).activities[0].button_bindings;
+  assert.deepEqual(bindings.map((r4) => r4.button_id), [176]);
+  assert.equal(bindings[0].long_press_device_id, void 0);
+  assert.equal(bindings[0].command_id, 10);
+});
+test("deleting a command cascades to device and activity bindings", () => {
+  const b3 = bindingBundle();
+  assert.equal(bundleDeleteImpact(b3, { kind: "command", deviceId: 1, commandId: 10 }).bindings, 2);
+  const next = deleteBundleDeviceCommand(b3, 1, 10);
+  assert.deepEqual(next.devices.find((d3) => d3.device?.device_id === 1).button_bindings, []);
+  assert.deepEqual(next.activities[0].button_bindings.map((r4) => r4.button_id), [182]);
+});
+function powerMacroBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      { device: { device_id: 1, name: "TV" }, commands: [{ command_id: 10, name: "Power" }] },
+      { device: { device_id: 2, name: "AVR" }, commands: [{ command_id: 20, name: "Power" }] }
+    ],
+    activities: [{
+      device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+      referenced_source_device_ids: [],
+      favorite_slots: [{ button_id: 1, device_id: 1, command_id: 10 }],
+      button_bindings: [{ button_id: 182, device_id: 2, command_id: 20 }],
+      macros: []
+    }]
+  };
+}
+test("reconcileActivityPowerMacros builds flat power steps for referenced devices", () => {
+  const next = reconcileActivityPowerMacros(powerMacroBundle(), 101);
+  const act = next.activities[0];
+  assert.deepEqual(act.referenced_source_device_ids, [1, 2]);
+  const on = act.macros.find((m3) => m3.button_id === 198);
+  const off = act.macros.find((m3) => m3.button_id === 199);
+  assert.deepEqual(on.steps.map((s4) => [s4.device_id, s4.command_id, s4.duration, s4.delay]), [
+    [1, 198, 0, 255],
+    [1, 197, 0, 255],
+    [2, 198, 0, 255],
+    [2, 197, 0, 255]
+  ]);
+  assert.deepEqual(off.steps.map((s4) => [s4.device_id, s4.command_id, s4.delay]), [
+    [1, 199, 255],
+    [2, 199, 255]
+  ]);
+  assert.equal(on.steps.find((s4) => s4.command_id === 198).button_code, 0);
+});
+function realPowerActivity() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X2" },
+    devices: [
+      { device: { device_id: 3, name: "Projector" }, commands: [{ command_id: 27, name: "On" }] },
+      {
+        device: { device_id: 9, name: "Denon" },
+        commands: [{ command_id: 52, name: "Input aux1" }],
+        input_record: { entries: [{ command_id: 52, input_index: 1, name: "Input aux1" }] }
+      }
+    ],
+    activities: [{
+      device: { device_id: 101, name: "Watch a movie", entity_type: "activity" },
+      referenced_source_device_ids: [3, 9],
+      favorite_slots: [{ button_id: 1, device_id: 9, command_id: 52 }],
+      button_bindings: [],
+      macros: [
+        { button_id: 198, name: "POWER_ON", steps: [
+          { device_id: 3, command_id: 198, button_code: 0, duration: 1, delay: 255 },
+          { device_id: 9, command_id: 197, button_code: 0, duration: 1, delay: 255 },
+          { device_id: 9, command_id: 198, button_code: 0, duration: 1, delay: 255 },
+          { device_id: 3, command_id: 197, button_code: 0, duration: 0, delay: 255 }
+        ] },
+        { button_id: 199, name: "POWER_OFF", steps: [
+          { device_id: 3, command_id: 199, button_code: 0, duration: 1, delay: 255 },
+          { device_id: 9, command_id: 199, button_code: 0, duration: 1, delay: 255 }
+        ] }
+      ]
+    }]
+  };
+}
+test("activityPowerDevices reads each device's input from its own 0xC5 step (flat, interleaved)", () => {
+  const devices = activityPowerDevices(realPowerActivity(), 101);
+  assert.deepEqual(devices.map((d3) => [d3.deviceId, d3.inputOrdinal, d3.inputCommandId]), [
+    [3, 0, null],
+    [9, 1, 52]
+  ]);
+  assert.equal(devices.find((d3) => d3.deviceId === 9).inputCommandName, "Input aux1");
+});
+test("reconcile preserves power-only devices and existing input ordinals", () => {
+  const next = reconcileActivityPowerMacros(realPowerActivity(), 101);
+  const act = next.activities[0];
+  assert.deepEqual(act.referenced_source_device_ids, [3, 9]);
+  const on = act.macros.find((m3) => m3.button_id === 198);
+  assert.equal(on.steps.find((s4) => s4.device_id === 9 && s4.command_id === 197).duration, 1);
+  assert.deepEqual(on.steps, realPowerActivity().activities[0].macros[0].steps);
+});
+test("adding a favorite appends only the new device's power steps", () => {
+  const next = addBundleActivityFavorite(reconcileActivityPowerMacros(powerMacroBundle(), 101), 101, 1, 10, "TV Power");
+  const on = next.activities[0].macros.find((m3) => m3.button_id === 198);
+  assert.deepEqual([...new Set(on.steps.filter((s4) => s4.command_id === 198).map((s4) => s4.device_id))], [1, 2]);
+});
+function powerEditorBundle() {
+  return reconcileActivityPowerMacros({
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 1, name: "TV" },
+        commands: [{ command_id: 10, name: "Power" }, { command_id: 12, name: "HDMI 1" }],
+        input_record: { entries: [{ command_id: 12, input_index: 1, name: "HDMI 1" }] }
+      },
+      { device: { device_id: 2, name: "AVR" }, commands: [{ command_id: 20, name: "Power" }] }
+    ],
+    activities: [{
+      device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+      favorite_slots: [
+        { button_id: 1, device_id: 1, command_id: 10 },
+        { button_id: 2, device_id: 2, command_id: 20 }
+      ],
+      button_bindings: [],
+      macros: []
+    }]
+  }, 101);
+}
+test("synthesizeCommandCode mirrors the X1 formula", () => {
+  assert.equal(synthesizeCommandCode(0), 2e4);
+  assert.equal(synthesizeCommandCode(18), 20018);
+});
+test("activityPowerDevices lists members with their input", () => {
+  const devices = activityPowerDevices(powerEditorBundle(), 101);
+  assert.deepEqual(devices.map((d3) => [d3.deviceId, d3.inputOrdinal]), [[1, 0], [2, 0]]);
+});
+test("setActivityDeviceInput reuses an existing device input", () => {
+  const next = setActivityDeviceInput(powerEditorBundle(), 101, 1, 12);
+  assert.equal(next.devices.find((d3) => d3.device?.device_id === 1).input_record.entries.length, 1);
+  const view = activityPowerDevices(next, 101).find((d3) => d3.deviceId === 1);
+  assert.equal(view.inputOrdinal, 1);
+  assert.equal(view.inputCommandId, 12);
+  assert.equal(view.inputCommandName, "HDMI 1");
+});
+test("setActivityDeviceInput appends a new device input when absent", () => {
+  const next = setActivityDeviceInput(powerEditorBundle(), 101, 2, 20);
+  const dev2 = next.devices.find((d3) => d3.device?.device_id === 2);
+  assert.deepEqual(
+    dev2.input_record.entries.map((e3) => [e3.command_id, e3.input_index, e3.fid]),
+    [[20, 1, synthesizeCommandCode(20)]]
+  );
+  assert.equal(activityPowerDevices(next, 101).find((d3) => d3.deviceId === 2).inputOrdinal, 1);
+});
+test("clearActivityDeviceInput resets the input ordinal to 0", () => {
+  const set = setActivityDeviceInput(powerEditorBundle(), 101, 1, 12);
+  const cleared = clearActivityDeviceInput(set, 101, 1);
+  assert.equal(activityPowerDevices(cleared, 101).find((d3) => d3.deviceId === 1).inputOrdinal, 0);
+});
+function deviceMacroBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [{
+      device: { device_id: 1, name: "TV" },
+      commands: [{ command_id: 10, name: "Power" }, { command_id: 11, name: "Vol Up" }],
+      macros: [{ button_id: 198, name: "POWER_ON", steps: [{ command_id: 10, duration: 0, delay: 0 }] }]
+    }],
+    activities: []
+  };
+}
+test("deviceMacroStepItems folds the trailing delay onto its command as wait", () => {
+  const base = deviceMacroBundle();
+  assert.deepEqual(
+    deviceMacroStepItems(base, 1, 198).map((i4) => [i4.kind, i4.label, i4.hold, i4.wait]),
+    [["command", "Power", 0, 0]]
+  );
+  const withWait = setDeviceMacroStepWait(base, 1, 198, 0, 4);
+  assert.deepEqual(
+    deviceMacroStepItems(withWait, 1, 198).map((i4) => [i4.kind, i4.wait]),
+    [["command", 4]]
+  );
+});
+test("setDeviceMacroStepWait inserts, updates in place, and no-ops at zero", () => {
+  const base = deviceMacroBundle();
+  const steps = (b3) => b3.devices[0].macros.find((m3) => m3.button_id === 198).steps;
+  assert.equal(steps(setDeviceMacroStepWait(base, 1, 198, 0, 0)).length, 1);
+  const ins = setDeviceMacroStepWait(base, 1, 198, 0, 4);
+  assert.deepEqual(steps(ins).map((s4) => [s4.command_id, s4.delay]), [[10, 0], [255, 4]]);
+  const upd = setDeviceMacroStepWait(ins, 1, 198, 0, 0);
+  assert.deepEqual(steps(upd).map((s4) => [s4.command_id, s4.delay]), [[10, 0], [255, 0]]);
+});
+test("addDeviceMacroCommandStep appends with a hold (delay sentinel 0xFF), and creates the macro if absent", () => {
+  const appended = addDeviceMacroCommandStep(deviceMacroBundle(), 1, 198, 11, 4);
+  const steps = appended.devices[0].macros.find((m3) => m3.button_id === 198).steps;
+  assert.deepEqual(steps.map((s4) => [s4.command_id, s4.duration]), [[10, 0], [11, 4]]);
+  assert.equal(steps[1].delay, 255);
+  const created = addDeviceMacroCommandStep(deviceMacroBundle(), 1, 199, 10);
+  const off = created.devices[0].macros.find((m3) => m3.button_id === 199);
+  assert.equal(off.name, "POWER_OFF");
+  assert.deepEqual(off.steps.map((s4) => s4.command_id), [10]);
+  assert.equal("button_code" in off.steps[0], false);
+});
+test("updateDeviceMacroStep edits command and hold", () => {
+  const added = addDeviceMacroCommandStep(deviceMacroBundle(), 1, 198, 11, 0);
+  const edited = updateDeviceMacroStep(added, 1, 198, 1, { commandId: 10, hold: 7 });
+  assert.deepEqual(edited.devices[0].macros.find((m3) => m3.button_id === 198).steps[1], {
+    command_id: 10,
+    duration: 7,
+    delay: 255
+  });
+});
+test("removeDeviceMacroStep and reorderDeviceMacroSteps", () => {
+  const two = addDeviceMacroCommandStep(deviceMacroBundle(), 1, 198, 11, 0);
+  assert.deepEqual(deviceMacroStepItems(reorderDeviceMacroSteps(two, 1, 198, [1, 0]), 1, 198).map((i4) => i4.commandId), [11, 10]);
+  assert.deepEqual(deviceMacroStepItems(removeDeviceMacroStep(two, 1, 198, 0), 1, 198).map((i4) => i4.commandId), [11]);
+});
+test("a command's attached wait follows it through reorder and remove", () => {
+  let two = addDeviceMacroCommandStep(deviceMacroBundle(), 1, 198, 11, 0);
+  two = setDeviceMacroStepWait(two, 1, 198, 0, 6);
+  const steps = (b3) => b3.devices[0].macros.find((m3) => m3.button_id === 198).steps;
+  const reordered = reorderDeviceMacroSteps(two, 1, 198, [1, 0]);
+  assert.deepEqual(deviceMacroStepItems(reordered, 1, 198).map((i4) => [i4.commandId, i4.wait]), [[11, 0], [10, 6]]);
+  assert.deepEqual(steps(reordered).map((s4) => s4.command_id), [11, 10, 255]);
+  const removed = removeDeviceMacroStep(reordered, 1, 198, 1);
+  assert.deepEqual(steps(removed).map((s4) => s4.command_id), [11]);
+});
+function userMacroBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      { device: { device_id: 1, name: "TV" }, commands: [{ command_id: 10, name: "Power" }, { command_id: 11, name: "Vol" }] },
+      { device: { device_id: 2, name: "AVR" }, commands: [{ command_id: 20, name: "Power" }] }
+    ],
+    activities: [{
+      device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+      favorite_slots: [],
+      button_bindings: [],
+      macros: [{ button_id: 1, name: "Combo", steps: [] }]
+    }]
+  };
+}
+test("addActivityMacroCommandStep synthesizes button_code and pulls the device into the power macros", () => {
+  const next = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 5);
+  assert.deepEqual(next.activities[0].macros.find((m3) => m3.button_id === 1).steps[0], {
+    device_id: 1,
+    command_id: 10,
+    button_code: synthesizeCommandCode(10),
+    duration: 5,
+    delay: 255
+  });
+  assert.deepEqual(next.activities[0].referenced_source_device_ids, [1]);
+  assert.equal(next.activities[0].macros.some((m3) => m3.button_id === 198), true);
+});
+test("activityMacroStepItems labels device \xB7 command and folds the wait onto it", () => {
+  let b3 = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
+  b3 = setActivityMacroStepWait(b3, 101, 1, 0, 30);
+  b3 = addActivityMacroCommandStep(b3, 101, 1, 2, 20, 0);
+  assert.deepEqual(activityMacroStepItems(b3, 101, 1).map((i4) => [i4.kind, i4.label, i4.wait]), [
+    ["command", "TV \xB7 Power", 30],
+    ["command", "AVR \xB7 Power", 0]
+  ]);
+});
+test("reorderActivityMacroSteps carries a command's attached wait", () => {
+  let b3 = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
+  b3 = setActivityMacroStepWait(b3, 101, 1, 0, 12);
+  b3 = addActivityMacroCommandStep(b3, 101, 1, 2, 20, 0);
+  const reordered = reorderActivityMacroSteps(b3, 101, 1, [1, 0]);
+  assert.deepEqual(activityMacroStepItems(reordered, 101, 1).map((i4) => [i4.label, i4.wait]), [
+    ["AVR \xB7 Power", 0],
+    ["TV \xB7 Power", 12]
+  ]);
+});
+test("removeActivityMacroStep keeps the device in the power macros (additive membership)", () => {
+  let b3 = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
+  b3 = addActivityMacroCommandStep(b3, 101, 1, 2, 20, 0);
+  assert.deepEqual(b3.activities[0].referenced_source_device_ids, [1, 2]);
+  b3 = removeActivityMacroStep(b3, 101, 1, 1);
+  assert.deepEqual(b3.activities[0].referenced_source_device_ids, [1, 2]);
+});
+test("updateActivityMacroStep re-synthesizes button_code when the command changes", () => {
+  let b3 = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
+  b3 = updateActivityMacroStep(b3, 101, 1, 0, { commandId: 11, hold: 9 });
+  assert.deepEqual(b3.activities[0].macros.find((m3) => m3.button_id === 1).steps[0], {
+    device_id: 1,
+    command_id: 11,
+    button_code: synthesizeCommandCode(11),
+    duration: 9,
+    delay: 255
+  });
+});
+test("addActivityUserMacro creates an empty macro at the next slot", () => {
+  const macro = addActivityUserMacro(userMacroBundle(), 101, "New Macro").activities[0].macros.find((m3) => m3.name === "New Macro");
+  assert.equal(macro.button_id, 2);
+  assert.deepEqual(macro.steps, []);
+});
+test("activityMacroStepItems marks power-macro refs as protected and labels them", () => {
+  const items = activityMacroStepItems(realPowerActivity(), 101, 198);
+  assert.equal(items.every((i4) => (i4.kind === "power" || i4.kind === "input") && i4.protected === true), true);
+  const inputRef = items.find((i4) => i4.kind === "input" && i4.deviceId === 9);
+  assert.equal(inputRef.label, "Input \xB7 Denon: Input aux1");
+  assert.equal(inputRef.commandId, 52);
+  assert.equal(items.find((i4) => i4.kind === "power" && i4.deviceId === 3).label, "Power on \xB7 Projector");
+});
+test("removeActivityMacroStep refuses to delete a mandatory power ref", () => {
+  const before = activityMacroStepItems(realPowerActivity(), 101, 198).length;
+  const next = removeActivityMacroStep(realPowerActivity(), 101, 198, 0);
+  assert.equal(activityMacroStepItems(next, 101, 198).length, before);
+});
+test("setActivityMacroStepWait edits the wait on a protected power ref without touching the ref", () => {
+  const next = setActivityMacroStepWait(realPowerActivity(), 101, 198, 0, 8);
+  const items = activityMacroStepItems(next, 101, 198);
+  assert.equal(items.length, activityMacroStepItems(realPowerActivity(), 101, 198).length);
+  assert.equal(items[0].wait, 8);
+  assert.equal(items[0].protected, true);
+  const headStep = next.activities[0].macros.find((m3) => m3.button_id === 198).steps[0];
+  assert.deepEqual([headStep.device_id, headStep.command_id], [3, 198]);
+});
+test("a user command added to a power macro is a deletable (non-protected) step", () => {
+  const added = addActivityMacroCommandStep(realPowerActivity(), 101, 198, 9, 52, 0);
+  const cmd = activityMacroStepItems(added, 101, 198).find((i4) => i4.kind === "command");
+  assert.equal(cmd.protected, void 0);
+  const removed = removeActivityMacroStep(added, 101, 198, cmd.index);
+  assert.equal(activityMacroStepItems(removed, 101, 198).some((i4) => i4.kind === "command"), false);
+  assert.equal(activityMacroStepItems(removed, 101, 198).some((i4) => i4.kind === "power" || i4.kind === "input"), true);
+});
+test("deleting a favorite keeps its device in the power macros, but deleting the device removes it", () => {
+  const seeded = reconcileActivityPowerMacros({
+    ...powerMacroBundle(),
+    activities: [{
+      device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+      favorite_slots: [
+        { button_id: 1, device_id: 1, command_id: 10 },
+        { button_id: 2, device_id: 2, command_id: 20 }
+      ],
+      button_bindings: [],
+      macros: []
+    }]
+  }, 101);
+  assert.deepEqual(seeded.activities[0].referenced_source_device_ids, [1, 2]);
+  const afterFav = deleteBundleActivityQuickAccess(seeded, 101, "favorite", 1);
+  assert.deepEqual(afterFav.activities[0].referenced_source_device_ids, [1, 2]);
+  const afterDevice = deleteBundleDevice(afterFav, 1);
+  assert.deepEqual(afterDevice.activities[0].referenced_source_device_ids, [2]);
+  const on = afterDevice.activities[0].macros.find((m3) => m3.button_id === 198);
+  assert.deepEqual([...new Set(on.steps.filter((s4) => s4.command_id === 198).map((s4) => s4.device_id))], [2]);
 });

@@ -1801,7 +1801,116 @@ var TOOLS_CARD_STRINGS = {
     unsavedChanges: "Unsaved changes. Click ",
     downloadEditedBackupStrong: "Download edited backup",
     unsavedChangesSuffix: " to save them to a file.",
-    downloadEditedBackup: "Download edited backup"
+    downloadEditedBackup: "Download edited backup",
+    deleteActivityTitle: (name) => `Delete activity "${name}"?`,
+    deleteDeviceTitle: (name) => `Delete device "${name}"?`,
+    deleteCommandTitle: (name) => `Delete command "${name}"?`,
+    deleteFavoriteTitle: (name) => `Delete favorite "${name}"?`,
+    deleteMacroTitle: (name) => `Delete macro "${name}"?`,
+    deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
+    deleteSimpleBody: "This removes it from the loaded backup.",
+    deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
+    deleteImpactFavorites: (count) => `${count} favorite${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactMacroSteps: (count) => `${count} macro step${count === 1 ? "" : "s"} will be removed`,
+    deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
+    deleteCancel: "Cancel",
+    deleteConfirm: "Delete",
+    deleteActivityAria: "Delete activity",
+    deleteDeviceAria: "Delete device",
+    deleteCommandAria: "Delete command",
+    addFavoriteTitle: "Add favorite",
+    addFavoriteButton: "Add favorite",
+    addFavoriteDevice: "Device",
+    addFavoriteCommand: "Command",
+    addFavoriteName: "Display name",
+    addFavoriteAdd: "Add",
+    addFavoriteCancel: "Cancel",
+    addFavoriteNoDevices: "This backup has no devices with commands to add.",
+    addFavoriteNoCommands: "This device has no commands to add.",
+    buttonBindingsTitle: "Button bindings",
+    buttonBindingsActivitySub: "Bind remote buttons to a device's command within this Activity.",
+    buttonBindingsDeviceSub: "Bind remote buttons to this Device's own commands.",
+    buttonBindingsEmpty: "No button bindings configured.",
+    addBinding: "Add binding",
+    bindingButton: "Button",
+    bindingTargetDevice: "Device",
+    bindingMacroTarget: "This activity \xB7 macros",
+    bindingCommand: "Command",
+    bindingEnableLongPress: "Enable long-press binding",
+    bindingLongPressDevice: "Long-press device",
+    bindingLongPressCommand: "Long-press command",
+    bindingIncomplete: "Choose a button and command first.",
+    bindingNoButtons: "Every button on this hub model is already bound.",
+    bindingNoCommands: "This device has no commands to bind.",
+    bindingNoDevices: "This backup has no devices with commands to bind.",
+    bindingAdd: "Add",
+    bindingSave: "Save",
+    bindingCancel: "Cancel",
+    bindingDialogAddTitle: "Add button binding",
+    bindingDialogEditTitle: (name) => `Edit ${name} binding`,
+    bindingLongPressMeta: (label) => `Long press \xB7 ${label}`,
+    deleteBindingTitle: (name) => `Delete ${name} binding?`,
+    deleteBindingAria: "Delete binding",
+    deleteImpactBindings: (count) => `${count} button binding${count === 1 ? "" : "s"} will be cleared`,
+    macrosTitle: "Macros",
+    macrosDeviceSub: "Edit the command sequences this device plays, including its power on / off.",
+    macroPowerChip: "power",
+    powerSetupTitle: "Power",
+    powerSetupDeviceSub: "How the hub manages this device's power for Activities, and the sequences it sends to switch it on and off.",
+    powerSetupActivitySub: "The startup and shutdown sequence this Activity runs.",
+    powerOnLabel: "Power-on sequence",
+    powerOffLabel: "Power-off sequence",
+    // Automatic-power dropdown (device only). One hub byte encodes the whole
+    // "Power On/Off Setup" + "Idle Behavior" story, so it is one selector here.
+    powerControlTitle: "Automatic power control",
+    powerControlUnset: "Not captured",
+    powerControlUnsetSub: "This backup predates power-control capture. Pick an option to set it, or restore as-is to keep the legacy value.",
+    powerControlDisabled: "Don't control power",
+    powerControlDisabledSub: "The hub never switches this device on or off. The sequences below are ignored.",
+    powerControlAutoOff: "Turn off when idle",
+    powerControlAutoOffSub: "Recommended. Powers the device off when no Activity needs it.",
+    powerControlStayOn: "Stay on between Activities",
+    powerControlStayOnSub: "Skips the wait to power back on; still turns off with the remote's Off button.",
+    powerControlAlwaysOn: "Always stay on",
+    powerControlAlwaysOnSub: "The hub powers it on but never switches it off automatically.",
+    powerSequencesDisabledNote: "Power control is off, so these sequences aren't used. Switch it on above to edit them.",
+    inputStepTitle: "Set input",
+    inputStepCommand: "Input command",
+    inputStepNone: "\u2014 no input \u2014",
+    macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
+    noMacroSteps: "No steps yet.",
+    addStep: "Add step",
+    addMacro: "Add macro",
+    stepDialogAddTitle: "Add step",
+    stepDialogEditTitle: "Edit step",
+    stepDevice: "Device",
+    stepCommand: "Command",
+    stepHoldSeconds: "Hold (seconds, 0 = click)",
+    holdLabel: (seconds) => `Hold ${seconds}s`,
+    stepAdd: "Add",
+    stepSave: "Save",
+    stepCancel: "Cancel",
+    stepNoCommands: "This device has no commands.",
+    stepWaitAria: "Wait after this step (seconds)",
+    stepWaitLabel: "Delay",
+    stepWaitUnit: "s",
+    renameMacroAria: "Rename macro",
+    deleteStepAria: "Delete step",
+    editStepAria: "Edit step",
+    newMacroName: "Macro",
+    powerSectionTitle: "Power",
+    powerActivitySub: "Each device the Activity uses powers on here. Pick its input and adjust the timing.",
+    powerInputLabel: "Input",
+    powerInputNone: "\u2014 none \u2014",
+    powerDelayLabel: "Delay (s)",
+    powerNoDevices: "No devices yet. Add a favorite, binding, or macro that uses one.",
+    powerOnSequence: "Power-on sequence",
+    powerOffSequence: "Power-off sequence",
+    powerSequenceSub: "Reorder steps, add your own commands or waits. Required device steps can be reordered but not removed.",
+    macroRenameAria: "Rename macro",
+    editStepsAria: "Edit steps",
+    crumbActivities: "Activities",
+    crumbDevices: "Devices"
   },
   wifiCommands: {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
@@ -2452,6 +2561,37 @@ function updateBundleDeviceIp(bundle, deviceId, ip) {
     })
   };
 }
+var IDLE_BEHAVIOR_AUTO_OFF = 1;
+var IDLE_BEHAVIOR_ALWAYS_ON = 2;
+var IDLE_BEHAVIOR_STAY_ON = 3;
+var IDLE_BEHAVIOR_DISABLED = 4;
+function deviceIdleBehavior(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device?.device) return null;
+  const raw = device.device.idle_behavior ?? device.device.power_mode;
+  if (raw == null) return null;
+  const mode = Number(raw);
+  return Number.isFinite(mode) ? mode & 255 : null;
+}
+function updateBundleDeviceIdleBehavior(bundle, deviceId, mode) {
+  const normalizedId = Number(deviceId);
+  const normalizedMode = Number(mode) & 255;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
+      if (!device.device) return device;
+      return {
+        ...device,
+        device: { ...device.device, idle_behavior: normalizedMode }
+      };
+    })
+  };
+}
 function renameBundleDeviceCommand(bundle, deviceId, commandId, name) {
   return updateDeviceCommandLabel(bundle, Number(deviceId), Number(commandId), String(name ?? "").trim());
 }
@@ -2490,6 +2630,9 @@ function reorderBundleActivityQuickAccess(bundle, activityId, orderedItems) {
   for (const row of activity.favorite_slots ?? []) {
     favoritesByButtonId.set(Number(row?.button_id || 0), row);
   }
+  const orderedMacroButtonIds = new Set(
+    orderedItems.filter((item) => item.kind === "macro").map((item) => Number(item.buttonId))
+  );
   const macroRows = [];
   const favoriteRows = [];
   orderedItems.forEach((item, index) => {
@@ -2502,11 +2645,916 @@ function reorderBundleActivityQuickAccess(bundle, activityId, orderedItems) {
     const row = favoritesByButtonId.get(Number(item.buttonId));
     if (row) favoriteRows.push({ ...row, button_id: nextButtonId });
   });
+  for (const row of activity.macros ?? []) {
+    if (!orderedMacroButtonIds.has(Number(row?.button_id || 0))) {
+      macroRows.push(row);
+    }
+  }
   return updateActivity(bundle, normalizedActivityId, (current) => ({
     ...current,
     macros: macroRows,
     favorite_slots: favoriteRows
   }));
+}
+function stepMatchesDevice(step, deviceId) {
+  return Number(step?.device_id || 0) === deviceId;
+}
+function stepMatchesCommand(step, deviceId, commandId) {
+  return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
+}
+var MACRO_DELAY_SENTINEL = 255;
+function isMacroDelayStep(step) {
+  return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
+}
+function filterMacroSteps(steps, shouldRemove) {
+  const list = steps ?? [];
+  const result = [];
+  for (let index = 0; index < list.length; index += 1) {
+    if (shouldRemove(list[index])) {
+      while (index + 1 < list.length && isMacroDelayStep(list[index + 1])) {
+        index += 1;
+      }
+      continue;
+    }
+    result.push(list[index]);
+  }
+  return result;
+}
+function countRemovedMacroSteps(steps, shouldRemove) {
+  const original = (steps ?? []).length;
+  return original - filterMacroSteps(steps, shouldRemove).length;
+}
+function clearBindingLongPress(binding) {
+  const { long_press_device_id, long_press_command_id, ...rest } = binding;
+  return rest;
+}
+function cascadeBindingForDeletedDevice(binding, deviceId) {
+  if (Number(binding?.device_id || 0) === deviceId) return null;
+  if (Number(binding?.long_press_device_id || 0) === deviceId) return clearBindingLongPress(binding);
+  return binding;
+}
+function cascadeBindingForDeletedCommand(binding, deviceId, commandId, deviceScoped) {
+  const shortMatches = deviceScoped ? Number(binding?.command_id || 0) === commandId : Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId;
+  if (shortMatches) return null;
+  const longMatches = deviceScoped ? Number(binding?.long_press_command_id || 0) === commandId : Number(binding?.long_press_device_id || 0) === deviceId && Number(binding?.long_press_command_id || 0) === commandId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
+function cascadeBindingForDeletedMacro(binding, activityId, macroButtonId) {
+  const shortMatches = Number(binding?.device_id || 0) === activityId && Number(binding?.command_id || 0) === macroButtonId;
+  if (shortMatches) return null;
+  const longMatches = Number(binding?.long_press_device_id || 0) === activityId && Number(binding?.long_press_command_id || 0) === macroButtonId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
+function applyBindingCascade(bindings, transform) {
+  const result = [];
+  for (const binding of bindings ?? []) {
+    const next = transform(binding);
+    if (next !== null) result.push(next);
+  }
+  return result;
+}
+function countAffectedBindings(bindings, transform) {
+  let count = 0;
+  for (const binding of bindings ?? []) {
+    const next = transform(binding);
+    if (next === null || next !== binding) count += 1;
+  }
+  return count;
+}
+function bundleDeleteImpact(bundle, target) {
+  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  if (!bundle) return empty;
+  if (target.kind === "device") {
+    const deviceId = Number(target.deviceId);
+    let favorites = 0;
+    let macroSteps = 0;
+    let activities = 0;
+    let bindings = 0;
+    for (const activity of bundle.activities ?? []) {
+      if ((activity?.referenced_source_device_ids ?? []).some((id) => Number(id) === deviceId)) {
+        activities += 1;
+      }
+      for (const slot of activity?.favorite_slots ?? []) {
+        if (Number(slot?.device_id || 0) === deviceId) favorites += 1;
+      }
+      for (const macro of activity?.macros ?? []) {
+        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId));
+      }
+      bindings += countAffectedBindings(
+        activity?.button_bindings,
+        (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
+      );
+    }
+    return { favorites, macroSteps, activities, bindings };
+  }
+  if (target.kind === "command") {
+    const deviceId = Number(target.deviceId);
+    const commandId = Number(target.commandId);
+    let favorites = 0;
+    let macroSteps = 0;
+    let bindings = 0;
+    for (const activity of bundle.activities ?? []) {
+      for (const slot of activity?.favorite_slots ?? []) {
+        if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) {
+          favorites += 1;
+        }
+      }
+      for (const macro of activity?.macros ?? []) {
+        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, deviceId, commandId));
+      }
+      bindings += countAffectedBindings(
+        activity?.button_bindings,
+        (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, false)
+      );
+    }
+    const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === deviceId);
+    bindings += countAffectedBindings(
+      device?.button_bindings,
+      (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true)
+    );
+    return { favorites, macroSteps, activities: 0, bindings };
+  }
+  return empty;
+}
+function backupDeleteHasCascade(impact) {
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+}
+function deleteBundleActivity(bundle, activityId) {
+  const id = Number(activityId);
+  return {
+    ...bundle,
+    activities: (bundle.activities ?? []).filter((activity) => Number(activity?.device?.device_id || 0) !== id)
+  };
+}
+function stripDeviceFromActivity(activity, deviceId) {
+  return {
+    ...activity,
+    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
+      (id) => Number(id) !== deviceId
+    ),
+    favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.device_id || 0) !== deviceId),
+    macros: (activity.macros ?? []).map((macro) => ({
+      ...macro,
+      steps: filterMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId))
+    })),
+    button_bindings: applyBindingCascade(
+      activity.button_bindings,
+      (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
+    )
+  };
+}
+function deleteBundleDevice(bundle, deviceId) {
+  const id = Number(deviceId);
+  const next = {
+    ...bundle,
+    devices: (bundle.devices ?? []).filter((device) => Number(device?.device?.device_id || 0) !== id),
+    activities: (bundle.activities ?? []).map((activity) => stripDeviceFromActivity(activity, id))
+  };
+  return reconcileBundlePowerMacros(next);
+}
+function deleteBundleDeviceCommand(bundle, deviceId, commandId) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  const next = {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).filter((command) => Number(command?.command_id || 0) !== cId),
+        button_bindings: applyBindingCascade(
+          device.button_bindings,
+          (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true)
+        )
+      };
+    }),
+    activities: (bundle.activities ?? []).map((activity) => ({
+      ...activity,
+      favorite_slots: (activity.favorite_slots ?? []).filter(
+        (slot) => !(Number(slot?.device_id || 0) === dId && Number(slot?.command_id || 0) === cId)
+      ),
+      macros: (activity.macros ?? []).map((macro) => ({
+        ...macro,
+        steps: filterMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, dId, cId))
+      })),
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, false)
+      )
+    }))
+  };
+  return reconcileBundlePowerMacros(next);
+}
+function deleteBundleActivityQuickAccess(bundle, activityId, kind, buttonId) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => {
+    if (kind === "favorite") {
+      return {
+        ...activity,
+        favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.button_id || 0) !== bId)
+      };
+    }
+    return {
+      ...activity,
+      macros: (activity.macros ?? []).filter((macro) => Number(macro?.button_id || 0) !== bId),
+      // A button bound to this macro now dangles — drop it (or clear the
+      // long press if only that referenced the macro).
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedMacro(binding, Number(activityId), bId)
+      )
+    };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function nextQuickAccessButtonId(activity) {
+  let max = 0;
+  const consider = (value) => {
+    if (value > 0 && !INTERNAL_POWER_MACRO_BUTTON_IDS.has(value) && value > max) max = value;
+  };
+  for (const slot of activity.favorite_slots ?? []) consider(Number(slot?.button_id || 0));
+  for (const macro of activity.macros ?? []) consider(Number(macro?.button_id || 0));
+  return max + 1;
+}
+function addBundleActivityFavorite(bundle, activityId, deviceId, commandId, name) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  if (dId <= 0 || cId <= 0) return bundle;
+  const trimmed = String(name ?? "").trim();
+  const next = updateActivity(bundle, activityId, (activity) => {
+    const slot = {
+      button_id: nextQuickAccessButtonId(activity),
+      device_id: dId,
+      command_id: cId,
+      name: trimmed
+    };
+    return { ...activity, favorite_slots: [...activity.favorite_slots ?? [], slot] };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function applyBundleDelete(bundle, target) {
+  switch (target.kind) {
+    case "activity":
+      return deleteBundleActivity(bundle, target.activityId);
+    case "device":
+      return deleteBundleDevice(bundle, target.deviceId);
+    case "command":
+      return deleteBundleDeviceCommand(bundle, target.deviceId, target.commandId);
+    case "favorite":
+      return deleteBundleActivityQuickAccess(bundle, target.activityId, "favorite", target.buttonId);
+    case "macro":
+      return deleteBundleActivityQuickAccess(bundle, target.activityId, "macro", target.buttonId);
+    case "activity_binding":
+      return deleteActivityButtonBinding(bundle, target.activityId, target.buttonId);
+    case "device_binding":
+      return deleteDeviceButtonBinding(bundle, target.deviceId, target.buttonId);
+  }
+}
+var POWER_ON_MACRO_BUTTON_ID = 198;
+var POWER_OFF_MACRO_BUTTON_ID = 199;
+var DEVICE_POWER_ON_REF_COMMAND = 198;
+var DEVICE_POWER_OFF_REF_COMMAND = 199;
+var DEVICE_INPUT_REF_COMMAND = 197;
+var POWER_MACRO_DELAY_BUTTON_CODE = 281474976710655;
+var POWER_STEP_DEFAULT_DELAY = 255;
+function powerMacroDelayRow(delay) {
+  return {
+    device_id: 255,
+    command_id: 255,
+    button_code: POWER_MACRO_DELAY_BUTTON_CODE,
+    duration: 255,
+    delay: delay & 255
+  };
+}
+function powerStep(deviceId, commandId, duration = 0) {
+  return {
+    device_id: Number(deviceId),
+    command_id: commandId,
+    button_code: 0,
+    duration: duration & 255,
+    delay: POWER_STEP_DEFAULT_DELAY
+  };
+}
+function activityPowerDeviceIds(activity) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const macro of activity.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID) continue;
+    for (const step of macro?.steps ?? []) {
+      if (isMacroDelayStep(step)) continue;
+      const command = Number(step?.command_id || 0);
+      if (command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND) {
+        const deviceId = Number(step?.device_id || 0);
+        if (deviceId > 0) ids.add(deviceId);
+      }
+    }
+  }
+  return ids;
+}
+function activityMemberDeviceIds(activity) {
+  const selfId = Number(activity?.device?.device_id || 0);
+  const ids = activityPowerDeviceIds(activity);
+  const add = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && id !== selfId) ids.add(id);
+  };
+  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
+  for (const binding of activity.button_bindings ?? []) {
+    add(binding?.device_id);
+    add(binding?.long_press_device_id);
+  }
+  for (const macro of activity.macros ?? []) {
+    for (const step of macro?.steps ?? []) {
+      if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
+      add(step?.device_id);
+    }
+  }
+  return [...ids].sort((left, right) => left - right);
+}
+function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
+  const memberSet = new Set(members);
+  const kept = (existingSteps ?? []).filter((step) => {
+    if (isMacroDelayStep(step)) return true;
+    const deviceId = Number(step?.device_id || 0);
+    return deviceId > 0 ? memberSet.has(deviceId) : true;
+  });
+  const out = [...kept];
+  for (const deviceId of members) {
+    for (const command of refCommands) {
+      const present = out.some(
+        (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command
+      );
+      if (!present) out.push(powerStep(deviceId, command));
+    }
+  }
+  return out;
+}
+function reconcileActivityPowerMacros(bundle, activityId) {
+  return updateActivity(bundle, activityId, (activity) => {
+    const members = activityMemberDeviceIds(activity);
+    const macros = [...activity.macros ?? []];
+    const ensure = (buttonId, name, refCommands) => {
+      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
+      const existing = index >= 0 ? macros[index] : null;
+      if (!existing && members.length === 0) return;
+      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands);
+      const next = {
+        ...existing ?? {},
+        button_id: buttonId,
+        name: existing?.name ?? name,
+        steps
+      };
+      if (index >= 0) macros[index] = next;
+      else macros.push(next);
+    };
+    ensure(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", [DEVICE_POWER_ON_REF_COMMAND, DEVICE_INPUT_REF_COMMAND]);
+    ensure(POWER_OFF_MACRO_BUTTON_ID, "POWER_OFF", [DEVICE_POWER_OFF_REF_COMMAND]);
+    return { ...activity, macros, referenced_source_device_ids: members };
+  });
+}
+function reconcileBundlePowerMacros(bundle) {
+  let next = bundle;
+  for (const activity of bundle.activities ?? []) {
+    const id = Number(activity?.device?.device_id || 0);
+    if (id > 0) next = reconcileActivityPowerMacros(next, id);
+  }
+  return next;
+}
+var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
+function synthesizeCommandCode(commandId) {
+  return SYNTHETIC_COMMAND_CODE_BASE + (Number(commandId) & 255);
+}
+function findDevice(bundle, deviceId) {
+  return (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+}
+function inputEntryOrdinal(entry) {
+  return Number(entry?.input_index ?? entry?.ordinal ?? 0);
+}
+function deviceInputEntries(bundle, deviceId) {
+  const device = findDevice(bundle, deviceId);
+  const entries = device?.input_record?.entries ?? [];
+  return entries.map((entry) => ({
+    commandId: Number(entry?.command_id || 0),
+    ordinal: inputEntryOrdinal(entry),
+    name: String(entry?.name || entry?.label || "").trim()
+  })).filter((entry) => entry.commandId > 0).sort((left, right) => left.ordinal - right.ordinal);
+}
+function ensureDeviceInput(bundle, deviceId, commandId) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  const device = findDevice(bundle, dId);
+  const existingEntries = device?.input_record?.entries ?? [];
+  const reused = existingEntries.find((entry) => Number(entry?.command_id || 0) === cId);
+  if (reused) {
+    return { bundle, ordinal: inputEntryOrdinal(reused) };
+  }
+  const nextOrdinal = existingEntries.reduce((max, entry) => Math.max(max, inputEntryOrdinal(entry)), 0) + 1;
+  const newEntry = {
+    command_id: cId,
+    fid: synthesizeCommandCode(cId),
+    input_index: nextOrdinal,
+    name: commandLabelFor(bundle, dId, cId) || `Input ${cId}`
+  };
+  const nextBundle = {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      if (Number(entry?.device?.device_id || 0) !== dId) return entry;
+      const record = { ...entry.input_record ?? {} };
+      record.entries = [...existingEntries, newEntry];
+      return { ...entry, input_record: record };
+    })
+  };
+  return { bundle: nextBundle, ordinal: nextOrdinal };
+}
+function setActivityPowerInputOrdinal(activity, deviceId, ordinal) {
+  const dId = Number(deviceId);
+  return {
+    ...activity,
+    macros: (activity.macros ?? []).map((macro) => {
+      if (Number(macro?.button_id || 0) !== POWER_ON_MACRO_BUTTON_ID) return macro;
+      let found = false;
+      const steps = (macro.steps ?? []).map((step) => {
+        if (!isMacroDelayStep(step) && Number(step?.device_id || 0) === dId && Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND) {
+          found = true;
+          return { ...step, duration: ordinal & 255 };
+        }
+        return step;
+      });
+      if (!found) steps.push(powerStep(dId, DEVICE_INPUT_REF_COMMAND, ordinal));
+      return { ...macro, steps };
+    })
+  };
+}
+function setActivityDeviceInput(bundle, activityId, deviceId, commandId) {
+  const cId = Number(commandId);
+  if (cId <= 0) return bundle;
+  const ensured = ensureDeviceInput(bundle, deviceId, cId);
+  return updateActivity(
+    ensured.bundle,
+    activityId,
+    (activity) => setActivityPowerInputOrdinal(activity, deviceId, ensured.ordinal)
+  );
+}
+function clearActivityDeviceInput(bundle, activityId, deviceId) {
+  return updateActivity(bundle, activityId, (activity) => setActivityPowerInputOrdinal(activity, deviceId, 0));
+}
+function isPowerRefStep(step) {
+  const command = Number(step?.command_id || 0);
+  return command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND;
+}
+function defaultMacroName(buttonId) {
+  if (buttonId === POWER_ON_MACRO_BUTTON_ID) return "POWER_ON";
+  if (buttonId === POWER_OFF_MACRO_BUTTON_ID) return "POWER_OFF";
+  return `Macro ${buttonId}`;
+}
+function deviceMacroDelayStep(delay) {
+  return { command_id: 255, duration: 255, delay: Number(delay) & 255 };
+}
+function groupMacroSteps(steps) {
+  const prefix = [];
+  const groups = [];
+  for (const step of steps ?? []) {
+    if (isMacroDelayStep(step)) {
+      if (groups.length === 0) prefix.push(step);
+      else groups[groups.length - 1].trailing.push(step);
+    } else {
+      groups.push({ head: step, trailing: [] });
+    }
+  }
+  return { prefix, groups };
+}
+function flattenMacroGroups(prefix, groups) {
+  const out = [...prefix];
+  for (const group of groups) out.push(group.head, ...group.trailing);
+  return out;
+}
+function groupWait(group) {
+  return group.trailing.length > 0 ? Number(group.trailing[0]?.delay || 0) : 0;
+}
+function applyGroupWait(group, waitByte, isActivity) {
+  const value = Number(waitByte) & 255;
+  if (group.trailing.length > 0) {
+    group.trailing = [{ ...group.trailing[0], delay: value }, ...group.trailing.slice(1)];
+  } else if (value > 0) {
+    group.trailing = [isActivity ? powerMacroDelayRow(value) : deviceMacroDelayStep(value)];
+  }
+}
+function deviceMacroStepItems(bundle, deviceId, buttonId) {
+  const device = findDevice(bundle, deviceId);
+  const macro = (device?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const commandId = Number(group.head?.command_id || 0);
+    return {
+      index,
+      kind: "command",
+      commandId,
+      deviceId: null,
+      label: commandNameOrFallback(bundle, Number(deviceId), commandId),
+      hold: Number(group.head?.duration || 0),
+      wait: groupWait(group)
+    };
+  });
+}
+function updateDeviceMacro(bundle, deviceId, buttonId, transform) {
+  const dId = Number(deviceId);
+  const bId = Number(buttonId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      const macros = [...device.macros ?? []];
+      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
+      const existing = index >= 0 ? macros[index] : null;
+      const next = {
+        ...existing ?? {},
+        button_id: bId,
+        name: existing?.name ?? defaultMacroName(bId),
+        steps: transform(existing?.steps ?? [])
+      };
+      if (index >= 0) macros[index] = next;
+      else macros.push(next);
+      return { ...device, macros };
+    })
+  };
+}
+function patchMacroStep(step, patch, isActivityMacro) {
+  const next = { ...step };
+  if (isMacroDelayStep(step)) {
+    if (patch.wait !== void 0) next.delay = Number(patch.wait) & 255;
+    return next;
+  }
+  if (patch.commandId !== void 0) {
+    next.command_id = Number(patch.commandId);
+    if (isActivityMacro) next.button_code = synthesizeCommandCode(Number(patch.commandId));
+  }
+  if (patch.deviceId !== void 0 && isActivityMacro) next.device_id = Number(patch.deviceId);
+  if (patch.hold !== void 0) next.duration = Number(patch.hold) & 255;
+  return next;
+}
+function addDeviceMacroCommandStep(bundle, deviceId, buttonId, commandId, hold = 0) {
+  if (Number(commandId) <= 0) return bundle;
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => [
+    ...steps,
+    { command_id: Number(commandId), duration: Number(hold) & 255, delay: 255 }
+  ]);
+}
+function updateDeviceMacroStep(bundle, deviceId, buttonId, index, patch) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, false);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function setDeviceMacroStepWait(bundle, deviceId, buttonId, index, wait) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, false);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function removeDeviceMacroStep(bundle, deviceId, buttonId, index) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    if (Number(index) < 0 || Number(index) >= groups.length) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function reorderDeviceMacroSteps(bundle, deviceId, buttonId, orderedIndices) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices.map((i4) => groups[Number(i4)]).filter((group) => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
+}
+function activityUserMacroSummaries(bundle, activityId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  return (activity?.macros ?? []).map((macro) => ({ buttonId: Number(macro?.button_id || 0), macro })).filter(({ buttonId }) => buttonId > 0 && buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID).map(({ buttonId, macro }) => ({
+    buttonId,
+    name: String(macro?.name || `Macro ${buttonId}`),
+    commandStepCount: (macro?.steps ?? []).filter((step) => !isMacroDelayStep(step)).length
+  })).sort((left, right) => left.buttonId - right.buttonId);
+}
+function activityMacroStepItems(bundle, activityId, buttonId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const head = group.head;
+    const wait = groupWait(group);
+    const deviceId = Number(head?.device_id || 0);
+    const commandId = Number(head?.command_id || 0);
+    const deviceName = deviceNameFor(bundle, deviceId);
+    if (commandId === DEVICE_POWER_ON_REF_COMMAND || commandId === DEVICE_POWER_OFF_REF_COMMAND) {
+      const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? "Power on" : "Power off";
+      return { index, kind: "power", commandId, deviceId, label: `${verb} \xB7 ${deviceName}`, hold: 0, wait, protected: true };
+    }
+    if (commandId === DEVICE_INPUT_REF_COMMAND) {
+      const ordinal = Number(head?.duration || 0);
+      const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === ordinal);
+      const inputLabel = input?.name || (ordinal > 0 ? `Input ${ordinal}` : "no input");
+      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input \xB7 ${deviceName}: ${inputLabel}`, hold: 0, wait, protected: true };
+    }
+    return {
+      index,
+      kind: "command",
+      commandId,
+      deviceId,
+      label: `${deviceName} \xB7 ${commandNameOrFallback(bundle, deviceId, commandId)}`,
+      hold: Number(head?.duration || 0),
+      wait
+    };
+  });
+}
+function updateActivityMacro(bundle, activityId, buttonId, transform) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => {
+    const macros = [...activity.macros ?? []];
+    const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
+    const existing = index >= 0 ? macros[index] : null;
+    const nextMacro = {
+      ...existing ?? {},
+      button_id: bId,
+      name: existing?.name ?? `Macro ${bId}`,
+      steps: transform(existing?.steps ?? [])
+    };
+    if (index >= 0) macros[index] = nextMacro;
+    else macros.push(nextMacro);
+    return { ...activity, macros };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function addActivityUserMacro(bundle, activityId, name) {
+  return updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: [...activity.macros ?? [], {
+      button_id: nextQuickAccessButtonId(activity),
+      name: String(name ?? "").trim() || "Macro",
+      steps: []
+    }]
+  }));
+}
+function addActivityMacroCommandStep(bundle, activityId, buttonId, deviceId, commandId, hold = 0) {
+  if (Number(deviceId) <= 0 || Number(commandId) <= 0) return bundle;
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => [...steps, {
+    device_id: Number(deviceId),
+    command_id: Number(commandId),
+    button_code: synthesizeCommandCode(Number(commandId)),
+    duration: Number(hold) & 255,
+    delay: 255
+  }]);
+}
+function updateActivityMacroStep(bundle, activityId, buttonId, index, patch) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, true);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function setActivityMacroStepWait(bundle, activityId, buttonId, index, wait) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, true);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function removeActivityMacroStep(bundle, activityId, buttonId, index) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    if (isPowerRefStep(group.head)) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function reorderActivityMacroSteps(bundle, activityId, buttonId, orderedIndices) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices.map((i4) => groups[Number(i4)]).filter((group) => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
+}
+var SHARED_BUTTON_CATALOG = [
+  { code: 174, name: "Up", group: "Navigation" },
+  { code: 178, name: "Down", group: "Navigation" },
+  { code: 175, name: "Left", group: "Navigation" },
+  { code: 177, name: "Right", group: "Navigation" },
+  { code: 176, name: "OK", group: "Navigation" },
+  { code: 180, name: "Home", group: "Navigation" },
+  { code: 179, name: "Back", group: "Navigation" },
+  { code: 181, name: "Menu", group: "Navigation" },
+  { code: 182, name: "Volume Up", group: "Volume & Channel" },
+  { code: 185, name: "Volume Down", group: "Volume & Channel" },
+  { code: 184, name: "Mute", group: "Volume & Channel" },
+  { code: 183, name: "Channel Up", group: "Volume & Channel" },
+  { code: 186, name: "Channel Down", group: "Volume & Channel" },
+  { code: 187, name: "Rewind", group: "Transport" },
+  { code: 188, name: "Pause", group: "Transport" },
+  { code: 189, name: "Forward", group: "Transport" },
+  { code: 190, name: "Red", group: "Colour" },
+  { code: 191, name: "Green", group: "Colour" },
+  { code: 192, name: "Yellow", group: "Colour" },
+  { code: 193, name: "Blue", group: "Colour" }
+];
+var X2_EXTRA_BUTTON_CATALOG = [
+  { code: 153, name: "A", group: "Extra" },
+  { code: 152, name: "B", group: "Extra" },
+  { code: 151, name: "C", group: "Extra" },
+  { code: 154, name: "Exit", group: "Extra" },
+  { code: 155, name: "DVR", group: "Extra" },
+  { code: 156, name: "Play", group: "Extra" },
+  { code: 157, name: "Guide", group: "Extra" }
+];
+var BUTTON_NAME_BY_CODE = new Map(
+  [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG].map((entry) => [entry.code, entry.name])
+);
+function bundleButtonCatalog(bundle) {
+  if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
+    return [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG];
+  }
+  return [...SHARED_BUTTON_CATALOG];
+}
+function buttonName(code) {
+  return BUTTON_NAME_BY_CODE.get(Number(code)) ?? `Button 0x${Number(code).toString(16).toUpperCase()}`;
+}
+function deviceNameFor(bundle, deviceId) {
+  const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  return String(device?.device?.name || "").trim() || `Device ${Number(deviceId)}`;
+}
+function commandNameOrFallback(bundle, deviceId, commandId) {
+  return commandLabelFor(bundle, deviceId, commandId) || `Command ${Number(commandId)}`;
+}
+function activityMacroName(bundle, activityId, buttonId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  return String(macro?.name || "").trim() || `Macro ${Number(buttonId)}`;
+}
+function activityBindingTargetLabel(bundle, activityId, targetDeviceId, targetCommandId) {
+  if (targetDeviceId === Number(activityId)) {
+    return `Macro \xB7 ${activityMacroName(bundle, activityId, targetCommandId)}`;
+  }
+  return `${deviceNameFor(bundle, targetDeviceId)} \xB7 ${commandNameOrFallback(bundle, targetDeviceId, targetCommandId)}`;
+}
+function sortBindingsByButtonId(rows) {
+  return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+function activityButtonBindingItems(bundle, activityId) {
+  if (!bundle) return [];
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const items = [];
+  for (const row of sortBindingsByButtonId(activity.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const deviceId = Number(row?.device_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || deviceId <= 0) continue;
+    const item = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      deviceId,
+      commandId,
+      isMacroTarget: deviceId === Number(activityId),
+      shortPressLabel: activityBindingTargetLabel(bundle, Number(activityId), deviceId, commandId)
+    };
+    const lpDeviceId = Number(row?.long_press_device_id || 0);
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpDeviceId > 0 && lpCommandId > 0) {
+      item.longPress = {
+        deviceId: lpDeviceId,
+        commandId: lpCommandId,
+        isMacroTarget: lpDeviceId === Number(activityId),
+        label: activityBindingTargetLabel(bundle, Number(activityId), lpDeviceId, lpCommandId)
+      };
+    }
+    items.push(item);
+  }
+  return items;
+}
+function deviceButtonBindingItems(bundle, deviceId) {
+  if (!bundle) return [];
+  const normalizedDeviceId = Number(deviceId);
+  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId);
+  if (!device) return [];
+  const items = [];
+  for (const row of sortBindingsByButtonId(device.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || commandId <= 0) continue;
+    const item = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      commandId,
+      shortPressLabel: commandNameOrFallback(bundle, normalizedDeviceId, commandId)
+    };
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpCommandId > 0) {
+      item.longPress = {
+        commandId: lpCommandId,
+        label: commandNameOrFallback(bundle, normalizedDeviceId, lpCommandId)
+      };
+    }
+    items.push(item);
+  }
+  return items;
+}
+function boundButtonIds(rows) {
+  return new Set((rows ?? []).map((row) => Number(row?.button_id || 0)).filter((id) => id > 0));
+}
+function unboundButtonsForActivity(bundle, activityId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const used = boundButtonIds(activity?.button_bindings);
+  return bundleButtonCatalog(bundle).filter((entry) => !used.has(entry.code));
+}
+function unboundButtonsForDevice(bundle, deviceId) {
+  const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  const used = boundButtonIds(device?.button_bindings);
+  return bundleButtonCatalog(bundle).filter((entry) => !used.has(entry.code));
+}
+function upsertBindingRow(rows, row) {
+  const buttonId = Number(row.button_id || 0);
+  const next = (rows ?? []).filter((entry) => Number(entry?.button_id || 0) !== buttonId);
+  next.push(row);
+  return sortBindingsByButtonId(next);
+}
+function upsertActivityButtonBinding(bundle, activityId, input) {
+  const buttonId = Number(input.buttonId);
+  const deviceId = Number(input.deviceId);
+  const commandId = Number(input.commandId);
+  if (buttonId <= 0 || deviceId <= 0 || commandId <= 0) return bundle;
+  const row = {
+    button_id: buttonId,
+    button_name: buttonName(buttonId),
+    device_id: deviceId,
+    command_id: commandId
+  };
+  const lpDeviceId = Number(input.longPress?.deviceId || 0);
+  const lpCommandId = Number(input.longPress?.commandId || 0);
+  if (lpDeviceId > 0 && lpCommandId > 0) {
+    row.long_press_device_id = lpDeviceId;
+    row.long_press_command_id = lpCommandId;
+  }
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    button_bindings: upsertBindingRow(activity.button_bindings, row)
+  }));
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function upsertDeviceButtonBinding(bundle, deviceId, input) {
+  const normalizedDeviceId = Number(deviceId);
+  const buttonId = Number(input.buttonId);
+  const commandId = Number(input.commandId);
+  if (buttonId <= 0 || commandId <= 0) return bundle;
+  const row = {
+    button_id: buttonId,
+    button_name: buttonName(buttonId),
+    command_id: commandId,
+    command_name: commandLabelFor(bundle, normalizedDeviceId, commandId) || void 0
+  };
+  const lpCommandId = Number(input.longPressCommandId || 0);
+  if (lpCommandId > 0) row.long_press_command_id = lpCommandId;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return { ...device, button_bindings: upsertBindingRow(device.button_bindings, row) };
+    })
+  };
+}
+function deleteActivityButtonBinding(bundle, activityId, buttonId) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    button_bindings: (activity.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
+  }));
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function deleteDeviceButtonBinding(bundle, deviceId, buttonId) {
+  const dId = Number(deviceId);
+  const bId = Number(buttonId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      return {
+        ...device,
+        button_bindings: (device.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
+      };
+    })
+  };
 }
 function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   const sourceVersion = normalizeHubVersion(bundle?.hub?.version);
@@ -2525,6 +3573,7 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-tab.ts
+var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 var BACKUP_SECTION_ITEMS = [
@@ -2576,6 +3625,10 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._editError = null;
     this._editDetailKind = null;
     this._editDetailId = null;
+    this._editDetailActiveSection = "power";
+    // Whether the power-control option menu (the two-line dropdown in the
+    // device Power section) is expanded. Reset whenever a detail view opens.
+    this._powerControlMenuOpen = false;
     this._editDetailNameDraft = "";
     this._editRenameDialogOpen = false;
     this._editRenameDialogDraft = "";
@@ -2602,6 +3655,42 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     //   (a) skip the bundle update entirely when nothing changed, and
     //   (b) decide whether to render the structured-payload form.
     this._editRenameDialogDecodedSnapshot = null;
+    // Delete-confirm dialog: the entity queued for deletion (drives the
+    // dialog open state), plus its display name for the dialog title.
+    this._confirmDeleteTarget = null;
+    this._confirmDeleteLabel = "";
+    // Add-favorite picker: open flag, the device + command the new
+    // favorite will play, the editable display name, and a validation note.
+    this._addFavoriteOpen = false;
+    this._addFavoriteDeviceId = null;
+    this._addFavoriteCommandId = null;
+    this._addFavoriteName = "";
+    this._addFavoriteError = "";
+    // Button-binding add/edit dialog. `_bindingScope` mirrors the detail
+    // we're in; `_bindingEditButtonId` is null in add mode and the locked
+    // button id when editing an existing binding. Long-press fields apply
+    // only when the toggle is on (and the device id only at activity scope).
+    this._bindingDialogOpen = false;
+    this._bindingScope = "activity";
+    this._bindingEditButtonId = null;
+    this._bindingButtonId = null;
+    this._bindingDeviceId = null;
+    this._bindingCommandId = null;
+    this._bindingLongPressEnabled = false;
+    this._bindingLpDeviceId = null;
+    this._bindingLpCommandId = null;
+    this._bindingError = "";
+    // Macro step editor: which macro's steps are open (null = not in the step
+    // editor), and the add/edit-step dialog state. `scope` mirrors the detail
+    // we drilled in from; `buttonId` identifies the macro within that entity.
+    this._macroEditor = null;
+    this._stepDialogOpen = false;
+    this._stepDialogEditIndex = null;
+    this._stepKind = "command";
+    this._stepDeviceId = null;
+    this._stepCommandId = null;
+    this._stepHoldSeconds = "0";
+    this._stepError = "";
     this._haSortableReady = Boolean(customElements.get("ha-sortable"));
     this._backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
     this._editSessionRestoreTried = false;
@@ -2609,6 +3698,32 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     // against. Used to detect hub-picker switches and drop a bundle that is no
     // longer valid for the now-selected hub.
     this._restoreHubEntryId = null;
+    this._handleEditDetailScroll = (event) => {
+      const scrollEl = event.currentTarget;
+      if (!scrollEl) return;
+      const sections = Array.from(
+        scrollEl.querySelectorAll("[data-edit-section]")
+      );
+      if (!sections.length) return;
+      if (scrollEl.scrollTop + scrollEl.clientHeight >= scrollEl.scrollHeight - 2) {
+        const lastSection = sections[sections.length - 1];
+        const lastActive = String(lastSection.dataset.editSection || "power");
+        if (lastActive !== this._editDetailActiveSection) {
+          this._editDetailActiveSection = lastActive;
+        }
+        return;
+      }
+      const markerTop = scrollEl.getBoundingClientRect().top + 24;
+      let active = String(sections[0].dataset.editSection || "power");
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top <= markerTop) {
+          active = String(section.dataset.editSection || active);
+        }
+      }
+      if (active !== this._editDetailActiveSection) {
+        this._editDetailActiveSection = active;
+      }
+    };
     this._handleDecodedFieldInput = (event, fieldKey) => {
       const input = event.currentTarget;
       this._editRenameDialogDecodedDrafts = {
@@ -2656,6 +3771,81 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._editRenameDialogDecodedSnapshot = null;
       this._decodedFormExpanded = false;
     };
+    // ── Delete (with cascade-aware confirm) ─────────────────────────────
+    this._openDetailDeleteConfirm = () => {
+      if (!this._editDetailKind || this._editDetailId == null) return;
+      const id = Number(this._editDetailId);
+      this._confirmDeleteTarget = this._editDetailKind === "activity" ? { kind: "activity", activityId: id } : { kind: "device", deviceId: id };
+      this._confirmDeleteLabel = this._selectedEditTitle();
+    };
+    this._closeDeleteConfirm = () => {
+      this._confirmDeleteTarget = null;
+      this._confirmDeleteLabel = "";
+    };
+    this._confirmDelete = () => {
+      const target = this._confirmDeleteTarget;
+      if (!target || !this._editBundle) return;
+      this._commitEditBundleEdit(applyBundleDelete(this._editBundle, target));
+      if (target.kind === "activity" || target.kind === "device") {
+        this._closeEditDetail();
+      }
+      this._closeDeleteConfirm();
+    };
+    // ── Add favorite (device → command picker) ──────────────────────────
+    this._openAddFavoriteDialog = () => {
+      if (this._editDetailId == null || !this._editBundle) return;
+      const devices = bundleDeviceOptions(this._editBundle);
+      const firstDeviceId = devices[0]?.id ?? null;
+      const commands = firstDeviceId != null ? deviceCommandItems(this._editBundle, firstDeviceId) : [];
+      this._addFavoriteDeviceId = firstDeviceId;
+      this._addFavoriteCommandId = commands[0]?.commandId ?? null;
+      this._addFavoriteName = commands[0]?.label ?? "";
+      this._addFavoriteError = "";
+      this._addFavoriteOpen = true;
+    };
+    this._closeAddFavoriteDialog = () => {
+      this._addFavoriteOpen = false;
+      this._addFavoriteDeviceId = null;
+      this._addFavoriteCommandId = null;
+      this._addFavoriteName = "";
+      this._addFavoriteError = "";
+    };
+    this._handleAddFavoriteDeviceChange = (event) => {
+      const value = Number(event.target.value);
+      this._addFavoriteDeviceId = Number.isFinite(value) ? value : null;
+      const commands = this._addFavoriteDeviceId != null && this._editBundle ? deviceCommandItems(this._editBundle, this._addFavoriteDeviceId) : [];
+      this._addFavoriteCommandId = commands[0]?.commandId ?? null;
+      this._addFavoriteName = commands[0]?.label ?? "";
+      this._addFavoriteError = "";
+    };
+    this._handleAddFavoriteCommandChange = (event) => {
+      const value = Number(event.target.value);
+      this._addFavoriteCommandId = Number.isFinite(value) ? value : null;
+      if (this._editBundle && this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null) {
+        const command = deviceCommandItems(this._editBundle, this._addFavoriteDeviceId).find((item) => item.commandId === this._addFavoriteCommandId);
+        this._addFavoriteName = command?.label ?? "";
+      }
+      this._addFavoriteError = "";
+    };
+    this._handleAddFavoriteNameInput = (event) => {
+      this._addFavoriteName = event.target.value;
+    };
+    this._applyAddFavorite = () => {
+      if (!this._editBundle || this._editDetailId == null) return;
+      if (this._addFavoriteDeviceId == null || this._addFavoriteCommandId == null) {
+        this._addFavoriteError = TOOLS_CARD_STRINGS.backup.addFavoriteNoCommands;
+        return;
+      }
+      const name = this._sanitizeBundleName(this._addFavoriteName);
+      this._commitEditBundleEdit(addBundleActivityFavorite(
+        this._editBundle,
+        Number(this._editDetailId),
+        this._addFavoriteDeviceId,
+        this._addFavoriteCommandId,
+        name
+      ));
+      this._closeAddFavoriteDialog();
+    };
     this._openEditFilePicker = () => {
       this.renderRoot.querySelector("#edit-file-input")?.click();
     };
@@ -2684,8 +3874,15 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._closeEditDetail = () => {
       this._editDetailKind = null;
       this._editDetailId = null;
+      this._editDetailActiveSection = "power";
+      this._powerControlMenuOpen = false;
       this._editDetailNameDraft = "";
       this._closeEditRenameDialog();
+      this._closeDeleteConfirm();
+      this._closeAddFavoriteDialog();
+      this._closeBindingDialog();
+      this._macroEditor = null;
+      this._closeStepDialog();
     };
     this._applyEditRenameDialog = () => {
       const target = this._editRenameDialogTarget;
@@ -2719,6 +3916,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       }
       if (target.kind === "macro") {
         this._commitEditBundleEdit(renameBundleActivityMacro(this._editBundle, target.activityId, target.buttonId, next));
+        if (this._macroEditor && this._macroEditor.scope === "activity" && this._macroEditor.entityId === target.activityId && this._macroEditor.buttonId === target.buttonId) {
+          this._macroEditor = { ...this._macroEditor, name: next };
+        }
         this._closeEditRenameDialog();
         return;
       }
@@ -2813,6 +4013,203 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._clearEditSession();
       this._editBundleDirty = false;
     };
+    this._closeBindingDialog = () => {
+      this._bindingDialogOpen = false;
+      this._bindingEditButtonId = null;
+      this._bindingButtonId = null;
+      this._bindingDeviceId = null;
+      this._bindingCommandId = null;
+      this._bindingLongPressEnabled = false;
+      this._bindingLpDeviceId = null;
+      this._bindingLpCommandId = null;
+      this._bindingError = "";
+    };
+    this._handleBindingButtonChange = (event) => {
+      const value = Number(event.target.value);
+      this._bindingButtonId = Number.isFinite(value) ? value : null;
+    };
+    this._handleBindingDeviceChange = (event) => {
+      const value = Number(event.target.value);
+      this._bindingDeviceId = Number.isFinite(value) ? value : null;
+      this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
+    };
+    this._handleBindingCommandChange = (event) => {
+      const value = Number(event.target.value);
+      this._bindingCommandId = Number.isFinite(value) ? value : null;
+    };
+    this._handleBindingLongPressToggle = (event) => {
+      const enabled = Boolean(event.target.checked);
+      this._bindingLongPressEnabled = enabled;
+      if (!enabled || !this._editBundle) return;
+      if (this._bindingLpDeviceId == null) {
+        this._bindingLpDeviceId = this._bindingScope === "activity" ? this._bindingDeviceId : Number(this._editDetailId);
+      }
+      if (this._bindingLpCommandId == null) {
+        this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
+      }
+    };
+    this._handleBindingLpDeviceChange = (event) => {
+      const value = Number(event.target.value);
+      this._bindingLpDeviceId = Number.isFinite(value) ? value : null;
+      this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
+    };
+    this._handleBindingLpCommandChange = (event) => {
+      const value = Number(event.target.value);
+      this._bindingLpCommandId = Number.isFinite(value) ? value : null;
+    };
+    this._applyBinding = () => {
+      if (!this._editBundle || this._editDetailId == null) return;
+      const buttonId = Number(this._bindingButtonId);
+      const commandId = Number(this._bindingCommandId);
+      const entityId = Number(this._editDetailId);
+      if (!buttonId || !commandId || this._bindingScope === "activity" && !this._bindingDeviceId) {
+        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
+        return;
+      }
+      if (this._bindingScope === "activity") {
+        const longPress = this._bindingLongPressEnabled && this._bindingLpDeviceId && this._bindingLpCommandId ? { deviceId: Number(this._bindingLpDeviceId), commandId: Number(this._bindingLpCommandId) } : null;
+        this._commitEditBundleEdit(upsertActivityButtonBinding(this._editBundle, entityId, {
+          buttonId,
+          deviceId: Number(this._bindingDeviceId),
+          commandId,
+          longPress
+        }));
+      } else {
+        const longPressCommandId = this._bindingLongPressEnabled && this._bindingLpCommandId ? Number(this._bindingLpCommandId) : null;
+        this._commitEditBundleEdit(upsertDeviceButtonBinding(this._editBundle, entityId, {
+          buttonId,
+          commandId,
+          longPressCommandId
+        }));
+      }
+      this._closeBindingDialog();
+    };
+    this._closeMacroEditor = () => {
+      this._macroEditor = null;
+      this._closeStepDialog();
+    };
+    // Rename the macro currently open in the step editor. Reuses the shared
+    // rename dialog (kind "macro"); applying it also refreshes the editor's
+    // own title via the macro branch in _applyEditRenameDialog.
+    this._openMacroNameRenameDialog = () => {
+      const editor = this._macroEditor;
+      if (!editor || editor.scope !== "activity" || POWER_MACRO_BUTTON_IDS.has(editor.buttonId)) return;
+      this._editRenameDialogTarget = { kind: "macro", activityId: editor.entityId, buttonId: editor.buttonId };
+      this._editRenameDialogDraft = editor.name;
+      this._editRenameDialogError = "";
+      this._editRenameDialogDecodedSnapshot = null;
+      this._editRenameDialogDecodedDrafts = {};
+      this._editRenameDialogOpen = true;
+    };
+    this._openAddStepDialog = () => {
+      const editor = this._macroEditor;
+      if (!editor || !this._editBundle) return;
+      this._stepDialogEditIndex = null;
+      this._stepKind = "command";
+      this._stepDeviceId = editor.scope === "activity" ? bundleDeviceOptions(this._editBundle)[0]?.id ?? null : editor.entityId;
+      const commandDeviceId = editor.scope === "activity" ? this._stepDeviceId : editor.entityId;
+      const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
+      this._stepCommandId = commands[0]?.commandId ?? null;
+      this._stepHoldSeconds = "0";
+      this._stepError = "";
+      this._stepDialogOpen = true;
+    };
+    this._closeStepDialog = () => {
+      this._stepDialogOpen = false;
+      this._stepDialogEditIndex = null;
+      this._stepKind = "command";
+      this._stepDeviceId = null;
+      this._stepCommandId = null;
+      this._stepHoldSeconds = "0";
+      this._stepError = "";
+    };
+    this._handleStepDeviceChange = (event) => {
+      const value = Number(event.target.value);
+      this._stepDeviceId = Number.isFinite(value) ? value : null;
+      const commands = this._stepDeviceId != null && this._editBundle ? deviceCommandItems(this._editBundle, this._stepDeviceId) : [];
+      this._stepCommandId = commands[0]?.commandId ?? null;
+    };
+    this._handleStepCommandChange = (event) => {
+      const raw = event.target.value;
+      this._stepCommandId = raw === "" ? null : Number(raw);
+    };
+    this._handleStepHoldInput = (event) => {
+      this._stepHoldSeconds = event.target.value;
+    };
+    // Snap the dialog's hold field to the 0.5s grid when the user commits it
+    // (on blur / Enter), so the field can't keep an off-grid value like 0.3.
+    this._handleStepHoldChange = (event) => {
+      this._stepHoldSeconds = this._snapHalfSeconds(event.target.value);
+    };
+    // Inline per-row wait edit: the attached delay travels with its command.
+    this._handleStepWaitChange = (item, event) => {
+      const editor = this._macroEditor;
+      if (!editor || !this._editBundle) return;
+      const input = event.target;
+      const waitByte = this._secondsToByte(input.value);
+      input.value = this._byteToSeconds(waitByte);
+      const next = editor.scope === "device" ? setDeviceMacroStepWait(this._editBundle, editor.entityId, editor.buttonId, item.index, waitByte) : setActivityMacroStepWait(this._editBundle, editor.entityId, editor.buttonId, item.index, waitByte);
+      this._commitEditBundleEdit(next);
+    };
+    this._applyStep = () => {
+      const editor = this._macroEditor;
+      if (!editor || !this._editBundle) return;
+      const timeByte = this._secondsToByte(this._stepHoldSeconds);
+      const editIndex = this._stepDialogEditIndex;
+      const isDevice = editor.scope === "device";
+      if (this._stepKind === "input") {
+        const deviceId2 = Number(this._stepDeviceId);
+        if (deviceId2 > 0) {
+          const next2 = this._stepCommandId == null ? clearActivityDeviceInput(this._editBundle, editor.entityId, deviceId2) : setActivityDeviceInput(this._editBundle, editor.entityId, deviceId2, Number(this._stepCommandId));
+          this._commitEditBundleEdit(next2);
+        }
+        this._closeStepDialog();
+        return;
+      }
+      const commandId = Number(this._stepCommandId);
+      if (!commandId || !isDevice && !this._stepDeviceId) {
+        this._stepError = TOOLS_CARD_STRINGS.backup.stepNoCommands;
+        return;
+      }
+      const deviceId = Number(this._stepDeviceId);
+      let next;
+      if (editIndex === null) {
+        next = isDevice ? addDeviceMacroCommandStep(this._editBundle, editor.entityId, editor.buttonId, commandId, timeByte) : addActivityMacroCommandStep(this._editBundle, editor.entityId, editor.buttonId, deviceId, commandId, timeByte);
+      } else {
+        next = isDevice ? updateDeviceMacroStep(this._editBundle, editor.entityId, editor.buttonId, editIndex, { commandId, hold: timeByte }) : updateActivityMacroStep(this._editBundle, editor.entityId, editor.buttonId, editIndex, { deviceId, commandId, hold: timeByte });
+      }
+      this._commitEditBundleEdit(next);
+      this._closeStepDialog();
+    };
+    this._handleStepReorder = (event) => {
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      const editor = this._macroEditor;
+      if (!editor || !this._editBundle) return;
+      const sortableEvent = event;
+      const oldIndex = Number(sortableEvent.detail?.oldIndex);
+      const newIndex = Number(sortableEvent.detail?.newIndex);
+      const items = this._currentMacroStepItems();
+      if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
+      if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
+      const order = items.map((_2, index) => index);
+      const [moved] = order.splice(oldIndex, 1);
+      order.splice(newIndex, 0, moved);
+      const next = editor.scope === "device" ? reorderDeviceMacroSteps(this._editBundle, editor.entityId, editor.buttonId, order) : reorderActivityMacroSteps(this._editBundle, editor.entityId, editor.buttonId, order);
+      this._commitEditBundleEdit(next);
+    };
+    this._togglePowerControlMenu = () => {
+      this._powerControlMenuOpen = !this._powerControlMenuOpen;
+    };
+    this._addActivityMacro = () => {
+      if (this._editDetailId == null || !this._editBundle) return;
+      const activityId = Number(this._editDetailId);
+      const next = addActivityUserMacro(this._editBundle, activityId, TOOLS_CARD_STRINGS.backup.newMacroName);
+      this._commitEditBundleEdit(next);
+      const summaries = activityUserMacroSummaries(next, activityId);
+      const created = summaries[summaries.length - 1];
+      if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
+    };
     this._toggleAllBackupDevices = () => {
       const devices = backupDeviceOptions(this.cacheHub);
       const allIds = devices.map((device) => device.id);
@@ -2877,6 +4274,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       _editError: { state: true },
       _editDetailKind: { state: true },
       _editDetailId: { state: true },
+      _editDetailActiveSection: { state: true },
       _editDetailNameDraft: { state: true },
       _editRenameDialogOpen: { state: true },
       _editRenameDialogDraft: { state: true },
@@ -2885,8 +4283,34 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       _editRenameDialogDecodedDrafts: { state: true },
       _editRenameDialogDecodedSnapshot: { state: true },
       _decodedFormExpanded: { state: true },
+      _confirmDeleteTarget: { state: true },
+      _confirmDeleteLabel: { state: true },
+      _addFavoriteOpen: { state: true },
+      _addFavoriteDeviceId: { state: true },
+      _addFavoriteCommandId: { state: true },
+      _addFavoriteName: { state: true },
+      _addFavoriteError: { state: true },
+      _bindingDialogOpen: { state: true },
+      _bindingScope: { state: true },
+      _bindingEditButtonId: { state: true },
+      _bindingButtonId: { state: true },
+      _bindingDeviceId: { state: true },
+      _bindingCommandId: { state: true },
+      _bindingLongPressEnabled: { state: true },
+      _bindingLpDeviceId: { state: true },
+      _bindingLpCommandId: { state: true },
+      _bindingError: { state: true },
+      _macroEditor: { state: true },
+      _stepDialogOpen: { state: true },
+      _stepDialogEditIndex: { state: true },
+      _stepKind: { state: true },
+      _stepDeviceId: { state: true },
+      _stepCommandId: { state: true },
+      _stepHoldSeconds: { state: true },
+      _stepError: { state: true },
       _editBundleDirty: { state: true },
-      _haSortableReady: { state: true }
+      _haSortableReady: { state: true },
+      _powerControlMenuOpen: { state: true }
     };
   }
   static {
@@ -3227,6 +4651,93 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       justify-content: center;
     }
     .selection-chevron ha-icon { --mdc-icon-size: 18px; }
+
+    /* ── Automatic-power dropdown (device Power section) ─────────────── */
+    /* Genuine overlay popup: the menu is absolutely positioned so opening
+       it never reflows the sequence rows below. A transparent fixed
+       backdrop catches click-away. */
+    /* The control is its own field, a sibling of (not inside) the
+       sequence list, so the list's overflow:hidden can't clip the popup. */
+    .power-control {
+      position: relative;
+      display: block;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-lg);
+      background: var(--ha-card-background, var(--card-background-color));
+    }
+    .power-control-trigger {
+      width: 100%;
+      border: none;
+      border-radius: inherit;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+    .power-control-trigger:hover {
+      background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+    }
+    .power-control-trigger .selection-chevron ha-icon { transition: transform 120ms ease; }
+    .power-control[data-open="true"] .power-control-trigger .selection-chevron ha-icon {
+      transform: rotate(180deg);
+    }
+    .power-control-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: default;
+    }
+    .power-control-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 31;
+      display: flex;
+      flex-direction: column;
+      background: var(--card-background-color, var(--ha-card-background, var(--secondary-background-color, #fff)));
+      border: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
+      border-radius: 10px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+      overflow: hidden;
+    }
+    .power-control-option {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 50%, transparent);
+      cursor: pointer;
+    }
+    .power-control-option:first-child { border-top: none; }
+    .power-control-option:hover {
+      background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+    }
+    .power-control-option[aria-checked="true"] .selection-label { color: var(--primary-color); }
+    .power-control-option .selection-chevron ha-icon { color: var(--primary-color); }
+
+    /* Power-on/off sequence rows, dimmed + inert when power control is off */
+    .power-sequences[data-disabled="true"] { opacity: 0.45; pointer-events: none; }
+    .power-sequences-note {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      line-height: 1.45;
+      padding: 8px 14px 0;
+    }
     .tab-panel--detail { padding: 0; }
     .detail-view {
       min-height: 0;
@@ -3240,7 +4751,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       z-index: 2;
       background: var(--ha-card-background, var(--card-background-color));
     }
-    .sticky-header { top: 0; border-bottom: 1px solid var(--divider-color); padding: 12px 16px; }
+    .sticky-header { top: 0; }
     .detail-scroll {
       flex: 1;
       min-height: 0;
@@ -3256,6 +4767,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       justify-content: space-between;
       gap: 12px;
       min-width: 0;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--divider-color);
     }
     .detail-title-main {
       display: flex;
@@ -3263,6 +4776,49 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       gap: 10px;
       min-width: 0;
       flex: 1;
+    }
+    .detail-title-stack {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .detail-crumbs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      font-size: 11px;
+      line-height: 1.1;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+    }
+    .detail-crumb {
+      flex: 0 1 auto;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      padding: 0;
+      font: inherit;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transition: color 120ms ease;
+    }
+    .detail-crumb:hover {
+      color: var(--primary-color);
+      text-decoration: underline;
+    }
+    .detail-crumb-sep {
+      flex: 0 0 auto;
+      color: color-mix(in srgb, var(--secondary-text-color) 55%, transparent);
     }
     .detail-title-actions {
       display: inline-flex;
@@ -3273,11 +4829,64 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     .detail-title {
       font-size: 18px;
       font-weight: 700;
+      line-height: 1.15;
       color: var(--primary-text-color);
       min-width: 0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+    .detail-section-nav {
+      display: flex;
+      align-items: stretch;
+      min-height: 34px;
+      margin: 10px 16px;
+      border: 1px solid color-mix(in srgb, var(--divider-color) 88%, transparent);
+      border-radius: var(--backup-radius-md);
+      overflow: hidden;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 76%, transparent);
+    }
+    .detail-section-nav-btn {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 0 10px;
+      border: none;
+      border-right: 1px solid color-mix(in srgb, var(--divider-color) 82%, transparent);
+      background: transparent;
+      color: color-mix(in srgb, var(--secondary-text-color) 88%, var(--primary-text-color) 12%);
+      font: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .detail-section-nav-btn:last-child {
+      border-right: none;
+    }
+    .detail-section-nav-btn:hover {
+      background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+      color: var(--primary-text-color);
+    }
+    .detail-section-nav-btn.active {
+      color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+      box-shadow: inset 0 -2px 0 var(--primary-color);
+    }
+    .detail-section-nav-btn ha-icon {
+      --mdc-icon-size: 16px;
+      flex: 0 0 auto;
+    }
+    .detail-section-nav-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
     }
     /* Match the Wifi Commands tab's detail-view back button so the
        affordance is identical across the card: padded pill with a
@@ -3379,9 +4988,88 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     .dialog-close:active { transform: translateY(1px); }
     .icon-btn:disabled { opacity: 0.45; cursor: default; }
     .icon-btn ha-icon { --mdc-icon-size: 16px; }
+    /* Destructive variant of .icon-btn — used for the inline delete
+       (trash) action next to the rename pencil on rows and detail
+       headers. Resting state stays neutral so the row doesn't read as
+       alarming; the danger tone only appears on hover / focus. */
+    .icon-btn--danger:hover:not(:disabled) {
+      border-color: var(--error-color, #db4437);
+      background: color-mix(in srgb, var(--error-color, #db4437) 10%, var(--ha-card-background, var(--card-background-color)));
+      color: var(--error-color, #db4437);
+    }
+    .quick-access-head-main {
+      min-width: 0;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .quick-access-add-btn {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border-radius: var(--backup-radius-md);
+      border: 1px solid color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+      color: var(--primary-color);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: border-color 120ms ease, background 120ms ease;
+    }
+    .quick-access-add-btn:hover {
+      border-color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 16%, transparent);
+    }
+    .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; }
+    .quick-access-head-actions {
+      display: inline-flex;
+      gap: 8px;
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .power-device-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 12px 14px;
+    }
+    .power-device-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .power-device-controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .power-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+      flex: 1 1 160px;
+    }
+    .power-field--delay { flex: 0 1 120px; }
+    .power-field-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+    }
+    .power-device-controls .decoded-field-input { font-size: 13px; }
     .quick-access-section {
       display: grid;
       gap: 12px;
+      scroll-margin-top: 16px;
     }
     .quick-access-head {
       display: flex;
@@ -3481,6 +5169,63 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       gap: 8px;
       flex: 0 0 auto;
     }
+    /* Inline per-row wait control: the delay that trails this command.
+       The "Delay" caption stacks above the number inside the same bordered
+       pill so the label and field read as one piece. The caption is tiny
+       and the pill stays shorter than the row, so it adds no row height. */
+    .step-wait {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      flex: 0 0 auto;
+      padding: 2px 6px 3px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 60%, transparent);
+      cursor: text;
+    }
+    .step-wait:focus-within {
+      border-color: var(--primary-color);
+    }
+    .step-wait-caption {
+      font-size: 9px;
+      line-height: 1;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+      pointer-events: none;
+    }
+    .step-wait-field {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 3px;
+    }
+    .step-wait-input {
+      width: 42px;
+      min-width: 0;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: right;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .step-wait-input::-webkit-outer-spin-button,
+    .step-wait-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .step-wait-unit {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 600;
+    }
     .quick-access-drag {
       display: inline-flex;
       align-items: center;
@@ -3517,6 +5262,60 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     .dialog-btn-primary {
       border-color: var(--primary-color);
       background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+    }
+    .dialog-btn-danger {
+      border-color: var(--error-color, #db4437);
+      color: var(--error-color, #db4437);
+      background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent);
+    }
+    .dialog-btn-danger:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--error-color, #db4437) 18%, transparent);
+    }
+    .dialog-btn:disabled { opacity: 0.45; cursor: default; }
+    .delete-impact-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .delete-impact-list li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--primary-text-color);
+    }
+    .delete-impact-list ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--secondary-text-color);
+      flex: 0 0 auto;
+    }
+    .delete-replace-note {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      line-height: 1.45;
+    }
+    .delete-replace-note ha-icon { --mdc-icon-size: 16px; flex: 0 0 auto; }
+    select.decoded-field-input { cursor: pointer; }
+    .binding-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .binding-static-field {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary-text-color);
+      padding: 8px 10px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
     }
     .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
     .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
@@ -3913,6 +5712,18 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         gap: 6px;
         min-width: max-content;
       }
+      .detail-section-nav {
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .detail-section-nav::-webkit-scrollbar {
+        display: none;
+      }
+      .detail-section-nav-btn {
+        flex-basis: auto;
+        min-width: max-content;
+        padding-inline: 12px;
+      }
       .restore-action-row > .primary-btn,
       .restore-action-row > .secondary-btn {
         width: 100%;
@@ -3974,7 +5785,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._editSessionRestoreTried = true;
       this._restoreEditSession();
     }
-    if (changed.has("_editBundle") || changed.has("_editFilename") || changed.has("_editDetailKind") || changed.has("_editDetailId")) {
+    if (changed.has("_editBundle") || changed.has("_editFilename") || changed.has("_editDetailKind") || changed.has("_editDetailId") || changed.has("_editBundleDirty")) {
       this._persistEditSession();
     }
   }
@@ -3995,6 +5806,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         savedAt: Date.now(),
         filename: this._editFilename || "",
         bundle: this._editBundle,
+        dirty: this._editBundleDirty,
         detail: this._editDetailKind && this._editDetailId != null ? { kind: this._editDetailKind, id: this._editDetailId } : null
       };
       window.localStorage.setItem(key, JSON.stringify(payload));
@@ -4045,8 +5857,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       if (parsed.detail && parsed.detail.kind && Number.isFinite(Number(parsed.detail.id))) {
         this._editDetailKind = parsed.detail.kind;
         this._editDetailId = Number(parsed.detail.id);
+        this._powerControlMenuOpen = false;
       }
-      this._editBundleDirty = true;
+      this._editBundleDirty = Boolean(parsed.dirty);
     } catch {
       try {
         window.localStorage.removeItem(key);
@@ -4073,6 +5886,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
           </div>
         </div>
       `;
+    }
+    if (this.selectedSection === "edit" && this._macroEditor && this._editBundle) {
+      return this._renderMacroStepEditorView(this._macroEditor);
     }
     if (this.selectedSection === "edit" && this._editDetailKind && this._editDetailId != null) {
       const detailTitle = this._selectedEditTitle();
@@ -4227,6 +6043,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
               </div>
             `}
             ${this._renderEditRenameDialog()}
+            ${this._renderDeleteConfirmDialog()}
+            ${this._renderAddFavoriteDialog()}
         `
     })}
     `;
@@ -4335,6 +6153,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _renderEditDetailView(params) {
+    const sectionItems = this._editDetailSectionItems(params.kind);
     const activityQuickAccess = params.kind === "activity" && this._editDetailId != null ? activityQuickAccessItems(this._editBundle, this._editDetailId) : [];
     const deviceCommands = params.kind === "device" && this._editDetailId != null ? deviceCommandItems(this._editBundle, this._editDetailId) : [];
     return T`
@@ -4346,24 +6165,155 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                 <button class="back-btn" @click=${this._closeEditDetail}>
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
-                <div class="detail-title">${params.title}</div>
+                <div class="detail-title-stack">
+                  ${this._renderDetailCrumbs([
+      { label: this._entityKindCrumbLabel(params.kind), onClick: this._closeEditDetail }
+    ])}
+                  <div class="detail-title">${params.title}</div>
+                </div>
                 ${this._editBundleDirty ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
                 <div class="detail-title-actions">
                   <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
                     <ha-icon icon="mdi:pencil"></ha-icon>
                   </button>
+                  <button
+                    class="icon-btn icon-btn--danger"
+                    @click=${this._openDetailDeleteConfirm}
+                    aria-label=${params.kind === "activity" ? TOOLS_CARD_STRINGS.backup.deleteActivityAria : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
+                  >
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>
                 </div>
               </div>
             </div>
+            ${this._renderEditDetailSectionNav(sectionItems)}
           </div>
-          <div class="detail-scroll">
-            ${params.kind === "activity" ? this._renderActivityQuickAccessSection(activityQuickAccess) : T`
+          <div class="detail-scroll" @scroll=${this._handleEditDetailScroll}>
+            ${params.kind === "activity" ? T`
+                  ${this._renderPowerSetupSection("activity", Number(this._editDetailId))}
+                  ${this._renderActivityQuickAccessSection(activityQuickAccess)}
+                  ${this._renderButtonBindingsSection("activity")}
+                ` : T`
+                  ${this._renderPowerSetupSection("device", Number(this._editDetailId))}
                   ${this._renderDeviceNetworkSection()}
                   ${this._renderDeviceCommandsSection(deviceCommands)}
+                  ${this._renderButtonBindingsSection("device")}
                 `}
           </div>
         </div>
         ${this._renderEditRenameDialog()}
+        ${this._renderDeleteConfirmDialog()}
+        ${this._renderAddFavoriteDialog()}
+        ${this._renderBindingDialog()}
+      </div>
+    `;
+  }
+  _editDetailSectionItems(kind) {
+    if (kind === "activity") {
+      return [
+        { id: "power", icon: "mdi:power-plug-outline", label: "Power" },
+        { id: "quick_access", icon: "mdi:star-outline", label: "Macros/Favorites" },
+        { id: "bindings", icon: "mdi:gesture-tap-button", label: "Buttons" }
+      ];
+    }
+    const hasNetworkSection = this._editDetailId != null && this._editBundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this._editBundle, Number(this._editDetailId)) ?? "") : false;
+    return [
+      { id: "power", icon: "mdi:power-plug-outline", label: "Power" },
+      ...hasNetworkSection ? [{ id: "network", icon: "mdi:lan-connect", label: "Network" }] : [],
+      { id: "commands", icon: "mdi:format-list-bulleted", label: "Commands" },
+      { id: "bindings", icon: "mdi:gesture-tap-button", label: "Buttons" }
+    ];
+  }
+  _renderEditDetailSectionNav(items) {
+    if (items.length <= 1) return A;
+    const activeId = items.some((item) => item.id === this._editDetailActiveSection) ? this._editDetailActiveSection : items[0].id;
+    return T`
+      <div class="detail-section-nav" role="tablist" aria-label="Detail sections">
+        ${items.map((item) => T`
+          <button
+            class=${`detail-section-nav-btn${item.id === activeId ? " active" : ""}`}
+            type="button"
+            role="tab"
+            aria-selected=${item.id === activeId ? "true" : "false"}
+            @click=${() => this._scrollEditDetailSection(item.id)}
+          >
+            <ha-icon icon=${item.icon}></ha-icon>
+            <span class="detail-section-nav-label">${item.label}</span>
+          </button>
+        `)}
+      </div>
+    `;
+  }
+  _scrollEditDetailSection(sectionId) {
+    const scrollEl = this.renderRoot.querySelector(".detail-scroll");
+    const sectionEl = scrollEl?.querySelector(`[data-edit-section="${sectionId}"]`);
+    if (!scrollEl || !sectionEl) return;
+    const targetTop = sectionEl.getBoundingClientRect().top - scrollEl.getBoundingClientRect().top + scrollEl.scrollTop;
+    scrollEl.scrollTop = Math.max(0, targetTop);
+    this._editDetailActiveSection = sectionId;
+  }
+  _renderButtonBindingsSection(kind) {
+    if (this._editDetailId == null || !this._editBundle) return A;
+    const entityId = Number(this._editDetailId);
+    const items = kind === "activity" ? activityButtonBindingItems(this._editBundle, entityId) : deviceButtonBindingItems(this._editBundle, entityId);
+    const unbound = kind === "activity" ? unboundButtonsForActivity(this._editBundle, entityId) : unboundButtonsForDevice(this._editBundle, entityId);
+    return T`
+      <div class="quick-access-section" data-edit-section="bindings">
+        <div class="quick-access-head">
+          <div class="quick-access-head-main">
+            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.buttonBindingsTitle}</div>
+            <div class="quick-access-sub">
+              ${kind === "activity" ? TOOLS_CARD_STRINGS.backup.buttonBindingsActivitySub : TOOLS_CARD_STRINGS.backup.buttonBindingsDeviceSub}
+            </div>
+          </div>
+          <button
+            class="quick-access-add-btn"
+            @click=${() => this._openAddBindingDialog(kind)}
+            ?disabled=${unbound.length === 0}
+          >
+            <ha-icon icon="mdi:plus"></ha-icon>
+            <span>${TOOLS_CARD_STRINGS.backup.addBinding}</span>
+          </button>
+        </div>
+        ${items.length ? T`
+              <div class="quick-access-list">
+                <div class="quick-access-sortable-container">
+                  ${items.map((item) => this._renderButtonBindingRow(item, kind))}
+                </div>
+              </div>
+            ` : T`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.buttonBindingsEmpty}</div>`}
+      </div>
+    `;
+  }
+  _renderButtonBindingRow(item, kind) {
+    return T`
+      <div class="quick-access-sortable-item" data-kind="binding" data-button-id=${item.buttonId}>
+        <div class="quick-access-row quick-access-row--no-drag">
+          <div class="quick-access-main">
+            <div class="quick-access-label-row">
+              <div class="quick-access-label">${item.buttonName}</div>
+              <div class="quick-access-chip">button</div>
+            </div>
+            <div class="quick-access-meta">${item.shortPressLabel}</div>
+            ${item.longPress ? T`<div class="quick-access-meta">${TOOLS_CARD_STRINGS.backup.bindingLongPressMeta(item.longPress.label)}</div>` : A}
+          </div>
+          <div class="quick-access-actions">
+            <button
+              class="icon-btn"
+              @click=${() => this._openEditBindingDialog(kind, item.buttonId)}
+              aria-label="Edit binding"
+            >
+              <ha-icon icon="mdi:pencil"></ha-icon>
+            </button>
+            <button
+              class="icon-btn icon-btn--danger"
+              @click=${() => this._openBindingDeleteConfirm(kind, item.buttonId, item.buttonName)}
+              aria-label=${TOOLS_CARD_STRINGS.backup.deleteBindingAria}
+            >
+              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+            </button>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -4382,7 +6332,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     if (!IP_HEAD_DEVICE_CLASSES.has(deviceClass)) return A;
     const ip = deviceIpAddress(this._editBundle, deviceId);
     return T`
-      <div class="quick-access-section">
+      <div class="quick-access-section" data-edit-section="network">
         <div class="quick-access-head">
           <div class="quick-access-title">Network</div>
           <div class="quick-access-sub">
@@ -4419,7 +6369,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   _renderDeviceCommandsSection(items) {
     if (this._editDetailId == null) return A;
     return T`
-      <div class="quick-access-section">
+      <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
@@ -4457,6 +6407,13 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
+            <button
+              class="icon-btn icon-btn--danger"
+              @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
+              aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
+            >
+              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+            </button>
           </div>
         </div>
       </div>
@@ -4466,11 +6423,23 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     if (this._editDetailId == null) return A;
     const rows = items.map((item) => this._renderActivityQuickAccessRow(item));
     return T`
-      <div class="quick-access-section">
+      <div class="quick-access-section" data-edit-section="quick_access">
         <div class="quick-access-head">
-          <div class="quick-access-title">Macros and Favorites</div>
-          <div class="quick-access-sub">
-            ${this._haSortableReady ? "Drag the handle to reorder Macros and Favorites inside the Activity." : "Drag support is unavailable here, so use the move buttons to reorder Macros and Favorites."}
+          <div class="quick-access-head-main">
+            <div class="quick-access-title">Macros and Favorites</div>
+            <div class="quick-access-sub">
+              ${this._haSortableReady ? "Drag the handle to reorder Macros and Favorites inside the Activity." : "Drag support is unavailable here, so use the move buttons to reorder Macros and Favorites."}
+            </div>
+          </div>
+          <div class="quick-access-head-actions">
+            <button class="quick-access-add-btn" @click=${this._addActivityMacro}>
+              <ha-icon icon="mdi:plus"></ha-icon>
+              <span>${TOOLS_CARD_STRINGS.backup.addMacro}</span>
+            </button>
+            <button class="quick-access-add-btn" @click=${this._openAddFavoriteDialog}>
+              <ha-icon icon="mdi:plus"></ha-icon>
+              <span>${TOOLS_CARD_STRINGS.backup.addFavoriteButton}</span>
+            </button>
           </div>
         </div>
         ${items.length ? T`
@@ -4526,12 +6495,28 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                 <ha-icon icon="mdi:chevron-down"></ha-icon>
               </button>
             `}
+            ${item.kind === "macro" ? T`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openMacroEditor("activity", Number(this._editDetailId), item.buttonId, item.label)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.editStepsAria}
+                  >
+                    <ha-icon icon="mdi:playlist-edit"></ha-icon>
+                  </button>
+                ` : A}
             <button
               class="icon-btn"
               @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
               aria-label=${`Rename ${item.kind}`}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
+            </button>
+            <button
+              class="icon-btn icon-btn--danger"
+              @click=${() => this._openQuickAccessDeleteConfirm(item.kind, item.buttonId, item.label)}
+              aria-label=${`Delete ${item.kind}`}
+            >
+              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
             </button>
           </div>
         </div>
@@ -4794,6 +6779,140 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._editRenameDialogError = "";
     this._editRenameDialogOpen = true;
   }
+  _openCommandDeleteConfirm(commandId, label) {
+    if (this._editDetailId == null) return;
+    this._confirmDeleteTarget = {
+      kind: "command",
+      deviceId: Number(this._editDetailId),
+      commandId: Number(commandId)
+    };
+    this._confirmDeleteLabel = label;
+  }
+  _openQuickAccessDeleteConfirm(kind, buttonId, label) {
+    if (this._editDetailId == null) return;
+    const activityId = Number(this._editDetailId);
+    this._confirmDeleteTarget = kind === "macro" ? { kind: "macro", activityId, buttonId: Number(buttonId) } : { kind: "favorite", activityId, buttonId: Number(buttonId) };
+    this._confirmDeleteLabel = label;
+  }
+  _deleteConfirmTitle(target, label) {
+    const name = label || "this item";
+    switch (target.kind) {
+      case "activity":
+        return TOOLS_CARD_STRINGS.backup.deleteActivityTitle(name);
+      case "device":
+        return TOOLS_CARD_STRINGS.backup.deleteDeviceTitle(name);
+      case "command":
+        return TOOLS_CARD_STRINGS.backup.deleteCommandTitle(name);
+      case "favorite":
+        return TOOLS_CARD_STRINGS.backup.deleteFavoriteTitle(name);
+      case "macro":
+        return TOOLS_CARD_STRINGS.backup.deleteMacroTitle(name);
+      case "activity_binding":
+      case "device_binding":
+        return TOOLS_CARD_STRINGS.backup.deleteBindingTitle(name);
+    }
+  }
+  _openBindingDeleteConfirm(kind, buttonId, name) {
+    if (this._editDetailId == null) return;
+    const entityId = Number(this._editDetailId);
+    this._confirmDeleteTarget = kind === "activity" ? { kind: "activity_binding", activityId: entityId, buttonId: Number(buttonId) } : { kind: "device_binding", deviceId: entityId, buttonId: Number(buttonId) };
+    this._confirmDeleteLabel = name;
+  }
+  _renderDeleteConfirmDialog() {
+    const target = this._confirmDeleteTarget;
+    if (!target || !this._editBundle) return A;
+    const impact = bundleDeleteImpact(this._editBundle, target);
+    const hasCascade = backupDeleteHasCascade(impact);
+    return T`
+      <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${this._deleteConfirmTitle(target, this._confirmDeleteLabel)}</div>
+            <button class="dialog-close" @click=${this._closeDeleteConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="backup-drawer-sub">
+              ${hasCascade ? TOOLS_CARD_STRINGS.backup.deleteCascadeIntro : TOOLS_CARD_STRINGS.backup.deleteSimpleBody}
+            </div>
+            ${hasCascade ? T`
+                  <ul class="delete-impact-list">
+                    ${impact.activities > 0 ? T`<li><ha-icon icon="mdi:link-variant"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactActivities(impact.activities)}</span></li>` : A}
+                    ${impact.favorites > 0 ? T`<li><ha-icon icon="mdi:star-outline"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
+                    ${impact.macroSteps > 0 ? T`<li><ha-icon icon="mdi:format-list-numbered"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+                    ${impact.bindings > 0 ? T`<li><ha-icon icon="mdi:gesture-tap-button"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactBindings(impact.bindings)}</span></li>` : A}
+                  </ul>
+                ` : A}
+            <div class="delete-replace-note">
+              <ha-icon icon="mdi:information-outline"></ha-icon>
+              <span>${TOOLS_CARD_STRINGS.backup.deleteReplaceNote}</span>
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note"></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeDeleteConfirm}>${TOOLS_CARD_STRINGS.backup.deleteCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" @click=${this._confirmDelete}>${TOOLS_CARD_STRINGS.backup.deleteConfirm}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderAddFavoriteDialog() {
+    if (!this._addFavoriteOpen || !this._editBundle) return A;
+    const devices = bundleDeviceOptions(this._editBundle);
+    const commands = this._addFavoriteDeviceId != null ? deviceCommandItems(this._editBundle, this._addFavoriteDeviceId) : [];
+    const canAdd = this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null;
+    return T`
+      <div class="modal-backdrop" @click=${this._closeAddFavoriteDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${TOOLS_CARD_STRINGS.backup.addFavoriteTitle}</div>
+            <button class="dialog-close" @click=${this._closeAddFavoriteDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${devices.length === 0 ? T`<div class="backup-drawer-sub">${TOOLS_CARD_STRINGS.backup.addFavoriteNoDevices}</div>` : T`
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-add-fav-device">${TOOLS_CARD_STRINGS.backup.addFavoriteDevice}</label>
+                    <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
+                      ${devices.map((device) => T`
+                        <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
+                      `)}
+                    </select>
+                  </div>
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-add-fav-command">${TOOLS_CARD_STRINGS.backup.addFavoriteCommand}</label>
+                    ${commands.length === 0 ? T`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.addFavoriteNoCommands}</div>` : T`
+                          <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
+                            ${commands.map((command) => T`
+                              <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
+                            `)}
+                          </select>
+                        `}
+                  </div>
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-add-fav-name">${TOOLS_CARD_STRINGS.backup.addFavoriteName}</label>
+                    <input
+                      id="sb-add-fav-name"
+                      class="decoded-field-input"
+                      maxlength="20"
+                      .value=${this._addFavoriteName}
+                      @input=${this._handleAddFavoriteNameInput}
+                    />
+                  </div>
+                `}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._addFavoriteError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeAddFavoriteDialog}>${TOOLS_CARD_STRINGS.backup.addFavoriteCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyAddFavorite} ?disabled=${!canAdd}>${TOOLS_CARD_STRINGS.backup.addFavoriteAdd}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
   /**
    * Commit a mutated bundle from any edit handler. Centralizes the
    * "this counts as a user edit" decision so loaders (file pick,
@@ -4815,12 +6934,32 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   _openEditDetail(kind, id, name) {
     this._editDetailKind = kind;
     this._editDetailId = Number(id);
+    this._editDetailActiveSection = "power";
+    this._powerControlMenuOpen = false;
     this._editDetailNameDraft = this._sanitizeBundleName(name);
   }
   _selectedEditTitle() {
     if (!this._editBundle || !this._editDetailKind || this._editDetailId == null) return "";
     const options = this._editDetailKind === "activity" ? bundleActivityOptions(this._editBundle) : bundleDeviceOptions(this._editBundle);
     return options.find((option) => option.id === this._editDetailId)?.label || "";
+  }
+  _entityKindCrumbLabel(kind) {
+    return kind === "activity" ? TOOLS_CARD_STRINGS.backup.crumbActivities : TOOLS_CARD_STRINGS.backup.crumbDevices;
+  }
+  // Compact ancestor trail shown above the detail/editor title. Each crumb
+  // is a tappable button that pops back to that level; the trailing "›"
+  // leads the eye into the current page's big title beneath it.
+  _renderDetailCrumbs(crumbs) {
+    if (!crumbs.length) return A;
+    return T`
+      <div class="detail-crumbs">
+        ${crumbs.map((crumb, index) => T`
+          ${index > 0 ? T`<span class="detail-crumb-sep" aria-hidden="true">›</span>` : A}
+          <button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button>
+        `)}
+        <span class="detail-crumb-sep" aria-hidden="true">›</span>
+      </div>
+    `;
   }
   _applyEditDetailRename() {
     const next = this._sanitizeBundleName(this._editDetailNameDraft);
@@ -4864,6 +7003,556 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     nextOptions.splice(newIndex, 0, moved);
     const orderedIds = nextOptions.map((option) => option.id);
     this._commitEditBundleEdit(kind === "activity" ? reorderBundleActivities(this._editBundle, orderedIds) : reorderBundleDevices(this._editBundle, orderedIds));
+  }
+  // ── Button bindings (add / edit picker) ─────────────────────────────
+  // The activity's own id, usable as a binding target that plays one of its
+  // macros — offered only when the activity actually has user macros. Encodes
+  // device_id = activity id, command_id = macro button id (hub keymap model).
+  _activityMacroTargetId() {
+    if (this._bindingScope !== "activity" || this._editDetailId == null || !this._editBundle) return null;
+    const id = Number(this._editDetailId);
+    return activityUserMacroSummaries(this._editBundle, id).length > 0 ? id : null;
+  }
+  // Activity binding target-device options: source devices plus the
+  // "this activity · macros" target when available.
+  _bindingDeviceOptions() {
+    if (!this._editBundle) return [];
+    const options = bundleDeviceOptions(this._editBundle).map((device) => ({ value: device.id, label: device.label }));
+    const macroTargetId = this._activityMacroTargetId();
+    if (macroTargetId != null) {
+      options.push({ value: macroTargetId, label: TOOLS_CARD_STRINGS.backup.bindingMacroTarget });
+    }
+    return options;
+  }
+  // Command options for a chosen target: the activity's own macros when the
+  // target is the activity itself, otherwise the target device's commands.
+  _bindingCommandOptions(targetDeviceId) {
+    if (targetDeviceId == null || !this._editBundle) return [];
+    if (this._bindingScope === "activity" && this._editDetailId != null && targetDeviceId === Number(this._editDetailId)) {
+      return activityUserMacroSummaries(this._editBundle, Number(this._editDetailId)).map((macro) => ({ value: macro.buttonId, label: macro.name }));
+    }
+    return deviceCommandItems(this._editBundle, targetDeviceId).map((command) => ({ value: command.commandId, label: command.label }));
+  }
+  _openAddBindingDialog(kind) {
+    if (this._editDetailId == null || !this._editBundle) return;
+    const entityId = Number(this._editDetailId);
+    const unbound = kind === "activity" ? unboundButtonsForActivity(this._editBundle, entityId) : unboundButtonsForDevice(this._editBundle, entityId);
+    if (!unbound.length) return;
+    this._bindingScope = kind;
+    this._bindingEditButtonId = null;
+    this._bindingButtonId = unbound[0].code;
+    if (kind === "activity") {
+      const devices = bundleDeviceOptions(this._editBundle);
+      this._bindingDeviceId = devices[0]?.id ?? null;
+    } else {
+      this._bindingDeviceId = entityId;
+    }
+    const commandDeviceId = kind === "activity" ? this._bindingDeviceId : entityId;
+    const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
+    this._bindingCommandId = commands[0]?.commandId ?? null;
+    this._bindingLongPressEnabled = false;
+    this._bindingLpDeviceId = this._bindingDeviceId;
+    this._bindingLpCommandId = this._bindingCommandId;
+    this._bindingError = "";
+    this._bindingDialogOpen = true;
+  }
+  _openEditBindingDialog(kind, buttonId) {
+    if (this._editDetailId == null || !this._editBundle) return;
+    const entityId = Number(this._editDetailId);
+    const items = kind === "activity" ? activityButtonBindingItems(this._editBundle, entityId) : deviceButtonBindingItems(this._editBundle, entityId);
+    const item = items.find((entry) => entry.buttonId === Number(buttonId));
+    if (!item) return;
+    this._bindingScope = kind;
+    this._bindingEditButtonId = item.buttonId;
+    this._bindingButtonId = item.buttonId;
+    this._bindingDeviceId = kind === "activity" ? item.deviceId ?? null : entityId;
+    this._bindingCommandId = item.commandId;
+    this._bindingLongPressEnabled = Boolean(item.longPress);
+    this._bindingLpDeviceId = kind === "activity" ? item.longPress?.deviceId ?? item.deviceId ?? null : entityId;
+    this._bindingLpCommandId = item.longPress?.commandId ?? null;
+    this._bindingError = "";
+    this._bindingDialogOpen = true;
+  }
+  _renderBindingSelect(params) {
+    return T`
+      <div class="decoded-field">
+        <label class="decoded-field-label" for=${params.id}>${params.label}</label>
+        ${params.options.length === 0 ? T`<div class="quick-access-empty">${params.emptyText ?? ""}</div>` : T`
+              <select id=${params.id} class="decoded-field-input" @change=${params.onChange}>
+                ${params.options.map((option) => T`
+                  <option value=${option.value} ?selected=${option.value === params.value}>${option.label}</option>
+                `)}
+              </select>
+            `}
+      </div>
+    `;
+  }
+  _renderBindingDialog() {
+    if (!this._bindingDialogOpen || !this._editBundle || this._editDetailId == null) return A;
+    const scope = this._bindingScope;
+    const entityId = Number(this._editDetailId);
+    const isEdit = this._bindingEditButtonId != null;
+    const unbound = scope === "activity" ? unboundButtonsForActivity(this._editBundle, entityId) : unboundButtonsForDevice(this._editBundle, entityId);
+    const deviceOptions = this._bindingDeviceOptions();
+    const commandDeviceId = scope === "activity" ? this._bindingDeviceId : entityId;
+    const commandOptions = this._bindingCommandOptions(commandDeviceId);
+    const lpDeviceId = scope === "activity" ? this._bindingLpDeviceId : entityId;
+    const lpCommandOptions = this._bindingCommandOptions(lpDeviceId);
+    const canSave = this._bindingButtonId != null && this._bindingCommandId != null && (scope === "device" || this._bindingDeviceId != null);
+    const title = isEdit ? TOOLS_CARD_STRINGS.backup.bindingDialogEditTitle(buttonName(Number(this._bindingButtonId))) : TOOLS_CARD_STRINGS.backup.bindingDialogAddTitle;
+    return T`
+      <div class="modal-backdrop" @click=${this._closeBindingDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${title}</div>
+            <button class="dialog-close" @click=${this._closeBindingDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${isEdit ? T`
+                  <div class="decoded-field">
+                    <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.bindingButton}</span>
+                    <div class="binding-static-field">${buttonName(Number(this._bindingButtonId))}</div>
+                  </div>
+                ` : this._renderBindingSelect({
+      id: "sb-binding-button",
+      label: TOOLS_CARD_STRINGS.backup.bindingButton,
+      value: this._bindingButtonId,
+      options: unbound.map((entry) => ({ value: entry.code, label: entry.name })),
+      onChange: this._handleBindingButtonChange,
+      emptyText: TOOLS_CARD_STRINGS.backup.bindingNoButtons
+    })}
+            ${scope === "activity" ? this._renderBindingSelect({
+      id: "sb-binding-device",
+      label: TOOLS_CARD_STRINGS.backup.bindingTargetDevice,
+      value: this._bindingDeviceId,
+      options: deviceOptions,
+      onChange: this._handleBindingDeviceChange,
+      emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices
+    }) : A}
+            ${this._renderBindingSelect({
+      id: "sb-binding-command",
+      label: TOOLS_CARD_STRINGS.backup.bindingCommand,
+      value: this._bindingCommandId,
+      options: commandOptions,
+      onChange: this._handleBindingCommandChange,
+      emptyText: TOOLS_CARD_STRINGS.backup.bindingNoCommands
+    })}
+            <div class="binding-toggle-row">
+              <span class="decoded-field-label">${TOOLS_CARD_STRINGS.backup.bindingEnableLongPress}</span>
+              <ha-switch
+                .checked=${this._bindingLongPressEnabled}
+                @change=${this._handleBindingLongPressToggle}
+              ></ha-switch>
+            </div>
+            ${this._bindingLongPressEnabled ? T`
+                  ${scope === "activity" ? this._renderBindingSelect({
+      id: "sb-binding-lp-device",
+      label: TOOLS_CARD_STRINGS.backup.bindingLongPressDevice,
+      value: this._bindingLpDeviceId,
+      options: deviceOptions,
+      onChange: this._handleBindingLpDeviceChange,
+      emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices
+    }) : A}
+                  ${this._renderBindingSelect({
+      id: "sb-binding-lp-command",
+      label: TOOLS_CARD_STRINGS.backup.bindingLongPressCommand,
+      value: this._bindingLpCommandId,
+      options: lpCommandOptions,
+      onChange: this._handleBindingLpCommandChange,
+      emptyText: TOOLS_CARD_STRINGS.backup.bindingNoCommands
+    })}
+                ` : A}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._bindingError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeBindingDialog}>${TOOLS_CARD_STRINGS.backup.bindingCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyBinding} ?disabled=${!canSave}>
+                ${isEdit ? TOOLS_CARD_STRINGS.backup.bindingSave : TOOLS_CARD_STRINGS.backup.bindingAdd}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // ── Macro step editor (device macros + activity user macros) ────────
+  _openMacroEditor(scope, entityId, buttonId, name) {
+    this._macroEditor = { scope, entityId: Number(entityId), buttonId: Number(buttonId), name };
+  }
+  // Macro time bytes are in 0.5-second units (a hold byte of 4 = 2.0s),
+  // matching the Sofabaton app. 0 = a single click / no wait.
+  _byteToSeconds(byteValue) {
+    return (Number(byteValue) * 0.5).toFixed(1).replace(/\.0$/, "");
+  }
+  _secondsToByte(value) {
+    const seconds = parseFloat(String(value));
+    if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+    return Math.min(255, Math.max(0, Math.round(seconds * 2)));
+  }
+  /** Snap a typed seconds value to the hub's 0.5s grid (returns the string form). */
+  _snapHalfSeconds(value) {
+    return this._byteToSeconds(this._secondsToByte(value));
+  }
+  _currentMacroStepItems() {
+    const editor = this._macroEditor;
+    if (!editor || !this._editBundle) return [];
+    return editor.scope === "device" ? deviceMacroStepItems(this._editBundle, editor.entityId, editor.buttonId) : activityMacroStepItems(this._editBundle, editor.entityId, editor.buttonId);
+  }
+  _openEditStepDialog(item) {
+    const editor = this._macroEditor;
+    if (!editor) return;
+    this._stepDialogEditIndex = item.index;
+    this._stepError = "";
+    this._stepDialogOpen = true;
+    if (item.kind === "input") {
+      this._stepKind = "input";
+      this._stepDeviceId = item.deviceId ?? null;
+      this._stepCommandId = item.commandId ?? null;
+      return;
+    }
+    this._stepKind = "command";
+    this._stepDeviceId = editor.scope === "activity" ? item.deviceId ?? null : editor.entityId;
+    this._stepCommandId = item.commandId ?? null;
+    this._stepHoldSeconds = this._byteToSeconds(item.hold);
+  }
+  _removeStep(index) {
+    const editor = this._macroEditor;
+    if (!editor || !this._editBundle) return;
+    const next = editor.scope === "device" ? removeDeviceMacroStep(this._editBundle, editor.entityId, editor.buttonId, index) : removeActivityMacroStep(this._editBundle, editor.entityId, editor.buttonId, index);
+    this._commitEditBundleEdit(next);
+  }
+  _renderMacroStepEditorView(editor) {
+    const items = this._currentMacroStepItems();
+    const canRename = editor.scope === "activity" && !POWER_MACRO_BUTTON_IDS.has(editor.buttonId);
+    const sortable = this._haSortableReady && items.length > 1;
+    const renderRows = () => items.map((item) => this._renderMacroStepRow(item, sortable));
+    return T`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <div class="detail-title-main">
+                <button class="back-btn" @click=${this._closeMacroEditor}>
+                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                </button>
+                <div class="detail-title-stack">
+                  ${this._renderDetailCrumbs([
+      { label: this._entityKindCrumbLabel(editor.scope), onClick: this._closeEditDetail },
+      { label: this._selectedEditTitle(), onClick: this._closeMacroEditor }
+    ])}
+                  <div class="detail-title">${editor.name}</div>
+                </div>
+                ${this._editBundleDirty ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${canRename ? T`
+                      <div class="detail-title-actions">
+                        <button
+                          class="icon-btn"
+                          @click=${this._openMacroNameRenameDialog}
+                          aria-label=${TOOLS_CARD_STRINGS.backup.renameMacroAria}
+                        >
+                          <ha-icon icon="mdi:pencil"></ha-icon>
+                        </button>
+                      </div>
+                    ` : A}
+              </div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            <div class="quick-access-section">
+              <div class="quick-access-head">
+                <div class="quick-access-head-main">
+                  <div class="quick-access-title">Steps</div>
+                  <div class="quick-access-sub">
+                    ${this._haSortableReady ? "Drag to reorder. Each step plays a command; set the wait that follows it on the right." : "Each step plays a command; set the wait that follows it on the right."}
+                  </div>
+                </div>
+                <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
+                  <ha-icon icon="mdi:plus"></ha-icon>
+                  <span>${TOOLS_CARD_STRINGS.backup.addStep}</span>
+                </button>
+              </div>
+              ${items.length ? T`
+                    <div class="quick-access-list">
+                      ${sortable ? T`
+                            <ha-sortable
+                              class="quick-access-sortable"
+                              draggable-selector=".quick-access-sortable-item"
+                              handle-selector=".quick-access-drag"
+                              animation="180"
+                              @item-moved=${this._handleStepReorder}
+                            >
+                              <div class="quick-access-sortable-container">${renderRows()}</div>
+                            </ha-sortable>
+                          ` : T`<div class="quick-access-sortable-container">${renderRows()}</div>`}
+                    </div>
+                  ` : T`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.noMacroSteps}</div>`}
+            </div>
+          </div>
+        </div>
+        ${this._renderStepDialog()}
+        ${this._renderEditRenameDialog()}
+      </div>
+    `;
+  }
+  _renderMacroStepRow(item, sortable) {
+    const isPower = item.kind === "power";
+    const isInput = item.kind === "input";
+    const meta = item.kind === "command" && item.hold > 0 ? TOOLS_CARD_STRINGS.backup.holdLabel(this._byteToSeconds(item.hold)) : "";
+    const chip = isPower || isInput ? "required" : "command";
+    return T`
+      <div class="quick-access-sortable-item" data-step-index=${item.index}>
+        <div class="quick-access-row">
+          ${sortable ? T`<div class="quick-access-drag" aria-hidden="true"><ha-icon icon="mdi:drag-vertical-variant"></ha-icon></div>` : T`<span></span>`}
+          <div class="quick-access-main">
+            <div class="quick-access-label-row">
+              <div class="quick-access-label">${item.label}</div>
+              <div class="quick-access-chip">${chip}</div>
+            </div>
+            ${meta ? T`<div class="quick-access-meta">${meta}</div>` : A}
+          </div>
+          <div class="quick-access-actions">
+            <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
+              <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
+              <span class="step-wait-field">
+                <input
+                  class="step-wait-input"
+                  type="number"
+                  min="0"
+                  max="120"
+                  step="0.5"
+                  aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
+                  .value=${this._byteToSeconds(item.wait)}
+                  @change=${(event) => this._handleStepWaitChange(item, event)}
+                />
+                <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
+              </span>
+            </label>
+            ${isPower ? A : T`
+                  <button class="icon-btn" @click=${() => this._openEditStepDialog(item)} aria-label=${TOOLS_CARD_STRINGS.backup.editStepAria}>
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                  ${isInput ? A : T`
+                        <button class="icon-btn icon-btn--danger" @click=${() => this._removeStep(item.index)} aria-label=${TOOLS_CARD_STRINGS.backup.deleteStepAria}>
+                          <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                        </button>
+                      `}
+                `}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderStepDialog() {
+    if (!this._stepDialogOpen || !this._editBundle || !this._macroEditor) return A;
+    const editor = this._macroEditor;
+    const isEdit = this._stepDialogEditIndex !== null;
+    const isActivity = editor.scope === "activity";
+    const isInput = this._stepKind === "input";
+    const devices = bundleDeviceOptions(this._editBundle);
+    const commandDeviceId = isInput ? this._stepDeviceId : isActivity ? this._stepDeviceId : editor.entityId;
+    const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
+    const canSave = isInput || this._stepCommandId != null && (!isActivity || this._stepDeviceId != null);
+    const title = isInput ? TOOLS_CARD_STRINGS.backup.inputStepTitle : isEdit ? TOOLS_CARD_STRINGS.backup.stepDialogEditTitle : TOOLS_CARD_STRINGS.backup.stepDialogAddTitle;
+    return T`
+      <div class="modal-backdrop" @click=${this._closeStepDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${title}</div>
+            <button class="dialog-close" @click=${this._closeStepDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${isInput ? T`
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-step-input">${TOOLS_CARD_STRINGS.backup.inputStepCommand}</label>
+                    <select id="sb-step-input" class="decoded-field-input" @change=${this._handleStepCommandChange}>
+                      <option value="" ?selected=${this._stepCommandId == null}>${TOOLS_CARD_STRINGS.backup.inputStepNone}</option>
+                      ${commands.map((command) => T`
+                        <option value=${command.commandId} ?selected=${command.commandId === this._stepCommandId}>${command.label}</option>
+                      `)}
+                    </select>
+                  </div>
+                ` : T`
+                  ${isActivity ? this._renderBindingSelect({
+      id: "sb-step-device",
+      label: TOOLS_CARD_STRINGS.backup.stepDevice,
+      value: this._stepDeviceId,
+      options: devices.map((device) => ({ value: device.id, label: device.label })),
+      onChange: this._handleStepDeviceChange,
+      emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices
+    }) : A}
+                  ${this._renderBindingSelect({
+      id: "sb-step-command",
+      label: TOOLS_CARD_STRINGS.backup.stepCommand,
+      value: this._stepCommandId,
+      options: commands.map((command) => ({ value: command.commandId, label: command.label })),
+      onChange: this._handleStepCommandChange,
+      emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands
+    })}
+                  <div class="decoded-field">
+                    <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
+                    <input
+                      id="sb-step-hold"
+                      class="decoded-field-input"
+                      type="number"
+                      min="0"
+                      max="120"
+                      step="0.5"
+                      .value=${this._stepHoldSeconds}
+                      @input=${this._handleStepHoldInput}
+                      @change=${this._handleStepHoldChange}
+                    />
+                  </div>
+                `}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._stepError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeStepDialog}>${TOOLS_CARD_STRINGS.backup.stepCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyStep} ?disabled=${!canSave}>
+                ${isEdit ? TOOLS_CARD_STRINGS.backup.stepSave : TOOLS_CARD_STRINGS.backup.stepAdd}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // ── Power On/Off setup (shared by Device and Activity details) ──────
+  _powerSetupStepCount(scope, entityId, buttonId) {
+    if (!this._editBundle) return 0;
+    return scope === "device" ? deviceMacroStepItems(this._editBundle, entityId, buttonId).length : activityMacroStepItems(this._editBundle, entityId, buttonId).length;
+  }
+  _renderPowerSetupRow(scope, entityId, buttonId, label, disabled) {
+    const count = this._powerSetupStepCount(scope, entityId, buttonId);
+    return T`
+      <div class="quick-access-sortable-item">
+        <button
+          class="edit-selection-row"
+          aria-disabled=${disabled ? "true" : "false"}
+          tabindex=${disabled ? "-1" : "0"}
+          @click=${() => {
+      if (!disabled) this._openMacroEditor(scope, entityId, buttonId, label);
+    }}
+        >
+          <span class="selection-main">
+            <span class="selection-label">${label}</span>
+            <span class="selection-sub">${TOOLS_CARD_STRINGS.backup.macroStepsCount(count)}</span>
+          </span>
+          <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+        </button>
+      </div>
+    `;
+  }
+  // The device Power section folds two concepts the hub keeps separate but
+  // the app presents together: the automatic-power / idle-behavior selector
+  // (one 0x0242 byte) and the POWER_ON/POWER_OFF command sequences. Choosing
+  // "Don't control power" makes the hub ignore the sequences, so they render
+  // inert. Activities have no idle behavior, so they get only the sequences.
+  _renderPowerSetupSection(scope, entityId) {
+    if (this._editDetailId == null || !this._editBundle) return A;
+    const S3 = TOOLS_CARD_STRINGS.backup;
+    const isDevice = scope === "device";
+    const mode = isDevice ? deviceIdleBehavior(this._editBundle, entityId) : null;
+    const sequencesDisabled = isDevice && mode === IDLE_BEHAVIOR_DISABLED;
+    return T`
+      <div class="quick-access-section" data-edit-section="power">
+        <div class="quick-access-head">
+          <div class="quick-access-head-main">
+            <div class="quick-access-title">${S3.powerSetupTitle}</div>
+            <div class="quick-access-sub">
+              ${isDevice ? S3.powerSetupDeviceSub : S3.powerSetupActivitySub}
+            </div>
+          </div>
+        </div>
+        ${isDevice ? this._renderPowerControlDropdown(entityId, mode) : A}
+        <div class="quick-access-list">
+          ${sequencesDisabled ? T`<div class="power-sequences-note">${S3.powerSequencesDisabledNote}</div>` : A}
+          <div
+            class="quick-access-sortable-container power-sequences"
+            data-disabled=${sequencesDisabled ? "true" : "false"}
+          >
+            ${this._renderPowerSetupRow(scope, entityId, 198, S3.powerOnLabel, sequencesDisabled)}
+            ${this._renderPowerSetupRow(scope, entityId, 199, S3.powerOffLabel, sequencesDisabled)}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // ── Automatic power control selector (device only) ──────────────────
+  // One hub byte (the 0x0242 reply) encodes both the "Power On/Off Setup"
+  // toggle and the "Idle Behavior" choice, so it surfaces here as a single
+  // two-line dropdown. It lives in its own hub query, not the device
+  // record, so it is captured/restored separately.
+  _powerControlOptions() {
+    const S3 = TOOLS_CARD_STRINGS.backup;
+    return [
+      { mode: IDLE_BEHAVIOR_DISABLED, label: S3.powerControlDisabled, sub: S3.powerControlDisabledSub },
+      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S3.powerControlAutoOff, sub: S3.powerControlAutoOffSub },
+      { mode: IDLE_BEHAVIOR_STAY_ON, label: S3.powerControlStayOn, sub: S3.powerControlStayOnSub },
+      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S3.powerControlAlwaysOn, sub: S3.powerControlAlwaysOnSub }
+    ];
+  }
+  _selectPowerControl(deviceId, mode) {
+    this._powerControlMenuOpen = false;
+    if (!this._editBundle) return;
+    if (deviceIdleBehavior(this._editBundle, deviceId) === mode) return;
+    this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this._editBundle, deviceId, mode));
+  }
+  _renderPowerControlDropdown(deviceId, mode) {
+    const S3 = TOOLS_CARD_STRINGS.backup;
+    const options = this._powerControlOptions();
+    const selected = options.find((opt) => opt.mode === mode) ?? null;
+    const open = this._powerControlMenuOpen;
+    return T`
+      <div class="power-control" data-open=${open ? "true" : "false"}>
+        <button
+          class="power-control-trigger"
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded=${open ? "true" : "false"}
+          @click=${this._togglePowerControlMenu}
+        >
+          <span class="selection-main">
+            <span class="selection-label">${selected ? selected.label : S3.powerControlUnset}</span>
+            <span class="selection-sub">${selected ? selected.sub : S3.powerControlUnsetSub}</span>
+          </span>
+          <span class="selection-chevron"><ha-icon icon="mdi:chevron-down"></ha-icon></span>
+        </button>
+        ${open ? T`
+              <button
+                class="power-control-backdrop"
+                type="button"
+                tabindex="-1"
+                aria-hidden="true"
+                @click=${this._togglePowerControlMenu}
+              ></button>
+              <div class="power-control-menu" role="listbox" aria-label=${S3.powerControlTitle}>
+                ${options.map((opt) => {
+      const isSel = opt.mode === mode;
+      return T`
+                    <button
+                      class="power-control-option"
+                      type="button"
+                      role="option"
+                      aria-selected=${isSel ? "true" : "false"}
+                      aria-checked=${isSel ? "true" : "false"}
+                      @click=${() => this._selectPowerControl(deviceId, opt.mode)}
+                    >
+                      <span class="selection-main">
+                        <span class="selection-label">${opt.label}</span>
+                        <span class="selection-sub">${opt.sub}</span>
+                      </span>
+                      <span class="selection-chevron">
+                        ${isSel ? T`<ha-icon icon="mdi:check"></ha-icon>` : A}
+                      </span>
+                    </button>
+                  `;
+    })}
+              </div>
+            ` : A}
+      </div>
+    `;
   }
   _renderRestoreSectionContent() {
     const isRunning = this._isProgressRunning(this._restoreProgress);

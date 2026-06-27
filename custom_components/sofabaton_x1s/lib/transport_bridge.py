@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
-from ..logging_utils import HubLogger, LogTag, get_hub_logger
+from .hub_logging import HubLogger, LogTag, get_hub_logger
 from .hub_listener import get_hub_listener
 from .protocol_const import OP_CALL_ME, SYNC0, SYNC1
 from .notify_demuxer import (

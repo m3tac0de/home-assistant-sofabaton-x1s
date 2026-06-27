@@ -190,6 +190,15 @@ export interface BackupBundleDeviceBlock {
   // null / empty for non-network devices. wifi_ip carries its IP inside
   // each command blob instead, not here.
   ip_address?: string | null;
+  // Automatic-power / idle-behavior mode byte (the hub's 0x0242 reply).
+  // One byte encodes the whole "Power On/Off Setup" + "Idle Behavior"
+  // story. Lives in its own hub query, captured/restored separately from
+  // the device record. Absent on backups that predate idle-behavior
+  // capture, which fall back to `power_mode`.
+  idle_behavior?: number | null;
+  // Legacy device-record power byte; retained for fallback on older
+  // backups that lack `idle_behavior`.
+  power_mode?: number | null;
 }
 
 export interface BackupBundleDevicePayload {
@@ -197,6 +206,44 @@ export interface BackupBundleDevicePayload {
   complete?: boolean;
   device?: BackupBundleDeviceBlock | null;
   commands?: BackupBundleCommandRow[] | null;
+  button_bindings?: BackupBundleButtonBinding[] | null;
+  // The device's own macros (incl. its power-on/off at button 198/199).
+  // Steps carry no device_id — they play this device's own commands.
+  macros?: BackupBundleMacroRow[] | null;
+  // The device's input list (TV inputs etc.). Activity power-on macros
+  // reference these by 1-based ordinal (input_index) via a 0xC5 step.
+  input_record?: BackupBundleInputRecord | null;
+}
+
+export interface BackupBundleInputEntry {
+  command_id?: number | null;
+  // Synthetic command code; restore falls back to 0x4E20 + command_id.
+  fid?: number | null;
+  // 1-based ordinal an activity power-on 0xC5 step points at.
+  input_index?: number | null;
+  ordinal?: number | null;
+  name?: string | null;
+  label?: string | null;
+}
+
+export interface BackupBundleInputRecord {
+  entries?: BackupBundleInputEntry[] | null;
+  // control_keys / favorites / flags / state_byte are preserved opaquely.
+  [key: string]: unknown;
+}
+
+// A physical-button binding. At the device level a binding plays one of
+// the device's own commands (no `device_id`; long-press is same-device).
+// At the activity level it targets a command on some source device, so it
+// carries `device_id` (and `long_press_device_id` for the long press).
+export interface BackupBundleButtonBinding {
+  button_id?: number | null;
+  button_name?: string | null;
+  device_id?: number | null;
+  command_id?: number | null;
+  command_name?: string | null;
+  long_press_device_id?: number | null;
+  long_press_command_id?: number | null;
 }
 
 export interface BackupBundleCommandRow {
@@ -233,6 +280,7 @@ export interface BackupBundleActivityPayload {
   referenced_source_device_ids?: number[] | null;
   favorite_slots?: BackupBundleFavoriteSlot[] | null;
   macros?: BackupBundleMacroRow[] | null;
+  button_bindings?: BackupBundleButtonBinding[] | null;
 }
 
 export interface BackupBundlePayload {

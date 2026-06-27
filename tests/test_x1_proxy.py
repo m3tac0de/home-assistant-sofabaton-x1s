@@ -163,6 +163,48 @@ def test_status_ack_07_finishes_empty_activities_burst_immediately() -> None:
     assert proxy._activity_retry_due_at is None
 
 
+def test_app_req_activities_arms_snapshot_so_rows_are_not_ghosted() -> None:
+    # While the app drives the session the proxy never sends its own
+    # REQ_ACTIVITIES, so observing the app's request must arm a pending
+    # snapshot; otherwise every row is rejected as a ghost and the running
+    # activity (the `active` flag) never reaches current_activity.
+    from custom_components.sofabaton_x1s.lib.protocol_const import OP_REQ_ACTIVITIES
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    proxy.state.activities = {0x65: {"name": "Watch TV", "active": True, "needs_confirm": False}}
+    proxy.state.set_hint(0x65)
+
+    # No request in flight yet: a row would be ghosted.
+    assert proxy._activity_request_inflight is None
+
+    # Simulate the app asking the hub for the activity list.
+    proxy._handle_app_frames([(OP_REQ_ACTIVITIES, b"", b"", 0, 0)])
+    assert proxy._activity_request_inflight is not None
+
+    # The hub's rows are now adopted instead of discarded.
+    assert proxy.ingest_activity_row(
+        row_idx=1,
+        expected_rows=2,
+        act_id=0x65,
+        activity={"id": 0x65, "name": "Watch TV", "active": False, "needs_confirm": False},
+    )
+    assert proxy.ingest_activity_row(
+        row_idx=2,
+        expected_rows=2,
+        act_id=0x66,
+        activity={"id": 0x66, "name": "Play Xbox", "active": True, "needs_confirm": False},
+    )
+
+    proxy._on_activities_burst_end("activities")
+
+    assert proxy.state.activities == {
+        0x65: {"name": "Watch TV", "active": False, "needs_confirm": False},
+        0x66: {"name": "Play Xbox", "active": True, "needs_confirm": False},
+    }
+    # The newly running activity is reflected in the hint the sensor reads.
+    assert proxy.state.current_activity_hint == 0x66
+
+
 def test_try_finish_devices_burst_ends_burst_once_snapshot_is_complete() -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 
@@ -5630,6 +5672,90 @@ def test_restore_activity_replays_create_and_remaps_device_ids(monkeypatch) -> N
 
     # Activity got registered locally so callers see it immediately.
     assert proxy.state.activities.get(0x55, {}).get("name") == "Watch TV"
+
+
+def test_collect_referenced_source_device_ids_excludes_activity_own_id() -> None:
+    """A macro binding targets the activity's OWN id (device_id == activity,
+    command_id == macro button id). That self-reference is not a source
+    device and must not be treated as a referenced device."""
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    payload = _make_activity_backup_payload()
+    payload["button_bindings"].append(
+        {
+            "button_id": 0x5A,
+            "button_name": "Menu",
+            "device_id": 101,  # the activity's own id
+            "command_id": 3,  # the macro's button_id
+            "long_press_device_id": None,
+            "long_press_command_id": None,
+        }
+    )
+
+    referenced = proxy._collect_referenced_source_device_ids(payload)
+    assert 101 not in referenced
+    assert referenced == {11, 12}
+
+
+def test_restore_activity_binds_a_macro_to_a_button(monkeypatch) -> None:
+    """A macro binding restores as a button binding that targets the
+    freshly-allocated activity id (its short-press device id) with the
+    macro's button_id in the command slot. The activity's own id is NOT
+    required in the device_id_map.
+    """
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1,
+    )
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "reset_ack_queues", lambda: None)
+
+    sequence_calls: list[list] = []
+
+    def _run_create_sequence(_proxy, steps):
+        sequence_calls.append(list(steps))
+        return types.SimpleNamespace(
+            success=True, assigned_device_id=0x55, failed_step=None, failed_index=None
+        )
+
+    monkeypatch.setattr(x1_proxy_module, "run_create_sequence", _run_create_sequence)
+
+    payload = _make_activity_backup_payload()
+    payload["button_bindings"].append(
+        {
+            "button_id": 0x5A,
+            "button_name": "Menu",
+            "device_id": 101,  # the activity's own id → macro binding
+            "command_id": 3,  # the macro's button_id
+            "long_press_device_id": None,
+            "long_press_command_id": None,
+        }
+    )
+    payload["macros"].append(
+        {
+            "button_id": 3,
+            "name": "My Macro",
+            "steps": [
+                {"device_id": 11, "command_id": 1, "button_code": 0x4E21, "duration": 0, "delay": 0xFF},
+            ],
+        }
+    )
+
+    # device_id_map intentionally omits 101: a macro binding must not need it.
+    result = proxy.restore_activity(payload, device_id_map={11: 0x21, 12: 0x22})
+    assert result["status"] == "success"
+
+    post_steps = sequence_calls[1]
+    binding_steps = [s for s in post_steps if s.family == 0x3E]  # FAMILY_BUTTON_BINDING
+    macro_binding = next(s for s in binding_steps if s.payload[7] == 0x5A)
+    # Short-press device id == the new activity id; the command slot carries
+    # the macro's button_id verbatim (not remapped through command ids).
+    assert macro_binding.payload[8] == 0x55
+    assert macro_binding.payload[15] == 3
 
 
 def test_log_frames_dispatches_handlers_at_info_level() -> None:

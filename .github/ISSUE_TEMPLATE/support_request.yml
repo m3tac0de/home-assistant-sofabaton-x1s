@@ -1,0 +1,57 @@
+name: Support or question
+description: Ask for help with setup, usage, troubleshooting, or whether something is supported
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Questions and support requests are welcome. Share whatever context you already have; this form is here to help follow-up, not to block you.
+  - type: dropdown
+    id: area
+    attributes:
+      label: What are you using?
+      options:
+        - Home Assistant integration
+        - Standalone sofabaton-x package / CLI
+        - Both
+        - Not sure yet
+    validations:
+      required: true
+  - type: dropdown
+    id: hub_model
+    attributes:
+      label: Hub model
+      options:
+        - X1
+        - X1S
+        - X2
+        - Unknown / not sure
+        - Not hub-specific
+    validations:
+      required: false
+  - type: textarea
+    id: question
+    attributes:
+      label: What do you need help with?
+      description: Describe what you are trying to do and where you got stuck.
+      placeholder: |
+        I am trying to...
+        I am stuck because...
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions or install method
+      description: Optional. Include Home Assistant, integration, sofabaton-x, Python, hub firmware, HACS, pip, or source checkout details if relevant.
+      placeholder: "Example: pip install sofabaton-x on Python 3.12, or HACS integration on HA 2026.6"
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Helpful context
+      description: Optional. Screenshots, YAML, terminal output, diagnostics, network/VLAN details, or what you already tried.
+      placeholder: Add any context that might help.
+    validations:
+      required: false

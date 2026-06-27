@@ -62,6 +62,7 @@ from .command_config import (
 )
 from .cache_store import PersistentCacheStore
 from .lib.commands import build_descriptive_ir_blob_body
+from .lib.hub_listener import bounce_hub_listener
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
@@ -1281,7 +1282,9 @@ async def _run_backup_export_operation(
         return dict(payload_update)
 
     def _progress(payload: dict[str, Any] | None = None, **payload_update: Any) -> None:
-        registry.update(
+        # The library runs the backup in an executor and invokes this from
+        # that thread, so marshal onto the loop.
+        registry.update_from_thread(
             operation_id,
             **_normalize_progress_payload(payload, **payload_update),
         )
@@ -2423,7 +2426,29 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             roku_listener = await async_get_roku_listener(hass)
             await roku_listener.async_remove_hub(entry.entry_id)
             await hub.async_stop()
+            # On a user-disable (not a reload/options change/HA shutdown) with
+            # other hubs still sharing the TCP listener, briefly bounce that
+            # listener so the now-disconnected hub's reconnects are refused at
+            # the SYN level and it gives up — otherwise it loops forever on the
+            # still-open shared port and stays invisible to the Sofabaton app.
+            if getattr(entry, "disabled_by", None) is not None:
+                await hass.async_add_executor_job(bounce_hub_listener)
     return unload_ok
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Release a hub when its config entry is deleted.
+
+    Removal isn't distinguishable from a reload inside ``async_unload_entry``
+    (neither sets ``disabled_by``), so it gets its own hook. By the time this
+    runs the bridge has already been stopped and unregistered by the unload,
+    leaving the physical hub looping on the still-open shared listener — a
+    bounce refuses it at the SYN level so it gives up and becomes reachable by
+    the Sofabaton app. The bounce is a no-op if no other hubs keep the shared
+    listener alive (last hub removed → port already closed).
+    """
+
+    await hass.async_add_executor_job(bounce_hub_listener)
 
 
 

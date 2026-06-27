@@ -1,0 +1,63 @@
+# Packaging metadata for the standalone "sofabaton-x" library.
+#
+# The library's source of truth is custom_components/sofabaton_x1s/lib;
+# at build time hatchling remaps that directory into the wheel as the
+# top-level package "sofabaton" (see docs/sofabaton-x_library_plan.md).
+# The Home Assistant integration itself is NOT part of this distribution.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sofabaton-x"
+dynamic = ["version"]
+description = "Unofficial protocol library and man-in-the-middle proxy for Sofabaton X1 / X1S / X2 universal remote hubs"
+readme = "sofabaton-x/README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "m3tac0de" }]
+keywords = ["sofabaton", "x1", "x1s", "x2", "universal-remote", "proxy", "mdns", "home-automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Home Automation",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "zeroconf>=0.131",
+]
+
+[project.urls]
+Homepage = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x"
+Issues = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues"
+# The published package is built from the in-tree library directory
+# (remapped to top-level "sofabaton" at build time), which isn't obvious
+# from the repo layout — link it directly.
+Source = "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/custom_components/sofabaton_x1s/lib"
+
+[project.scripts]
+sofabaton = "sofabaton.cli:main"
+
+[tool.hatch.version]
+path = "custom_components/sofabaton_x1s/lib/version.py"
+
+[tool.hatch.build.targets.wheel]
+# The in-tree package directory ships as top-level "sofabaton".
+[tool.hatch.build.targets.wheel.force-include]
+"custom_components/sofabaton_x1s/lib" = "sofabaton"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "custom_components/sofabaton_x1s/lib/**",
+    "sofabaton-x/README.md",
+    "sofabaton-x/examples/**",
+    "LICENSE",
+    "docs/sofabaton-x_library_plan.md",
+]

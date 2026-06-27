@@ -1,4 +1,5 @@
 import asyncio
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +13,7 @@ from custom_components.sofabaton_x1s.__init__ import (
     _get_lovelace_resource_mode,
     _inspect_frontend_dir,
     _reconcile_version_metadata,
+    async_remove_entry,
     async_setup_entry,
     async_unload_entry,
     async_setup,
@@ -366,7 +368,16 @@ def test_build_frontend_module_specs_can_skip_bundled_remote_card() -> None:
 def test_async_get_remote_card_version_reads_source_constant() -> None:
     version = asyncio.run(_async_get_remote_card_version(_FakeHass()))
 
-    assert version == "0.1.7"
+    assert re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version)
+    assert _build_frontend_module_specs(
+        tools_version="0.5.7",
+        remote_version=version,
+        include_remote_card=True,
+    )[1] == {
+        "name": "Sofabaton Virtual Remote",
+        "filename": "remote-card.js",
+        "version": version,
+    }
 
 
 def test_async_sync_lovelace_resources_creates_and_updates_expected_modules() -> None:
@@ -689,6 +700,20 @@ def test_async_unload_entry_unregisters_frontend_resources_when_last_hub_is_remo
     assert asyncio.run(async_unload_entry(hass, entry)) is True
     assert resources.deleted == [1]
     assert hass.data["sofabaton_x1s"]["storage_resources_registered"] is False
+
+
+def test_async_remove_entry_bounces_shared_listener(monkeypatch) -> None:
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.__init__.bounce_hub_listener",
+        lambda *args, **kwargs: calls.append(True),
+    )
+    hass = _FakeHass()
+    entry = SimpleNamespace(entry_id="entry-1")
+
+    asyncio.run(async_remove_entry(hass, entry))
+
+    assert calls == [True]
 
 
 async def _async_noop(*args, **kwargs):

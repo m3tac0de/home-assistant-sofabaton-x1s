@@ -52,5 +52,12 @@
         }
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "ip_commands": {
+        "name": "Wifi Commands"
+      }
+    }
   }
 }

@@ -20,7 +20,7 @@ import threading
 import time
 from typing import Any
 
-from ..const import HUB_VERSION_X2
+from .hub_versions import HUB_VERSION_X2
 from .commands import extract_ir_dump_blob, extract_ir_dump_label_field
 from .protocol_const import (
     OP_REQ_ACTIVITY_MAP,

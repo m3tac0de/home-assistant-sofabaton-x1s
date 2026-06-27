@@ -303,7 +303,7 @@ class CacheBackupMixin:
         self._pending_macro_requests.clear()
         self._pending_activity_map_requests.clear()
 
-    def clear_persistent_cache_for(self, ent_id: int, *, kind: str) -> None:
+    def clear_cached_entity_detail(self, ent_id: int, *, kind: str) -> None:
         ent_lo = ent_id & 0xFF
         if kind == "device":
             self.state.devices.pop(ent_lo, None)
@@ -351,7 +351,7 @@ class CacheBackupMixin:
 
         Deliberately does NOT clear per-device commands or ip_buttons — those are
         preserved for devices that still exist and pruned separately (via
-        clear_persistent_cache_for) for devices that were removed.
+        clear_cached_entity_detail) for devices that were removed.
         """
         self.state.devices.clear()
         self.state.ip_devices.clear()
@@ -363,7 +363,7 @@ class CacheBackupMixin:
         Deliberately does NOT clear per-activity keymaps, favorites, keybindings,
         or macros — those are not returned by OP_REQ_ACTIVITIES and would not be
         repopulated by the burst.  Per-activity detail data for removed activities
-        is pruned separately via clear_persistent_cache_for.
+        is pruned separately via clear_cached_entity_detail.
         """
         self.state.activities.clear()
         self._activity_row_payloads.clear()

@@ -1,0 +1,78 @@
+# Release pipeline for the standalone sofabaton-x library.
+#
+# Trigger: push a tag named sofabaton-x-vX.Y.Z (after bumping
+# custom_components/sofabaton_x1s/lib/version.py to X.Y.Z — the
+# verify-version step refuses mismatched tags).
+#
+# Publishing uses PyPI trusted publishing (OIDC): no tokens or secrets.
+# One-time setup on pypi.org -> Publishing -> pending publisher:
+#   project sofabaton-x, owner m3tac0de, repo home-assistant-sofabaton-x1s,
+#   workflow sofabaton-x-release.yml, environment pypi.
+name: sofabaton-x release
+
+on:
+  push:
+    tags:
+      - "sofabaton-x-v*"
+
+jobs:
+  test:
+    name: test before publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: npm ci
+      - run: pip install pytest
+      - name: Library tests (boundary lint, discovery, aio, public API)
+        run: pytest tests/lib -q
+      - name: Full integration suite
+        run: pytest tests -q
+
+  build:
+    name: build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Verify tag matches lib/version.py
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#sofabaton-x-v}"
+          PKG_VERSION="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' custom_components/sofabaton_x1s/lib/version.py)"
+          echo "tag=$TAG_VERSION package=$PKG_VERSION"
+          test -n "$PKG_VERSION"
+          test "$TAG_VERSION" = "$PKG_VERSION"
+      - run: pip install build
+      - run: python -m build
+      - name: Install wheel and smoke-test
+        run: |
+          pip install dist/*.whl
+          python -c "import sofabaton; assert all(hasattr(sofabaton, n) for n in sofabaton.__all__); print('OK', sofabaton.__version__)"
+          sofabaton --help
+      - uses: actions/upload-artifact@v6
+        with:
+          name: sofabaton-x-dist
+          path: dist/
+
+  publish:
+    name: publish to PyPI
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/sofabaton-x/
+    permissions:
+      id-token: write  # OIDC for PyPI trusted publishing
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: sofabaton-x-dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

@@ -4,7 +4,7 @@ import time
 from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Literal, Mapping, Optional
 
-from ..const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
+from .hub_versions import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 from .commands import (
     COMMAND_RECORD_STRIDE_X1,
     COMMAND_RECORD_STRIDE_X1S_X2,

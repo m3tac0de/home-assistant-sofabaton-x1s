@@ -1,57 +1,92 @@
 name: Bug report
-description: Report an issue with the Sofabaton X1/X1S Home Assistant integration
+description: Report something that is broken in the Home Assistant integration or sofabaton-x
 labels: [bug]
 body:
   - type: markdown
     attributes:
       value: |
-        Thank you for helping improve the integration. Please complete all required fields and attach logs/diagnostics so we can troubleshoot quickly.
+        Thanks for taking the time to report this. Please share what you can; logs and version details are helpful, but do not worry if you cannot collect everything.
+
+        If you are using the standalone `sofabaton-x` package, Home Assistant diagnostics and `switch.<hub>_hex_logging` do not apply.
+  - type: dropdown
+    id: affected_area
+    attributes:
+      label: What are you using?
+      description: Pick the closest option.
+      options:
+        - Home Assistant integration
+        - Standalone sofabaton-x package / CLI
+        - Documentation
+        - Not sure
+    validations:
+      required: true
   - type: dropdown
     id: hub_model
     attributes:
       label: Hub model
-      description: Select the hub model you are using.
+      description: Select your hub model if relevant.
       options:
         - X1
         - X1S
+        - X2
+        - Unknown / not sure
+        - Not hub-specific
+    validations:
+      required: false
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Share any versions you know. Examples include integration version, Home Assistant version, sofabaton-x version, Python version, hub firmware, or install method.
+      placeholder: "Example: HA 2026.6.1, integration v1.2.3, sofabaton-x 0.4.0, Python 3.12, HACS install"
+    validations:
+      required: false
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the issue, what you expected, and what actually happened.
+      placeholder: |
+        I was trying to...
+        I expected...
+        Instead...
     validations:
       required: true
   - type: textarea
     id: reproduction_steps
     attributes:
-      label: Reproduction steps
-      description: Provide numbered steps to reproduce the issue.
+      label: Steps to reproduce
+      description: If you can reproduce it, list the steps. A short description is fine.
       placeholder: |
-        1. Go to ...
-        2. Click on ...
-        3. Scroll down to ...
-        4. See error
+        1. ...
+        2. ...
+        3. ...
     validations:
-      required: true
-  - type: checkboxes
-    id: logging_checklist
-    attributes:
-      label: Logging requirements
-      description: Enable detailed logging before reproducing the issue.
-      options:
-        - label: I enabled `switch.<hub>_hex_logging` on the hub device.
-          required: true
-        - label: I downloaded the diagnostics log file.
-          required: true
-    validations:
-      required: true
+      required: false
   - type: textarea
     id: logs
     attributes:
-      label: Logs or diagnostics
+      label: Logs, diagnostics, or terminal output
+      description: Optional, but very useful. Remove secrets, tokens, IPs, and anything private before posting.
       placeholder: |
-        1. In Home Assistant, open **Settings → Devices & services**.
-        2. Select **Sofabaton X1/X1S** and open the hub device.
-        3. Toggle `switch.<hub>_hex_logging` **on** to capture full hub traffic.
-        4. Perform the actions that demonstrate the issue while hex logging is enabled.
-        5. With hex logging still on, open the **⋮** menu (three dots) on the **Sofabaton X1/X1S** integration card and choose **Download diagnostics**. This downloads the log file we need along with structured diagnostics.
-        6. Toggle `switch.<hub>_hex_logging` **off** when finished to reduce noise.
+        Home Assistant users:
+        - If possible, enable switch.<hub>_hex_logging, reproduce the issue, then download diagnostics from the integration card.
+        - See docs/logging.md for the detailed workflow.
+
+        sofabaton-x users:
+        - Paste the command you ran, traceback, terminal output, or a small Python snippet that reproduces the issue.
+        - If discovery/proxying is involved, include whether the official app was connected and what mode you expected: observe or control.
+    validations:
+      required: false
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Anything else?
+      description: Screenshots, YAML snippets, links, network/VLAN details, or other context that might help.
+      placeholder: Add any extra context here.
+    validations:
+      required: false
   - type: markdown
     attributes:
       value: |
-        Need help enabling logging? See the [logging guide](../../docs/logging.md).
+        Home Assistant logging help: [docs/logging.md](../../docs/logging.md)

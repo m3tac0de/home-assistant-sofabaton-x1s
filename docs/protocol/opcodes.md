@@ -387,9 +387,12 @@ Observed family-`0x02` banner semantics:
 - `payload[7]` = model code (`0x01` X1, `0x02` X1S, `0x03` X2)
 - `payload[8:12]` = production batch bytes (`20 22 11 20` -> `20221120`)
 - `payload[12]` = hub firmware version
-- `payload[13:15]` = trailing flags:
+- `payload[13:15]` = hub/firmware-dependent flag bytes:
   - X1 observed: `00 00`
-  - X1S/X2 observed: `01 00`
+  - X1S/X2 observed: `01 00`, but other values (e.g. `01 03`) occur
+  - these vary across hub models/revisions, so they are **not** used to validate
+    the banner; acceptance keys on a recognised model code, the BCD production
+    date in `payload[8:12]`, and the frame checksum
 - `payload[15:]` = UTF-8 hub name
 
 Observed `INFO_BANNER` (`0x112F`) semantics:

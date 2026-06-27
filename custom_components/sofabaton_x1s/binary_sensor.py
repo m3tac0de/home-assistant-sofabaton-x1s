@@ -39,6 +39,9 @@ class SofabatonClientSensor(BinarySensorEntity):
 
     _attr_should_poll = False
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    # Stable identifier surfaced in the frontend entity registry; used by the
+    # Control Panel card's getEntitySuggestion to recommend itself for this entity.
+    _attr_translation_key = "client"
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
@@ -80,6 +83,7 @@ class SofabatonHubConnectionSensor(BinarySensorEntity):
 
     _attr_should_poll = False
     _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
+    _attr_translation_key = "hub_connected"
 
     def __init__(self, hub: SofabatonHub, entry: ConfigEntry) -> None:
         self._hub = hub
