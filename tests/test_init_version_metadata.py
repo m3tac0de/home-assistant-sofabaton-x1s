@@ -1,4 +1,5 @@
 import asyncio
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -367,7 +368,16 @@ def test_build_frontend_module_specs_can_skip_bundled_remote_card() -> None:
 def test_async_get_remote_card_version_reads_source_constant() -> None:
     version = asyncio.run(_async_get_remote_card_version(_FakeHass()))
 
-    assert version == "0.1.7"
+    assert re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", version)
+    assert _build_frontend_module_specs(
+        tools_version="0.5.7",
+        remote_version=version,
+        include_remote_card=True,
+    )[1] == {
+        "name": "Sofabaton Virtual Remote",
+        "filename": "remote-card.js",
+        "version": version,
+    }
 
 
 def test_async_sync_lovelace_resources_creates_and_updates_expected_modules() -> None:
