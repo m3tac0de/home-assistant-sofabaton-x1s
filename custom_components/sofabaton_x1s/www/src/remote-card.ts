@@ -132,7 +132,7 @@ import {
 } from "./remote-card-hub";
 
 const CARD_NAME = "Sofabaton Virtual Remote";
-const CARD_VERSION = "0.1.7";
+const CARD_VERSION = "0.1.8";
 const KEY_CAPTURE_HELP_URL =
   "https://github.com/m3tac0de/sofabaton-virtual-remote/blob/main/docs/keycapture.md";
 const LOG_ONCE_KEY = `__${CARD_NAME}_logged__`;
