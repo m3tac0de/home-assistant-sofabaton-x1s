@@ -1892,7 +1892,9 @@ var TOOLS_CARD_STRINGS = {
     stepCancel: "Cancel",
     stepNoCommands: "This device has no commands.",
     stepWaitAria: "Wait after this step (seconds)",
+    stepWaitLabel: "Delay",
     stepWaitUnit: "s",
+    renameMacroAria: "Rename macro",
     deleteStepAria: "Delete step",
     editStepAria: "Edit step",
     newMacroName: "Macro",
@@ -3571,6 +3573,7 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
 }
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-tab.ts
+var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
 var BACKUP_SECTION_ITEMS = [
@@ -3913,6 +3916,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       }
       if (target.kind === "macro") {
         this._commitEditBundleEdit(renameBundleActivityMacro(this._editBundle, target.activityId, target.buttonId, next));
+        if (this._macroEditor && this._macroEditor.scope === "activity" && this._macroEditor.entityId === target.activityId && this._macroEditor.buttonId === target.buttonId) {
+          this._macroEditor = { ...this._macroEditor, name: next };
+        }
         this._closeEditRenameDialog();
         return;
       }
@@ -4081,6 +4087,19 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._closeMacroEditor = () => {
       this._macroEditor = null;
       this._closeStepDialog();
+    };
+    // Rename the macro currently open in the step editor. Reuses the shared
+    // rename dialog (kind "macro"); applying it also refreshes the editor's
+    // own title via the macro branch in _applyEditRenameDialog.
+    this._openMacroNameRenameDialog = () => {
+      const editor = this._macroEditor;
+      if (!editor || editor.scope !== "activity" || POWER_MACRO_BUTTON_IDS.has(editor.buttonId)) return;
+      this._editRenameDialogTarget = { kind: "macro", activityId: editor.entityId, buttonId: editor.buttonId };
+      this._editRenameDialogDraft = editor.name;
+      this._editRenameDialogError = "";
+      this._editRenameDialogDecodedSnapshot = null;
+      this._editRenameDialogDecodedDrafts = {};
+      this._editRenameDialogOpen = true;
     };
     this._openAddStepDialog = () => {
       const editor = this._macroEditor;
@@ -5150,23 +5169,43 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       gap: 8px;
       flex: 0 0 auto;
     }
-    /* Inline per-row wait control: the delay that trails this command. */
+    /* Inline per-row wait control: the delay that trails this command.
+       The "Delay" caption stacks above the number inside the same bordered
+       pill so the label and field read as one piece. The caption is tiny
+       and the pill stays shorter than the row, so it adds no row height. */
     .step-wait {
       display: inline-flex;
+      flex-direction: column;
       align-items: center;
-      gap: 3px;
+      gap: 1px;
       flex: 0 0 auto;
-      padding: 3px 6px;
+      padding: 2px 6px 3px;
       border: 1px solid var(--divider-color);
       border-radius: var(--backup-radius-sm);
       background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 60%, transparent);
+      cursor: text;
     }
     .step-wait:focus-within {
       border-color: var(--primary-color);
     }
+    .step-wait-caption {
+      font-size: 9px;
+      line-height: 1;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+      pointer-events: none;
+    }
+    .step-wait-field {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 3px;
+    }
     .step-wait-input {
       width: 42px;
       min-width: 0;
+      padding: 0;
       border: none;
       background: transparent;
       color: var(--primary-text-color);
@@ -7185,6 +7224,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   }
   _renderMacroStepEditorView(editor) {
     const items = this._currentMacroStepItems();
+    const canRename = editor.scope === "activity" && !POWER_MACRO_BUTTON_IDS.has(editor.buttonId);
     const sortable = this._haSortableReady && items.length > 1;
     const renderRows = () => items.map((item) => this._renderMacroStepRow(item, sortable));
     return T`
@@ -7204,6 +7244,17 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                   <div class="detail-title">${editor.name}</div>
                 </div>
                 ${this._editBundleDirty ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${canRename ? T`
+                      <div class="detail-title-actions">
+                        <button
+                          class="icon-btn"
+                          @click=${this._openMacroNameRenameDialog}
+                          aria-label=${TOOLS_CARD_STRINGS.backup.renameMacroAria}
+                        >
+                          <ha-icon icon="mdi:pencil"></ha-icon>
+                        </button>
+                      </div>
+                    ` : A}
               </div>
             </div>
           </div>
@@ -7240,6 +7291,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
           </div>
         </div>
         ${this._renderStepDialog()}
+        ${this._renderEditRenameDialog()}
       </div>
     `;
   }
@@ -7261,17 +7313,20 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
           </div>
           <div class="quick-access-actions">
             <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
-              <input
-                class="step-wait-input"
-                type="number"
-                min="0"
-                max="120"
-                step="0.5"
-                aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
-                .value=${this._byteToSeconds(item.wait)}
-                @change=${(event) => this._handleStepWaitChange(item, event)}
-              />
-              <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
+              <span class="step-wait-caption">${TOOLS_CARD_STRINGS.backup.stepWaitLabel}</span>
+              <span class="step-wait-field">
+                <input
+                  class="step-wait-input"
+                  type="number"
+                  min="0"
+                  max="120"
+                  step="0.5"
+                  aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
+                  .value=${this._byteToSeconds(item.wait)}
+                  @change=${(event) => this._handleStepWaitChange(item, event)}
+                />
+                <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
+              </span>
             </label>
             ${isPower ? A : T`
                   <button class="icon-btn" @click=${() => this._openEditStepDialog(item)} aria-label=${TOOLS_CARD_STRINGS.backup.editStepAria}>
