@@ -982,6 +982,27 @@ function cascadeBindingForDeletedCommand(
   return binding;
 }
 
+/**
+ * How an activity button binding reacts to one of the activity's own MACROS
+ * being deleted. A macro binding stores `device_id` = the activity's own id
+ * and `command_id` = the macro's `button_id`. Drop the binding when its short
+ * press targets the deleted macro; clear only the long press when that alone
+ * references it.
+ */
+function cascadeBindingForDeletedMacro(
+  binding: BackupBundleButtonBinding,
+  activityId: number,
+  macroButtonId: number,
+): BackupBundleButtonBinding | null {
+  const shortMatches = Number(binding?.device_id || 0) === activityId
+    && Number(binding?.command_id || 0) === macroButtonId;
+  if (shortMatches) return null;
+  const longMatches = Number(binding?.long_press_device_id || 0) === activityId
+    && Number(binding?.long_press_command_id || 0) === macroButtonId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
+
 /** Apply a binding-cascade transform to a list, dropping the nulls. */
 function applyBindingCascade(
   bindings: BackupBundleButtonBinding[] | null | undefined,
@@ -1192,6 +1213,12 @@ export function deleteBundleActivityQuickAccess(
     return {
       ...activity,
       macros: (activity.macros ?? []).filter((macro) => Number(macro?.button_id || 0) !== bId),
+      // A button bound to this macro now dangles — drop it (or clear the
+      // long press if only that referenced the macro).
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedMacro(binding, Number(activityId), bId),
+      ),
     };
   });
   return reconcileActivityPowerMacros(next, Number(activityId));
@@ -1357,10 +1384,13 @@ function activityPowerDeviceIds(activity: BackupBundleActivityPayload): Set<numb
  * by deleting the device itself.
  */
 function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[] {
+  const selfId = Number(activity?.device?.device_id || 0);
   const ids = activityPowerDeviceIds(activity);
   const add = (value: unknown) => {
     const id = Number(value || 0);
-    if (id > 0) ids.add(id);
+    // The activity's own id appears as a binding target for MACRO bindings;
+    // it is not a source device and must not pull power steps for itself.
+    if (id > 0 && id !== selfId) ids.add(id);
   };
   for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
   for (const binding of activity.button_bindings ?? []) {
@@ -1656,7 +1686,9 @@ export function clearActivityDeviceInput(
 //   "power" = a device power-on/off reference (0xC6/0xC7); display only.
 //   "input" = a device input reference (0xC5); its target command IS editable
 //             (sets the input), but it can't be deleted.
-export type MacroStepKind = "command" | "delay" | "power" | "input";
+// Editor item kinds. Waits are no longer their own items — each command's
+// trailing delay is folded onto it as `wait`, so there is no "delay" kind.
+export type MacroStepKind = "command" | "power" | "input";
 
 export interface BackupMacroStepItem {
   index: number;
@@ -1698,6 +1730,66 @@ function deviceMacroDelayStep(delay: number): BackupBundleMacroStep {
   return { command_id: 0xFF, duration: 0xFF, delay: Number(delay) & 0xFF };
 }
 
+// ── Command-group model ─────────────────────────────────────────────
+//
+// The editor treats a macro as a list of command-groups, mirroring the
+// Sofabaton app: a group is one command-like head step (a real command,
+// or a power/input reference) plus the consecutive delay/wait step(s)
+// that trail it — that trailing delay is the command's attached "wait".
+// Reordering/removing a command therefore carries its wait along. Delay
+// steps before the first head (an anomaly real exports don't produce)
+// are preserved verbatim as `prefix`.
+
+interface MacroStepGroup {
+  head: BackupBundleMacroStep;
+  trailing: BackupBundleMacroStep[];
+}
+
+function groupMacroSteps(
+  steps: BackupBundleMacroStep[] | null | undefined,
+): { prefix: BackupBundleMacroStep[]; groups: MacroStepGroup[] } {
+  const prefix: BackupBundleMacroStep[] = [];
+  const groups: MacroStepGroup[] = [];
+  for (const step of steps ?? []) {
+    if (isMacroDelayStep(step)) {
+      if (groups.length === 0) prefix.push(step);
+      else groups[groups.length - 1].trailing.push(step);
+    } else {
+      groups.push({ head: step, trailing: [] });
+    }
+  }
+  return { prefix, groups };
+}
+
+function flattenMacroGroups(
+  prefix: BackupBundleMacroStep[],
+  groups: MacroStepGroup[],
+): BackupBundleMacroStep[] {
+  const out = [...prefix];
+  for (const group of groups) out.push(group.head, ...group.trailing);
+  return out;
+}
+
+/** A group's attached wait byte — the value of its first trailing delay (0 if none). */
+function groupWait(group: MacroStepGroup): number {
+  return group.trailing.length > 0 ? Number(group.trailing[0]?.delay || 0) : 0;
+}
+
+/**
+ * Set a group's attached wait. Patches the first trailing delay in place
+ * (kept even at 0), or inserts one when the group has no delay yet and the
+ * wait is non-zero. A zero wait on a group with no delay is a no-op, so we
+ * never materialize delay-0 rows nor auto-delete an existing one.
+ */
+function applyGroupWait(group: MacroStepGroup, waitByte: number, isActivity: boolean): void {
+  const value = Number(waitByte) & 0xFF;
+  if (group.trailing.length > 0) {
+    group.trailing = [{ ...group.trailing[0], delay: value }, ...group.trailing.slice(1)];
+  } else if (value > 0) {
+    group.trailing = [isActivity ? powerMacroDelayRow(value) : deviceMacroDelayStep(value)];
+  }
+}
+
 /** Summaries of a device's macros (its power-on/off plus any user macros). */
 export function deviceMacroSummaries(
   bundle: BackupBundlePayload | null,
@@ -1726,19 +1818,17 @@ export function deviceMacroStepItems(
 ): BackupMacroStepItem[] {
   const device = findDevice(bundle, deviceId);
   const macro = (device?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
-  return (macro?.steps ?? []).map((step, index) => {
-    if (isMacroDelayStep(step)) {
-      return { index, kind: "delay", commandId: null, deviceId: null, label: "Wait", hold: 0, wait: Number(step?.delay || 0) };
-    }
-    const commandId = Number(step?.command_id || 0);
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const commandId = Number(group.head?.command_id || 0);
     return {
       index,
       kind: "command",
       commandId,
       deviceId: null,
       label: commandNameOrFallback(bundle as BackupBundlePayload, Number(deviceId), commandId),
-      hold: Number(step?.duration || 0),
-      wait: 0,
+      hold: Number(group.head?.duration || 0),
+      wait: groupWait(group),
     };
   });
 }
@@ -1813,15 +1903,8 @@ export function addDeviceMacroCommandStep(
   ]);
 }
 
-export function addDeviceMacroDelayStep(
-  bundle: BackupBundlePayload,
-  deviceId: number,
-  buttonId: number,
-  wait: number,
-): BackupBundlePayload {
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => [...steps, deviceMacroDelayStep(wait)]);
-}
-
+// Macro step indices below are GROUP indices (one per command-like step),
+// not flat step indices: a command and its trailing wait move/delete as one.
 export function updateDeviceMacroStep(
   bundle: BackupBundlePayload,
   deviceId: number,
@@ -1829,9 +1912,30 @@ export function updateDeviceMacroStep(
   index: number,
   patch: MacroStepPatch,
 ): BackupBundlePayload {
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) =>
-    steps.map((step, i) => (i === Number(index) ? patchMacroStep(step, patch, false) : step)),
-  );
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, false);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+
+/** Set the attached wait (delay byte) on a command group. */
+export function setDeviceMacroStepWait(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  buttonId: number,
+  index: number,
+  wait: number,
+): BackupBundlePayload {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, false);
+    return flattenMacroGroups(prefix, groups);
+  });
 }
 
 export function removeDeviceMacroStep(
@@ -1840,7 +1944,12 @@ export function removeDeviceMacroStep(
   buttonId: number,
   index: number,
 ): BackupBundlePayload {
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => steps.filter((_, i) => i !== Number(index)));
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    if (Number(index) < 0 || Number(index) >= groups.length) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
+  });
 }
 
 export function reorderDeviceMacroSteps(
@@ -1849,9 +1958,14 @@ export function reorderDeviceMacroSteps(
   buttonId: number,
   orderedIndices: number[],
 ): BackupBundlePayload {
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) =>
-    orderedIndices.map((i) => steps[Number(i)]).filter((step): step is BackupBundleMacroStep => Boolean(step)),
-  );
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices
+      .map((i) => groups[Number(i)])
+      .filter((group): group is MacroStepGroup => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
 }
 
 // ── Activity user macro step editing ────────────────────────────────
@@ -1893,25 +2007,25 @@ export function activityMacroStepItems(
 ): BackupMacroStepItem[] {
   const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
   const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
-  return (macro?.steps ?? []).map((step, index) => {
-    if (isMacroDelayStep(step)) {
-      return { index, kind: "delay", commandId: null, deviceId: null, label: "Wait", hold: 0, wait: Number(step?.delay || 0) };
-    }
-    const deviceId = Number(step?.device_id || 0);
-    const commandId = Number(step?.command_id || 0);
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const head = group.head;
+    const wait = groupWait(group);
+    const deviceId = Number(head?.device_id || 0);
+    const commandId = Number(head?.command_id || 0);
     const deviceName = deviceNameFor(bundle, deviceId);
     // Mandatory power-macro references (only present in the 198/199 macros).
     if (commandId === DEVICE_POWER_ON_REF_COMMAND || commandId === DEVICE_POWER_OFF_REF_COMMAND) {
       const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? "Power on" : "Power off";
-      return { index, kind: "power", commandId, deviceId, label: `${verb} · ${deviceName}`, hold: 0, wait: 0, protected: true };
+      return { index, kind: "power", commandId, deviceId, label: `${verb} · ${deviceName}`, hold: 0, wait, protected: true };
     }
     if (commandId === DEVICE_INPUT_REF_COMMAND) {
-      const ordinal = Number(step?.duration || 0);
+      const ordinal = Number(head?.duration || 0);
       const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === ordinal);
       const inputLabel = input?.name || (ordinal > 0 ? `Input ${ordinal}` : "no input");
       // commandId carries the resolved input command (or null) so the editor
       // can pre-select it; the step itself is identified as an input ref.
-      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input · ${deviceName}: ${inputLabel}`, hold: 0, wait: 0, protected: true };
+      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input · ${deviceName}: ${inputLabel}`, hold: 0, wait, protected: true };
     }
     return {
       index,
@@ -1919,8 +2033,8 @@ export function activityMacroStepItems(
       commandId,
       deviceId,
       label: `${deviceName} · ${commandNameOrFallback(bundle as BackupBundlePayload, deviceId, commandId)}`,
-      hold: Number(step?.duration || 0),
-      wait: 0,
+      hold: Number(head?.duration || 0),
+      wait,
     };
   });
 }
@@ -1984,15 +2098,7 @@ export function addActivityMacroCommandStep(
   }]);
 }
 
-export function addActivityMacroDelayStep(
-  bundle: BackupBundlePayload,
-  activityId: number,
-  buttonId: number,
-  wait: number,
-): BackupBundlePayload {
-  return updateActivityMacro(bundle, activityId, buttonId, (steps) => [...steps, powerMacroDelayRow(Number(wait))]);
-}
-
+// Macro step indices below are GROUP indices (see device equivalents).
 export function updateActivityMacroStep(
   bundle: BackupBundlePayload,
   activityId: number,
@@ -2000,9 +2106,30 @@ export function updateActivityMacroStep(
   index: number,
   patch: MacroStepPatch,
 ): BackupBundlePayload {
-  return updateActivityMacro(bundle, activityId, buttonId, (steps) =>
-    steps.map((step, i) => (i === Number(index) ? patchMacroStep(step, patch, true) : step)),
-  );
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, true);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+
+/** Set the attached wait on an activity-macro command group (incl. power refs). */
+export function setActivityMacroStepWait(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  buttonId: number,
+  index: number,
+  wait: number,
+): BackupBundlePayload {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, true);
+    return flattenMacroGroups(prefix, groups);
+  });
 }
 
 export function removeActivityMacroStep(
@@ -2012,9 +2139,13 @@ export function removeActivityMacroStep(
   index: number,
 ): BackupBundlePayload {
   return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
     // Mandatory power-macro refs can be reordered but never deleted.
-    if (isPowerRefStep(steps[Number(index)])) return steps;
-    return steps.filter((_, i) => i !== Number(index));
+    if (isPowerRefStep(group.head)) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
   });
 }
 
@@ -2024,9 +2155,14 @@ export function reorderActivityMacroSteps(
   buttonId: number,
   orderedIndices: number[],
 ): BackupBundlePayload {
-  return updateActivityMacro(bundle, activityId, buttonId, (steps) =>
-    orderedIndices.map((i) => steps[Number(i)]).filter((step): step is BackupBundleMacroStep => Boolean(step)),
-  );
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices
+      .map((i) => groups[Number(i)])
+      .filter((group): group is MacroStepGroup => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
 }
 
 // ── Button bindings ─────────────────────────────────────────────────
@@ -2102,11 +2238,14 @@ export interface BackupButtonBindingItem {
   /** Target device for the short press (activity-level bindings only). */
   deviceId?: number;
   commandId: number;
+  /** Activity binding whose target is one of the activity's own macros. */
+  isMacroTarget?: boolean;
   /** "<device> · <command>" for activities, "<command>" for devices. */
   shortPressLabel: string;
   longPress?: {
     deviceId?: number;
     commandId: number;
+    isMacroTarget?: boolean;
     label: string;
   };
 }
@@ -2118,6 +2257,31 @@ function deviceNameFor(bundle: BackupBundlePayload | null, deviceId: number): st
 
 function commandNameOrFallback(bundle: BackupBundlePayload, deviceId: number, commandId: number): string {
   return commandLabelFor(bundle, deviceId, commandId) || `Command ${Number(commandId)}`;
+}
+
+/** Display name of one of an activity's own macros (for macro-bound buttons). */
+function activityMacroName(bundle: BackupBundlePayload | null, activityId: number, buttonId: number): string {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  return String(macro?.name || "").trim() || `Macro ${Number(buttonId)}`;
+}
+
+/**
+ * Label for an activity button-binding target. A binding whose target
+ * `device_id` equals the activity's own id is a MACRO binding: `command_id`
+ * is the macro's `button_id` (mirrors the hub keymap, where device_id=activity
+ * and command_id=macro key). Otherwise it's a command on a source device.
+ */
+function activityBindingTargetLabel(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  targetDeviceId: number,
+  targetCommandId: number,
+): string {
+  if (targetDeviceId === Number(activityId)) {
+    return `Macro · ${activityMacroName(bundle, activityId, targetCommandId)}`;
+  }
+  return `${deviceNameFor(bundle, targetDeviceId)} · ${commandNameOrFallback(bundle, targetDeviceId, targetCommandId)}`;
 }
 
 function sortBindingsByButtonId(rows: BackupBundleButtonBinding[] | null | undefined): BackupBundleButtonBinding[] {
@@ -2143,7 +2307,8 @@ export function activityButtonBindingItems(
       buttonName: buttonName(buttonId),
       deviceId,
       commandId,
-      shortPressLabel: `${deviceNameFor(bundle, deviceId)} · ${commandNameOrFallback(bundle, deviceId, commandId)}`,
+      isMacroTarget: deviceId === Number(activityId),
+      shortPressLabel: activityBindingTargetLabel(bundle, Number(activityId), deviceId, commandId),
     };
     const lpDeviceId = Number(row?.long_press_device_id || 0);
     const lpCommandId = Number(row?.long_press_command_id || 0);
@@ -2151,7 +2316,8 @@ export function activityButtonBindingItems(
       item.longPress = {
         deviceId: lpDeviceId,
         commandId: lpCommandId,
-        label: `${deviceNameFor(bundle, lpDeviceId)} · ${commandNameOrFallback(bundle, lpDeviceId, lpCommandId)}`,
+        isMacroTarget: lpDeviceId === Number(activityId),
+        label: activityBindingTargetLabel(bundle, Number(activityId), lpDeviceId, lpCommandId),
       };
     }
     items.push(item);

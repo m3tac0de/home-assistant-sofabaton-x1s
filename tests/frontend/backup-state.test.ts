@@ -5,19 +5,20 @@ import {
   activityMacroStepItems,
   activityPowerDevices,
   addActivityMacroCommandStep,
-  addActivityMacroDelayStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
   addDeviceMacroCommandStep,
-  addDeviceMacroDelayStep,
   clearActivityDeviceInput,
   removeActivityMacroStep,
+  reorderActivityMacroSteps,
   updateActivityMacroStep,
   deviceMacroStepItems,
   removeDeviceMacroStep,
   reorderDeviceMacroSteps,
   updateDeviceMacroStep,
   setActivityDeviceInput,
+  setActivityMacroStepWait,
+  setDeviceMacroStepWait,
   synthesizeCommandCode,
   applyBundleDelete,
   assertBackupBundleRestoreCompatible,
@@ -390,6 +391,59 @@ test("activityButtonBindingItems resolves labels and long-press, sorted by butto
   assert.equal(ok.longPress?.label, "Soundbar · Power");
 });
 
+// Activity with a user macro, for macro-binding tests. A macro binding
+// stores device_id = the activity's own id and command_id = the macro
+// button_id (mirrors the hub keymap).
+function activityWithMacroBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X2" },
+    devices: [
+      { device: { device_id: 1, name: "TV", device_class: "ir" }, commands: [{ command_id: 10, name: "Power" }] },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+        referenced_source_device_ids: [1],
+        button_bindings: [],
+        macros: [
+          { button_id: 5, name: "Movie Night", steps: [
+            { device_id: 1, command_id: 10, button_code: 0x4E0A, duration: 0, delay: 0xFF },
+          ] },
+        ],
+      },
+    ],
+  };
+}
+
+test("activityButtonBindingItems labels a macro binding (device_id == activity id)", () => {
+  const b = upsertActivityButtonBinding(activityWithMacroBundle(), 101, { buttonId: 0xAE, deviceId: 101, commandId: 5 });
+  const item = activityButtonBindingItems(b, 101).find((i) => i.buttonId === 0xAE)!;
+  assert.equal(item.isMacroTarget, true);
+  assert.equal(item.shortPressLabel, "Macro · Movie Night");
+});
+
+test("binding a macro does not add the activity's own id to power-macro membership", () => {
+  const b = upsertActivityButtonBinding(activityWithMacroBundle(), 101, { buttonId: 0xAE, deviceId: 101, commandId: 5 });
+  // device 1 is referenced (via the macro's step); the activity's own id (101) must NOT appear.
+  assert.equal(b.activities[0].referenced_source_device_ids!.includes(101), false);
+  assert.deepEqual(b.activities[0].referenced_source_device_ids, [1]);
+});
+
+test("deleting a macro drops a button bound to it and clears a long-press to it", () => {
+  let b = upsertActivityButtonBinding(activityWithMacroBundle(), 101, { buttonId: 0xAE, deviceId: 101, commandId: 5 });
+  // A second button uses the macro only as its long press.
+  b = upsertActivityButtonBinding(b, 101, {
+    buttonId: 0xB2, deviceId: 1, commandId: 10, longPress: { deviceId: 101, commandId: 5 },
+  });
+  const after = deleteBundleActivityQuickAccess(b, 101, "macro", 5).activities[0].button_bindings!;
+  assert.deepEqual(after.map((r) => r.button_id), [0xB2]); // the macro short-press binding is gone
+  const survivor = after.find((r) => r.button_id === 0xB2)!;
+  assert.equal(survivor.long_press_command_id ?? null, null); // long-press to the macro cleared
+  assert.equal(survivor.long_press_device_id ?? null, null);
+});
+
 test("deviceButtonBindingItems resolves own-command labels", () => {
   const items = deviceButtonBindingItems(bindingBundle(), 1);
   assert.equal(items.length, 1);
@@ -624,12 +678,33 @@ function deviceMacroBundle() {
   };
 }
 
-test("deviceMacroStepItems lists command (hold) and delay (wait) steps", () => {
-  const items = deviceMacroStepItems(addDeviceMacroDelayStep(deviceMacroBundle(), 1, 198, 4), 1, 198);
+test("deviceMacroStepItems folds the trailing delay onto its command as wait", () => {
+  const base = deviceMacroBundle();
+  // One command, no delay yet → a single command item with wait 0.
   assert.deepEqual(
-    items.map((i) => [i.kind, i.label, i.hold, i.wait]),
-    [["command", "Power", 0, 0], ["delay", "Wait", 0, 4]],
+    deviceMacroStepItems(base, 1, 198).map((i) => [i.kind, i.label, i.hold, i.wait]),
+    [["command", "Power", 0, 0]],
   );
+  // Setting the wait folds onto that same command (no standalone delay row).
+  const withWait = setDeviceMacroStepWait(base, 1, 198, 0, 4);
+  assert.deepEqual(
+    deviceMacroStepItems(withWait, 1, 198).map((i) => [i.kind, i.wait]),
+    [["command", 4]],
+  );
+});
+
+test("setDeviceMacroStepWait inserts, updates in place, and no-ops at zero", () => {
+  const base = deviceMacroBundle(); // one command, no trailing delay
+  const steps = (b: ReturnType<typeof deviceMacroBundle>) =>
+    b.devices[0].macros!.find((m) => m.button_id === 198)!.steps!;
+  // Zero wait on a group with no delay materializes nothing.
+  assert.equal(steps(setDeviceMacroStepWait(base, 1, 198, 0, 0)).length, 1);
+  // Non-zero inserts a delay row right after the command.
+  const ins = setDeviceMacroStepWait(base, 1, 198, 0, 4);
+  assert.deepEqual(steps(ins).map((s) => [s.command_id, s.delay]), [[10, 0], [255, 4]]);
+  // Re-setting patches the existing delay in place (kept even at 0).
+  const upd = setDeviceMacroStepWait(ins, 1, 198, 0, 0);
+  assert.deepEqual(steps(upd).map((s) => [s.command_id, s.delay]), [[10, 0], [255, 0]]);
 });
 
 test("addDeviceMacroCommandStep appends with a hold (delay sentinel 0xFF), and creates the macro if absent", () => {
@@ -659,6 +734,19 @@ test("removeDeviceMacroStep and reorderDeviceMacroSteps", () => {
   assert.deepEqual(deviceMacroStepItems(removeDeviceMacroStep(two, 1, 198, 0), 1, 198).map((i) => i.commandId), [11]);
 });
 
+test("a command's attached wait follows it through reorder and remove", () => {
+  let two = addDeviceMacroCommandStep(deviceMacroBundle(), 1, 198, 11, 0); // commands [10, 11]
+  two = setDeviceMacroStepWait(two, 1, 198, 0, 6); // command 10 waits 6
+  const steps = (b: typeof two) => b.devices[0].macros!.find((m) => m.button_id === 198)!.steps!;
+  // Reordering moves the wait with command 10 (now last).
+  const reordered = reorderDeviceMacroSteps(two, 1, 198, [1, 0]);
+  assert.deepEqual(deviceMacroStepItems(reordered, 1, 198).map((i) => [i.commandId, i.wait]), [[11, 0], [10, 6]]);
+  assert.deepEqual(steps(reordered).map((s) => s.command_id), [11, 10, 255]);
+  // Removing command 10 (group index 1) takes its trailing wait too.
+  const removed = removeDeviceMacroStep(reordered, 1, 198, 1);
+  assert.deepEqual(steps(removed).map((s) => s.command_id), [11]);
+});
+
 function userMacroBundle() {
   return {
     kind: "hub_bundle",
@@ -686,12 +774,22 @@ test("addActivityMacroCommandStep synthesizes button_code and pulls the device i
   assert.equal(next.activities[0].macros!.some((m) => m.button_id === 198), true);
 });
 
-test("activityMacroStepItems labels device and command", () => {
+test("activityMacroStepItems labels device · command and folds the wait onto it", () => {
   let b = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
-  b = addActivityMacroDelayStep(b, 101, 1, 30);
+  b = setActivityMacroStepWait(b, 101, 1, 0, 30); // wait after TV · Power
   b = addActivityMacroCommandStep(b, 101, 1, 2, 20, 0);
-  assert.deepEqual(activityMacroStepItems(b, 101, 1).map((i) => [i.kind, i.label]), [
-    ["command", "TV · Power"], ["delay", "Wait"], ["command", "AVR · Power"],
+  assert.deepEqual(activityMacroStepItems(b, 101, 1).map((i) => [i.kind, i.label, i.wait]), [
+    ["command", "TV · Power", 30], ["command", "AVR · Power", 0],
+  ]);
+});
+
+test("reorderActivityMacroSteps carries a command's attached wait", () => {
+  let b = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
+  b = setActivityMacroStepWait(b, 101, 1, 0, 12); // TV · Power waits 12
+  b = addActivityMacroCommandStep(b, 101, 1, 2, 20, 0);
+  const reordered = reorderActivityMacroSteps(b, 101, 1, [1, 0]);
+  assert.deepEqual(activityMacroStepItems(reordered, 101, 1).map((i) => [i.label, i.wait]), [
+    ["AVR · Power", 0], ["TV · Power", 12],
   ]);
 });
 
@@ -735,6 +833,18 @@ test("removeActivityMacroStep refuses to delete a mandatory power ref", () => {
   const before = activityMacroStepItems(realPowerActivity(), 101, 198).length;
   const next = removeActivityMacroStep(realPowerActivity(), 101, 198, 0);
   assert.equal(activityMacroStepItems(next, 101, 198).length, before);
+});
+
+test("setActivityMacroStepWait edits the wait on a protected power ref without touching the ref", () => {
+  const next = setActivityMacroStepWait(realPowerActivity(), 101, 198, 0, 8);
+  const items = activityMacroStepItems(next, 101, 198);
+  // Same number of (protected) ref rows; group 0's attached wait is now 8.
+  assert.equal(items.length, activityMacroStepItems(realPowerActivity(), 101, 198).length);
+  assert.equal(items[0].wait, 8);
+  assert.equal(items[0].protected, true);
+  // The protected ref step itself (device 3, power-on) is unchanged.
+  const headStep = next.activities[0].macros!.find((m) => m.button_id === 198)!.steps![0];
+  assert.deepEqual([headStep.device_id, headStep.command_id], [3, 198]);
 });
 
 test("a user command added to a power macro is a deletable (non-protected) step", () => {

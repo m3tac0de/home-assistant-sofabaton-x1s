@@ -1834,6 +1834,7 @@ var TOOLS_CARD_STRINGS = {
     addBinding: "Add binding",
     bindingButton: "Button",
     bindingTargetDevice: "Device",
+    bindingMacroTarget: "This activity \xB7 macros",
     bindingCommand: "Command",
     bindingEnableLongPress: "Enable long-press binding",
     bindingLongPressDevice: "Long-press device",
@@ -1882,21 +1883,16 @@ var TOOLS_CARD_STRINGS = {
     addMacro: "Add macro",
     stepDialogAddTitle: "Add step",
     stepDialogEditTitle: "Edit step",
-    stepKind: "Step type",
-    stepKindCommand: "Command",
-    stepKindDelay: "Wait / delay",
     stepDevice: "Device",
     stepCommand: "Command",
-    stepDelaySeconds: "Delay after (seconds)",
     stepHoldSeconds: "Hold (seconds, 0 = click)",
-    stepWaitSeconds: "Wait (seconds)",
     holdLabel: (seconds) => `Hold ${seconds}s`,
     stepAdd: "Add",
     stepSave: "Save",
     stepCancel: "Cancel",
     stepNoCommands: "This device has no commands.",
-    waitLabel: (seconds) => `Wait ${seconds}s`,
-    delaySuffix: (seconds) => `then wait ${seconds}s`,
+    stepWaitAria: "Wait after this step (seconds)",
+    stepWaitUnit: "s",
     deleteStepAria: "Delete step",
     editStepAria: "Edit step",
     newMacroName: "Macro",
@@ -1910,7 +1906,9 @@ var TOOLS_CARD_STRINGS = {
     powerOffSequence: "Power-off sequence",
     powerSequenceSub: "Reorder steps, add your own commands or waits. Required device steps can be reordered but not removed.",
     macroRenameAria: "Rename macro",
-    editStepsAria: "Edit steps"
+    editStepsAria: "Edit steps",
+    crumbActivities: "Activities",
+    crumbDevices: "Devices"
   },
   wifiCommands: {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
@@ -2700,6 +2698,13 @@ function cascadeBindingForDeletedCommand(binding, deviceId, commandId, deviceSco
   if (longMatches) return clearBindingLongPress(binding);
   return binding;
 }
+function cascadeBindingForDeletedMacro(binding, activityId, macroButtonId) {
+  const shortMatches = Number(binding?.device_id || 0) === activityId && Number(binding?.command_id || 0) === macroButtonId;
+  if (shortMatches) return null;
+  const longMatches = Number(binding?.long_press_device_id || 0) === activityId && Number(binding?.long_press_command_id || 0) === macroButtonId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
 function applyBindingCascade(bindings, transform) {
   const result = [];
   for (const binding of bindings ?? []) {
@@ -2851,7 +2856,13 @@ function deleteBundleActivityQuickAccess(bundle, activityId, kind, buttonId) {
     }
     return {
       ...activity,
-      macros: (activity.macros ?? []).filter((macro) => Number(macro?.button_id || 0) !== bId)
+      macros: (activity.macros ?? []).filter((macro) => Number(macro?.button_id || 0) !== bId),
+      // A button bound to this macro now dangles — drop it (or clear the
+      // long press if only that referenced the macro).
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedMacro(binding, Number(activityId), bId)
+      )
     };
   });
   return reconcileActivityPowerMacros(next, Number(activityId));
@@ -2941,10 +2952,11 @@ function activityPowerDeviceIds(activity) {
   return ids;
 }
 function activityMemberDeviceIds(activity) {
+  const selfId = Number(activity?.device?.device_id || 0);
   const ids = activityPowerDeviceIds(activity);
   const add = (value) => {
     const id = Number(value || 0);
-    if (id > 0) ids.add(id);
+    if (id > 0 && id !== selfId) ids.add(id);
   };
   for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
   for (const binding of activity.button_bindings ?? []) {
@@ -3098,22 +3110,49 @@ function defaultMacroName(buttonId) {
 function deviceMacroDelayStep(delay) {
   return { command_id: 255, duration: 255, delay: Number(delay) & 255 };
 }
+function groupMacroSteps(steps) {
+  const prefix = [];
+  const groups = [];
+  for (const step of steps ?? []) {
+    if (isMacroDelayStep(step)) {
+      if (groups.length === 0) prefix.push(step);
+      else groups[groups.length - 1].trailing.push(step);
+    } else {
+      groups.push({ head: step, trailing: [] });
+    }
+  }
+  return { prefix, groups };
+}
+function flattenMacroGroups(prefix, groups) {
+  const out = [...prefix];
+  for (const group of groups) out.push(group.head, ...group.trailing);
+  return out;
+}
+function groupWait(group) {
+  return group.trailing.length > 0 ? Number(group.trailing[0]?.delay || 0) : 0;
+}
+function applyGroupWait(group, waitByte, isActivity) {
+  const value = Number(waitByte) & 255;
+  if (group.trailing.length > 0) {
+    group.trailing = [{ ...group.trailing[0], delay: value }, ...group.trailing.slice(1)];
+  } else if (value > 0) {
+    group.trailing = [isActivity ? powerMacroDelayRow(value) : deviceMacroDelayStep(value)];
+  }
+}
 function deviceMacroStepItems(bundle, deviceId, buttonId) {
   const device = findDevice(bundle, deviceId);
   const macro = (device?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
-  return (macro?.steps ?? []).map((step, index) => {
-    if (isMacroDelayStep(step)) {
-      return { index, kind: "delay", commandId: null, deviceId: null, label: "Wait", hold: 0, wait: Number(step?.delay || 0) };
-    }
-    const commandId = Number(step?.command_id || 0);
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const commandId = Number(group.head?.command_id || 0);
     return {
       index,
       kind: "command",
       commandId,
       deviceId: null,
       label: commandNameOrFallback(bundle, Number(deviceId), commandId),
-      hold: Number(step?.duration || 0),
-      wait: 0
+      hold: Number(group.head?.duration || 0),
+      wait: groupWait(group)
     };
   });
 }
@@ -3160,27 +3199,39 @@ function addDeviceMacroCommandStep(bundle, deviceId, buttonId, commandId, hold =
     { command_id: Number(commandId), duration: Number(hold) & 255, delay: 255 }
   ]);
 }
-function addDeviceMacroDelayStep(bundle, deviceId, buttonId, wait) {
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => [...steps, deviceMacroDelayStep(wait)]);
-}
 function updateDeviceMacroStep(bundle, deviceId, buttonId, index, patch) {
-  return updateDeviceMacro(
-    bundle,
-    deviceId,
-    buttonId,
-    (steps) => steps.map((step, i4) => i4 === Number(index) ? patchMacroStep(step, patch, false) : step)
-  );
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, false);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function setDeviceMacroStepWait(bundle, deviceId, buttonId, index, wait) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, false);
+    return flattenMacroGroups(prefix, groups);
+  });
 }
 function removeDeviceMacroStep(bundle, deviceId, buttonId, index) {
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => steps.filter((_2, i4) => i4 !== Number(index)));
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    if (Number(index) < 0 || Number(index) >= groups.length) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
+  });
 }
 function reorderDeviceMacroSteps(bundle, deviceId, buttonId, orderedIndices) {
-  return updateDeviceMacro(
-    bundle,
-    deviceId,
-    buttonId,
-    (steps) => orderedIndices.map((i4) => steps[Number(i4)]).filter((step) => Boolean(step))
-  );
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices.map((i4) => groups[Number(i4)]).filter((group) => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
 }
 function activityUserMacroSummaries(bundle, activityId) {
   const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
@@ -3193,22 +3244,22 @@ function activityUserMacroSummaries(bundle, activityId) {
 function activityMacroStepItems(bundle, activityId, buttonId) {
   const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
   const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
-  return (macro?.steps ?? []).map((step, index) => {
-    if (isMacroDelayStep(step)) {
-      return { index, kind: "delay", commandId: null, deviceId: null, label: "Wait", hold: 0, wait: Number(step?.delay || 0) };
-    }
-    const deviceId = Number(step?.device_id || 0);
-    const commandId = Number(step?.command_id || 0);
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const head = group.head;
+    const wait = groupWait(group);
+    const deviceId = Number(head?.device_id || 0);
+    const commandId = Number(head?.command_id || 0);
     const deviceName = deviceNameFor(bundle, deviceId);
     if (commandId === DEVICE_POWER_ON_REF_COMMAND || commandId === DEVICE_POWER_OFF_REF_COMMAND) {
       const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? "Power on" : "Power off";
-      return { index, kind: "power", commandId, deviceId, label: `${verb} \xB7 ${deviceName}`, hold: 0, wait: 0, protected: true };
+      return { index, kind: "power", commandId, deviceId, label: `${verb} \xB7 ${deviceName}`, hold: 0, wait, protected: true };
     }
     if (commandId === DEVICE_INPUT_REF_COMMAND) {
-      const ordinal = Number(step?.duration || 0);
+      const ordinal = Number(head?.duration || 0);
       const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === ordinal);
       const inputLabel = input?.name || (ordinal > 0 ? `Input ${ordinal}` : "no input");
-      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input \xB7 ${deviceName}: ${inputLabel}`, hold: 0, wait: 0, protected: true };
+      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input \xB7 ${deviceName}: ${inputLabel}`, hold: 0, wait, protected: true };
     }
     return {
       index,
@@ -3216,8 +3267,8 @@ function activityMacroStepItems(bundle, activityId, buttonId) {
       commandId,
       deviceId,
       label: `${deviceName} \xB7 ${commandNameOrFallback(bundle, deviceId, commandId)}`,
-      hold: Number(step?.duration || 0),
-      wait: 0
+      hold: Number(head?.duration || 0),
+      wait
     };
   });
 }
@@ -3259,30 +3310,41 @@ function addActivityMacroCommandStep(bundle, activityId, buttonId, deviceId, com
     delay: 255
   }]);
 }
-function addActivityMacroDelayStep(bundle, activityId, buttonId, wait) {
-  return updateActivityMacro(bundle, activityId, buttonId, (steps) => [...steps, powerMacroDelayRow(Number(wait))]);
-}
 function updateActivityMacroStep(bundle, activityId, buttonId, index, patch) {
-  return updateActivityMacro(
-    bundle,
-    activityId,
-    buttonId,
-    (steps) => steps.map((step, i4) => i4 === Number(index) ? patchMacroStep(step, patch, true) : step)
-  );
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, true);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function setActivityMacroStepWait(bundle, activityId, buttonId, index, wait) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, true);
+    return flattenMacroGroups(prefix, groups);
+  });
 }
 function removeActivityMacroStep(bundle, activityId, buttonId, index) {
   return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
-    if (isPowerRefStep(steps[Number(index)])) return steps;
-    return steps.filter((_2, i4) => i4 !== Number(index));
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    if (isPowerRefStep(group.head)) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
   });
 }
 function reorderActivityMacroSteps(bundle, activityId, buttonId, orderedIndices) {
-  return updateActivityMacro(
-    bundle,
-    activityId,
-    buttonId,
-    (steps) => orderedIndices.map((i4) => steps[Number(i4)]).filter((step) => Boolean(step))
-  );
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices.map((i4) => groups[Number(i4)]).filter((group) => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
 }
 var SHARED_BUTTON_CATALOG = [
   { code: 174, name: "Up", group: "Navigation" },
@@ -3334,6 +3396,17 @@ function deviceNameFor(bundle, deviceId) {
 function commandNameOrFallback(bundle, deviceId, commandId) {
   return commandLabelFor(bundle, deviceId, commandId) || `Command ${Number(commandId)}`;
 }
+function activityMacroName(bundle, activityId, buttonId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  return String(macro?.name || "").trim() || `Macro ${Number(buttonId)}`;
+}
+function activityBindingTargetLabel(bundle, activityId, targetDeviceId, targetCommandId) {
+  if (targetDeviceId === Number(activityId)) {
+    return `Macro \xB7 ${activityMacroName(bundle, activityId, targetCommandId)}`;
+  }
+  return `${deviceNameFor(bundle, targetDeviceId)} \xB7 ${commandNameOrFallback(bundle, targetDeviceId, targetCommandId)}`;
+}
 function sortBindingsByButtonId(rows) {
   return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
 }
@@ -3352,7 +3425,8 @@ function activityButtonBindingItems(bundle, activityId) {
       buttonName: buttonName(buttonId),
       deviceId,
       commandId,
-      shortPressLabel: `${deviceNameFor(bundle, deviceId)} \xB7 ${commandNameOrFallback(bundle, deviceId, commandId)}`
+      isMacroTarget: deviceId === Number(activityId),
+      shortPressLabel: activityBindingTargetLabel(bundle, Number(activityId), deviceId, commandId)
     };
     const lpDeviceId = Number(row?.long_press_device_id || 0);
     const lpCommandId = Number(row?.long_press_command_id || 0);
@@ -3360,7 +3434,8 @@ function activityButtonBindingItems(bundle, activityId) {
       item.longPress = {
         deviceId: lpDeviceId,
         commandId: lpCommandId,
-        label: `${deviceNameFor(bundle, lpDeviceId)} \xB7 ${commandNameOrFallback(bundle, lpDeviceId, lpCommandId)}`
+        isMacroTarget: lpDeviceId === Number(activityId),
+        label: activityBindingTargetLabel(bundle, Number(activityId), lpDeviceId, lpCommandId)
       };
     }
     items.push(item);
@@ -3611,7 +3686,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._stepKind = "command";
     this._stepDeviceId = null;
     this._stepCommandId = null;
-    this._stepDelaySeconds = "0";
+    this._stepHoldSeconds = "0";
     this._stepError = "";
     this._haSortableReady = Boolean(customElements.get("ha-sortable"));
     this._backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
@@ -3950,8 +4025,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._handleBindingDeviceChange = (event) => {
       const value = Number(event.target.value);
       this._bindingDeviceId = Number.isFinite(value) ? value : null;
-      const commands = this._bindingDeviceId != null && this._editBundle ? deviceCommandItems(this._editBundle, this._bindingDeviceId) : [];
-      this._bindingCommandId = commands[0]?.commandId ?? null;
+      this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
     };
     this._handleBindingCommandChange = (event) => {
       const value = Number(event.target.value);
@@ -3961,18 +4035,17 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       const enabled = Boolean(event.target.checked);
       this._bindingLongPressEnabled = enabled;
       if (!enabled || !this._editBundle) return;
-      if (this._bindingLpDeviceId == null) this._bindingLpDeviceId = this._bindingDeviceId;
+      if (this._bindingLpDeviceId == null) {
+        this._bindingLpDeviceId = this._bindingScope === "activity" ? this._bindingDeviceId : Number(this._editDetailId);
+      }
       if (this._bindingLpCommandId == null) {
-        const lpDeviceId = this._bindingScope === "activity" ? this._bindingLpDeviceId : Number(this._editDetailId);
-        const commands = lpDeviceId != null ? deviceCommandItems(this._editBundle, lpDeviceId) : [];
-        this._bindingLpCommandId = commands[0]?.commandId ?? null;
+        this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
       }
     };
     this._handleBindingLpDeviceChange = (event) => {
       const value = Number(event.target.value);
       this._bindingLpDeviceId = Number.isFinite(value) ? value : null;
-      const commands = this._bindingLpDeviceId != null && this._editBundle ? deviceCommandItems(this._editBundle, this._bindingLpDeviceId) : [];
-      this._bindingLpCommandId = commands[0]?.commandId ?? null;
+      this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
     };
     this._handleBindingLpCommandChange = (event) => {
       const value = Number(event.target.value);
@@ -4018,7 +4091,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       const commandDeviceId = editor.scope === "activity" ? this._stepDeviceId : editor.entityId;
       const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
       this._stepCommandId = commands[0]?.commandId ?? null;
-      this._stepDelaySeconds = "0";
+      this._stepHoldSeconds = "0";
       this._stepError = "";
       this._stepDialogOpen = true;
     };
@@ -4028,11 +4101,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._stepKind = "command";
       this._stepDeviceId = null;
       this._stepCommandId = null;
-      this._stepDelaySeconds = "0";
+      this._stepHoldSeconds = "0";
       this._stepError = "";
-    };
-    this._handleStepKindChange = (event) => {
-      this._stepKind = event.target.value === "delay" ? "delay" : "command";
     };
     this._handleStepDeviceChange = (event) => {
       const value = Number(event.target.value);
@@ -4044,13 +4114,28 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       const raw = event.target.value;
       this._stepCommandId = raw === "" ? null : Number(raw);
     };
-    this._handleStepDelayInput = (event) => {
-      this._stepDelaySeconds = event.target.value;
+    this._handleStepHoldInput = (event) => {
+      this._stepHoldSeconds = event.target.value;
+    };
+    // Snap the dialog's hold field to the 0.5s grid when the user commits it
+    // (on blur / Enter), so the field can't keep an off-grid value like 0.3.
+    this._handleStepHoldChange = (event) => {
+      this._stepHoldSeconds = this._snapHalfSeconds(event.target.value);
+    };
+    // Inline per-row wait edit: the attached delay travels with its command.
+    this._handleStepWaitChange = (item, event) => {
+      const editor = this._macroEditor;
+      if (!editor || !this._editBundle) return;
+      const input = event.target;
+      const waitByte = this._secondsToByte(input.value);
+      input.value = this._byteToSeconds(waitByte);
+      const next = editor.scope === "device" ? setDeviceMacroStepWait(this._editBundle, editor.entityId, editor.buttonId, item.index, waitByte) : setActivityMacroStepWait(this._editBundle, editor.entityId, editor.buttonId, item.index, waitByte);
+      this._commitEditBundleEdit(next);
     };
     this._applyStep = () => {
       const editor = this._macroEditor;
       if (!editor || !this._editBundle) return;
-      const timeByte = this._secondsToByte(this._stepDelaySeconds);
+      const timeByte = this._secondsToByte(this._stepHoldSeconds);
       const editIndex = this._stepDialogEditIndex;
       const isDevice = editor.scope === "device";
       if (this._stepKind === "input") {
@@ -4059,12 +4144,6 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
           const next2 = this._stepCommandId == null ? clearActivityDeviceInput(this._editBundle, editor.entityId, deviceId2) : setActivityDeviceInput(this._editBundle, editor.entityId, deviceId2, Number(this._stepCommandId));
           this._commitEditBundleEdit(next2);
         }
-        this._closeStepDialog();
-        return;
-      }
-      if (this._stepKind === "delay") {
-        const next2 = editIndex === null ? isDevice ? addDeviceMacroDelayStep(this._editBundle, editor.entityId, editor.buttonId, timeByte) : addActivityMacroDelayStep(this._editBundle, editor.entityId, editor.buttonId, timeByte) : isDevice ? updateDeviceMacroStep(this._editBundle, editor.entityId, editor.buttonId, editIndex, { wait: timeByte }) : updateActivityMacroStep(this._editBundle, editor.entityId, editor.buttonId, editIndex, { wait: timeByte });
-        this._commitEditBundleEdit(next2);
         this._closeStepDialog();
         return;
       }
@@ -4208,7 +4287,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       _stepKind: { state: true },
       _stepDeviceId: { state: true },
       _stepCommandId: { state: true },
-      _stepDelaySeconds: { state: true },
+      _stepHoldSeconds: { state: true },
       _stepError: { state: true },
       _editBundleDirty: { state: true },
       _haSortableReady: { state: true },
@@ -4679,6 +4758,49 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       min-width: 0;
       flex: 1;
     }
+    .detail-title-stack {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .detail-crumbs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      font-size: 11px;
+      line-height: 1.1;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+    }
+    .detail-crumb {
+      flex: 0 1 auto;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      padding: 0;
+      font: inherit;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transition: color 120ms ease;
+    }
+    .detail-crumb:hover {
+      color: var(--primary-color);
+      text-decoration: underline;
+    }
+    .detail-crumb-sep {
+      flex: 0 0 auto;
+      color: color-mix(in srgb, var(--secondary-text-color) 55%, transparent);
+    }
     .detail-title-actions {
       display: inline-flex;
       align-items: center;
@@ -4688,6 +4810,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     .detail-title {
       font-size: 18px;
       font-weight: 700;
+      line-height: 1.15;
       color: var(--primary-text-color);
       min-width: 0;
       white-space: nowrap;
@@ -5026,6 +5149,43 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       align-items: center;
       gap: 8px;
       flex: 0 0 auto;
+    }
+    /* Inline per-row wait control: the delay that trails this command. */
+    .step-wait {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      flex: 0 0 auto;
+      padding: 3px 6px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 60%, transparent);
+    }
+    .step-wait:focus-within {
+      border-color: var(--primary-color);
+    }
+    .step-wait-input {
+      width: 42px;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: right;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .step-wait-input::-webkit-outer-spin-button,
+    .step-wait-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .step-wait-unit {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 600;
     }
     .quick-access-drag {
       display: inline-flex;
@@ -5966,7 +6126,12 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                 <button class="back-btn" @click=${this._closeEditDetail}>
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
-                <div class="detail-title">${params.title}</div>
+                <div class="detail-title-stack">
+                  ${this._renderDetailCrumbs([
+      { label: this._entityKindCrumbLabel(params.kind), onClick: this._closeEditDetail }
+    ])}
+                  <div class="detail-title">${params.title}</div>
+                </div>
                 ${this._editBundleDirty ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
                 <div class="detail-title-actions">
                   <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
@@ -6739,6 +6904,24 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     const options = this._editDetailKind === "activity" ? bundleActivityOptions(this._editBundle) : bundleDeviceOptions(this._editBundle);
     return options.find((option) => option.id === this._editDetailId)?.label || "";
   }
+  _entityKindCrumbLabel(kind) {
+    return kind === "activity" ? TOOLS_CARD_STRINGS.backup.crumbActivities : TOOLS_CARD_STRINGS.backup.crumbDevices;
+  }
+  // Compact ancestor trail shown above the detail/editor title. Each crumb
+  // is a tappable button that pops back to that level; the trailing "›"
+  // leads the eye into the current page's big title beneath it.
+  _renderDetailCrumbs(crumbs) {
+    if (!crumbs.length) return A;
+    return T`
+      <div class="detail-crumbs">
+        ${crumbs.map((crumb, index) => T`
+          ${index > 0 ? T`<span class="detail-crumb-sep" aria-hidden="true">›</span>` : A}
+          <button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button>
+        `)}
+        <span class="detail-crumb-sep" aria-hidden="true">›</span>
+      </div>
+    `;
+  }
   _applyEditDetailRename() {
     const next = this._sanitizeBundleName(this._editDetailNameDraft);
     if (!next || !this._editDetailKind || this._editDetailId == null) return;
@@ -6783,6 +6966,34 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._commitEditBundleEdit(kind === "activity" ? reorderBundleActivities(this._editBundle, orderedIds) : reorderBundleDevices(this._editBundle, orderedIds));
   }
   // ── Button bindings (add / edit picker) ─────────────────────────────
+  // The activity's own id, usable as a binding target that plays one of its
+  // macros — offered only when the activity actually has user macros. Encodes
+  // device_id = activity id, command_id = macro button id (hub keymap model).
+  _activityMacroTargetId() {
+    if (this._bindingScope !== "activity" || this._editDetailId == null || !this._editBundle) return null;
+    const id = Number(this._editDetailId);
+    return activityUserMacroSummaries(this._editBundle, id).length > 0 ? id : null;
+  }
+  // Activity binding target-device options: source devices plus the
+  // "this activity · macros" target when available.
+  _bindingDeviceOptions() {
+    if (!this._editBundle) return [];
+    const options = bundleDeviceOptions(this._editBundle).map((device) => ({ value: device.id, label: device.label }));
+    const macroTargetId = this._activityMacroTargetId();
+    if (macroTargetId != null) {
+      options.push({ value: macroTargetId, label: TOOLS_CARD_STRINGS.backup.bindingMacroTarget });
+    }
+    return options;
+  }
+  // Command options for a chosen target: the activity's own macros when the
+  // target is the activity itself, otherwise the target device's commands.
+  _bindingCommandOptions(targetDeviceId) {
+    if (targetDeviceId == null || !this._editBundle) return [];
+    if (this._bindingScope === "activity" && this._editDetailId != null && targetDeviceId === Number(this._editDetailId)) {
+      return activityUserMacroSummaries(this._editBundle, Number(this._editDetailId)).map((macro) => ({ value: macro.buttonId, label: macro.name }));
+    }
+    return deviceCommandItems(this._editBundle, targetDeviceId).map((command) => ({ value: command.commandId, label: command.label }));
+  }
   _openAddBindingDialog(kind) {
     if (this._editDetailId == null || !this._editBundle) return;
     const entityId = Number(this._editDetailId);
@@ -6843,11 +7054,11 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     const entityId = Number(this._editDetailId);
     const isEdit = this._bindingEditButtonId != null;
     const unbound = scope === "activity" ? unboundButtonsForActivity(this._editBundle, entityId) : unboundButtonsForDevice(this._editBundle, entityId);
-    const devices = bundleDeviceOptions(this._editBundle);
+    const deviceOptions = this._bindingDeviceOptions();
     const commandDeviceId = scope === "activity" ? this._bindingDeviceId : entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
+    const commandOptions = this._bindingCommandOptions(commandDeviceId);
     const lpDeviceId = scope === "activity" ? this._bindingLpDeviceId : entityId;
-    const lpCommands = lpDeviceId != null ? deviceCommandItems(this._editBundle, lpDeviceId) : [];
+    const lpCommandOptions = this._bindingCommandOptions(lpDeviceId);
     const canSave = this._bindingButtonId != null && this._bindingCommandId != null && (scope === "device" || this._bindingDeviceId != null);
     const title = isEdit ? TOOLS_CARD_STRINGS.backup.bindingDialogEditTitle(buttonName(Number(this._bindingButtonId))) : TOOLS_CARD_STRINGS.backup.bindingDialogAddTitle;
     return T`
@@ -6875,7 +7086,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       id: "sb-binding-device",
       label: TOOLS_CARD_STRINGS.backup.bindingTargetDevice,
       value: this._bindingDeviceId,
-      options: devices.map((device) => ({ value: device.id, label: device.label })),
+      options: deviceOptions,
       onChange: this._handleBindingDeviceChange,
       emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices
     }) : A}
@@ -6883,7 +7094,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       id: "sb-binding-command",
       label: TOOLS_CARD_STRINGS.backup.bindingCommand,
       value: this._bindingCommandId,
-      options: commands.map((command) => ({ value: command.commandId, label: command.label })),
+      options: commandOptions,
       onChange: this._handleBindingCommandChange,
       emptyText: TOOLS_CARD_STRINGS.backup.bindingNoCommands
     })}
@@ -6899,7 +7110,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       id: "sb-binding-lp-device",
       label: TOOLS_CARD_STRINGS.backup.bindingLongPressDevice,
       value: this._bindingLpDeviceId,
-      options: devices.map((device) => ({ value: device.id, label: device.label })),
+      options: deviceOptions,
       onChange: this._handleBindingLpDeviceChange,
       emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices
     }) : A}
@@ -6907,7 +7118,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       id: "sb-binding-lp-command",
       label: TOOLS_CARD_STRINGS.backup.bindingLongPressCommand,
       value: this._bindingLpCommandId,
-      options: lpCommands.map((command) => ({ value: command.commandId, label: command.label })),
+      options: lpCommandOptions,
       onChange: this._handleBindingLpCommandChange,
       emptyText: TOOLS_CARD_STRINGS.backup.bindingNoCommands
     })}
@@ -6940,6 +7151,10 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     if (!Number.isFinite(seconds) || seconds <= 0) return 0;
     return Math.min(255, Math.max(0, Math.round(seconds * 2)));
   }
+  /** Snap a typed seconds value to the hub's 0.5s grid (returns the string form). */
+  _snapHalfSeconds(value) {
+    return this._byteToSeconds(this._secondsToByte(value));
+  }
   _currentMacroStepItems() {
     const editor = this._macroEditor;
     if (!editor || !this._editBundle) return [];
@@ -6957,10 +7172,10 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._stepCommandId = item.commandId ?? null;
       return;
     }
-    this._stepKind = item.kind === "delay" ? "delay" : "command";
+    this._stepKind = "command";
     this._stepDeviceId = editor.scope === "activity" ? item.deviceId ?? null : editor.entityId;
     this._stepCommandId = item.commandId ?? null;
-    this._stepDelaySeconds = this._byteToSeconds(item.kind === "delay" ? item.wait : item.hold);
+    this._stepHoldSeconds = this._byteToSeconds(item.hold);
   }
   _removeStep(index) {
     const editor = this._macroEditor;
@@ -6981,7 +7196,13 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                 <button class="back-btn" @click=${this._closeMacroEditor}>
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
-                <div class="detail-title">${editor.name}</div>
+                <div class="detail-title-stack">
+                  ${this._renderDetailCrumbs([
+      { label: this._entityKindCrumbLabel(editor.scope), onClick: this._closeEditDetail },
+      { label: this._selectedEditTitle(), onClick: this._closeMacroEditor }
+    ])}
+                  <div class="detail-title">${editor.name}</div>
+                </div>
                 ${this._editBundleDirty ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
               </div>
             </div>
@@ -6992,7 +7213,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                 <div class="quick-access-head-main">
                   <div class="quick-access-title">Steps</div>
                   <div class="quick-access-sub">
-                    ${this._haSortableReady ? "Drag to reorder. Each step plays a command or waits." : "Each step plays a command or waits."}
+                    ${this._haSortableReady ? "Drag to reorder. Each step plays a command; set the wait that follows it on the right." : "Each step plays a command; set the wait that follows it on the right."}
                   </div>
                 </div>
                 <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
@@ -7023,24 +7244,35 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _renderMacroStepRow(item, sortable) {
-    const isDelay = item.kind === "delay";
     const isPower = item.kind === "power";
     const isInput = item.kind === "input";
-    const label = isDelay ? TOOLS_CARD_STRINGS.backup.waitLabel(this._byteToSeconds(item.wait)) : item.label;
     const meta = item.kind === "command" && item.hold > 0 ? TOOLS_CARD_STRINGS.backup.holdLabel(this._byteToSeconds(item.hold)) : "";
-    const chip = isDelay ? "wait" : isPower || isInput ? "required" : "command";
+    const chip = isPower || isInput ? "required" : "command";
     return T`
       <div class="quick-access-sortable-item" data-step-index=${item.index}>
         <div class="quick-access-row">
           ${sortable ? T`<div class="quick-access-drag" aria-hidden="true"><ha-icon icon="mdi:drag-vertical-variant"></ha-icon></div>` : T`<span></span>`}
           <div class="quick-access-main">
             <div class="quick-access-label-row">
-              <div class="quick-access-label">${label}</div>
+              <div class="quick-access-label">${item.label}</div>
               <div class="quick-access-chip">${chip}</div>
             </div>
             ${meta ? T`<div class="quick-access-meta">${meta}</div>` : A}
           </div>
           <div class="quick-access-actions">
+            <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
+              <input
+                class="step-wait-input"
+                type="number"
+                min="0"
+                max="120"
+                step="0.5"
+                aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
+                .value=${this._byteToSeconds(item.wait)}
+                @change=${(event) => this._handleStepWaitChange(item, event)}
+              />
+              <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
+            </label>
             ${isPower ? A : T`
                   <button class="icon-btn" @click=${() => this._openEditStepDialog(item)} aria-label=${TOOLS_CARD_STRINGS.backup.editStepAria}>
                     <ha-icon icon="mdi:pencil"></ha-icon>
@@ -7061,12 +7293,11 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     const editor = this._macroEditor;
     const isEdit = this._stepDialogEditIndex !== null;
     const isActivity = editor.scope === "activity";
-    const isDelay = this._stepKind === "delay";
     const isInput = this._stepKind === "input";
     const devices = bundleDeviceOptions(this._editBundle);
     const commandDeviceId = isInput ? this._stepDeviceId : isActivity ? this._stepDeviceId : editor.entityId;
     const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
-    const canSave = isDelay || isInput || this._stepCommandId != null && (!isActivity || this._stepDeviceId != null);
+    const canSave = isInput || this._stepCommandId != null && (!isActivity || this._stepDeviceId != null);
     const title = isInput ? TOOLS_CARD_STRINGS.backup.inputStepTitle : isEdit ? TOOLS_CARD_STRINGS.backup.stepDialogEditTitle : TOOLS_CARD_STRINGS.backup.stepDialogAddTitle;
     return T`
       <div class="modal-backdrop" @click=${this._closeStepDialog}>
@@ -7087,17 +7318,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                     </select>
                   </div>
                 ` : T`
-                  ${isEdit ? A : T`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-step-kind">${TOOLS_CARD_STRINGS.backup.stepKind}</label>
-                          <select id="sb-step-kind" class="decoded-field-input" @change=${this._handleStepKindChange}>
-                            <option value="command" ?selected=${!isDelay}>${TOOLS_CARD_STRINGS.backup.stepKindCommand}</option>
-                            <option value="delay" ?selected=${isDelay}>${TOOLS_CARD_STRINGS.backup.stepKindDelay}</option>
-                          </select>
-                        </div>
-                      `}
-                  ${!isDelay ? T`
-                        ${isActivity ? this._renderBindingSelect({
+                  ${isActivity ? this._renderBindingSelect({
       id: "sb-step-device",
       label: TOOLS_CARD_STRINGS.backup.stepDevice,
       value: this._stepDeviceId,
@@ -7105,7 +7326,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       onChange: this._handleStepDeviceChange,
       emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices
     }) : A}
-                        ${this._renderBindingSelect({
+                  ${this._renderBindingSelect({
       id: "sb-step-command",
       label: TOOLS_CARD_STRINGS.backup.stepCommand,
       value: this._stepCommandId,
@@ -7113,20 +7334,18 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       onChange: this._handleStepCommandChange,
       emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands
     })}
-                      ` : A}
                   <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-step-delay">
-                      ${isDelay ? TOOLS_CARD_STRINGS.backup.stepWaitSeconds : TOOLS_CARD_STRINGS.backup.stepHoldSeconds}
-                    </label>
+                    <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
                     <input
-                      id="sb-step-delay"
+                      id="sb-step-hold"
                       class="decoded-field-input"
                       type="number"
                       min="0"
                       max="120"
                       step="0.5"
-                      .value=${this._stepDelaySeconds}
-                      @input=${this._handleStepDelayInput}
+                      .value=${this._stepHoldSeconds}
+                      @input=${this._handleStepHoldInput}
+                      @change=${this._handleStepHoldChange}
                     />
                   </div>
                 `}

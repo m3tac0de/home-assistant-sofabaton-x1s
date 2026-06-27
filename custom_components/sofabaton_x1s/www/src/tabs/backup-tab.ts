@@ -17,11 +17,9 @@ import {
   activityMacroStepItems,
   activityUserMacroSummaries,
   addActivityMacroCommandStep,
-  addActivityMacroDelayStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
   addDeviceMacroCommandStep,
-  addDeviceMacroDelayStep,
   applyBundleDelete,
   assertBackupBundleRestoreCompatible,
   activityQuickAccessItems,
@@ -72,6 +70,8 @@ import {
   renameBundleDeviceCommand,
   renameBundleHub,
   setActivityDeviceInput,
+  setActivityMacroStepWait,
+  setDeviceMacroStepWait,
   unboundButtonsForActivity,
   unboundButtonsForDevice,
   updateActivityMacroStep,
@@ -88,8 +88,9 @@ type BackupEditTargetKind = "activity" | "device";
 type BackupEditDetailSectionId = "power" | "quick_access" | "network" | "commands" | "bindings";
 type BackupQuickAccessKind = "macro" | "favorite";
 // Step-dialog modes. "input" edits an activity power-macro input ref;
-// "power" refs never open the dialog so aren't included here.
-type MacroStepKind = "command" | "delay" | "input";
+// "power" refs never open the dialog so aren't included here. Waits are no
+// longer a dialog mode — they're edited inline on each command row.
+type MacroStepKind = "command" | "input";
 type BackupRenameDialogTarget =
   | { kind: "detail"; entityKind: BackupEditTargetKind; entityId: number }
   | { kind: "macro"; activityId: number; buttonId: number }
@@ -180,7 +181,7 @@ class SofabatonBackupTab extends LitElement {
     _stepKind: { state: true },
     _stepDeviceId: { state: true },
     _stepCommandId: { state: true },
-    _stepDelaySeconds: { state: true },
+    _stepHoldSeconds: { state: true },
     _stepError: { state: true },
     _editBundleDirty: { state: true },
     _haSortableReady: { state: true },
@@ -650,6 +651,49 @@ class SofabatonBackupTab extends LitElement {
       min-width: 0;
       flex: 1;
     }
+    .detail-title-stack {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .detail-crumbs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      font-size: 11px;
+      line-height: 1.1;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+    }
+    .detail-crumb {
+      flex: 0 1 auto;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      padding: 0;
+      font: inherit;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transition: color 120ms ease;
+    }
+    .detail-crumb:hover {
+      color: var(--primary-color);
+      text-decoration: underline;
+    }
+    .detail-crumb-sep {
+      flex: 0 0 auto;
+      color: color-mix(in srgb, var(--secondary-text-color) 55%, transparent);
+    }
     .detail-title-actions {
       display: inline-flex;
       align-items: center;
@@ -659,6 +703,7 @@ class SofabatonBackupTab extends LitElement {
     .detail-title {
       font-size: 18px;
       font-weight: 700;
+      line-height: 1.15;
       color: var(--primary-text-color);
       min-width: 0;
       white-space: nowrap;
@@ -997,6 +1042,43 @@ class SofabatonBackupTab extends LitElement {
       align-items: center;
       gap: 8px;
       flex: 0 0 auto;
+    }
+    /* Inline per-row wait control: the delay that trails this command. */
+    .step-wait {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      flex: 0 0 auto;
+      padding: 3px 6px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 60%, transparent);
+    }
+    .step-wait:focus-within {
+      border-color: var(--primary-color);
+    }
+    .step-wait-input {
+      width: 42px;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: right;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .step-wait-input::-webkit-outer-spin-button,
+    .step-wait-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .step-wait-unit {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 600;
     }
     .quick-access-drag {
       display: inline-flex;
@@ -1630,7 +1712,7 @@ class SofabatonBackupTab extends LitElement {
   private _stepKind: MacroStepKind = "command";
   private _stepDeviceId: number | null = null;
   private _stepCommandId: number | null = null;
-  private _stepDelaySeconds = "0";
+  private _stepHoldSeconds = "0";
   private _stepError = "";
   private _haSortableReady = Boolean(customElements.get("ha-sortable"));
   private readonly _backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
@@ -2160,7 +2242,12 @@ class SofabatonBackupTab extends LitElement {
                 <button class="back-btn" @click=${this._closeEditDetail}>
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
-                <div class="detail-title">${params.title}</div>
+                <div class="detail-title-stack">
+                  ${this._renderDetailCrumbs([
+                    { label: this._entityKindCrumbLabel(params.kind), onClick: this._closeEditDetail },
+                  ])}
+                  <div class="detail-title">${params.title}</div>
+                </div>
                 ${this._editBundleDirty
                   ? html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`
                   : nothing}
@@ -3282,6 +3369,28 @@ class SofabatonBackupTab extends LitElement {
     return options.find((option) => option.id === this._editDetailId)?.label || "";
   }
 
+  private _entityKindCrumbLabel(kind: BackupEditTargetKind): string {
+    return kind === "activity"
+      ? TOOLS_CARD_STRINGS.backup.crumbActivities
+      : TOOLS_CARD_STRINGS.backup.crumbDevices;
+  }
+
+  // Compact ancestor trail shown above the detail/editor title. Each crumb
+  // is a tappable button that pops back to that level; the trailing "›"
+  // leads the eye into the current page's big title beneath it.
+  private _renderDetailCrumbs(crumbs: Array<{ label: string; onClick: () => void }>) {
+    if (!crumbs.length) return nothing;
+    return html`
+      <div class="detail-crumbs">
+        ${crumbs.map((crumb, index) => html`
+          ${index > 0 ? html`<span class="detail-crumb-sep" aria-hidden="true">›</span>` : nothing}
+          <button class="detail-crumb" type="button" @click=${crumb.onClick}>${crumb.label}</button>
+        `)}
+        <span class="detail-crumb-sep" aria-hidden="true">›</span>
+      </div>
+    `;
+  }
+
   private _applyEditDetailRename() {
     const next = this._sanitizeBundleName(this._editDetailNameDraft);
     if (!next || !this._editDetailKind || this._editDetailId == null) return;
@@ -3483,6 +3592,38 @@ class SofabatonBackupTab extends LitElement {
   };
 
   // ── Button bindings (add / edit picker) ─────────────────────────────
+  // The activity's own id, usable as a binding target that plays one of its
+  // macros — offered only when the activity actually has user macros. Encodes
+  // device_id = activity id, command_id = macro button id (hub keymap model).
+  private _activityMacroTargetId(): number | null {
+    if (this._bindingScope !== "activity" || this._editDetailId == null || !this._editBundle) return null;
+    const id = Number(this._editDetailId);
+    return activityUserMacroSummaries(this._editBundle, id).length > 0 ? id : null;
+  }
+
+  // Activity binding target-device options: source devices plus the
+  // "this activity · macros" target when available.
+  private _bindingDeviceOptions(): Array<{ value: number; label: string }> {
+    if (!this._editBundle) return [];
+    const options = bundleDeviceOptions(this._editBundle).map((device) => ({ value: device.id, label: device.label }));
+    const macroTargetId = this._activityMacroTargetId();
+    if (macroTargetId != null) {
+      options.push({ value: macroTargetId, label: TOOLS_CARD_STRINGS.backup.bindingMacroTarget });
+    }
+    return options;
+  }
+
+  // Command options for a chosen target: the activity's own macros when the
+  // target is the activity itself, otherwise the target device's commands.
+  private _bindingCommandOptions(targetDeviceId: number | null): Array<{ value: number; label: string }> {
+    if (targetDeviceId == null || !this._editBundle) return [];
+    if (this._bindingScope === "activity" && this._editDetailId != null && targetDeviceId === Number(this._editDetailId)) {
+      return activityUserMacroSummaries(this._editBundle, Number(this._editDetailId))
+        .map((macro) => ({ value: macro.buttonId, label: macro.name }));
+    }
+    return deviceCommandItems(this._editBundle, targetDeviceId).map((command) => ({ value: command.commandId, label: command.label }));
+  }
+
   private _openAddBindingDialog(kind: BackupEditTargetKind) {
     if (this._editDetailId == null || !this._editBundle) return;
     const entityId = Number(this._editDetailId);
@@ -3551,10 +3692,7 @@ class SofabatonBackupTab extends LitElement {
   private _handleBindingDeviceChange = (event: Event) => {
     const value = Number((event.target as HTMLSelectElement).value);
     this._bindingDeviceId = Number.isFinite(value) ? value : null;
-    const commands = this._bindingDeviceId != null && this._editBundle
-      ? deviceCommandItems(this._editBundle, this._bindingDeviceId)
-      : [];
-    this._bindingCommandId = commands[0]?.commandId ?? null;
+    this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
   };
 
   private _handleBindingCommandChange = (event: Event) => {
@@ -3566,21 +3704,18 @@ class SofabatonBackupTab extends LitElement {
     const enabled = Boolean((event.target as { checked?: boolean }).checked);
     this._bindingLongPressEnabled = enabled;
     if (!enabled || !this._editBundle) return;
-    if (this._bindingLpDeviceId == null) this._bindingLpDeviceId = this._bindingDeviceId;
+    if (this._bindingLpDeviceId == null) {
+      this._bindingLpDeviceId = this._bindingScope === "activity" ? this._bindingDeviceId : Number(this._editDetailId);
+    }
     if (this._bindingLpCommandId == null) {
-      const lpDeviceId = this._bindingScope === "activity" ? this._bindingLpDeviceId : Number(this._editDetailId);
-      const commands = lpDeviceId != null ? deviceCommandItems(this._editBundle, lpDeviceId) : [];
-      this._bindingLpCommandId = commands[0]?.commandId ?? null;
+      this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
     }
   };
 
   private _handleBindingLpDeviceChange = (event: Event) => {
     const value = Number((event.target as HTMLSelectElement).value);
     this._bindingLpDeviceId = Number.isFinite(value) ? value : null;
-    const commands = this._bindingLpDeviceId != null && this._editBundle
-      ? deviceCommandItems(this._editBundle, this._bindingLpDeviceId)
-      : [];
-    this._bindingLpCommandId = commands[0]?.commandId ?? null;
+    this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
   };
 
   private _handleBindingLpCommandChange = (event: Event) => {
@@ -3652,11 +3787,11 @@ class SofabatonBackupTab extends LitElement {
     const unbound: ButtonCatalogEntry[] = scope === "activity"
       ? unboundButtonsForActivity(this._editBundle, entityId)
       : unboundButtonsForDevice(this._editBundle, entityId);
-    const devices = bundleDeviceOptions(this._editBundle);
+    const deviceOptions = this._bindingDeviceOptions();
     const commandDeviceId = scope === "activity" ? this._bindingDeviceId : entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
+    const commandOptions = this._bindingCommandOptions(commandDeviceId);
     const lpDeviceId = scope === "activity" ? this._bindingLpDeviceId : entityId;
-    const lpCommands = lpDeviceId != null ? deviceCommandItems(this._editBundle, lpDeviceId) : [];
+    const lpCommandOptions = this._bindingCommandOptions(lpDeviceId);
     const canSave = this._bindingButtonId != null && this._bindingCommandId != null
       && (scope === "device" || this._bindingDeviceId != null);
     const title = isEdit
@@ -3690,7 +3825,7 @@ class SofabatonBackupTab extends LitElement {
                   id: "sb-binding-device",
                   label: TOOLS_CARD_STRINGS.backup.bindingTargetDevice,
                   value: this._bindingDeviceId,
-                  options: devices.map((device) => ({ value: device.id, label: device.label })),
+                  options: deviceOptions,
                   onChange: this._handleBindingDeviceChange,
                   emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices,
                 })
@@ -3699,7 +3834,7 @@ class SofabatonBackupTab extends LitElement {
               id: "sb-binding-command",
               label: TOOLS_CARD_STRINGS.backup.bindingCommand,
               value: this._bindingCommandId,
-              options: commands.map((command) => ({ value: command.commandId, label: command.label })),
+              options: commandOptions,
               onChange: this._handleBindingCommandChange,
               emptyText: TOOLS_CARD_STRINGS.backup.bindingNoCommands,
             })}
@@ -3717,7 +3852,7 @@ class SofabatonBackupTab extends LitElement {
                         id: "sb-binding-lp-device",
                         label: TOOLS_CARD_STRINGS.backup.bindingLongPressDevice,
                         value: this._bindingLpDeviceId,
-                        options: devices.map((device) => ({ value: device.id, label: device.label })),
+                        options: deviceOptions,
                         onChange: this._handleBindingLpDeviceChange,
                         emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices,
                       })
@@ -3726,7 +3861,7 @@ class SofabatonBackupTab extends LitElement {
                     id: "sb-binding-lp-command",
                     label: TOOLS_CARD_STRINGS.backup.bindingLongPressCommand,
                     value: this._bindingLpCommandId,
-                    options: lpCommands.map((command) => ({ value: command.commandId, label: command.label })),
+                    options: lpCommandOptions,
                     onChange: this._handleBindingLpCommandChange,
                     emptyText: TOOLS_CARD_STRINGS.backup.bindingNoCommands,
                   })}
@@ -3769,6 +3904,11 @@ class SofabatonBackupTab extends LitElement {
     return Math.min(255, Math.max(0, Math.round(seconds * 2)));
   }
 
+  /** Snap a typed seconds value to the hub's 0.5s grid (returns the string form). */
+  private _snapHalfSeconds(value: string): string {
+    return this._byteToSeconds(this._secondsToByte(value));
+  }
+
   private _currentMacroStepItems(): BackupMacroStepItem[] {
     const editor = this._macroEditor;
     if (!editor || !this._editBundle) return [];
@@ -3788,7 +3928,7 @@ class SofabatonBackupTab extends LitElement {
     const commandDeviceId = editor.scope === "activity" ? this._stepDeviceId : editor.entityId;
     const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
     this._stepCommandId = commands[0]?.commandId ?? null;
-    this._stepDelaySeconds = "0";
+    this._stepHoldSeconds = "0";
     this._stepError = "";
     this._stepDialogOpen = true;
   };
@@ -3806,10 +3946,10 @@ class SofabatonBackupTab extends LitElement {
       this._stepCommandId = item.commandId ?? null;
       return;
     }
-    this._stepKind = item.kind === "delay" ? "delay" : "command";
+    this._stepKind = "command";
     this._stepDeviceId = editor.scope === "activity" ? (item.deviceId ?? null) : editor.entityId;
     this._stepCommandId = item.commandId ?? null;
-    this._stepDelaySeconds = this._byteToSeconds(item.kind === "delay" ? item.wait : item.hold);
+    this._stepHoldSeconds = this._byteToSeconds(item.hold);
   }
 
   private _closeStepDialog = () => {
@@ -3818,12 +3958,8 @@ class SofabatonBackupTab extends LitElement {
     this._stepKind = "command";
     this._stepDeviceId = null;
     this._stepCommandId = null;
-    this._stepDelaySeconds = "0";
+    this._stepHoldSeconds = "0";
     this._stepError = "";
-  };
-
-  private _handleStepKindChange = (event: Event) => {
-    this._stepKind = (event.target as HTMLSelectElement).value === "delay" ? "delay" : "command";
   };
 
   private _handleStepDeviceChange = (event: Event) => {
@@ -3840,14 +3976,36 @@ class SofabatonBackupTab extends LitElement {
     this._stepCommandId = raw === "" ? null : Number(raw);
   };
 
-  private _handleStepDelayInput = (event: Event) => {
-    this._stepDelaySeconds = (event.target as HTMLInputElement).value;
+  private _handleStepHoldInput = (event: Event) => {
+    this._stepHoldSeconds = (event.target as HTMLInputElement).value;
+  };
+
+  // Snap the dialog's hold field to the 0.5s grid when the user commits it
+  // (on blur / Enter), so the field can't keep an off-grid value like 0.3.
+  private _handleStepHoldChange = (event: Event) => {
+    this._stepHoldSeconds = this._snapHalfSeconds((event.target as HTMLInputElement).value);
+  };
+
+  // Inline per-row wait edit: the attached delay travels with its command.
+  private _handleStepWaitChange = (item: BackupMacroStepItem, event: Event) => {
+    const editor = this._macroEditor;
+    if (!editor || !this._editBundle) return;
+    const input = event.target as HTMLInputElement;
+    const waitByte = this._secondsToByte(input.value);
+    // Reflect the snapped 0.5s value in the field immediately. A re-render
+    // alone can't fix it when the typed value rounds to the current byte:
+    // the bound value is unchanged, so Lit leaves the stray text in place.
+    input.value = this._byteToSeconds(waitByte);
+    const next = editor.scope === "device"
+      ? setDeviceMacroStepWait(this._editBundle, editor.entityId, editor.buttonId, item.index, waitByte)
+      : setActivityMacroStepWait(this._editBundle, editor.entityId, editor.buttonId, item.index, waitByte);
+    this._commitEditBundleEdit(next);
   };
 
   private _applyStep = () => {
     const editor = this._macroEditor;
     if (!editor || !this._editBundle) return;
-    const timeByte = this._secondsToByte(this._stepDelaySeconds);
+    const timeByte = this._secondsToByte(this._stepHoldSeconds);
     const editIndex = this._stepDialogEditIndex;
     const isDevice = editor.scope === "device";
     // Editing an activity power-macro input ref: set (or clear) the input.
@@ -3859,18 +4017,6 @@ class SofabatonBackupTab extends LitElement {
           : setActivityDeviceInput(this._editBundle, editor.entityId, deviceId, Number(this._stepCommandId));
         this._commitEditBundleEdit(next);
       }
-      this._closeStepDialog();
-      return;
-    }
-    if (this._stepKind === "delay") {
-      const next = editIndex === null
-        ? (isDevice
-          ? addDeviceMacroDelayStep(this._editBundle, editor.entityId, editor.buttonId, timeByte)
-          : addActivityMacroDelayStep(this._editBundle, editor.entityId, editor.buttonId, timeByte))
-        : (isDevice
-          ? updateDeviceMacroStep(this._editBundle, editor.entityId, editor.buttonId, editIndex, { wait: timeByte })
-          : updateActivityMacroStep(this._editBundle, editor.entityId, editor.buttonId, editIndex, { wait: timeByte }));
-      this._commitEditBundleEdit(next);
       this._closeStepDialog();
       return;
     }
@@ -3936,7 +4082,13 @@ class SofabatonBackupTab extends LitElement {
                 <button class="back-btn" @click=${this._closeMacroEditor}>
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
-                <div class="detail-title">${editor.name}</div>
+                <div class="detail-title-stack">
+                  ${this._renderDetailCrumbs([
+                    { label: this._entityKindCrumbLabel(editor.scope), onClick: this._closeEditDetail },
+                    { label: this._selectedEditTitle(), onClick: this._closeMacroEditor },
+                  ])}
+                  <div class="detail-title">${editor.name}</div>
+                </div>
                 ${this._editBundleDirty
                   ? html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`
                   : nothing}
@@ -3950,8 +4102,8 @@ class SofabatonBackupTab extends LitElement {
                   <div class="quick-access-title">Steps</div>
                   <div class="quick-access-sub">
                     ${this._haSortableReady
-                      ? "Drag to reorder. Each step plays a command or waits."
-                      : "Each step plays a command or waits."}
+                      ? "Drag to reorder. Each step plays a command; set the wait that follows it on the right."
+                      : "Each step plays a command; set the wait that follows it on the right."}
                   </div>
                 </div>
                 <button class="quick-access-add-btn" @click=${this._openAddStepDialog}>
@@ -3987,18 +4139,15 @@ class SofabatonBackupTab extends LitElement {
   }
 
   private _renderMacroStepRow(item: BackupMacroStepItem, sortable: boolean) {
-    const isDelay = item.kind === "delay";
     const isPower = item.kind === "power";
     const isInput = item.kind === "input";
-    const label = isDelay
-      ? TOOLS_CARD_STRINGS.backup.waitLabel(this._byteToSeconds(item.wait))
-      : item.label;
     const meta = item.kind === "command" && item.hold > 0
       ? TOOLS_CARD_STRINGS.backup.holdLabel(this._byteToSeconds(item.hold))
       : "";
-    const chip = isDelay ? "wait" : isPower || isInput ? "required" : "command";
-    // Power refs: no actions. Input refs: editable (change input) but not
-    // deletable. Command/delay: full edit + delete.
+    const chip = isPower || isInput ? "required" : "command";
+    // Power refs: command/order protected (no rename/delete) but their
+    // attached wait is editable. Input refs: editable (change input), no
+    // delete. Commands: full edit + delete. Every row owns an inline wait.
     return html`
       <div class="quick-access-sortable-item" data-step-index=${item.index}>
         <div class="quick-access-row">
@@ -4007,12 +4156,25 @@ class SofabatonBackupTab extends LitElement {
             : html`<span></span>`}
           <div class="quick-access-main">
             <div class="quick-access-label-row">
-              <div class="quick-access-label">${label}</div>
+              <div class="quick-access-label">${item.label}</div>
               <div class="quick-access-chip">${chip}</div>
             </div>
             ${meta ? html`<div class="quick-access-meta">${meta}</div>` : nothing}
           </div>
           <div class="quick-access-actions">
+            <label class="step-wait" title=${TOOLS_CARD_STRINGS.backup.stepWaitAria}>
+              <input
+                class="step-wait-input"
+                type="number"
+                min="0"
+                max="120"
+                step="0.5"
+                aria-label=${TOOLS_CARD_STRINGS.backup.stepWaitAria}
+                .value=${this._byteToSeconds(item.wait)}
+                @change=${(event: Event) => this._handleStepWaitChange(item, event)}
+              />
+              <span class="step-wait-unit">${TOOLS_CARD_STRINGS.backup.stepWaitUnit}</span>
+            </label>
             ${isPower
               ? nothing
               : html`
@@ -4038,12 +4200,11 @@ class SofabatonBackupTab extends LitElement {
     const editor = this._macroEditor;
     const isEdit = this._stepDialogEditIndex !== null;
     const isActivity = editor.scope === "activity";
-    const isDelay = this._stepKind === "delay";
     const isInput = this._stepKind === "input";
     const devices = bundleDeviceOptions(this._editBundle);
     const commandDeviceId = isInput ? this._stepDeviceId : (isActivity ? this._stepDeviceId : editor.entityId);
     const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
-    const canSave = isDelay || isInput || (this._stepCommandId != null && (!isActivity || this._stepDeviceId != null));
+    const canSave = isInput || (this._stepCommandId != null && (!isActivity || this._stepDeviceId != null));
     const title = isInput
       ? TOOLS_CARD_STRINGS.backup.inputStepTitle
       : isEdit
@@ -4070,52 +4231,36 @@ class SofabatonBackupTab extends LitElement {
                   </div>
                 `
               : html`
-                  ${isEdit
-                    ? nothing
-                    : html`
-                        <div class="decoded-field">
-                          <label class="decoded-field-label" for="sb-step-kind">${TOOLS_CARD_STRINGS.backup.stepKind}</label>
-                          <select id="sb-step-kind" class="decoded-field-input" @change=${this._handleStepKindChange}>
-                            <option value="command" ?selected=${!isDelay}>${TOOLS_CARD_STRINGS.backup.stepKindCommand}</option>
-                            <option value="delay" ?selected=${isDelay}>${TOOLS_CARD_STRINGS.backup.stepKindDelay}</option>
-                          </select>
-                        </div>
-                      `}
-                  ${!isDelay
-                    ? html`
-                        ${isActivity
-                          ? this._renderBindingSelect({
-                              id: "sb-step-device",
-                              label: TOOLS_CARD_STRINGS.backup.stepDevice,
-                              value: this._stepDeviceId,
-                              options: devices.map((device) => ({ value: device.id, label: device.label })),
-                              onChange: this._handleStepDeviceChange,
-                              emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices,
-                            })
-                          : nothing}
-                        ${this._renderBindingSelect({
-                          id: "sb-step-command",
-                          label: TOOLS_CARD_STRINGS.backup.stepCommand,
-                          value: this._stepCommandId,
-                          options: commands.map((command) => ({ value: command.commandId, label: command.label })),
-                          onChange: this._handleStepCommandChange,
-                          emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands,
-                        })}
-                      `
+                  ${isActivity
+                    ? this._renderBindingSelect({
+                        id: "sb-step-device",
+                        label: TOOLS_CARD_STRINGS.backup.stepDevice,
+                        value: this._stepDeviceId,
+                        options: devices.map((device) => ({ value: device.id, label: device.label })),
+                        onChange: this._handleStepDeviceChange,
+                        emptyText: TOOLS_CARD_STRINGS.backup.bindingNoDevices,
+                      })
                     : nothing}
+                  ${this._renderBindingSelect({
+                    id: "sb-step-command",
+                    label: TOOLS_CARD_STRINGS.backup.stepCommand,
+                    value: this._stepCommandId,
+                    options: commands.map((command) => ({ value: command.commandId, label: command.label })),
+                    onChange: this._handleStepCommandChange,
+                    emptyText: TOOLS_CARD_STRINGS.backup.stepNoCommands,
+                  })}
                   <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-step-delay">
-                      ${isDelay ? TOOLS_CARD_STRINGS.backup.stepWaitSeconds : TOOLS_CARD_STRINGS.backup.stepHoldSeconds}
-                    </label>
+                    <label class="decoded-field-label" for="sb-step-hold">${TOOLS_CARD_STRINGS.backup.stepHoldSeconds}</label>
                     <input
-                      id="sb-step-delay"
+                      id="sb-step-hold"
                       class="decoded-field-input"
                       type="number"
                       min="0"
                       max="120"
                       step="0.5"
-                      .value=${this._stepDelaySeconds}
-                      @input=${this._handleStepDelayInput}
+                      .value=${this._stepHoldSeconds}
+                      @input=${this._handleStepHoldInput}
+                      @change=${this._handleStepHoldChange}
                     />
                   </div>
                 `}

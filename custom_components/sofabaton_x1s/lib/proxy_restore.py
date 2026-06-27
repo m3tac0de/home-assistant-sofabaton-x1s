@@ -1736,6 +1736,7 @@ class RestoreMixin:
 
         activity_block = request.device_block
         remap_lookup = dict(request.device_id_map)
+        old_activity_id = int(activity_block.get("device_id", 0)) & 0xFF
 
         def _map_device_id(raw: Any) -> int | None:
             try:
@@ -1744,6 +1745,13 @@ class RestoreMixin:
                 return None
             if src == 0:
                 return None
+            # A MACRO binding targets the activity's own key (device_id ==
+            # the activity, command_id == the macro's button_id). Map the
+            # activity's own source id to its freshly-allocated id. (Bound
+            # after the create below; only ever called from the post-create
+            # binding/macro loops, so new_activity_id is set by call time.)
+            if src == old_activity_id:
+                return new_activity_id
             return remap_lookup.get(src)
 
         create_config = device_config_from_backup(activity_block, for_create=True)
@@ -1994,14 +2002,19 @@ class RestoreMixin:
         """
 
         referenced: set[int] = set()
+        # The activity's own id is a MACRO-binding target (device_id == the
+        # activity, command_id == the macro's button_id), not a source device,
+        # so it must not be required in the device_id_map.
+        own_id = int((payload.get("device") or {}).get("device_id", 0)) & 0xFF
 
         def _add(raw: Any) -> None:
             try:
                 value = int(raw) & 0xFF
             except (TypeError, ValueError):
                 return
-            # 0x00 = unset; 0xFF = delay/wait sentinel (no real device).
-            if value != 0 and value != 0xFF:
+            # 0x00 = unset; 0xFF = delay/wait sentinel (no real device);
+            # own_id = a macro-binding self-reference.
+            if value not in (0, 0xFF, own_id):
                 referenced.add(value)
 
         for row in payload.get("button_bindings") or []:
