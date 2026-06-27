@@ -61,9 +61,12 @@ def _marshal_callback(loop: asyncio.AbstractEventLoop, callback: Callable) -> Ca
 class AsyncXProxy:
     """Asyncio proxy for a Sofabaton X1/X1S/X2 hub — the library's entry point.
 
-    Construct it with the hub's connection details (the ``hub_ip=`` /
-    ``mdns_instance=`` / ``mdns_txt=`` / ``hub_version=`` keywords shown in
-    the README quickstart). Construction must happen inside a running event
+    Construct it with the hub's IP — ``AsyncXProxy(hub_ip=...)`` is enough:
+    ports default to the right values and the hub model is confirmed from
+    the connect banner. Pass ``mdns_instance=`` / ``mdns_txt=`` only to make
+    the proxy advertise itself exactly like the hub it fronts (so the
+    official app keeps working pointed at the proxy); ``hub_version=`` is at
+    most a pre-connect hint. Construction must happen inside a running event
     loop (or pass ``loop=``). Blocking work runs in the loop's executor and
     listener callbacks are marshaled back onto the loop.
 

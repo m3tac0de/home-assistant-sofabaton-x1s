@@ -30,12 +30,12 @@ async def main() -> None:
         raise SystemExit("no hub found")
     hub = hubs[0]
 
-    proxy = AsyncXProxy(
-        hub_ip=hub.host,
-        mdns_instance=hub.name,
-        mdns_txt=hub.txt,
-        hub_version=hub.hub_version,
-    )
+    # The hub's IP is all that's required. Events surface with or without
+    # the app. To let the official app connect *through* the proxy (so you
+    # can watch it drive the hub), add the hub's mDNS identity so the proxy
+    # advertises itself exactly like the hub:
+    #     mdns_instance=hub.name, mdns_txt=hub.txt
+    proxy = AsyncXProxy(hub_ip=hub.host)
 
     async def on_activity(new_id, old_id, name):
         print(f"activity -> {name or '?'}  (id {old_id} -> {new_id})")

@@ -59,12 +59,11 @@ async def main() -> None:
         raise SystemExit("no hub found")
     hub = hubs[0]
 
-    proxy = AsyncXProxy(
-        hub_ip=hub.host,
-        mdns_instance=hub.name,
-        mdns_txt=hub.txt,
-        hub_version=hub.hub_version,
-    )
+    # The hub's IP is all that's required. To let the official app connect
+    # *through* the proxy, add the hub's mDNS identity so the proxy
+    # advertises itself exactly like the hub:
+    #     mdns_instance=hub.name, mdns_txt=hub.txt
+    proxy = AsyncXProxy(hub_ip=hub.host)
     server = ThreadingHTTPServer(("0.0.0.0", LISTEN_PORT), HubCallbackHandler)
     async with proxy:
         # Provisioning writes to the hub, so own it first (no app attached).

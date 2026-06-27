@@ -23,12 +23,7 @@ async def main() -> None:
         raise SystemExit("no hub found")
     hub = hubs[0]
 
-    proxy = AsyncXProxy(
-        hub_ip=hub.host,
-        mdns_instance=hub.name,
-        mdns_txt=hub.txt,
-        hub_version=hub.hub_version,
-    )
+    proxy = AsyncXProxy(hub_ip=hub.host)   # the hub's IP is all you need
 
     async with proxy:
         # Backup fetches from the hub, so own it first (no app attached).

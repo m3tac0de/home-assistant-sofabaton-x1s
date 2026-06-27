@@ -27,12 +27,7 @@ async def main() -> None:
     hub = hubs[0]
     print(f"reading {hub.name} ({hub.hub_version}) at {hub.host}\n")
 
-    proxy = AsyncXProxy(
-        hub_ip=hub.host,
-        mdns_instance=hub.name,
-        mdns_txt=hub.txt,
-        hub_version=hub.hub_version,
-    )
+    proxy = AsyncXProxy(hub_ip=hub.host)   # the hub's IP is all you need
 
     async with proxy:
         # Own the hub before reading (no app attached, hub connected).

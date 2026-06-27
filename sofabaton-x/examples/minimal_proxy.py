@@ -28,12 +28,11 @@ async def main() -> None:
     hub = hubs[0]
     print(f"proxying {hub.name} ({hub.hub_version}) at {hub.host}")
 
-    proxy = AsyncXProxy(
-        hub_ip=hub.host,
-        mdns_instance=hub.name,
-        mdns_txt=hub.txt,          # carries HVER -> variant classification
-        hub_version=hub.hub_version,
-    )
+    # The hub's IP is the only required argument: ports default to the
+    # right values and the hub model is confirmed from the connect banner.
+    # (To also advertise the proxy to the official app exactly like the
+    # hub, pass mdns_instance=hub.name, mdns_txt=hub.txt — see watch.py.)
+    proxy = AsyncXProxy(hub_ip=hub.host)
 
     proxy.on_hub_state_change(lambda up: print("hub:", "up" if up else "down"))
     proxy.on_client_state_change(lambda up: print("app:", "connected" if up else "gone"))

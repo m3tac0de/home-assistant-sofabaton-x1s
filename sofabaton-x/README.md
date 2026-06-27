@@ -57,12 +57,7 @@ async def main():
     hubs = await async_discover_hubs(timeout=5.0)   # physical hubs; proxies filtered
     hub = hubs[0]
 
-    proxy = AsyncXProxy(
-        hub_ip=hub.host,                # the physical hub's IP
-        mdns_instance=hub.name,
-        mdns_txt=hub.txt,               # carries HVER -> X1/X1S/X2 classification
-        hub_version=hub.hub_version,    # optional; the connect banner confirms it
-    )
+    proxy = AsyncXProxy(hub_ip=hub.host)   # the hub's IP is all you need
     proxy.on_activity_change(lambda new, old, name: print(f"activity -> {name}"))
 
     async with proxy:
@@ -75,6 +70,22 @@ async def main():
         await proxy.start_activity(next(iter(activities)))
 
 asyncio.run(main())
+```
+
+`hub_ip` is the only required argument; everything else has a sensible
+default and the hub model is confirmed from the connect banner. The one
+thing worth adding is the proxy's mDNS identity — pass
+`mdns_instance=hub.name` and `mdns_txt=hub.txt` so the proxy advertises
+itself **exactly like the hub it fronts**, letting the official Sofabaton
+app keep working while pointed at the proxy. Skip them and the proxy still
+reads and controls the hub fine; it just advertises under a generic name:
+
+```python
+proxy = AsyncXProxy(
+    hub_ip=hub.host,
+    mdns_instance=hub.name,   # advertise as the hub, so the app finds the proxy
+    mdns_txt=hub.txt,         # carries HVER -> X1/X1S/X2 classification
+)
 ```
 
 ### Ports
