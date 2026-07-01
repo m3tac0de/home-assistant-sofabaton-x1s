@@ -26,6 +26,18 @@ export function renderSettingsTab(params: {
   const hubVersion = String(hub.version ?? "").trim();
   const firmwareVersion = hub.firmware_version != null ? `FW: v${hub.firmware_version}` : "";
   const versionLine = [hubVersion ? `Sofabaton ${hubVersion}` : "", firmwareVersion].filter(Boolean).join(" / ");
+  const remoteBattery = hub.remote_battery;
+  const batteryLevel =
+    remoteBattery?.supported && typeof remoteBattery.level === "number"
+      ? Math.max(0, Math.min(100, Math.round(remoteBattery.level)))
+      : null;
+  const batteryUpdated = String(remoteBattery?.last_updated ?? "").trim();
+  const batteryStatus =
+    batteryLevel == null
+      ? String(remoteBattery?.attributes?.last_poll_status ?? "Waiting")
+      : batteryUpdated
+        ? "Updated"
+        : "Current";
 
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
@@ -66,6 +78,21 @@ export function renderSettingsTab(params: {
             </div>
           </div>
         </div>
+        ${remoteBattery?.supported
+          ? html`
+              <div class="remote-battery-panel">
+                <div class="remote-battery-icon"><ha-icon icon="mdi:battery"></ha-icon></div>
+                <div class="remote-battery-copy">
+                  <span class="remote-battery-label">Remote battery</span>
+                  <span class="remote-battery-status">${batteryStatus}</span>
+                </div>
+                <div class="remote-battery-meter" aria-label="Remote battery ${batteryLevel ?? 0} percent">
+                  <span style=${`width: ${batteryLevel ?? 0}%`}></span>
+                </div>
+                <span class="remote-battery-value">${batteryLevel == null ? "--" : `${batteryLevel}%`}</span>
+              </div>
+            `
+          : nothing}
       </div>
       <div class="tab-panel scrollable">
         <div class="settings-content">

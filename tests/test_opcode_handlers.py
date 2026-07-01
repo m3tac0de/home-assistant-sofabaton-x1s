@@ -45,6 +45,7 @@ from custom_components.sofabaton_x1s.lib.opcode_handlers import (
     IdleBehaviorHandler,
     KeymapHandler,
     MacroHandler,
+    RemoteStatusReplyHandler,
     RequestIdleBehaviorHandler,
     SetIdleBehaviorHandler,
     X1CatalogActivityHandler,
@@ -70,6 +71,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_REQ_ACTIVITIES,
     OP_REQ_BUTTONS,
     OP_REQ_COMMANDS,
+    OP_REQ_REMOTE_STATUS,
     OP_REQ_IDLE_BEHAVIOR,
     OP_SET_IDLE_BEHAVIOR,
     OP_MACROS_A1,
@@ -80,7 +82,7 @@ from custom_components.sofabaton_x1s.lib.protocol_const import (
     OP_X2_REMOTE_LIST_ROW,
 )
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
-from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S, HUB_VERSION_X2
 
 
 def _build_context(proxy: X1Proxy, raw_hex: str, opcode: int, name: str) -> FrameContext:
@@ -768,6 +770,112 @@ def test_devbtn_extra_contains_pause_and_red() -> None:
     handler.handle(frame)
 
     assert proxy.state.buttons.get(0x65) == {ButtonName.PAUSE, ButtonName.RED}
+
+
+def test_remote_status_probe_reply_queues_family_2f_payload() -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    handler = RemoteStatusReplyHandler()
+    payload = bytes(range(20))
+    frame = _build_payload_context(proxy, 0x142F, payload, "REMOTE_STATUS")
+
+    handler.handle(frame)
+
+    assert proxy.wait_for_ack_family_low(0x2F, timeout=0.01) == (0x142F, payload)
+
+
+def test_poll_x2_remote_battery_sends_queued_request_and_decodes(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_udp_port=0,
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X2,
+    )
+    payload = bytearray(range(32))
+    payload[2:5] = b"\x00\x00\x08"
+    payload[5] = 77
+    payload[6] = 88
+    payload[11] = 9
+    payload[12] = 3
+    payload[13] = 1
+    payload[14] = 2
+    payload[21:] = b"Remote\x00Name"
+    sent: list[tuple[int, bytes]] = []
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _send(opcode: int, wire_payload: bytes) -> None:
+        sent.append((opcode, wire_payload))
+        proxy.notify_ack(0x202F, bytes(payload))
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", _send)
+
+    result = proxy.poll_x2_remote_battery(timeout=0.1)
+
+    assert sent == [(OP_REQ_REMOTE_STATUS, b"\x00")]
+    assert result["ok"] is True
+    assert result["request_id"] == 0
+    assert result["opcode_hex"] == "0x202F"
+    assert result["decoded"] == {
+        "schema": "x2_rf_status",
+        "id": 8,
+        "remote_id": 8,
+        "remote_id_hex": "00 00 08",
+        "accessory_id": 8,
+        "battery": 77,
+        "hardware_version": 88,
+        "production_batch_hex": "07 08 09 0a",
+        "firmware_version": 9,
+        "type": 3,
+        "online": True,
+        "emitter_line_1": False,
+        "name": "Remote",
+    }
+    assert result["battery"] == 77
+    assert result["remote_name"] == "Remote"
+
+
+def test_poll_x2_remote_battery_skips_unsupported_hub(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    sent: list[tuple[int, bytes]] = []
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+
+    result = proxy.poll_x2_remote_battery(timeout=0.1)
+
+    assert sent == []
+    assert result["ok"] is False
+    assert result["skipped"] is True
+    assert result["error"] == "unsupported_hub_version"
+
+
+def test_poll_x2_remote_battery_skips_when_scheduler_busy(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_udp_port=0,
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X2,
+    )
+    sent: list[tuple[int, bytes]] = []
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+    proxy._burst.start("commands")
+
+    result = proxy.poll_x2_remote_battery(timeout=0.1)
+
+    assert sent == []
+    assert result["ok"] is False
+    assert result["skipped"] is True
+    assert result["error"] == "hub_busy"
 
 
 def test_macro_handler_drains_completed_burst_immediately(monkeypatch) -> None:

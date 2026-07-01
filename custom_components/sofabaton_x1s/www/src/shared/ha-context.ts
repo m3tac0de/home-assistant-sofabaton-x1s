@@ -58,12 +58,20 @@ export interface ControlPanelHubState {
   >;
   active_backup_operation?: BackupProgressEvent | null;
   runtime_state?: ControlPanelRuntimeState | null;
+  remote_battery?: ControlPanelRemoteBatteryState | null;
 }
 
 export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
   tools_frontend_version: string;
   hubs: ControlPanelHubState[];
+}
+
+export interface ControlPanelRemoteBatteryState {
+  supported: boolean;
+  level?: number | null;
+  last_updated?: string | null;
+  attributes?: Record<string, unknown>;
 }
 
 export interface ControlPanelRuntimeState {

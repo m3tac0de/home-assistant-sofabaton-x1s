@@ -1172,6 +1172,57 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-row-value, .setting-title, .entity-name, .cache-state-title { color: var(--primary-text-color); }
   .hub-row-label { font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--primary-text-color) 88%, var(--secondary-text-color)); }
   .hub-row-value { font-size: 12px; font-weight: 700; text-align: right; word-break: break-word; }
+  .remote-battery-panel {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr) minmax(72px, 118px) auto;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 9px 12px;
+    border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--card-background-color) 94%, var(--primary-color));
+  }
+  .remote-battery-icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    color: var(--primary-color);
+  }
+  .remote-battery-icon ha-icon { width: 22px; height: 22px; }
+  .remote-battery-copy { min-width: 0; display: grid; gap: 2px; }
+  .remote-battery-label {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--primary-text-color);
+  }
+  .remote-battery-status {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--secondary-text-color);
+    text-transform: capitalize;
+  }
+  .remote-battery-meter {
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--secondary-text-color) 24%, transparent);
+  }
+  .remote-battery-meter > span {
+    display: block;
+    height: 100%;
+    min-width: 0;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--success-color, #43a047) 84%, var(--primary-color));
+  }
+  .remote-battery-value {
+    min-width: 38px;
+    font-size: 13px;
+    font-weight: 800;
+    text-align: right;
+    color: var(--primary-text-color);
+  }
   .hub-tab-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .hub-tab-layout > .tab-panel { flex: 1; }
   .panel-sticky-footer { flex-shrink: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }
@@ -1350,7 +1401,7 @@ var cardStyles = [secondaryTabStyles, i`
   .stale-banner { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--warning-color, #ff9800) 30%, transparent); }
   .stale-banner-text { flex: 1; }
   .stale-banner-btn { background: none; border: 1px solid var(--divider-color); border-radius: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; color: var(--primary-text-color); }
-  .settings-hub-header { flex-shrink: 0; padding: 14px 16px 0; }
+  .settings-hub-header { flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; padding: 14px 16px 0; }
   .settings-content { flex-shrink: 0; display: flex; flex-direction: column; }
   .hub-compact-card { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--primary-text-color) 12%, var(--divider-color)); border-radius: calc(var(--ha-card-border-radius, 12px) + 2px); background: var(--ha-card-background, var(--card-background-color, #fff)); }
   .hub-compact-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
@@ -3270,6 +3321,10 @@ function renderSettingsTab(params) {
   const hubVersion = String(hub.version ?? "").trim();
   const firmwareVersion = hub.firmware_version != null ? `FW: v${hub.firmware_version}` : "";
   const versionLine = [hubVersion ? `Sofabaton ${hubVersion}` : "", firmwareVersion].filter(Boolean).join(" / ");
+  const remoteBattery = hub.remote_battery;
+  const batteryLevel = remoteBattery?.supported && typeof remoteBattery.level === "number" ? Math.max(0, Math.min(100, Math.round(remoteBattery.level))) : null;
+  const batteryUpdated = String(remoteBattery?.last_updated ?? "").trim();
+  const batteryStatus = batteryLevel == null ? String(remoteBattery?.attributes?.last_poll_status ?? "Waiting") : batteryUpdated ? "Updated" : "Current";
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
   const settingValue = (key) => !!params.hub?.settings?.[key];
@@ -3308,6 +3363,19 @@ function renderSettingsTab(params) {
             </div>
           </div>
         </div>
+        ${remoteBattery?.supported ? b2`
+              <div class="remote-battery-panel">
+                <div class="remote-battery-icon"><ha-icon icon="mdi:battery"></ha-icon></div>
+                <div class="remote-battery-copy">
+                  <span class="remote-battery-label">Remote battery</span>
+                  <span class="remote-battery-status">${batteryStatus}</span>
+                </div>
+                <div class="remote-battery-meter" aria-label="Remote battery ${batteryLevel ?? 0} percent">
+                  <span style=${`width: ${batteryLevel ?? 0}%`}></span>
+                </div>
+                <span class="remote-battery-value">${batteryLevel == null ? "--" : `${batteryLevel}%`}</span>
+              </div>
+            ` : A}
       </div>
       <div class="tab-panel scrollable">
         <div class="settings-content">

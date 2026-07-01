@@ -790,6 +790,7 @@ async def _async_build_control_panel_hub_payload(
         },
         "active_backup_operation": active_backup_operation,
         "runtime_state": runtime_state,
+        "remote_battery": hub.get_remote_battery_state(),
     }
 
 
