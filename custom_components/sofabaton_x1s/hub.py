@@ -568,7 +568,7 @@ class SofabatonHub:
                 len(acts) if acts else 0,
             )
             self.activities_ready = ready
-            if ready:
+            if ready and acts:
                 activities_changed = self._replace_activities(acts)
                 self._activities_generation += 1
                 if activities_changed:
