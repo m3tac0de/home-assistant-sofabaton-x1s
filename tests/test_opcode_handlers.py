@@ -838,6 +838,77 @@ def test_poll_x2_remote_battery_sends_queued_request_and_decodes(monkeypatch) ->
     assert result["remote_name"] == "Remote"
 
 
+def test_poll_x2_remote_battery_confirms_transient_zero(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_udp_port=0,
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X2,
+    )
+    sent: list[tuple[int, bytes]] = []
+    payload_zero = bytearray(range(32))
+    payload_zero[2:5] = b"\x00\x00\x08"
+    payload_zero[5] = 0
+    payload_zero[11] = 8
+    payload_zero[21:] = b"Remote\x00Name"
+    payload_live = bytearray(payload_zero)
+    payload_live[5] = 82
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    def _send(opcode: int, wire_payload: bytes) -> None:
+        sent.append((opcode, wire_payload))
+        payload = payload_zero if len(sent) == 1 else payload_live
+        proxy.notify_ack(0x332F, bytes(payload))
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", _send)
+
+    result = proxy.poll_x2_remote_battery(timeout=0.1)
+
+    assert sent == [(OP_REQ_REMOTE_STATUS, b"\x00"), (OP_REQ_REMOTE_STATUS, b"\x00")]
+    assert result["ok"] is True
+    assert result["battery"] == 82
+    assert result["confirmed_after_zero"] is True
+    assert result["first_zero_raw_hex"]
+
+
+def test_poll_x2_remote_battery_marks_repeated_zero_unconfirmed(monkeypatch) -> None:
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_udp_port=0,
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X2,
+    )
+    sent: list[tuple[int, bytes]] = []
+    payload_zero = bytearray(range(32))
+    payload_zero[2:5] = b"\x00\x00\x08"
+    payload_zero[5] = 0
+    payload_zero[11] = 8
+    payload_zero[21:] = b"Remote\x00Name"
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    monkeypatch.setattr("time.sleep", lambda _seconds: None)
+
+    def _send(opcode: int, wire_payload: bytes) -> None:
+        sent.append((opcode, wire_payload))
+        proxy.notify_ack(0x332F, bytes(payload_zero))
+
+    monkeypatch.setattr(proxy, "_send_cmd_frame", _send)
+
+    result = proxy.poll_x2_remote_battery(timeout=0.1)
+
+    assert sent == [(OP_REQ_REMOTE_STATUS, b"\x00"), (OP_REQ_REMOTE_STATUS, b"\x00")]
+    assert result["ok"] is True
+    assert result["battery"] == 0
+    assert result["unconfirmed_zero"] is True
+    assert result["confirmed_zero_raw_hex"]
+
+
 def test_poll_x2_remote_battery_skips_unsupported_hub(monkeypatch) -> None:
     proxy = X1Proxy(
         "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False

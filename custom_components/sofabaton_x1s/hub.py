@@ -1393,21 +1393,31 @@ class SofabatonHub:
 
     def _record_remote_battery_poll(self, result: dict[str, Any]) -> None:
         now_iso = datetime.now(timezone.utc).isoformat()
+        raw_battery: Any = None
+        decoded = result.get("decoded")
+        if isinstance(decoded, dict):
+            raw_battery = decoded.get("battery")
+
+        poll_status = "success" if result.get("ok") else "skipped" if result.get("skipped") else "error"
+        if result.get("unconfirmed_zero"):
+            poll_status = "zero_ignored"
+
         attrs: dict[str, Any] = {
             "supported": self.supports_remote_battery,
             "poll_interval_seconds": REMOTE_BATTERY_POLL_INTERVAL_SECONDS,
             "last_poll_time": now_iso,
-            "last_poll_status": "success" if result.get("ok") else "skipped" if result.get("skipped") else "error",
+            "last_poll_status": poll_status,
             "last_poll_error": result.get("error"),
             "last_poll_message": result.get("message"),
+            "last_raw_battery": raw_battery,
         }
 
-        decoded = result.get("decoded")
         if result.get("ok") and isinstance(decoded, dict):
             battery = decoded.get("battery")
             if isinstance(battery, int) and 0 <= battery <= 100:
-                self.remote_battery_level = battery
-                self._remote_battery_last_update = now_iso
+                if not (battery == 0 and result.get("unconfirmed_zero")):
+                    self.remote_battery_level = battery
+                    self._remote_battery_last_update = now_iso
             attrs.update(
                 {
                     "remote_name": decoded.get("name"),
@@ -1418,6 +1428,8 @@ class SofabatonHub:
                     "hardware_version": decoded.get("hardware_version"),
                     "firmware_version": decoded.get("firmware_version"),
                     "production_batch_hex": decoded.get("production_batch_hex"),
+                    "unconfirmed_zero": bool(result.get("unconfirmed_zero")),
+                    "confirmed_after_zero": bool(result.get("confirmed_after_zero")),
                 }
             )
 

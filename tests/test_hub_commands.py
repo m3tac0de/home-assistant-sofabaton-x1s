@@ -1859,6 +1859,92 @@ def test_async_poll_remote_battery_updates_cached_state(monkeypatch):
     loop.close()
 
 
+def test_remote_battery_unconfirmed_zero_preserves_previous_value():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version=HUB_VERSION_X2,
+    )
+    hub.remote_battery_level = 82
+
+    hub._record_remote_battery_poll(
+        {
+            "ok": True,
+            "unconfirmed_zero": True,
+            "decoded": {
+                "battery": 0,
+                "name": "Remote 1",
+                "remote_id": 8,
+                "remote_id_hex": "00 00 08",
+                "accessory_id": 8,
+            },
+        }
+    )
+
+    assert hub.remote_battery_level == 82
+    attrs = hub.get_remote_battery_attributes()
+    assert attrs["unconfirmed_zero"] is True
+    assert attrs["last_poll_status"] == "zero_ignored"
+    assert attrs["last_raw_battery"] == 0
+
+    loop.close()
+
+
+def test_remote_battery_unconfirmed_zero_without_previous_value_stays_unavailable():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version=HUB_VERSION_X2,
+    )
+
+    hub._record_remote_battery_poll(
+        {
+            "ok": True,
+            "unconfirmed_zero": True,
+            "decoded": {
+                "battery": 0,
+                "name": "Remote 1",
+                "remote_id": 8,
+                "remote_id_hex": "00 00 08",
+                "accessory_id": 8,
+            },
+        }
+    )
+
+    assert hub.remote_battery_level is None
+    state = hub.get_remote_battery_state()
+    assert state["level"] is None
+    attrs = hub.get_remote_battery_attributes()
+    assert attrs["last_poll_status"] == "zero_ignored"
+    assert attrs["last_raw_battery"] == 0
+
+    loop.close()
+
+
 def test_async_initial_sync_fetches_banner_first_and_persists_cache(monkeypatch):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

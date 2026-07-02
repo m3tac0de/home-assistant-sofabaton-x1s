@@ -1076,42 +1076,57 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
                 ),
             }
 
-        self.clear_ack_queue()
-        send_ts = time.monotonic()
-        if not self.enqueue_cmd(OP_REQ_REMOTE_STATUS, request_payload):
-            return {
-                **base_result,
-                "skipped": True,
-                "error": "enqueue_failed",
-                "message": "Hub command queue declined the remote battery request.",
-            }
+        def _request_once() -> dict[str, Any]:
+            self.clear_ack_queue()
+            send_ts = time.monotonic()
+            if not self.enqueue_cmd(OP_REQ_REMOTE_STATUS, request_payload):
+                return {
+                    **base_result,
+                    "skipped": True,
+                    "error": "enqueue_failed",
+                    "message": "Hub command queue declined the remote battery request.",
+                }
 
-        matched = self.wait_for_ack_family_low(
-            FAMILY_REMOTE_STATUS,
-            timeout=max(float(timeout), 0.1),
-            not_before=send_ts,
-        )
-        if matched is None:
-            return {
-                **base_result,
-                "error": "timeout",
-                "message": "Timed out waiting for a remote status reply.",
-            }
+            matched = self.wait_for_ack_family_low(
+                FAMILY_REMOTE_STATUS,
+                timeout=max(float(timeout), 0.1),
+                not_before=send_ts,
+            )
+            if matched is None:
+                return {
+                    **base_result,
+                    "error": "timeout",
+                    "message": "Timed out waiting for a remote status reply.",
+                }
 
-        opcode, payload = matched
-        decoded = _decode_x2_remote_status_reply(
-            request_index=idx,
-            opcode=opcode,
-            payload=payload,
-        )
-        decoded.update(
-            {
-                "skipped": False,
-                "request_opcode": OP_REQ_REMOTE_STATUS,
-                "request_opcode_hex": f"0x{OP_REQ_REMOTE_STATUS:04X}",
-                "request_raw_hex": request_frame.hex(" "),
-            }
-        )
+            opcode, payload = matched
+            result = _decode_x2_remote_status_reply(
+                request_index=idx,
+                opcode=opcode,
+                payload=payload,
+            )
+            result.update(
+                {
+                    "skipped": False,
+                    "request_opcode": OP_REQ_REMOTE_STATUS,
+                    "request_opcode_hex": f"0x{OP_REQ_REMOTE_STATUS:04X}",
+                    "request_raw_hex": request_frame.hex(" "),
+                }
+            )
+            return result
+
+        decoded = _request_once()
+        if decoded.get("ok") and decoded.get("battery") == 0:
+            time.sleep(0.35)
+            confirm = _request_once()
+            if confirm.get("ok") and confirm.get("battery") != 0:
+                confirm["confirmed_after_zero"] = True
+                confirm["first_zero_raw_hex"] = decoded.get("raw_hex")
+                decoded = confirm
+            else:
+                decoded["unconfirmed_zero"] = True
+                if confirm.get("ok"):
+                    decoded["confirmed_zero_raw_hex"] = confirm.get("raw_hex")
         return decoded
 
     def set_hub_name(

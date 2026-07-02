@@ -31,13 +31,17 @@ from .hub import REMOTE_BATTERY_POLL_INTERVAL_SECONDS, SofabatonHub, get_hub_dis
 
 async def async_setup_entry(hass, entry: ConfigEntry, async_add_entities):
     hub: SofabatonHub = hass.data[DOMAIN][entry.entry_id]
+    try:
+        entry_model = get_hub_model(entry)
+    except AttributeError:
+        entry_model = None
     entities = [
         SofabatonIndexSensor(hub, entry),
         SofabatonActivitySensor(hub, entry),
         SofabatonRecordedKeypressSensor(hub, entry),
         SofabatonIpCommandsSensor(hub, entry),
     ]
-    if hub.supports_remote_battery or get_hub_model(entry) == HUB_VERSION_X2:
+    if getattr(hub, "supports_remote_battery", False) or entry_model == HUB_VERSION_X2:
         entities.append(SofabatonRemoteBatterySensor(hub, entry))
     async_add_entities(entities)
 
