@@ -47,6 +47,18 @@ sequenceDiagram
 > Broadcast Discovery is optional for Android clients.
 > HTTP callbacks / Wifi Commands are optional.
 
+## Security / listener model
+
+The listener ports are intended for a trusted local network, not for exposure to the public internet. The Sofabaton hub protocol and the Wifi Commands callback format do not provide TLS or user authentication, so the network boundary is your router, VLAN, container publishing rules, and host firewall.
+
+The integration still applies narrow application-level filtering:
+
+- The hub TCP connect-back listener binds to all interfaces on the configured port so real hubs can reach Home Assistant across normal LAN and VLAN layouts. Accepted sockets are dispatched by the connecting hub IP; connections from unknown IPs are dropped.
+- The Wifi Commands HTTP listener is only started while an enabled hub still has deployed callback commands. It accepts only small, Roku-style `POST /launch/...` requests, rejects oversized or malformed requests, matches the per-hub action id in the path, and rejects requests from IPs other than the configured hub IP when that IP is known.
+- The app-side proxy listener is for the official Sofabaton app discovery and connect-back flow. Keep it reachable only from networks where you want the app to discover or control the proxy.
+
+Recommended deployment: allow the exact hub/app networks listed below, avoid publishing these ports through reverse proxies or internet-facing NAT, and prefer VLAN/firewall rules over relying on the listeners as a security boundary.
+
 ## Segment 1 – Hub ↔ Integration
 
 The integration discovers the physical hub and then keeps a bidirectional session open.

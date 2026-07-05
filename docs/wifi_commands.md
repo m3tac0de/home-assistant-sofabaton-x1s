@@ -67,6 +67,8 @@ The **Wifi Commands** feature uses an HTTP listener that will by default attempt
 The port the HTTP listener binds to can be changed in the integration's general config, but doing so will break X1 compatibility. Other hub versions can freely change ports.
 Detailed networking documentation is [here](networking.md).
 
+Security note: this listener is meant for trusted LAN/VLAN traffic from the configured Sofabaton hub. It is not an internet-facing webhook endpoint; keep it behind your normal network firewall and see the [networking security model](networking.md#security--listener-model) for the listener-side checks.
+
 ## `sensor.<hub>_wifi_commands`
 
 Updates whenever a Wifi Command key is pressed. Use it to build automations that respond to
