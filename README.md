@@ -1,15 +1,12 @@
 # Sofabaton X1/X1S/X2 - Home Assistant Custom Integration
-
 Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Home Assistant, using **100% local APIs**.
 
-> There is also an **official X2 integration** (MQTT-based): https://github.com/yomonpet/ha-sofabaton-hub
-
----
-
 [![HACS Badge](https://img.shields.io/badge/HACS-Default-green.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/github/v/release/m3tac0de/home-assistant-sofabaton-x1s) ![Total Downloads](https://img.shields.io/github/downloads/m3tac0de/home-assistant-sofabaton-x1s/latest/total)
+![Version](https://img.shields.io/github/v/release/m3tac0de/home-assistant-sofabaton-x1s) ![Total Downloads](https://img.shields.io/github/downloads/m3tac0de/home-assistant-sofabaton-x1s/latest/total)   
 
-> Powered by **[sofabaton-x](sofabaton-x/README.md)**, a standalone Python library for the Sofabaton hub protocol. Also available on [PyPI](https://pypi.org/project/sofabaton-x/).
+
+
+> This integration is powered by a standalone Python library for the Sofabaton hub protocol. It is also available on [PyPI](https://pypi.org/project/sofabaton-x/).
 
 ## Start here
 
@@ -30,18 +27,18 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 
 1. **Install via HACS** (recommended) or manually (see Installation).
 2. **Restart Home Assistant**.
-3. Go to **Settings → Devices & Services**. Your Sofabaton hubs appear at the top of the page. **Add** them and follow the flow.
-   - Discovery via mDNS should show your hubs automatically.
-   - If discovery fails (VLAN / mDNS), see networking docs or add manually.
-   - ⚠️**iOS users:** please see the networking docs
-
-   To add manually:
-   Go to **Settings → Devices & Services → Add integration** → search **Sofabaton X** (listing name) and follow the flow.
+3. **Add your hubs**
+   
+   Go to **Settings → Devices & Services**.
+   
+   - Your Sofabaton hubs appear at the top of the page, shortly after HA has fully started. **Add** them and follow the flow.
+   - If automatic discovery fails (VLAN / mDNS), see [networking docs](docs/networking.md) or add manually.
+   - To add manually:   
+      Go to **Settings → Devices & Services → Add integration** → search **Sofabaton X** and follow the flow.
 
 ### X2 discovery
 
-X2 hubs are discovered automatically, just like X1 and X1S. To opt out — for
-example if you prefer to keep using the official X2 integration — add this to
+X2 hubs are discovered automatically, just like X1 and X1S. To opt out, add this to
 `configuration.yaml` and restart HA:
 
 ```yaml
@@ -82,16 +79,14 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 - 🛰 **Automatic discovery** of Sofabaton hubs (X1, X1S and X2)
 - 🧩 **Multiple hubs** supported
-- 🔘 **A healthy collection of smart selects, buttons and sensors** everything needed to create a custom UI and automations
+- 🔘 **A healthy collection of smart selects, buttons and sensors**, everything needed to create a custom UI and automations
 - ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations. Use the dashboard cards to retrieve the codes you need
 - 💎 **Receive key presses**: “Wifi Commands” configured via the Control Panel card, trigger Actions directly from key presses on the physical remote
 - 🔄 **Fully local backup and restore**: Backup and restore via the Control Panel card, restore a whole hub or add individual devices from a backup
 - 💾 **Capture the hub’s real IR command payloads for sharing, testing, and creating new commands**: “Blobs” retrieved, tested and saved via the Control Panel card
 - 🔔 **Find Remote** diagnostic button (buzzer)
-- 🛰 **Manage the network** decide which listeners to run and on which ports, enable/disable proxy functionality. Use detailed documentation to solve VLAN related issues.
+- 🛰 **Manage the network**: decide which listeners to run and on which ports, enable/disable proxy functionality. Use detailed documentation to solve VLAN related issues.
 - 🪵 **Live Hub Logs** tab in the Control Panel card for real-time diagnostics
-
-> This documentation uses markup such as `select.<hub>_activity`, where `<hub>` is your hub's name as configured in Home Assistant — for example, `select.living_room_activity`.
 
 ---
 
@@ -113,11 +108,11 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 ### Option 1 – HACS (recommended)
 
 1. Open **HACS**
-2. Search **Sofabaton X** and install (works for X1/X1S/X2)
+2. Search **Sofabaton X** and install
 3. **Restart Home Assistant**
 4. Go to **Settings → Devices & Services**
 5. If discovered, click **Add/Configure**  
-   If not: **Add integration** → search **Sofabaton X** → enter IP, name and hub version manually
+   If not: **Add integration** → search **Sofabaton X** → enter IP manually
 
 ### Option 2 – Manual
 
@@ -129,6 +124,8 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 ---
 
 ## 📋 Entities you’ll get
+
+> This documentation uses markup such as `select.<hub>_activity`, where `<hub>` is your hub's name as configured in Home Assistant — for example, `select.living_room_activity`.
 
 - **Remote**:
   - `remote.<hub>_remote`  
