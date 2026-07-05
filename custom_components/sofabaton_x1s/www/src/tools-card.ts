@@ -472,7 +472,7 @@ class SofabatonControlPanelCard extends LitElement {
               <div class="backend-unavailable-icon"><ha-icon icon="mdi:cloud-off-outline"></ha-icon></div>
               <div class="backend-unavailable-title">Backend not available</div>
               <div class="backend-unavailable-copy">
-                Waiting for the Sofabaton X1S integration to finish starting…
+                Waiting for the Sofabaton X integration to finish starting…
               </div>
             </div>
           </div>

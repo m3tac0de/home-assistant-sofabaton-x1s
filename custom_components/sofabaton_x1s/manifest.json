@@ -1,6 +1,6 @@
 {
   "domain": "sofabaton_x1s",
-  "name": "Sofabaton X1S",
+  "name": "Sofabaton X",
   "codeowners": ["@m3tac0de"],
   "config_flow": true,
   "dependencies": ["frontend", "http"],

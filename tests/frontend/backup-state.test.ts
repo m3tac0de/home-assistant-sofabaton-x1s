@@ -1,9 +1,26 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  activityAddableDevices,
   activityButtonBindingItems,
+  activityRoleAssignments,
+  addActivityHaActionFavorite,
+  bundleEditableDeviceOptions,
+  bundleHaActionTarget,
+  isHaActionDeviceId,
+  parseHaActionAddress,
+  pruneHaActionHosts,
+  renameBundleActivityFavorite,
+  roleMappableButtonCount,
+  setActivityRoleDevice,
   activityMacroStepItems,
+  activityMemberRemovalImpact,
+  activityMemberViews,
   activityPowerDevices,
+  addActivityMemberDevice,
+  removeActivityMemberDevice,
+  setActivityDevicePowerOff,
+  setActivityDevicePowerOn,
   addActivityMacroCommandStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
@@ -879,4 +896,359 @@ test("deleting a favorite keeps its device in the power macros, but deleting the
   assert.deepEqual(afterDevice.activities[0].referenced_source_device_ids, [2]);
   const on = afterDevice.activities[0].macros!.find((m) => m.button_id === 198)!;
   assert.deepEqual([...new Set(on.steps!.filter((s) => s.command_id === 0xC6).map((s) => s.device_id))], [2]);
+});
+
+// ── Activity membership editing ─────────────────────────────────────
+
+// Three devices; activity 101 references 1 (favorite) and 2 (binding),
+// reconciled so both carry full power refs. Device 3 is unused.
+function membershipBundle() {
+  return reconcileActivityPowerMacros({
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      {
+        device: { device_id: 1, name: "TV" },
+        commands: [{ command_id: 10, name: "Power" }, { command_id: 12, name: "HDMI 1" }],
+        input_record: { entries: [{ command_id: 12, input_index: 1, name: "HDMI 1" }] },
+      },
+      { device: { device_id: 2, name: "AVR" }, commands: [{ command_id: 20, name: "Power" }] },
+      { device: { device_id: 3, name: "Streamer" }, commands: [{ command_id: 30, name: "Home" }] },
+    ],
+    activities: [{
+      device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+      favorite_slots: [{ button_id: 1, device_id: 1, command_id: 10, name: "TV Power" }],
+      button_bindings: [
+        { button_id: 0xB6, device_id: 2, command_id: 20 },
+        { button_id: 0xB0, device_id: 1, command_id: 10, long_press_device_id: 2, long_press_command_id: 20 },
+      ],
+      macros: [{ button_id: 3, name: "Combo", steps: [
+        { device_id: 1, command_id: 12 },
+        { device_id: 255, command_id: 255, delay: 4 },
+        { device_id: 2, command_id: 20 },
+      ] }],
+    }],
+  }, 101);
+}
+
+test("activityMemberViews lists members with power-on/input/power-off state", () => {
+  const views = activityMemberViews(membershipBundle(), 101);
+  assert.deepEqual(
+    views.map((v) => [v.deviceId, v.powersOn, v.powersOff, v.inputOrdinal]),
+    [[1, true, true, 0], [2, true, true, 0]],
+  );
+  const withInput = setActivityDeviceInput(membershipBundle(), 101, 1, 12);
+  const tv = activityMemberViews(withInput, 101).find((v) => v.deviceId === 1)!;
+  assert.deepEqual([tv.inputOrdinal, tv.inputCommandId, tv.inputCommandName], [1, 12, "HDMI 1"]);
+});
+
+test("activityAddableDevices excludes current members", () => {
+  assert.deepEqual(activityAddableDevices(membershipBundle(), 101).map((o) => o.id), [3]);
+});
+
+test("addActivityMemberDevice seeds full power refs for the new device", () => {
+  const next = addActivityMemberDevice(membershipBundle(), 101, 3);
+  const view = activityMemberViews(next, 101).find((v) => v.deviceId === 3)!;
+  assert.deepEqual([view.powersOn, view.powersOff, view.inputOrdinal], [true, true, 0]);
+  assert.deepEqual(next.activities[0].referenced_source_device_ids, [1, 2, 3]);
+  // Membership sticks: a later plain reconcile keeps the device.
+  const reconciled = reconcileActivityPowerMacros(next, 101);
+  assert.deepEqual(reconciled.activities[0].referenced_source_device_ids, [1, 2, 3]);
+});
+
+test("addActivityMemberDevice is a no-op for members, unknown devices, and self", () => {
+  const b = membershipBundle();
+  assert.deepEqual(addActivityMemberDevice(b, 101, 1), b);
+  assert.deepEqual(addActivityMemberDevice(b, 101, 99), b);
+  assert.deepEqual(addActivityMemberDevice(b, 101, 101), b);
+});
+
+test("removeActivityMemberDevice strips every in-activity reference", () => {
+  const next = removeActivityMemberDevice(membershipBundle(), 101, 2);
+  const act = next.activities[0];
+  assert.deepEqual(act.referenced_source_device_ids, [1]);
+  // The volume binding (short press → 2) dropped; OK kept, long press cleared.
+  assert.deepEqual(act.button_bindings!.map((r) => r.button_id), [0xB0]);
+  assert.equal(act.button_bindings![0].long_press_device_id, undefined);
+  // Combo lost device 2's step; device 2 gone from both power macros.
+  assert.deepEqual(
+    act.macros!.find((m) => m.button_id === 3)!.steps!.map((s) => s.device_id),
+    [1, 255],
+  );
+  assert.equal(activityMemberViews(next, 101).some((v) => v.deviceId === 2), false);
+  // The device itself stays in the bundle.
+  assert.equal(next.devices.some((d) => d.device?.device_id === 2), true);
+});
+
+test("activityMemberRemovalImpact counts scoped user-visible references only", () => {
+  const b = membershipBundle();
+  // Device 2: volume binding dropped + OK long-press cleared + one Combo step.
+  assert.deepEqual(
+    activityMemberRemovalImpact(b, 101, 2),
+    { favorites: 0, macroSteps: 1, activities: 0, bindings: 2 },
+  );
+  // Device 1: favorite + OK short-press binding + Combo step (with its wait
+  // row consumed) — power-ref rows are managed detail and never counted.
+  assert.deepEqual(
+    activityMemberRemovalImpact(b, 101, 1),
+    { favorites: 1, macroSteps: 2, activities: 0, bindings: 1 },
+  );
+});
+
+test("setActivityDevicePowerOff(false) removes the 0xC7 ref and survives reconcile", () => {
+  const leaveOn = setActivityDevicePowerOff(membershipBundle(), 101, 2, false);
+  const view = activityMemberViews(leaveOn, 101).find((v) => v.deviceId === 2)!;
+  assert.deepEqual([view.powersOn, view.powersOff], [true, false]);
+  // The "leave on" choice must not be re-completed by a later reconcile.
+  const reconciled = reconcileActivityPowerMacros(leaveOn, 101);
+  assert.equal(activityMemberViews(reconciled, 101).find((v) => v.deviceId === 2)!.powersOff, false);
+  // Re-enabling restores the ref step.
+  const backOn = setActivityDevicePowerOff(reconciled, 101, 2, true);
+  assert.equal(activityMemberViews(backOn, 101).find((v) => v.deviceId === 2)!.powersOff, true);
+});
+
+test("setActivityDevicePowerOn(false) encodes 'stays as is' and survives reconcile", () => {
+  const staysOn = setActivityDevicePowerOn(membershipBundle(), 101, 1, false);
+  const view = activityMemberViews(staysOn, 101).find((v) => v.deviceId === 1)!;
+  assert.deepEqual([view.powersOn, view.powersOff], [false, true]);
+  const reconciled = reconcileActivityPowerMacros(staysOn, 101);
+  assert.equal(activityMemberViews(reconciled, 101).find((v) => v.deviceId === 1)!.powersOn, false);
+});
+
+test("unchecking the last power ref keeps the device a member via a no-op input step", () => {
+  // Device 3 joins with only power refs (no favorite/binding/step), loses
+  // power-on, then its 0xC5 input step, leaving 0xC7 as its last
+  // representation. Unchecking power-off must not eject it from the activity.
+  const joined = setActivityDevicePowerOn(addActivityMemberDevice(membershipBundle(), 101, 3), 101, 3, false);
+  const offOnly = {
+    ...joined,
+    activities: [{
+      ...joined.activities[0],
+      macros: joined.activities[0].macros!.map((m) => (m.button_id === 198
+        ? { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC5)) }
+        : m)),
+    }],
+  };
+  const noRefs = setActivityDevicePowerOff(offOnly, 101, 3, false);
+  const view = activityMemberViews(noRefs, 101).find((v) => v.deviceId === 3)!;
+  assert.deepEqual([view.powersOn, view.powersOff], [false, false]);
+  const reconciled = reconcileActivityPowerMacros(noRefs, 101);
+  assert.equal(activityMemberViews(reconciled, 101).some((v) => v.deviceId === 3), true);
+});
+
+// ── Role-based button assignment ─────────────────────────────────────
+
+// AVR (id 9) has a full device-mode volume mapping (with a long press on
+// Mute); Streamer (id 7) covers navigation partially (Up/Down/OK only).
+// Activity 101 starts with no group bindings.
+function roleBundle(hubVersion = "X1S") {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: hubVersion },
+    devices: [
+      {
+        device: { device_id: 9, name: "AVR" },
+        commands: [
+          { command_id: 90, name: "Vol Up" }, { command_id: 91, name: "Vol Up Fast" },
+          { command_id: 92, name: "Vol Down" }, { command_id: 93, name: "Mute" },
+        ],
+        button_bindings: [
+          { button_id: 0xB6, command_id: 90, long_press_command_id: 91 },
+          { button_id: 0xB9, command_id: 92 },
+          { button_id: 0xB8, command_id: 93 },
+        ],
+      },
+      {
+        device: { device_id: 7, name: "Streamer" },
+        commands: [
+          { command_id: 70, name: "Up" }, { command_id: 71, name: "Down" }, { command_id: 72, name: "OK" },
+          { command_id: 77, name: "Play" },
+        ],
+        button_bindings: [
+          { button_id: 0xAE, command_id: 70 },
+          { button_id: 0xB2, command_id: 71 },
+          { button_id: 0xB0, command_id: 72 },
+          { button_id: 0x9C, command_id: 77 },
+        ],
+      },
+    ],
+    activities: [{
+      device: { device_id: 101, name: "Watch a movie", entity_type: "activity" },
+      favorite_slots: [{ button_id: 1, device_id: 9, command_id: 93 }],
+      button_bindings: [],
+      macros: [],
+    }],
+  };
+}
+
+function roleFor(b: Parameters<typeof activityRoleAssignments>[0], group: string) {
+  return activityRoleAssignments(b, 101).find((r) => r.group === group)!;
+}
+
+test("activityRoleAssignments reports unused groups with model-aware totals", () => {
+  const roles = activityRoleAssignments(roleBundle(), 101);
+  assert.deepEqual(roles.map((r) => [r.group, r.state, r.totalCount]), [
+    ["volume", "unused", 3],
+    ["navigation", "unused", 8],
+    ["playback", "unused", 3],
+    ["channels", "unused", 2],
+  ]);
+  // X2 exposes the Play key, growing the playback group to 4.
+  assert.equal(roleFor(roleBundle("X2"), "playback").totalCount, 4);
+});
+
+test("setActivityRoleDevice copies the device-mode mapping, long press included", () => {
+  const next = setActivityRoleDevice(roleBundle(), 101, "volume", 9);
+  const rows = next.activities[0].button_bindings!;
+  assert.deepEqual(
+    rows.map((r) => [r.button_id, r.device_id, r.command_id, r.long_press_device_id ?? 0, r.long_press_command_id ?? 0]),
+    [
+      [0xB6, 9, 90, 9, 91],
+      [0xB8, 9, 93, 0, 0],
+      [0xB9, 9, 92, 0, 0],
+    ],
+  );
+  const role = roleFor(next, "volume");
+  assert.deepEqual([role.state, role.deviceId, role.boundCount, role.totalCount], ["device", 9, 3, 3]);
+  // The AVR joins the activity's power macros via the reconcile.
+  assert.equal(activityMemberViews(next, 101).some((v) => v.deviceId === 9), true);
+});
+
+test("partial device-mode coverage binds what exists and stays state 'device'", () => {
+  assert.equal(roleMappableButtonCount(roleBundle(), 7, "navigation"), 3);
+  const next = setActivityRoleDevice(roleBundle(), 101, "navigation", 7);
+  const role = roleFor(next, "navigation");
+  assert.deepEqual([role.state, role.boundCount, role.totalCount], ["device", 3, 8]);
+});
+
+test("X1S playback ignores the X2-only Play key when copying", () => {
+  const next = setActivityRoleDevice(roleBundle(), 101, "playback", 7);
+  // Streamer only maps Play (0x9C), which doesn't exist on X1S → nothing bound.
+  assert.equal(roleFor(next, "playback").state, "unused");
+  const x2 = setActivityRoleDevice(roleBundle("X2"), 101, "playback", 7);
+  assert.deepEqual([roleFor(x2, "playback").state, roleFor(x2, "playback").boundCount], ["device", 1]);
+});
+
+test("diverging from the device-mode mapping reads back as 'customized'", () => {
+  const assigned = setActivityRoleDevice(roleBundle(), 101, "volume", 9);
+  const tweaked = upsertActivityButtonBinding(assigned, 101, { buttonId: 0xB8, deviceId: 9, commandId: 92 });
+  assert.deepEqual([roleFor(tweaked, "volume").state, roleFor(tweaked, "volume").deviceId], ["customized", 9]);
+  // Deleting one of the copied bindings is also a divergence.
+  const trimmed = deleteActivityButtonBinding(assigned, 101, 0xB9);
+  assert.equal(roleFor(trimmed, "volume").state, "customized");
+});
+
+test("mixed target devices or macro targets read back as 'custom'", () => {
+  const assigned = setActivityRoleDevice(roleBundle(), 101, "volume", 9);
+  const mixed = upsertActivityButtonBinding(assigned, 101, { buttonId: 0xB8, deviceId: 7, commandId: 72 });
+  assert.equal(roleFor(mixed, "volume").state, "custom");
+  // A macro-bound button (target = the activity's own id) is custom too.
+  const withMacro = upsertActivityButtonBinding(
+    { ...roleBundle(), activities: [{ ...roleBundle().activities[0], macros: [{ button_id: 3, name: "M", steps: [] }] }] },
+    101,
+    { buttonId: 0xB6, deviceId: 101, commandId: 3 },
+  );
+  assert.equal(roleFor(withMacro, "volume").state, "custom");
+});
+
+test("setActivityRoleDevice(null) clears only that group", () => {
+  let b = setActivityRoleDevice(roleBundle(), 101, "volume", 9);
+  b = setActivityRoleDevice(b, 101, "navigation", 7);
+  const cleared = setActivityRoleDevice(b, 101, "volume", null);
+  assert.equal(roleFor(cleared, "volume").state, "unused");
+  assert.deepEqual([roleFor(cleared, "navigation").state, roleFor(cleared, "navigation").boundCount], ["device", 3]);
+});
+
+// ── Home Assistant actions ───────────────────────────────────────────
+
+// Canonical callback blob for host 192.168.1.10:8060, device id 4, name
+// "Dim the lights". The SAME constant lives in the Python parity test
+// (tests/test_ha_action_writer_parity.py), which proves the TS writer
+// here and lib/blob_decoders.py agree byte-for-byte.
+const HA_ACTION_EXPECTED_DATA_HEX =
+  "c0 a8 01 0a 1f 7c 00 7f 50 4f 53 54 20 2f 6c 61 75 6e 63 68 2f 68 61 2f 34 2f 44 69 6d 25 32 30 74"
+  + " 68 65 25 32 30 6c 69 67 68 74 73 2f 73 68 6f 72 74 20 48 54 54 50 2f 31 2e 31 0d 0a 48 6f 73 74"
+  + " 3a 31 39 32 2e 31 36 38 2e 31 2e 31 30 3a 38 30 36 30 0d 0a 43 6f 6e 74 65 6e 74 2d 54 79 70 65"
+  + " 3a 61 70 70 6c 69 63 61 74 69 6f 6e 2f 78 2d 77 77 77 2d 66 6f 72 6d 2d 75 72 6c 65 6e 63 6f 64"
+  + " 65 64 0d 0a 0d 0a";
+
+const HA_TARGET = { host: "192.168.1.10", port: 8060 };
+
+test("addActivityHaActionFavorite provisions a hidden host and the callback slot", () => {
+  const next = addActivityHaActionFavorite(membershipBundle(), 101, "Dim the lights", HA_TARGET)!;
+  assert.ok(next);
+  const host = next.devices.find((d) => d.ha_action_host)!;
+  assert.equal(host.device?.device_id, 4); // lowest free id after 1/2/3
+  assert.equal(host.device?.name, "Home Assistant");
+  assert.equal(host.device?.device_class, "wifi_ip");
+  const row = host.commands![0]!;
+  assert.equal(row.command_id, 1);
+  assert.equal(row.name, "Dim the lights");
+  const restore = row.restore_data as Record<string, any>;
+  assert.equal(restore.transport, "hub_code_record");
+  assert.equal(restore.library_type, 0x1C);
+  assert.equal(restore.command_code, "00 00 00 00 4e 21");
+  assert.equal(restore.data_hex, HA_ACTION_EXPECTED_DATA_HEX);
+  assert.equal(restore.decoded.class, "wifi_ip");
+  assert.equal(restore.decoded.fields.path, "/launch/ha/4/Dim%20the%20lights/short");
+  assert.equal(restore.decoded.trailer_hex, "");
+  // The shortcut references the slot.
+  const slot = next.activities[0].favorite_slots!.find((s) => s.device_id === 4)!;
+  assert.deepEqual([slot.command_id, slot.name], [1, "Dim the lights"]);
+  // Hidden from member-facing views, present for restore-facing options.
+  assert.equal(activityMemberViews(next, 101).some((v) => v.deviceId === 4), false);
+  assert.equal(activityAddableDevices(next, 101).some((o) => o.id === 4), false);
+  assert.equal(bundleEditableDeviceOptions(next).some((o) => o.id === 4), false);
+  assert.equal(isHaActionDeviceId(next, 4), true);
+  assert.deepEqual(bundleHaActionTarget(next), HA_TARGET);
+  // Membership plumbing (power refs) still exists for restore integrity.
+  assert.equal(next.activities[0].referenced_source_device_ids!.includes(4), true);
+});
+
+test("HA actions reuse the host, allocate slots, and normalize underscores", () => {
+  const first = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET)!;
+  const second = addActivityHaActionFavorite(first, 101, "Movie_night", HA_TARGET)!;
+  const hosts = second.devices.filter((d) => d.ha_action_host);
+  assert.equal(hosts.length, 1);
+  assert.deepEqual(hosts[0].commands!.map((r) => r.command_id), [1, 2]);
+  // The listener converts "_" to " " on receipt; normalize at creation so
+  // the label the user sees is the label HA fires.
+  assert.equal(hosts[0].commands![1].name, "Movie night");
+});
+
+test("pruneHaActionHosts drops unreferenced slots and dissolves empty hosts", () => {
+  const withAction = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET)!;
+  // Referenced → sweep keeps everything.
+  const swept = pruneHaActionHosts(withAction);
+  assert.equal(swept.devices.some((d) => d.ha_action_host), true);
+  // Delete the shortcut (slot button_id 4: favorites 1, combo macro 3 → next is 4).
+  const deleted = deleteBundleActivityQuickAccess(withAction, 101, "favorite", 4);
+  const pruned = pruneHaActionHosts(deleted);
+  assert.equal(pruned.devices.some((d) => d.ha_action_host), false);
+  // The membership plumbing went with it.
+  assert.equal(pruned.activities[0].referenced_source_device_ids!.includes(4), false);
+});
+
+test("renaming an HA-action shortcut re-renders the callback path", () => {
+  const withAction = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET)!;
+  const renamed = renameBundleActivityFavorite(withAction, 101, 4, "Movie mode");
+  const host = renamed.devices.find((d) => d.ha_action_host)!;
+  const restore = host.commands![0].restore_data as Record<string, any>;
+  assert.equal(restore.decoded.fields.path, "/launch/ha/4/Movie%20mode/short");
+  assert.ok(String(restore.data_hex).length > 0);
+  // data_hex actually carries the new path bytes (spot-check "Movie").
+  const ascii = String(restore.data_hex).split(" ").map((h) => parseInt(h, 16))
+    .map((b) => String.fromCharCode(b)).join("");
+  assert.ok(ascii.includes("/launch/ha/4/Movie%20mode/short"));
+});
+
+test("parseHaActionAddress accepts IPv4 with optional port", () => {
+  assert.deepEqual(parseHaActionAddress("192.168.1.10:8060"), HA_TARGET);
+  assert.deepEqual(parseHaActionAddress("10.0.0.2"), { host: "10.0.0.2", port: 8060 });
+  assert.equal(parseHaActionAddress("homeassistant.local:8060"), null);
+  assert.equal(parseHaActionAddress("192.168.1.10:0"), null);
+  assert.equal(parseHaActionAddress("192.168.1.10:70000"), null);
+  assert.equal(parseHaActionAddress(""), null);
 });

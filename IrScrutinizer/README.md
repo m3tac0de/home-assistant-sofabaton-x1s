@@ -30,14 +30,14 @@ With these exporters users convert IR signals into Sofabaton hub-compatible Blob
 There are 2 ways that a Sofabaton hub stores IR Blobs:
 
 - The **raw IR format** describes the signal by its actual transmitted timings: carrier frequency plus the sequence of mark/space durations. It is a low-level recording of what the hub should send. The **raw IR format** is supported on **all hubs**.
-- The **descriptive format** describes the same signal by its decoded protocol and parameter values, like `P:Sony12 R:40000 D:1 F:18 MUL:2`. It is a higher-level, human-readable representation of what the signal means. The **descriptive format** is supported on the **X2 hub only** (i think).
+- The **descriptive format** describes the same signal by its decoded protocol and parameter values, like `P:Sony12 R:40000 D:1 F:18 MUL:2`. It is a higher-level, human-readable representation of what the signal means. The **descriptive format** is supported on the **X2 hub only**.
 
 Both types of Blob appear to require an IR Protocol identifier. In the descriptive format that is very obvious, and making a mistake there will render the Blob useless.  
 In the raw format there also appears to be a Protocol identifier. For this the hub doesn't seem to care which one is used, as long as it's a valid one. This would make sense, as the raw format is by its very nature protocol agnostic. It's very possible that the protocol identifier is just there as metadata.
 What that means for these exporters:
 
 - The raw format exporter uses a hardcoded identifier. This has been observed to work across a range of different devices and protocols. If it turns out that some commands do not work the exporter will have to be extended. If you're interested, open an exporter in a text editor.
-- The decriptive exporter implements a mapping between Protocol naming conventions of the Sofabaton hub and those used in IrScrutenizir, and generates checksums when required. This mapping is incomplete! A fair amount of protocols have been mapped, but certainly this is not exhaustive.
+- The descriptive exporter implements a mapping between Protocol naming conventions of the Sofabaton hub and those used in IrScrutinizer, and generates checksums when required. This mapping is incomplete! A fair amount of protocols have been mapped, but certainly this is not exhaustive.
 
 All known IR commands can be converted into Sofabaton compatible Blobs, it is a matter of mapping protocol labels.
 

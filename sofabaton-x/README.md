@@ -1,11 +1,15 @@
 # sofabaton-x
 
+[![PyPI](https://img.shields.io/pypi/v/sofabaton-x)](https://pypi.org/project/sofabaton-x/)
+[![Python versions](https://img.shields.io/pypi/pyversions/sofabaton-x)](https://pypi.org/project/sofabaton-x/)
+[![License: MIT](https://img.shields.io/pypi/l/sofabaton-x)](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/LICENSE)
+
 Unofficial Python library for **Sofabaton X1 / X1S / X2** universal remote
 hubs: a reverse-engineered protocol implementation and a man-in-the-middle
 **proxy** that sits between the hub and the official mobile app.
 
 This is the protocol engine extracted from the
-[Home Assistant Sofabaton X1S integration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s);
+[Home Assistant Sofabaton X integration](https://github.com/m3tac0de/home-assistant-sofabaton-x1s);
 the integration is its reference consumer.
 
 > **Disclaimer:** this project is not affiliated with or endorsed by
@@ -55,6 +59,9 @@ from sofabaton import AsyncXProxy, async_discover_hubs
 
 async def main():
     hubs = await async_discover_hubs(timeout=5.0)   # physical hubs; proxies filtered
+    if not hubs:
+        print("No Sofabaton hub found on this network.")
+        return
     hub = hubs[0]
 
     proxy = AsyncXProxy(hub_ip=hub.host)   # the hub's IP is all you need
@@ -62,12 +69,18 @@ async def main():
 
     async with proxy:
         await proxy.wait_until_controllable()      # own the hub (see below)
-        activities = await proxy.activities()      # {id: {name, active, ...}}
-        for dev_id in await proxy.devices():
-            for cmd in await proxy.commands(dev_id):   # [{command_id, label}]
-                await proxy.send(dev_id, cmd["command_id"])   # fire a command
 
-        await proxy.start_activity(next(iter(activities)))
+        for act_id, act in (await proxy.activities()).items():
+            print(f"activity {act_id}: {act['name']}")
+
+        for dev_id, dev in (await proxy.devices()).items():
+            for cmd in await proxy.commands(dev_id):   # [{command_id, label}]
+                print(f"device {dev_id} ({dev['name']}): "
+                      f"command {cmd['command_id']} = {cmd['label']}")
+
+        # Fires one real command — command 5 on device 1. Pick your own
+        # (entity_id, command_id) pair from the listing printed above.
+        await proxy.send(1, 5)
 
 asyncio.run(main())
 ```
@@ -94,12 +107,12 @@ The proxy has two network faces. Apart from `hub_ip`, every port defaults
 to the right value — you usually only touch `hub_listen_port` to avoid a
 local collision:
 
-| Argument | Default | Side | What it is |
-|----------|---------|------|------------|
-| `hub_ip` | — | hub | the physical hub's IPv4 address |
-| `hub_port` | 8102 | hub | UDP port **on the hub** we send `CALL_ME` to (protocol-fixed) |
-| `hub_listen_port` | 8200 | hub | TCP port **on this host** the hub connects back to |
-| `app_discovery_port` | 8102 | app | UDP port **on this host** the app finds + calls us on (keep 8102 for iOS) |
+| Argument             | Default | Side | What it is                                                                |
+| -------------------- | ------- | ---- | ------------------------------------------------------------------------- |
+| `hub_ip`             | —       | hub  | the physical hub's IPv4 address                                           |
+| `hub_port`           | 8102    | hub  | UDP port **on the hub** we send `CALL_ME` to (protocol-fixed)             |
+| `hub_listen_port`    | 8200    | hub  | TCP port **on this host** the hub connects back to                        |
+| `app_discovery_port` | 8102    | app  | UDP port **on this host** the app finds + calls us on (keep 8102 for iOS) |
 
 The hub model (X1/X1S/X2) is confirmed from the connect banner, so
 `hub_version` is only a pre-connect hint. See
@@ -110,14 +123,14 @@ Everything is keyed on **`(entity_id, command_id)`** — you browse to get
 those ids, then `send(entity_id, command_id)`. The reads return them
 directly (cached if available, else fetched):
 
-| read | returns |
-|------|---------|
-| `activities()` / `devices()` | `{id: {name, ...}}` |
-| `commands(device_id)` | `[{command_id, label}]` |
-| `macros(activity_id)` | `[{command_id, label}]` |
-| `favorites(activity_id)` | `[{device_id, command_id, label}]` |
-| `buttons(entity_id)` | `[{button_code, name, device_id, command_id}]` |
-| `current_activity()` | `{activity_id, name}` or `None` when idle |
+| read                         | returns                                        |
+| ---------------------------- | ---------------------------------------------- |
+| `activities()` / `devices()` | `{id: {name, ...}}`                            |
+| `commands(device_id)`        | `[{command_id, label}]`                        |
+| `macros(activity_id)`        | `[{command_id, label}]`                        |
+| `favorites(activity_id)`     | `[{device_id, command_id, label}]`             |
+| `buttons(entity_id)`         | `[{button_code, name, device_id, command_id}]` |
+| `current_activity()`         | `{activity_id, name}` or `None` when idle      |
 
 `current_activity()` is the exception to the table above — it reads the
 hub's **live** running-activity state (no fetch) and works in observe mode
@@ -144,6 +157,15 @@ afterwards, so await the matching readiness primitive before reading or
 acting (otherwise a read raises with the reason — hub not connected, or
 an app holds it).
 
+The mode is not fixed at startup — it follows the app. If the official
+app connects while you hold control, you are demoted to observe mode
+immediately: `send()` / `start_activity()` return `False` (refused, not
+raised), and reads still serve cached data but raise `RuntimeError` when
+they would need a fresh hub fetch. When the app disconnects, control
+returns on its own. Both waiters are plain state predicates, so a
+long-running application can simply re-await
+`wait_until_controllable()` whenever a send comes back `False`.
+
 A CLI ships as a console script:
 
 ```
@@ -151,8 +173,16 @@ sofabaton discover                   # scan the LAN for hubs
 sofabaton run --hub-ip 192.168.1.50  # proxy + interactive shell
 x> status
 x> activities
-x> send 101 POWER_ON
+x> commands 1                        # list (command_id, label) for device 1
+x> send 1 5                          # numeric ids, exactly like the Python API
+x> send 101 POWER_ON                 # the CLI also resolves button names to codes
 ```
+
+The last form is a CLI convenience: `send` (alias `press`) accepts either
+a numeric command/button code or a `ButtonName` alias like `POWER_ON`.
+The Python API itself is numeric-only — `send(entity_id, command_id)` —
+with the `ButtonName` constants importable from the package root when
+you want named button codes.
 
 Runnable examples — discovery, watching a live session, taking control
 of a hub, reading per-entity detail (commands/macros/favorites),
@@ -184,10 +214,25 @@ Names importable from the package root — `from sofabaton import ...`,
 the set listed in `sofabaton.__all__` — are the supported API and follow
 semver. Everything else (`sofabaton.opcode_handlers`, frame parsing,
 wire schemas, the `proxy_*` mixin modules) is internal and may change
-between minor releases. The library raises stdlib exceptions
-(`ValueError` for malformed/unclassifiable input, `RuntimeError` /
-`TimeoutError` for transport and ack failures); there are no custom
-exception types. Until 1.0, pin a minor version.
+between minor releases. The public surface is async-first by design:
+`AsyncXProxy` is the supported entry point, and the underlying
+synchronous engine (reachable via `AsyncXProxy.sync` when you need the
+raw surface) is internal and not semver-covered. The library raises
+stdlib exceptions (`ValueError` for malformed/unclassifiable input,
+`RuntimeError` / `TimeoutError` for transport and ack failures); there
+are no custom exception types. Until 1.0, pin a minor version.
+
+## Issues & release notes
+
+Bugs and feature requests go to the shared
+[issue tracker](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/issues).
+For standalone library issues, include the command you ran, the terminal
+output or traceback, the package and Python versions, and a small
+reproduction snippet if possible.
+
+Library versions are tagged `sofabaton-x-vX.Y.Z`; release notes live on
+the
+[GitHub releases page](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/releases).
 
 ## License
 

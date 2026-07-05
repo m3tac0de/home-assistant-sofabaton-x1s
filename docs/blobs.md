@@ -113,7 +113,7 @@ The new command is then stored on that IR device as a regular hub command.
 There are 2 main ways that a Sofabaton hub stores IR Blobs:
 
 - The **raw IR format** describes the signal by its actual transmitted timings: carrier frequency plus the sequence of mark/space durations. It is a low-level recording of what the hub should send. The **raw IR format** is supported on **all hubs**.
-- The **descriptive format** describes the same signal by its decoded protocol and parameter values, like `P:Sony12 R:40000 D:1 F:18 MUL:2`. It is a higher-level, human-readable representation of what the signal means. The **descriptive format** is supported on the **X2 hub only** (i think).
+- The **descriptive format** describes the same signal by its decoded protocol and parameter values, like `P:Sony12 R:40000 D:1 F:18 MUL:2`. It is a higher-level, human-readable representation of what the signal means. The **descriptive format** is supported on the **X2 hub only**.
 
 Users can build entirely new IR blobs from published IR
 protocol data instead of only reusing commands already stored on the hub.

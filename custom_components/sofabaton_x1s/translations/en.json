@@ -32,7 +32,7 @@
       }
     },
     "abort": {
-      "x2_disabled": "SofaBaton X2 discovery is disabled. To enable it, add `enable_x2_discovery: true` under `sofabaton_x1s:` in configuration.yaml and restart Home Assistant."
+      "x2_disabled": "Sofabaton X2 discovery has been disabled in configuration.yaml. To re-enable it, remove `enable_x2_discovery: false` from the `sofabaton_x1s:` section (or set it to true) and restart Home Assistant."
     }
   },
   "options": {

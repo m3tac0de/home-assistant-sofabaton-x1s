@@ -13,9 +13,31 @@ import { formatError } from "../shared/utils/control-panel-selectors";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
 import { TOOLS_CARD_STRINGS } from "../strings";
 import {
+  activityEditorStyles,
+  renderActivityDevicesSection,
+  renderActivityEndSection,
+  renderActivityRolesBlock,
+  renderActivityStartSection,
+  renderDrillInRow,
+} from "./activity-editor";
+import {
+  activityAddableDevices,
   activityButtonBindingItems,
   activityMacroStepItems,
+  activityMemberViews,
+  activityRoleAssignments,
+  type ActivityRoleGroupId,
   activityUserMacroSummaries,
+  addActivityHaActionFavorite,
+  addActivityMemberDevice,
+  isHaActionDeviceId,
+  type BackupActivityMemberView,
+  bundleEditableDeviceOptions,
+  bundleHaActionTarget,
+  parseHaActionAddress,
+  pruneHaActionHosts,
+  roleMappableButtonCount,
+  setActivityRoleDevice,
   addActivityMacroCommandStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
@@ -70,6 +92,8 @@ import {
   renameBundleDeviceCommand,
   renameBundleHub,
   setActivityDeviceInput,
+  setActivityDevicePowerOff,
+  setActivityDevicePowerOn,
   setActivityMacroStepWait,
   setDeviceMacroStepWait,
   unboundButtonsForActivity,
@@ -89,7 +113,16 @@ type BackupEditTargetKind = "activity" | "device";
 // ("Power On"/"Power Off") and a binding refers to them by slot, so they
 // are not renameable — unlike user macros bound to activity buttons.
 const POWER_MACRO_BUTTON_IDS = new Set([198, 199]);
-type BackupEditDetailSectionId = "power" | "quick_access" | "network" | "commands" | "bindings";
+type BackupEditDetailSectionId =
+  | "power"
+  | "quick_access"
+  | "network"
+  | "commands"
+  | "bindings"
+  // Narrative activity sections (activity detail only).
+  | "devices"
+  | "start"
+  | "end";
 type BackupQuickAccessKind = "macro" | "favorite";
 // Step-dialog modes. "input" edits an activity power-macro input ref;
 // "power" refs never open the dialog so aren't included here. Waits are no
@@ -190,9 +223,19 @@ class SofabatonBackupTab extends LitElement {
     _editBundleDirty: { state: true },
     _haSortableReady: { state: true },
     _powerControlMenuOpen: { state: true },
+    _addDeviceMenuOpen: { state: true },
+    _roleMenuOpen: { state: true },
+    _roleConfirm: { state: true },
+    _bindingsView: { state: true },
+    _endIdleMenuDeviceId: { state: true },
+    _haActionName: { state: true },
+    _haActionAddress: { state: true },
+    _haActionError: { state: true },
+    _addShortcutKind: { state: true },
+    _addShortcutActionName: { state: true },
   };
 
-  static styles = [secondaryTabStyles, operationProgressStyles, css`
+  static styles = [secondaryTabStyles, operationProgressStyles, activityEditorStyles, css`
     :host {
       display: flex;
       flex: 1;
@@ -1675,6 +1718,17 @@ class SofabatonBackupTab extends LitElement {
   // Whether the power-control option menu (the two-line dropdown in the
   // device Power section) is expanded. Reset whenever a detail view opens.
   private _powerControlMenuOpen = false;
+  private _addDeviceMenuOpen = false;
+  private _roleMenuOpen: ActivityRoleGroupId | null = null;
+  private _roleConfirm: { group: ActivityRoleGroupId; deviceId: number | null } | null = null;
+  // Full sub-view for individual button bindings (never an accordion).
+  private _bindingsView = false;
+  private _endIdleMenuDeviceId: number | null = null;
+  private _haActionName = "";
+  private _haActionAddress = "";
+  private _haActionError = "";
+  private _addShortcutKind: "command" | "action" | "ha" = "command";
+  private _addShortcutActionName = "";
   private _editDetailNameDraft = "";
   private _editRenameDialogOpen = false;
   private _editRenameDialogDraft = "";
@@ -1931,6 +1985,16 @@ class SofabatonBackupTab extends LitElement {
       return this._renderMacroStepEditorView(this._macroEditor);
     }
 
+    if (
+      this.selectedSection === "edit"
+      && this._bindingsView
+      && this._editBundle
+      && this._editDetailKind === "activity"
+      && this._editDetailId != null
+    ) {
+      return this._renderActivityBindingsView();
+    }
+
     if (this.selectedSection === "edit" && this._editDetailKind && this._editDetailId != null) {
       const detailTitle = this._selectedEditTitle();
       if (detailTitle) {
@@ -2087,7 +2151,7 @@ class SofabatonBackupTab extends LitElement {
   private _renderEditSectionContent() {
     const bundle = this._editBundle;
     const activityOptions = bundleActivityOptions(bundle);
-    const deviceOptions = bundleDeviceOptions(bundle);
+    const deviceOptions = bundleEditableDeviceOptions(bundle);
     return html`
       ${renderSecondaryTabContent({
         connected: true,
@@ -2296,9 +2360,11 @@ class SofabatonBackupTab extends LitElement {
           <div class="detail-scroll" @scroll=${this._handleEditDetailScroll}>
             ${params.kind === "activity"
               ? html`
-                  ${this._renderPowerSetupSection("activity", Number(this._editDetailId))}
-                  ${this._renderActivityQuickAccessSection(activityQuickAccess)}
+                  ${this._renderActivityDevicesSection()}
+                  ${this._renderActivityStartSection()}
                   ${this._renderButtonBindingsSection("activity")}
+                  ${this._renderActivityQuickAccessSection(activityQuickAccess)}
+                  ${this._renderActivityEndSection()}
                 `
               : html`
                   ${this._renderPowerSetupSection("device", Number(this._editDetailId))}
@@ -2312,6 +2378,7 @@ class SofabatonBackupTab extends LitElement {
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
         ${this._renderBindingDialog()}
+        ${this._renderRoleConfirmDialog()}
       </div>
     `;
   }
@@ -2322,10 +2389,13 @@ class SofabatonBackupTab extends LitElement {
     label: string;
   }> {
     if (kind === "activity") {
+      const S = TOOLS_CARD_STRINGS.backup;
       return [
-        { id: "power", icon: "mdi:power-plug-outline", label: "Power" },
-        { id: "quick_access", icon: "mdi:star-outline", label: "Macros/Favorites" },
-        { id: "bindings", icon: "mdi:gesture-tap-button", label: "Buttons" },
+        { id: "devices", icon: "mdi:devices", label: S.activitySectionDevices },
+        { id: "start", icon: "mdi:play-circle-outline", label: S.activitySectionStart },
+        { id: "bindings", icon: "mdi:gesture-tap-button", label: S.activitySectionRunning },
+        { id: "quick_access", icon: "mdi:star-outline", label: S.activitySectionShortcuts },
+        { id: "end", icon: "mdi:power", label: S.activitySectionEnd },
       ];
     }
 
@@ -2406,44 +2476,211 @@ class SofabatonBackupTab extends LitElement {
     }
   };
 
-  private _renderButtonBindingsSection(kind: BackupEditTargetKind) {
+  private _renderBindingsListBody(kind: BackupEditTargetKind) {
     if (this._editDetailId == null || !this._editBundle) return nothing;
     const entityId = Number(this._editDetailId);
     const items = kind === "activity"
       ? activityButtonBindingItems(this._editBundle, entityId)
       : deviceButtonBindingItems(this._editBundle, entityId);
+    if (!items.length) {
+      return html`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.buttonBindingsEmpty}</div>`;
+    }
+    return html`
+      <div class="quick-access-list">
+        <div class="quick-access-sortable-container">
+          ${items.map((item) => this._renderButtonBindingRow(item, kind))}
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderAddBindingButton(kind: BackupEditTargetKind) {
+    if (this._editDetailId == null || !this._editBundle) return nothing;
+    const entityId = Number(this._editDetailId);
     const unbound = kind === "activity"
       ? unboundButtonsForActivity(this._editBundle, entityId)
       : unboundButtonsForDevice(this._editBundle, entityId);
     return html`
+      <button
+        class="quick-access-add-btn"
+        @click=${() => this._openAddBindingDialog(kind)}
+        ?disabled=${unbound.length === 0}
+      >
+        <ha-icon icon="mdi:plus"></ha-icon>
+        <span>${TOOLS_CARD_STRINGS.backup.addBinding}</span>
+      </button>
+    `;
+  }
+
+  private _renderButtonBindingsSection(kind: BackupEditTargetKind) {
+    if (this._editDetailId == null || !this._editBundle) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const entityId = Number(this._editDetailId);
+    const isActivity = kind === "activity";
+    return html`
       <div class="quick-access-section" data-edit-section="bindings">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
-            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.buttonBindingsTitle}</div>
+            <div class="quick-access-title">
+              ${isActivity ? S.activityRunningTitle : S.buttonBindingsTitle}
+            </div>
             <div class="quick-access-sub">
-              ${kind === "activity"
-                ? TOOLS_CARD_STRINGS.backup.buttonBindingsActivitySub
-                : TOOLS_CARD_STRINGS.backup.buttonBindingsDeviceSub}
+              ${isActivity ? S.activityRunningSub : S.buttonBindingsDeviceSub}
             </div>
           </div>
-          <button
-            class="quick-access-add-btn"
-            @click=${() => this._openAddBindingDialog(kind)}
-            ?disabled=${unbound.length === 0}
-          >
-            <ha-icon icon="mdi:plus"></ha-icon>
-            <span>${TOOLS_CARD_STRINGS.backup.addBinding}</span>
-          </button>
+          ${isActivity ? nothing : this._renderAddBindingButton(kind)}
         </div>
-        ${items.length
+        ${isActivity
           ? html`
+              ${this._renderActivityRolesBlock()}
               <div class="quick-access-list">
                 <div class="quick-access-sortable-container">
-                  ${items.map((item) => this._renderButtonBindingRow(item, kind))}
+                  ${renderDrillInRow({
+                    label: S.customizeButtonsToggle,
+                    meta: (() => {
+                      const count = activityButtonBindingItems(this._editBundle, entityId).length;
+                      return count > 0 ? S.bindingsConfiguredCount(count) : S.bindingsNoneConfigured;
+                    })(),
+                    onOpen: () => {
+                      this._bindingsView = true;
+                    },
+                  })}
                 </div>
               </div>
             `
-          : html`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.buttonBindingsEmpty}</div>`}
+          : this._renderBindingsListBody(kind)}
+      </div>
+    `;
+  }
+
+  private _closeBindingsView = () => {
+    this._bindingsView = false;
+    this._closeBindingDialog();
+    this._closeDeleteConfirm();
+  };
+
+  // Sub-view for per-button customization — same navigation pattern as
+  // the step editor (breadcrumbs + back), never an inline accordion.
+  private _renderActivityBindingsView() {
+    const S = TOOLS_CARD_STRINGS.backup;
+    return html`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <div class="detail-title-main">
+                <button class="back-btn" @click=${this._closeBindingsView}>
+                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                </button>
+                <div class="detail-title-stack">
+                  ${this._renderDetailCrumbs([
+                    { label: this._entityKindCrumbLabel("activity"), onClick: this._closeEditDetail },
+                    { label: this._selectedEditTitle(), onClick: this._closeBindingsView },
+                  ])}
+                  <div class="detail-title">${S.bindingsViewTitle}</div>
+                </div>
+                ${this._editBundleDirty
+                  ? html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`
+                  : nothing}
+              </div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            <div class="quick-access-section">
+              <div class="quick-access-head">
+                <div class="quick-access-head-main">
+                  <div class="quick-access-title">${S.buttonBindingsTitle}</div>
+                  <div class="quick-access-sub">${S.buttonBindingsActivitySub}</div>
+                </div>
+                ${this._renderAddBindingButton("activity")}
+              </div>
+              ${this._renderBindingsListBody("activity")}
+            </div>
+          </div>
+        </div>
+        ${this._renderBindingDialog()}
+        ${this._renderDeleteConfirmDialog()}
+      </div>
+    `;
+  }
+
+  // ── Role-based button assignment (activity) ──────────────────────────
+
+  private _renderActivityRolesBlock() {
+    if (this._editDetailId == null || !this._editBundle) return nothing;
+    const bundle = this._editBundle;
+    const activityId = Number(this._editDetailId);
+    const memberOptions = activityMemberViews(bundle, activityId).map((member) => ({
+      deviceId: member.deviceId,
+      label: member.deviceName,
+    }));
+    return renderActivityRolesBlock({
+      roles: activityRoleAssignments(bundle, activityId),
+      optionsFor: (group) => memberOptions.map((option) => ({
+        ...option,
+        mappable: roleMappableButtonCount(bundle, option.deviceId, group),
+      })),
+      openGroup: this._roleMenuOpen,
+      onToggleMenu: (group) => {
+        this._roleMenuOpen = group;
+      },
+      onAssign: this._handleRoleAssign,
+    });
+  }
+
+  private _handleRoleAssign = (group: ActivityRoleGroupId, deviceId: number | null) => {
+    this._roleMenuOpen = null;
+    if (!this._editBundle || this._editDetailId == null) return;
+    const current = activityRoleAssignments(this._editBundle, Number(this._editDetailId))
+      .find((role) => role.group === group);
+    if (current && current.deviceId === deviceId && current.state !== "customized" && deviceId != null) return;
+    // Overwriting hand-tuned bindings (customized / custom) needs a confirm.
+    if (current && (current.state === "customized" || current.state === "custom")) {
+      this._roleConfirm = { group, deviceId };
+      return;
+    }
+    this._applyRoleAssign(group, deviceId);
+  };
+
+  private _applyRoleAssign(group: ActivityRoleGroupId, deviceId: number | null) {
+    if (!this._editBundle || this._editDetailId == null) return;
+    this._commitEditBundleEdit(
+      setActivityRoleDevice(this._editBundle, Number(this._editDetailId), group, deviceId),
+    );
+  }
+
+  private _closeRoleConfirm = () => {
+    this._roleConfirm = null;
+  };
+
+  private _confirmRoleAssign = () => {
+    const pending = this._roleConfirm;
+    this._roleConfirm = null;
+    if (!pending) return;
+    this._applyRoleAssign(pending.group, pending.deviceId);
+  };
+
+  private _renderRoleConfirmDialog() {
+    if (!this._roleConfirm) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    return html`
+      <div class="modal-backdrop" @click=${this._closeRoleConfirm}>
+        <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S.roleConfirmTitle}</div>
+            <button class="dialog-close" @click=${this._closeRoleConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="backup-drawer-sub">${S.roleConfirmBody}</div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note"></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeRoleConfirm}>${S.roleConfirmCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" @click=${this._confirmRoleAssign}>${S.roleConfirmReplace}</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -2481,6 +2718,106 @@ class SofabatonBackupTab extends LitElement {
         </div>
       </div>
     `;
+  }
+
+  // ── Narrative activity sections (devices / start / end) ─────────────
+  // Thin hosts around the render helpers in activity-editor.ts: gather
+  // data from the edit bundle, translate callbacks into bundle commits.
+
+  private _activityMemberViews(): BackupActivityMemberView[] {
+    if (this._editDetailId == null || !this._editBundle) return [];
+    return activityMemberViews(this._editBundle, Number(this._editDetailId));
+  }
+
+  private _toggleAddDeviceMenu = () => {
+    this._addDeviceMenuOpen = !this._addDeviceMenuOpen;
+  };
+
+  private _handleAddMemberDevice = (deviceId: number) => {
+    this._addDeviceMenuOpen = false;
+    if (!this._editBundle || this._editDetailId == null) return;
+    this._commitEditBundleEdit(
+      addActivityMemberDevice(this._editBundle, Number(this._editDetailId), deviceId),
+    );
+  };
+
+  private _openMemberRemoveConfirm = (member: BackupActivityMemberView) => {
+    if (this._editDetailId == null) return;
+    this._confirmDeleteTarget = {
+      kind: "activity_member",
+      activityId: Number(this._editDetailId),
+      deviceId: member.deviceId,
+    };
+    this._confirmDeleteLabel = member.deviceName;
+  };
+
+  private _renderActivityDevicesSection() {
+    if (this._editDetailId == null || !this._editBundle) return nothing;
+    return renderActivityDevicesSection({
+      members: this._activityMemberViews(),
+      addable: activityAddableDevices(this._editBundle, Number(this._editDetailId)),
+      menuOpen: this._addDeviceMenuOpen,
+      onToggleMenu: this._toggleAddDeviceMenu,
+      onAdd: this._handleAddMemberDevice,
+      onRemove: this._openMemberRemoveConfirm,
+    });
+  }
+
+  private _renderActivityStartSection() {
+    if (this._editDetailId == null || !this._editBundle) return nothing;
+    const activityId = Number(this._editDetailId);
+    return renderActivityStartSection({
+      members: this._activityMemberViews(),
+      commandsFor: (deviceId) => (this._editBundle ? deviceCommandItems(this._editBundle, deviceId) : []),
+      onTogglePowerOn: (member) => {
+        if (!this._editBundle) return;
+        this._commitEditBundleEdit(
+          setActivityDevicePowerOn(this._editBundle, activityId, member.deviceId, !member.powersOn),
+        );
+      },
+      onInputChange: (deviceId, commandId) => {
+        if (!this._editBundle) return;
+        this._commitEditBundleEdit(commandId == null
+          ? clearActivityDeviceInput(this._editBundle, activityId, deviceId)
+          : setActivityDeviceInput(this._editBundle, activityId, deviceId, commandId));
+      },
+      sequenceMeta: TOOLS_CARD_STRINGS.backup.macroStepsCount(
+        this._powerSetupStepCount("activity", activityId, 198),
+      ),
+      onOpenSequence: () =>
+        this._openMacroEditor("activity", activityId, 198, TOOLS_CARD_STRINGS.backup.activityStartSequenceTitle),
+    });
+  }
+
+  private _renderActivityEndSection() {
+    if (this._editDetailId == null || !this._editBundle) return nothing;
+    const activityId = Number(this._editDetailId);
+    return renderActivityEndSection({
+      members: this._activityMemberViews(),
+      idleModeFor: (deviceId) => deviceIdleBehavior(this._editBundle, deviceId),
+      idleOptions: this._powerControlOptions(),
+      idleMenuDeviceId: this._endIdleMenuDeviceId,
+      onToggleIdleMenu: (deviceId) => {
+        this._endIdleMenuDeviceId = deviceId;
+      },
+      onIdleChange: (deviceId, mode) => {
+        this._endIdleMenuDeviceId = null;
+        if (!this._editBundle) return;
+        if (deviceIdleBehavior(this._editBundle, deviceId) === mode) return;
+        this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this._editBundle, deviceId, mode));
+      },
+      onTogglePowerOff: (member, powersOff) => {
+        if (!this._editBundle) return;
+        this._commitEditBundleEdit(
+          setActivityDevicePowerOff(this._editBundle, activityId, member.deviceId, powersOff),
+        );
+      },
+      sequenceMeta: TOOLS_CARD_STRINGS.backup.macroStepsCount(
+        this._powerSetupStepCount("activity", activityId, 199),
+      ),
+      onOpenSequence: () =>
+        this._openMacroEditor("activity", activityId, 199, TOOLS_CARD_STRINGS.backup.activityEndSequenceTitle),
+    });
   }
 
   /**
@@ -2597,21 +2934,17 @@ class SofabatonBackupTab extends LitElement {
       <div class="quick-access-section" data-edit-section="quick_access">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
-            <div class="quick-access-title">Macros and Favorites</div>
+            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.activityShortcutsTitle}</div>
             <div class="quick-access-sub">
               ${this._haSortableReady
-                ? "Drag the handle to reorder Macros and Favorites inside the Activity."
-                : "Drag support is unavailable here, so use the move buttons to reorder Macros and Favorites."}
+                ? TOOLS_CARD_STRINGS.backup.activityShortcutsSubSortable
+                : TOOLS_CARD_STRINGS.backup.activityShortcutsSubStatic}
             </div>
           </div>
           <div class="quick-access-head-actions">
-            <button class="quick-access-add-btn" @click=${this._addActivityMacro}>
+            <button class="quick-access-add-btn" @click=${this._openAddShortcutDialog}>
               <ha-icon icon="mdi:plus"></ha-icon>
-              <span>${TOOLS_CARD_STRINGS.backup.addMacro}</span>
-            </button>
-            <button class="quick-access-add-btn" @click=${this._openAddFavoriteDialog}>
-              <ha-icon icon="mdi:plus"></ha-icon>
-              <span>${TOOLS_CARD_STRINGS.backup.addFavoriteButton}</span>
+              <span>${TOOLS_CARD_STRINGS.backup.addShortcutButton}</span>
             </button>
           </div>
         </div>
@@ -2635,9 +2968,24 @@ class SofabatonBackupTab extends LitElement {
                   : rows}
               </div>
             `
-          : html`<div class="quick-access-empty">This Activity does not currently contain any Macros or Favorites.</div>`}
+          : html`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.activityShortcutsEmpty}</div>`}
       </div>
     `;
+  }
+
+  // Narrative meta line: a custom action shows its step count; a command
+  // shortcut shows which device it plays on. Slot ids are storage detail.
+  private _quickAccessRowMeta(item: ReturnType<typeof activityQuickAccessItems>[number]): string {
+    if (item.kind === "macro") {
+      const summary = this._editDetailId != null
+        ? activityUserMacroSummaries(this._editBundle, Number(this._editDetailId))
+          .find((macro) => macro.buttonId === item.buttonId)
+        : undefined;
+      return TOOLS_CARD_STRINGS.backup.macroStepsCount(summary?.commandStepCount ?? 0);
+    }
+    const device = (this._editBundle?.devices ?? [])
+      .find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
+    return String(device?.device?.name || "").trim() || `Device ${item.deviceId ?? "?"}`;
   }
 
   private _renderActivityQuickAccessRow(item: ReturnType<typeof activityQuickAccessItems>[number]) {
@@ -2650,13 +2998,15 @@ class SofabatonBackupTab extends LitElement {
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">${item.kind}</div>
+              <div class="quick-access-chip">
+                ${item.kind === "macro"
+                  ? TOOLS_CARD_STRINGS.backup.shortcutChipAction
+                  : isHaActionDeviceId(this._editBundle, Number(item.deviceId || 0))
+                    ? TOOLS_CARD_STRINGS.backup.haActionChip
+                    : TOOLS_CARD_STRINGS.backup.shortcutChipCommand}
+              </div>
             </div>
-            <div class="quick-access-meta">
-              ${item.kind === "macro"
-                ? `Quick-access slot ${item.buttonId}`
-                : `Favorite command ${item.commandId || "?"} on device ${item.deviceId || "?"} · slot ${item.buttonId}`}
-            </div>
+            <div class="quick-access-meta">${this._quickAccessRowMeta(item)}</div>
           </div>
           <div class="quick-access-actions">
             ${this._haSortableReady ? nothing : html`
@@ -2689,14 +3039,14 @@ class SofabatonBackupTab extends LitElement {
             <button
               class="icon-btn"
               @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
-              aria-label=${`Rename ${item.kind}`}
+              aria-label=${TOOLS_CARD_STRINGS.backup.shortcutRenameAria(item.kind)}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
             <button
               class="icon-btn icon-btn--danger"
               @click=${() => this._openQuickAccessDeleteConfirm(item.kind, item.buttonId, item.label)}
-              aria-label=${`Delete ${item.kind}`}
+              aria-label=${TOOLS_CARD_STRINGS.backup.shortcutDeleteAria(item.kind)}
             >
               <ha-icon icon="mdi:trash-can-outline"></ha-icon>
             </button>
@@ -3125,6 +3475,8 @@ class SofabatonBackupTab extends LitElement {
       case "activity_binding":
       case "device_binding":
         return TOOLS_CARD_STRINGS.backup.deleteBindingTitle(name);
+      case "activity_member":
+        return TOOLS_CARD_STRINGS.backup.activityRemoveDeviceTitle(name);
     }
   }
 
@@ -3189,15 +3541,29 @@ class SofabatonBackupTab extends LitElement {
   }
 
   // ── Add favorite (device → command picker) ──────────────────────────
-  private _openAddFavoriteDialog = () => {
+  // One entry point for everything that can land on the remote screen:
+  // a device command, a custom action (steps picked next), or a Home
+  // Assistant action. The kind selector swaps the dialog's fields.
+  private _openAddShortcutDialog = () => {
     if (this._editDetailId == null || !this._editBundle) return;
     const devices = bundleDeviceOptions(this._editBundle);
     const firstDeviceId = devices[0]?.id ?? null;
     const commands = firstDeviceId != null ? deviceCommandItems(this._editBundle, firstDeviceId) : [];
+    this._addShortcutKind = "command";
     this._addFavoriteDeviceId = firstDeviceId;
     this._addFavoriteCommandId = commands[0]?.commandId ?? null;
     this._addFavoriteName = commands[0]?.label ?? "";
     this._addFavoriteError = "";
+    this._addShortcutActionName = "";
+    const existing = bundleHaActionTarget(this._editBundle);
+    let prefill = existing ? `${existing.host}:${existing.port}` : "";
+    if (!prefill && typeof window !== "undefined") {
+      const candidate = parseHaActionAddress(window.location.hostname);
+      if (candidate) prefill = `${candidate.host}:8060`;
+    }
+    this._haActionName = "";
+    this._haActionAddress = prefill;
+    this._haActionError = "";
     this._addFavoriteOpen = true;
   };
 
@@ -3207,6 +3573,9 @@ class SofabatonBackupTab extends LitElement {
     this._addFavoriteCommandId = null;
     this._addFavoriteName = "";
     this._addFavoriteError = "";
+    this._addShortcutKind = "command";
+    this._addShortcutActionName = "";
+    this._closeHaActionDialog();
   };
 
   private _handleAddFavoriteDeviceChange = (event: Event) => {
@@ -3252,67 +3621,183 @@ class SofabatonBackupTab extends LitElement {
     this._closeAddFavoriteDialog();
   };
 
+  private _applyAddShortcut = () => {
+    if (!this._editBundle || this._editDetailId == null) return;
+    if (this._addShortcutKind === "command") {
+      this._applyAddFavorite();
+      return;
+    }
+    if (this._addShortcutKind === "action") {
+      const activityId = Number(this._editDetailId);
+      const name = this._sanitizeBundleName(this._addShortcutActionName).trim()
+        || TOOLS_CARD_STRINGS.backup.newMacroName;
+      const next = addActivityUserMacro(this._editBundle, activityId, name);
+      this._commitEditBundleEdit(next);
+      this._closeAddFavoriteDialog();
+      const summaries = activityUserMacroSummaries(next, activityId);
+      const created = summaries[summaries.length - 1];
+      if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
+      return;
+    }
+    this._applyHaAction();
+  };
+
   private _renderAddFavoriteDialog() {
     if (!this._addFavoriteOpen || !this._editBundle) return nothing;
+    const S = TOOLS_CARD_STRINGS.backup;
+    const kind = this._addShortcutKind;
     const devices = bundleDeviceOptions(this._editBundle);
     const commands = this._addFavoriteDeviceId != null
       ? deviceCommandItems(this._editBundle, this._addFavoriteDeviceId)
       : [];
-    const canAdd = this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null;
+    const canAdd = kind !== "command"
+      || (this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null);
+    const commandFields = devices.length === 0
+      ? html`<div class="backup-drawer-sub">${S.addFavoriteNoDevices}</div>`
+      : html`
+          <div class="decoded-field">
+            <label class="decoded-field-label" for="sb-add-fav-device">${S.addFavoriteDevice}</label>
+            <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
+              ${devices.map((device) => html`
+                <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
+              `)}
+            </select>
+          </div>
+          <div class="decoded-field">
+            <label class="decoded-field-label" for="sb-add-fav-command">${S.addFavoriteCommand}</label>
+            ${commands.length === 0
+              ? html`<div class="quick-access-empty">${S.addFavoriteNoCommands}</div>`
+              : html`
+                  <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
+                    ${commands.map((command) => html`
+                      <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
+                    `)}
+                  </select>
+                `}
+          </div>
+          <div class="decoded-field">
+            <label class="decoded-field-label" for="sb-add-fav-name">${S.addFavoriteName}</label>
+            <input
+              id="sb-add-fav-name"
+              class="decoded-field-input"
+              maxlength="20"
+              .value=${this._addFavoriteName}
+              @input=${this._handleAddFavoriteNameInput}
+            />
+          </div>
+        `;
+    const actionFields = html`
+      <div class="decoded-field">
+        <label class="decoded-field-label" for="sb-add-action-name">${S.addShortcutActionName}</label>
+        <input
+          id="sb-add-action-name"
+          class="decoded-field-input"
+          maxlength="20"
+          .value=${this._addShortcutActionName}
+          @input=${(event: Event) => {
+            this._addShortcutActionName = (event.target as HTMLInputElement).value;
+          }}
+        />
+        <div class="decoded-field-helper">${S.addShortcutActionHelper}</div>
+      </div>
+    `;
+    const haFields = html`
+      <div class="decoded-field">
+        <label class="decoded-field-label" for="sb-ha-action-name">${S.haActionNameLabel}</label>
+        <input
+          id="sb-ha-action-name"
+          class="decoded-field-input"
+          maxlength="20"
+          .value=${this._haActionName}
+          @input=${(event: Event) => {
+            this._haActionName = (event.target as HTMLInputElement).value;
+            this._haActionError = "";
+          }}
+        />
+        <div class="decoded-field-helper">${S.haActionNameHelper}</div>
+      </div>
+      <div class="decoded-field">
+        <label class="decoded-field-label" for="sb-ha-action-address">${S.haActionAddressLabel}</label>
+        <input
+          id="sb-ha-action-address"
+          class="decoded-field-input"
+          placeholder="192.168.1.10:8060"
+          .value=${this._haActionAddress}
+          @input=${(event: Event) => {
+            this._haActionAddress = (event.target as HTMLInputElement).value;
+            this._haActionError = "";
+          }}
+        />
+        <div class="decoded-field-helper">${S.haActionAddressHelper}</div>
+      </div>
+    `;
     return html`
       <div class="modal-backdrop" @click=${this._closeAddFavoriteDialog}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">${TOOLS_CARD_STRINGS.backup.addFavoriteTitle}</div>
+            <div class="dialog-title">${S.addShortcutTitle}</div>
             <button class="dialog-close" @click=${this._closeAddFavoriteDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            ${devices.length === 0
-              ? html`<div class="backup-drawer-sub">${TOOLS_CARD_STRINGS.backup.addFavoriteNoDevices}</div>`
-              : html`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-add-fav-device">${TOOLS_CARD_STRINGS.backup.addFavoriteDevice}</label>
-                    <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
-                      ${devices.map((device) => html`
-                        <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
-                      `)}
-                    </select>
-                  </div>
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-add-fav-command">${TOOLS_CARD_STRINGS.backup.addFavoriteCommand}</label>
-                    ${commands.length === 0
-                      ? html`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.addFavoriteNoCommands}</div>`
-                      : html`
-                          <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
-                            ${commands.map((command) => html`
-                              <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
-                            `)}
-                          </select>
-                        `}
-                  </div>
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-add-fav-name">${TOOLS_CARD_STRINGS.backup.addFavoriteName}</label>
-                    <input
-                      id="sb-add-fav-name"
-                      class="decoded-field-input"
-                      maxlength="20"
-                      .value=${this._addFavoriteName}
-                      @input=${this._handleAddFavoriteNameInput}
-                    />
-                  </div>
-                `}
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-add-shortcut-kind">${S.addShortcutKindLabel}</label>
+              <select
+                id="sb-add-shortcut-kind"
+                class="decoded-field-input"
+                @change=${(event: Event) => {
+                  this._addShortcutKind = (event.target as HTMLSelectElement).value as
+                    | "command" | "action" | "ha";
+                  this._addFavoriteError = "";
+                  this._haActionError = "";
+                }}
+              >
+                <option value="command" ?selected=${kind === "command"}>${S.shortcutKindCommand}</option>
+                <option value="action" ?selected=${kind === "action"}>${S.shortcutKindAction}</option>
+                <option value="ha" ?selected=${kind === "ha"}>${S.shortcutKindHa}</option>
+              </select>
+            </div>
+            ${kind === "command" ? commandFields : kind === "action" ? actionFields : haFields}
           </div>
           <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._addFavoriteError}</div>
+            <div class="dialog-footer-note">${kind === "ha" ? this._haActionError : this._addFavoriteError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeAddFavoriteDialog}>${TOOLS_CARD_STRINGS.backup.addFavoriteCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyAddFavorite} ?disabled=${!canAdd}>${TOOLS_CARD_STRINGS.backup.addFavoriteAdd}</button>
+              <button class="dialog-btn" @click=${this._closeAddFavoriteDialog}>${S.addFavoriteCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyAddShortcut} ?disabled=${!canAdd}>${S.addFavoriteAdd}</button>
             </div>
           </div>
         </div>
       </div>
     `;
   }
+
+  // HA-action field reset — the fields live inside the unified
+  // add-shortcut dialog now; this also runs on detail close.
+  private _closeHaActionDialog = () => {
+    this._haActionName = "";
+    this._haActionAddress = "";
+    this._haActionError = "";
+  };
+
+  private _applyHaAction = () => {
+    if (!this._editBundle || this._editDetailId == null) return;
+    const name = this._sanitizeBundleName(this._haActionName).trim();
+    if (!name) {
+      this._haActionError = TOOLS_CARD_STRINGS.backup.haActionNameRequired;
+      return;
+    }
+    const target = parseHaActionAddress(this._haActionAddress);
+    if (!target) {
+      this._haActionError = TOOLS_CARD_STRINGS.backup.haActionInvalidAddress;
+      return;
+    }
+    const next = addActivityHaActionFavorite(this._editBundle, Number(this._editDetailId), name, target);
+    if (!next) {
+      this._haActionError = TOOLS_CARD_STRINGS.backup.haActionNoSlots;
+      return;
+    }
+    this._commitEditBundleEdit(next);
+    this._closeAddFavoriteDialog();
+  };
 
   private _openEditFilePicker = () => {
     this.renderRoot.querySelector<HTMLInputElement>("#edit-file-input")?.click();
@@ -3349,7 +3834,9 @@ class SofabatonBackupTab extends LitElement {
    * `this._editBundle = ...` assignment to bypass the dirty flag.
    */
   private _commitEditBundleEdit(next: BackupBundlePayload) {
-    this._editBundle = next;
+    // Sweep HA-action plumbing on every commit: slots nothing references
+    // anymore are dropped, empty hidden host devices dissolve.
+    this._editBundle = pruneHaActionHosts(next);
     this._editBundleDirty = true;
   }
 
@@ -3366,8 +3853,13 @@ class SofabatonBackupTab extends LitElement {
   private _openEditDetail(kind: BackupEditTargetKind, id: number, name: string) {
     this._editDetailKind = kind;
     this._editDetailId = Number(id);
-    this._editDetailActiveSection = "power";
+    this._editDetailActiveSection = kind === "activity" ? "devices" : "power";
     this._powerControlMenuOpen = false;
+    this._addDeviceMenuOpen = false;
+    this._roleMenuOpen = null;
+    this._roleConfirm = null;
+    this._bindingsView = false;
+    this._endIdleMenuDeviceId = null;
     this._editDetailNameDraft = this._sanitizeBundleName(name);
   }
 
@@ -3376,6 +3868,12 @@ class SofabatonBackupTab extends LitElement {
     this._editDetailId = null;
     this._editDetailActiveSection = "power";
     this._powerControlMenuOpen = false;
+    this._addDeviceMenuOpen = false;
+    this._roleMenuOpen = null;
+    this._roleConfirm = null;
+    this._bindingsView = false;
+    this._endIdleMenuDeviceId = null;
+    this._closeHaActionDialog();
     this._editDetailNameDraft = "";
     this._closeEditRenameDialog();
     this._closeDeleteConfirm();
@@ -4505,16 +5003,6 @@ class SofabatonBackupTab extends LitElement {
       </div>
     `;
   }
-
-  private _addActivityMacro = () => {
-    if (this._editDetailId == null || !this._editBundle) return;
-    const activityId = Number(this._editDetailId);
-    const next = addActivityUserMacro(this._editBundle, activityId, TOOLS_CARD_STRINGS.backup.newMacroName);
-    this._commitEditBundleEdit(next);
-    const summaries = activityUserMacroSummaries(next, activityId);
-    const created = summaries[summaries.length - 1];
-    if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
-  };
 
   private _renderRestoreSectionContent() {
     const isRunning = this._isProgressRunning(this._restoreProgress);

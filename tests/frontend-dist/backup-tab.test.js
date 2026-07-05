@@ -1663,7 +1663,7 @@ var TOOLS_CARD_STRINGS = {
   },
   backend: {
     unavailableTitle: "Backend not available",
-    unavailableCopy: "Waiting for the Sofabaton X1S integration to finish starting...",
+    unavailableCopy: "Waiting for the Sofabaton X integration to finish starting...",
     versionMismatchTitle: "Refresh required to update the Sofabaton Control Panel card",
     versionMismatchCopy: "This dashboard is still using an older cached version of the Sofabaton Control Panel card than the one now running in Home Assistant. Refresh or reopen the dashboard/browser before using the control panel again so the updated card can load.",
     backendExpects: "Backend expects",
@@ -1805,21 +1805,20 @@ var TOOLS_CARD_STRINGS = {
     deleteActivityTitle: (name) => `Delete activity "${name}"?`,
     deleteDeviceTitle: (name) => `Delete device "${name}"?`,
     deleteCommandTitle: (name) => `Delete command "${name}"?`,
-    deleteFavoriteTitle: (name) => `Delete favorite "${name}"?`,
-    deleteMacroTitle: (name) => `Delete macro "${name}"?`,
+    deleteFavoriteTitle: (name) => `Delete shortcut "${name}"?`,
+    deleteMacroTitle: (name) => `Delete custom action "${name}"?`,
     deleteCascadeIntro: "Removing this also clears its references elsewhere in the backup:",
     deleteSimpleBody: "This removes it from the loaded backup.",
     deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
-    deleteImpactFavorites: (count) => `${count} favorite${count === 1 ? "" : "s"} will be removed`,
-    deleteImpactMacroSteps: (count) => `${count} macro step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
     deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
     deleteCancel: "Cancel",
     deleteConfirm: "Delete",
     deleteActivityAria: "Delete activity",
     deleteDeviceAria: "Delete device",
     deleteCommandAria: "Delete command",
-    addFavoriteTitle: "Add favorite",
-    addFavoriteButton: "Add favorite",
+    addFavoriteTitle: "Add command shortcut",
     addFavoriteDevice: "Device",
     addFavoriteCommand: "Command",
     addFavoriteName: "Display name",
@@ -1880,7 +1879,6 @@ var TOOLS_CARD_STRINGS = {
     macroStepsCount: (count) => `${count} step${count === 1 ? "" : "s"}`,
     noMacroSteps: "No steps yet.",
     addStep: "Add step",
-    addMacro: "Add macro",
     stepDialogAddTitle: "Add step",
     stepDialogEditTitle: "Edit step",
     stepDevice: "Device",
@@ -1897,7 +1895,11 @@ var TOOLS_CARD_STRINGS = {
     renameMacroAria: "Rename macro",
     deleteStepAria: "Delete step",
     editStepAria: "Edit step",
-    newMacroName: "Macro",
+    newMacroName: "Custom action",
+    shortcutChipCommand: "command",
+    shortcutChipAction: "custom action",
+    shortcutRenameAria: (kind) => kind === "macro" ? "Rename custom action" : "Rename shortcut",
+    shortcutDeleteAria: (kind) => kind === "macro" ? "Delete custom action" : "Delete shortcut",
     powerSectionTitle: "Power",
     powerActivitySub: "Each device the Activity uses powers on here. Pick its input and adjust the timing.",
     powerInputLabel: "Input",
@@ -1910,7 +1912,94 @@ var TOOLS_CARD_STRINGS = {
     macroRenameAria: "Rename macro",
     editStepsAria: "Edit steps",
     crumbActivities: "Activities",
-    crumbDevices: "Devices"
+    crumbDevices: "Devices",
+    // Narrative activity editor (docs/internal/activity-editor-plan.md).
+    // Section headings tell the activity's story in order: devices →
+    // start → running → shortcuts → end. Storage vocabulary (macro,
+    // binding, favorite slot) stays out of the copy.
+    activityDevicesTitle: "Devices in this activity",
+    activityDevicesSub: "Everything below follows from this list.",
+    activityDevicesEmpty: "No devices yet. Add one to get started.",
+    activityAddDevice: "Add device",
+    activityAddDeviceNone: "Every device in this backup is already part of this activity.",
+    activityRemoveDeviceAria: (name) => `Remove ${name} from this activity`,
+    activityRemoveDeviceTitle: (name) => `Remove ${name} from this activity?`,
+    activityStartTitle: "When the activity starts",
+    activityStartSub: "What each device does when this activity begins.",
+    activityStartTurnsOn: "Turns on",
+    activityStartStaysAsIs: "Stays as is",
+    activityStartToggleAria: (name) => `Toggle whether ${name} turns on`,
+    activityStartInputLabel: "Input",
+    activityStartInputNone: "\u2014 none \u2014",
+    activityStartInputAria: (name) => `Input for ${name}`,
+    activityStartSequenceTitle: "Start sequence",
+    activityEndSequenceTitle: "End sequence",
+    activityRunningTitle: "While the activity is running",
+    activityRunningSub: "Which device each remote button controls in this activity.",
+    activityShortcutsTitle: "Shortcuts on the remote screen",
+    activityShortcutsSubSortable: "Commands and custom actions shown on the remote's screen. Drag the handle to reorder.",
+    activityShortcutsSubStatic: "Commands and custom actions shown on the remote's screen. Use the move buttons to reorder.",
+    activityShortcutsEmpty: "No shortcuts yet. Add a command or a custom action.",
+    activityEndTitle: "When the activity ends",
+    activityEndSub: "What each device does when this activity is switched off.",
+    activityEndTurnsOff: "Turns off",
+    activityEndStaysOn: "Stays on",
+    activityEndToggleAria: (name) => `Toggle whether ${name} turns off`,
+    // Per-device automatic power (device-level idle behavior, 0x0242).
+    // Activity switches are governed by THIS, not the activity macros.
+    activityIdleAutoOff: "Between activities: turns off when not needed",
+    activityIdleStayOn: "Between activities: stays on",
+    activityIdleAlwaysOn: "Between activities: never switched off",
+    activityIdleDisabled: "Power not managed by the hub",
+    activityIdleUnset: "Automatic power: not set",
+    activityIdleAria: (name) => `Change automatic power for ${name}`,
+    activityIdleMenuNote: "Applies to the device in every activity.",
+    activitySectionDevices: "Devices",
+    activitySectionStart: "Start",
+    activitySectionRunning: "Buttons",
+    activitySectionShortcuts: "Shortcuts",
+    activitySectionEnd: "End",
+    // Role-based button assignment (Phase B).
+    roleVolume: "Volume buttons control",
+    roleNavigation: "Navigation and OK control",
+    rolePlayback: "Playback buttons control",
+    roleChannels: "Channel buttons control",
+    roleNotUsed: "Not used",
+    roleCustom: "Custom",
+    roleCustomized: (name) => `${name} (customized)`,
+    roleMappedNote: (bound, total) => `${bound} of ${total} buttons mapped`,
+    roleOptionNoMapping: (name) => `${name} \u2014 no button mapping`,
+    roleMenuAria: (roleLabel) => `Choose a device for: ${roleLabel}`,
+    roleConfirmTitle: "Replace custom button setup?",
+    roleConfirmBody: "This group has button assignments that don't come from a single device's standard mapping. Assigning it here replaces them.",
+    roleConfirmReplace: "Replace",
+    roleConfirmCancel: "Cancel",
+    customizeButtonsToggle: "Customize individual buttons",
+    bindingsViewTitle: "Individual buttons",
+    bindingsConfiguredCount: (count) => `${count} configured`,
+    bindingsNoneConfigured: "None customized",
+    sequenceRowLabel: "Adjust order, delays, and extra steps",
+    // Unified "add to shortcuts" flow.
+    addShortcutButton: "Add",
+    addShortcutTitle: "Add to shortcuts",
+    addShortcutKindLabel: "Type",
+    shortcutKindCommand: "Device command",
+    shortcutKindAction: "Custom action",
+    shortcutKindHa: "Home Assistant action",
+    addShortcutActionName: "Name",
+    addShortcutActionHelper: "You'll pick the steps next.",
+    // Home Assistant actions (Phase D).
+    haActionDialogTitle: "Add Home Assistant action",
+    haActionNameLabel: "Name",
+    haActionNameHelper: "Shown on the remote; Home Assistant receives it when the shortcut is pressed.",
+    haActionAddressLabel: "Home Assistant address",
+    haActionAddressHelper: "IPv4 address (and optional :port) where the hub can reach this Home Assistant on your network. The wifi-commands listener answers there.",
+    haActionNameRequired: "Enter a name.",
+    haActionInvalidAddress: "Enter the address as IPv4 or IPv4:port, e.g. 192.168.1.10:8060.",
+    haActionNoSlots: "No free slots \u2014 the shared device-id space is full.",
+    haActionAdd: "Add",
+    haActionCancel: "Cancel",
+    haActionChip: "HA action"
   },
   wifiCommands: {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
@@ -2141,6 +2230,570 @@ function renderOperationProgress(view) {
     </div>
   `;
 }
+
+// custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
+var S3 = TOOLS_CARD_STRINGS.backup;
+function renderActivityDevicesSection(params) {
+  return T`
+    <div class="quick-access-section" data-edit-section="devices">
+      <div class="quick-access-head">
+        <div class="quick-access-head-main">
+          <div class="quick-access-title">${S3.activityDevicesTitle}</div>
+          <div class="quick-access-sub">${S3.activityDevicesSub}</div>
+        </div>
+      </div>
+      <div class="member-chip-list">
+        ${params.members.map((member) => T`
+          <span class="member-chip">
+            <span class="member-chip-label">${member.deviceName}</span>
+            <button
+              class="member-chip-remove"
+              type="button"
+              aria-label=${S3.activityRemoveDeviceAria(member.deviceName)}
+              @click=${() => params.onRemove(member)}
+            >
+              <ha-icon icon="mdi:close"></ha-icon>
+            </button>
+          </span>
+        `)}
+        <span class="member-add" data-open=${params.menuOpen ? "true" : "false"}>
+          <button class="member-chip member-chip--add" type="button" @click=${params.onToggleMenu}>
+            <ha-icon icon="mdi:plus"></ha-icon>
+            <span>${S3.activityAddDevice}</span>
+          </button>
+          ${params.menuOpen ? T`
+                <button
+                  class="member-add-backdrop"
+                  type="button"
+                  tabindex="-1"
+                  aria-hidden="true"
+                  @click=${params.onToggleMenu}
+                ></button>
+                <div class="member-add-menu" role="listbox" aria-label=${S3.activityAddDevice}>
+                  ${params.addable.length ? params.addable.map((option) => T`
+                        <button
+                          class="member-add-option"
+                          type="button"
+                          role="option"
+                          @click=${() => params.onAdd(option.id)}
+                        >${option.label}</button>
+                      `) : T`<div class="member-add-empty">${S3.activityAddDeviceNone}</div>`}
+                </div>
+              ` : A}
+        </span>
+      </div>
+      ${params.members.length === 0 ? T`<div class="quick-access-empty">${S3.activityDevicesEmpty}</div>` : A}
+    </div>
+  `;
+}
+function renderDrillInRow(params) {
+  return T`
+    <div class="quick-access-sortable-item">
+      <button class="edit-selection-row" @click=${params.onOpen}>
+        <span class="selection-main">
+          <span class="selection-label">${params.label}</span>
+          ${params.meta ? T`<span class="selection-sub">${params.meta}</span>` : A}
+        </span>
+        <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+      </button>
+    </div>
+  `;
+}
+function renderActivityStartSection(params) {
+  return T`
+    <div class="quick-access-section" data-edit-section="start">
+      <div class="quick-access-head">
+        <div class="quick-access-head-main">
+          <div class="quick-access-title">${S3.activityStartTitle}</div>
+          <div class="quick-access-sub">${S3.activityStartSub}</div>
+        </div>
+      </div>
+      ${params.members.length ? T`
+            <div class="quick-access-list">
+              <div class="quick-access-sortable-container">
+                ${params.members.map((member) => renderStartRow(member, params))}
+                ${renderDrillInRow({
+    label: S3.sequenceRowLabel,
+    meta: params.sequenceMeta,
+    onOpen: params.onOpenSequence
+  })}
+              </div>
+            </div>
+          ` : T`<div class="quick-access-empty">${S3.activityDevicesEmpty}</div>`}
+    </div>
+  `;
+}
+function renderStartRow(member, params) {
+  const commands = params.commandsFor(member.deviceId);
+  const orphanInput = member.inputCommandId != null && !commands.some((command) => command.commandId === member.inputCommandId);
+  return T`
+    <div class="quick-access-sortable-item">
+      <div class="quick-access-row quick-access-row--no-drag member-start-row">
+        <div class="quick-access-main">
+          <div class="quick-access-label-row">
+            <div class="quick-access-label">${member.deviceName}</div>
+          </div>
+        </div>
+        <div class="member-start-controls">
+          <button
+            class="member-power-pill"
+            type="button"
+            data-on=${member.powersOn ? "true" : "false"}
+            aria-pressed=${member.powersOn ? "true" : "false"}
+            aria-label=${S3.activityStartToggleAria(member.deviceName)}
+            @click=${() => params.onTogglePowerOn(member)}
+          >${member.powersOn ? S3.activityStartTurnsOn : S3.activityStartStaysAsIs}</button>
+          <label class="member-input-label">
+            <span>${S3.activityStartInputLabel}</span>
+            <select
+              class="member-input-select"
+              aria-label=${S3.activityStartInputAria(member.deviceName)}
+              @change=${(event) => {
+    const raw = event.target.value;
+    params.onInputChange(member.deviceId, raw === "" ? null : Number(raw));
+  }}
+            >
+              <option value="" ?selected=${member.inputCommandId == null}>${S3.activityStartInputNone}</option>
+              ${orphanInput ? T`<option value=${String(member.inputCommandId)} selected>${member.inputCommandName ?? `Input ${member.inputOrdinal}`}</option>` : A}
+              ${commands.map((command) => T`
+                <option
+                  value=${String(command.commandId)}
+                  ?selected=${member.inputCommandId === command.commandId}
+                >${command.label}</option>
+              `)}
+            </select>
+          </label>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function idleSummaryLabel(mode) {
+  switch (mode) {
+    case 1:
+      return S3.activityIdleAutoOff;
+    case 2:
+      return S3.activityIdleAlwaysOn;
+    case 3:
+      return S3.activityIdleStayOn;
+    case 4:
+      return S3.activityIdleDisabled;
+    default:
+      return S3.activityIdleUnset;
+  }
+}
+function renderActivityEndSection(params) {
+  return T`
+    <div class="quick-access-section" data-edit-section="end">
+      <div class="quick-access-head">
+        <div class="quick-access-head-main">
+          <div class="quick-access-title">${S3.activityEndTitle}</div>
+          <div class="quick-access-sub">${S3.activityEndSub}</div>
+        </div>
+      </div>
+      ${params.members.length ? T`
+            <div class="quick-access-list">
+              <div class="quick-access-sortable-container">
+                ${params.members.map((member) => renderEndRow(member, params))}
+                ${renderDrillInRow({
+    label: S3.sequenceRowLabel,
+    meta: params.sequenceMeta,
+    onOpen: params.onOpenSequence
+  })}
+              </div>
+            </div>
+          ` : T`<div class="quick-access-empty">${S3.activityDevicesEmpty}</div>`}
+    </div>
+  `;
+}
+function renderEndRow(member, params) {
+  const idleMode = params.idleModeFor(member.deviceId);
+  const menuOpen = params.idleMenuDeviceId === member.deviceId;
+  return T`
+    <div class="quick-access-sortable-item">
+      <div class="quick-access-row quick-access-row--no-drag member-start-row">
+        <div class="quick-access-main">
+          <div class="quick-access-label-row">
+            <div class="quick-access-label">${member.deviceName}</div>
+          </div>
+          <span class="member-add member-idle-anchor" data-open=${menuOpen ? "true" : "false"}>
+            <button
+              class="member-idle-trigger"
+              type="button"
+              aria-haspopup="listbox"
+              aria-expanded=${menuOpen ? "true" : "false"}
+              aria-label=${S3.activityIdleAria(member.deviceName)}
+              @click=${() => params.onToggleIdleMenu(menuOpen ? null : member.deviceId)}
+            >
+              <span>${idleSummaryLabel(idleMode)}</span>
+              <ha-icon icon="mdi:chevron-down"></ha-icon>
+            </button>
+            ${menuOpen ? T`
+                  <button
+                    class="member-add-backdrop"
+                    type="button"
+                    tabindex="-1"
+                    aria-hidden="true"
+                    @click=${() => params.onToggleIdleMenu(null)}
+                  ></button>
+                  <div class="member-add-menu member-idle-menu" role="listbox" aria-label=${S3.activityIdleAria(member.deviceName)}>
+                    <div class="member-add-empty">${S3.activityIdleMenuNote}</div>
+                    ${params.idleOptions.map((option) => T`
+                      <button
+                        class="member-add-option member-idle-option"
+                        type="button"
+                        role="option"
+                        aria-selected=${option.mode === idleMode ? "true" : "false"}
+                        @click=${() => params.onIdleChange(member.deviceId, option.mode)}
+                      >
+                        <span class="member-idle-option-label">${option.label}</span>
+                        <span class="member-idle-option-sub">${option.sub}</span>
+                      </button>
+                    `)}
+                  </div>
+                ` : A}
+          </span>
+        </div>
+        <div class="member-start-controls">
+          <button
+            class="member-power-pill"
+            type="button"
+            data-on=${member.powersOff ? "true" : "false"}
+            aria-pressed=${member.powersOff ? "true" : "false"}
+            aria-label=${S3.activityEndToggleAria(member.deviceName)}
+            @click=${() => params.onTogglePowerOff(member, !member.powersOff)}
+          >${member.powersOff ? S3.activityEndTurnsOff : S3.activityEndStaysOn}</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+var ROLE_LABELS = {
+  volume: S3.roleVolume,
+  navigation: S3.roleNavigation,
+  playback: S3.rolePlayback,
+  channels: S3.roleChannels
+};
+var ROLE_ICONS = {
+  volume: "mdi:volume-high",
+  navigation: "mdi:gamepad-round-outline",
+  playback: "mdi:play-pause",
+  channels: "mdi:pound"
+};
+function roleTriggerLabel(role) {
+  switch (role.state) {
+    case "device":
+      return role.deviceName ?? "";
+    case "customized":
+      return S3.roleCustomized(role.deviceName ?? "");
+    case "custom":
+      return S3.roleCustom;
+    case "unused":
+      return S3.roleNotUsed;
+  }
+}
+function renderActivityRolesBlock(params) {
+  return T`
+    <div class="role-list">
+      ${params.roles.map((role) => renderRoleRow(role, params))}
+    </div>
+  `;
+}
+function renderRoleRow(role, params) {
+  const open = params.openGroup === role.group;
+  const partialNote = (role.state === "device" || role.state === "customized") && role.boundCount < role.totalCount ? S3.roleMappedNote(role.boundCount, role.totalCount) : null;
+  return T`
+    <div class="role-row">
+      <ha-icon class="role-icon" icon=${ROLE_ICONS[role.group]}></ha-icon>
+      <div class="role-main">
+        <div class="role-label">${ROLE_LABELS[role.group]}</div>
+        ${partialNote ? T`<div class="role-note">${partialNote}</div>` : A}
+      </div>
+      <span class="member-add role-menu-anchor" data-open=${open ? "true" : "false"}>
+        <button
+          class="role-trigger"
+          type="button"
+          data-state=${role.state}
+          aria-haspopup="listbox"
+          aria-expanded=${open ? "true" : "false"}
+          aria-label=${S3.roleMenuAria(ROLE_LABELS[role.group])}
+          @click=${() => params.onToggleMenu(open ? null : role.group)}
+        >
+          <span>${roleTriggerLabel(role)}</span>
+          <ha-icon icon="mdi:chevron-down"></ha-icon>
+        </button>
+        ${open ? T`
+              <button
+                class="member-add-backdrop"
+                type="button"
+                tabindex="-1"
+                aria-hidden="true"
+                @click=${() => params.onToggleMenu(null)}
+              ></button>
+              <div class="member-add-menu role-menu" role="listbox" aria-label=${ROLE_LABELS[role.group]}>
+                <button
+                  class="member-add-option"
+                  type="button"
+                  role="option"
+                  aria-selected=${role.state === "unused" ? "true" : "false"}
+                  @click=${() => params.onAssign(role.group, null)}
+                >${S3.roleNotUsed}</button>
+                ${params.optionsFor(role.group).map((option) => T`
+                  <button
+                    class="member-add-option"
+                    type="button"
+                    role="option"
+                    ?disabled=${option.mappable === 0}
+                    aria-selected=${role.deviceId === option.deviceId ? "true" : "false"}
+                    @click=${() => params.onAssign(role.group, option.deviceId)}
+                  >${option.mappable === 0 ? S3.roleOptionNoMapping(option.label) : option.label}</button>
+                `)}
+              </div>
+            ` : A}
+      </span>
+    </div>
+  `;
+}
+var activityEditorStyles = i`
+  .member-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .member-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px 5px 12px;
+    border: 1px solid var(--divider-color);
+    border-radius: var(--backup-radius-pill);
+    font-size: 0.85rem;
+    color: var(--primary-text-color);
+    background: none;
+  }
+  .member-chip-label {
+    line-height: 1.2;
+  }
+  .member-chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    color: var(--secondary-text-color);
+    --mdc-icon-size: 15px;
+  }
+  .member-chip-remove:hover {
+    color: var(--error-color, #db4437);
+  }
+  .member-chip--add {
+    border-style: dashed;
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    padding: 5px 12px;
+    --mdc-icon-size: 15px;
+  }
+  .member-chip--add:hover {
+    color: var(--primary-text-color);
+    border-color: var(--primary-text-color);
+  }
+  .member-add {
+    position: relative;
+    display: inline-flex;
+  }
+  .member-add-backdrop {
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: default;
+    z-index: 4;
+  }
+  .member-add-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 5;
+    min-width: 180px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color);
+    border-radius: var(--backup-radius-md);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+  }
+  .member-add-option {
+    border: none;
+    background: none;
+    text-align: left;
+    padding: 8px 10px;
+    font-size: 0.9rem;
+    color: var(--primary-text-color);
+    border-radius: var(--backup-radius-sm);
+    cursor: pointer;
+  }
+  .member-add-option:hover {
+    background: var(--secondary-background-color);
+  }
+  .member-add-empty {
+    padding: 8px 10px;
+    font-size: 0.85rem;
+    color: var(--secondary-text-color);
+    line-height: 1.4;
+  }
+  .member-start-row {
+    align-items: center;
+  }
+  .member-start-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .member-power-pill {
+    border: 1px solid var(--divider-color);
+    border-radius: var(--backup-radius-pill);
+    background: none;
+    padding: 3px 10px;
+    font-size: 0.78rem;
+    cursor: pointer;
+    color: var(--secondary-text-color);
+    white-space: nowrap;
+  }
+  .member-power-pill[data-on="true"] {
+    color: var(--success-color, #0f9d58);
+    border-color: var(--success-color, #0f9d58);
+  }
+  .member-input-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    color: var(--secondary-text-color);
+  }
+  .member-input-select {
+    max-width: 150px;
+    padding: 4px 6px;
+    border-radius: var(--backup-radius-sm);
+    border: 1px solid var(--divider-color);
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color);
+    font-size: 0.85rem;
+  }
+  .member-idle-anchor {
+    display: inline-flex;
+    margin-top: 2px;
+  }
+  .member-idle-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    border: none;
+    background: none;
+    padding: 0;
+    cursor: pointer;
+    font-size: 0.78rem;
+    color: var(--secondary-text-color);
+    text-align: left;
+    --mdc-icon-size: 14px;
+  }
+  .member-idle-trigger:hover {
+    color: var(--primary-text-color);
+  }
+  .member-idle-menu {
+    min-width: 260px;
+  }
+  .member-idle-option {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .member-idle-option[aria-selected="true"] {
+    background: var(--secondary-background-color);
+  }
+  .member-idle-option-label {
+    font-size: 0.88rem;
+  }
+  .member-idle-option-sub {
+    font-size: 0.75rem;
+    color: var(--secondary-text-color);
+    line-height: 1.35;
+  }
+  .role-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .role-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+  }
+  .role-icon {
+    color: var(--secondary-text-color);
+    --mdc-icon-size: 18px;
+    flex: none;
+  }
+  .role-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .role-label {
+    font-size: 0.92rem;
+  }
+  .role-note {
+    font-size: 0.75rem;
+    color: var(--secondary-text-color);
+  }
+  .role-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid var(--divider-color);
+    border-radius: var(--backup-radius-sm);
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color);
+    padding: 5px 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    max-width: 190px;
+    --mdc-icon-size: 15px;
+  }
+  .role-trigger > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .role-trigger[data-state="unused"] > span {
+    color: var(--secondary-text-color);
+  }
+  .role-trigger[data-state="custom"] > span,
+  .role-trigger[data-state="customized"] > span {
+    font-style: italic;
+  }
+  .role-menu {
+    right: 0;
+    left: auto;
+    min-width: 200px;
+  }
+  .member-add-option:disabled {
+    color: var(--disabled-text-color, var(--secondary-text-color));
+    cursor: default;
+    opacity: 0.7;
+  }
+`;
 
 // custom_components/sofabaton_x1s/www/src/shared/ha-context.ts
 var BACKUP_BUNDLE_SCHEMA_VERSION = 5;
@@ -2420,7 +3073,7 @@ function updateDeviceCommandLabel(bundle, deviceId, commandId, name) {
   const normalizedDeviceId = Number(deviceId);
   const normalizedCommandId = Number(commandId);
   const trimmed = String(name ?? "").trim();
-  return {
+  const next = {
     ...bundle,
     devices: (bundle.devices ?? []).map((device) => {
       if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
@@ -2433,6 +3086,7 @@ function updateDeviceCommandLabel(bundle, deviceId, commandId, name) {
       };
     })
   };
+  return refreshHaActionCallback(next, normalizedDeviceId, normalizedCommandId);
 }
 function commandLabelFor(bundle, deviceId, commandId) {
   const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
@@ -2776,6 +3430,9 @@ function bundleDeleteImpact(bundle, target) {
     );
     return { favorites, macroSteps, activities: 0, bindings };
   }
+  if (target.kind === "activity_member") {
+    return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
+  }
   return empty;
 }
 function backupDeleteHasCascade(impact) {
@@ -2910,6 +3567,8 @@ function applyBundleDelete(bundle, target) {
       return deleteActivityButtonBinding(bundle, target.activityId, target.buttonId);
     case "device_binding":
       return deleteDeviceButtonBinding(bundle, target.deviceId, target.buttonId);
+    case "activity_member":
+      return removeActivityMemberDevice(bundle, target.activityId, target.deviceId);
   }
 }
 var POWER_ON_MACRO_BUTTON_ID = 198;
@@ -2973,7 +3632,7 @@ function activityMemberDeviceIds(activity) {
   }
   return [...ids].sort((left, right) => left - right);
 }
-function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
+function reconcilePowerMacroSteps(existingSteps, members, refCommands, seedIds) {
   const memberSet = new Set(members);
   const kept = (existingSteps ?? []).filter((step) => {
     if (isMacroDelayStep(step)) return true;
@@ -2982,6 +3641,7 @@ function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
   });
   const out = [...kept];
   for (const deviceId of members) {
+    if (!seedIds.has(deviceId)) continue;
     for (const command of refCommands) {
       const present = out.some(
         (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command
@@ -2991,15 +3651,23 @@ function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
   }
   return out;
 }
-function reconcileActivityPowerMacros(bundle, activityId) {
+function reconcileActivityPowerMacros(bundle, activityId, extraMemberIds = []) {
   return updateActivity(bundle, activityId, (activity) => {
-    const members = activityMemberDeviceIds(activity);
+    const selfId = Number(activity?.device?.device_id || 0);
+    const powerIds = activityPowerDeviceIds(activity);
+    const memberSet = new Set(activityMemberDeviceIds(activity));
+    for (const id of extraMemberIds) {
+      const extraId = Number(id || 0);
+      if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
+    }
+    const members = [...memberSet].sort((left, right) => left - right);
+    const seedIds = new Set(members.filter((id) => !powerIds.has(id)));
     const macros = [...activity.macros ?? []];
     const ensure = (buttonId, name, refCommands) => {
       const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
       const existing = index >= 0 ? macros[index] : null;
       if (!existing && members.length === 0) return;
-      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands);
+      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands, seedIds);
       const next = {
         ...existing ?? {},
         button_id: buttonId,
@@ -3021,6 +3689,172 @@ function reconcileBundlePowerMacros(bundle) {
     if (id > 0) next = reconcileActivityPowerMacros(next, id);
   }
   return next;
+}
+function findBundleActivity(bundle, activityId) {
+  return (bundle?.activities ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
+  );
+}
+function activityMemberViews(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = activityMemberDeviceIds(activity).filter((id) => !isHaActionDeviceId(bundle, id));
+  const memberSet = new Set(members);
+  const macroFor = (buttonId) => (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
+  const powerOn = macroFor(POWER_ON_MACRO_BUTTON_ID);
+  const powerOff = macroFor(POWER_OFF_MACRO_BUTTON_ID);
+  const order = [];
+  const push = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && memberSet.has(id) && !order.includes(id)) order.push(id);
+  };
+  for (const step of powerOn?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const step of powerOff?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const id of members) push(id);
+  return order.map((deviceId) => {
+    const onSteps = (powerOn?.steps ?? []).filter(
+      (step) => !isMacroDelayStep(step) && Number(step?.device_id || 0) === deviceId
+    );
+    const powersOn = onSteps.some(
+      (step) => Number(step?.command_id || 0) === DEVICE_POWER_ON_REF_COMMAND
+    );
+    const inputStep = onSteps.find(
+      (step) => Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND
+    );
+    const inputOrdinal = Number(inputStep?.duration || 0);
+    const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === inputOrdinal);
+    const powersOff = (powerOff?.steps ?? []).some(
+      (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, deviceId, DEVICE_POWER_OFF_REF_COMMAND)
+    );
+    return {
+      deviceId,
+      deviceName: deviceNameFor(bundle, deviceId),
+      powersOn,
+      inputOrdinal,
+      inputCommandId: input?.commandId ?? null,
+      inputCommandName: input?.name || (inputOrdinal > 0 ? `Input ${inputOrdinal}` : null),
+      powersOff
+    };
+  });
+}
+function activityAddableDevices(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = new Set(activityMemberDeviceIds(activity));
+  return bundleDeviceOptions(bundle).filter(
+    (option) => !members.has(option.id) && !isHaActionDeviceId(bundle, option.id)
+  );
+}
+function addActivityMemberDevice(bundle, activityId, deviceId) {
+  const dId = Number(deviceId);
+  const aId = Number(activityId);
+  if (dId <= 0 || dId === aId || !findDevice(bundle, dId)) return bundle;
+  const activity = findBundleActivity(bundle, aId);
+  if (!activity) return bundle;
+  if (activityMemberDeviceIds(activity).includes(dId)) return bundle;
+  return reconcileActivityPowerMacros(bundle, aId, [dId]);
+}
+function removeActivityMemberDevice(bundle, activityId, deviceId) {
+  const aId = Number(activityId);
+  const next = updateActivity(
+    bundle,
+    aId,
+    (activity) => stripDeviceFromActivity(activity, Number(deviceId))
+  );
+  return reconcileActivityPowerMacros(next, aId);
+}
+function activityMemberRemovalImpact(bundle, activityId, deviceId) {
+  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const activity = findBundleActivity(bundle, activityId);
+  if (!activity) return empty;
+  const dId = Number(deviceId);
+  let favorites = 0;
+  for (const slot of activity.favorite_slots ?? []) {
+    if (Number(slot?.device_id || 0) === dId) favorites += 1;
+  }
+  let macroSteps = 0;
+  for (const macro of activity.macros ?? []) {
+    if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) {
+      for (const step of macro?.steps ?? []) {
+        if (!isMacroDelayStep(step) && !isPowerRefStep(step) && stepMatchesDevice(step, dId)) {
+          macroSteps += 1;
+        }
+      }
+    } else {
+      macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, dId));
+    }
+  }
+  const bindings = countAffectedBindings(
+    activity.button_bindings,
+    (binding) => cascadeBindingForDeletedDevice(binding, dId)
+  );
+  return { favorites, macroSteps, activities: 0, bindings };
+}
+function setActivityPowerRefStep(activity, deviceId, buttonId, refCommand, present) {
+  const dId = Number(deviceId);
+  const macros = [...activity.macros ?? []];
+  const macroIndex = (id) => macros.findIndex((macro) => Number(macro?.button_id || 0) === id);
+  const appendStep = (id, name, step) => {
+    const index2 = macroIndex(id);
+    const existing = index2 >= 0 ? macros[index2] : null;
+    const next = {
+      ...existing ?? { button_id: id, name },
+      steps: [...existing?.steps ?? [], step]
+    };
+    if (index2 >= 0) macros[index2] = next;
+    else macros.push(next);
+  };
+  const index = macroIndex(buttonId);
+  const target = index >= 0 ? macros[index] : null;
+  const has = (target?.steps ?? []).some(
+    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, refCommand)
+  );
+  if (present === has) return activity;
+  if (present) {
+    appendStep(
+      buttonId,
+      buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON",
+      powerStep(dId, refCommand)
+    );
+    return { ...activity, macros };
+  }
+  macros[index] = {
+    ...target,
+    steps: filterMacroSteps(target.steps, (step) => stepMatchesCommand(step, dId, refCommand))
+  };
+  const probe = { ...activity, macros };
+  if (!activityMemberDeviceIds(probe).includes(dId)) {
+    appendStep(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0));
+  }
+  return { ...activity, macros };
+}
+function setActivityDevicePowerOff(bundle, activityId, deviceId, powersOff) {
+  return updateActivity(bundle, Number(activityId), (activity) => {
+    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
+    return setActivityPowerRefStep(
+      activity,
+      deviceId,
+      POWER_OFF_MACRO_BUTTON_ID,
+      DEVICE_POWER_OFF_REF_COMMAND,
+      Boolean(powersOff)
+    );
+  });
+}
+function setActivityDevicePowerOn(bundle, activityId, deviceId, powersOn) {
+  return updateActivity(bundle, Number(activityId), (activity) => {
+    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
+    return setActivityPowerRefStep(
+      activity,
+      deviceId,
+      POWER_ON_MACRO_BUTTON_ID,
+      DEVICE_POWER_ON_REF_COMMAND,
+      Boolean(powersOn)
+    );
+  });
 }
 var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
 function synthesizeCommandCode(commandId) {
@@ -3556,6 +4390,382 @@ function deleteDeviceButtonBinding(bundle, deviceId, buttonId) {
     })
   };
 }
+var ACTIVITY_ROLE_GROUPS = [
+  "volume",
+  "navigation",
+  "playback",
+  "channels"
+];
+var ROLE_GROUP_BUTTON_IDS = {
+  volume: [182, 185, 184],
+  navigation: [174, 178, 175, 177, 176, 179, 180, 181],
+  playback: [156, 188, 187, 189],
+  channels: [183, 186]
+};
+function roleGroupButtons(bundle, group) {
+  const catalog = new Set(bundleButtonCatalog(bundle).map((entry) => entry.code));
+  return ROLE_GROUP_BUTTON_IDS[group].filter((code) => catalog.has(code));
+}
+function deviceRoleBindings(bundle, deviceId, group) {
+  const device = findDevice(bundle, Number(deviceId));
+  const groupIds = new Set(roleGroupButtons(bundle, group));
+  const byButton = /* @__PURE__ */ new Map();
+  for (const row of device?.button_bindings ?? []) {
+    const buttonId = Number(row?.button_id || 0);
+    if (groupIds.has(buttonId) && Number(row?.command_id || 0) > 0) byButton.set(buttonId, row);
+  }
+  return byButton;
+}
+function roleMappableButtonCount(bundle, deviceId, group) {
+  return deviceRoleBindings(bundle, deviceId, group).size;
+}
+function activityRoleAssignments(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  return ACTIVITY_ROLE_GROUPS.map((group) => {
+    const buttons = roleGroupButtons(bundle, group);
+    const totalCount = buttons.length;
+    const groupSet = new Set(buttons);
+    const bound = (activity?.button_bindings ?? []).filter(
+      (row) => groupSet.has(Number(row?.button_id || 0)) && Number(row?.device_id || 0) > 0
+    );
+    const unused = {
+      group,
+      state: "unused",
+      deviceId: null,
+      deviceName: null,
+      boundCount: 0,
+      totalCount
+    };
+    if (!bundle || !activity || bound.length === 0) return unused;
+    const selfId = Number(activity.device?.device_id || 0);
+    const targetIds = /* @__PURE__ */ new Set();
+    for (const row of bound) {
+      targetIds.add(Number(row?.device_id || 0));
+      const lpDeviceId = Number(row?.long_press_device_id || 0);
+      if (lpDeviceId > 0) targetIds.add(lpDeviceId);
+    }
+    const [only] = [...targetIds];
+    if (targetIds.size !== 1 || only === selfId) {
+      return { group, state: "custom", deviceId: null, deviceName: null, boundCount: bound.length, totalCount };
+    }
+    const mapped = deviceRoleBindings(bundle, only, group);
+    const exact = bound.length === mapped.size && bound.every((row) => {
+      const ref = mapped.get(Number(row?.button_id || 0));
+      if (!ref) return false;
+      if (Number(row?.command_id || 0) !== Number(ref?.command_id || 0)) return false;
+      const rowLp = Number(row?.long_press_command_id || 0);
+      const refLp = Number(ref?.long_press_command_id || 0);
+      if (rowLp !== refLp) return false;
+      return rowLp === 0 || Number(row?.long_press_device_id || 0) === only;
+    });
+    return {
+      group,
+      state: exact ? "device" : "customized",
+      deviceId: only,
+      deviceName: deviceNameFor(bundle, only),
+      boundCount: bound.length,
+      totalCount
+    };
+  });
+}
+function setActivityRoleDevice(bundle, activityId, group, deviceId) {
+  const aId = Number(activityId);
+  const buttons = roleGroupButtons(bundle, group);
+  const groupSet = new Set(buttons);
+  const mapped = deviceId != null && Number(deviceId) > 0 ? deviceRoleBindings(bundle, Number(deviceId), group) : null;
+  const next = updateActivity(bundle, aId, (activity) => {
+    let rows = (activity.button_bindings ?? []).filter(
+      (row) => !groupSet.has(Number(row?.button_id || 0))
+    );
+    if (mapped) {
+      const dId = Number(deviceId);
+      for (const buttonId of buttons) {
+        const ref = mapped.get(buttonId);
+        if (!ref) continue;
+        const row = {
+          button_id: buttonId,
+          button_name: buttonName(buttonId),
+          device_id: dId,
+          command_id: Number(ref.command_id)
+        };
+        const lpCommandId = Number(ref?.long_press_command_id || 0);
+        if (lpCommandId > 0) {
+          row.long_press_device_id = dId;
+          row.long_press_command_id = lpCommandId;
+        }
+        rows = upsertBindingRow(rows, row);
+      }
+    }
+    return { ...activity, button_bindings: rows };
+  });
+  return reconcileActivityPowerMacros(next, aId);
+}
+var HA_ACTION_HOST_NAME = "Home Assistant";
+var HA_ACTION_HOST_BRAND = "m3tac0de";
+var HA_ACTION_MAX_SLOTS = 10;
+var HA_ACTION_LIBRARY_TYPE = 28;
+var HA_ACTION_DEFAULT_PORT = 8060;
+var MAX_DEVICE_ID = 99;
+var HA_IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+function isHaActionHostEntry(entry) {
+  return Boolean(entry?.ha_action_host);
+}
+function isHaActionDeviceId(bundle, deviceId) {
+  return (bundle?.devices ?? []).some(
+    (entry) => isHaActionHostEntry(entry) && Number(entry?.device?.device_id || 0) === Number(deviceId)
+  );
+}
+function parseHaActionAddress(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const [hostPart, portPart, ...rest] = raw.split(":");
+  if (rest.length > 0) return null;
+  const host = hostPart.trim();
+  if (!HA_IPV4_PATTERN.test(host)) return null;
+  if (portPart === void 0 || portPart.trim() === "") {
+    return { host, port: HA_ACTION_DEFAULT_PORT };
+  }
+  const port = Number(portPart.trim());
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
+  return { host, port };
+}
+function bundleHaActionTarget(bundle) {
+  for (const entry of bundle?.devices ?? []) {
+    if (!isHaActionHostEntry(entry)) continue;
+    for (const row of entry.commands ?? []) {
+      const decoded = row?.restore_data?.decoded;
+      const host = String(decoded?.fields?.host || "");
+      const port = Number(decoded?.fields?.port || 0);
+      if (HA_IPV4_PATTERN.test(host) && port > 0) return { host, port };
+    }
+  }
+  return null;
+}
+function normalizeHaActionName(value) {
+  return String(value ?? "").trim().replace(/_/g, " ");
+}
+function haActionCallbackPath(deviceId, name) {
+  return `/launch/ha/${Number(deviceId)}/${encodeURIComponent(name)}/short`;
+}
+function asciiHexBytes(text) {
+  const out = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code > 127) throw new Error(`non-ASCII character in callback text: ${text[index]}`);
+    out.push(code);
+  }
+  return out;
+}
+function renderHaActionDataHex(target, path) {
+  const text = `POST ${path} HTTP/1.1\r
+Host:${target.host}:${target.port}\r
+Content-Type:application/x-www-form-urlencoded\r
+\r
+`;
+  const textBytes = asciiHexBytes(text);
+  const ipBytes = target.host.split(".").map((part) => Number(part) & 255);
+  const bytes = [
+    ...ipBytes,
+    target.port >> 8 & 255,
+    target.port & 255,
+    textBytes.length >> 8 & 255,
+    textBytes.length & 255,
+    ...textBytes
+  ];
+  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(" ");
+}
+function haActionCommandCodeHex(commandId) {
+  const code = 2e4 + (Number(commandId) & 255) & 281474976710655;
+  const hex = code.toString(16).padStart(12, "0");
+  return hex.replace(/(..)(?=.)/g, "$1 ");
+}
+function buildHaActionCommandRow(deviceId, commandId, name, target) {
+  const path = haActionCallbackPath(deviceId, name);
+  return {
+    command_id: commandId,
+    name,
+    restore_data: {
+      transport: "hub_code_record",
+      library_type: HA_ACTION_LIBRARY_TYPE,
+      command_code: haActionCommandCodeHex(commandId),
+      data_hex: renderHaActionDataHex(target, path),
+      decoded: {
+        class: "wifi_ip",
+        fields: {
+          host: target.host,
+          port: target.port,
+          method: "POST",
+          path,
+          header: "",
+          content_type: "application/x-www-form-urlencoded",
+          body: ""
+        },
+        trailer_hex: "",
+        edited: false
+      }
+    }
+  };
+}
+function refreshHaActionCallback(bundle, deviceId, commandId) {
+  if (!isHaActionDeviceId(bundle, deviceId)) return bundle;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== Number(deviceId)) {
+        return entry;
+      }
+      return {
+        ...entry,
+        commands: (entry.commands ?? []).map((row) => {
+          if (Number(row?.command_id || 0) !== Number(commandId)) return row;
+          const decoded = row?.restore_data?.decoded;
+          const host = String(decoded?.fields?.host || "");
+          const port = Number(decoded?.fields?.port || 0);
+          if (!HA_IPV4_PATTERN.test(host) || port <= 0) return row;
+          const name = normalizeHaActionName(String(row?.name || ""));
+          return buildHaActionCommandRow(Number(deviceId), Number(commandId), name, { host, port });
+        })
+      };
+    })
+  };
+}
+function allocateHaHostDeviceId(bundle) {
+  const used = /* @__PURE__ */ new Set();
+  for (const entry of bundle.devices ?? []) used.add(Number(entry?.device?.device_id || 0));
+  for (const entry of bundle.activities ?? []) used.add(Number(entry?.device?.device_id || 0));
+  for (let id = 1; id <= MAX_DEVICE_ID; id += 1) {
+    if (!used.has(id)) return id;
+  }
+  return null;
+}
+function buildHaHostEntry(deviceId, name, sort) {
+  return {
+    ha_action_host: true,
+    device: {
+      device_id: deviceId,
+      name,
+      brand: HA_ACTION_HOST_BRAND,
+      device_class: "wifi_ip",
+      device_class_code: 28,
+      icon: 1,
+      sort,
+      code_type: 28,
+      device_type: 16,
+      code_id_hex: Array(16).fill("00").join(" "),
+      hide: 0,
+      input_flag: 0,
+      channel: 0,
+      power_state: 0,
+      poll_time: 0,
+      input_mode: 2,
+      power_mode: 0,
+      power_style: 0,
+      share_mode: 0,
+      tail_marker: 1
+    },
+    commands: []
+  };
+}
+function provisionHaAction(bundle, rawName, target) {
+  const name = normalizeHaActionName(rawName) || "HA action";
+  const hosts = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry));
+  let next = bundle;
+  let hostEntry = hosts.find((entry) => (entry.commands ?? []).length < HA_ACTION_MAX_SLOTS);
+  let deviceId;
+  if (hostEntry) {
+    deviceId = Number(hostEntry.device?.device_id || 0);
+    if (deviceId <= 0) return null;
+  } else {
+    const allocated = allocateHaHostDeviceId(bundle);
+    if (allocated == null) return null;
+    deviceId = allocated;
+    const hostName = hosts.length === 0 ? HA_ACTION_HOST_NAME : `${HA_ACTION_HOST_NAME} ${hosts.length + 1}`;
+    const maxSort = (bundle.devices ?? []).reduce(
+      (max, entry) => Math.max(max, Number(entry?.device?.sort || 0)),
+      0
+    );
+    hostEntry = buildHaHostEntry(deviceId, hostName, maxSort + 1);
+    next = { ...bundle, devices: [...bundle.devices ?? [], hostEntry] };
+  }
+  const usedSlots = new Set(
+    (hostEntry.commands ?? []).map((row2) => Number(row2?.command_id || 0))
+  );
+  let commandId = 0;
+  for (let slot = 1; slot <= HA_ACTION_MAX_SLOTS; slot += 1) {
+    if (!usedSlots.has(slot)) {
+      commandId = slot;
+      break;
+    }
+  }
+  if (commandId === 0) return null;
+  const row = buildHaActionCommandRow(deviceId, commandId, name, target);
+  next = {
+    ...next,
+    devices: (next.devices ?? []).map((entry) => {
+      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== deviceId) return entry;
+      return { ...entry, commands: [...entry.commands ?? [], row] };
+    })
+  };
+  return { bundle: next, deviceId, commandId, name };
+}
+function addActivityHaActionFavorite(bundle, activityId, rawName, target) {
+  const provision = provisionHaAction(bundle, rawName, target);
+  if (!provision) return null;
+  return addBundleActivityFavorite(
+    provision.bundle,
+    Number(activityId),
+    provision.deviceId,
+    provision.commandId,
+    provision.name
+  );
+}
+function haActionCommandReferenced(bundle, deviceId, commandId) {
+  for (const activity of bundle.activities ?? []) {
+    for (const slot of activity?.favorite_slots ?? []) {
+      if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) return true;
+    }
+    for (const binding of activity?.button_bindings ?? []) {
+      if (Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId) return true;
+      if (Number(binding?.long_press_device_id || 0) === deviceId && Number(binding?.long_press_command_id || 0) === commandId) return true;
+    }
+    for (const macro of activity?.macros ?? []) {
+      for (const step of macro?.steps ?? []) {
+        if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
+        if (Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId) return true;
+      }
+    }
+  }
+  return false;
+}
+function pruneHaActionHosts(bundle) {
+  let next = bundle;
+  const hostIds = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry)).map((entry) => Number(entry?.device?.device_id || 0)).filter((id) => id > 0);
+  for (const deviceId of hostIds) {
+    const entry = (next.devices ?? []).find(
+      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId
+    );
+    if (!entry) continue;
+    for (const row of [...entry.commands ?? []]) {
+      const commandId = Number(row?.command_id || 0);
+      if (commandId > 0 && !haActionCommandReferenced(next, deviceId, commandId)) {
+        next = deleteBundleDeviceCommand(next, deviceId, commandId);
+      }
+    }
+    const refreshed = (next.devices ?? []).find(
+      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId
+    );
+    if (refreshed && (refreshed.commands ?? []).length === 0) {
+      next = deleteBundleDevice(next, deviceId);
+    }
+  }
+  return next;
+}
+function bundleEditableDeviceOptions(bundle) {
+  const hidden = new Set(
+    (bundle?.devices ?? []).filter((entry) => isHaActionHostEntry(entry)).map((entry) => Number(entry?.device?.device_id || 0))
+  );
+  return bundleDeviceOptions(bundle).filter((option) => !hidden.has(option.id));
+}
 function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   const sourceVersion = normalizeHubVersion(bundle?.hub?.version);
   if (!sourceVersion) {
@@ -3629,6 +4839,17 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     // Whether the power-control option menu (the two-line dropdown in the
     // device Power section) is expanded. Reset whenever a detail view opens.
     this._powerControlMenuOpen = false;
+    this._addDeviceMenuOpen = false;
+    this._roleMenuOpen = null;
+    this._roleConfirm = null;
+    // Full sub-view for individual button bindings (never an accordion).
+    this._bindingsView = false;
+    this._endIdleMenuDeviceId = null;
+    this._haActionName = "";
+    this._haActionAddress = "";
+    this._haActionError = "";
+    this._addShortcutKind = "command";
+    this._addShortcutActionName = "";
     this._editDetailNameDraft = "";
     this._editRenameDialogOpen = false;
     this._editRenameDialogDraft = "";
@@ -3724,6 +4945,50 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         this._editDetailActiveSection = active;
       }
     };
+    this._closeBindingsView = () => {
+      this._bindingsView = false;
+      this._closeBindingDialog();
+      this._closeDeleteConfirm();
+    };
+    this._handleRoleAssign = (group, deviceId) => {
+      this._roleMenuOpen = null;
+      if (!this._editBundle || this._editDetailId == null) return;
+      const current = activityRoleAssignments(this._editBundle, Number(this._editDetailId)).find((role) => role.group === group);
+      if (current && current.deviceId === deviceId && current.state !== "customized" && deviceId != null) return;
+      if (current && (current.state === "customized" || current.state === "custom")) {
+        this._roleConfirm = { group, deviceId };
+        return;
+      }
+      this._applyRoleAssign(group, deviceId);
+    };
+    this._closeRoleConfirm = () => {
+      this._roleConfirm = null;
+    };
+    this._confirmRoleAssign = () => {
+      const pending = this._roleConfirm;
+      this._roleConfirm = null;
+      if (!pending) return;
+      this._applyRoleAssign(pending.group, pending.deviceId);
+    };
+    this._toggleAddDeviceMenu = () => {
+      this._addDeviceMenuOpen = !this._addDeviceMenuOpen;
+    };
+    this._handleAddMemberDevice = (deviceId) => {
+      this._addDeviceMenuOpen = false;
+      if (!this._editBundle || this._editDetailId == null) return;
+      this._commitEditBundleEdit(
+        addActivityMemberDevice(this._editBundle, Number(this._editDetailId), deviceId)
+      );
+    };
+    this._openMemberRemoveConfirm = (member) => {
+      if (this._editDetailId == null) return;
+      this._confirmDeleteTarget = {
+        kind: "activity_member",
+        activityId: Number(this._editDetailId),
+        deviceId: member.deviceId
+      };
+      this._confirmDeleteLabel = member.deviceName;
+    };
     this._handleDecodedFieldInput = (event, fieldKey) => {
       const input = event.currentTarget;
       this._editRenameDialogDecodedDrafts = {
@@ -3792,15 +5057,29 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._closeDeleteConfirm();
     };
     // ── Add favorite (device → command picker) ──────────────────────────
-    this._openAddFavoriteDialog = () => {
+    // One entry point for everything that can land on the remote screen:
+    // a device command, a custom action (steps picked next), or a Home
+    // Assistant action. The kind selector swaps the dialog's fields.
+    this._openAddShortcutDialog = () => {
       if (this._editDetailId == null || !this._editBundle) return;
       const devices = bundleDeviceOptions(this._editBundle);
       const firstDeviceId = devices[0]?.id ?? null;
       const commands = firstDeviceId != null ? deviceCommandItems(this._editBundle, firstDeviceId) : [];
+      this._addShortcutKind = "command";
       this._addFavoriteDeviceId = firstDeviceId;
       this._addFavoriteCommandId = commands[0]?.commandId ?? null;
       this._addFavoriteName = commands[0]?.label ?? "";
       this._addFavoriteError = "";
+      this._addShortcutActionName = "";
+      const existing = bundleHaActionTarget(this._editBundle);
+      let prefill = existing ? `${existing.host}:${existing.port}` : "";
+      if (!prefill && typeof window !== "undefined") {
+        const candidate = parseHaActionAddress(window.location.hostname);
+        if (candidate) prefill = `${candidate.host}:8060`;
+      }
+      this._haActionName = "";
+      this._haActionAddress = prefill;
+      this._haActionError = "";
       this._addFavoriteOpen = true;
     };
     this._closeAddFavoriteDialog = () => {
@@ -3809,6 +5088,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._addFavoriteCommandId = null;
       this._addFavoriteName = "";
       this._addFavoriteError = "";
+      this._addShortcutKind = "command";
+      this._addShortcutActionName = "";
+      this._closeHaActionDialog();
     };
     this._handleAddFavoriteDeviceChange = (event) => {
       const value = Number(event.target.value);
@@ -3846,6 +5128,52 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       ));
       this._closeAddFavoriteDialog();
     };
+    this._applyAddShortcut = () => {
+      if (!this._editBundle || this._editDetailId == null) return;
+      if (this._addShortcutKind === "command") {
+        this._applyAddFavorite();
+        return;
+      }
+      if (this._addShortcutKind === "action") {
+        const activityId = Number(this._editDetailId);
+        const name = this._sanitizeBundleName(this._addShortcutActionName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
+        const next = addActivityUserMacro(this._editBundle, activityId, name);
+        this._commitEditBundleEdit(next);
+        this._closeAddFavoriteDialog();
+        const summaries = activityUserMacroSummaries(next, activityId);
+        const created = summaries[summaries.length - 1];
+        if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
+        return;
+      }
+      this._applyHaAction();
+    };
+    // HA-action field reset — the fields live inside the unified
+    // add-shortcut dialog now; this also runs on detail close.
+    this._closeHaActionDialog = () => {
+      this._haActionName = "";
+      this._haActionAddress = "";
+      this._haActionError = "";
+    };
+    this._applyHaAction = () => {
+      if (!this._editBundle || this._editDetailId == null) return;
+      const name = this._sanitizeBundleName(this._haActionName).trim();
+      if (!name) {
+        this._haActionError = TOOLS_CARD_STRINGS.backup.haActionNameRequired;
+        return;
+      }
+      const target = parseHaActionAddress(this._haActionAddress);
+      if (!target) {
+        this._haActionError = TOOLS_CARD_STRINGS.backup.haActionInvalidAddress;
+        return;
+      }
+      const next = addActivityHaActionFavorite(this._editBundle, Number(this._editDetailId), name, target);
+      if (!next) {
+        this._haActionError = TOOLS_CARD_STRINGS.backup.haActionNoSlots;
+        return;
+      }
+      this._commitEditBundleEdit(next);
+      this._closeAddFavoriteDialog();
+    };
     this._openEditFilePicker = () => {
       this.renderRoot.querySelector("#edit-file-input")?.click();
     };
@@ -3876,6 +5204,12 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._editDetailId = null;
       this._editDetailActiveSection = "power";
       this._powerControlMenuOpen = false;
+      this._addDeviceMenuOpen = false;
+      this._roleMenuOpen = null;
+      this._roleConfirm = null;
+      this._bindingsView = false;
+      this._endIdleMenuDeviceId = null;
+      this._closeHaActionDialog();
       this._editDetailNameDraft = "";
       this._closeEditRenameDialog();
       this._closeDeleteConfirm();
@@ -4201,15 +5535,6 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._togglePowerControlMenu = () => {
       this._powerControlMenuOpen = !this._powerControlMenuOpen;
     };
-    this._addActivityMacro = () => {
-      if (this._editDetailId == null || !this._editBundle) return;
-      const activityId = Number(this._editDetailId);
-      const next = addActivityUserMacro(this._editBundle, activityId, TOOLS_CARD_STRINGS.backup.newMacroName);
-      this._commitEditBundleEdit(next);
-      const summaries = activityUserMacroSummaries(next, activityId);
-      const created = summaries[summaries.length - 1];
-      if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
-    };
     this._toggleAllBackupDevices = () => {
       const devices = backupDeviceOptions(this.cacheHub);
       const allIds = devices.map((device) => device.id);
@@ -4310,11 +5635,21 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       _stepError: { state: true },
       _editBundleDirty: { state: true },
       _haSortableReady: { state: true },
-      _powerControlMenuOpen: { state: true }
+      _powerControlMenuOpen: { state: true },
+      _addDeviceMenuOpen: { state: true },
+      _roleMenuOpen: { state: true },
+      _roleConfirm: { state: true },
+      _bindingsView: { state: true },
+      _endIdleMenuDeviceId: { state: true },
+      _haActionName: { state: true },
+      _haActionAddress: { state: true },
+      _haActionError: { state: true },
+      _addShortcutKind: { state: true },
+      _addShortcutActionName: { state: true }
     };
   }
   static {
-    this.styles = [secondaryTabStyles, operationProgressStyles, i`
+    this.styles = [secondaryTabStyles, operationProgressStyles, activityEditorStyles, i`
     :host {
       display: flex;
       flex: 1;
@@ -5890,6 +7225,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     if (this.selectedSection === "edit" && this._macroEditor && this._editBundle) {
       return this._renderMacroStepEditorView(this._macroEditor);
     }
+    if (this.selectedSection === "edit" && this._bindingsView && this._editBundle && this._editDetailKind === "activity" && this._editDetailId != null) {
+      return this._renderActivityBindingsView();
+    }
     if (this.selectedSection === "edit" && this._editDetailKind && this._editDetailId != null) {
       const detailTitle = this._selectedEditTitle();
       if (detailTitle) {
@@ -6019,7 +7357,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   _renderEditSectionContent() {
     const bundle = this._editBundle;
     const activityOptions = bundleActivityOptions(bundle);
-    const deviceOptions = bundleDeviceOptions(bundle);
+    const deviceOptions = bundleEditableDeviceOptions(bundle);
     return T`
       ${renderSecondaryTabContent({
       connected: true,
@@ -6190,9 +7528,11 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
           </div>
           <div class="detail-scroll" @scroll=${this._handleEditDetailScroll}>
             ${params.kind === "activity" ? T`
-                  ${this._renderPowerSetupSection("activity", Number(this._editDetailId))}
-                  ${this._renderActivityQuickAccessSection(activityQuickAccess)}
+                  ${this._renderActivityDevicesSection()}
+                  ${this._renderActivityStartSection()}
                   ${this._renderButtonBindingsSection("activity")}
+                  ${this._renderActivityQuickAccessSection(activityQuickAccess)}
+                  ${this._renderActivityEndSection()}
                 ` : T`
                   ${this._renderPowerSetupSection("device", Number(this._editDetailId))}
                   ${this._renderDeviceNetworkSection()}
@@ -6205,15 +7545,19 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
         ${this._renderBindingDialog()}
+        ${this._renderRoleConfirmDialog()}
       </div>
     `;
   }
   _editDetailSectionItems(kind) {
     if (kind === "activity") {
+      const S4 = TOOLS_CARD_STRINGS.backup;
       return [
-        { id: "power", icon: "mdi:power-plug-outline", label: "Power" },
-        { id: "quick_access", icon: "mdi:star-outline", label: "Macros/Favorites" },
-        { id: "bindings", icon: "mdi:gesture-tap-button", label: "Buttons" }
+        { id: "devices", icon: "mdi:devices", label: S4.activitySectionDevices },
+        { id: "start", icon: "mdi:play-circle-outline", label: S4.activitySectionStart },
+        { id: "bindings", icon: "mdi:gesture-tap-button", label: S4.activitySectionRunning },
+        { id: "quick_access", icon: "mdi:star-outline", label: S4.activitySectionShortcuts },
+        { id: "end", icon: "mdi:power", label: S4.activitySectionEnd }
       ];
     }
     const hasNetworkSection = this._editDetailId != null && this._editBundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this._editBundle, Number(this._editDetailId)) ?? "") : false;
@@ -6252,36 +7596,165 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     scrollEl.scrollTop = Math.max(0, targetTop);
     this._editDetailActiveSection = sectionId;
   }
-  _renderButtonBindingsSection(kind) {
+  _renderBindingsListBody(kind) {
     if (this._editDetailId == null || !this._editBundle) return A;
     const entityId = Number(this._editDetailId);
     const items = kind === "activity" ? activityButtonBindingItems(this._editBundle, entityId) : deviceButtonBindingItems(this._editBundle, entityId);
+    if (!items.length) {
+      return T`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.buttonBindingsEmpty}</div>`;
+    }
+    return T`
+      <div class="quick-access-list">
+        <div class="quick-access-sortable-container">
+          ${items.map((item) => this._renderButtonBindingRow(item, kind))}
+        </div>
+      </div>
+    `;
+  }
+  _renderAddBindingButton(kind) {
+    if (this._editDetailId == null || !this._editBundle) return A;
+    const entityId = Number(this._editDetailId);
     const unbound = kind === "activity" ? unboundButtonsForActivity(this._editBundle, entityId) : unboundButtonsForDevice(this._editBundle, entityId);
+    return T`
+      <button
+        class="quick-access-add-btn"
+        @click=${() => this._openAddBindingDialog(kind)}
+        ?disabled=${unbound.length === 0}
+      >
+        <ha-icon icon="mdi:plus"></ha-icon>
+        <span>${TOOLS_CARD_STRINGS.backup.addBinding}</span>
+      </button>
+    `;
+  }
+  _renderButtonBindingsSection(kind) {
+    if (this._editDetailId == null || !this._editBundle) return A;
+    const S4 = TOOLS_CARD_STRINGS.backup;
+    const entityId = Number(this._editDetailId);
+    const isActivity = kind === "activity";
     return T`
       <div class="quick-access-section" data-edit-section="bindings">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
-            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.buttonBindingsTitle}</div>
+            <div class="quick-access-title">
+              ${isActivity ? S4.activityRunningTitle : S4.buttonBindingsTitle}
+            </div>
             <div class="quick-access-sub">
-              ${kind === "activity" ? TOOLS_CARD_STRINGS.backup.buttonBindingsActivitySub : TOOLS_CARD_STRINGS.backup.buttonBindingsDeviceSub}
+              ${isActivity ? S4.activityRunningSub : S4.buttonBindingsDeviceSub}
             </div>
           </div>
-          <button
-            class="quick-access-add-btn"
-            @click=${() => this._openAddBindingDialog(kind)}
-            ?disabled=${unbound.length === 0}
-          >
-            <ha-icon icon="mdi:plus"></ha-icon>
-            <span>${TOOLS_CARD_STRINGS.backup.addBinding}</span>
-          </button>
+          ${isActivity ? A : this._renderAddBindingButton(kind)}
         </div>
-        ${items.length ? T`
+        ${isActivity ? T`
+              ${this._renderActivityRolesBlock()}
               <div class="quick-access-list">
                 <div class="quick-access-sortable-container">
-                  ${items.map((item) => this._renderButtonBindingRow(item, kind))}
+                  ${renderDrillInRow({
+      label: S4.customizeButtonsToggle,
+      meta: (() => {
+        const count = activityButtonBindingItems(this._editBundle, entityId).length;
+        return count > 0 ? S4.bindingsConfiguredCount(count) : S4.bindingsNoneConfigured;
+      })(),
+      onOpen: () => {
+        this._bindingsView = true;
+      }
+    })}
                 </div>
               </div>
-            ` : T`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.buttonBindingsEmpty}</div>`}
+            ` : this._renderBindingsListBody(kind)}
+      </div>
+    `;
+  }
+  // Sub-view for per-button customization — same navigation pattern as
+  // the step editor (breadcrumbs + back), never an inline accordion.
+  _renderActivityBindingsView() {
+    const S4 = TOOLS_CARD_STRINGS.backup;
+    return T`
+      <div class="tab-panel tab-panel--detail">
+        <div class="detail-view">
+          <div class="sticky-header">
+            <div class="detail-title-row">
+              <div class="detail-title-main">
+                <button class="back-btn" @click=${this._closeBindingsView}>
+                  <ha-icon icon="mdi:arrow-left"></ha-icon>
+                </button>
+                <div class="detail-title-stack">
+                  ${this._renderDetailCrumbs([
+      { label: this._entityKindCrumbLabel("activity"), onClick: this._closeEditDetail },
+      { label: this._selectedEditTitle(), onClick: this._closeBindingsView }
+    ])}
+                  <div class="detail-title">${S4.bindingsViewTitle}</div>
+                </div>
+                ${this._editBundleDirty ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+              </div>
+            </div>
+          </div>
+          <div class="detail-scroll">
+            <div class="quick-access-section">
+              <div class="quick-access-head">
+                <div class="quick-access-head-main">
+                  <div class="quick-access-title">${S4.buttonBindingsTitle}</div>
+                  <div class="quick-access-sub">${S4.buttonBindingsActivitySub}</div>
+                </div>
+                ${this._renderAddBindingButton("activity")}
+              </div>
+              ${this._renderBindingsListBody("activity")}
+            </div>
+          </div>
+        </div>
+        ${this._renderBindingDialog()}
+        ${this._renderDeleteConfirmDialog()}
+      </div>
+    `;
+  }
+  // ── Role-based button assignment (activity) ──────────────────────────
+  _renderActivityRolesBlock() {
+    if (this._editDetailId == null || !this._editBundle) return A;
+    const bundle = this._editBundle;
+    const activityId = Number(this._editDetailId);
+    const memberOptions = activityMemberViews(bundle, activityId).map((member) => ({
+      deviceId: member.deviceId,
+      label: member.deviceName
+    }));
+    return renderActivityRolesBlock({
+      roles: activityRoleAssignments(bundle, activityId),
+      optionsFor: (group) => memberOptions.map((option) => ({
+        ...option,
+        mappable: roleMappableButtonCount(bundle, option.deviceId, group)
+      })),
+      openGroup: this._roleMenuOpen,
+      onToggleMenu: (group) => {
+        this._roleMenuOpen = group;
+      },
+      onAssign: this._handleRoleAssign
+    });
+  }
+  _applyRoleAssign(group, deviceId) {
+    if (!this._editBundle || this._editDetailId == null) return;
+    this._commitEditBundleEdit(
+      setActivityRoleDevice(this._editBundle, Number(this._editDetailId), group, deviceId)
+    );
+  }
+  _renderRoleConfirmDialog() {
+    if (!this._roleConfirm) return A;
+    const S4 = TOOLS_CARD_STRINGS.backup;
+    return T`
+      <div class="modal-backdrop" @click=${this._closeRoleConfirm}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S4.roleConfirmTitle}</div>
+            <button class="dialog-close" @click=${this._closeRoleConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            <div class="backup-drawer-sub">${S4.roleConfirmBody}</div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note"></div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeRoleConfirm}>${S4.roleConfirmCancel}</button>
+              <button class="dialog-btn dialog-btn-danger" @click=${this._confirmRoleAssign}>${S4.roleConfirmReplace}</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -6316,6 +7789,75 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         </div>
       </div>
     `;
+  }
+  // ── Narrative activity sections (devices / start / end) ─────────────
+  // Thin hosts around the render helpers in activity-editor.ts: gather
+  // data from the edit bundle, translate callbacks into bundle commits.
+  _activityMemberViews() {
+    if (this._editDetailId == null || !this._editBundle) return [];
+    return activityMemberViews(this._editBundle, Number(this._editDetailId));
+  }
+  _renderActivityDevicesSection() {
+    if (this._editDetailId == null || !this._editBundle) return A;
+    return renderActivityDevicesSection({
+      members: this._activityMemberViews(),
+      addable: activityAddableDevices(this._editBundle, Number(this._editDetailId)),
+      menuOpen: this._addDeviceMenuOpen,
+      onToggleMenu: this._toggleAddDeviceMenu,
+      onAdd: this._handleAddMemberDevice,
+      onRemove: this._openMemberRemoveConfirm
+    });
+  }
+  _renderActivityStartSection() {
+    if (this._editDetailId == null || !this._editBundle) return A;
+    const activityId = Number(this._editDetailId);
+    return renderActivityStartSection({
+      members: this._activityMemberViews(),
+      commandsFor: (deviceId) => this._editBundle ? deviceCommandItems(this._editBundle, deviceId) : [],
+      onTogglePowerOn: (member) => {
+        if (!this._editBundle) return;
+        this._commitEditBundleEdit(
+          setActivityDevicePowerOn(this._editBundle, activityId, member.deviceId, !member.powersOn)
+        );
+      },
+      onInputChange: (deviceId, commandId) => {
+        if (!this._editBundle) return;
+        this._commitEditBundleEdit(commandId == null ? clearActivityDeviceInput(this._editBundle, activityId, deviceId) : setActivityDeviceInput(this._editBundle, activityId, deviceId, commandId));
+      },
+      sequenceMeta: TOOLS_CARD_STRINGS.backup.macroStepsCount(
+        this._powerSetupStepCount("activity", activityId, 198)
+      ),
+      onOpenSequence: () => this._openMacroEditor("activity", activityId, 198, TOOLS_CARD_STRINGS.backup.activityStartSequenceTitle)
+    });
+  }
+  _renderActivityEndSection() {
+    if (this._editDetailId == null || !this._editBundle) return A;
+    const activityId = Number(this._editDetailId);
+    return renderActivityEndSection({
+      members: this._activityMemberViews(),
+      idleModeFor: (deviceId) => deviceIdleBehavior(this._editBundle, deviceId),
+      idleOptions: this._powerControlOptions(),
+      idleMenuDeviceId: this._endIdleMenuDeviceId,
+      onToggleIdleMenu: (deviceId) => {
+        this._endIdleMenuDeviceId = deviceId;
+      },
+      onIdleChange: (deviceId, mode) => {
+        this._endIdleMenuDeviceId = null;
+        if (!this._editBundle) return;
+        if (deviceIdleBehavior(this._editBundle, deviceId) === mode) return;
+        this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this._editBundle, deviceId, mode));
+      },
+      onTogglePowerOff: (member, powersOff) => {
+        if (!this._editBundle) return;
+        this._commitEditBundleEdit(
+          setActivityDevicePowerOff(this._editBundle, activityId, member.deviceId, powersOff)
+        );
+      },
+      sequenceMeta: TOOLS_CARD_STRINGS.backup.macroStepsCount(
+        this._powerSetupStepCount("activity", activityId, 199)
+      ),
+      onOpenSequence: () => this._openMacroEditor("activity", activityId, 199, TOOLS_CARD_STRINGS.backup.activityEndSequenceTitle)
+    });
   }
   /**
    * "Network" section shown above Commands in the Device detail view
@@ -6426,19 +7968,15 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       <div class="quick-access-section" data-edit-section="quick_access">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
-            <div class="quick-access-title">Macros and Favorites</div>
+            <div class="quick-access-title">${TOOLS_CARD_STRINGS.backup.activityShortcutsTitle}</div>
             <div class="quick-access-sub">
-              ${this._haSortableReady ? "Drag the handle to reorder Macros and Favorites inside the Activity." : "Drag support is unavailable here, so use the move buttons to reorder Macros and Favorites."}
+              ${this._haSortableReady ? TOOLS_CARD_STRINGS.backup.activityShortcutsSubSortable : TOOLS_CARD_STRINGS.backup.activityShortcutsSubStatic}
             </div>
           </div>
           <div class="quick-access-head-actions">
-            <button class="quick-access-add-btn" @click=${this._addActivityMacro}>
+            <button class="quick-access-add-btn" @click=${this._openAddShortcutDialog}>
               <ha-icon icon="mdi:plus"></ha-icon>
-              <span>${TOOLS_CARD_STRINGS.backup.addMacro}</span>
-            </button>
-            <button class="quick-access-add-btn" @click=${this._openAddFavoriteDialog}>
-              <ha-icon icon="mdi:plus"></ha-icon>
-              <span>${TOOLS_CARD_STRINGS.backup.addFavoriteButton}</span>
+              <span>${TOOLS_CARD_STRINGS.backup.addShortcutButton}</span>
             </button>
           </div>
         </div>
@@ -6458,9 +7996,19 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                       </ha-sortable>
                     ` : rows}
               </div>
-            ` : T`<div class="quick-access-empty">This Activity does not currently contain any Macros or Favorites.</div>`}
+            ` : T`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.activityShortcutsEmpty}</div>`}
       </div>
     `;
+  }
+  // Narrative meta line: a custom action shows its step count; a command
+  // shortcut shows which device it plays on. Slot ids are storage detail.
+  _quickAccessRowMeta(item) {
+    if (item.kind === "macro") {
+      const summary = this._editDetailId != null ? activityUserMacroSummaries(this._editBundle, Number(this._editDetailId)).find((macro) => macro.buttonId === item.buttonId) : void 0;
+      return TOOLS_CARD_STRINGS.backup.macroStepsCount(summary?.commandStepCount ?? 0);
+    }
+    const device = (this._editBundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
+    return String(device?.device?.name || "").trim() || `Device ${item.deviceId ?? "?"}`;
   }
   _renderActivityQuickAccessRow(item) {
     return T`
@@ -6472,11 +8020,11 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">${item.kind}</div>
+              <div class="quick-access-chip">
+                ${item.kind === "macro" ? TOOLS_CARD_STRINGS.backup.shortcutChipAction : isHaActionDeviceId(this._editBundle, Number(item.deviceId || 0)) ? TOOLS_CARD_STRINGS.backup.haActionChip : TOOLS_CARD_STRINGS.backup.shortcutChipCommand}
+              </div>
             </div>
-            <div class="quick-access-meta">
-              ${item.kind === "macro" ? `Quick-access slot ${item.buttonId}` : `Favorite command ${item.commandId || "?"} on device ${item.deviceId || "?"} \xB7 slot ${item.buttonId}`}
-            </div>
+            <div class="quick-access-meta">${this._quickAccessRowMeta(item)}</div>
           </div>
           <div class="quick-access-actions">
             ${this._haSortableReady ? A : T`
@@ -6507,14 +8055,14 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
             <button
               class="icon-btn"
               @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
-              aria-label=${`Rename ${item.kind}`}
+              aria-label=${TOOLS_CARD_STRINGS.backup.shortcutRenameAria(item.kind)}
             >
               <ha-icon icon="mdi:pencil"></ha-icon>
             </button>
             <button
               class="icon-btn icon-btn--danger"
               @click=${() => this._openQuickAccessDeleteConfirm(item.kind, item.buttonId, item.label)}
-              aria-label=${`Delete ${item.kind}`}
+              aria-label=${TOOLS_CARD_STRINGS.backup.shortcutDeleteAria(item.kind)}
             >
               <ha-icon icon="mdi:trash-can-outline"></ha-icon>
             </button>
@@ -6810,6 +8358,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       case "activity_binding":
       case "device_binding":
         return TOOLS_CARD_STRINGS.backup.deleteBindingTitle(name);
+      case "activity_member":
+        return TOOLS_CARD_STRINGS.backup.activityRemoveDeviceTitle(name);
     }
   }
   _openBindingDeleteConfirm(kind, buttonId, name) {
@@ -6860,53 +8410,117 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   }
   _renderAddFavoriteDialog() {
     if (!this._addFavoriteOpen || !this._editBundle) return A;
+    const S4 = TOOLS_CARD_STRINGS.backup;
+    const kind = this._addShortcutKind;
     const devices = bundleDeviceOptions(this._editBundle);
     const commands = this._addFavoriteDeviceId != null ? deviceCommandItems(this._editBundle, this._addFavoriteDeviceId) : [];
-    const canAdd = this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null;
+    const canAdd = kind !== "command" || this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null;
+    const commandFields = devices.length === 0 ? T`<div class="backup-drawer-sub">${S4.addFavoriteNoDevices}</div>` : T`
+          <div class="decoded-field">
+            <label class="decoded-field-label" for="sb-add-fav-device">${S4.addFavoriteDevice}</label>
+            <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
+              ${devices.map((device) => T`
+                <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
+              `)}
+            </select>
+          </div>
+          <div class="decoded-field">
+            <label class="decoded-field-label" for="sb-add-fav-command">${S4.addFavoriteCommand}</label>
+            ${commands.length === 0 ? T`<div class="quick-access-empty">${S4.addFavoriteNoCommands}</div>` : T`
+                  <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
+                    ${commands.map((command) => T`
+                      <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
+                    `)}
+                  </select>
+                `}
+          </div>
+          <div class="decoded-field">
+            <label class="decoded-field-label" for="sb-add-fav-name">${S4.addFavoriteName}</label>
+            <input
+              id="sb-add-fav-name"
+              class="decoded-field-input"
+              maxlength="20"
+              .value=${this._addFavoriteName}
+              @input=${this._handleAddFavoriteNameInput}
+            />
+          </div>
+        `;
+    const actionFields = T`
+      <div class="decoded-field">
+        <label class="decoded-field-label" for="sb-add-action-name">${S4.addShortcutActionName}</label>
+        <input
+          id="sb-add-action-name"
+          class="decoded-field-input"
+          maxlength="20"
+          .value=${this._addShortcutActionName}
+          @input=${(event) => {
+      this._addShortcutActionName = event.target.value;
+    }}
+        />
+        <div class="decoded-field-helper">${S4.addShortcutActionHelper}</div>
+      </div>
+    `;
+    const haFields = T`
+      <div class="decoded-field">
+        <label class="decoded-field-label" for="sb-ha-action-name">${S4.haActionNameLabel}</label>
+        <input
+          id="sb-ha-action-name"
+          class="decoded-field-input"
+          maxlength="20"
+          .value=${this._haActionName}
+          @input=${(event) => {
+      this._haActionName = event.target.value;
+      this._haActionError = "";
+    }}
+        />
+        <div class="decoded-field-helper">${S4.haActionNameHelper}</div>
+      </div>
+      <div class="decoded-field">
+        <label class="decoded-field-label" for="sb-ha-action-address">${S4.haActionAddressLabel}</label>
+        <input
+          id="sb-ha-action-address"
+          class="decoded-field-input"
+          placeholder="192.168.1.10:8060"
+          .value=${this._haActionAddress}
+          @input=${(event) => {
+      this._haActionAddress = event.target.value;
+      this._haActionError = "";
+    }}
+        />
+        <div class="decoded-field-helper">${S4.haActionAddressHelper}</div>
+      </div>
+    `;
     return T`
       <div class="modal-backdrop" @click=${this._closeAddFavoriteDialog}>
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">${TOOLS_CARD_STRINGS.backup.addFavoriteTitle}</div>
+            <div class="dialog-title">${S4.addShortcutTitle}</div>
             <button class="dialog-close" @click=${this._closeAddFavoriteDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            ${devices.length === 0 ? T`<div class="backup-drawer-sub">${TOOLS_CARD_STRINGS.backup.addFavoriteNoDevices}</div>` : T`
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-add-fav-device">${TOOLS_CARD_STRINGS.backup.addFavoriteDevice}</label>
-                    <select id="sb-add-fav-device" class="decoded-field-input" @change=${this._handleAddFavoriteDeviceChange}>
-                      ${devices.map((device) => T`
-                        <option value=${device.id} ?selected=${device.id === this._addFavoriteDeviceId}>${device.label}</option>
-                      `)}
-                    </select>
-                  </div>
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-add-fav-command">${TOOLS_CARD_STRINGS.backup.addFavoriteCommand}</label>
-                    ${commands.length === 0 ? T`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.addFavoriteNoCommands}</div>` : T`
-                          <select id="sb-add-fav-command" class="decoded-field-input" @change=${this._handleAddFavoriteCommandChange}>
-                            ${commands.map((command) => T`
-                              <option value=${command.commandId} ?selected=${command.commandId === this._addFavoriteCommandId}>${command.label}</option>
-                            `)}
-                          </select>
-                        `}
-                  </div>
-                  <div class="decoded-field">
-                    <label class="decoded-field-label" for="sb-add-fav-name">${TOOLS_CARD_STRINGS.backup.addFavoriteName}</label>
-                    <input
-                      id="sb-add-fav-name"
-                      class="decoded-field-input"
-                      maxlength="20"
-                      .value=${this._addFavoriteName}
-                      @input=${this._handleAddFavoriteNameInput}
-                    />
-                  </div>
-                `}
+            <div class="decoded-field">
+              <label class="decoded-field-label" for="sb-add-shortcut-kind">${S4.addShortcutKindLabel}</label>
+              <select
+                id="sb-add-shortcut-kind"
+                class="decoded-field-input"
+                @change=${(event) => {
+      this._addShortcutKind = event.target.value;
+      this._addFavoriteError = "";
+      this._haActionError = "";
+    }}
+              >
+                <option value="command" ?selected=${kind === "command"}>${S4.shortcutKindCommand}</option>
+                <option value="action" ?selected=${kind === "action"}>${S4.shortcutKindAction}</option>
+                <option value="ha" ?selected=${kind === "ha"}>${S4.shortcutKindHa}</option>
+              </select>
+            </div>
+            ${kind === "command" ? commandFields : kind === "action" ? actionFields : haFields}
           </div>
           <div class="dialog-footer">
-            <div class="dialog-footer-note">${this._addFavoriteError}</div>
+            <div class="dialog-footer-note">${kind === "ha" ? this._haActionError : this._addFavoriteError}</div>
             <div class="dialog-footer-actions">
-              <button class="dialog-btn" @click=${this._closeAddFavoriteDialog}>${TOOLS_CARD_STRINGS.backup.addFavoriteCancel}</button>
-              <button class="dialog-btn dialog-btn-primary" @click=${this._applyAddFavorite} ?disabled=${!canAdd}>${TOOLS_CARD_STRINGS.backup.addFavoriteAdd}</button>
+              <button class="dialog-btn" @click=${this._closeAddFavoriteDialog}>${S4.addFavoriteCancel}</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyAddShortcut} ?disabled=${!canAdd}>${S4.addFavoriteAdd}</button>
             </div>
           </div>
         </div>
@@ -6920,7 +8534,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
    * `this._editBundle = ...` assignment to bypass the dirty flag.
    */
   _commitEditBundleEdit(next) {
-    this._editBundle = next;
+    this._editBundle = pruneHaActionHosts(next);
     this._editBundleDirty = true;
   }
   _applyActivityRename(activityId, name) {
@@ -6934,8 +8548,13 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   _openEditDetail(kind, id, name) {
     this._editDetailKind = kind;
     this._editDetailId = Number(id);
-    this._editDetailActiveSection = "power";
+    this._editDetailActiveSection = kind === "activity" ? "devices" : "power";
     this._powerControlMenuOpen = false;
+    this._addDeviceMenuOpen = false;
+    this._roleMenuOpen = null;
+    this._roleConfirm = null;
+    this._bindingsView = false;
+    this._endIdleMenuDeviceId = null;
     this._editDetailNameDraft = this._sanitizeBundleName(name);
   }
   _selectedEditTitle() {
@@ -7451,7 +9070,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   // inert. Activities have no idle behavior, so they get only the sequences.
   _renderPowerSetupSection(scope, entityId) {
     if (this._editDetailId == null || !this._editBundle) return A;
-    const S3 = TOOLS_CARD_STRINGS.backup;
+    const S4 = TOOLS_CARD_STRINGS.backup;
     const isDevice = scope === "device";
     const mode = isDevice ? deviceIdleBehavior(this._editBundle, entityId) : null;
     const sequencesDisabled = isDevice && mode === IDLE_BEHAVIOR_DISABLED;
@@ -7459,21 +9078,21 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       <div class="quick-access-section" data-edit-section="power">
         <div class="quick-access-head">
           <div class="quick-access-head-main">
-            <div class="quick-access-title">${S3.powerSetupTitle}</div>
+            <div class="quick-access-title">${S4.powerSetupTitle}</div>
             <div class="quick-access-sub">
-              ${isDevice ? S3.powerSetupDeviceSub : S3.powerSetupActivitySub}
+              ${isDevice ? S4.powerSetupDeviceSub : S4.powerSetupActivitySub}
             </div>
           </div>
         </div>
         ${isDevice ? this._renderPowerControlDropdown(entityId, mode) : A}
         <div class="quick-access-list">
-          ${sequencesDisabled ? T`<div class="power-sequences-note">${S3.powerSequencesDisabledNote}</div>` : A}
+          ${sequencesDisabled ? T`<div class="power-sequences-note">${S4.powerSequencesDisabledNote}</div>` : A}
           <div
             class="quick-access-sortable-container power-sequences"
             data-disabled=${sequencesDisabled ? "true" : "false"}
           >
-            ${this._renderPowerSetupRow(scope, entityId, 198, S3.powerOnLabel, sequencesDisabled)}
-            ${this._renderPowerSetupRow(scope, entityId, 199, S3.powerOffLabel, sequencesDisabled)}
+            ${this._renderPowerSetupRow(scope, entityId, 198, S4.powerOnLabel, sequencesDisabled)}
+            ${this._renderPowerSetupRow(scope, entityId, 199, S4.powerOffLabel, sequencesDisabled)}
           </div>
         </div>
       </div>
@@ -7485,12 +9104,12 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   // two-line dropdown. It lives in its own hub query, not the device
   // record, so it is captured/restored separately.
   _powerControlOptions() {
-    const S3 = TOOLS_CARD_STRINGS.backup;
+    const S4 = TOOLS_CARD_STRINGS.backup;
     return [
-      { mode: IDLE_BEHAVIOR_DISABLED, label: S3.powerControlDisabled, sub: S3.powerControlDisabledSub },
-      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S3.powerControlAutoOff, sub: S3.powerControlAutoOffSub },
-      { mode: IDLE_BEHAVIOR_STAY_ON, label: S3.powerControlStayOn, sub: S3.powerControlStayOnSub },
-      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S3.powerControlAlwaysOn, sub: S3.powerControlAlwaysOnSub }
+      { mode: IDLE_BEHAVIOR_DISABLED, label: S4.powerControlDisabled, sub: S4.powerControlDisabledSub },
+      { mode: IDLE_BEHAVIOR_AUTO_OFF, label: S4.powerControlAutoOff, sub: S4.powerControlAutoOffSub },
+      { mode: IDLE_BEHAVIOR_STAY_ON, label: S4.powerControlStayOn, sub: S4.powerControlStayOnSub },
+      { mode: IDLE_BEHAVIOR_ALWAYS_ON, label: S4.powerControlAlwaysOn, sub: S4.powerControlAlwaysOnSub }
     ];
   }
   _selectPowerControl(deviceId, mode) {
@@ -7500,7 +9119,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this._editBundle, deviceId, mode));
   }
   _renderPowerControlDropdown(deviceId, mode) {
-    const S3 = TOOLS_CARD_STRINGS.backup;
+    const S4 = TOOLS_CARD_STRINGS.backup;
     const options = this._powerControlOptions();
     const selected = options.find((opt) => opt.mode === mode) ?? null;
     const open = this._powerControlMenuOpen;
@@ -7514,8 +9133,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
           @click=${this._togglePowerControlMenu}
         >
           <span class="selection-main">
-            <span class="selection-label">${selected ? selected.label : S3.powerControlUnset}</span>
-            <span class="selection-sub">${selected ? selected.sub : S3.powerControlUnsetSub}</span>
+            <span class="selection-label">${selected ? selected.label : S4.powerControlUnset}</span>
+            <span class="selection-sub">${selected ? selected.sub : S4.powerControlUnsetSub}</span>
           </span>
           <span class="selection-chevron"><ha-icon icon="mdi:chevron-down"></ha-icon></span>
         </button>
@@ -7527,7 +9146,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                 aria-hidden="true"
                 @click=${this._togglePowerControlMenu}
               ></button>
-              <div class="power-control-menu" role="listbox" aria-label=${S3.powerControlTitle}>
+              <div class="power-control-menu" role="listbox" aria-label=${S4.powerControlTitle}>
                 ${options.map((opt) => {
       const isSel = opt.mode === mode;
       return T`

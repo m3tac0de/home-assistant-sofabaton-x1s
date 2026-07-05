@@ -2,7 +2,6 @@
 
 Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Home Assistant, using **100% local APIs**.
 
-> **X2 discovery is disabled by default!** Enable it in `configuration.yaml` (see below).  
 > There is also an **official X2 integration** (MQTT-based): https://github.com/yomonpet/ha-sofabaton-hub
 
 ---
@@ -37,15 +36,17 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
    - ⚠️**iOS users:** please see the networking docs
 
    To add manually:
-   Go to **Settings → Devices & Services → Add integration** → search **Sofabaton X1S** (listing name) and follow the flow.
+   Go to **Settings → Devices & Services → Add integration** → search **Sofabaton X** (listing name) and follow the flow.
 
-### X2 discovery (opt-in)
+### X2 discovery
 
-Add to `configuration.yaml`, then restart HA:
+X2 hubs are discovered automatically, just like X1 and X1S. To opt out — for
+example if you prefer to keep using the official X2 integration — add this to
+`configuration.yaml` and restart HA:
 
 ```yaml
 sofabaton_x1s:
-  enable_x2_discovery: true
+  enable_x2_discovery: false
 ```
 
 ---
@@ -79,7 +80,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 
 ## ✨ Features
 
-- 🛰 **Automatic discovery** of Sofabaton hubs (X2 discovery opt-in)
+- 🛰 **Automatic discovery** of Sofabaton hubs (X1, X1S and X2)
 - 🧩 **Multiple hubs** supported
 - 🔘 **A healthy collection of smart selects, buttons and sensors** everything needed to create a custom UI and automations
 - ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations. Use the dashboard cards to retrieve the codes you need
@@ -112,11 +113,11 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 ### Option 1 – HACS (recommended)
 
 1. Open **HACS**
-2. Search **Sofabaton X1S** and install (works for X1/X1S/X2)
+2. Search **Sofabaton X** and install (works for X1/X1S/X2)
 3. **Restart Home Assistant**
 4. Go to **Settings → Devices & Services**
 5. If discovered, click **Add/Configure**  
-   If not: **Add integration** → search **Sofabaton X1S** → enter IP, name and hub version manually
+   If not: **Add integration** → search **Sofabaton X** → enter IP, name and hub version manually
 
 ### Option 2 – Manual
 
@@ -195,10 +196,10 @@ The Control Panel card is the central management UI for the integration. Its mai
 - **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.
 - **Logs** — live streaming of hub log output for real-time diagnostics.
 
-<img height="250" alt="image" src="https://github.com/user-attachments/assets/f39b3178-b12b-468a-b0f2-5ead3d69c10e" />
-<img height="250" alt="image" src="https://github.com/user-attachments/assets/e42ac6b9-d5c0-421c-a8c6-930bb3bfe441" />
-<img height="250" alt="image" src="https://github.com/user-attachments/assets/a9382371-32a9-4e29-84b7-e208091888a1" />
-<img height="250" alt="image" src="https://github.com/user-attachments/assets/dcf8407c-a1a2-4d96-b5f3-c961521cbd0b" />
+<img height="250" alt="Control Panel: Hub tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-hub-tab.png" />
+<img height="250" alt="Control Panel: Wifi Commands tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" />
+<img height="250" alt="Control Panel: Cache tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-cache-tab.png" />
+<img height="250" alt="Control Panel: Logs tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-logs-tab.png" />
 
 ---
 
@@ -217,11 +218,11 @@ Configure up to 5 Wifi Devices per hub (10 command slots each) via the **Control
 
 Full setup guide → [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
-<img height="250" alt="image" src="https://github.com/user-attachments/assets/e42ac6b9-d5c0-421c-a8c6-930bb3bfe441" />
-<img height="250" alt="image" src="https://github.com/user-attachments/assets/8b9aff1f-3df5-4889-ae02-bbdc336c74cd" />
-<img height="250" alt="image" src="https://github.com/user-attachments/assets/cbc0a2e1-635b-4b7c-804d-e0e67051b643" />
-<img height="250" alt="image" src="https://github.com/user-attachments/assets/16015586-a4c4-4f7c-99b8-51d5af71b35c" />
-<img height="250" alt="image" src="https://github.com/user-attachments/assets/262c8dfa-fd0d-48fc-9be4-3543ed11e6a8" />
+<img height="250" alt="Wifi Devices list" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" />
+<img height="250" alt="Command slot grid" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-command-grid.png" />
+<img height="250" alt="Command slot: power and input settings" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-advanced.png" />
+<img height="250" alt="Command slot: favorite and activities" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-favorite.png" />
+<img height="250" alt="Command slot: configuring an Action" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-action.png" />
 
 ---
 
