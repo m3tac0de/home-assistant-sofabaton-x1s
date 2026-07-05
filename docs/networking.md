@@ -44,7 +44,7 @@ sequenceDiagram
     end
 ```
 
-> Broadcast Discovery is optional for Android clients.
+> Broadcast Discovery is optional for Android clients.  
 > HTTP callbacks / Wifi Commands are optional.
 
 ## Security / listener model
@@ -168,18 +168,18 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 
 ## Complete port reference
 
-| From          | To            | Protocol | Port(s)              | Used for                                      | Needed for                            |
-|---------------|---------------|----------|----------------------|-----------------------------------------------|---------------------------------------|
-| Hub network   | HA host       | UDP      | 5353                 | mDNS `_x1hub._udp.local.` hub advert.         | Hub discovery by integration for X1(S)|
-| Hub network   | HA host       | UDP      | 5353                 | mDNS `_sofabaton_hub._udp.local.` hub advert. | Hub discovery by integration for X2   |
-| HA host       | Hub network   | UDP      | 8102                 | `CALL_ME` from proxy to hub                   | Hub connect flow                      |
-| Hub network   | HA host       | TCP      | 8200 \*              | Hub connects back to proxy                    | Hub control and status                |
-| Hub network   | HA host       | TCP      | 8060 \*\*            | Hub makes HTTP requests back to integration   | Wifi Commands feature                 |
-| HA host       | App network   | UDP      | 5353                 | mDNS `_x1hub._udp.local.` to app              | Sofabaton Android app                 |
-| App network   | HA host       | UDP      | 8102                 | iOS broadcast discovery to proxy              | Sofabaton iOS app                     |
-| HA host       | App network   | UDP      | 8100                 | iOS broadcast reply from proxy                | Sofabaton iOS app                     |
-| App network   | HA host       | UDP      | 8102 \*\*\*          | `CALL_ME` from app to proxy                   | iOS and Android app                   |
-| HA host       | App network   | TCP      | 8100–8110            | Proxy connects back to app                    | iOS and Android app                   |
+| From        | To          | Protocol | Port(s)     | Used for                                      | Needed for                             |
+| ----------- | ----------- | -------- | ----------- | --------------------------------------------- | -------------------------------------- |
+| Hub network | HA host     | UDP      | 5353        | mDNS `_x1hub._udp.local.` hub advert.         | Hub discovery by integration for X1(S) |
+| Hub network | HA host     | UDP      | 5353        | mDNS `_sofabaton_hub._udp.local.` hub advert. | Hub discovery by integration for X2    |
+| HA host     | Hub network | UDP      | 8102        | `CALL_ME` from proxy to hub                   | Hub connect flow                       |
+| Hub network | HA host     | TCP      | 8200 \*     | Hub connects back to proxy                    | Hub control and status                 |
+| Hub network | HA host     | TCP      | 8060 \*\*   | Hub makes HTTP requests back to integration   | Wifi Commands feature                  |
+| HA host     | App network | UDP      | 5353        | mDNS `_x1hub._udp.local.` to app              | Sofabaton Android app                  |
+| App network | HA host     | UDP      | 8102        | iOS broadcast discovery to proxy              | Sofabaton iOS app                      |
+| HA host     | App network | UDP      | 8100        | iOS broadcast reply from proxy                | Sofabaton iOS app                      |
+| App network | HA host     | UDP      | 8102 \*\*\* | `CALL_ME` from app to proxy                   | iOS and Android app                    |
+| HA host     | App network | TCP      | 8100–8110   | Proxy connects back to app                    | iOS and Android app                    |
 
 \* Ports can be changed in the integration's configuration.
 \*\* Ports can be changed in the integration's configuration but doing so breaks X1 compatibility.
