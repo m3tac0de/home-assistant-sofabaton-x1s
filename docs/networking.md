@@ -181,6 +181,6 @@ When the app is connected, command-sending entities in Home Assistant intentiona
 | App network | HA host     | UDP      | 8102 \*\*\* | `CALL_ME` from app to proxy                   | iOS and Android app                    |
 | HA host     | App network | TCP      | 8100–8110   | Proxy connects back to app                    | iOS and Android app                    |
 
-\* Ports can be changed in the integration's configuration.
-\*\* Ports can be changed in the integration's configuration but doing so breaks X1 compatibility.
+\* Ports can be changed in the integration's configuration.  
+\*\* Ports can be changed in the integration's configuration but doing so breaks X1 compatibility.  
 \*\*\* Ports can be changed in the integration's configuration but doing so breaks iOS compatibility.
