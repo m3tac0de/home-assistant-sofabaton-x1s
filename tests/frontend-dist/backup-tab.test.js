@@ -2977,6 +2977,49 @@ function bundleDeviceOptions(bundle) {
     };
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
+var ACTIVITY_ENTITY_ID_MIN = 101;
+function activityChainDependencyIds(bundle, activityId) {
+  const activity = (bundle?.activities ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
+  );
+  if (!bundle || !activity) return [];
+  const selfId = Number(activity?.device?.device_id || 0);
+  const bundleActivityIds = new Set(
+    (bundle.activities ?? []).map((entry) => Number(entry?.device?.device_id || 0))
+  );
+  const refs = /* @__PURE__ */ new Set();
+  const add = (value) => {
+    const id = Number(value || 0);
+    if (id >= ACTIVITY_ENTITY_ID_MIN && id !== 255 && id !== selfId && bundleActivityIds.has(id)) refs.add(id);
+  };
+  for (const binding of activity.button_bindings ?? []) {
+    add(binding?.device_id);
+    add(binding?.long_press_device_id);
+  }
+  for (const macro of activity.macros ?? []) {
+    for (const step of macro?.steps ?? []) {
+      if (Number(step?.device_id || 0) === 255) continue;
+      add(step?.device_id);
+    }
+  }
+  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
+  return [...refs].sort((left, right) => left - right);
+}
+function forcedRestoreActivityIds(bundle, selectedActivityIds) {
+  const selected = new Set(selectedActivityIds.map((value) => Number(value)));
+  const reached = new Set(selected);
+  const queue = [...reached];
+  while (queue.length) {
+    const current = queue.pop();
+    for (const dep of activityChainDependencyIds(bundle, current)) {
+      if (!reached.has(dep)) {
+        reached.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+  return [...reached].filter((id) => !selected.has(id)).sort((left, right) => left - right);
+}
 function forcedRestoreDeviceIds(bundle, selectedActivityIds) {
   const selected = new Set(selectedActivityIds.map((value) => Number(value)));
   const forced = /* @__PURE__ */ new Set();
@@ -2991,7 +3034,14 @@ function forcedRestoreDeviceIds(bundle, selectedActivityIds) {
   return [...forced].sort((left, right) => left - right);
 }
 function reconcileRestoreSelection(params) {
-  const forcedDeviceIds = forcedRestoreDeviceIds(params.bundle, params.selectedActivityIds);
+  const forcedActivityIds = forcedRestoreActivityIds(params.bundle, params.selectedActivityIds);
+  const selectedActivityIds = [
+    .../* @__PURE__ */ new Set([
+      ...(params.selectedActivityIds ?? []).map((value) => Number(value)),
+      ...forcedActivityIds
+    ])
+  ].sort((left, right) => left - right);
+  const forcedDeviceIds = forcedRestoreDeviceIds(params.bundle, selectedActivityIds);
   const selected = new Set(forcedDeviceIds);
   for (const deviceId of params.manualSelectedDeviceIds ?? []) {
     const normalized = Number(deviceId);
@@ -2999,7 +3049,9 @@ function reconcileRestoreSelection(params) {
   }
   return {
     forcedDeviceIds,
-    selectedDeviceIds: [...selected].sort((left, right) => left - right)
+    selectedDeviceIds: [...selected].sort((left, right) => left - right),
+    selectedActivityIds,
+    forcedActivityIds
   };
 }
 function pruneBackupBundle(params) {
@@ -9219,7 +9271,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       manualSelectedDeviceIds: this._restoreManualDeviceIds
     });
     const totalRestoreOptions = activityOptions.length + deviceOptions.length;
-    const totalRestoreSelected = this._restoreActivityIds.length + restoreSelection.selectedDeviceIds.length;
+    const totalRestoreSelected = restoreSelection.selectedActivityIds.length + restoreSelection.selectedDeviceIds.length;
     const allRestoreSelected = totalRestoreOptions > 0 && totalRestoreSelected === totalRestoreOptions;
     return T`
       ${renderSecondaryTabContent({
@@ -9256,25 +9308,28 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                   <div class="selection-list">
                     ${activityOptions.length ? T`
                         <div class="selection-group-header">Activities</div>
-                        ${activityOptions.map((activity) => T`
+                        ${activityOptions.map((activity) => {
+        const forcedActivity = restoreSelection.forcedActivityIds.includes(activity.id);
+        return T`
                           <div
-                            class="selection-row"
+                            class="selection-row ${forcedActivity ? "locked" : ""}"
                             @click=${() => {
-        if (this._restoreLocked()) return;
-        this._setRestoreActivity(activity.id, !this._restoreActivityIds.includes(activity.id));
-      }}
+          if (forcedActivity || this._restoreLocked()) return;
+          this._setRestoreActivity(activity.id, !this._restoreActivityIds.includes(activity.id));
+        }}
                           >
                             ${this._renderCheckboxControl({
-        checked: this._restoreActivityIds.includes(activity.id),
-        disabled: this._restoreLocked(),
-        onChange: (checked) => this._setRestoreActivity(activity.id, checked)
-      })}
+          checked: restoreSelection.selectedActivityIds.includes(activity.id),
+          disabled: forcedActivity || this._restoreLocked(),
+          onChange: (checked) => this._setRestoreActivity(activity.id, checked)
+        })}
                             <span class="selection-main">
                               <span class="selection-label">${activity.label}</span>
                             </span>
-                            ${activity.meta ? T`<span class="selection-meta">${activity.meta}</span>` : A}
+                            ${activity.meta ? T`<span class="selection-meta">${forcedActivity ? `${activity.meta} \xB7 linked` : activity.meta}</span>` : forcedActivity ? T`<span class="selection-meta">linked</span>` : A}
                           </div>
-                        `)}
+                        `;
+      })}
                       ` : T`<div class="selection-empty">This backup file has no activities.</div>`}
                     ${deviceOptions.length ? T`
                         <div class="selection-group-header">Devices</div>
@@ -9485,7 +9540,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     });
     const filtered = pruneBackupBundle({
       bundle: this._restoreBundle,
-      selectedActivityIds: this._restoreActivityIds,
+      // Expanded set: includes activities forced in by chain references.
+      selectedActivityIds: selection.selectedActivityIds,
       selectedDeviceIds: selection.selectedDeviceIds
     });
     this._restoreError = null;

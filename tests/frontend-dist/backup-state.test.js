@@ -1171,6 +1171,49 @@ function bundleDeviceOptions(bundle2) {
     };
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
+var ACTIVITY_ENTITY_ID_MIN = 101;
+function activityChainDependencyIds(bundle2, activityId) {
+  const activity = (bundle2?.activities ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
+  );
+  if (!bundle2 || !activity) return [];
+  const selfId = Number(activity?.device?.device_id || 0);
+  const bundleActivityIds = new Set(
+    (bundle2.activities ?? []).map((entry) => Number(entry?.device?.device_id || 0))
+  );
+  const refs = /* @__PURE__ */ new Set();
+  const add = (value) => {
+    const id = Number(value || 0);
+    if (id >= ACTIVITY_ENTITY_ID_MIN && id !== 255 && id !== selfId && bundleActivityIds.has(id)) refs.add(id);
+  };
+  for (const binding of activity.button_bindings ?? []) {
+    add(binding?.device_id);
+    add(binding?.long_press_device_id);
+  }
+  for (const macro of activity.macros ?? []) {
+    for (const step of macro?.steps ?? []) {
+      if (Number(step?.device_id || 0) === 255) continue;
+      add(step?.device_id);
+    }
+  }
+  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
+  return [...refs].sort((left, right) => left - right);
+}
+function forcedRestoreActivityIds(bundle2, selectedActivityIds) {
+  const selected = new Set(selectedActivityIds.map((value) => Number(value)));
+  const reached = new Set(selected);
+  const queue = [...reached];
+  while (queue.length) {
+    const current = queue.pop();
+    for (const dep of activityChainDependencyIds(bundle2, current)) {
+      if (!reached.has(dep)) {
+        reached.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+  return [...reached].filter((id) => !selected.has(id)).sort((left, right) => left - right);
+}
 function forcedRestoreDeviceIds(bundle2, selectedActivityIds) {
   const selected = new Set(selectedActivityIds.map((value) => Number(value)));
   const forced = /* @__PURE__ */ new Set();
@@ -1185,7 +1228,14 @@ function forcedRestoreDeviceIds(bundle2, selectedActivityIds) {
   return [...forced].sort((left, right) => left - right);
 }
 function reconcileRestoreSelection(params) {
-  const forcedDeviceIds = forcedRestoreDeviceIds(params.bundle, params.selectedActivityIds);
+  const forcedActivityIds = forcedRestoreActivityIds(params.bundle, params.selectedActivityIds);
+  const selectedActivityIds = [
+    .../* @__PURE__ */ new Set([
+      ...(params.selectedActivityIds ?? []).map((value) => Number(value)),
+      ...forcedActivityIds
+    ])
+  ].sort((left, right) => left - right);
+  const forcedDeviceIds = forcedRestoreDeviceIds(params.bundle, selectedActivityIds);
   const selected = new Set(forcedDeviceIds);
   for (const deviceId of params.manualSelectedDeviceIds ?? []) {
     const normalized = Number(deviceId);
@@ -1193,7 +1243,9 @@ function reconcileRestoreSelection(params) {
   }
   return {
     forcedDeviceIds,
-    selectedDeviceIds: [...selected].sort((left, right) => left - right)
+    selectedDeviceIds: [...selected].sort((left, right) => left - right),
+    selectedActivityIds,
+    forcedActivityIds
   };
 }
 function backupUsesWholeHub(selectedActivityIds) {
@@ -2908,7 +2960,9 @@ test("reconcileRestoreSelection keeps manual device picks alongside forced ones"
     }),
     {
       forcedDeviceIds: [1, 2],
-      selectedDeviceIds: [1, 2, 3]
+      selectedDeviceIds: [1, 2, 3],
+      selectedActivityIds: [101],
+      forcedActivityIds: []
     }
   );
 });
@@ -3898,4 +3952,63 @@ test("power pill toggles keep member order and step adjacency stable (interleave
   assert.deepEqual(activityMemberViews(onEnd, 101).map((v2) => v2.deviceId), [3, 9]);
   const offSteps = onEnd.activities[0].macros.find((m3) => m3.button_id === 199).steps;
   assert.deepEqual(offSteps.map((s4) => s4.device_id), [3, 9]);
+});
+function chainBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      { device: { device_id: 1, name: "TV" }, commands: [{ command_id: 10, name: "Power" }] },
+      { device: { device_id: 2, name: "AVR" }, commands: [{ command_id: 20, name: "Power" }] }
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+        referenced_source_device_ids: [1],
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [{ button_id: 199, name: "POWER_OFF", steps: [
+          { device_id: 1, command_id: 199, button_code: 0, duration: 0, delay: 255 },
+          { device_id: 102, command_id: 198, button_code: 0, duration: 0, delay: 255 }
+        ] }]
+      },
+      {
+        device: { device_id: 102, name: "Home", entity_type: "activity" },
+        referenced_source_device_ids: [2],
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [{ button_id: 199, name: "POWER_OFF", steps: [
+          { device_id: 103, command_id: 198, button_code: 0, duration: 0, delay: 255 }
+        ] }]
+      },
+      {
+        device: { device_id: 103, name: "All Off", entity_type: "activity" },
+        referenced_source_device_ids: [],
+        favorite_slots: [],
+        button_bindings: [],
+        macros: []
+      }
+    ]
+  };
+}
+test("activityChainDependencyIds finds foreign activity ids in macro steps", () => {
+  assert.deepEqual(activityChainDependencyIds(chainBundle(), 101), [102]);
+  assert.deepEqual(activityChainDependencyIds(chainBundle(), 102), [103]);
+  assert.deepEqual(activityChainDependencyIds(chainBundle(), 103), []);
+});
+test("forcedRestoreActivityIds is transitive and excludes the picks", () => {
+  assert.deepEqual(forcedRestoreActivityIds(chainBundle(), [101]), [102, 103]);
+  assert.deepEqual(forcedRestoreActivityIds(chainBundle(), [102]), [103]);
+  assert.deepEqual(forcedRestoreActivityIds(chainBundle(), [101, 102]), [103]);
+});
+test("reconcileRestoreSelection pulls chained activities and their devices in", () => {
+  const selection = reconcileRestoreSelection({
+    bundle: chainBundle(),
+    selectedActivityIds: [101],
+    manualSelectedDeviceIds: []
+  });
+  assert.deepEqual(selection.selectedActivityIds, [101, 102, 103]);
+  assert.deepEqual(selection.forcedActivityIds, [102, 103]);
+  assert.deepEqual(selection.forcedDeviceIds, [1, 2]);
 });

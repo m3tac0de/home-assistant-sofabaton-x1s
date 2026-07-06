@@ -304,3 +304,98 @@ def test_restore_activity_logs_unmapped_macro_steps(
     assert result is not None
     # No skipped_macro_steps because device_id=0 is a benign no-op.
     assert result["skipped_macro_steps"] == 0
+
+
+def test_restore_activity_maps_cross_activity_macro_steps(monkeypatch) -> None:
+    """A macro step whose device_id is another ACTIVITY (>= 0x65) — e.g.
+    a power-off step that starts a second activity — remaps through
+    ``activity_id_map``, never the device map."""
+
+    proxy, sequence_calls = _patched_proxy(monkeypatch)
+    payload = _activity_backup(
+        macro_steps=[{"device_id": 0x66, "command_id": 0xC6, "button_code": 0}],
+        favorites=[],
+    )
+    payload["button_bindings"] = []
+
+    result = proxy.restore_activity(
+        payload,
+        device_id_map={11: 0x21, 12: 0x22},
+        activity_id_map={0x66: 0x77},
+    )
+
+    assert result is not None
+    assert result["status"] == "success"
+    post_steps = sequence_calls[1]
+    macro_writes = [s for s in post_steps if s.family == FAMILY_MACRO]
+    assert len(macro_writes) == 1
+    body = macro_writes[0].payload
+    # Macro-save layout: [01 00 01][01 00 01][entity][key][count][10-byte rows…]
+    assert body[6] == 0x55  # freshly-assigned activity id
+    assert body[8] == 1  # one step survived (nothing skipped)
+    assert body[9] == 0x77  # step device byte: 0x66 remapped via activity map
+
+
+def test_restore_activity_rejects_unmapped_cross_activity_reference(
+    monkeypatch,
+) -> None:
+    """Referencing an activity that is not covered by activity_id_map is
+    a hard, descriptive error — not a silently skipped step."""
+
+    proxy, _sequence_calls = _patched_proxy(monkeypatch)
+    payload = _activity_backup(
+        macro_steps=[{"device_id": 0x66, "command_id": 0xC6, "button_code": 0}],
+        favorites=[],
+    )
+    payload["button_bindings"] = []
+
+    with pytest.raises(ValueError, match="references other activities"):
+        proxy.restore_activity(payload, device_id_map={11: 0x21, 12: 0x22})
+
+
+def test_referenced_id_collection_splits_on_the_entity_range() -> None:
+    """Ids >= 0x65 are cross-activity references; they belong in the
+    activity set and must NOT be demanded from the device map."""
+
+    payload = _activity_backup(
+        macro_steps=[
+            {"device_id": 11, "command_id": 1, "button_code": 0x4E21},
+            {"device_id": 0x66, "command_id": 0xC6, "button_code": 0},
+        ],
+        favorites=[],
+    )
+    payload["button_bindings"] = []
+
+    assert X1Proxy._collect_referenced_source_device_ids(payload) == {11}
+    assert X1Proxy._collect_referenced_activity_ids(payload) == {0x66}
+
+
+def _chain_activity(activity_id: int, ref_id: int | None = None) -> dict:
+    steps = (
+        [{"device_id": ref_id, "command_id": 0xC6, "button_code": 0}]
+        if ref_id is not None
+        else []
+    )
+    return {
+        "device": {"device_id": activity_id, "entity_type": "activity"},
+        "macros": [{"button_id": 0xC7, "name": "POWER_OFF", "steps": steps}],
+        "button_bindings": [],
+        "favorite_slots": [],
+    }
+
+
+def test_sort_bundle_activities_orders_chain_targets_first() -> None:
+    chained = _chain_activity(0x65, ref_id=0x66)
+    target = _chain_activity(0x66)
+    ordered = X1Proxy._sort_bundle_activities_for_restore([chained, target])
+    assert [a["device"]["device_id"] for a in ordered] == [0x66, 0x65]
+    # No dependencies → bundle order preserved (stable).
+    plain = X1Proxy._sort_bundle_activities_for_restore([target, chained])
+    assert [a["device"]["device_id"] for a in plain] == [0x66, 0x65]
+
+
+def test_sort_bundle_activities_rejects_cycles() -> None:
+    a = _chain_activity(0x65, ref_id=0x66)
+    b = _chain_activity(0x66, ref_id=0x65)
+    with pytest.raises(ValueError, match="circular cross-activity"):
+        X1Proxy._sort_bundle_activities_for_restore([a, b])

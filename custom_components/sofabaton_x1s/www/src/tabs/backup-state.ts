@@ -24,6 +24,10 @@ export interface BackupSelectionOption {
 export interface RestoreSelectionState {
   forcedDeviceIds: number[];
   selectedDeviceIds: number[];
+  /** User picks plus activities forced in by cross-activity chains. */
+  selectedActivityIds: number[];
+  /** Activities pulled in only because a selected one references them. */
+  forcedActivityIds: number[];
 }
 
 export interface BackupActivityQuickAccessItem {
@@ -347,6 +351,73 @@ export function bundleDeviceOptions(bundle: BackupBundlePayload | null): BackupS
     .map(({ id, label, meta }) => ({ id, label, meta }));
 }
 
+// The hub's shared 8-bit entity-id space: devices 0x01-0x63, activities
+// 0x65-0xFF. An id at or above this threshold inside a binding / macro
+// step / favorite is a cross-activity reference, not a source device.
+const ACTIVITY_ENTITY_ID_MIN = 0x65;
+
+/**
+ * Foreign activities this activity chains to — ids in the activity
+ * range referenced by its bindings, macro steps, or favorites that
+ * exist as activities in the bundle (self excluded). Restore needs
+ * these present and restored first.
+ */
+export function activityChainDependencyIds(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): number[] {
+  const activity = (bundle?.activities ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId),
+  );
+  if (!bundle || !activity) return [];
+  const selfId = Number(activity?.device?.device_id || 0);
+  const bundleActivityIds = new Set(
+    (bundle.activities ?? []).map((entry) => Number(entry?.device?.device_id || 0)),
+  );
+  const refs = new Set<number>();
+  const add = (value: unknown) => {
+    const id = Number(value || 0);
+    if (
+      id >= ACTIVITY_ENTITY_ID_MIN
+      && id !== 0xFF
+      && id !== selfId
+      && bundleActivityIds.has(id)
+    ) refs.add(id);
+  };
+  for (const binding of activity.button_bindings ?? []) {
+    add(binding?.device_id);
+    add(binding?.long_press_device_id);
+  }
+  for (const macro of activity.macros ?? []) {
+    for (const step of macro?.steps ?? []) {
+      if (Number(step?.device_id || 0) === 0xFF) continue;
+      add(step?.device_id);
+    }
+  }
+  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
+  return [...refs].sort((left, right) => left - right);
+}
+
+/** Transitive closure of chain dependencies, minus the original picks. */
+export function forcedRestoreActivityIds(
+  bundle: BackupBundlePayload | null,
+  selectedActivityIds: number[],
+): number[] {
+  const selected = new Set(selectedActivityIds.map((value) => Number(value)));
+  const reached = new Set(selected);
+  const queue = [...reached];
+  while (queue.length) {
+    const current = queue.pop()!;
+    for (const dep of activityChainDependencyIds(bundle, current)) {
+      if (!reached.has(dep)) {
+        reached.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+  return [...reached].filter((id) => !selected.has(id)).sort((left, right) => left - right);
+}
+
 export function forcedRestoreDeviceIds(bundle: BackupBundlePayload | null, selectedActivityIds: number[]): number[] {
   const selected = new Set(selectedActivityIds.map((value) => Number(value)));
   const forced = new Set<number>();
@@ -366,7 +437,17 @@ export function reconcileRestoreSelection(params: {
   selectedActivityIds: number[];
   manualSelectedDeviceIds: number[];
 }): RestoreSelectionState {
-  const forcedDeviceIds = forcedRestoreDeviceIds(params.bundle, params.selectedActivityIds);
+  // Cross-activity chains first: a selected activity pulls in the
+  // activities it references (transitively), which in turn pull in
+  // their linked devices below.
+  const forcedActivityIds = forcedRestoreActivityIds(params.bundle, params.selectedActivityIds);
+  const selectedActivityIds = [
+    ...new Set([
+      ...(params.selectedActivityIds ?? []).map((value) => Number(value)),
+      ...forcedActivityIds,
+    ]),
+  ].sort((left, right) => left - right);
+  const forcedDeviceIds = forcedRestoreDeviceIds(params.bundle, selectedActivityIds);
   const selected = new Set<number>(forcedDeviceIds);
   for (const deviceId of params.manualSelectedDeviceIds ?? []) {
     const normalized = Number(deviceId);
@@ -375,6 +456,8 @@ export function reconcileRestoreSelection(params: {
   return {
     forcedDeviceIds,
     selectedDeviceIds: [...selected].sort((left, right) => left - right),
+    selectedActivityIds,
+    forcedActivityIds,
   };
 }
 
@@ -1794,7 +1877,7 @@ function setActivityPowerRefStep(
   // 0xC7 removal: plain removal (order stays anchored by POWER_ON), but
   // keep membership when this was the device's last power representation.
   const withoutOff = filterMacroSteps(steps, (step) => stepMatchesCommand(step, dId, refCommand));
-  let next = commit(withoutOff);
+  let next: BackupBundleActivityPayload = commit(withoutOff);
   if (!activityMemberDeviceIds(next).includes(dId)) {
     next = setActivityPowerRefStep(next, dId, POWER_ON_MACRO_BUTTON_ID, DEVICE_INPUT_REF_COMMAND, true);
   }

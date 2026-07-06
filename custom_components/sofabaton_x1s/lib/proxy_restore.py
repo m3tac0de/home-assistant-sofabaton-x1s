@@ -59,6 +59,12 @@ from .protocol_const import (
     normalize_device_class,
 )
 
+# The hub's shared 8-bit entity-id space: devices are 0x01-0x63,
+# activities 0x65-0xFF (see docs/protocol/data-structures.md). An id at
+# or above this threshold inside a binding / macro step / favourite is a
+# cross-activity reference, not a source device.
+ACTIVITY_ENTITY_ID_MIN = 0x65
+
 
 def _idle_behavior_mode(device_block: dict[str, Any]) -> int:
     """Resolve a device backup block's idle / automatic-power mode byte.
@@ -1412,6 +1418,7 @@ class RestoreMixin:
         device_id_map: dict[int, int],
         bundle_devices_by_source_id: dict[int, dict[str, Any]] | None = None,
         command_id_maps_by_source_device_id: dict[int, dict[int, int]] | None = None,
+        activity_id_map: dict[int, int] | None = None,
     ) -> dict[str, Any] | None:
         """Restore an activity from a backup payload.
 
@@ -1434,10 +1441,22 @@ class RestoreMixin:
 
         Validation:
 
+        ``activity_id_map`` translates source-side ACTIVITY ids (the
+        shared entity-id space's >= 0x65 range) referenced by macro
+        steps — e.g. a power-off step that starts another activity —
+        to the ids the destination hub assigned to those activities.
+        The bundle orchestrator restores activities in dependency order
+        and threads this map in; standalone callers only need it when
+        their payload carries cross-activity references.
+
+        Validation:
+
         - Payload must declare ``kind == 'activity_backup'``.
         - ``device_id_map`` must cover every distinct source device id
           referenced anywhere in the payload's button bindings, macro
           steps, and favourites; missing keys raise ``ValueError``.
+        - ``activity_id_map`` must likewise cover every referenced
+          foreign activity id.
         """
 
         try:
@@ -1472,6 +1491,22 @@ class RestoreMixin:
                     f"referenced by this activity backup: {missing_list}"
                 )
 
+            referenced_activities = self._collect_referenced_activity_ids(payload)
+            known_activities = {
+                int(k) & 0xFF for k in (activity_id_map or {}).keys()
+            }
+            missing_activities = referenced_activities - known_activities
+            if missing_activities:
+                missing_list = ", ".join(
+                    f"0x{m:02X}" for m in sorted(missing_activities)
+                )
+                raise ValueError(
+                    "this activity references other activities "
+                    f"({missing_list}) that are not part of this restore or "
+                    "have not been restored yet; include them in the restore "
+                    "selection"
+                )
+
             remap_lookup = {
                 int(k) & 0xFF: int(v) & 0xFF for k, v in device_id_map.items()
             }
@@ -1495,6 +1530,10 @@ class RestoreMixin:
                 macros=list(payload.get("macros") or []),
                 favorites=list(payload.get("favorite_slots") or []),
                 device_id_map=remap_lookup,
+                activity_id_map={
+                    int(k) & 0xFF: int(v) & 0xFF
+                    for k, v in (activity_id_map or {}).items()
+                },
                 bundle_devices_by_source_id=bundle_devices,
                 command_id_maps_by_source_device_id=command_id_maps,
             )
@@ -1574,7 +1613,13 @@ class RestoreMixin:
             return {"status": "failed", "failed_at": ["proxy", None]}
 
         devices = list(payload.get("devices") or [])
-        activities = list(payload.get("activities") or [])
+        # Cross-activity references (chain steps) need the target's
+        # hub-assigned id before the referencing activity is written, so
+        # restore in dependency order. Cycles cannot be ordered — fail
+        # the whole bundle up front with the offending ids.
+        activities = self._sort_bundle_activities_for_restore(
+            list(payload.get("activities") or [])
+        )
         total_steps = int(progress_total_steps or (progress_offset + len(devices) + len(activities)))
         completed_steps = int(progress_offset)
 
@@ -1644,6 +1689,7 @@ class RestoreMixin:
             )
 
         restored_activities: list[dict[str, Any]] = []
+        activity_id_map: dict[int, int] = {}
         for activity_payload in activities:
             if not isinstance(activity_payload, dict):
                 continue
@@ -1663,6 +1709,7 @@ class RestoreMixin:
                     device_id_map=device_id_map,
                     bundle_devices_by_source_id=bundle_devices_by_source_id,
                     command_id_maps_by_source_device_id=command_id_maps,
+                    activity_id_map=activity_id_map,
                 )
             except Exception:
                 self._log.exception(
@@ -1687,10 +1734,13 @@ class RestoreMixin:
                     "restored_devices": restored_devices,
                     "restored_activities": restored_activities,
                 }
+            new_activity_id = int(result.get("activity_id", 0)) & 0xFF
+            if src_act_id > 0 and new_activity_id > 0:
+                activity_id_map[src_act_id] = new_activity_id
             restored_activities.append(
                 {
                     "source_activity_id": src_act_id,
-                    "activity_id": int(result.get("activity_id", 0)) & 0xFF,
+                    "activity_id": new_activity_id,
                     "skipped_input_ordinals": result.get(
                         "skipped_input_ordinals", 0
                     ),
@@ -1736,6 +1786,7 @@ class RestoreMixin:
 
         activity_block = request.device_block
         remap_lookup = dict(request.device_id_map)
+        activity_remap = dict(request.activity_id_map)
         old_activity_id = int(activity_block.get("device_id", 0)) & 0xFF
 
         def _map_device_id(raw: Any) -> int | None:
@@ -1752,6 +1803,11 @@ class RestoreMixin:
             # binding/macro loops, so new_activity_id is set by call time.)
             if src == old_activity_id:
                 return new_activity_id
+            # Ids in the activity range are cross-activity references
+            # (e.g. a power-off step that starts another activity) and
+            # resolve ONLY through the activity map — never the device map.
+            if src >= ACTIVITY_ENTITY_ID_MIN:
+                return activity_remap.get(src)
             return remap_lookup.get(src)
 
         create_config = device_config_from_backup(activity_block, for_create=True)
@@ -1996,9 +2052,10 @@ class RestoreMixin:
         )
 
     @staticmethod
-    def _collect_referenced_source_device_ids(payload: dict[str, Any]) -> set[int]:
-        """Walk an activity backup payload and return the set of source
-        device ids referenced by buttons, macro steps, and favourites.
+    def _collect_referenced_entity_ids(payload: dict[str, Any]) -> set[int]:
+        """Walk an activity backup payload and return every entity id its
+        buttons, macro steps, and favourites reference — devices AND other
+        activities — excluding sentinels and the activity's own id.
         """
 
         referenced: set[int] = set()
@@ -2032,6 +2089,87 @@ class RestoreMixin:
             if isinstance(row, dict):
                 _add(row.get("device_id"))
         return referenced
+
+    @staticmethod
+    def _collect_referenced_source_device_ids(payload: dict[str, Any]) -> set[int]:
+        """Referenced ids in the DEVICE range of the shared entity-id
+        space (< 0x65). Ids in the activity range are cross-activity
+        references (e.g. a power-off step that starts another activity)
+        and resolve through ``activity_id_map``, never the device map.
+        """
+
+        return {
+            value
+            for value in RestoreMixin._collect_referenced_entity_ids(payload)
+            if value < ACTIVITY_ENTITY_ID_MIN
+        }
+
+    @staticmethod
+    def _collect_referenced_activity_ids(payload: dict[str, Any]) -> set[int]:
+        """Referenced ids in the ACTIVITY range (>= 0x65) — foreign
+        activities this activity chains to.
+        """
+
+        return {
+            value
+            for value in RestoreMixin._collect_referenced_entity_ids(payload)
+            if value >= ACTIVITY_ENTITY_ID_MIN
+        }
+
+    @staticmethod
+    def _sort_bundle_activities_for_restore(
+        activities: list[Any],
+    ) -> list[Any]:
+        """Order bundle activities so cross-activity references restore
+        before the activities that reference them (the referencing
+        activity needs the target's hub-assigned id in
+        ``activity_id_map`` at write time). Stable: activities with no
+        dependency constraints keep their bundle order. A circular
+        reference chain cannot be ordered and raises ``ValueError`` —
+        supporting cycles would require a two-pass restore (create all
+        activity records first, write content second).
+        """
+
+        entries = [entry for entry in activities if isinstance(entry, dict)]
+        source_ids = [
+            int(((entry.get("device") or {}).get("device_id", 0))) & 0xFF
+            for entry in entries
+        ]
+        index_by_id = {
+            src: idx for idx, src in enumerate(source_ids) if src > 0
+        }
+        dependencies: list[set[int]] = []
+        for entry in entries:
+            refs = RestoreMixin._collect_referenced_activity_ids(entry)
+            # Refs to activities absent from the bundle are not ordering
+            # constraints; restore_activity rejects them with its own
+            # clear error.
+            dependencies.append(
+                {index_by_id[ref] for ref in refs if ref in index_by_id}
+            )
+        ordered: list[Any] = []
+        placed: set[int] = set()
+        while len(ordered) < len(entries):
+            progressed = False
+            for idx in range(len(entries)):
+                if idx in placed or not dependencies[idx] <= placed:
+                    continue
+                ordered.append(entries[idx])
+                placed.add(idx)
+                progressed = True
+            if not progressed:
+                cyclic = sorted(
+                    source_ids[idx]
+                    for idx in range(len(entries))
+                    if idx not in placed
+                )
+                cyclic_list = ", ".join(f"0x{value:02X}" for value in cyclic)
+                raise ValueError(
+                    "bundle activities form a circular cross-activity "
+                    f"reference chain ({cyclic_list}); break the cycle and "
+                    "re-export"
+                )
+        return ordered
 
 
 __all__ = ["RestoreMixin"]

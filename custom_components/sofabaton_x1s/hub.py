@@ -895,7 +895,10 @@ class SofabatonHub:
             partial(self._proxy.clear_cached_entity_detail, ent_id, kind=kind)
         )
         if kind == "device":
-            await self._async_refresh_devices_snapshot(timeout_seconds=5.0)
+            # Use the default 15s wait so a slow devices burst (which now has a
+            # 5s response-grace fallback) has room to complete instead of the
+            # outer wait expiring first and returning a partial snapshot.
+            await self._async_refresh_devices_snapshot()
             devs, ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
             self.devices_ready = ready
             if ready:
