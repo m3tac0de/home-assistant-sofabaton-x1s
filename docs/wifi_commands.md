@@ -14,13 +14,7 @@ In the **Sofabaton Control Panel** card, open the **Wifi Commands** tab. Up to *
 > - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
 > - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
 
-<img height="180" alt="Wifi Devices list" src="images/wifi-commands-devices.png" />
-<img height="180" alt="Command slot grid" src="images/wifi-commands-command-grid.png" />
-<img height="180" alt="Command slot: power and input settings" src="images/wifi-commands-slot-advanced.png" />
-<img height="180" alt="Command slot: favorite and activities" src="images/wifi-commands-slot-favorite.png" />
-<img height="180" alt="Command slot: configuring an Action" src="images/wifi-commands-slot-action.png" />
-<img height="180" alt="Command grid ready to sync" src="images/wifi-commands-sync-pending.png" />
-<img height="180" alt="Sync to hub in progress" src="images/wifi-commands-syncing.png" />
+<img height="180" alt="Wifi Devices list" src="images/wifi-commands-devices.png" /> <img height="180" alt="Command slot grid" src="images/wifi-commands-command-grid.png" /> <img height="180" alt="Command slot: power and input settings" src="images/wifi-commands-slot-advanced.png" /> <img height="180" alt="Command slot: favorite and activities" src="images/wifi-commands-slot-favorite.png" /> <img height="180" alt="Command slot: configuring an Action" src="images/wifi-commands-slot-action.png" /> <img height="180" alt="Command grid ready to sync" src="images/wifi-commands-sync-pending.png" /> <img height="180" alt="Sync to hub in progress" src="images/wifi-commands-syncing.png" />
 
 ## How this works
 
