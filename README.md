@@ -1,12 +1,11 @@
-# Sofabaton X1/X1S/X2 - Home Assistant Custom Integration
+# Sofabaton X - Home Assistant Custom Integration
 Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Home Assistant, using **100% local APIs**.
 
 [![HACS Badge](https://img.shields.io/badge/HACS-Default-green.svg)](https://github.com/hacs/integration)
 ![Version](https://img.shields.io/github/v/release/m3tac0de/home-assistant-sofabaton-x1s) ![Total Downloads](https://img.shields.io/github/downloads/m3tac0de/home-assistant-sofabaton-x1s/latest/total)   
 
-
-
-> This integration is powered by a standalone Python library for the Sofabaton hub protocol. It is also available on [PyPI](https://pypi.org/project/sofabaton-x/).
+> This integration is powered by a [standalone Python library](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x) for the Sofabaton hub protocol.    
+> It is also available on [PyPI](https://pypi.org/project/sofabaton-x/).
 
 ## Start here
 
