@@ -158,6 +158,30 @@ def test_zeroconf_x2_prompts_when_enabled() -> None:
     assert result["step_id"] == "zeroconf_confirm"
 
 
+def test_zeroconf_x2_prompts_by_default() -> None:
+    # No enable_x2_discovery key in the stored config: X2 discovery is on
+    # by default and the key acts as an opt-out.
+    flow = ConfigFlow()
+    flow.hass = SimpleNamespace(data={DOMAIN: {"config": {}}})
+    flow.context = {}
+
+    result = _run(
+        flow.async_step_zeroconf(
+            _service_info(
+                MDNS_SERVICE_TYPES[1],
+                properties={
+                    "NAME": b"Sofa Hub",
+                    "MAC": b"aa:bb:cc:dd:ee:ff",
+                    "HVER": b"3",
+                },
+            )
+        )
+    )
+
+    assert result["type"] == "form"
+    assert result["step_id"] == "zeroconf_confirm"
+
+
 
 def test_manual_flow_formats_entry_title_with_version_host_and_mac() -> None:
     flow = _flow_with_x2_enabled(False)

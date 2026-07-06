@@ -102,11 +102,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def _x2_enabled(self) -> bool:
         hass = getattr(self, "hass", None)
         if hass is None:
-            return False
+            return True
         return bool(
             hass.data.get(DOMAIN, {})
             .get("config", {})
-            .get(CONF_ENABLE_X2_DISCOVERY, False)
+            .get(CONF_ENABLE_X2_DISCOVERY, True)
         )
 
 

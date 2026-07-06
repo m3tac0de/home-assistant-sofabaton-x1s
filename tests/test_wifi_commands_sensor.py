@@ -11,8 +11,20 @@ def _install_missing_sensor_stubs() -> None:
         def __init__(self, *args, **kwargs) -> None:
             pass
 
+    class SensorDeviceClass:
+        BATTERY = "battery"
+
+    class SensorStateClass:
+        MEASUREMENT = "measurement"
+
+    sensor_mod.SensorDeviceClass = SensorDeviceClass
     sensor_mod.SensorEntity = SensorEntity
-    sys.modules.setdefault("homeassistant.components.sensor", sensor_mod)
+    sensor_mod.SensorStateClass = SensorStateClass
+    sys.modules["homeassistant.components.sensor"] = sensor_mod
+
+    const_mod = types.ModuleType("homeassistant.const")
+    const_mod.PERCENTAGE = "%"
+    sys.modules["homeassistant.const"] = const_mod
 
     entity_mod = types.ModuleType("homeassistant.helpers.entity")
 

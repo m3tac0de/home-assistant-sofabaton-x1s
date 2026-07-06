@@ -163,6 +163,7 @@ from .proxy_ack_waiters import AckWaitersMixin
 from .proxy_catalog import CatalogMixin
 from .proxy_frame_decode import FrameDecodeMixin, _hexdump
 from .proxy_ir_blob import IrBlobMixin
+from .proxy_remote_battery import RemoteBatteryMixin
 
 # ============================================================================
 # Utilities
@@ -299,8 +300,6 @@ def _decode_hub_name_wire(payload: bytes, *, hub_version: str | None) -> str:
     return raw.decode("gb2312", errors="ignore").strip("\x00").strip()
 
 
-
-
 # Position of the tail token block inside a CATALOG_ROW_ACTIVITY payload.
 # See the activity-row schema comment in ``opcode_handlers`` for details.
 _ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD = 152
@@ -368,7 +367,7 @@ def _enable_keepalive(sock: socket.socket, *, idle: int = 30, interval: int = 10
 # ============================================================================
 # Proxy
 # ============================================================================
-class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, CacheBackupMixin, WifiDeviceMixin, RestoreMixin, BackupExportMixin):
+class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, CacheBackupMixin, WifiDeviceMixin, RemoteBatteryMixin, RestoreMixin, BackupExportMixin):
     def __init__(
         self,
         real_hub_ip: str,

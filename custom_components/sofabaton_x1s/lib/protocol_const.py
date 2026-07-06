@@ -91,6 +91,7 @@ OP_ERASE_CONFIGURATION = 0x001D  # payload: empty; wipes all devices/activities/
 OP_FIND_REMOTE_X2 = 0x0323  # payload: [0x00, 0x00, 0x08] observed on X2 hubs
 OP_REMOTE_SYNC = 0x0064  # payload: empty; force remote<->hub sync on X1/X1S
 OP_X2_REMOTE_LIST = 0x012E  # payload: [0x00]; request connected remotes on X2
+OP_REQ_REMOTE_STATUS = OP_X2_REMOTE_LIST  # X2: remote status rows; replies family 0x2F
 OP_X2_REMOTE_LIST_ROW = 0x332F  # payload includes 3-byte remote id and remote metadata
 OP_X2_REMOTE_SYNC = 0x0464  # payload: [remote_id:3][0x01]; force sync for selected remote
 OP_CREATE_DEVICE_HEAD = 0x07D5  # payload includes UTF-16LE device name
@@ -341,6 +342,7 @@ def opcode_family(opcode: int) -> int:
 FAMILY_STATUS_ACK = 0x03  # generic status / ack responses
 FAMILY_DEV_ROW = 0x0B  # device catalog rows (OP_CATALOG_ROW_DEVICE, OP_X1_DEVICE)
 FAMILY_ACT_ROW = 0x3B  # activity catalog rows (OP_CATALOG_ROW_ACTIVITY, OP_X1_ACTIVITY)
+FAMILY_REMOTE_STATUS = 0x2F  # remote/hub status rows; opcode high byte varies by payload length
 FAMILY_MACROS = 0x13  # macro pages (OP_MACROS_A1/B1/A2/B2)
 FAMILY_KEYMAP = 0x3D  # keymap / continuation / devbtn-extra pages
 FAMILY_DEVBTNS = 0x5D  # device button pages (header, body, tail, variants)
@@ -378,6 +380,7 @@ FAMILY_NAMES: Dict[int, str] = {
     FAMILY_HUB_NAME_REPLY: "HUB_NAME_REPLY",
     FAMILY_DEV_ROW: "DEVICE_ROW",
     FAMILY_BLOB_ROW: "BLOB_ROW",
+    FAMILY_REMOTE_STATUS: "REMOTE_STATUS",
     FAMILY_PLAY_BLOB: "PLAY_BLOB",
     FAMILY_FAV_DELETE: "FAV_DELETE",
     FAMILY_MACROS: "MACROS",
@@ -552,6 +555,7 @@ __all__ = [
     "OP_FIND_REMOTE_X2",
     "OP_REMOTE_SYNC",
     "OP_X2_REMOTE_LIST",
+    "OP_REQ_REMOTE_STATUS",
     "OP_X2_REMOTE_LIST_ROW",
     "OP_X2_REMOTE_SYNC",
     "OP_CREATE_DEVICE_HEAD",
@@ -634,6 +638,7 @@ __all__ = [
     "FAMILY_HUB_NAME_REPLY",
     "FAMILY_DEV_ROW",
     "FAMILY_ACT_ROW",
+    "FAMILY_REMOTE_STATUS",
     "FAMILY_MACROS",
     "FAMILY_KEYMAP",
     "FAMILY_DEVBTNS",

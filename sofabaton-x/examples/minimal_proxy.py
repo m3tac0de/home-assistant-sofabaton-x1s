@@ -53,13 +53,14 @@ async def main() -> None:
         devices = await proxy.devices()
         print("devices:", {did: info.get("name") for did, info in devices.items()})
 
-        if activities:
-            target = next(iter(activities))
-            # Switch to an activity (sends its power-on). Returns False if
-            # refused. Other control verbs: proxy.press(ent, button),
-            # proxy.stop_activity(act), proxy.find_remote().
-            if await proxy.start_activity(target):
-                print(f"started activity {target} ({activities[target].get('name')})")
+        # Switching an activity powers real equipment on and off, so it is
+        # not run automatically. Pick an activity id from the listing
+        # printed above and uncomment. Returns False if refused. Other
+        # control verbs: proxy.press(ent, button), proxy.stop_activity(act),
+        # proxy.find_remote().
+        #
+        # if await proxy.start_activity(101):
+        #     print("started activity 101")
 
 
 if __name__ == "__main__":

@@ -56,7 +56,7 @@ data:
 After it completes, inspect `sensor.<hub>_index` attributes for the populated
 command, macro, and favorites lists.
 
-For a full guide see [fetch_command.md](/D:/CODE/x1s-hass-root/docs/fetch_command.md).
+For a full guide see [fetch_command.md](./fetch_command.md).
 
 ---
 
@@ -163,7 +163,7 @@ Input can be either:
 - a hex string containing the canonical blob body without the final replay-tail
   checksum byte
 - a descriptive protocol string beginning with `P:`, such as
-  `P:Sony12 R:40000 D:1 F:18 MUL:2`
+  `P:Sony12 R:40000 D:1 F:18 MUL:2` (supported on **X2 hubs only**)
 
 | Parameter | Type | Required | Description |
 | --------- | ---- | :------: | ----------- |
@@ -199,7 +199,8 @@ non-IR devices when the integration already knows the device class.
 Input can be either:
 - a hex string containing the canonical blob body without the final replay-tail
   checksum byte
-- a descriptive protocol string beginning with `P:`
+- a descriptive protocol string beginning with `P:` (supported on **X2 hubs
+  only**)
 
 This action returns data and can be used inline in scripts and automations.
 
@@ -393,7 +394,7 @@ data:
     - 3
 ```
 
-See [wifi_commands.md](/D:/CODE/x1s-hass-root/docs/wifi_commands.md) for the full
+See [wifi_commands.md](./wifi_commands.md) for the full
 Wifi Commands guide.
 
 ---
@@ -484,7 +485,7 @@ backup.
 | Field | Description |
 | ----- | ----------- |
 | `kind` | Always `"hub_bundle"`. |
-| `schema_version` | Always `5`. Older bundles are rejected on restore -- no migrator is provided. |
+| `schema_version` | Always `5`. Restore requires this exact schema version; bundles with any other schema version -- older or newer -- are rejected, and no migrator is provided. |
 | `captured_at` | ISO 8601 timestamp. |
 | `complete` | `true` when every per-entity backup inside the bundle is complete. |
 | `hub` | `{entry_id, name, version}` of the source hub. |

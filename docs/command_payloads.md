@@ -107,8 +107,9 @@ Fields:
 
 - `descriptor`: descriptive IR text such as `P:Sony12 R:40000 D:1 F:18 MUL:2`
 
-This decoded form only exists for the descriptive IR variant. Learned raw IR
-payloads do not become editable descriptive text automatically.
+This decoded form only exists for the descriptive IR variant, which is
+supported on X2 hubs only. Learned raw IR payloads do not become editable
+descriptive text automatically.
 
 ## Editing in backup files
 

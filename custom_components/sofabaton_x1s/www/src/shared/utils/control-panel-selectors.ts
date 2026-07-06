@@ -354,7 +354,7 @@ export function resolveTabAvailability(snapshot: ControlPanelSnapshot, tabId: Ta
         gateState.kind === "version_mismatch"
           ? "Refresh the dashboard to load the updated Sofabaton Control Panel card."
           : gateState.kind === "backend_unavailable"
-            ? "Waiting for the Sofabaton X1S integration to finish starting."
+            ? "Waiting for the Sofabaton X integration to finish starting."
             : "This hub is not connected, so the control panel is unavailable until the hub reconnects.",
     };
   }

@@ -790,6 +790,7 @@ async def _async_build_control_panel_hub_payload(
         },
         "active_backup_operation": active_backup_operation,
         "runtime_state": runtime_state,
+        "remote_battery": hub.get_remote_battery_state(),
     }
 
 
@@ -2062,7 +2063,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
-            {vol.Optional(CONF_ENABLE_X2_DISCOVERY, default=False): cv.boolean},
+            {vol.Optional(CONF_ENABLE_X2_DISCOVERY, default=True): cv.boolean},
         ),
     },
     extra=vol.ALLOW_EXTRA,
@@ -2071,7 +2072,9 @@ CONFIG_SCHEMA = vol.Schema(
 
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     domain_config = config.get(DOMAIN, {})
-    enable_x2_discovery = bool(domain_config.get(CONF_ENABLE_X2_DISCOVERY, False))
+    # X2 discovery is on by default; enable_x2_discovery: false opts out.
+    # (The key used to be an opt-in and is still honored in both directions.)
+    enable_x2_discovery = bool(domain_config.get(CONF_ENABLE_X2_DISCOVERY, True))
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].setdefault("config", {})

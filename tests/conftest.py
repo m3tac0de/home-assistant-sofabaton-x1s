@@ -86,6 +86,10 @@ def _install_homeassistant_stubs() -> None:
     core.callback = lambda func: func  # type: ignore[assignment]
     sys.modules.setdefault("homeassistant.core", core)
 
+    const = types.ModuleType("homeassistant.const")
+    const.PERCENTAGE = "%"
+    sys.modules.setdefault("homeassistant.const", const)
+
     helpers = types.ModuleType("homeassistant.helpers")
     sys.modules.setdefault("homeassistant.helpers", helpers)
 
@@ -161,6 +165,7 @@ def _install_homeassistant_stubs() -> None:
 
     event = types.ModuleType("homeassistant.helpers.event")
     event.async_call_later = lambda hass, delay, action: None
+    event.async_track_time_interval = lambda hass, action, interval: None
     sys.modules.setdefault("homeassistant.helpers.event", event)
 
     entity = types.ModuleType("homeassistant.helpers.entity")
@@ -170,6 +175,7 @@ def _install_homeassistant_stubs() -> None:
 
     class EntityCategory:  # pragma: no cover - only used as stub
         CONFIG = "config"
+        DIAGNOSTIC = "diagnostic"
 
     entity.DeviceInfo = DeviceInfo
     entity.EntityCategory = EntityCategory
@@ -206,6 +212,26 @@ def _install_homeassistant_stubs() -> None:
 
     switch.SwitchEntity = SwitchEntity
     sys.modules.setdefault("homeassistant.components.switch", switch)
+
+    sensor = types.ModuleType("homeassistant.components.sensor")
+
+    class SensorEntity:  # pragma: no cover - only used as stub
+        def async_on_remove(self, *args, **kwargs):
+            return None
+
+        def async_write_ha_state(self):
+            return None
+
+    class SensorDeviceClass:  # pragma: no cover - only used as stub
+        BATTERY = "battery"
+
+    class SensorStateClass:  # pragma: no cover - only used as stub
+        MEASUREMENT = "measurement"
+
+    sensor.SensorEntity = SensorEntity
+    sensor.SensorDeviceClass = SensorDeviceClass
+    sensor.SensorStateClass = SensorStateClass
+    sys.modules.setdefault("homeassistant.components.sensor", sensor)
 
     frontend = types.ModuleType("homeassistant.components.frontend")
     frontend.add_extra_js_url = lambda *args, **kwargs: None

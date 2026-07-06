@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import custom_components.sofabaton_x1s.hub as hub_module
 from custom_components.sofabaton_x1s.hub import SofabatonHub, get_hub_model
-from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S, HUB_VERSION_X2
 from custom_components.sofabaton_x1s.lib.commands import build_descriptive_ir_blob_body
 from custom_components.sofabaton_x1s.lib.devices import DeviceConfig, build_device_create_payload
 from custom_components.sofabaton_x1s.lib.macros import MacroKeyEntry, MacroRecord
@@ -1798,6 +1798,149 @@ def test_async_restore_persistent_cache_bumps_cache_generation():
     loop.run_until_complete(hub.async_restore_persistent_cache({}))
 
     assert hub.cache_generation == 1
+
+    loop.close()
+
+
+def test_async_poll_remote_battery_updates_cached_state(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version=HUB_VERSION_X2,
+    )
+    calls: list[float] = []
+
+    def _poll(*, timeout: float = 2.0):
+        calls.append(timeout)
+        return {
+            "ok": True,
+            "decoded": {
+                "battery": 84,
+                "name": "Remote 1",
+                "remote_id": 8,
+                "remote_id_hex": "00 00 08",
+                "accessory_id": 8,
+                "online": True,
+                "hardware_version": 4,
+                "firmware_version": 7,
+                "production_batch_hex": "20 25 06 10",
+            },
+        }
+
+    monkeypatch.setattr(hub._proxy, "poll_x2_remote_battery", _poll)
+
+    result = loop.run_until_complete(
+        hub.async_poll_remote_battery(wait_timeout=1.25)
+    )
+
+    assert calls == [1.25]
+    assert result["ok"] is True
+    assert hub.remote_battery_level == 84
+    assert hub.get_remote_battery_state()["level"] == 84
+    attrs = hub.get_remote_battery_attributes()
+    assert attrs["last_poll_status"] == "success"
+    assert attrs["remote_name"] == "Remote 1"
+    assert attrs["remote_id"] == 8
+    assert attrs["remote_id_hex"] == "00 00 08"
+    assert attrs["accessory_id"] == 8
+
+    loop.close()
+
+
+def test_remote_battery_unconfirmed_zero_preserves_previous_value():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version=HUB_VERSION_X2,
+    )
+    hub.remote_battery_level = 82
+
+    hub._record_remote_battery_poll(
+        {
+            "ok": True,
+            "unconfirmed_zero": True,
+            "decoded": {
+                "battery": 0,
+                "name": "Remote 1",
+                "remote_id": 8,
+                "remote_id_hex": "00 00 08",
+                "accessory_id": 8,
+            },
+        }
+    )
+
+    assert hub.remote_battery_level == 82
+    attrs = hub.get_remote_battery_attributes()
+    assert attrs["unconfirmed_zero"] is True
+    assert attrs["last_poll_status"] == "zero_ignored"
+    assert attrs["last_raw_battery"] == 0
+
+    loop.close()
+
+
+def test_remote_battery_unconfirmed_zero_without_previous_value_stays_unavailable():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+        version=HUB_VERSION_X2,
+    )
+
+    hub._record_remote_battery_poll(
+        {
+            "ok": True,
+            "unconfirmed_zero": True,
+            "decoded": {
+                "battery": 0,
+                "name": "Remote 1",
+                "remote_id": 8,
+                "remote_id_hex": "00 00 08",
+                "accessory_id": 8,
+            },
+        }
+    )
+
+    assert hub.remote_battery_level is None
+    state = hub.get_remote_battery_state()
+    assert state["level"] is None
+    attrs = hub.get_remote_battery_attributes()
+    assert attrs["last_poll_status"] == "zero_ignored"
+    assert attrs["last_raw_battery"] == 0
 
     loop.close()
 

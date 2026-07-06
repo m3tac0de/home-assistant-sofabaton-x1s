@@ -82,6 +82,18 @@ class _Hub:
     async def async_set_roku_server_enabled(self, enabled):
         self.roku_server_enabled = bool(enabled)
 
+    def get_remote_battery_state(self):
+        return {
+            "supported": False,
+            "level": None,
+            "last_updated": None,
+            "attributes": {
+                "supported": False,
+                "poll_interval_seconds": 900,
+                "last_updated": None,
+            },
+        }
+
     async def async_find_remote(self):
         self.find_remote_called = True
 
@@ -372,6 +384,16 @@ def test_ws_get_control_panel_state_returns_hub_metadata(monkeypatch):
                         "total_steps": None,
                         "device_key": None,
                         "device_name": None,
+                    },
+                    "remote_battery": {
+                        "supported": False,
+                        "level": None,
+                        "last_updated": None,
+                        "attributes": {
+                            "supported": False,
+                            "poll_interval_seconds": 900,
+                            "last_updated": None,
+                        },
                     },
                 }
             ],

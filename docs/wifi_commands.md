@@ -14,13 +14,13 @@ In the **Sofabaton Control Panel** card, open the **Wifi Commands** tab. Up to *
 > - Once configuration is successfully deployed to the hub, the physical remote is instructed to synchronize, which may take another few minutes to complete.
 > - Due to the above, it is best to create a complete configuration before deploying to the hub. **Note that Actions can be modified without the need to resync; you can add/remove and change them at any time**.
 
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/e42ac6b9-d5c0-421c-a8c6-930bb3bfe441" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/8b9aff1f-3df5-4889-ae02-bbdc336c74cd" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/cbc0a2e1-635b-4b7c-804d-e0e67051b643" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/16015586-a4c4-4f7c-99b8-51d5af71b35c" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/262c8dfa-fd0d-48fc-9be4-3543ed11e6a8" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/25c80081-205d-4560-9803-e18935d8aed6" />
-<img height="180" alt="image" src="https://github.com/user-attachments/assets/007289f9-a8e2-404e-9d45-ebabc1b6269e" />
+<img height="180" alt="Wifi Devices list" src="images/wifi-commands-devices.png" />
+<img height="180" alt="Command slot grid" src="images/wifi-commands-command-grid.png" />
+<img height="180" alt="Command slot: power and input settings" src="images/wifi-commands-slot-advanced.png" />
+<img height="180" alt="Command slot: favorite and activities" src="images/wifi-commands-slot-favorite.png" />
+<img height="180" alt="Command slot: configuring an Action" src="images/wifi-commands-slot-action.png" />
+<img height="180" alt="Command grid ready to sync" src="images/wifi-commands-sync-pending.png" />
+<img height="180" alt="Sync to hub in progress" src="images/wifi-commands-syncing.png" />
 
 ## How this works
 
@@ -66,6 +66,8 @@ The **Wifi Commands** feature uses an HTTP listener that will by default attempt
 
 The port the HTTP listener binds to can be changed in the integration's general config, but doing so will break X1 compatibility. Other hub versions can freely change ports.
 Detailed networking documentation is [here](networking.md).
+
+Security note: this listener is meant for trusted LAN/VLAN traffic from the configured Sofabaton hub. It is not an internet-facing webhook endpoint; keep it behind your normal network firewall and see the [networking security model](networking.md#security--listener-model) for the listener-side checks.
 
 ## `sensor.<hub>_wifi_commands`
 

@@ -23,6 +23,7 @@ from .protocol_const import (
     FAMILY_HUB_NAME_REPLY,
     FAMILY_MACROS,
     FAMILY_KEYMAP,
+    FAMILY_REMOTE_STATUS,
     OP_ACK_READY,
     OP_CATALOG_ROW_ACTIVITY,
     OP_CATALOG_ROW_DEVICE,
@@ -577,6 +578,15 @@ class X2RemoteListRowHandler(BaseFrameHandler):
         proxy: X1Proxy = frame.proxy
         proxy.update_x2_remote_sync_id(remote_id)
         proxy._log.info("[REMOTE_SYNC] X2 remote id=%s", remote_id.hex(" "))
+
+
+@register_handler(opcode_families_low=(FAMILY_REMOTE_STATUS,), directions=("H→A",))
+class RemoteStatusReplyHandler(BaseFrameHandler):
+    """Queue remote-status replies for synchronous X2 requests."""
+
+    def handle(self, frame: FrameContext) -> None:
+        frame.proxy.notify_ack(frame.opcode, frame.payload)
+
 
 @register_handler(opcodes=(OP_REQ_ACTIVATE,), directions=("A→H",))
 class ActivateRequestHandler(BaseFrameHandler):

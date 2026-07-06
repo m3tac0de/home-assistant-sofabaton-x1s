@@ -486,7 +486,7 @@ function updateDeviceCommandLabel(
   const normalizedDeviceId = Number(deviceId);
   const normalizedCommandId = Number(commandId);
   const trimmed = String(name ?? "").trim();
-  return {
+  const next: BackupBundlePayload = {
     ...bundle,
     devices: (bundle.devices ?? []).map((device) => {
       if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
@@ -499,6 +499,10 @@ function updateDeviceCommandLabel(
       };
     }),
   };
+  // HA-action callbacks carry the command name inside the callback URL;
+  // a rename must re-render the stored request or the hub keeps firing
+  // the old name.
+  return refreshHaActionCallback(next, normalizedDeviceId, normalizedCommandId);
 }
 
 function commandLabelFor(bundle: BackupBundlePayload, deviceId: number, commandId: number) {
@@ -867,7 +871,9 @@ export type BackupDeleteTarget =
   | { kind: "favorite"; activityId: number; buttonId: number }
   | { kind: "macro"; activityId: number; buttonId: number }
   | { kind: "activity_binding"; activityId: number; buttonId: number }
-  | { kind: "device_binding"; deviceId: number; buttonId: number };
+  | { kind: "device_binding"; deviceId: number; buttonId: number }
+  // Remove a device FROM one activity (the device stays in the bundle).
+  | { kind: "activity_member"; activityId: number; deviceId: number };
 
 /**
  * Cascade impact of a delete, surfaced in the confirm dialog so the
@@ -1090,6 +1096,9 @@ export function bundleDeleteImpact(
     );
     return { favorites, macroSteps, activities: 0, bindings };
   }
+  if (target.kind === "activity_member") {
+    return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
+  }
   return empty;
 }
 
@@ -1288,6 +1297,8 @@ export function applyBundleDelete(
       return deleteActivityButtonBinding(bundle, target.activityId, target.buttonId);
     case "device_binding":
       return deleteDeviceButtonBinding(bundle, target.deviceId, target.buttonId);
+    case "activity_member":
+      return removeActivityMemberDevice(bundle, target.activityId, target.deviceId);
   }
 }
 
@@ -1413,12 +1424,16 @@ function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[
  * Reconcile one power macro's flat step list to `members`: preserve every
  * existing member step (and any wait rows) verbatim, drop steps for devices
  * that are no longer members, and append the missing reference commands for
- * each member (one step per `refCommands` entry it lacks).
+ * the devices in `seedIds` (members with no power representation yet).
+ * Devices already represented in the power macros keep their step set
+ * verbatim — a deliberately absent 0xC6/0xC7 encodes "stays as is" /
+ * "leave on" and must not be re-completed.
  */
 function reconcilePowerMacroSteps(
   existingSteps: BackupBundleMacroStep[] | null | undefined,
   members: number[],
   refCommands: number[],
+  seedIds: Set<number>,
 ): BackupBundleMacroStep[] {
   const memberSet = new Set(members);
   const kept = (existingSteps ?? []).filter((step) => {
@@ -1428,6 +1443,7 @@ function reconcilePowerMacroSteps(
   });
   const out = [...kept];
   for (const deviceId of members) {
+    if (!seedIds.has(deviceId)) continue;
     for (const command of refCommands) {
       const present = out.some(
         (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command,
@@ -1442,20 +1458,33 @@ function reconcilePowerMacroSteps(
  * Bring an Activity's POWER_ON / POWER_OFF macros (and its
  * `referenced_source_device_ids`) into line with its member devices.
  * Idempotent and non-destructive: existing steps (inputs, delays, order)
- * are preserved; only newly-referenced devices are appended.
+ * are preserved; full reference sets are seeded only for devices with no
+ * power representation yet (newly-referenced or `extraMemberIds`), so a
+ * deliberately removed 0xC6/0xC7 ("stays as is" / "leave on") survives.
+ * `extraMemberIds` force devices with no reference anywhere into
+ * membership — the seeding path used by "add device to activity".
  */
 export function reconcileActivityPowerMacros(
   bundle: BackupBundlePayload,
   activityId: number,
+  extraMemberIds: number[] = [],
 ): BackupBundlePayload {
   return updateActivity(bundle, activityId, (activity) => {
-    const members = activityMemberDeviceIds(activity);
+    const selfId = Number(activity?.device?.device_id || 0);
+    const powerIds = activityPowerDeviceIds(activity);
+    const memberSet = new Set(activityMemberDeviceIds(activity));
+    for (const id of extraMemberIds) {
+      const extraId = Number(id || 0);
+      if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
+    }
+    const members = [...memberSet].sort((left, right) => left - right);
+    const seedIds = new Set(members.filter((id) => !powerIds.has(id)));
     const macros = [...(activity.macros ?? [])];
     const ensure = (buttonId: number, name: string, refCommands: number[]) => {
       const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
       const existing = index >= 0 ? macros[index] : null;
       if (!existing && members.length === 0) return;
-      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands);
+      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands, seedIds);
       const next: BackupBundleMacroRow = {
         ...(existing ?? {}),
         button_id: buttonId,
@@ -1479,6 +1508,277 @@ export function reconcileBundlePowerMacros(bundle: BackupBundlePayload): BackupB
     if (id > 0) next = reconcileActivityPowerMacros(next, id);
   }
   return next;
+}
+
+// ── Activity membership editing ─────────────────────────────────────
+//
+// Membership is DERIVED, not stored: a device belongs to an activity
+// because something references it (power-ref steps, favorites, button
+// bindings, macro steps); `referenced_source_device_ids` is a recomputed
+// mirror. "Add device" therefore seeds power-ref steps (the minimal
+// reference), and "remove device" strips every reference and reconciles.
+
+function findBundleActivity(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): BackupBundleActivityPayload | undefined {
+  return (bundle?.activities ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId),
+  );
+}
+
+/**
+ * Per-device member view of an Activity, spanning all three power-facing
+ * concerns the narrative editor renders: chips (membership), the start
+ * section (power-on + input), and the end section (power-off). Order
+ * follows POWER_ON step appearance, then POWER_OFF, then remaining
+ * members by id.
+ */
+export interface BackupActivityMemberView {
+  deviceId: number;
+  deviceName: string;
+  /** Device has a 0xC6 power-on ref step ("turns on" vs "stays as is"). */
+  powersOn: boolean;
+  /** 1-based ordinal from the device's 0xC5 input step; 0 = unset. */
+  inputOrdinal: number;
+  inputCommandId: number | null;
+  inputCommandName: string | null;
+  /** Device has a 0xC7 power-off ref step ("turn off" vs "leave on"). */
+  powersOff: boolean;
+}
+
+export function activityMemberViews(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): BackupActivityMemberView[] {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  // Hidden HA-action hosts stay members data-wise (power-ref invariant,
+  // restore id-mapping) but are plumbing, not devices the user manages.
+  const members = activityMemberDeviceIds(activity)
+    .filter((id) => !isHaActionDeviceId(bundle, id));
+  const memberSet = new Set(members);
+  const macroFor = (buttonId: number) =>
+    (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
+  const powerOn = macroFor(POWER_ON_MACRO_BUTTON_ID);
+  const powerOff = macroFor(POWER_OFF_MACRO_BUTTON_ID);
+  const order: number[] = [];
+  const push = (value: unknown) => {
+    const id = Number(value || 0);
+    if (id > 0 && memberSet.has(id) && !order.includes(id)) order.push(id);
+  };
+  for (const step of powerOn?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const step of powerOff?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const id of members) push(id);
+  return order.map((deviceId) => {
+    const onSteps = (powerOn?.steps ?? []).filter(
+      (step) => !isMacroDelayStep(step) && Number(step?.device_id || 0) === deviceId,
+    );
+    const powersOn = onSteps.some(
+      (step) => Number(step?.command_id || 0) === DEVICE_POWER_ON_REF_COMMAND,
+    );
+    const inputStep = onSteps.find(
+      (step) => Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND,
+    );
+    const inputOrdinal = Number(inputStep?.duration || 0);
+    const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === inputOrdinal);
+    const powersOff = (powerOff?.steps ?? []).some(
+      (step) => !isMacroDelayStep(step)
+        && stepMatchesCommand(step, deviceId, DEVICE_POWER_OFF_REF_COMMAND),
+    );
+    return {
+      deviceId,
+      deviceName: deviceNameFor(bundle, deviceId),
+      powersOn,
+      inputOrdinal,
+      inputCommandId: input?.commandId ?? null,
+      inputCommandName: input?.name || (inputOrdinal > 0 ? `Input ${inputOrdinal}` : null),
+      powersOff,
+    };
+  });
+}
+
+/** Bundle devices not yet members of the Activity — the "Add device" menu. */
+export function activityAddableDevices(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): BackupSelectionOption[] {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = new Set(activityMemberDeviceIds(activity));
+  return bundleDeviceOptions(bundle).filter(
+    (option) => !members.has(option.id) && !isHaActionDeviceId(bundle, option.id),
+  );
+}
+
+/**
+ * Add a device to an Activity by seeding its full power-ref step set
+ * (0xC6 + 0xC5 in POWER_ON, 0xC7 in POWER_OFF) — the reference that
+ * makes it a member. Idempotent; no-op for unknown devices, the
+ * activity's own id, or existing members.
+ */
+export function addActivityMemberDevice(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  deviceId: number,
+): BackupBundlePayload {
+  const dId = Number(deviceId);
+  const aId = Number(activityId);
+  if (dId <= 0 || dId === aId || !findDevice(bundle, dId)) return bundle;
+  const activity = findBundleActivity(bundle, aId);
+  if (!activity) return bundle;
+  if (activityMemberDeviceIds(activity).includes(dId)) return bundle;
+  return reconcileActivityPowerMacros(bundle, aId, [dId]);
+}
+
+/**
+ * Remove a device from an Activity: strip every reference to it inside
+ * this activity (power steps, favorites, bindings incl. long-press,
+ * macro steps) and reconcile. The device itself stays in the bundle.
+ */
+export function removeActivityMemberDevice(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  deviceId: number,
+): BackupBundlePayload {
+  const aId = Number(activityId);
+  const next = updateActivity(bundle, aId, (activity) =>
+    stripDeviceFromActivity(activity, Number(deviceId)),
+  );
+  return reconcileActivityPowerMacros(next, aId);
+}
+
+/**
+ * What removing a device from this Activity takes with it, scoped to the
+ * activity (contrast {@link bundleDeleteImpact}, which spans the bundle).
+ * `macroSteps` counts user-visible steps only — the power-ref rows the
+ * reconcile machinery manages are implementation detail and would only
+ * confuse the confirm dialog.
+ */
+export function activityMemberRemovalImpact(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+  deviceId: number,
+): BackupDeleteImpact {
+  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const activity = findBundleActivity(bundle, activityId);
+  if (!activity) return empty;
+  const dId = Number(deviceId);
+  let favorites = 0;
+  for (const slot of activity.favorite_slots ?? []) {
+    if (Number(slot?.device_id || 0) === dId) favorites += 1;
+  }
+  let macroSteps = 0;
+  for (const macro of activity.macros ?? []) {
+    if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) {
+      for (const step of macro?.steps ?? []) {
+        if (!isMacroDelayStep(step) && !isPowerRefStep(step) && stepMatchesDevice(step, dId)) {
+          macroSteps += 1;
+        }
+      }
+    } else {
+      macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, dId));
+    }
+  }
+  const bindings = countAffectedBindings(
+    activity.button_bindings,
+    (binding) => cascadeBindingForDeletedDevice(binding, dId),
+  );
+  return { favorites, macroSteps, activities: 0, bindings };
+}
+
+/**
+ * Toggle one power-ref step for a member device: `refCommand` present in
+ * macro `buttonId` when `present`, absent otherwise. When removing the
+ * device's last power representation, a no-op 0xC5 input step (ordinal 0)
+ * is seeded in POWER_ON so the device stays a member — otherwise the next
+ * reconcile would silently drop it from the activity.
+ */
+function setActivityPowerRefStep(
+  activity: BackupBundleActivityPayload,
+  deviceId: number,
+  buttonId: number,
+  refCommand: number,
+  present: boolean,
+): BackupBundleActivityPayload {
+  const dId = Number(deviceId);
+  const macros = [...(activity.macros ?? [])];
+  const macroIndex = (id: number) => macros.findIndex((macro) => Number(macro?.button_id || 0) === id);
+  const appendStep = (id: number, name: string, step: BackupBundleMacroStep) => {
+    const index = macroIndex(id);
+    const existing = index >= 0 ? macros[index] : null;
+    const next: BackupBundleMacroRow = {
+      ...(existing ?? { button_id: id, name }),
+      steps: [...(existing?.steps ?? []), step],
+    };
+    if (index >= 0) macros[index] = next;
+    else macros.push(next);
+  };
+  const index = macroIndex(buttonId);
+  const target = index >= 0 ? macros[index] : null;
+  const has = (target?.steps ?? []).some(
+    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, refCommand),
+  );
+  if (present === has) return activity;
+  if (present) {
+    appendStep(
+      buttonId,
+      buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON",
+      powerStep(dId, refCommand),
+    );
+    return { ...activity, macros };
+  }
+  macros[index] = {
+    ...target!,
+    steps: filterMacroSteps(target!.steps, (step) => stepMatchesCommand(step, dId, refCommand)),
+  };
+  const probe: BackupBundleActivityPayload = { ...activity, macros };
+  if (!activityMemberDeviceIds(probe).includes(dId)) {
+    appendStep(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0));
+  }
+  return { ...activity, macros };
+}
+
+/** Set whether the Activity turns this member device off when it ends. */
+export function setActivityDevicePowerOff(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  deviceId: number,
+  powersOff: boolean,
+): BackupBundlePayload {
+  return updateActivity(bundle, Number(activityId), (activity) => {
+    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
+    return setActivityPowerRefStep(
+      activity,
+      deviceId,
+      POWER_OFF_MACRO_BUTTON_ID,
+      DEVICE_POWER_OFF_REF_COMMAND,
+      Boolean(powersOff),
+    );
+  });
+}
+
+/** Set whether the Activity turns this member device on when it starts. */
+export function setActivityDevicePowerOn(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  deviceId: number,
+  powersOn: boolean,
+): BackupBundlePayload {
+  return updateActivity(bundle, Number(activityId), (activity) => {
+    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
+    return setActivityPowerRefStep(
+      activity,
+      deviceId,
+      POWER_ON_MACRO_BUTTON_ID,
+      DEVICE_POWER_ON_REF_COMMAND,
+      Boolean(powersOn),
+    );
+  });
 }
 
 // ── Macro editing ───────────────────────────────────────────────────
@@ -2496,6 +2796,579 @@ export function deleteDeviceButtonBinding(
       };
     }),
   };
+}
+
+// ── Role-based button assignment ─────────────────────────────────────
+//
+// The narrative editor's "While the activity is running" section asks
+// four questions ("Volume buttons control …") instead of ~20 per-button
+// dialogs. Each answer fans out to individual KeyToKey binding rows,
+// copied from the target device's DEVICE-MODE bindings — cloud-sourced
+// devices ship with those, so no label heuristics are needed. Reading an
+// existing configuration back is lossy by design: a group that doesn't
+// match any clean assignment reports "customized" / "custom" rather
+// than pretending.
+
+export type ActivityRoleGroupId = "volume" | "navigation" | "playback" | "channels";
+
+export const ACTIVITY_ROLE_GROUPS: ActivityRoleGroupId[] = [
+  "volume",
+  "navigation",
+  "playback",
+  "channels",
+];
+
+// Role groups cover the shared X1/X1S/X2 buttons plus the X2-only Play
+// key; colour buttons and the remaining X2 extras (A/B/C/Exit/DVR/Guide)
+// are one-off assignments and live only in the per-button view.
+const ROLE_GROUP_BUTTON_IDS: Record<ActivityRoleGroupId, number[]> = {
+  volume: [0xB6, 0xB9, 0xB8],
+  navigation: [0xAE, 0xB2, 0xAF, 0xB1, 0xB0, 0xB3, 0xB4, 0xB5],
+  playback: [0x9C, 0xBC, 0xBB, 0xBD],
+  channels: [0xB7, 0xBA],
+};
+
+/** A role group's buttons on the bundle's hub model, catalog-filtered. */
+function roleGroupButtons(bundle: BackupBundlePayload | null, group: ActivityRoleGroupId): number[] {
+  const catalog = new Set(bundleButtonCatalog(bundle).map((entry) => entry.code));
+  return ROLE_GROUP_BUTTON_IDS[group].filter((code) => catalog.has(code));
+}
+
+/** A device's device-mode bindings for a role group's buttons, by button id. */
+function deviceRoleBindings(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+  group: ActivityRoleGroupId,
+): Map<number, BackupBundleButtonBinding> {
+  const device = findDevice(bundle, Number(deviceId));
+  const groupIds = new Set(roleGroupButtons(bundle, group));
+  const byButton = new Map<number, BackupBundleButtonBinding>();
+  for (const row of device?.button_bindings ?? []) {
+    const buttonId = Number(row?.button_id || 0);
+    if (groupIds.has(buttonId) && Number(row?.command_id || 0) > 0) byButton.set(buttonId, row);
+  }
+  return byButton;
+}
+
+/** How many of a group's buttons `deviceId`'s device-mode map covers. */
+export function roleMappableButtonCount(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+  group: ActivityRoleGroupId,
+): number {
+  return deviceRoleBindings(bundle, deviceId, group).size;
+}
+
+export type ActivityRoleState = "device" | "customized" | "custom" | "unused";
+
+export interface ActivityRoleAssignment {
+  group: ActivityRoleGroupId;
+  /**
+   * "device"     — every bound group button matches `deviceId`'s device-mode
+   *                mapping exactly (incl. long press), and nothing extra.
+   * "customized" — one target device, but commands/coverage diverge from
+   *                its device-mode mapping.
+   * "custom"     — mixed target devices, or a macro-bound button.
+   * "unused"     — no group button is bound.
+   */
+  state: ActivityRoleState;
+  deviceId: number | null;
+  deviceName: string | null;
+  /** Group buttons bound in this activity. */
+  boundCount: number;
+  /** Group buttons that exist on this hub model. */
+  totalCount: number;
+}
+
+/** Classify each role group's current binding state for one Activity. */
+export function activityRoleAssignments(
+  bundle: BackupBundlePayload | null,
+  activityId: number,
+): ActivityRoleAssignment[] {
+  const activity = findBundleActivity(bundle, activityId);
+  return ACTIVITY_ROLE_GROUPS.map((group) => {
+    const buttons = roleGroupButtons(bundle, group);
+    const totalCount = buttons.length;
+    const groupSet = new Set(buttons);
+    const bound = (activity?.button_bindings ?? []).filter(
+      (row) => groupSet.has(Number(row?.button_id || 0)) && Number(row?.device_id || 0) > 0,
+    );
+    const unused: ActivityRoleAssignment = {
+      group, state: "unused", deviceId: null, deviceName: null, boundCount: 0, totalCount,
+    };
+    if (!bundle || !activity || bound.length === 0) return unused;
+    const selfId = Number(activity.device?.device_id || 0);
+    const targetIds = new Set<number>();
+    for (const row of bound) {
+      targetIds.add(Number(row?.device_id || 0));
+      const lpDeviceId = Number(row?.long_press_device_id || 0);
+      if (lpDeviceId > 0) targetIds.add(lpDeviceId);
+    }
+    const [only] = [...targetIds];
+    if (targetIds.size !== 1 || only === selfId) {
+      return { group, state: "custom", deviceId: null, deviceName: null, boundCount: bound.length, totalCount };
+    }
+    const mapped = deviceRoleBindings(bundle, only, group);
+    const exact = bound.length === mapped.size && bound.every((row) => {
+      const ref = mapped.get(Number(row?.button_id || 0));
+      if (!ref) return false;
+      if (Number(row?.command_id || 0) !== Number(ref?.command_id || 0)) return false;
+      const rowLp = Number(row?.long_press_command_id || 0);
+      const refLp = Number(ref?.long_press_command_id || 0);
+      if (rowLp !== refLp) return false;
+      return rowLp === 0 || Number(row?.long_press_device_id || 0) === only;
+    });
+    return {
+      group,
+      state: exact ? "device" : "customized",
+      deviceId: only,
+      deviceName: deviceNameFor(bundle, only),
+      boundCount: bound.length,
+      totalCount,
+    } satisfies ActivityRoleAssignment;
+  });
+}
+
+/**
+ * Point a role group at a device: clear the group's activity bindings,
+ * then copy the device's device-mode bindings for every group button it
+ * covers (long-press targets ride along). `null` clears the group
+ * ("Not used"). Other groups' bindings are untouched; membership is
+ * reconciled afterwards, so a newly-referenced device joins the activity.
+ */
+export function setActivityRoleDevice(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  group: ActivityRoleGroupId,
+  deviceId: number | null,
+): BackupBundlePayload {
+  const aId = Number(activityId);
+  const buttons = roleGroupButtons(bundle, group);
+  const groupSet = new Set(buttons);
+  const mapped = deviceId != null && Number(deviceId) > 0
+    ? deviceRoleBindings(bundle, Number(deviceId), group)
+    : null;
+  const next = updateActivity(bundle, aId, (activity) => {
+    let rows = (activity.button_bindings ?? []).filter(
+      (row) => !groupSet.has(Number(row?.button_id || 0)),
+    );
+    if (mapped) {
+      const dId = Number(deviceId);
+      for (const buttonId of buttons) {
+        const ref = mapped.get(buttonId);
+        if (!ref) continue;
+        const row: BackupBundleButtonBinding = {
+          button_id: buttonId,
+          button_name: buttonName(buttonId),
+          device_id: dId,
+          command_id: Number(ref.command_id),
+        };
+        const lpCommandId = Number(ref?.long_press_command_id || 0);
+        if (lpCommandId > 0) {
+          row.long_press_device_id = dId;
+          row.long_press_command_id = lpCommandId;
+        }
+        rows = upsertBindingRow(rows, row);
+      }
+    }
+    return { ...activity, button_bindings: rows };
+  });
+  return reconcileActivityPowerMacros(next, aId);
+}
+
+// ── Home Assistant actions ───────────────────────────────────────────
+//
+// An "HA action" is a wifi_ip command slot on a hidden, editor-managed
+// "Home Assistant" device whose HTTP callback targets this HA instance's
+// wifi-commands listener. The callback uses the listener's NAME-based
+// path form (`/launch/{token}/{device}/{name}/{press}`), so the action
+// keeps firing correctly even after a restore reassigns device ids.
+// The command's `restore_data` mirrors a real capture (hub_code_record
+// + data_hex + decoded block) so the ordinary restore pipeline writes
+// it with zero special-casing. The blob's 1-byte inner-record trailer
+// is deliberately omitted: replay is length-prefixed so the trailer is
+// inert for sending; live-hub validation is tracked in
+// docs/protocol/live-hub-testing.md.
+//
+// Lifecycle is sweep-based: `pruneHaActionHosts` (run on every editor
+// commit) drops slots nothing references anymore and dissolves empty
+// host devices. Membership-wise the host is a normal member (power-ref
+// invariant, restore id-mapping), but it is hidden from the
+// member-facing UI via `isHaActionDeviceId` filters.
+
+export const HA_ACTION_HOST_NAME = "Home Assistant";
+const HA_ACTION_HOST_BRAND = "m3tac0de";
+const HA_ACTION_MAX_SLOTS = 10;
+// wifi_ip device-class / library code (0x1C) — see docs/protocol.
+const HA_ACTION_LIBRARY_TYPE = 0x1C;
+const HA_ACTION_DEFAULT_PORT = 8060;
+const MAX_DEVICE_ID = 0x63;
+const HA_IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+
+export interface HaActionCallbackTarget {
+  host: string;
+  port: number;
+}
+
+export function isHaActionHostEntry(entry: BackupBundleDevicePayload | null | undefined): boolean {
+  return Boolean(entry?.ha_action_host);
+}
+
+/** True when `deviceId` is one of the bundle's hidden HA-action hosts. */
+export function isHaActionDeviceId(bundle: BackupBundlePayload | null, deviceId: number): boolean {
+  return (bundle?.devices ?? []).some(
+    (entry) => isHaActionHostEntry(entry) && Number(entry?.device?.device_id || 0) === Number(deviceId),
+  );
+}
+
+/** Parse "ip[:port]" into a callback target; null when not a usable IPv4. */
+export function parseHaActionAddress(value: string): HaActionCallbackTarget | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const [hostPart, portPart, ...rest] = raw.split(":");
+  if (rest.length > 0) return null;
+  const host = hostPart.trim();
+  if (!HA_IPV4_PATTERN.test(host)) return null;
+  if (portPart === undefined || portPart.trim() === "") {
+    return { host, port: HA_ACTION_DEFAULT_PORT };
+  }
+  const port = Number(portPart.trim());
+  if (!Number.isInteger(port) || port <= 0 || port > 0xFFFF) return null;
+  return { host, port };
+}
+
+/**
+ * The callback target already in use by this bundle's HA-action slots,
+ * so later additions (and the dialog prefill) reuse it.
+ */
+export function bundleHaActionTarget(bundle: BackupBundlePayload | null): HaActionCallbackTarget | null {
+  for (const entry of bundle?.devices ?? []) {
+    if (!isHaActionHostEntry(entry)) continue;
+    for (const row of entry.commands ?? []) {
+      const decoded = (row?.restore_data as Record<string, unknown> | undefined)?.decoded as
+        | { fields?: Record<string, unknown> }
+        | undefined;
+      const host = String(decoded?.fields?.host || "");
+      const port = Number(decoded?.fields?.port || 0);
+      if (HA_IPV4_PATTERN.test(host) && port > 0) return { host, port };
+    }
+  }
+  return null;
+}
+
+// The listener's old-format parser runs unquote() and then replaces "_"
+// with " ", so underscores can never round-trip. Normalize at creation
+// so the name the user sees is exactly the label HA receives.
+function normalizeHaActionName(value: string): string {
+  return String(value ?? "").trim().replace(/_/g, " ");
+}
+
+function haActionCallbackPath(deviceId: number, name: string): string {
+  return `/launch/ha/${Number(deviceId)}/${encodeURIComponent(name)}/short`;
+}
+
+function asciiHexBytes(text: string): number[] {
+  const out: number[] = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code > 0x7F) throw new Error(`non-ASCII character in callback text: ${text[index]}`);
+    out.push(code);
+  }
+  return out;
+}
+
+/**
+ * Render the wifi_ip command blob for an HA-action callback. Mirrors
+ * `render_wifi_ip_http_text` in lib/blob_decoders.py for the fixed
+ * shape this flow uses (POST, x-www-form-urlencoded, no extra headers,
+ * no body) — guarded by the Python parity test
+ * tests/test_ha_action_writer_parity.py.
+ */
+function renderHaActionDataHex(target: HaActionCallbackTarget, path: string): string {
+  const text =
+    `POST ${path} HTTP/1.1\r\n` +
+    `Host:${target.host}:${target.port}\r\n` +
+    "Content-Type:application/x-www-form-urlencoded\r\n" +
+    "\r\n";
+  const textBytes = asciiHexBytes(text);
+  const ipBytes = target.host.split(".").map((part) => Number(part) & 0xFF);
+  const bytes = [
+    ...ipBytes,
+    (target.port >> 8) & 0xFF,
+    target.port & 0xFF,
+    (textBytes.length >> 8) & 0xFF,
+    textBytes.length & 0xFF,
+    ...textBytes,
+  ];
+  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(" ");
+}
+
+function haActionCommandCodeHex(commandId: number): string {
+  const code = (0x4E20 + (Number(commandId) & 0xFF)) & 0xFFFFFFFFFFFF;
+  const hex = code.toString(16).padStart(12, "0");
+  return hex.replace(/(..)(?=.)/g, "$1 ");
+}
+
+function buildHaActionCommandRow(
+  deviceId: number,
+  commandId: number,
+  name: string,
+  target: HaActionCallbackTarget,
+): BackupBundleCommandRow {
+  const path = haActionCallbackPath(deviceId, name);
+  return {
+    command_id: commandId,
+    name,
+    restore_data: {
+      transport: "hub_code_record",
+      library_type: HA_ACTION_LIBRARY_TYPE,
+      command_code: haActionCommandCodeHex(commandId),
+      data_hex: renderHaActionDataHex(target, path),
+      decoded: {
+        class: "wifi_ip",
+        fields: {
+          host: target.host,
+          port: target.port,
+          method: "POST",
+          path,
+          header: "",
+          content_type: "application/x-www-form-urlencoded",
+          body: "",
+        },
+        trailer_hex: "",
+        edited: false,
+      },
+    },
+  };
+}
+
+/**
+ * Re-render an HA-action command's callback from its current name and
+ * stored target. No-op for anything that isn't an HA-action slot.
+ */
+function refreshHaActionCallback(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+): BackupBundlePayload {
+  if (!isHaActionDeviceId(bundle, deviceId)) return bundle;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== Number(deviceId)) {
+        return entry;
+      }
+      return {
+        ...entry,
+        commands: (entry.commands ?? []).map((row) => {
+          if (Number(row?.command_id || 0) !== Number(commandId)) return row;
+          const decoded = (row?.restore_data as Record<string, unknown> | undefined)?.decoded as
+            | { fields?: Record<string, unknown> }
+            | undefined;
+          const host = String(decoded?.fields?.host || "");
+          const port = Number(decoded?.fields?.port || 0);
+          if (!HA_IPV4_PATTERN.test(host) || port <= 0) return row;
+          const name = normalizeHaActionName(String(row?.name || ""));
+          return buildHaActionCommandRow(Number(deviceId), Number(commandId), name, { host, port });
+        }),
+      };
+    }),
+  };
+}
+
+/** Lowest unused id in the shared 8-bit device space (1..0x63). */
+function allocateHaHostDeviceId(bundle: BackupBundlePayload): number | null {
+  const used = new Set<number>();
+  for (const entry of bundle.devices ?? []) used.add(Number(entry?.device?.device_id || 0));
+  for (const entry of bundle.activities ?? []) used.add(Number(entry?.device?.device_id || 0));
+  for (let id = 1; id <= MAX_DEVICE_ID; id += 1) {
+    if (!used.has(id)) return id;
+  }
+  return null;
+}
+
+// Device head mirroring the live wifi-create flow's DeviceConfig for an
+// IP-generic device (proxy_wifi_device._build_wifi_device_payload with
+// ip_device=True, committed state).
+function buildHaHostEntry(deviceId: number, name: string, sort: number): BackupBundleDevicePayload {
+  return {
+    ha_action_host: true,
+    device: {
+      device_id: deviceId,
+      name,
+      brand: HA_ACTION_HOST_BRAND,
+      device_class: "wifi_ip",
+      device_class_code: 0x1C,
+      icon: 1,
+      sort,
+      code_type: 0x1C,
+      device_type: 0x10,
+      code_id_hex: Array(16).fill("00").join(" "),
+      hide: 0,
+      input_flag: 0,
+      channel: 0,
+      power_state: 0,
+      poll_time: 0,
+      input_mode: 2,
+      power_mode: 0,
+      power_style: 0,
+      share_mode: 0,
+      tail_marker: 1,
+    } as BackupBundleDeviceBlock,
+    commands: [],
+  };
+}
+
+export interface HaActionProvision {
+  bundle: BackupBundlePayload;
+  deviceId: number;
+  commandId: number;
+  name: string;
+}
+
+/**
+ * Provision a new HA-action slot: reuse a host device with a free slot
+ * or create the next hidden host, then append the callback command.
+ * Returns null when the device id space is exhausted.
+ */
+export function provisionHaAction(
+  bundle: BackupBundlePayload,
+  rawName: string,
+  target: HaActionCallbackTarget,
+): HaActionProvision | null {
+  const name = normalizeHaActionName(rawName) || "HA action";
+  const hosts = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry));
+  let next = bundle;
+  let hostEntry = hosts.find((entry) => (entry.commands ?? []).length < HA_ACTION_MAX_SLOTS);
+  let deviceId: number;
+  if (hostEntry) {
+    deviceId = Number(hostEntry.device?.device_id || 0);
+    if (deviceId <= 0) return null;
+  } else {
+    const allocated = allocateHaHostDeviceId(bundle);
+    if (allocated == null) return null;
+    deviceId = allocated;
+    const hostName = hosts.length === 0
+      ? HA_ACTION_HOST_NAME
+      : `${HA_ACTION_HOST_NAME} ${hosts.length + 1}`;
+    const maxSort = (bundle.devices ?? []).reduce(
+      (max, entry) => Math.max(max, Number((entry?.device as { sort?: number } | null)?.sort || 0)),
+      0,
+    );
+    hostEntry = buildHaHostEntry(deviceId, hostName, maxSort + 1);
+    next = { ...bundle, devices: [...(bundle.devices ?? []), hostEntry] };
+  }
+  const usedSlots = new Set(
+    (hostEntry.commands ?? []).map((row) => Number(row?.command_id || 0)),
+  );
+  let commandId = 0;
+  for (let slot = 1; slot <= HA_ACTION_MAX_SLOTS; slot += 1) {
+    if (!usedSlots.has(slot)) {
+      commandId = slot;
+      break;
+    }
+  }
+  if (commandId === 0) return null;
+  const row = buildHaActionCommandRow(deviceId, commandId, name, target);
+  next = {
+    ...next,
+    devices: (next.devices ?? []).map((entry) => {
+      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== deviceId) return entry;
+      return { ...entry, commands: [...(entry.commands ?? []), row] };
+    }),
+  };
+  return { bundle: next, deviceId, commandId, name };
+}
+
+/**
+ * Provision an HA action and put it on the Activity's screen shortcuts.
+ * Returns null when provisioning fails (id space / slots exhausted).
+ */
+export function addActivityHaActionFavorite(
+  bundle: BackupBundlePayload,
+  activityId: number,
+  rawName: string,
+  target: HaActionCallbackTarget,
+): BackupBundlePayload | null {
+  const provision = provisionHaAction(bundle, rawName, target);
+  if (!provision) return null;
+  return addBundleActivityFavorite(
+    provision.bundle,
+    Number(activityId),
+    provision.deviceId,
+    provision.commandId,
+    provision.name,
+  );
+}
+
+/** A user-visible reference to an HA-action slot (power-ref plumbing excluded). */
+function haActionCommandReferenced(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+): boolean {
+  for (const activity of bundle.activities ?? []) {
+    for (const slot of activity?.favorite_slots ?? []) {
+      if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) return true;
+    }
+    for (const binding of activity?.button_bindings ?? []) {
+      if (Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId) return true;
+      if (
+        Number(binding?.long_press_device_id || 0) === deviceId
+        && Number(binding?.long_press_command_id || 0) === commandId
+      ) return true;
+    }
+    for (const macro of activity?.macros ?? []) {
+      for (const step of macro?.steps ?? []) {
+        if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
+        if (Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Sweep the bundle's HA-action hosts: drop slots nothing references,
+ * dissolve hosts with no slots left (incl. their membership plumbing,
+ * via the ordinary device-delete cascade). Idempotent; run after every
+ * editor commit.
+ */
+export function pruneHaActionHosts(bundle: BackupBundlePayload): BackupBundlePayload {
+  let next = bundle;
+  const hostIds = (bundle.devices ?? [])
+    .filter((entry) => isHaActionHostEntry(entry))
+    .map((entry) => Number(entry?.device?.device_id || 0))
+    .filter((id) => id > 0);
+  for (const deviceId of hostIds) {
+    const entry = (next.devices ?? []).find(
+      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId,
+    );
+    if (!entry) continue;
+    for (const row of [...(entry.commands ?? [])]) {
+      const commandId = Number(row?.command_id || 0);
+      if (commandId > 0 && !haActionCommandReferenced(next, deviceId, commandId)) {
+        next = deleteBundleDeviceCommand(next, deviceId, commandId);
+      }
+    }
+    const refreshed = (next.devices ?? []).find(
+      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId,
+    );
+    if (refreshed && (refreshed.commands ?? []).length === 0) {
+      next = deleteBundleDevice(next, deviceId);
+    }
+  }
+  return next;
+}
+
+/** Device options for the edit overview — hidden HA hosts excluded. */
+export function bundleEditableDeviceOptions(bundle: BackupBundlePayload | null): BackupSelectionOption[] {
+  const hidden = new Set(
+    (bundle?.devices ?? [])
+      .filter((entry) => isHaActionHostEntry(entry))
+      .map((entry) => Number(entry?.device?.device_id || 0)),
+  );
+  return bundleDeviceOptions(bundle).filter((option) => !hidden.has(option.id));
 }
 
 export function assertBackupBundleRestoreCompatible(bundle: BackupBundlePayload, destinationHubVersion: unknown) {

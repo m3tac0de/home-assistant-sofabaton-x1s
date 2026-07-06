@@ -606,9 +606,23 @@ class ActivityCache:
 
 
 class BurstScheduler:
-    def __init__(self, *, idle_s: float = 0.15, response_grace: float = 1.0) -> None:
+    # The activities/devices catalogs can be slow to *begin* streaming on a
+    # congested Wi-Fi link. Give those bursts the same ~5s response window the
+    # official app allows before treating a request as answered, so a slow hub
+    # is not mistaken for an empty catalog. All other burst kinds keep the
+    # snappier 1s grace.
+    _CATALOG_KINDS = frozenset({"activities", "devices"})
+
+    def __init__(
+        self,
+        *,
+        idle_s: float = 0.15,
+        response_grace: float = 1.0,
+        catalog_response_grace: float = 5.0,
+    ) -> None:
         self.idle_s = idle_s
         self.response_grace = response_grace
+        self.catalog_response_grace = catalog_response_grace
         self.active = False
         self.kind: str | None = None
         self.last_ts = 0.0
@@ -618,11 +632,16 @@ class BurstScheduler:
     def on_burst_end(self, key: str, cb: Callable[[str], None]) -> None:
         self.listeners.setdefault(key, []).append(cb)
 
+    def response_grace_for(self, kind: Optional[str]) -> float:
+        if kind in self._CATALOG_KINDS:
+            return self.catalog_response_grace
+        return self.response_grace
+
     def start(self, kind: str, *, now: Optional[float] = None) -> None:
         self.active = True
         self.kind = kind
         base = time.monotonic() if now is None else now
-        self.last_ts = base + self.response_grace
+        self.last_ts = base + self.response_grace_for(kind)
 
     def queue_or_send(
         self,

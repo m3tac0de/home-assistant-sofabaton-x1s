@@ -56,10 +56,11 @@ Restore works from a single `hub_bundle` JSON file. Devices are restored first.
 If the bundle also contains activities, those are restored second using the new
 device ids assigned on the destination hub.
 
-The file carries the source hub model and an exact `schema_version`. The UI
-rejects backups from newer schema versions, and it also refuses to restore a
-backup onto an **older** hub model. For example, a backup created on an `X2`
-hub will not restore onto an `X1S`.
+The file carries the source hub model and an exact `schema_version`. Restore
+requires the bundle's exact schema version (currently `5`); bundles with any
+other schema version — older or newer — are rejected, and no migrator is
+provided. The UI also refuses to restore a backup onto an **older** hub model.
+For example, a backup created on an `X2` hub will not restore onto an `X1S`.
 
 The important detail is that this compatibility check is about the Sofabaton
 hub **model/version family** recorded in the bundle's `hub.version` field:
