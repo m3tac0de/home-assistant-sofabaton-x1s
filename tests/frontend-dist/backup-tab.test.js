@@ -3794,43 +3794,78 @@ function activityMemberRemovalImpact(bundle, activityId, deviceId) {
   );
   return { favorites, macroSteps, activities: 0, bindings };
 }
+function powerRefDeviceOrder(activity) {
+  const order = [];
+  const push = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && !order.includes(id)) order.push(id);
+  };
+  for (const buttonId of [POWER_ON_MACRO_BUTTON_ID, POWER_OFF_MACRO_BUTTON_ID]) {
+    const macro = (activity.macros ?? []).find((entry) => Number(entry?.button_id || 0) === buttonId);
+    for (const step of macro?.steps ?? []) {
+      if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+    }
+  }
+  return order;
+}
 function setActivityPowerRefStep(activity, deviceId, buttonId, refCommand, present) {
   const dId = Number(deviceId);
   const macros = [...activity.macros ?? []];
   const macroIndex = (id) => macros.findIndex((macro) => Number(macro?.button_id || 0) === id);
-  const appendStep = (id, name, step) => {
-    const index2 = macroIndex(id);
-    const existing = index2 >= 0 ? macros[index2] : null;
-    const next = {
-      ...existing ?? { button_id: id, name },
-      steps: [...existing?.steps ?? [], step]
-    };
-    if (index2 >= 0) macros[index2] = next;
-    else macros.push(next);
-  };
   const index = macroIndex(buttonId);
   const target = index >= 0 ? macros[index] : null;
-  const has = (target?.steps ?? []).some(
-    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, refCommand)
+  const steps = [...target?.steps ?? []];
+  const findRef = (command) => steps.findIndex(
+    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, command)
   );
-  if (present === has) return activity;
-  if (present) {
-    appendStep(
-      buttonId,
-      buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON",
-      powerStep(dId, refCommand)
-    );
+  const refIndex = findRef(refCommand);
+  if (present === refIndex >= 0) return activity;
+  const commit = (nextSteps) => {
+    const name = buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON";
+    const next2 = {
+      ...target ?? { button_id: buttonId, name },
+      steps: nextSteps
+    };
+    if (index >= 0) macros[index] = next2;
+    else macros.push(next2);
     return { ...activity, macros };
-  }
-  macros[index] = {
-    ...target,
-    steps: filterMacroSteps(target.steps, (step) => stepMatchesCommand(step, dId, refCommand))
   };
-  const probe = { ...activity, macros };
-  if (!activityMemberDeviceIds(probe).includes(dId)) {
-    appendStep(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0));
+  if (present) {
+    let insertAt = steps.length;
+    if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
+      const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
+      if (inputIndex >= 0) insertAt = inputIndex;
+    }
+    if (insertAt === steps.length) {
+      const order = powerRefDeviceOrder(activity);
+      const myPos = order.indexOf(dId);
+      if (myPos >= 0) {
+        const later = steps.findIndex(
+          (step) => !isMacroDelayStep(step) && isPowerRefStep(step) && order.indexOf(Number(step?.device_id || 0)) > myPos
+        );
+        if (later >= 0) insertAt = later;
+      }
+    }
+    steps.splice(insertAt, 0, powerStep(dId, refCommand));
+    return commit(steps);
   }
-  return { ...activity, macros };
+  if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
+    const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
+    if (inputIndex >= 0) {
+      const inputStep = steps[inputIndex];
+      const without = steps.filter((_2, i4) => i4 !== refIndex && i4 !== inputIndex);
+      const insertAt = refIndex - (inputIndex < refIndex ? 1 : 0);
+      without.splice(insertAt, 0, inputStep);
+      return commit(without);
+    }
+    return commit(steps.map((step, i4) => i4 === refIndex ? powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0) : step));
+  }
+  const withoutOff = filterMacroSteps(steps, (step) => stepMatchesCommand(step, dId, refCommand));
+  let next = commit(withoutOff);
+  if (!activityMemberDeviceIds(next).includes(dId)) {
+    next = setActivityPowerRefStep(next, dId, POWER_ON_MACRO_BUTTON_ID, DEVICE_INPUT_REF_COMMAND, true);
+  }
+  return next;
 }
 function setActivityDevicePowerOff(bundle, activityId, deviceId, powersOff) {
   return updateActivity(bundle, Number(activityId), (activity) => {

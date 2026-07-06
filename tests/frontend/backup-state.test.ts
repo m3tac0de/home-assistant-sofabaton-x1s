@@ -1252,3 +1252,26 @@ test("parseHaActionAddress accepts IPv4 with optional port", () => {
   assert.equal(parseHaActionAddress("192.168.1.10:70000"), null);
   assert.equal(parseHaActionAddress(""), null);
 });
+
+test("power pill toggles keep member order and step adjacency stable (interleaved macros)", () => {
+  // realPowerActivity interleaves: dev3 0xC6 @0, dev9 0xC5 @1, dev9 0xC6 @2, dev3 0xC5 @3.
+  assert.deepEqual(activityMemberViews(realPowerActivity(), 101).map((v) => v.deviceId), [3, 9]);
+  // "Stays as is" for dev3: its anchor position must not move.
+  const off = setActivityDevicePowerOn(realPowerActivity(), 101, 3, false);
+  assert.deepEqual(activityMemberViews(off, 101).map((v) => v.deviceId), [3, 9]);
+  // Back to "turns on": order unchanged AND the 0xC6 sits directly before
+  // the device's own 0xC5, not appended at the sequence end.
+  const on = setActivityDevicePowerOn(off, 101, 3, true);
+  assert.deepEqual(activityMemberViews(on, 101).map((v) => v.deviceId), [3, 9]);
+  const steps = on.activities[0].macros!.find((m) => m.button_id === 198)!.steps!;
+  const c6 = steps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC6);
+  const c5 = steps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC5);
+  assert.ok(c6 >= 0 && c5 === c6 + 1, `expected adjacent 0xC6/0xC5, got ${c6}/${c5}`);
+  // END side: toggling dev3's power-off away and back must not push its
+  // 0xC7 behind dev9's in the POWER_OFF sequence.
+  const offEnd = setActivityDevicePowerOff(realPowerActivity(), 101, 3, false);
+  const onEnd = setActivityDevicePowerOff(offEnd, 101, 3, true);
+  assert.deepEqual(activityMemberViews(onEnd, 101).map((v) => v.deviceId), [3, 9]);
+  const offSteps = onEnd.activities[0].macros!.find((m) => m.button_id === 199)!.steps!;
+  assert.deepEqual(offSteps.map((s) => s.device_id), [3, 9]);
+});
