@@ -1,4 +1,4 @@
-# sofabaton-x
+# sofabaton-x - Python Library
 
 [![PyPI](https://img.shields.io/pypi/v/sofabaton-x)](https://pypi.org/project/sofabaton-x/)
 [![Python versions](https://img.shields.io/pypi/pyversions/sofabaton-x)](https://pypi.org/project/sofabaton-x/)
