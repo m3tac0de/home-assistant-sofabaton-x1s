@@ -1,12 +1,11 @@
-# Sofabaton X1/X1S/X2 - Home Assistant Custom Integration
+# Sofabaton X - Home Assistant Custom Integration
 Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Home Assistant, using **100% local APIs**.
 
 [![HACS Badge](https://img.shields.io/badge/HACS-Default-green.svg)](https://github.com/hacs/integration)
 ![Version](https://img.shields.io/github/v/release/m3tac0de/home-assistant-sofabaton-x1s) ![Total Downloads](https://img.shields.io/github/downloads/m3tac0de/home-assistant-sofabaton-x1s/latest/total)   
 
-
-
-> This integration is powered by a standalone Python library for the Sofabaton hub protocol. It is also available on [PyPI](https://pypi.org/project/sofabaton-x/).
+> This integration is powered by a [standalone Python library](https://github.com/m3tac0de/home-assistant-sofabaton-x1s/tree/main/sofabaton-x) for the Sofabaton hub protocol.    
+> It is also available on [PyPI](https://pypi.org/project/sofabaton-x/).
 
 ## Start here
 
@@ -193,10 +192,7 @@ The Control Panel card is the central management UI for the integration. Its mai
 - **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.
 - **Logs** — live streaming of hub log output for real-time diagnostics.
 
-<img height="250" alt="Control Panel: Hub tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-hub-tab.png" />
-<img height="250" alt="Control Panel: Wifi Commands tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" />
-<img height="250" alt="Control Panel: Cache tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-cache-tab.png" />
-<img height="250" alt="Control Panel: Logs tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-logs-tab.png" />
+<img height="250" alt="Control Panel: Hub tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-hub-tab.png" /> <img height="250" alt="Control Panel: Wifi Commands tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" /> <img height="250" alt="Control Panel: Cache tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-cache-tab.png" /> <img height="250" alt="Control Panel: Logs tab" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/control-panel-logs-tab.png" />
 
 ---
 
@@ -215,11 +211,7 @@ Configure up to 5 Wifi Devices per hub (10 command slots each) via the **Control
 
 Full setup guide → [`docs/wifi_commands.md`](docs/wifi_commands.md)
 
-<img height="250" alt="Wifi Devices list" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" />
-<img height="250" alt="Command slot grid" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-command-grid.png" />
-<img height="250" alt="Command slot: power and input settings" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-advanced.png" />
-<img height="250" alt="Command slot: favorite and activities" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-favorite.png" />
-<img height="250" alt="Command slot: configuring an Action" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-action.png" />
+<img height="250" alt="Wifi Devices list" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-devices.png" /> <img height="250" alt="Command slot grid" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-command-grid.png" /> <img height="250" alt="Command slot: power and input settings" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-advanced.png" /> <img height="250" alt="Command slot: favorite and activities" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-favorite.png" /> <img height="250" alt="Command slot: configuring an Action" src="https://raw.githubusercontent.com/m3tac0de/home-assistant-sofabaton-x1s/main/docs/images/wifi-commands-slot-action.png" />
 
 ---
 
