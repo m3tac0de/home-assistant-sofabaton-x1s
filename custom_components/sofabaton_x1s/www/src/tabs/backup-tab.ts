@@ -18,7 +18,6 @@ import {
   renderActivityEndSection,
   renderActivityRolesBlock,
   renderActivityStartSection,
-  renderDrillInRow,
 } from "./activity-editor";
 import {
   activityAddableDevices,
@@ -1017,6 +1016,13 @@ class SofabatonBackupTab extends LitElement {
       display: flex;
       flex-direction: column;
     }
+    /* Lists whose rows open absolutely-positioned overlay menus (role
+       pickers, idle-behavior pickers). overflow:hidden would clip the
+       popups at the list edge, so these opt into visible overflow; the
+       footer row carries its own corner radius instead. */
+    .quick-access-list--overlays {
+      overflow: visible;
+    }
     .quick-access-sortable {
       display: block;
     }
@@ -1720,6 +1726,12 @@ class SofabatonBackupTab extends LitElement {
   private _powerControlMenuOpen = false;
   private _addDeviceMenuOpen = false;
   private _roleMenuOpen: ActivityRoleGroupId | null = null;
+  // Trigger rects for the fixed-position overlay menus (overlayMenuPosition).
+  // Captured at click time; not reactive — they change only together with
+  // the open-state fields above/below.
+  private _addDeviceMenuAnchor: DOMRect | null = null;
+  private _roleMenuAnchor: DOMRect | null = null;
+  private _endIdleMenuAnchor: DOMRect | null = null;
   private _roleConfirm: { group: ActivityRoleGroupId; deviceId: number | null } | null = null;
   // Full sub-view for individual button bindings (never an accordion).
   private _bindingsView = false;
@@ -2450,6 +2462,17 @@ class SofabatonBackupTab extends LitElement {
   private _handleEditDetailScroll = (event: Event) => {
     const scrollEl = event.currentTarget as HTMLElement | null;
     if (!scrollEl) return;
+    // Overlay menus are viewport-fixed (overlayMenuPosition); scrolling
+    // would leave one hanging away from its trigger, so close it instead.
+    if (this._addDeviceMenuOpen) this._toggleAddDeviceMenu(null);
+    if (this._roleMenuOpen !== null) {
+      this._roleMenuAnchor = null;
+      this._roleMenuOpen = null;
+    }
+    if (this._endIdleMenuDeviceId !== null) {
+      this._endIdleMenuAnchor = null;
+      this._endIdleMenuDeviceId = null;
+    }
     const sections = Array.from(
       scrollEl.querySelectorAll<HTMLElement>("[data-edit-section]"),
     );
@@ -2515,7 +2538,6 @@ class SofabatonBackupTab extends LitElement {
   private _renderButtonBindingsSection(kind: BackupEditTargetKind) {
     if (this._editDetailId == null || !this._editBundle) return nothing;
     const S = TOOLS_CARD_STRINGS.backup;
-    const entityId = Number(this._editDetailId);
     const isActivity = kind === "activity";
     return html`
       <div class="quick-access-section" data-edit-section="bindings">
@@ -2531,23 +2553,7 @@ class SofabatonBackupTab extends LitElement {
           ${isActivity ? nothing : this._renderAddBindingButton(kind)}
         </div>
         ${isActivity
-          ? html`
-              ${this._renderActivityRolesBlock()}
-              <div class="quick-access-list">
-                <div class="quick-access-sortable-container">
-                  ${renderDrillInRow({
-                    label: S.customizeButtonsToggle,
-                    meta: (() => {
-                      const count = activityButtonBindingItems(this._editBundle, entityId).length;
-                      return count > 0 ? S.bindingsConfiguredCount(count) : S.bindingsNoneConfigured;
-                    })(),
-                    onOpen: () => {
-                      this._bindingsView = true;
-                    },
-                  })}
-                </div>
-              </div>
-            `
+          ? this._renderActivityRolesBlock()
           : this._renderBindingsListBody(kind)}
       </div>
     `;
@@ -2614,6 +2620,8 @@ class SofabatonBackupTab extends LitElement {
       deviceId: member.deviceId,
       label: member.deviceName,
     }));
+    const S = TOOLS_CARD_STRINGS.backup;
+    const bindingCount = activityButtonBindingItems(bundle, activityId).length;
     return renderActivityRolesBlock({
       roles: activityRoleAssignments(bundle, activityId),
       optionsFor: (group) => memberOptions.map((option) => ({
@@ -2621,10 +2629,19 @@ class SofabatonBackupTab extends LitElement {
         mappable: roleMappableButtonCount(bundle, option.deviceId, group),
       })),
       openGroup: this._roleMenuOpen,
-      onToggleMenu: (group) => {
+      menuAnchor: this._roleMenuAnchor,
+      onToggleMenu: (group, anchor) => {
+        this._roleMenuAnchor = group == null ? null : anchor ?? null;
         this._roleMenuOpen = group;
       },
       onAssign: this._handleRoleAssign,
+      customize: {
+        label: S.customizeButtonsToggle,
+        meta: bindingCount > 0 ? S.bindingsConfiguredCount(bindingCount) : S.bindingsNoneConfigured,
+        onOpen: () => {
+          this._bindingsView = true;
+        },
+      },
     });
   }
 
@@ -2729,8 +2746,9 @@ class SofabatonBackupTab extends LitElement {
     return activityMemberViews(this._editBundle, Number(this._editDetailId));
   }
 
-  private _toggleAddDeviceMenu = () => {
-    this._addDeviceMenuOpen = !this._addDeviceMenuOpen;
+  private _toggleAddDeviceMenu = (anchor: DOMRect | null) => {
+    this._addDeviceMenuAnchor = anchor;
+    this._addDeviceMenuOpen = anchor != null;
   };
 
   private _handleAddMemberDevice = (deviceId: number) => {
@@ -2757,6 +2775,7 @@ class SofabatonBackupTab extends LitElement {
       members: this._activityMemberViews(),
       addable: activityAddableDevices(this._editBundle, Number(this._editDetailId)),
       menuOpen: this._addDeviceMenuOpen,
+      menuAnchor: this._addDeviceMenuAnchor,
       onToggleMenu: this._toggleAddDeviceMenu,
       onAdd: this._handleAddMemberDevice,
       onRemove: this._openMemberRemoveConfirm,
@@ -2797,7 +2816,9 @@ class SofabatonBackupTab extends LitElement {
       idleModeFor: (deviceId) => deviceIdleBehavior(this._editBundle, deviceId),
       idleOptions: this._powerControlOptions(),
       idleMenuDeviceId: this._endIdleMenuDeviceId,
-      onToggleIdleMenu: (deviceId) => {
+      idleMenuAnchor: this._endIdleMenuAnchor,
+      onToggleIdleMenu: (deviceId, anchor) => {
+        this._endIdleMenuAnchor = deviceId == null ? null : anchor ?? null;
         this._endIdleMenuDeviceId = deviceId;
       },
       onIdleChange: (deviceId, mode) => {

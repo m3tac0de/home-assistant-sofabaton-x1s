@@ -5150,6 +5150,20 @@ function renderOperationProgress(view) {
 
 // custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
 var S3 = TOOLS_CARD_STRINGS.backup;
+var OVERLAY_MENU_MAX_HEIGHT = 240;
+function overlayMenuPosition(anchor, align) {
+  if (!anchor) return "";
+  const gap = 4;
+  const spaceBelow = window.innerHeight - anchor.bottom;
+  const openUp = spaceBelow < OVERLAY_MENU_MAX_HEIGHT + gap && anchor.top > spaceBelow;
+  const vertical = openUp ? `bottom: ${Math.round(window.innerHeight - anchor.top + gap)}px; top: auto;` : `top: ${Math.round(anchor.bottom + gap)}px; bottom: auto;`;
+  const horizontal = align === "right" ? `right: ${Math.round(window.innerWidth - anchor.right)}px; left: auto;` : `left: ${Math.round(anchor.left)}px; right: auto;`;
+  return `position: fixed; ${vertical} ${horizontal}`;
+}
+function menuAnchorRect(event) {
+  const target = event.currentTarget;
+  return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+}
 function renderActivityDevicesSection(params) {
   return b2`
     <div class="quick-access-section" data-edit-section="devices">
@@ -5174,7 +5188,11 @@ function renderActivityDevicesSection(params) {
           </span>
         `)}
         <span class="member-add" data-open=${params.menuOpen ? "true" : "false"}>
-          <button class="member-chip member-chip--add" type="button" @click=${params.onToggleMenu}>
+          <button
+            class="member-chip member-chip--add"
+            type="button"
+            @click=${(event) => params.onToggleMenu(params.menuOpen ? null : menuAnchorRect(event))}
+          >
             <ha-icon icon="mdi:plus"></ha-icon>
             <span>${S3.activityAddDevice}</span>
           </button>
@@ -5184,9 +5202,14 @@ function renderActivityDevicesSection(params) {
                   type="button"
                   tabindex="-1"
                   aria-hidden="true"
-                  @click=${params.onToggleMenu}
+                  @click=${() => params.onToggleMenu(null)}
                 ></button>
-                <div class="member-add-menu" role="listbox" aria-label=${S3.activityAddDevice}>
+                <div
+                  class="member-add-menu"
+                  role="listbox"
+                  aria-label=${S3.activityAddDevice}
+                  style=${overlayMenuPosition(params.menuAnchor, "left")}
+                >
                   ${params.addable.length ? params.addable.map((option) => b2`
                         <button
                           class="member-add-option"
@@ -5205,8 +5228,9 @@ function renderActivityDevicesSection(params) {
 }
 function renderDrillInRow(params) {
   return b2`
-    <div class="quick-access-sortable-item">
-      <button class="edit-selection-row" @click=${params.onOpen}>
+    <div class="quick-access-sortable-item quick-access-footer-item">
+      <button class="edit-selection-row edit-selection-row--footer" @click=${params.onOpen}>
+        <ha-icon class="footer-row-icon" icon="mdi:tune-variant"></ha-icon>
         <span class="selection-main">
           <span class="selection-label">${params.label}</span>
           ${params.meta ? b2`<span class="selection-sub">${params.meta}</span>` : A}
@@ -5309,7 +5333,7 @@ function renderActivityEndSection(params) {
         </div>
       </div>
       ${params.members.length ? b2`
-            <div class="quick-access-list">
+            <div class="quick-access-list quick-access-list--overlays">
               <div class="quick-access-sortable-container">
                 ${params.members.map((member) => renderEndRow(member, params))}
                 ${renderDrillInRow({
@@ -5340,7 +5364,7 @@ function renderEndRow(member, params) {
               aria-haspopup="listbox"
               aria-expanded=${menuOpen ? "true" : "false"}
               aria-label=${S3.activityIdleAria(member.deviceName)}
-              @click=${() => params.onToggleIdleMenu(menuOpen ? null : member.deviceId)}
+              @click=${(event) => params.onToggleIdleMenu(menuOpen ? null : member.deviceId, menuAnchorRect(event))}
             >
               <span>${idleSummaryLabel(idleMode)}</span>
               <ha-icon icon="mdi:chevron-down"></ha-icon>
@@ -5353,7 +5377,12 @@ function renderEndRow(member, params) {
                     aria-hidden="true"
                     @click=${() => params.onToggleIdleMenu(null)}
                   ></button>
-                  <div class="member-add-menu member-idle-menu" role="listbox" aria-label=${S3.activityIdleAria(member.deviceName)}>
+                  <div
+                    class="member-add-menu member-idle-menu"
+                    role="listbox"
+                    aria-label=${S3.activityIdleAria(member.deviceName)}
+                    style=${overlayMenuPosition(params.idleMenuAnchor, "left")}
+                  >
                     <div class="member-add-empty">${S3.activityIdleMenuNote}</div>
                     ${params.idleOptions.map((option) => b2`
                       <button
@@ -5411,8 +5440,11 @@ function roleTriggerLabel(role) {
 }
 function renderActivityRolesBlock(params) {
   return b2`
-    <div class="role-list">
-      ${params.roles.map((role) => renderRoleRow(role, params))}
+    <div class="quick-access-list quick-access-list--overlays">
+      <div class="quick-access-sortable-container">
+        ${params.roles.map((role) => renderRoleRow(role, params))}
+        ${renderDrillInRow(params.customize)}
+      </div>
     </div>
   `;
 }
@@ -5420,8 +5452,9 @@ function renderRoleRow(role, params) {
   const open = params.openGroup === role.group;
   const partialNote = (role.state === "device" || role.state === "customized") && role.boundCount < role.totalCount ? S3.roleMappedNote(role.boundCount, role.totalCount) : null;
   return b2`
-    <div class="role-row">
-      <ha-icon class="role-icon" icon=${ROLE_ICONS[role.group]}></ha-icon>
+    <div class="quick-access-sortable-item">
+      <div class="role-row">
+        <ha-icon class="role-icon" icon=${ROLE_ICONS[role.group]}></ha-icon>
       <div class="role-main">
         <div class="role-label">${ROLE_LABELS[role.group]}</div>
         ${partialNote ? b2`<div class="role-note">${partialNote}</div>` : A}
@@ -5434,7 +5467,7 @@ function renderRoleRow(role, params) {
           aria-haspopup="listbox"
           aria-expanded=${open ? "true" : "false"}
           aria-label=${S3.roleMenuAria(ROLE_LABELS[role.group])}
-          @click=${() => params.onToggleMenu(open ? null : role.group)}
+          @click=${(event) => params.onToggleMenu(open ? null : role.group, menuAnchorRect(event))}
         >
           <span>${roleTriggerLabel(role)}</span>
           <ha-icon icon="mdi:chevron-down"></ha-icon>
@@ -5447,7 +5480,12 @@ function renderRoleRow(role, params) {
                 aria-hidden="true"
                 @click=${() => params.onToggleMenu(null)}
               ></button>
-              <div class="member-add-menu role-menu" role="listbox" aria-label=${ROLE_LABELS[role.group]}>
+              <div
+                class="member-add-menu role-menu"
+                role="listbox"
+                aria-label=${ROLE_LABELS[role.group]}
+                style=${overlayMenuPosition(params.menuAnchor, "right")}
+              >
                 <button
                   class="member-add-option"
                   type="button"
@@ -5468,6 +5506,7 @@ function renderRoleRow(role, params) {
               </div>
             ` : A}
       </span>
+      </div>
     </div>
   `;
 }
@@ -5646,17 +5685,32 @@ var activityEditorStyles = i`
     color: var(--secondary-text-color);
     line-height: 1.35;
   }
-  .role-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 10px;
-  }
   .role-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 0;
+    padding: 10px 14px;
+  }
+  /* Advanced-mode footer: the last row of a quick-access list that drills
+     into the deeper editor for the rows above it. Tinted and separated by
+     a solid divider so it reads as attached to — but different from — the
+     list items. The extra class in the selector outranks the plain
+     sortable-item border rule that follows in the host tab's styles. */
+  .quick-access-sortable-item.quick-access-footer-item {
+    border-top: 1px solid var(--divider-color);
+    background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 55%, transparent);
+    border-radius: 0 0 calc(var(--backup-radius-lg) - 1px) calc(var(--backup-radius-lg) - 1px);
+    overflow: hidden;
+  }
+  .edit-selection-row--footer .selection-label {
+    color: var(--secondary-text-color);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .footer-row-icon {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    --mdc-icon-size: 16px;
   }
   .role-icon {
     color: var(--secondary-text-color);
@@ -5872,25 +5926,25 @@ function readSortKey(block) {
 }
 function bundleActivityOptions(bundle) {
   return [...bundle?.activities ?? []].map((activity) => {
-    const block = activity?.device || {};
-    const id = Number(block.device_id || 0);
+    const block = activity?.device;
+    const id = Number(block?.device_id || 0);
     return {
       id,
       sortKey: readSortKey(block),
-      label: String(block.name || `Activity ${id}`),
+      label: String(block?.name || `Activity ${id}`),
       meta: `${(activity?.referenced_source_device_ids ?? []).length} linked devices`
     };
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
 function bundleDeviceOptions(bundle) {
   return [...bundle?.devices ?? []].map((device) => {
-    const block = device?.device || {};
-    const id = Number(block.device_id || 0);
+    const block = device?.device;
+    const id = Number(block?.device_id || 0);
     return {
       id,
       sortKey: readSortKey(block),
-      label: String(block.name || `Device ${id}`),
-      meta: String(block.device_class || "").trim() || void 0
+      label: String(block?.name || `Device ${id}`),
+      meta: String(block?.device_class || "").trim() || void 0
     };
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
@@ -7845,6 +7899,12 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     this._powerControlMenuOpen = false;
     this._addDeviceMenuOpen = false;
     this._roleMenuOpen = null;
+    // Trigger rects for the fixed-position overlay menus (overlayMenuPosition).
+    // Captured at click time; not reactive — they change only together with
+    // the open-state fields above/below.
+    this._addDeviceMenuAnchor = null;
+    this._roleMenuAnchor = null;
+    this._endIdleMenuAnchor = null;
     this._roleConfirm = null;
     // Full sub-view for individual button bindings (never an accordion).
     this._bindingsView = false;
@@ -7926,6 +7986,15 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     this._handleEditDetailScroll = (event) => {
       const scrollEl = event.currentTarget;
       if (!scrollEl) return;
+      if (this._addDeviceMenuOpen) this._toggleAddDeviceMenu(null);
+      if (this._roleMenuOpen !== null) {
+        this._roleMenuAnchor = null;
+        this._roleMenuOpen = null;
+      }
+      if (this._endIdleMenuDeviceId !== null) {
+        this._endIdleMenuAnchor = null;
+        this._endIdleMenuDeviceId = null;
+      }
       const sections = Array.from(
         scrollEl.querySelectorAll("[data-edit-section]")
       );
@@ -7974,8 +8043,9 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       if (!pending) return;
       this._applyRoleAssign(pending.group, pending.deviceId);
     };
-    this._toggleAddDeviceMenu = () => {
-      this._addDeviceMenuOpen = !this._addDeviceMenuOpen;
+    this._toggleAddDeviceMenu = (anchor) => {
+      this._addDeviceMenuAnchor = anchor;
+      this._addDeviceMenuOpen = anchor != null;
     };
     this._handleAddMemberDevice = (deviceId) => {
       this._addDeviceMenuOpen = false;
@@ -9105,7 +9175,6 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
   _renderButtonBindingsSection(kind) {
     if (this._editDetailId == null || !this._editBundle) return A;
     const S4 = TOOLS_CARD_STRINGS.backup;
-    const entityId = Number(this._editDetailId);
     const isActivity = kind === "activity";
     return b2`
       <div class="quick-access-section" data-edit-section="bindings">
@@ -9120,23 +9189,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
           </div>
           ${isActivity ? A : this._renderAddBindingButton(kind)}
         </div>
-        ${isActivity ? b2`
-              ${this._renderActivityRolesBlock()}
-              <div class="quick-access-list">
-                <div class="quick-access-sortable-container">
-                  ${renderDrillInRow({
-      label: S4.customizeButtonsToggle,
-      meta: (() => {
-        const count = activityButtonBindingItems(this._editBundle, entityId).length;
-        return count > 0 ? S4.bindingsConfiguredCount(count) : S4.bindingsNoneConfigured;
-      })(),
-      onOpen: () => {
-        this._bindingsView = true;
-      }
-    })}
-                </div>
-              </div>
-            ` : this._renderBindingsListBody(kind)}
+        ${isActivity ? this._renderActivityRolesBlock() : this._renderBindingsListBody(kind)}
       </div>
     `;
   }
@@ -9191,6 +9244,8 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       deviceId: member.deviceId,
       label: member.deviceName
     }));
+    const S4 = TOOLS_CARD_STRINGS.backup;
+    const bindingCount = activityButtonBindingItems(bundle, activityId).length;
     return renderActivityRolesBlock({
       roles: activityRoleAssignments(bundle, activityId),
       optionsFor: (group) => memberOptions.map((option) => ({
@@ -9198,10 +9253,19 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
         mappable: roleMappableButtonCount(bundle, option.deviceId, group)
       })),
       openGroup: this._roleMenuOpen,
-      onToggleMenu: (group) => {
+      menuAnchor: this._roleMenuAnchor,
+      onToggleMenu: (group, anchor) => {
+        this._roleMenuAnchor = group == null ? null : anchor ?? null;
         this._roleMenuOpen = group;
       },
-      onAssign: this._handleRoleAssign
+      onAssign: this._handleRoleAssign,
+      customize: {
+        label: S4.customizeButtonsToggle,
+        meta: bindingCount > 0 ? S4.bindingsConfiguredCount(bindingCount) : S4.bindingsNoneConfigured,
+        onOpen: () => {
+          this._bindingsView = true;
+        }
+      }
     });
   }
   _applyRoleAssign(group, deviceId) {
@@ -9279,6 +9343,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       members: this._activityMemberViews(),
       addable: activityAddableDevices(this._editBundle, Number(this._editDetailId)),
       menuOpen: this._addDeviceMenuOpen,
+      menuAnchor: this._addDeviceMenuAnchor,
       onToggleMenu: this._toggleAddDeviceMenu,
       onAdd: this._handleAddMemberDevice,
       onRemove: this._openMemberRemoveConfirm
@@ -9314,7 +9379,9 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       idleModeFor: (deviceId) => deviceIdleBehavior(this._editBundle, deviceId),
       idleOptions: this._powerControlOptions(),
       idleMenuDeviceId: this._endIdleMenuDeviceId,
-      onToggleIdleMenu: (deviceId) => {
+      idleMenuAnchor: this._endIdleMenuAnchor,
+      onToggleIdleMenu: (deviceId, anchor) => {
+        this._endIdleMenuAnchor = deviceId == null ? null : anchor ?? null;
         this._endIdleMenuDeviceId = deviceId;
       },
       onIdleChange: (deviceId, mode) => {
@@ -12031,6 +12098,13 @@ _SofabatonBackupTab.styles = [secondaryTabStyles, operationProgressStyles, activ
       overflow: hidden;
       display: flex;
       flex-direction: column;
+    }
+    /* Lists whose rows open absolutely-positioned overlay menus (role
+       pickers, idle-behavior pickers). overflow:hidden would clip the
+       popups at the list edge, so these opt into visible overflow; the
+       footer row carries its own corner radius instead. */
+    .quick-access-list--overlays {
+      overflow: visible;
     }
     .quick-access-sortable {
       display: block;

@@ -28,6 +28,12 @@ const TOOLS_TYPE = "sofabaton-control-panel";
 const LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
 const EDITOR_TYPE = `${TOOLS_TYPE}-editor`;
 
+declare global {
+  interface Window {
+    customCards?: Array<Record<string, unknown> & { type: string }>;
+  }
+}
+
 function resolveLoadedToolsFrontendVersion() {
   const version = new URL(import.meta.url, window.location.href).searchParams.get("v");
   return String(version || "").trim() || "dev";
@@ -51,7 +57,7 @@ const DOC_LINKS: Partial<Record<TabId, { href: string; label: string }>> = {
 };
 
 function logOnce() {
-  const windowWithFlag = window as Window & Record<string, unknown>;
+  const windowWithFlag = window as unknown as Record<string, unknown>;
   if (windowWithFlag[LOG_ONCE_KEY]) return;
   windowWithFlag[LOG_ONCE_KEY] = true;
 

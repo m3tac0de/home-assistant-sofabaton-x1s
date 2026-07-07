@@ -22,11 +22,44 @@ import type {
 
 const S = TOOLS_CARD_STRINGS.backup;
 
+/** Matches .member-add-menu's max-height — used for the flip-up estimate. */
+const OVERLAY_MENU_MAX_HEIGHT = 240;
+
+/**
+ * Inline position for a popup menu, fixed to the viewport so the detail
+ * view's scroll container (overflow-y: auto) can't clip it — absolute
+ * positioning always clips at a scroll ancestor, whatever the overflow
+ * of the list in between. The anchor rect is captured from the trigger
+ * at click time; the host tab closes any open menu on scroll so a fixed
+ * menu never drifts away from its trigger. Flips above the anchor when
+ * the space below is too tight.
+ */
+export function overlayMenuPosition(anchor: DOMRect | null, align: "left" | "right"): string {
+  if (!anchor) return "";
+  const gap = 4;
+  const spaceBelow = window.innerHeight - anchor.bottom;
+  const openUp = spaceBelow < OVERLAY_MENU_MAX_HEIGHT + gap && anchor.top > spaceBelow;
+  const vertical = openUp
+    ? `bottom: ${Math.round(window.innerHeight - anchor.top + gap)}px; top: auto;`
+    : `top: ${Math.round(anchor.bottom + gap)}px; bottom: auto;`;
+  const horizontal = align === "right"
+    ? `right: ${Math.round(window.innerWidth - anchor.right)}px; left: auto;`
+    : `left: ${Math.round(anchor.left)}px; right: auto;`;
+  return `position: fixed; ${vertical} ${horizontal}`;
+}
+
+/** The trigger rect for overlayMenuPosition, read at click time. */
+export function menuAnchorRect(event: Event): DOMRect | null {
+  const target = event.currentTarget;
+  return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+}
+
 export interface ActivityDevicesSectionParams {
   members: BackupActivityMemberView[];
   addable: BackupSelectionOption[];
   menuOpen: boolean;
-  onToggleMenu(): void;
+  menuAnchor: DOMRect | null;
+  onToggleMenu(anchor: DOMRect | null): void;
   onAdd(deviceId: number): void;
   onRemove(member: BackupActivityMemberView): void;
 }
@@ -55,7 +88,11 @@ export function renderActivityDevicesSection(params: ActivityDevicesSectionParam
           </span>
         `)}
         <span class="member-add" data-open=${params.menuOpen ? "true" : "false"}>
-          <button class="member-chip member-chip--add" type="button" @click=${params.onToggleMenu}>
+          <button
+            class="member-chip member-chip--add"
+            type="button"
+            @click=${(event: Event) => params.onToggleMenu(params.menuOpen ? null : menuAnchorRect(event))}
+          >
             <ha-icon icon="mdi:plus"></ha-icon>
             <span>${S.activityAddDevice}</span>
           </button>
@@ -66,9 +103,14 @@ export function renderActivityDevicesSection(params: ActivityDevicesSectionParam
                   type="button"
                   tabindex="-1"
                   aria-hidden="true"
-                  @click=${params.onToggleMenu}
+                  @click=${() => params.onToggleMenu(null)}
                 ></button>
-                <div class="member-add-menu" role="listbox" aria-label=${S.activityAddDevice}>
+                <div
+                  class="member-add-menu"
+                  role="listbox"
+                  aria-label=${S.activityAddDevice}
+                  style=${overlayMenuPosition(params.menuAnchor, "left")}
+                >
                   ${params.addable.length
                     ? params.addable.map((option) => html`
                         <button
@@ -92,10 +134,12 @@ export function renderActivityDevicesSection(params: ActivityDevicesSectionParam
 }
 
 /**
- * The uniform "drill deeper" affordance: an edit-selection-row with a
- * chevron, matching the device detail's sequence rows and the overview
- * lists. Every deeper level in the activity editor is a full sub-view
- * reached through one of these — never an inline accordion.
+ * The uniform "drill deeper" affordance: the advanced-mode footer of a
+ * list. It renders as the last row of a bordered quick-access list but
+ * visually set apart (tinted, solid separator, tune icon) so it reads as
+ * "advanced editing for the rows above", not another list item. Every
+ * deeper level in the activity editor is a full sub-view reached through
+ * one of these — never an inline accordion.
  */
 export function renderDrillInRow(params: {
   label: string;
@@ -103,8 +147,9 @@ export function renderDrillInRow(params: {
   onOpen(): void;
 }): TemplateResult {
   return html`
-    <div class="quick-access-sortable-item">
-      <button class="edit-selection-row" @click=${params.onOpen}>
+    <div class="quick-access-sortable-item quick-access-footer-item">
+      <button class="edit-selection-row edit-selection-row--footer" @click=${params.onOpen}>
+        <ha-icon class="footer-row-icon" icon="mdi:tune-variant"></ha-icon>
         <span class="selection-main">
           <span class="selection-label">${params.label}</span>
           ${params.meta ? html`<span class="selection-sub">${params.meta}</span>` : nothing}
@@ -217,7 +262,8 @@ export interface ActivityEndSectionParams {
   idleModeFor(deviceId: number): number | null;
   idleOptions: ActivityIdleOption[];
   idleMenuDeviceId: number | null;
-  onToggleIdleMenu(deviceId: number | null): void;
+  idleMenuAnchor: DOMRect | null;
+  onToggleIdleMenu(deviceId: number | null, anchor?: DOMRect | null): void;
   onIdleChange(deviceId: number, mode: number): void;
   onTogglePowerOff(member: BackupActivityMemberView, powersOff: boolean): void;
   sequenceMeta: string;
@@ -250,7 +296,7 @@ export function renderActivityEndSection(params: ActivityEndSectionParams): Temp
       </div>
       ${params.members.length
         ? html`
-            <div class="quick-access-list">
+            <div class="quick-access-list quick-access-list--overlays">
               <div class="quick-access-sortable-container">
                 ${params.members.map((member) => renderEndRow(member, params))}
                 ${renderDrillInRow({
@@ -286,7 +332,8 @@ function renderEndRow(
               aria-haspopup="listbox"
               aria-expanded=${menuOpen ? "true" : "false"}
               aria-label=${S.activityIdleAria(member.deviceName)}
-              @click=${() => params.onToggleIdleMenu(menuOpen ? null : member.deviceId)}
+              @click=${(event: Event) =>
+                params.onToggleIdleMenu(menuOpen ? null : member.deviceId, menuAnchorRect(event))}
             >
               <span>${idleSummaryLabel(idleMode)}</span>
               <ha-icon icon="mdi:chevron-down"></ha-icon>
@@ -300,7 +347,12 @@ function renderEndRow(
                     aria-hidden="true"
                     @click=${() => params.onToggleIdleMenu(null)}
                   ></button>
-                  <div class="member-add-menu member-idle-menu" role="listbox" aria-label=${S.activityIdleAria(member.deviceName)}>
+                  <div
+                    class="member-add-menu member-idle-menu"
+                    role="listbox"
+                    aria-label=${S.activityIdleAria(member.deviceName)}
+                    style=${overlayMenuPosition(params.idleMenuAnchor, "left")}
+                  >
                     <div class="member-add-empty">${S.activityIdleMenuNote}</div>
                     ${params.idleOptions.map((option) => html`
                       <button
@@ -362,8 +414,15 @@ export interface ActivityRolesBlockParams {
   /** Candidate devices per group — the activity's members. */
   optionsFor(group: ActivityRoleGroupId): ActivityRoleOption[];
   openGroup: ActivityRoleGroupId | null;
-  onToggleMenu(group: ActivityRoleGroupId | null): void;
+  menuAnchor: DOMRect | null;
+  onToggleMenu(group: ActivityRoleGroupId | null, anchor?: DOMRect | null): void;
   onAssign(group: ActivityRoleGroupId, deviceId: number | null): void;
+  /** Per-button customization — the advanced mode for the role rows above. */
+  customize: {
+    label: string;
+    meta: string | null;
+    onOpen(): void;
+  };
 }
 
 function roleTriggerLabel(role: ActivityRoleAssignment): string {
@@ -381,8 +440,11 @@ function roleTriggerLabel(role: ActivityRoleAssignment): string {
 
 export function renderActivityRolesBlock(params: ActivityRolesBlockParams): TemplateResult {
   return html`
-    <div class="role-list">
-      ${params.roles.map((role) => renderRoleRow(role, params))}
+    <div class="quick-access-list quick-access-list--overlays">
+      <div class="quick-access-sortable-container">
+        ${params.roles.map((role) => renderRoleRow(role, params))}
+        ${renderDrillInRow(params.customize)}
+      </div>
     </div>
   `;
 }
@@ -394,8 +456,9 @@ function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockP
     ? S.roleMappedNote(role.boundCount, role.totalCount)
     : null;
   return html`
-    <div class="role-row">
-      <ha-icon class="role-icon" icon=${ROLE_ICONS[role.group]}></ha-icon>
+    <div class="quick-access-sortable-item">
+      <div class="role-row">
+        <ha-icon class="role-icon" icon=${ROLE_ICONS[role.group]}></ha-icon>
       <div class="role-main">
         <div class="role-label">${ROLE_LABELS[role.group]}</div>
         ${partialNote ? html`<div class="role-note">${partialNote}</div>` : nothing}
@@ -408,7 +471,8 @@ function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockP
           aria-haspopup="listbox"
           aria-expanded=${open ? "true" : "false"}
           aria-label=${S.roleMenuAria(ROLE_LABELS[role.group])}
-          @click=${() => params.onToggleMenu(open ? null : role.group)}
+          @click=${(event: Event) =>
+            params.onToggleMenu(open ? null : role.group, menuAnchorRect(event))}
         >
           <span>${roleTriggerLabel(role)}</span>
           <ha-icon icon="mdi:chevron-down"></ha-icon>
@@ -422,7 +486,12 @@ function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockP
                 aria-hidden="true"
                 @click=${() => params.onToggleMenu(null)}
               ></button>
-              <div class="member-add-menu role-menu" role="listbox" aria-label=${ROLE_LABELS[role.group]}>
+              <div
+                class="member-add-menu role-menu"
+                role="listbox"
+                aria-label=${ROLE_LABELS[role.group]}
+                style=${overlayMenuPosition(params.menuAnchor, "right")}
+              >
                 <button
                   class="member-add-option"
                   type="button"
@@ -444,6 +513,7 @@ function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockP
             `
           : nothing}
       </span>
+      </div>
     </div>
   `;
 }
@@ -623,17 +693,32 @@ export const activityEditorStyles = css`
     color: var(--secondary-text-color);
     line-height: 1.35;
   }
-  .role-list {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 10px;
-  }
   .role-row {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 6px 0;
+    padding: 10px 14px;
+  }
+  /* Advanced-mode footer: the last row of a quick-access list that drills
+     into the deeper editor for the rows above it. Tinted and separated by
+     a solid divider so it reads as attached to — but different from — the
+     list items. The extra class in the selector outranks the plain
+     sortable-item border rule that follows in the host tab's styles. */
+  .quick-access-sortable-item.quick-access-footer-item {
+    border-top: 1px solid var(--divider-color);
+    background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 55%, transparent);
+    border-radius: 0 0 calc(var(--backup-radius-lg) - 1px) calc(var(--backup-radius-lg) - 1px);
+    overflow: hidden;
+  }
+  .edit-selection-row--footer .selection-label {
+    color: var(--secondary-text-color);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .footer-row-icon {
+    flex: 0 0 auto;
+    color: var(--secondary-text-color);
+    --mdc-icon-size: 16px;
   }
   .role-icon {
     color: var(--secondary-text-color);

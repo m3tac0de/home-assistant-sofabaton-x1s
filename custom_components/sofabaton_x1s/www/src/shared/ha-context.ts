@@ -25,6 +25,11 @@ export interface HassConnectionLike {
 export interface HassLike {
   states: Record<string, HassEntityState>;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
+  callService?(
+    domain: string,
+    service: string,
+    serviceData?: Record<string, unknown>,
+  ): Promise<unknown>;
   connection?: HassConnectionLike | null;
 }
 
@@ -339,6 +344,7 @@ export interface BackupProgressEvent {
   filename?: string | null;
   backup?: BackupBundlePayload | null;
   backup_downloaded?: boolean | null;
+  backup_expired?: boolean | null;
   result?: BackupRestoreResult | null;
   error?: string | null;
 }
