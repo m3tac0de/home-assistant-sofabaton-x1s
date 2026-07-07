@@ -5015,7 +5015,7 @@ class SofabatonBackupTab extends LitElement {
       manualSelectedDeviceIds: this._restoreManualDeviceIds,
     });
     const totalRestoreOptions = activityOptions.length + deviceOptions.length;
-    const totalRestoreSelected = this._restoreActivityIds.length + restoreSelection.selectedDeviceIds.length;
+    const totalRestoreSelected = restoreSelection.selectedActivityIds.length + restoreSelection.selectedDeviceIds.length;
     const allRestoreSelected = totalRestoreOptions > 0 && totalRestoreSelected === totalRestoreOptions;
 
     return html`
@@ -5062,25 +5062,35 @@ class SofabatonBackupTab extends LitElement {
                     ${activityOptions.length
                       ? html`
                         <div class="selection-group-header">Activities</div>
-                        ${activityOptions.map((activity) => html`
+                        ${activityOptions.map((activity) => {
+                          // Forced in by another activity's chain reference
+                          // (e.g. its power-off starts this one) — locked,
+                          // mirroring linked devices below.
+                          const forcedActivity = restoreSelection.forcedActivityIds.includes(activity.id);
+                          return html`
                           <div
-                            class="selection-row"
+                            class="selection-row ${forcedActivity ? "locked" : ""}"
                             @click=${() => {
-                              if (this._restoreLocked()) return;
+                              if (forcedActivity || this._restoreLocked()) return;
                               this._setRestoreActivity(activity.id, !this._restoreActivityIds.includes(activity.id));
                             }}
                           >
                             ${this._renderCheckboxControl({
-                              checked: this._restoreActivityIds.includes(activity.id),
-                              disabled: this._restoreLocked(),
+                              checked: restoreSelection.selectedActivityIds.includes(activity.id),
+                              disabled: forcedActivity || this._restoreLocked(),
                               onChange: (checked) => this._setRestoreActivity(activity.id, checked),
                             })}
                             <span class="selection-main">
                               <span class="selection-label">${activity.label}</span>
                             </span>
-                            ${activity.meta ? html`<span class="selection-meta">${activity.meta}</span>` : nothing}
+                            ${activity.meta
+                              ? html`<span class="selection-meta">${forcedActivity ? `${activity.meta} · linked` : activity.meta}</span>`
+                              : forcedActivity
+                                ? html`<span class="selection-meta">linked</span>`
+                                : nothing}
                           </div>
-                        `)}
+                        `;
+                        })}
                       `
                       : html`<div class="selection-empty">This backup file has no activities.</div>`}
                     ${deviceOptions.length
@@ -5337,7 +5347,8 @@ class SofabatonBackupTab extends LitElement {
     });
     const filtered = pruneBackupBundle({
       bundle: this._restoreBundle,
-      selectedActivityIds: this._restoreActivityIds,
+      // Expanded set: includes activities forced in by chain references.
+      selectedActivityIds: selection.selectedActivityIds,
       selectedDeviceIds: selection.selectedDeviceIds,
     });
     this._restoreError = null;

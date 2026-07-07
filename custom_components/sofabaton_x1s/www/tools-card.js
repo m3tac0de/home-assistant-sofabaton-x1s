@@ -5894,6 +5894,49 @@ function bundleDeviceOptions(bundle) {
     };
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
+var ACTIVITY_ENTITY_ID_MIN = 101;
+function activityChainDependencyIds(bundle, activityId) {
+  const activity = (bundle?.activities ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
+  );
+  if (!bundle || !activity) return [];
+  const selfId = Number(activity?.device?.device_id || 0);
+  const bundleActivityIds = new Set(
+    (bundle.activities ?? []).map((entry) => Number(entry?.device?.device_id || 0))
+  );
+  const refs = /* @__PURE__ */ new Set();
+  const add = (value) => {
+    const id = Number(value || 0);
+    if (id >= ACTIVITY_ENTITY_ID_MIN && id !== 255 && id !== selfId && bundleActivityIds.has(id)) refs.add(id);
+  };
+  for (const binding of activity.button_bindings ?? []) {
+    add(binding?.device_id);
+    add(binding?.long_press_device_id);
+  }
+  for (const macro of activity.macros ?? []) {
+    for (const step of macro?.steps ?? []) {
+      if (Number(step?.device_id || 0) === 255) continue;
+      add(step?.device_id);
+    }
+  }
+  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
+  return [...refs].sort((left, right) => left - right);
+}
+function forcedRestoreActivityIds(bundle, selectedActivityIds) {
+  const selected = new Set(selectedActivityIds.map((value) => Number(value)));
+  const reached = new Set(selected);
+  const queue = [...reached];
+  while (queue.length) {
+    const current = queue.pop();
+    for (const dep of activityChainDependencyIds(bundle, current)) {
+      if (!reached.has(dep)) {
+        reached.add(dep);
+        queue.push(dep);
+      }
+    }
+  }
+  return [...reached].filter((id) => !selected.has(id)).sort((left, right) => left - right);
+}
 function forcedRestoreDeviceIds(bundle, selectedActivityIds) {
   const selected = new Set(selectedActivityIds.map((value) => Number(value)));
   const forced = /* @__PURE__ */ new Set();
@@ -5908,7 +5951,14 @@ function forcedRestoreDeviceIds(bundle, selectedActivityIds) {
   return [...forced].sort((left, right) => left - right);
 }
 function reconcileRestoreSelection(params) {
-  const forcedDeviceIds = forcedRestoreDeviceIds(params.bundle, params.selectedActivityIds);
+  const forcedActivityIds = forcedRestoreActivityIds(params.bundle, params.selectedActivityIds);
+  const selectedActivityIds = [
+    .../* @__PURE__ */ new Set([
+      ...(params.selectedActivityIds ?? []).map((value) => Number(value)),
+      ...forcedActivityIds
+    ])
+  ].sort((left, right) => left - right);
+  const forcedDeviceIds = forcedRestoreDeviceIds(params.bundle, selectedActivityIds);
   const selected = new Set(forcedDeviceIds);
   for (const deviceId of params.manualSelectedDeviceIds ?? []) {
     const normalized = Number(deviceId);
@@ -5916,7 +5966,9 @@ function reconcileRestoreSelection(params) {
   }
   return {
     forcedDeviceIds,
-    selectedDeviceIds: [...selected].sort((left, right) => left - right)
+    selectedDeviceIds: [...selected].sort((left, right) => left - right),
+    selectedActivityIds,
+    forcedActivityIds
   };
 }
 function pruneBackupBundle(params) {
@@ -6711,43 +6763,78 @@ function activityMemberRemovalImpact(bundle, activityId, deviceId) {
   );
   return { favorites, macroSteps, activities: 0, bindings };
 }
+function powerRefDeviceOrder(activity) {
+  const order = [];
+  const push = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && !order.includes(id)) order.push(id);
+  };
+  for (const buttonId of [POWER_ON_MACRO_BUTTON_ID, POWER_OFF_MACRO_BUTTON_ID]) {
+    const macro = (activity.macros ?? []).find((entry) => Number(entry?.button_id || 0) === buttonId);
+    for (const step of macro?.steps ?? []) {
+      if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+    }
+  }
+  return order;
+}
 function setActivityPowerRefStep(activity, deviceId, buttonId, refCommand, present) {
   const dId = Number(deviceId);
   const macros = [...activity.macros ?? []];
   const macroIndex = (id) => macros.findIndex((macro) => Number(macro?.button_id || 0) === id);
-  const appendStep = (id, name, step) => {
-    const index2 = macroIndex(id);
-    const existing = index2 >= 0 ? macros[index2] : null;
-    const next = {
-      ...existing ?? { button_id: id, name },
-      steps: [...existing?.steps ?? [], step]
-    };
-    if (index2 >= 0) macros[index2] = next;
-    else macros.push(next);
-  };
   const index = macroIndex(buttonId);
   const target = index >= 0 ? macros[index] : null;
-  const has = (target?.steps ?? []).some(
-    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, refCommand)
+  const steps = [...target?.steps ?? []];
+  const findRef = (command) => steps.findIndex(
+    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, command)
   );
-  if (present === has) return activity;
-  if (present) {
-    appendStep(
-      buttonId,
-      buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON",
-      powerStep(dId, refCommand)
-    );
+  const refIndex = findRef(refCommand);
+  if (present === refIndex >= 0) return activity;
+  const commit = (nextSteps) => {
+    const name = buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON";
+    const next2 = {
+      ...target ?? { button_id: buttonId, name },
+      steps: nextSteps
+    };
+    if (index >= 0) macros[index] = next2;
+    else macros.push(next2);
     return { ...activity, macros };
-  }
-  macros[index] = {
-    ...target,
-    steps: filterMacroSteps(target.steps, (step) => stepMatchesCommand(step, dId, refCommand))
   };
-  const probe = { ...activity, macros };
-  if (!activityMemberDeviceIds(probe).includes(dId)) {
-    appendStep(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0));
+  if (present) {
+    let insertAt = steps.length;
+    if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
+      const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
+      if (inputIndex >= 0) insertAt = inputIndex;
+    }
+    if (insertAt === steps.length) {
+      const order = powerRefDeviceOrder(activity);
+      const myPos = order.indexOf(dId);
+      if (myPos >= 0) {
+        const later = steps.findIndex(
+          (step) => !isMacroDelayStep(step) && isPowerRefStep(step) && order.indexOf(Number(step?.device_id || 0)) > myPos
+        );
+        if (later >= 0) insertAt = later;
+      }
+    }
+    steps.splice(insertAt, 0, powerStep(dId, refCommand));
+    return commit(steps);
   }
-  return { ...activity, macros };
+  if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
+    const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
+    if (inputIndex >= 0) {
+      const inputStep = steps[inputIndex];
+      const without = steps.filter((_2, i7) => i7 !== refIndex && i7 !== inputIndex);
+      const insertAt = refIndex - (inputIndex < refIndex ? 1 : 0);
+      without.splice(insertAt, 0, inputStep);
+      return commit(without);
+    }
+    return commit(steps.map((step, i7) => i7 === refIndex ? powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0) : step));
+  }
+  const withoutOff = filterMacroSteps(steps, (step) => stepMatchesCommand(step, dId, refCommand));
+  let next = commit(withoutOff);
+  if (!activityMemberDeviceIds(next).includes(dId)) {
+    next = setActivityPowerRefStep(next, dId, POWER_ON_MACRO_BUTTON_ID, DEVICE_INPUT_REF_COMMAND, true);
+  }
+  return next;
 }
 function setActivityDevicePowerOff(bundle, activityId, deviceId, powersOff) {
   return updateActivity(bundle, Number(activityId), (activity) => {
@@ -10573,7 +10660,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       manualSelectedDeviceIds: this._restoreManualDeviceIds
     });
     const totalRestoreOptions = activityOptions.length + deviceOptions.length;
-    const totalRestoreSelected = this._restoreActivityIds.length + restoreSelection.selectedDeviceIds.length;
+    const totalRestoreSelected = restoreSelection.selectedActivityIds.length + restoreSelection.selectedDeviceIds.length;
     const allRestoreSelected = totalRestoreOptions > 0 && totalRestoreSelected === totalRestoreOptions;
     return b2`
       ${renderSecondaryTabContent({
@@ -10610,25 +10697,28 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
                   <div class="selection-list">
                     ${activityOptions.length ? b2`
                         <div class="selection-group-header">Activities</div>
-                        ${activityOptions.map((activity) => b2`
+                        ${activityOptions.map((activity) => {
+        const forcedActivity = restoreSelection.forcedActivityIds.includes(activity.id);
+        return b2`
                           <div
-                            class="selection-row"
+                            class="selection-row ${forcedActivity ? "locked" : ""}"
                             @click=${() => {
-        if (this._restoreLocked()) return;
-        this._setRestoreActivity(activity.id, !this._restoreActivityIds.includes(activity.id));
-      }}
+          if (forcedActivity || this._restoreLocked()) return;
+          this._setRestoreActivity(activity.id, !this._restoreActivityIds.includes(activity.id));
+        }}
                           >
                             ${this._renderCheckboxControl({
-        checked: this._restoreActivityIds.includes(activity.id),
-        disabled: this._restoreLocked(),
-        onChange: (checked) => this._setRestoreActivity(activity.id, checked)
-      })}
+          checked: restoreSelection.selectedActivityIds.includes(activity.id),
+          disabled: forcedActivity || this._restoreLocked(),
+          onChange: (checked) => this._setRestoreActivity(activity.id, checked)
+        })}
                             <span class="selection-main">
                               <span class="selection-label">${activity.label}</span>
                             </span>
-                            ${activity.meta ? b2`<span class="selection-meta">${activity.meta}</span>` : A}
+                            ${activity.meta ? b2`<span class="selection-meta">${forcedActivity ? `${activity.meta} \xB7 linked` : activity.meta}</span>` : forcedActivity ? b2`<span class="selection-meta">linked</span>` : A}
                           </div>
-                        `)}
+                        `;
+      })}
                       ` : b2`<div class="selection-empty">This backup file has no activities.</div>`}
                     ${deviceOptions.length ? b2`
                         <div class="selection-group-header">Devices</div>
@@ -10839,7 +10929,8 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     });
     const filtered = pruneBackupBundle({
       bundle: this._restoreBundle,
-      selectedActivityIds: this._restoreActivityIds,
+      // Expanded set: includes activities forced in by chain references.
+      selectedActivityIds: selection.selectedActivityIds,
       selectedDeviceIds: selection.selectedDeviceIds
     });
     this._restoreError = null;

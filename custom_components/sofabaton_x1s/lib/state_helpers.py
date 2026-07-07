@@ -606,23 +606,20 @@ class ActivityCache:
 
 
 class BurstScheduler:
-    # The activities/devices catalogs can be slow to *begin* streaming on a
-    # congested Wi-Fi link. Give those bursts the same ~5s response window the
-    # official app allows before treating a request as answered, so a slow hub
-    # is not mistaken for an empty catalog. All other burst kinds keep the
-    # snappier 1s grace.
-    _CATALOG_KINDS = frozenset({"activities", "devices"})
-
-    def __init__(
-        self,
-        *,
-        idle_s: float = 0.15,
-        response_grace: float = 1.0,
-        catalog_response_grace: float = 5.0,
-    ) -> None:
+    # ``response_grace`` is the fallback window the scheduler waits — for the
+    # first frame, between frames, and after the last frame — before it treats
+    # a burst as finished. It is only ever reached on a slow or degraded hub:
+    # every read burst (activities, devices, activity_map, commands, macros,
+    # buttons, ir_dump) detects its own completion from the frame stream and
+    # calls ``finish()`` / ``try_finish_*`` the instant the last expected frame
+    # arrives, so a healthy hub never waits on this timer. Because of that we
+    # can afford a generous 5s window — matching what the official app allows —
+    # with no added latency for healthy hubs, while giving a congested link
+    # enough time to answer instead of being mistaken for an empty or partial
+    # response.
+    def __init__(self, *, idle_s: float = 0.15, response_grace: float = 5.0) -> None:
         self.idle_s = idle_s
         self.response_grace = response_grace
-        self.catalog_response_grace = catalog_response_grace
         self.active = False
         self.kind: str | None = None
         self.last_ts = 0.0
@@ -632,16 +629,11 @@ class BurstScheduler:
     def on_burst_end(self, key: str, cb: Callable[[str], None]) -> None:
         self.listeners.setdefault(key, []).append(cb)
 
-    def response_grace_for(self, kind: Optional[str]) -> float:
-        if kind in self._CATALOG_KINDS:
-            return self.catalog_response_grace
-        return self.response_grace
-
     def start(self, kind: str, *, now: Optional[float] = None) -> None:
         self.active = True
         self.kind = kind
         base = time.monotonic() if now is None else now
-        self.last_ts = base + self.response_grace_for(kind)
+        self.last_ts = base + self.response_grace
 
     def queue_or_send(
         self,

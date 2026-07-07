@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
+  activityChainDependencyIds,
   activityRoleAssignments,
   addActivityHaActionFavorite,
   bundleEditableDeviceOptions,
@@ -51,6 +52,7 @@ import {
   deviceIdleBehavior,
   updateBundleDeviceIdleBehavior,
   IDLE_BEHAVIOR_DISABLED,
+  forcedRestoreActivityIds,
   forcedRestoreDeviceIds,
   normalizeHubVersion,
   pruneBackupBundle,
@@ -100,6 +102,8 @@ test("reconcileRestoreSelection keeps manual device picks alongside forced ones"
     {
       forcedDeviceIds: [1, 2],
       selectedDeviceIds: [1, 2, 3],
+      selectedActivityIds: [101],
+      forcedActivityIds: [],
     },
   );
 });
@@ -1251,4 +1255,96 @@ test("parseHaActionAddress accepts IPv4 with optional port", () => {
   assert.equal(parseHaActionAddress("192.168.1.10:0"), null);
   assert.equal(parseHaActionAddress("192.168.1.10:70000"), null);
   assert.equal(parseHaActionAddress(""), null);
+});
+
+test("power pill toggles keep member order and step adjacency stable (interleaved macros)", () => {
+  // realPowerActivity interleaves: dev3 0xC6 @0, dev9 0xC5 @1, dev9 0xC6 @2, dev3 0xC5 @3.
+  assert.deepEqual(activityMemberViews(realPowerActivity(), 101).map((v) => v.deviceId), [3, 9]);
+  // "Stays as is" for dev3: its anchor position must not move.
+  const off = setActivityDevicePowerOn(realPowerActivity(), 101, 3, false);
+  assert.deepEqual(activityMemberViews(off, 101).map((v) => v.deviceId), [3, 9]);
+  // Back to "turns on": order unchanged AND the 0xC6 sits directly before
+  // the device's own 0xC5, not appended at the sequence end.
+  const on = setActivityDevicePowerOn(off, 101, 3, true);
+  assert.deepEqual(activityMemberViews(on, 101).map((v) => v.deviceId), [3, 9]);
+  const steps = on.activities[0].macros!.find((m) => m.button_id === 198)!.steps!;
+  const c6 = steps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC6);
+  const c5 = steps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC5);
+  assert.ok(c6 >= 0 && c5 === c6 + 1, `expected adjacent 0xC6/0xC5, got ${c6}/${c5}`);
+  // END side: toggling dev3's power-off away and back must not push its
+  // 0xC7 behind dev9's in the POWER_OFF sequence.
+  const offEnd = setActivityDevicePowerOff(realPowerActivity(), 101, 3, false);
+  const onEnd = setActivityDevicePowerOff(offEnd, 101, 3, true);
+  assert.deepEqual(activityMemberViews(onEnd, 101).map((v) => v.deviceId), [3, 9]);
+  const offSteps = onEnd.activities[0].macros!.find((m) => m.button_id === 199)!.steps!;
+  assert.deepEqual(offSteps.map((s) => s.device_id), [3, 9]);
+});
+
+// ── Cross-activity chain references (restore selection) ─────────────
+
+// Activity 101's power-off chains into 102 (a step targeting the other
+// activity's id); 102 chains into 103. Devices give each activity its
+// own linked-device footprint.
+function chainBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [
+      { device: { device_id: 1, name: "TV" }, commands: [{ command_id: 10, name: "Power" }] },
+      { device: { device_id: 2, name: "AVR" }, commands: [{ command_id: 20, name: "Power" }] },
+    ],
+    activities: [
+      {
+        device: { device_id: 101, name: "Watch TV", entity_type: "activity" },
+        referenced_source_device_ids: [1],
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [{ button_id: 199, name: "POWER_OFF", steps: [
+          { device_id: 1, command_id: 0xC7, button_code: 0, duration: 0, delay: 255 },
+          { device_id: 102, command_id: 0xC6, button_code: 0, duration: 0, delay: 255 },
+        ] }],
+      },
+      {
+        device: { device_id: 102, name: "Home", entity_type: "activity" },
+        referenced_source_device_ids: [2],
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [{ button_id: 199, name: "POWER_OFF", steps: [
+          { device_id: 103, command_id: 0xC6, button_code: 0, duration: 0, delay: 255 },
+        ] }],
+      },
+      {
+        device: { device_id: 103, name: "All Off", entity_type: "activity" },
+        referenced_source_device_ids: [],
+        favorite_slots: [],
+        button_bindings: [],
+        macros: [],
+      },
+    ],
+  };
+}
+
+test("activityChainDependencyIds finds foreign activity ids in macro steps", () => {
+  assert.deepEqual(activityChainDependencyIds(chainBundle(), 101), [102]);
+  assert.deepEqual(activityChainDependencyIds(chainBundle(), 102), [103]);
+  assert.deepEqual(activityChainDependencyIds(chainBundle(), 103), []);
+});
+
+test("forcedRestoreActivityIds is transitive and excludes the picks", () => {
+  assert.deepEqual(forcedRestoreActivityIds(chainBundle(), [101]), [102, 103]);
+  assert.deepEqual(forcedRestoreActivityIds(chainBundle(), [102]), [103]);
+  assert.deepEqual(forcedRestoreActivityIds(chainBundle(), [101, 102]), [103]);
+});
+
+test("reconcileRestoreSelection pulls chained activities and their devices in", () => {
+  const selection = reconcileRestoreSelection({
+    bundle: chainBundle(),
+    selectedActivityIds: [101],
+    manualSelectedDeviceIds: [],
+  });
+  assert.deepEqual(selection.selectedActivityIds, [101, 102, 103]);
+  assert.deepEqual(selection.forcedActivityIds, [102, 103]);
+  // Device 2 is linked only to the FORCED activity 102 — it must come along.
+  assert.deepEqual(selection.forcedDeviceIds, [1, 2]);
 });

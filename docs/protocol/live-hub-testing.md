@@ -73,3 +73,20 @@ containing an editor-provisioned HA action:
 If the hub rejects trailer-less records, the fix belongs in the restore
 path (compute the outer-record checksum in `build_command_write_steps`),
 not in the TS writer.
+
+## Pending validation: cross-activity chain steps
+
+Stage 1 restore plumbing (activity_id_map, dependency-ordered activity
+restore) supports macro steps whose `device_id` is another ACTIVITY
+(>= 0x65) — the "activity A's power-off starts activity B" pattern.
+Firmware behavior is unvalidated; on a live hub confirm:
+
+1. The family-0x12 macro write is acked (`0x0112`) when a step row's
+   device byte is an activity id.
+2. Ending activity A actually starts activity B when A's POWER_OFF
+   carries a `{device_id: B, key 0xC6}` step.
+3. Restore of a bundle containing the chain lands with the remapped
+   activity id (check via a fresh backup of the restored hub).
+
+The backup editor has no UI for this yet (stage 2 of the proposal in
+the activity-editor plan); test bundles are hand-edited.

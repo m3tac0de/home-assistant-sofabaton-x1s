@@ -440,6 +440,12 @@ class DeviceCreateRequest:
     #: those devices new ids at restore time. Empty for device-create
     #: requests (which have no cross-device references).
     device_id_map: dict[int, int] = field(default_factory=dict)
+    #: Source-activity-id -> destination-activity-id translation for
+    #: cross-activity references (e.g. a power-off macro step that
+    #: starts another activity). The bundle orchestrator restores
+    #: activities in dependency order and threads this map in; the
+    #: activity's OWN id maps through a dedicated branch instead.
+    activity_id_map: dict[int, int] = field(default_factory=dict)
     #: Source-device-id -> {source_command_id: new_command_id} mapping
     #: captured during a bundle restore's devices phase. Used by the
     #: activity-create path to resolve macro steps whose ``key_id`` is
