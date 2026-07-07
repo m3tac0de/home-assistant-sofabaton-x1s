@@ -186,3 +186,66 @@ test("activities tab drops the in-memory session when the hub picker switches hu
   assert.equal(element._baseline, null);
   assert.equal(element._activityId, null);
 });
+
+test("activities tab tracks dirty on bundle-change and clears it when reverted", () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const base = sampleBundle();
+  element._baseline = base;
+  element._working = structuredClone(base);
+  element._activityId = 101;
+  element._recomputeDirty();
+  assert.equal(element._dirty, false);
+
+  const mutated = structuredClone(base);
+  mutated.activities[0].device!.name = "Changed";
+  element._handleBundleChange({ detail: { bundle: mutated } });
+  assert.equal(element._dirty, true);
+
+  // Revert back to the baseline shape → dirty clears.
+  element._handleBundleChange({ detail: { bundle: structuredClone(base) } });
+  assert.equal(element._dirty, false);
+});
+
+test("activities tab discard restores the working bundle to the baseline and clears dirty", () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const base = sampleBundle();
+  element._baseline = base;
+  const mutated = structuredClone(base);
+  mutated.activities[0].device!.name = "Changed";
+  element._working = mutated;
+  element._activityId = 101;
+  element._recomputeDirty();
+  element._discardConfirmOpen = true;
+  assert.equal(element._dirty, true);
+
+  element._discardChanges();
+  assert.equal(element._dirty, false);
+  assert.equal(element._working.activities[0].device.name, "Watch TV");
+  assert.equal(element._discardConfirmOpen, false);
+});
+
+test("activities tab opens the review dialog only when dirty", () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  element._baseline = sampleBundle();
+  element._working = structuredClone(element._baseline);
+  element._activityId = 101;
+  element._dirty = false;
+  element._openReview();
+  assert.equal(element._reviewOpen, false);
+
+  element._dirty = true;
+  element._openReview();
+  assert.equal(element._reviewOpen, true);
+});
+
+test("activities tab sync is stubbed to a coming-soon notice (no hub write)", () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  element._baseline = sampleBundle();
+  element._working = structuredClone(element._baseline);
+  element._activityId = 101;
+  element._dirty = true;
+  element._reviewOpen = true;
+  element._requestSync();
+  assert.equal(element._reviewOpen, false);
+  assert.equal(element._syncNoticeOpen, true);
+});

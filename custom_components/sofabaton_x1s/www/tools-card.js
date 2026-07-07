@@ -2991,7 +2991,69 @@ var TOOLS_CARD_STRINGS = {
     back: "Back",
     // Session restore banner (§4.6).
     sessionRestoreBanner: (name, time) => `Continuing your edit of "${name}" from ${time}`,
-    sessionReload: "Reload from hub instead"
+    sessionReload: "Reload from hub instead",
+    // Live-mode edit header (§4.3).
+    notSyncedChip: "Not synced",
+    notSyncedTooltip: "Changes are local until you press Sync.",
+    reviewChanges: "Review changes",
+    sync: "Sync",
+    discard: "Discard",
+    // Review dialog (§4.4).
+    reviewTitle: "Review changes",
+    reviewEmpty: "No changes to sync yet.",
+    reviewSyncNow: "Sync now",
+    reviewKeepEditing: "Keep editing",
+    reviewDiscardAll: "Discard all changes",
+    reviewAppliesEverywhere: "applies everywhere",
+    reviewAppliesEveryActivity: "applies to every activity",
+    // Sync is stubbed until Phase L4 lands.
+    syncComingSoonTitle: "Live sync is coming soon",
+    syncComingSoonBody: "Writing changes back to the hub arrives in a later update (Phase L4). Your edits are safe here in the meantime.",
+    // Discard confirmation.
+    discardConfirmTitle: "Discard all changes?",
+    discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
+    discardConfirmCancel: "Keep editing",
+    discardConfirmConfirm: "Discard changes",
+    // Review-list section titles + entry templates (activity-diff.ts).
+    review: {
+      sectionDevices: "Devices",
+      sectionStart: "When it starts",
+      sectionButtons: "Buttons",
+      sectionShortcuts: "Shortcuts",
+      sectionEnd: "When it ends",
+      sectionDeviceWide: "Device-wide changes",
+      deviceAdded: (name) => `Added "${name}" to this activity.`,
+      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
+      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
+      inputCleared: (device) => `"${device}" input cleared.`,
+      powersOnNow: (device) => `"${device}" now turns on with this activity.`,
+      powersOnNo: (device) => `"${device}" no longer turns on with this activity.`,
+      startReordered: "Start sequence reordered.",
+      roleNowControls: (group, device) => `${group} now control "${device}".`,
+      roleCustomized: (group) => `${group} customized.`,
+      roleCleared: (group) => `${group} no longer assigned.`,
+      shortcutAdded: (name) => `Added "${name}".`,
+      shortcutRemoved: (name) => `Removed "${name}".`,
+      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
+      shortcutsReordered: "Reordered shortcuts.",
+      powersOffNow: (device) => `"${device}" now turns off with this activity.`,
+      powersOffNo: (device) => `"${device}" now stays on.`,
+      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
+      roleGroups: {
+        volume: "Volume buttons",
+        navigation: "Navigation buttons",
+        playback: "Playback buttons",
+        channels: "Channel buttons"
+      },
+      idleShort: {
+        0: "not set",
+        1: "turns off when idle",
+        2: "never switches off",
+        3: "stays on",
+        4: "not managed by the hub"
+      }
+    }
   },
   backup: {
     loading: "Loading backup tools...",
@@ -9397,6 +9459,13 @@ var SofabatonEditDetailView = class extends i4 {
     this._requestClose = () => {
       this.dispatchEvent(new CustomEvent("close"));
     };
+    // ── Live-mode header (§4.3) ─────────────────────────────────────────
+    // In live mode the host owns Review / Sync / Discard; the element just
+    // signals intent. In backup mode these render nothing (the header shows
+    // rename/delete instead) and the chip reads "Unsaved".
+    this._requestReview = () => this.dispatchEvent(new CustomEvent("review-request"));
+    this._requestSync = () => this.dispatchEvent(new CustomEvent("sync-request"));
+    this._requestDiscard = () => this.dispatchEvent(new CustomEvent("discard-request"));
     this._handleEditDetailScroll = (event) => {
       const scrollEl = event.currentTarget;
       if (!scrollEl) return;
@@ -9976,6 +10045,23 @@ var SofabatonEditDetailView = class extends i4 {
     this.bundle = pruneHaActionHosts(next);
     this.dispatchEvent(new CustomEvent("bundle-change", { detail: { bundle: this.bundle } }));
   }
+  _renderDirtyChip() {
+    if (!this.dirty) return A;
+    if (this.mode === "live") {
+      return b2`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.activities.notSyncedTooltip}>${TOOLS_CARD_STRINGS.activities.notSyncedChip}</span>`;
+    }
+    return b2`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`;
+  }
+  _renderLiveHeaderActions() {
+    const S5 = TOOLS_CARD_STRINGS.activities;
+    return b2`
+      <div class="detail-title-actions live-actions">
+        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestDiscard}>${S5.discard}</button>
+        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestReview}>${S5.reviewChanges}</button>
+        <button class="live-btn live-btn--primary" ?disabled=${!this.dirty} @click=${this._requestSync}>${S5.sync}</button>
+      </div>
+    `;
+  }
   render() {
     if (!this.bundle || this.entityId == null) return A;
     if (this._macroEditor) {
@@ -10007,8 +10093,8 @@ var SofabatonEditDetailView = class extends i4 {
     ])}
                   <div class="detail-title">${params.title}</div>
                 </div>
-                ${this.dirty && this.mode !== "live" ? b2`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
-                ${this.mode === "live" ? A : b2`
+                ${this._renderDirtyChip()}
+                ${this.mode === "live" ? this._renderLiveHeaderActions() : b2`
                       <div class="detail-title-actions">
                         <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
                           <ha-icon icon="mdi:pencil"></ha-icon>
@@ -10167,7 +10253,7 @@ var SofabatonEditDetailView = class extends i4 {
     ])}
                   <div class="detail-title">${S5.bindingsViewTitle}</div>
                 </div>
-                ${this.dirty && this.mode !== "live" ? b2`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${this._renderDirtyChip()}
               </div>
             </div>
           </div>
@@ -11306,7 +11392,7 @@ var SofabatonEditDetailView = class extends i4 {
     ])}
                   <div class="detail-title">${editor.name}</div>
                 </div>
-                ${this.dirty && this.mode !== "live" ? b2`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${this._renderDirtyChip()}
                 ${canRename ? b2`
                       <div class="detail-title-actions">
                         <button
@@ -11683,6 +11769,31 @@ SofabatonEditDetailView.styles = [activityEditorStyles, backupTabStyles, i`
     :host {
       flex-direction: column;
     }
+    /* Live-mode header action cluster (Discard / Review / Sync). */
+    .live-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .live-btn {
+      border: 1px solid var(--divider-color);
+      border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 6px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+    }
+    .live-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .live-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    .live-btn:disabled {
+      cursor: default;
+      opacity: 0.42;
+      color: var(--disabled-text-color, var(--secondary-text-color));
+      border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
+      background: transparent;
+    }
+    .live-btn:disabled:hover { border-color: color-mix(in srgb, var(--divider-color) 88%, transparent); }
   `];
 if (!customElements.get("sofabaton-edit-detail-view")) {
   customElements.define("sofabaton-edit-detail-view", SofabatonEditDetailView);
@@ -15440,6 +15551,145 @@ if (!customElements.get("sofabaton-wifi-commands-tab")) {
   customElements.define("sofabaton-wifi-commands-tab", SofabatonWifiCommandsTab);
 }
 
+// custom_components/sofabaton_x1s/www/src/tabs/activity-diff.ts
+var R2 = TOOLS_CARD_STRINGS.activities.review;
+var POWER_ON_MACRO_BUTTON_ID2 = 198;
+var SECTION_ORDER = [
+  "devices",
+  "start",
+  "buttons",
+  "shortcuts",
+  "end",
+  "device_wide"
+];
+function diffActivityForReview(baseline, edited, activityId) {
+  const buckets = {
+    devices: [],
+    start: [],
+    buttons: [],
+    shortcuts: [],
+    end: [],
+    device_wide: []
+  };
+  if (!baseline || !edited) return [];
+  const baseMembers = activityMemberViews(baseline, activityId);
+  const editMembers = activityMemberViews(edited, activityId);
+  const baseById = new Map(baseMembers.map((member) => [member.deviceId, member]));
+  const editById = new Map(editMembers.map((member) => [member.deviceId, member]));
+  diffMembership(buckets, baseById, editById);
+  diffStart(buckets, baseline, edited, activityId, baseById, editById);
+  diffButtons(buckets, baseline, edited, activityId);
+  diffShortcuts(buckets, baseline, edited, activityId);
+  diffEnd(buckets, baseById, editById);
+  diffDeviceWide(buckets, baseline, edited, editMembers);
+  return SECTION_ORDER.map((section) => ({ section, entries: buckets[section] })).filter((group) => group.entries.length > 0);
+}
+function diffMembership(buckets, baseById, editById) {
+  for (const [deviceId, member] of editById) {
+    if (!baseById.has(deviceId)) buckets.devices.push({ text: R2.deviceAdded(member.deviceName) });
+  }
+  for (const [deviceId, member] of baseById) {
+    if (!editById.has(deviceId)) buckets.devices.push({ text: R2.deviceRemoved(member.deviceName) });
+  }
+}
+function diffStart(buckets, baseline, edited, activityId, baseById, editById) {
+  for (const [deviceId, member] of editById) {
+    const before = baseById.get(deviceId);
+    if (!before) continue;
+    if (member.powersOn !== before.powersOn) {
+      buckets.start.push({ text: member.powersOn ? R2.powersOnNow(member.deviceName) : R2.powersOnNo(member.deviceName) });
+    }
+    if ((member.inputCommandId ?? null) !== (before.inputCommandId ?? null)) {
+      buckets.start.push({
+        text: member.inputCommandId != null && member.inputCommandName ? R2.inputChanged(member.deviceName, member.inputCommandName) : R2.inputCleared(member.deviceName)
+      });
+    }
+  }
+  const baseOrder = powerSequenceOrder(baseline, activityId);
+  const editOrder = powerSequenceOrder(edited, activityId);
+  if (baseOrder.length === editOrder.length && baseOrder.join(",") !== editOrder.join(",")) {
+    buckets.start.push({ text: R2.startReordered });
+  }
+}
+function powerSequenceOrder(bundle, activityId) {
+  return activityMacroStepItems(bundle, activityId, POWER_ON_MACRO_BUTTON_ID2).map((step) => Number(step.deviceId ?? 0)).filter((id) => id > 0);
+}
+function diffButtons(buckets, baseline, edited, activityId) {
+  const baseRoles = new Map(activityRoleAssignments(baseline, activityId).map((role) => [role.group, role]));
+  const editRoles = new Map(activityRoleAssignments(edited, activityId).map((role) => [role.group, role]));
+  for (const group of ACTIVITY_ROLE_GROUPS) {
+    const before = baseRoles.get(group);
+    const after = editRoles.get(group);
+    if (!after) continue;
+    const changed = !before || before.state !== after.state || (before.deviceId ?? null) !== (after.deviceId ?? null);
+    if (!changed) continue;
+    const label = R2.roleGroups[group] ?? group;
+    if (after.state === "unused") {
+      buckets.buttons.push({ text: R2.roleCleared(label) });
+    } else if (after.state === "device" && after.deviceName) {
+      buckets.buttons.push({ text: R2.roleNowControls(label, after.deviceName) });
+    } else {
+      buckets.buttons.push({ text: R2.roleCustomized(label) });
+    }
+  }
+}
+function shortcutIdentity(item) {
+  return `${item.kind}:${item.buttonId}`;
+}
+function diffShortcuts(buckets, baseline, edited, activityId) {
+  const base = activityQuickAccessItems(baseline, activityId);
+  const edit = activityQuickAccessItems(edited, activityId);
+  const baseById = new Map(base.map((item) => [shortcutIdentity(item), item]));
+  const editById = new Map(edit.map((item) => [shortcutIdentity(item), item]));
+  for (const [id, item] of editById) {
+    if (!baseById.has(id)) buckets.shortcuts.push({ text: R2.shortcutAdded(item.label) });
+  }
+  for (const [id, item] of baseById) {
+    if (!editById.has(id)) buckets.shortcuts.push({ text: R2.shortcutRemoved(item.label) });
+  }
+  for (const [id, item] of editById) {
+    const before = baseById.get(id);
+    if (before && before.label !== item.label) {
+      buckets.shortcuts.push({ text: R2.shortcutRenamed(before.label, item.label) });
+    }
+  }
+  const baseIds = base.map(shortcutIdentity);
+  const editIds = edit.map(shortcutIdentity);
+  if (baseIds.length === editIds.length && baseIds.length > 0 && [...baseIds].sort().join(",") === [...editIds].sort().join(",") && baseIds.join(",") !== editIds.join(",")) {
+    buckets.shortcuts.push({ text: R2.shortcutsReordered });
+  }
+}
+function diffEnd(buckets, baseById, editById) {
+  for (const [deviceId, member] of editById) {
+    const before = baseById.get(deviceId);
+    if (!before) continue;
+    if (member.powersOff !== before.powersOff) {
+      buckets.end.push({ text: member.powersOff ? R2.powersOffNow(member.deviceName) : R2.powersOffNo(member.deviceName) });
+    }
+  }
+}
+function diffDeviceWide(buckets, baseline, edited, editMembers) {
+  for (const member of editMembers) {
+    const before = deviceIdleBehavior(baseline, member.deviceId);
+    const after = deviceIdleBehavior(edited, member.deviceId);
+    if (before !== after) {
+      const label = R2.idleShort[Number(after ?? 0)] ?? String(after);
+      buckets.device_wide.push({ text: R2.idleChanged(member.deviceName, label), global: true });
+    }
+  }
+  for (const device of bundleDeviceOptions(edited)) {
+    const deviceId = device.id;
+    const before = new Map(deviceCommandItems(baseline, deviceId).map((cmd) => [cmd.commandId, cmd.label]));
+    const after = deviceCommandItems(edited, deviceId);
+    for (const cmd of after) {
+      const prev = before.get(cmd.commandId);
+      if (prev != null && prev !== cmd.label) {
+        buckets.device_wide.push({ text: R2.commandRenamed(prev, cmd.label, device.label), global: true });
+      }
+    }
+  }
+}
+
 // custom_components/sofabaton_x1s/www/src/tabs/activities-tab.ts
 var S4 = TOOLS_CARD_STRINGS.activities;
 var _SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i4 {
@@ -15461,6 +15711,10 @@ var _SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i4 {
     this._captureError = null;
     this._sessionRestored = false;
     this._sessionSavedAt = 0;
+    this._dirty = false;
+    this._reviewOpen = false;
+    this._discardConfirmOpen = false;
+    this._syncNoticeOpen = false;
     this._captureOperationId = null;
     this._progressUnsub = null;
     this._sessionRestoreTried = false;
@@ -15484,6 +15738,37 @@ var _SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i4 {
     // ── Editing (§4.3) — interactive but ephemeral in L2 ───────────────
     this._handleBundleChange = (event) => {
       this._working = event.detail.bundle;
+      this._recomputeDirty();
+    };
+    this._openReview = () => {
+      if (!this._dirty) return;
+      this._reviewOpen = true;
+    };
+    this._closeReview = () => {
+      this._reviewOpen = false;
+    };
+    // Sync is stubbed until the L4 engine lands: surface a "coming soon"
+    // notice instead of writing to the hub. Edits stay intact.
+    this._requestSync = () => {
+      if (!this._dirty) return;
+      this._reviewOpen = false;
+      this._syncNoticeOpen = true;
+    };
+    this._closeSyncNotice = () => {
+      this._syncNoticeOpen = false;
+    };
+    this._openDiscardConfirm = () => {
+      if (!this._dirty) return;
+      this._discardConfirmOpen = true;
+    };
+    this._closeDiscardConfirm = () => {
+      this._discardConfirmOpen = false;
+    };
+    this._discardChanges = () => {
+      if (this._baseline) this._working = structuredClone(this._baseline);
+      this._recomputeDirty();
+      this._reviewOpen = false;
+      this._discardConfirmOpen = false;
     };
     this._closeEditor = () => {
       this._clearSession();
@@ -15538,6 +15823,7 @@ var _SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i4 {
         activityId: this._activityId,
         baseline: this._baseline,
         working: this._working ?? this._baseline,
+        dirty: this._dirty,
         captureGeneration
       };
       window.localStorage.setItem(key, JSON.stringify(payload));
@@ -15580,6 +15866,7 @@ var _SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i4 {
       this._activityId = activityId;
       this._sessionSavedAt = savedAt;
       this._sessionRestored = true;
+      this._recomputeDirty();
       this._stage = "editing";
     } catch {
       try {
@@ -15604,6 +15891,7 @@ var _SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i4 {
         if (bundle) {
           this._baseline = bundle;
           this._working = structuredClone(bundle);
+          this._dirty = false;
           this._sessionSavedAt = Date.now();
           this._sessionRestored = false;
           this._captureProgress = null;
@@ -15638,6 +15926,14 @@ var _SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i4 {
   _isProgressRunning(progress) {
     return !!progress && ["pending", "running"].includes(String(progress.status || ""));
   }
+  _recomputeDirty() {
+    this._dirty = !!this._baseline && !!this._working && JSON.stringify(this._working) !== JSON.stringify(this._baseline);
+  }
+  // ── Review / Sync / Discard (§4.4) ─────────────────────────────────
+  _reviewGroups() {
+    if (this._activityId == null) return [];
+    return diffActivityForReview(this._baseline, this._working, this._activityId);
+  }
   _resetToList() {
     this._stage = "list";
     this._activityId = null;
@@ -15648,6 +15944,10 @@ var _SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i4 {
     this._captureOperationId = null;
     this._sessionRestored = false;
     this._sessionSavedAt = 0;
+    this._dirty = false;
+    this._reviewOpen = false;
+    this._discardConfirmOpen = false;
+    this._syncNoticeOpen = false;
   }
   // ── Data ───────────────────────────────────────────────────────────
   _activityItems() {
@@ -15782,11 +16082,111 @@ var _SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i4 {
           .bundle=${this._working}
           kind="activity"
           .entityId=${this._activityId}
-          .dirty=${false}
+          .dirty=${this._dirty}
           mode="live"
           @bundle-change=${this._handleBundleChange}
+          @review-request=${this._openReview}
+          @sync-request=${this._requestSync}
+          @discard-request=${this._openDiscardConfirm}
           @close=${this._closeEditor}
         ></sofabaton-edit-detail-view>
+        ${this._reviewOpen ? this._renderReviewDialog() : A}
+        ${this._discardConfirmOpen ? this._renderDiscardDialog() : A}
+        ${this._syncNoticeOpen ? this._renderSyncNoticeDialog() : A}
+      </div>
+    `;
+  }
+  _renderReviewDialog() {
+    const S5 = TOOLS_CARD_STRINGS.activities;
+    const groups = this._reviewGroups();
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeReview}>
+        <div class="dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S5.reviewTitle}</div>
+            <button class="dialog-close" @click=${this._closeReview}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${groups.length ? groups.map((group) => b2`
+                  <div class="review-group">
+                    <div class="review-group-title">${this._reviewSectionTitle(group.section)}</div>
+                    <ul class="review-entry-list">
+                      ${group.entries.map((entry) => b2`
+                        <li class="review-entry">
+                          ${entry.text}
+                          ${entry.global ? b2`<span class="review-global-note">(${S5.reviewAppliesEverywhere})</span>` : A}
+                        </li>
+                      `)}
+                    </ul>
+                  </div>
+                `) : b2`<div class="review-empty">${S5.reviewEmpty}</div>`}
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-danger" @click=${this._openDiscardConfirm}>${S5.reviewDiscardAll}</button>
+            <div class="dialog-footer-actions">
+              <button class="btn" @click=${this._closeReview}>${S5.reviewKeepEditing}</button>
+              <button class="btn btn-primary" @click=${this._requestSync}>${S5.reviewSyncNow}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _reviewSectionTitle(section) {
+    const R3 = TOOLS_CARD_STRINGS.activities.review;
+    switch (section) {
+      case "devices":
+        return R3.sectionDevices;
+      case "start":
+        return R3.sectionStart;
+      case "buttons":
+        return R3.sectionButtons;
+      case "shortcuts":
+        return R3.sectionShortcuts;
+      case "end":
+        return R3.sectionEnd;
+      case "device_wide":
+        return R3.sectionDeviceWide;
+    }
+  }
+  _renderDiscardDialog() {
+    const S5 = TOOLS_CARD_STRINGS.activities;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeDiscardConfirm}>
+        <div class="dialog dialog--small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S5.discardConfirmTitle}</div>
+            <button class="dialog-close" @click=${this._closeDiscardConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body"><div class="dialog-text">${S5.discardConfirmBody}</div></div>
+          <div class="dialog-footer">
+            <span></span>
+            <div class="dialog-footer-actions">
+              <button class="btn" @click=${this._closeDiscardConfirm}>${S5.discardConfirmCancel}</button>
+              <button class="btn btn-danger" @click=${this._discardChanges}>${S5.discardConfirmConfirm}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderSyncNoticeDialog() {
+    const S5 = TOOLS_CARD_STRINGS.activities;
+    return b2`
+      <div class="modal-backdrop" @click=${this._closeSyncNotice}>
+        <div class="dialog dialog--small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S5.syncComingSoonTitle}</div>
+            <button class="dialog-close" @click=${this._closeSyncNotice}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body"><div class="dialog-text">${S5.syncComingSoonBody}</div></div>
+          <div class="dialog-footer">
+            <span></span>
+            <div class="dialog-footer-actions">
+              <button class="btn btn-primary" @click=${this._closeSyncNotice}>${S5.back}</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -15826,7 +16226,11 @@ _SofabatonActivitiesTab.properties = {
   _captureProgress: { state: true },
   _captureError: { state: true },
   _sessionRestored: { state: true },
-  _sessionSavedAt: { state: true }
+  _sessionSavedAt: { state: true },
+  _dirty: { state: true },
+  _reviewOpen: { state: true },
+  _discardConfirmOpen: { state: true },
+  _syncNoticeOpen: { state: true }
 };
 _SofabatonActivitiesTab.styles = [operationProgressStyles, i`
     :host {
@@ -15929,6 +16333,47 @@ _SofabatonActivitiesTab.styles = [operationProgressStyles, i`
       cursor: pointer;
     }
     .session-banner-btn:hover { border-color: var(--primary-color); }
+    .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
+    .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
+    /* Review / discard / sync dialogs (§4.4). */
+    .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+    .dialog {
+      width: min(640px, calc(100vw - 36px));
+      max-height: min(82vh, 820px);
+      display: flex;
+      flex-direction: column;
+      border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
+      border: 1px solid var(--divider-color);
+      background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+      box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
+      overflow: hidden;
+    }
+    .dialog--small { width: min(460px, calc(100vw - 36px)); }
+    .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .dialog-header { border-bottom: 1px solid var(--divider-color); }
+    .dialog-title { font-size: 16px; font-weight: 700; flex: 1; color: var(--primary-text-color); }
+    .dialog-close {
+      width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+      background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); cursor: pointer;
+    }
+    .dialog-close:hover { border-color: var(--primary-color); color: var(--primary-text-color); }
+    .dialog-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+    .dialog-text { font-size: 14px; line-height: 1.55; color: var(--primary-text-color); }
+    .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; }
+    .dialog-footer-actions { display: flex; gap: 8px; }
+    .review-group { display: flex; flex-direction: column; gap: 6px; }
+    .review-group-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color);
+    }
+    .review-entry-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+    .review-entry { font-size: 13.5px; line-height: 1.5; color: var(--primary-text-color); }
+    .review-global-note { color: var(--secondary-text-color); font-style: italic; margin-left: 6px; }
+    .review-empty { font-size: 14px; color: var(--secondary-text-color); }
+    @media (max-width: 640px) {
+      .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+      .dialog, .dialog--small { width: 100%; max-height: 100%; border-radius: 0; }
+    }
   `];
 var SofabatonActivitiesTab = _SofabatonActivitiesTab;
 if (!customElements.get("sofabaton-activities-tab")) {

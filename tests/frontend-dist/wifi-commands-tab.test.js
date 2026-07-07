@@ -1659,7 +1659,69 @@ var TOOLS_CARD_STRINGS = {
     back: "Back",
     // Session restore banner (§4.6).
     sessionRestoreBanner: (name, time) => `Continuing your edit of "${name}" from ${time}`,
-    sessionReload: "Reload from hub instead"
+    sessionReload: "Reload from hub instead",
+    // Live-mode edit header (§4.3).
+    notSyncedChip: "Not synced",
+    notSyncedTooltip: "Changes are local until you press Sync.",
+    reviewChanges: "Review changes",
+    sync: "Sync",
+    discard: "Discard",
+    // Review dialog (§4.4).
+    reviewTitle: "Review changes",
+    reviewEmpty: "No changes to sync yet.",
+    reviewSyncNow: "Sync now",
+    reviewKeepEditing: "Keep editing",
+    reviewDiscardAll: "Discard all changes",
+    reviewAppliesEverywhere: "applies everywhere",
+    reviewAppliesEveryActivity: "applies to every activity",
+    // Sync is stubbed until Phase L4 lands.
+    syncComingSoonTitle: "Live sync is coming soon",
+    syncComingSoonBody: "Writing changes back to the hub arrives in a later update (Phase L4). Your edits are safe here in the meantime.",
+    // Discard confirmation.
+    discardConfirmTitle: "Discard all changes?",
+    discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
+    discardConfirmCancel: "Keep editing",
+    discardConfirmConfirm: "Discard changes",
+    // Review-list section titles + entry templates (activity-diff.ts).
+    review: {
+      sectionDevices: "Devices",
+      sectionStart: "When it starts",
+      sectionButtons: "Buttons",
+      sectionShortcuts: "Shortcuts",
+      sectionEnd: "When it ends",
+      sectionDeviceWide: "Device-wide changes",
+      deviceAdded: (name) => `Added "${name}" to this activity.`,
+      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
+      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
+      inputCleared: (device) => `"${device}" input cleared.`,
+      powersOnNow: (device) => `"${device}" now turns on with this activity.`,
+      powersOnNo: (device) => `"${device}" no longer turns on with this activity.`,
+      startReordered: "Start sequence reordered.",
+      roleNowControls: (group, device) => `${group} now control "${device}".`,
+      roleCustomized: (group) => `${group} customized.`,
+      roleCleared: (group) => `${group} no longer assigned.`,
+      shortcutAdded: (name) => `Added "${name}".`,
+      shortcutRemoved: (name) => `Removed "${name}".`,
+      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
+      shortcutsReordered: "Reordered shortcuts.",
+      powersOffNow: (device) => `"${device}" now turns off with this activity.`,
+      powersOffNo: (device) => `"${device}" now stays on.`,
+      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
+      roleGroups: {
+        volume: "Volume buttons",
+        navigation: "Navigation buttons",
+        playback: "Playback buttons",
+        channels: "Channel buttons"
+      },
+      idleShort: {
+        0: "not set",
+        1: "turns off when idle",
+        2: "never switches off",
+        3: "stays on",
+        4: "not managed by the hub"
+      }
+    }
   },
   backup: {
     loading: "Loading backup tools...",

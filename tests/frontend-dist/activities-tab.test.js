@@ -1353,7 +1353,69 @@ var TOOLS_CARD_STRINGS = {
     back: "Back",
     // Session restore banner (§4.6).
     sessionRestoreBanner: (name, time) => `Continuing your edit of "${name}" from ${time}`,
-    sessionReload: "Reload from hub instead"
+    sessionReload: "Reload from hub instead",
+    // Live-mode edit header (§4.3).
+    notSyncedChip: "Not synced",
+    notSyncedTooltip: "Changes are local until you press Sync.",
+    reviewChanges: "Review changes",
+    sync: "Sync",
+    discard: "Discard",
+    // Review dialog (§4.4).
+    reviewTitle: "Review changes",
+    reviewEmpty: "No changes to sync yet.",
+    reviewSyncNow: "Sync now",
+    reviewKeepEditing: "Keep editing",
+    reviewDiscardAll: "Discard all changes",
+    reviewAppliesEverywhere: "applies everywhere",
+    reviewAppliesEveryActivity: "applies to every activity",
+    // Sync is stubbed until Phase L4 lands.
+    syncComingSoonTitle: "Live sync is coming soon",
+    syncComingSoonBody: "Writing changes back to the hub arrives in a later update (Phase L4). Your edits are safe here in the meantime.",
+    // Discard confirmation.
+    discardConfirmTitle: "Discard all changes?",
+    discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
+    discardConfirmCancel: "Keep editing",
+    discardConfirmConfirm: "Discard changes",
+    // Review-list section titles + entry templates (activity-diff.ts).
+    review: {
+      sectionDevices: "Devices",
+      sectionStart: "When it starts",
+      sectionButtons: "Buttons",
+      sectionShortcuts: "Shortcuts",
+      sectionEnd: "When it ends",
+      sectionDeviceWide: "Device-wide changes",
+      deviceAdded: (name) => `Added "${name}" to this activity.`,
+      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
+      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
+      inputCleared: (device) => `"${device}" input cleared.`,
+      powersOnNow: (device) => `"${device}" now turns on with this activity.`,
+      powersOnNo: (device) => `"${device}" no longer turns on with this activity.`,
+      startReordered: "Start sequence reordered.",
+      roleNowControls: (group, device) => `${group} now control "${device}".`,
+      roleCustomized: (group) => `${group} customized.`,
+      roleCleared: (group) => `${group} no longer assigned.`,
+      shortcutAdded: (name) => `Added "${name}".`,
+      shortcutRemoved: (name) => `Removed "${name}".`,
+      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
+      shortcutsReordered: "Reordered shortcuts.",
+      powersOffNow: (device) => `"${device}" now turns off with this activity.`,
+      powersOffNo: (device) => `"${device}" now stays on.`,
+      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
+      roleGroups: {
+        volume: "Volume buttons",
+        navigation: "Navigation buttons",
+        playback: "Playback buttons",
+        channels: "Channel buttons"
+      },
+      idleShort: {
+        0: "not set",
+        1: "turns off when idle",
+        2: "never switches off",
+        3: "stays on",
+        4: "not managed by the hub"
+      }
+    }
   },
   backup: {
     loading: "Loading backup tools...",
@@ -1973,6 +2035,2056 @@ var ControlPanelApi = class {
     );
   }
 };
+
+// custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
+var DECODED_CLASS_FORM_SPECS = {
+  wifi_ip: {
+    title: "HTTP request",
+    subtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
+    fields: [
+      { key: "host", label: "Host (IPv4)", helper: "e.g. 192.168.2.77" },
+      { key: "port", label: "Port", numeric: true },
+      { key: "method", label: "HTTP method", helper: "e.g. GET, POST" },
+      { key: "path", label: "Path" },
+      {
+        key: "header",
+        label: "Extra headers",
+        multiline: true,
+        crlfOnWire: true,
+        helper: "One header per line. Host and Content-Length are added automatically."
+      },
+      { key: "content_type", label: "Content type" },
+      { key: "body", label: "Body", multiline: true }
+    ]
+  },
+  wifi_roku: {
+    title: "Roku ECP request",
+    fields: [
+      { key: "path", label: "ECP URL path", helper: "e.g. /launch/12 or /keypress/Home" }
+    ]
+  },
+  wifi_hue: {
+    title: "Hue REST request",
+    subtitle: "Body block is injected verbatim between Host headers and the network write.",
+    fields: [
+      { key: "path", label: "URL path" },
+      {
+        key: "body_block",
+        label: "Body block (raw wire string)",
+        multiline: true,
+        escapedDisplay: true,
+        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
+      }
+    ]
+  },
+  wifi_sonos: {
+    title: "Sonos UPnP request",
+    subtitle: "Body block is injected verbatim between Host headers and the network write.",
+    fields: [
+      { key: "path", label: "URL path" },
+      {
+        key: "body_block",
+        label: "Body block (raw wire string)",
+        multiline: true,
+        escapedDisplay: true,
+        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
+      }
+    ]
+  },
+  ir: {
+    title: "Descriptive IR payload",
+    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR blobs are not editable here.",
+    fields: [
+      {
+        key: "descriptor",
+        label: "Descriptor",
+        helper: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2"
+      }
+    ]
+  }
+};
+function normalizeDecodableClass(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized in DECODED_CLASS_FORM_SPECS) {
+    return normalized;
+  }
+  return null;
+}
+function commandDecodedBlock(bundle, deviceId, commandId) {
+  if (!bundle) return null;
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId
+  );
+  if (!device) return null;
+  const command = (device.commands ?? []).find(
+    (entry) => Number(entry?.command_id || 0) === normalizedCommandId
+  );
+  if (!command) return null;
+  const restoreData = command.restore_data;
+  if (!restoreData || typeof restoreData !== "object") return null;
+  const decoded = restoreData.decoded;
+  if (!decoded || typeof decoded !== "object") return null;
+  const decodedRecord = decoded;
+  const className = normalizeDecodableClass(decodedRecord.class);
+  if (!className) return null;
+  const fields = decodedRecord.fields;
+  if (!fields || typeof fields !== "object") return null;
+  return {
+    className,
+    fields: { ...fields },
+    trailerHex: String(decodedRecord.trailer_hex ?? ""),
+    edited: Boolean(decodedRecord.edited)
+  };
+}
+function updateCommandDecodedFields(bundle, deviceId, commandId, newFields) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          const restoreData = command.restore_data;
+          if (!restoreData || typeof restoreData !== "object") return command;
+          const decoded = restoreData.decoded;
+          if (!decoded || typeof decoded !== "object") return command;
+          const decodedRecord = decoded;
+          const existingFields = decodedRecord.fields ?? {};
+          return {
+            ...command,
+            restore_data: {
+              ...restoreData,
+              decoded: {
+                ...decodedRecord,
+                fields: { ...existingFields, ...newFields },
+                edited: true
+              }
+            }
+          };
+        })
+      };
+    })
+  };
+}
+var INTERNAL_POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
+function compareByHubOrder(left, right) {
+  return left.sortKey - right.sortKey || left.id - right.id;
+}
+function readSortKey(block) {
+  const value = Number(block?.sort);
+  return Number.isFinite(value) ? value : 0;
+}
+function bundleActivityOptions(bundle) {
+  return [...bundle?.activities ?? []].map((activity) => {
+    const block = activity?.device;
+    const id = Number(block?.device_id || 0);
+    return {
+      id,
+      sortKey: readSortKey(block),
+      label: String(block?.name || `Activity ${id}`),
+      meta: `${(activity?.referenced_source_device_ids ?? []).length} linked devices`
+    };
+  }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
+}
+function bundleDeviceOptions(bundle) {
+  return [...bundle?.devices ?? []].map((device) => {
+    const block = device?.device;
+    const id = Number(block?.device_id || 0);
+    return {
+      id,
+      sortKey: readSortKey(block),
+      label: String(block?.name || `Device ${id}`),
+      meta: String(block?.device_class || "").trim() || void 0
+    };
+  }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
+}
+function normalizeHubVersion(value) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (!normalized) return null;
+  if (normalized.includes("X1S")) return "X1S";
+  if (normalized.includes("X2")) return "X2";
+  if (normalized.includes("X1")) return "X1";
+  return null;
+}
+function renameBundleHub(bundle, name) {
+  const trimmed = String(name ?? "").trim();
+  if (!trimmed) return bundle;
+  return {
+    ...bundle,
+    hub: { ...bundle.hub ?? {}, name: trimmed }
+  };
+}
+function renameInList(list, id, name) {
+  const trimmed = String(name ?? "").trim();
+  return (list ?? []).map((entry) => {
+    const block = entry?.device;
+    if (!block || Number(block.device_id || 0) !== id) return entry;
+    return { ...entry, device: { ...block, name: trimmed || block.name || `Device ${id}` } };
+  });
+}
+function renameBundleActivity(bundle, activityId, name) {
+  return { ...bundle, activities: renameInList(bundle.activities, Number(activityId), name) };
+}
+function renameBundleDevice(bundle, deviceId, name) {
+  return { ...bundle, devices: renameInList(bundle.devices, Number(deviceId), name) };
+}
+function updateActivity(bundle, activityId, updater) {
+  const normalizedId = Number(activityId);
+  return {
+    ...bundle,
+    activities: (bundle.activities ?? []).map((activity) => {
+      if (Number(activity?.device?.device_id || 0) !== normalizedId) return activity;
+      return updater(activity);
+    })
+  };
+}
+function updateDeviceCommandLabel(bundle, deviceId, commandId, name) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const trimmed = String(name ?? "").trim();
+  const next = {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          return { ...command, name: trimmed };
+        })
+      };
+    })
+  };
+  return refreshHaActionCallback(next, normalizedDeviceId, normalizedCommandId);
+}
+function commandLabelFor(bundle, deviceId, commandId) {
+  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  const command = (device?.commands ?? []).find((entry) => Number(entry?.command_id || 0) === Number(commandId));
+  return String(command?.name || "").trim();
+}
+function favoriteLabel(bundle, row) {
+  const explicit = String(row?.name || "").trim();
+  if (explicit) return explicit;
+  const deviceId = Number(row?.device_id || 0);
+  const commandId = Number(row?.command_id || 0);
+  const derived = commandLabelFor(bundle, deviceId, commandId);
+  if (derived) return derived;
+  return `Favorite ${Number(row?.button_id || 0) || "?"}`;
+}
+function sortByButtonId(rows) {
+  return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+function isEditableActivityMacro(row) {
+  const buttonId = Number(row?.button_id || 0);
+  const normalizedName = String(row?.name || "").trim().toUpperCase();
+  if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(buttonId)) return false;
+  if (normalizedName === "POWER_ON" || normalizedName === "POWER_OFF") return false;
+  return true;
+}
+function activityQuickAccessItems(bundle, activityId) {
+  if (!bundle) return [];
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const items = [];
+  for (const row of sortByButtonId(activity.macros).filter(isEditableActivityMacro)) {
+    const buttonId = Number(row?.button_id || 0);
+    if (buttonId <= 0) continue;
+    items.push({
+      kind: "macro",
+      activityId: Number(activityId),
+      buttonId,
+      label: String(row?.name || `Macro ${buttonId}`)
+    });
+  }
+  for (const row of sortByButtonId(activity.favorite_slots)) {
+    const buttonId = Number(row?.button_id || 0);
+    if (buttonId <= 0) continue;
+    items.push({
+      kind: "favorite",
+      activityId: Number(activityId),
+      buttonId,
+      label: favoriteLabel(bundle, row),
+      deviceId: Number(row?.device_id || 0) || void 0,
+      commandId: Number(row?.command_id || 0) || void 0
+    });
+  }
+  return items.sort((left, right) => left.buttonId - right.buttonId);
+}
+function renameBundleActivityMacro(bundle, activityId, buttonId, name) {
+  const normalizedButtonId = Number(buttonId);
+  const trimmed = String(name ?? "").trim();
+  return updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: (activity.macros ?? []).map((row) => Number(row?.button_id || 0) === normalizedButtonId ? { ...row, name: trimmed } : row)
+  }));
+}
+function renameBundleActivityFavorite(bundle, activityId, buttonId, name) {
+  const normalizedButtonId = Number(buttonId);
+  const trimmed = String(name ?? "").trim();
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const row = (activity?.favorite_slots ?? []).find((entry) => Number(entry?.button_id || 0) === normalizedButtonId);
+  const deviceId = Number(row?.device_id || 0);
+  const commandId = Number(row?.command_id || 0);
+  let nextBundle = bundle;
+  if (deviceId > 0 && commandId > 0) {
+    nextBundle = updateDeviceCommandLabel(nextBundle, deviceId, commandId, trimmed);
+  }
+  return updateActivity(nextBundle, activityId, (current) => ({
+    ...current,
+    favorite_slots: (current.favorite_slots ?? []).map((entry) => Number(entry?.button_id || 0) === normalizedButtonId ? { ...entry, name: trimmed } : entry)
+  }));
+}
+function deviceCommandItems(bundle, deviceId) {
+  if (!bundle) return [];
+  const normalizedDeviceId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId
+  );
+  if (!device) return [];
+  const items = [];
+  for (const row of device.commands ?? []) {
+    const commandId = Number(row?.command_id || 0);
+    if (commandId <= 0) continue;
+    const label = String(row?.name || "").trim() || `Command ${commandId}`;
+    items.push({ deviceId: normalizedDeviceId, commandId, label });
+  }
+  return items.sort((left, right) => left.commandId - right.commandId);
+}
+function bundleDeviceClass(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device) return null;
+  return String(device.device?.device_class ?? "").trim().toLowerCase() || null;
+}
+function deviceIpAddress(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device?.device) return null;
+  const raw = String(device.device.ip_address ?? "").trim();
+  return raw || null;
+}
+function updateBundleDeviceIp(bundle, deviceId, ip) {
+  const normalizedId = Number(deviceId);
+  const trimmed = String(ip ?? "").trim();
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
+      if (!device.device) return device;
+      return {
+        ...device,
+        device: { ...device.device, ip_address: trimmed || null }
+      };
+    })
+  };
+}
+var IDLE_BEHAVIOR_AUTO_OFF = 1;
+var IDLE_BEHAVIOR_ALWAYS_ON = 2;
+var IDLE_BEHAVIOR_STAY_ON = 3;
+var IDLE_BEHAVIOR_DISABLED = 4;
+function deviceIdleBehavior(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device?.device) return null;
+  const raw = device.device.idle_behavior ?? device.device.power_mode;
+  if (raw == null) return null;
+  const mode = Number(raw);
+  return Number.isFinite(mode) ? mode & 255 : null;
+}
+function updateBundleDeviceIdleBehavior(bundle, deviceId, mode) {
+  const normalizedId = Number(deviceId);
+  const normalizedMode = Number(mode) & 255;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
+      if (!device.device) return device;
+      return {
+        ...device,
+        device: { ...device.device, idle_behavior: normalizedMode }
+      };
+    })
+  };
+}
+function renameBundleDeviceCommand(bundle, deviceId, commandId, name) {
+  return updateDeviceCommandLabel(bundle, Number(deviceId), Number(commandId), String(name ?? "").trim());
+}
+function reorderBundleActivityQuickAccess(bundle, activityId, orderedItems) {
+  const normalizedActivityId = Number(activityId);
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedActivityId);
+  if (!activity) return bundle;
+  const macrosByButtonId = /* @__PURE__ */ new Map();
+  for (const row of activity.macros ?? []) {
+    macrosByButtonId.set(Number(row?.button_id || 0), row);
+  }
+  const favoritesByButtonId = /* @__PURE__ */ new Map();
+  for (const row of activity.favorite_slots ?? []) {
+    favoritesByButtonId.set(Number(row?.button_id || 0), row);
+  }
+  const orderedMacroButtonIds = new Set(
+    orderedItems.filter((item) => item.kind === "macro").map((item) => Number(item.buttonId))
+  );
+  const macroRows = [];
+  const favoriteRows = [];
+  orderedItems.forEach((item, index) => {
+    const nextButtonId = index + 1;
+    if (item.kind === "macro") {
+      const row2 = macrosByButtonId.get(Number(item.buttonId));
+      if (row2) macroRows.push({ ...row2, button_id: nextButtonId });
+      return;
+    }
+    const row = favoritesByButtonId.get(Number(item.buttonId));
+    if (row) favoriteRows.push({ ...row, button_id: nextButtonId });
+  });
+  for (const row of activity.macros ?? []) {
+    if (!orderedMacroButtonIds.has(Number(row?.button_id || 0))) {
+      macroRows.push(row);
+    }
+  }
+  return updateActivity(bundle, normalizedActivityId, (current) => ({
+    ...current,
+    macros: macroRows,
+    favorite_slots: favoriteRows
+  }));
+}
+function stepMatchesDevice(step, deviceId) {
+  return Number(step?.device_id || 0) === deviceId;
+}
+function stepMatchesCommand(step, deviceId, commandId) {
+  return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
+}
+var MACRO_DELAY_SENTINEL = 255;
+function isMacroDelayStep(step) {
+  return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
+}
+function filterMacroSteps(steps, shouldRemove) {
+  const list = steps ?? [];
+  const result = [];
+  for (let index = 0; index < list.length; index += 1) {
+    if (shouldRemove(list[index])) {
+      while (index + 1 < list.length && isMacroDelayStep(list[index + 1])) {
+        index += 1;
+      }
+      continue;
+    }
+    result.push(list[index]);
+  }
+  return result;
+}
+function countRemovedMacroSteps(steps, shouldRemove) {
+  const original = (steps ?? []).length;
+  return original - filterMacroSteps(steps, shouldRemove).length;
+}
+function clearBindingLongPress(binding) {
+  const { long_press_device_id, long_press_command_id, ...rest } = binding;
+  return rest;
+}
+function cascadeBindingForDeletedDevice(binding, deviceId) {
+  if (Number(binding?.device_id || 0) === deviceId) return null;
+  if (Number(binding?.long_press_device_id || 0) === deviceId) return clearBindingLongPress(binding);
+  return binding;
+}
+function cascadeBindingForDeletedCommand(binding, deviceId, commandId, deviceScoped) {
+  const shortMatches = deviceScoped ? Number(binding?.command_id || 0) === commandId : Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId;
+  if (shortMatches) return null;
+  const longMatches = deviceScoped ? Number(binding?.long_press_command_id || 0) === commandId : Number(binding?.long_press_device_id || 0) === deviceId && Number(binding?.long_press_command_id || 0) === commandId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
+function cascadeBindingForDeletedMacro(binding, activityId, macroButtonId) {
+  const shortMatches = Number(binding?.device_id || 0) === activityId && Number(binding?.command_id || 0) === macroButtonId;
+  if (shortMatches) return null;
+  const longMatches = Number(binding?.long_press_device_id || 0) === activityId && Number(binding?.long_press_command_id || 0) === macroButtonId;
+  if (longMatches) return clearBindingLongPress(binding);
+  return binding;
+}
+function applyBindingCascade(bindings, transform) {
+  const result = [];
+  for (const binding of bindings ?? []) {
+    const next = transform(binding);
+    if (next !== null) result.push(next);
+  }
+  return result;
+}
+function countAffectedBindings(bindings, transform) {
+  let count = 0;
+  for (const binding of bindings ?? []) {
+    const next = transform(binding);
+    if (next === null || next !== binding) count += 1;
+  }
+  return count;
+}
+function bundleDeleteImpact(bundle, target) {
+  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  if (!bundle) return empty;
+  if (target.kind === "device") {
+    const deviceId = Number(target.deviceId);
+    let favorites = 0;
+    let macroSteps = 0;
+    let activities = 0;
+    let bindings = 0;
+    for (const activity of bundle.activities ?? []) {
+      if ((activity?.referenced_source_device_ids ?? []).some((id) => Number(id) === deviceId)) {
+        activities += 1;
+      }
+      for (const slot of activity?.favorite_slots ?? []) {
+        if (Number(slot?.device_id || 0) === deviceId) favorites += 1;
+      }
+      for (const macro of activity?.macros ?? []) {
+        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId));
+      }
+      bindings += countAffectedBindings(
+        activity?.button_bindings,
+        (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
+      );
+    }
+    return { favorites, macroSteps, activities, bindings };
+  }
+  if (target.kind === "command") {
+    const deviceId = Number(target.deviceId);
+    const commandId = Number(target.commandId);
+    let favorites = 0;
+    let macroSteps = 0;
+    let bindings = 0;
+    for (const activity of bundle.activities ?? []) {
+      for (const slot of activity?.favorite_slots ?? []) {
+        if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) {
+          favorites += 1;
+        }
+      }
+      for (const macro of activity?.macros ?? []) {
+        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, deviceId, commandId));
+      }
+      bindings += countAffectedBindings(
+        activity?.button_bindings,
+        (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, false)
+      );
+    }
+    const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === deviceId);
+    bindings += countAffectedBindings(
+      device?.button_bindings,
+      (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true)
+    );
+    return { favorites, macroSteps, activities: 0, bindings };
+  }
+  if (target.kind === "activity_member") {
+    return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
+  }
+  return empty;
+}
+function backupDeleteHasCascade(impact) {
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+}
+function deleteBundleActivity(bundle, activityId) {
+  const id = Number(activityId);
+  return {
+    ...bundle,
+    activities: (bundle.activities ?? []).filter((activity) => Number(activity?.device?.device_id || 0) !== id)
+  };
+}
+function stripDeviceFromActivity(activity, deviceId) {
+  return {
+    ...activity,
+    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
+      (id) => Number(id) !== deviceId
+    ),
+    favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.device_id || 0) !== deviceId),
+    macros: (activity.macros ?? []).map((macro) => ({
+      ...macro,
+      steps: filterMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId))
+    })),
+    button_bindings: applyBindingCascade(
+      activity.button_bindings,
+      (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
+    )
+  };
+}
+function deleteBundleDevice(bundle, deviceId) {
+  const id = Number(deviceId);
+  const next = {
+    ...bundle,
+    devices: (bundle.devices ?? []).filter((device) => Number(device?.device?.device_id || 0) !== id),
+    activities: (bundle.activities ?? []).map((activity) => stripDeviceFromActivity(activity, id))
+  };
+  return reconcileBundlePowerMacros(next);
+}
+function deleteBundleDeviceCommand(bundle, deviceId, commandId) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  const next = {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).filter((command) => Number(command?.command_id || 0) !== cId),
+        button_bindings: applyBindingCascade(
+          device.button_bindings,
+          (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true)
+        )
+      };
+    }),
+    activities: (bundle.activities ?? []).map((activity) => ({
+      ...activity,
+      favorite_slots: (activity.favorite_slots ?? []).filter(
+        (slot) => !(Number(slot?.device_id || 0) === dId && Number(slot?.command_id || 0) === cId)
+      ),
+      macros: (activity.macros ?? []).map((macro) => ({
+        ...macro,
+        steps: filterMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, dId, cId))
+      })),
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, false)
+      )
+    }))
+  };
+  return reconcileBundlePowerMacros(next);
+}
+function deleteBundleActivityQuickAccess(bundle, activityId, kind, buttonId) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => {
+    if (kind === "favorite") {
+      return {
+        ...activity,
+        favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.button_id || 0) !== bId)
+      };
+    }
+    return {
+      ...activity,
+      macros: (activity.macros ?? []).filter((macro) => Number(macro?.button_id || 0) !== bId),
+      // A button bound to this macro now dangles — drop it (or clear the
+      // long press if only that referenced the macro).
+      button_bindings: applyBindingCascade(
+        activity.button_bindings,
+        (binding) => cascadeBindingForDeletedMacro(binding, Number(activityId), bId)
+      )
+    };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function nextQuickAccessButtonId(activity) {
+  let max = 0;
+  const consider = (value) => {
+    if (value > 0 && !INTERNAL_POWER_MACRO_BUTTON_IDS.has(value) && value > max) max = value;
+  };
+  for (const slot of activity.favorite_slots ?? []) consider(Number(slot?.button_id || 0));
+  for (const macro of activity.macros ?? []) consider(Number(macro?.button_id || 0));
+  return max + 1;
+}
+function addBundleActivityFavorite(bundle, activityId, deviceId, commandId, name) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  if (dId <= 0 || cId <= 0) return bundle;
+  const trimmed = String(name ?? "").trim();
+  const next = updateActivity(bundle, activityId, (activity) => {
+    const slot = {
+      button_id: nextQuickAccessButtonId(activity),
+      device_id: dId,
+      command_id: cId,
+      name: trimmed
+    };
+    return { ...activity, favorite_slots: [...activity.favorite_slots ?? [], slot] };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function applyBundleDelete(bundle, target) {
+  switch (target.kind) {
+    case "activity":
+      return deleteBundleActivity(bundle, target.activityId);
+    case "device":
+      return deleteBundleDevice(bundle, target.deviceId);
+    case "command":
+      return deleteBundleDeviceCommand(bundle, target.deviceId, target.commandId);
+    case "favorite":
+      return deleteBundleActivityQuickAccess(bundle, target.activityId, "favorite", target.buttonId);
+    case "macro":
+      return deleteBundleActivityQuickAccess(bundle, target.activityId, "macro", target.buttonId);
+    case "activity_binding":
+      return deleteActivityButtonBinding(bundle, target.activityId, target.buttonId);
+    case "device_binding":
+      return deleteDeviceButtonBinding(bundle, target.deviceId, target.buttonId);
+    case "activity_member":
+      return removeActivityMemberDevice(bundle, target.activityId, target.deviceId);
+  }
+}
+var POWER_ON_MACRO_BUTTON_ID = 198;
+var POWER_OFF_MACRO_BUTTON_ID = 199;
+var DEVICE_POWER_ON_REF_COMMAND = 198;
+var DEVICE_POWER_OFF_REF_COMMAND = 199;
+var DEVICE_INPUT_REF_COMMAND = 197;
+var POWER_MACRO_DELAY_BUTTON_CODE = 281474976710655;
+var POWER_STEP_DEFAULT_DELAY = 255;
+function powerMacroDelayRow(delay) {
+  return {
+    device_id: 255,
+    command_id: 255,
+    button_code: POWER_MACRO_DELAY_BUTTON_CODE,
+    duration: 255,
+    delay: delay & 255
+  };
+}
+function powerStep(deviceId, commandId, duration = 0) {
+  return {
+    device_id: Number(deviceId),
+    command_id: commandId,
+    button_code: 0,
+    duration: duration & 255,
+    delay: POWER_STEP_DEFAULT_DELAY
+  };
+}
+function activityPowerDeviceIds(activity) {
+  const ids = /* @__PURE__ */ new Set();
+  for (const macro of activity.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID) continue;
+    for (const step of macro?.steps ?? []) {
+      if (isMacroDelayStep(step)) continue;
+      const command = Number(step?.command_id || 0);
+      if (command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND) {
+        const deviceId = Number(step?.device_id || 0);
+        if (deviceId > 0) ids.add(deviceId);
+      }
+    }
+  }
+  return ids;
+}
+function activityMemberDeviceIds(activity) {
+  const selfId = Number(activity?.device?.device_id || 0);
+  const ids = activityPowerDeviceIds(activity);
+  const add = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && id !== selfId) ids.add(id);
+  };
+  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
+  for (const binding of activity.button_bindings ?? []) {
+    add(binding?.device_id);
+    add(binding?.long_press_device_id);
+  }
+  for (const macro of activity.macros ?? []) {
+    for (const step of macro?.steps ?? []) {
+      if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
+      add(step?.device_id);
+    }
+  }
+  return [...ids].sort((left, right) => left - right);
+}
+function reconcilePowerMacroSteps(existingSteps, members, refCommands, seedIds) {
+  const memberSet = new Set(members);
+  const kept = (existingSteps ?? []).filter((step) => {
+    if (isMacroDelayStep(step)) return true;
+    const deviceId = Number(step?.device_id || 0);
+    return deviceId > 0 ? memberSet.has(deviceId) : true;
+  });
+  const out = [...kept];
+  for (const deviceId of members) {
+    if (!seedIds.has(deviceId)) continue;
+    for (const command of refCommands) {
+      const present = out.some(
+        (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command
+      );
+      if (!present) out.push(powerStep(deviceId, command));
+    }
+  }
+  return out;
+}
+function reconcileActivityPowerMacros(bundle, activityId, extraMemberIds = []) {
+  return updateActivity(bundle, activityId, (activity) => {
+    const selfId = Number(activity?.device?.device_id || 0);
+    const powerIds = activityPowerDeviceIds(activity);
+    const memberSet = new Set(activityMemberDeviceIds(activity));
+    for (const id of extraMemberIds) {
+      const extraId = Number(id || 0);
+      if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
+    }
+    const members = [...memberSet].sort((left, right) => left - right);
+    const seedIds = new Set(members.filter((id) => !powerIds.has(id)));
+    const macros = [...activity.macros ?? []];
+    const ensure = (buttonId, name, refCommands) => {
+      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
+      const existing = index >= 0 ? macros[index] : null;
+      if (!existing && members.length === 0) return;
+      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands, seedIds);
+      const next = {
+        ...existing ?? {},
+        button_id: buttonId,
+        name: existing?.name ?? name,
+        steps
+      };
+      if (index >= 0) macros[index] = next;
+      else macros.push(next);
+    };
+    ensure(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", [DEVICE_POWER_ON_REF_COMMAND, DEVICE_INPUT_REF_COMMAND]);
+    ensure(POWER_OFF_MACRO_BUTTON_ID, "POWER_OFF", [DEVICE_POWER_OFF_REF_COMMAND]);
+    return { ...activity, macros, referenced_source_device_ids: members };
+  });
+}
+function reconcileBundlePowerMacros(bundle) {
+  let next = bundle;
+  for (const activity of bundle.activities ?? []) {
+    const id = Number(activity?.device?.device_id || 0);
+    if (id > 0) next = reconcileActivityPowerMacros(next, id);
+  }
+  return next;
+}
+function findBundleActivity(bundle, activityId) {
+  return (bundle?.activities ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
+  );
+}
+function activityMemberViews(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = activityMemberDeviceIds(activity).filter((id) => !isHaActionDeviceId(bundle, id));
+  const memberSet = new Set(members);
+  const macroFor = (buttonId) => (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
+  const powerOn = macroFor(POWER_ON_MACRO_BUTTON_ID);
+  const powerOff = macroFor(POWER_OFF_MACRO_BUTTON_ID);
+  const order = [];
+  const push = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && memberSet.has(id) && !order.includes(id)) order.push(id);
+  };
+  for (const step of powerOn?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const step of powerOff?.steps ?? []) {
+    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+  }
+  for (const id of members) push(id);
+  return order.map((deviceId) => {
+    const onSteps = (powerOn?.steps ?? []).filter(
+      (step) => !isMacroDelayStep(step) && Number(step?.device_id || 0) === deviceId
+    );
+    const powersOn = onSteps.some(
+      (step) => Number(step?.command_id || 0) === DEVICE_POWER_ON_REF_COMMAND
+    );
+    const inputStep = onSteps.find(
+      (step) => Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND
+    );
+    const inputOrdinal = Number(inputStep?.duration || 0);
+    const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === inputOrdinal);
+    const powersOff = (powerOff?.steps ?? []).some(
+      (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, deviceId, DEVICE_POWER_OFF_REF_COMMAND)
+    );
+    return {
+      deviceId,
+      deviceName: deviceNameFor(bundle, deviceId),
+      powersOn,
+      inputOrdinal,
+      inputCommandId: input?.commandId ?? null,
+      inputCommandName: input?.name || (inputOrdinal > 0 ? `Input ${inputOrdinal}` : null),
+      powersOff
+    };
+  });
+}
+function activityAddableDevices(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  if (!bundle || !activity) return [];
+  const members = new Set(activityMemberDeviceIds(activity));
+  return bundleDeviceOptions(bundle).filter(
+    (option) => !members.has(option.id) && !isHaActionDeviceId(bundle, option.id)
+  );
+}
+function addActivityMemberDevice(bundle, activityId, deviceId) {
+  const dId = Number(deviceId);
+  const aId = Number(activityId);
+  if (dId <= 0 || dId === aId || !findDevice(bundle, dId)) return bundle;
+  const activity = findBundleActivity(bundle, aId);
+  if (!activity) return bundle;
+  if (activityMemberDeviceIds(activity).includes(dId)) return bundle;
+  return reconcileActivityPowerMacros(bundle, aId, [dId]);
+}
+function removeActivityMemberDevice(bundle, activityId, deviceId) {
+  const aId = Number(activityId);
+  const next = updateActivity(
+    bundle,
+    aId,
+    (activity) => stripDeviceFromActivity(activity, Number(deviceId))
+  );
+  return reconcileActivityPowerMacros(next, aId);
+}
+function activityMemberRemovalImpact(bundle, activityId, deviceId) {
+  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const activity = findBundleActivity(bundle, activityId);
+  if (!activity) return empty;
+  const dId = Number(deviceId);
+  let favorites = 0;
+  for (const slot of activity.favorite_slots ?? []) {
+    if (Number(slot?.device_id || 0) === dId) favorites += 1;
+  }
+  let macroSteps = 0;
+  for (const macro of activity.macros ?? []) {
+    if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) {
+      for (const step of macro?.steps ?? []) {
+        if (!isMacroDelayStep(step) && !isPowerRefStep(step) && stepMatchesDevice(step, dId)) {
+          macroSteps += 1;
+        }
+      }
+    } else {
+      macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, dId));
+    }
+  }
+  const bindings = countAffectedBindings(
+    activity.button_bindings,
+    (binding) => cascadeBindingForDeletedDevice(binding, dId)
+  );
+  return { favorites, macroSteps, activities: 0, bindings };
+}
+function powerRefDeviceOrder(activity) {
+  const order = [];
+  const push = (value) => {
+    const id = Number(value || 0);
+    if (id > 0 && !order.includes(id)) order.push(id);
+  };
+  for (const buttonId of [POWER_ON_MACRO_BUTTON_ID, POWER_OFF_MACRO_BUTTON_ID]) {
+    const macro = (activity.macros ?? []).find((entry) => Number(entry?.button_id || 0) === buttonId);
+    for (const step of macro?.steps ?? []) {
+      if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
+    }
+  }
+  return order;
+}
+function setActivityPowerRefStep(activity, deviceId, buttonId, refCommand, present) {
+  const dId = Number(deviceId);
+  const macros = [...activity.macros ?? []];
+  const macroIndex = (id) => macros.findIndex((macro) => Number(macro?.button_id || 0) === id);
+  const index = macroIndex(buttonId);
+  const target = index >= 0 ? macros[index] : null;
+  const steps = [...target?.steps ?? []];
+  const findRef = (command) => steps.findIndex(
+    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, command)
+  );
+  const refIndex = findRef(refCommand);
+  if (present === refIndex >= 0) return activity;
+  const commit = (nextSteps) => {
+    const name = buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON";
+    const next2 = {
+      ...target ?? { button_id: buttonId, name },
+      steps: nextSteps
+    };
+    if (index >= 0) macros[index] = next2;
+    else macros.push(next2);
+    return { ...activity, macros };
+  };
+  if (present) {
+    let insertAt = steps.length;
+    if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
+      const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
+      if (inputIndex >= 0) insertAt = inputIndex;
+    }
+    if (insertAt === steps.length) {
+      const order = powerRefDeviceOrder(activity);
+      const myPos = order.indexOf(dId);
+      if (myPos >= 0) {
+        const later = steps.findIndex(
+          (step) => !isMacroDelayStep(step) && isPowerRefStep(step) && order.indexOf(Number(step?.device_id || 0)) > myPos
+        );
+        if (later >= 0) insertAt = later;
+      }
+    }
+    steps.splice(insertAt, 0, powerStep(dId, refCommand));
+    return commit(steps);
+  }
+  if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
+    const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
+    if (inputIndex >= 0) {
+      const inputStep = steps[inputIndex];
+      const without = steps.filter((_2, i4) => i4 !== refIndex && i4 !== inputIndex);
+      const insertAt = refIndex - (inputIndex < refIndex ? 1 : 0);
+      without.splice(insertAt, 0, inputStep);
+      return commit(without);
+    }
+    return commit(steps.map((step, i4) => i4 === refIndex ? powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0) : step));
+  }
+  const withoutOff = filterMacroSteps(steps, (step) => stepMatchesCommand(step, dId, refCommand));
+  let next = commit(withoutOff);
+  if (!activityMemberDeviceIds(next).includes(dId)) {
+    next = setActivityPowerRefStep(next, dId, POWER_ON_MACRO_BUTTON_ID, DEVICE_INPUT_REF_COMMAND, true);
+  }
+  return next;
+}
+function setActivityDevicePowerOff(bundle, activityId, deviceId, powersOff) {
+  return updateActivity(bundle, Number(activityId), (activity) => {
+    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
+    return setActivityPowerRefStep(
+      activity,
+      deviceId,
+      POWER_OFF_MACRO_BUTTON_ID,
+      DEVICE_POWER_OFF_REF_COMMAND,
+      Boolean(powersOff)
+    );
+  });
+}
+function setActivityDevicePowerOn(bundle, activityId, deviceId, powersOn) {
+  return updateActivity(bundle, Number(activityId), (activity) => {
+    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
+    return setActivityPowerRefStep(
+      activity,
+      deviceId,
+      POWER_ON_MACRO_BUTTON_ID,
+      DEVICE_POWER_ON_REF_COMMAND,
+      Boolean(powersOn)
+    );
+  });
+}
+var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
+function synthesizeCommandCode(commandId) {
+  return SYNTHETIC_COMMAND_CODE_BASE + (Number(commandId) & 255);
+}
+function findDevice(bundle, deviceId) {
+  return (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+}
+function inputEntryOrdinal(entry) {
+  return Number(entry?.input_index ?? entry?.ordinal ?? 0);
+}
+function deviceInputEntries(bundle, deviceId) {
+  const device = findDevice(bundle, deviceId);
+  const entries = device?.input_record?.entries ?? [];
+  return entries.map((entry) => ({
+    commandId: Number(entry?.command_id || 0),
+    ordinal: inputEntryOrdinal(entry),
+    name: String(entry?.name || entry?.label || "").trim()
+  })).filter((entry) => entry.commandId > 0).sort((left, right) => left.ordinal - right.ordinal);
+}
+function ensureDeviceInput(bundle, deviceId, commandId) {
+  const dId = Number(deviceId);
+  const cId = Number(commandId);
+  const device = findDevice(bundle, dId);
+  const existingEntries = device?.input_record?.entries ?? [];
+  const reused = existingEntries.find((entry) => Number(entry?.command_id || 0) === cId);
+  if (reused) {
+    return { bundle, ordinal: inputEntryOrdinal(reused) };
+  }
+  const nextOrdinal = existingEntries.reduce((max, entry) => Math.max(max, inputEntryOrdinal(entry)), 0) + 1;
+  const newEntry = {
+    command_id: cId,
+    fid: synthesizeCommandCode(cId),
+    input_index: nextOrdinal,
+    name: commandLabelFor(bundle, dId, cId) || `Input ${cId}`
+  };
+  const nextBundle = {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      if (Number(entry?.device?.device_id || 0) !== dId) return entry;
+      const record = { ...entry.input_record ?? {} };
+      record.entries = [...existingEntries, newEntry];
+      return { ...entry, input_record: record };
+    })
+  };
+  return { bundle: nextBundle, ordinal: nextOrdinal };
+}
+function setActivityPowerInputOrdinal(activity, deviceId, ordinal) {
+  const dId = Number(deviceId);
+  return {
+    ...activity,
+    macros: (activity.macros ?? []).map((macro) => {
+      if (Number(macro?.button_id || 0) !== POWER_ON_MACRO_BUTTON_ID) return macro;
+      let found = false;
+      const steps = (macro.steps ?? []).map((step) => {
+        if (!isMacroDelayStep(step) && Number(step?.device_id || 0) === dId && Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND) {
+          found = true;
+          return { ...step, duration: ordinal & 255 };
+        }
+        return step;
+      });
+      if (!found) steps.push(powerStep(dId, DEVICE_INPUT_REF_COMMAND, ordinal));
+      return { ...macro, steps };
+    })
+  };
+}
+function setActivityDeviceInput(bundle, activityId, deviceId, commandId) {
+  const cId = Number(commandId);
+  if (cId <= 0) return bundle;
+  const ensured = ensureDeviceInput(bundle, deviceId, cId);
+  return updateActivity(
+    ensured.bundle,
+    activityId,
+    (activity) => setActivityPowerInputOrdinal(activity, deviceId, ensured.ordinal)
+  );
+}
+function clearActivityDeviceInput(bundle, activityId, deviceId) {
+  return updateActivity(bundle, activityId, (activity) => setActivityPowerInputOrdinal(activity, deviceId, 0));
+}
+function isPowerRefStep(step) {
+  const command = Number(step?.command_id || 0);
+  return command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND;
+}
+function defaultMacroName(buttonId) {
+  if (buttonId === POWER_ON_MACRO_BUTTON_ID) return "POWER_ON";
+  if (buttonId === POWER_OFF_MACRO_BUTTON_ID) return "POWER_OFF";
+  return `Macro ${buttonId}`;
+}
+function deviceMacroDelayStep(delay) {
+  return { command_id: 255, duration: 255, delay: Number(delay) & 255 };
+}
+function groupMacroSteps(steps) {
+  const prefix = [];
+  const groups = [];
+  for (const step of steps ?? []) {
+    if (isMacroDelayStep(step)) {
+      if (groups.length === 0) prefix.push(step);
+      else groups[groups.length - 1].trailing.push(step);
+    } else {
+      groups.push({ head: step, trailing: [] });
+    }
+  }
+  return { prefix, groups };
+}
+function flattenMacroGroups(prefix, groups) {
+  const out = [...prefix];
+  for (const group of groups) out.push(group.head, ...group.trailing);
+  return out;
+}
+function groupWait(group) {
+  return group.trailing.length > 0 ? Number(group.trailing[0]?.delay || 0) : 0;
+}
+function applyGroupWait(group, waitByte, isActivity) {
+  const value = Number(waitByte) & 255;
+  if (group.trailing.length > 0) {
+    group.trailing = [{ ...group.trailing[0], delay: value }, ...group.trailing.slice(1)];
+  } else if (value > 0) {
+    group.trailing = [isActivity ? powerMacroDelayRow(value) : deviceMacroDelayStep(value)];
+  }
+}
+function deviceMacroStepItems(bundle, deviceId, buttonId) {
+  const device = findDevice(bundle, deviceId);
+  const macro = (device?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const commandId = Number(group.head?.command_id || 0);
+    return {
+      index,
+      kind: "command",
+      commandId,
+      deviceId: null,
+      label: commandNameOrFallback(bundle, Number(deviceId), commandId),
+      hold: Number(group.head?.duration || 0),
+      wait: groupWait(group)
+    };
+  });
+}
+function updateDeviceMacro(bundle, deviceId, buttonId, transform) {
+  const dId = Number(deviceId);
+  const bId = Number(buttonId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      const macros = [...device.macros ?? []];
+      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
+      const existing = index >= 0 ? macros[index] : null;
+      const next = {
+        ...existing ?? {},
+        button_id: bId,
+        name: existing?.name ?? defaultMacroName(bId),
+        steps: transform(existing?.steps ?? [])
+      };
+      if (index >= 0) macros[index] = next;
+      else macros.push(next);
+      return { ...device, macros };
+    })
+  };
+}
+function patchMacroStep(step, patch, isActivityMacro) {
+  const next = { ...step };
+  if (isMacroDelayStep(step)) {
+    if (patch.wait !== void 0) next.delay = Number(patch.wait) & 255;
+    return next;
+  }
+  if (patch.commandId !== void 0) {
+    next.command_id = Number(patch.commandId);
+    if (isActivityMacro) next.button_code = synthesizeCommandCode(Number(patch.commandId));
+  }
+  if (patch.deviceId !== void 0 && isActivityMacro) next.device_id = Number(patch.deviceId);
+  if (patch.hold !== void 0) next.duration = Number(patch.hold) & 255;
+  return next;
+}
+function addDeviceMacroCommandStep(bundle, deviceId, buttonId, commandId, hold = 0) {
+  if (Number(commandId) <= 0) return bundle;
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => [
+    ...steps,
+    { command_id: Number(commandId), duration: Number(hold) & 255, delay: 255 }
+  ]);
+}
+function updateDeviceMacroStep(bundle, deviceId, buttonId, index, patch) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, false);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function setDeviceMacroStepWait(bundle, deviceId, buttonId, index, wait) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, false);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function removeDeviceMacroStep(bundle, deviceId, buttonId, index) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    if (Number(index) < 0 || Number(index) >= groups.length) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function reorderDeviceMacroSteps(bundle, deviceId, buttonId, orderedIndices) {
+  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices.map((i4) => groups[Number(i4)]).filter((group) => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
+}
+function activityUserMacroSummaries(bundle, activityId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  return (activity?.macros ?? []).map((macro) => ({ buttonId: Number(macro?.button_id || 0), macro })).filter(({ buttonId }) => buttonId > 0 && buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID).map(({ buttonId, macro }) => ({
+    buttonId,
+    name: String(macro?.name || `Macro ${buttonId}`),
+    commandStepCount: (macro?.steps ?? []).filter((step) => !isMacroDelayStep(step)).length
+  })).sort((left, right) => left.buttonId - right.buttonId);
+}
+function activityMacroStepItems(bundle, activityId, buttonId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  const { groups } = groupMacroSteps(macro?.steps);
+  return groups.map((group, index) => {
+    const head = group.head;
+    const wait = groupWait(group);
+    const deviceId = Number(head?.device_id || 0);
+    const commandId = Number(head?.command_id || 0);
+    const deviceName = deviceNameFor(bundle, deviceId);
+    if (commandId === DEVICE_POWER_ON_REF_COMMAND || commandId === DEVICE_POWER_OFF_REF_COMMAND) {
+      const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? "Power on" : "Power off";
+      return { index, kind: "power", commandId, deviceId, label: `${verb} \xB7 ${deviceName}`, hold: 0, wait, protected: true };
+    }
+    if (commandId === DEVICE_INPUT_REF_COMMAND) {
+      const ordinal = Number(head?.duration || 0);
+      const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === ordinal);
+      const inputLabel = input?.name || (ordinal > 0 ? `Input ${ordinal}` : "no input");
+      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input \xB7 ${deviceName}: ${inputLabel}`, hold: 0, wait, protected: true };
+    }
+    return {
+      index,
+      kind: "command",
+      commandId,
+      deviceId,
+      label: `${deviceName} \xB7 ${commandNameOrFallback(bundle, deviceId, commandId)}`,
+      hold: Number(head?.duration || 0),
+      wait
+    };
+  });
+}
+function updateActivityMacro(bundle, activityId, buttonId, transform) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => {
+    const macros = [...activity.macros ?? []];
+    const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
+    const existing = index >= 0 ? macros[index] : null;
+    const nextMacro = {
+      ...existing ?? {},
+      button_id: bId,
+      name: existing?.name ?? `Macro ${bId}`,
+      steps: transform(existing?.steps ?? [])
+    };
+    if (index >= 0) macros[index] = nextMacro;
+    else macros.push(nextMacro);
+    return { ...activity, macros };
+  });
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function addActivityUserMacro(bundle, activityId, name) {
+  return updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    macros: [...activity.macros ?? [], {
+      button_id: nextQuickAccessButtonId(activity),
+      name: String(name ?? "").trim() || "Macro",
+      steps: []
+    }]
+  }));
+}
+function addActivityMacroCommandStep(bundle, activityId, buttonId, deviceId, commandId, hold = 0) {
+  if (Number(deviceId) <= 0 || Number(commandId) <= 0) return bundle;
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => [...steps, {
+    device_id: Number(deviceId),
+    command_id: Number(commandId),
+    button_code: synthesizeCommandCode(Number(commandId)),
+    duration: Number(hold) & 255,
+    delay: 255
+  }]);
+}
+function updateActivityMacroStep(bundle, activityId, buttonId, index, patch) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    group.head = patchMacroStep(group.head, patch, true);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function setActivityMacroStepWait(bundle, activityId, buttonId, index, wait) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    applyGroupWait(group, wait, true);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function removeActivityMacroStep(bundle, activityId, buttonId, index) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const group = groups[Number(index)];
+    if (!group) return steps;
+    if (isPowerRefStep(group.head)) return steps;
+    groups.splice(Number(index), 1);
+    return flattenMacroGroups(prefix, groups);
+  });
+}
+function reorderActivityMacroSteps(bundle, activityId, buttonId, orderedIndices) {
+  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
+    const { prefix, groups } = groupMacroSteps(steps);
+    const reordered = orderedIndices.map((i4) => groups[Number(i4)]).filter((group) => Boolean(group));
+    if (reordered.length !== groups.length) return steps;
+    return flattenMacroGroups(prefix, reordered);
+  });
+}
+var SHARED_BUTTON_CATALOG = [
+  { code: 174, name: "Up", group: "Navigation" },
+  { code: 178, name: "Down", group: "Navigation" },
+  { code: 175, name: "Left", group: "Navigation" },
+  { code: 177, name: "Right", group: "Navigation" },
+  { code: 176, name: "OK", group: "Navigation" },
+  { code: 180, name: "Home", group: "Navigation" },
+  { code: 179, name: "Back", group: "Navigation" },
+  { code: 181, name: "Menu", group: "Navigation" },
+  { code: 182, name: "Volume Up", group: "Volume & Channel" },
+  { code: 185, name: "Volume Down", group: "Volume & Channel" },
+  { code: 184, name: "Mute", group: "Volume & Channel" },
+  { code: 183, name: "Channel Up", group: "Volume & Channel" },
+  { code: 186, name: "Channel Down", group: "Volume & Channel" },
+  { code: 187, name: "Rewind", group: "Transport" },
+  { code: 188, name: "Pause", group: "Transport" },
+  { code: 189, name: "Forward", group: "Transport" },
+  { code: 190, name: "Red", group: "Colour" },
+  { code: 191, name: "Green", group: "Colour" },
+  { code: 192, name: "Yellow", group: "Colour" },
+  { code: 193, name: "Blue", group: "Colour" }
+];
+var X2_EXTRA_BUTTON_CATALOG = [
+  { code: 153, name: "A", group: "Extra" },
+  { code: 152, name: "B", group: "Extra" },
+  { code: 151, name: "C", group: "Extra" },
+  { code: 154, name: "Exit", group: "Extra" },
+  { code: 155, name: "DVR", group: "Extra" },
+  { code: 156, name: "Play", group: "Extra" },
+  { code: 157, name: "Guide", group: "Extra" }
+];
+var BUTTON_NAME_BY_CODE = new Map(
+  [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG].map((entry) => [entry.code, entry.name])
+);
+function bundleButtonCatalog(bundle) {
+  if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
+    return [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG];
+  }
+  return [...SHARED_BUTTON_CATALOG];
+}
+function buttonName(code) {
+  return BUTTON_NAME_BY_CODE.get(Number(code)) ?? `Button 0x${Number(code).toString(16).toUpperCase()}`;
+}
+function deviceNameFor(bundle, deviceId) {
+  const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  return String(device?.device?.name || "").trim() || `Device ${Number(deviceId)}`;
+}
+function commandNameOrFallback(bundle, deviceId, commandId) {
+  return commandLabelFor(bundle, deviceId, commandId) || `Command ${Number(commandId)}`;
+}
+function activityMacroName(bundle, activityId, buttonId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
+  return String(macro?.name || "").trim() || `Macro ${Number(buttonId)}`;
+}
+function activityBindingTargetLabel(bundle, activityId, targetDeviceId, targetCommandId) {
+  if (targetDeviceId === Number(activityId)) {
+    return `Macro \xB7 ${activityMacroName(bundle, activityId, targetCommandId)}`;
+  }
+  return `${deviceNameFor(bundle, targetDeviceId)} \xB7 ${commandNameOrFallback(bundle, targetDeviceId, targetCommandId)}`;
+}
+function sortBindingsByButtonId(rows) {
+  return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+function activityButtonBindingItems(bundle, activityId) {
+  if (!bundle) return [];
+  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const items = [];
+  for (const row of sortBindingsByButtonId(activity.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const deviceId = Number(row?.device_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || deviceId <= 0) continue;
+    const item = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      deviceId,
+      commandId,
+      isMacroTarget: deviceId === Number(activityId),
+      shortPressLabel: activityBindingTargetLabel(bundle, Number(activityId), deviceId, commandId)
+    };
+    const lpDeviceId = Number(row?.long_press_device_id || 0);
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpDeviceId > 0 && lpCommandId > 0) {
+      item.longPress = {
+        deviceId: lpDeviceId,
+        commandId: lpCommandId,
+        isMacroTarget: lpDeviceId === Number(activityId),
+        label: activityBindingTargetLabel(bundle, Number(activityId), lpDeviceId, lpCommandId)
+      };
+    }
+    items.push(item);
+  }
+  return items;
+}
+function deviceButtonBindingItems(bundle, deviceId) {
+  if (!bundle) return [];
+  const normalizedDeviceId = Number(deviceId);
+  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId);
+  if (!device) return [];
+  const items = [];
+  for (const row of sortBindingsByButtonId(device.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || commandId <= 0) continue;
+    const item = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      commandId,
+      shortPressLabel: commandNameOrFallback(bundle, normalizedDeviceId, commandId)
+    };
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpCommandId > 0) {
+      item.longPress = {
+        commandId: lpCommandId,
+        label: commandNameOrFallback(bundle, normalizedDeviceId, lpCommandId)
+      };
+    }
+    items.push(item);
+  }
+  return items;
+}
+function boundButtonIds(rows) {
+  return new Set((rows ?? []).map((row) => Number(row?.button_id || 0)).filter((id) => id > 0));
+}
+function unboundButtonsForActivity(bundle, activityId) {
+  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  const used = boundButtonIds(activity?.button_bindings);
+  return bundleButtonCatalog(bundle).filter((entry) => !used.has(entry.code));
+}
+function unboundButtonsForDevice(bundle, deviceId) {
+  const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
+  const used = boundButtonIds(device?.button_bindings);
+  return bundleButtonCatalog(bundle).filter((entry) => !used.has(entry.code));
+}
+function upsertBindingRow(rows, row) {
+  const buttonId = Number(row.button_id || 0);
+  const next = (rows ?? []).filter((entry) => Number(entry?.button_id || 0) !== buttonId);
+  next.push(row);
+  return sortBindingsByButtonId(next);
+}
+function upsertActivityButtonBinding(bundle, activityId, input) {
+  const buttonId = Number(input.buttonId);
+  const deviceId = Number(input.deviceId);
+  const commandId = Number(input.commandId);
+  if (buttonId <= 0 || deviceId <= 0 || commandId <= 0) return bundle;
+  const row = {
+    button_id: buttonId,
+    button_name: buttonName(buttonId),
+    device_id: deviceId,
+    command_id: commandId
+  };
+  const lpDeviceId = Number(input.longPress?.deviceId || 0);
+  const lpCommandId = Number(input.longPress?.commandId || 0);
+  if (lpDeviceId > 0 && lpCommandId > 0) {
+    row.long_press_device_id = lpDeviceId;
+    row.long_press_command_id = lpCommandId;
+  }
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    button_bindings: upsertBindingRow(activity.button_bindings, row)
+  }));
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function upsertDeviceButtonBinding(bundle, deviceId, input) {
+  const normalizedDeviceId = Number(deviceId);
+  const buttonId = Number(input.buttonId);
+  const commandId = Number(input.commandId);
+  if (buttonId <= 0 || commandId <= 0) return bundle;
+  const row = {
+    button_id: buttonId,
+    button_name: buttonName(buttonId),
+    command_id: commandId,
+    command_name: commandLabelFor(bundle, normalizedDeviceId, commandId) || void 0
+  };
+  const lpCommandId = Number(input.longPressCommandId || 0);
+  if (lpCommandId > 0) row.long_press_command_id = lpCommandId;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return { ...device, button_bindings: upsertBindingRow(device.button_bindings, row) };
+    })
+  };
+}
+function deleteActivityButtonBinding(bundle, activityId, buttonId) {
+  const bId = Number(buttonId);
+  const next = updateActivity(bundle, activityId, (activity) => ({
+    ...activity,
+    button_bindings: (activity.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
+  }));
+  return reconcileActivityPowerMacros(next, Number(activityId));
+}
+function deleteDeviceButtonBinding(bundle, deviceId, buttonId) {
+  const dId = Number(deviceId);
+  const bId = Number(buttonId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== dId) return device;
+      return {
+        ...device,
+        button_bindings: (device.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
+      };
+    })
+  };
+}
+var ACTIVITY_ROLE_GROUPS = [
+  "volume",
+  "navigation",
+  "playback",
+  "channels"
+];
+var ROLE_GROUP_BUTTON_IDS = {
+  volume: [182, 185, 184],
+  navigation: [174, 178, 175, 177, 176, 179, 180, 181],
+  playback: [156, 188, 187, 189],
+  channels: [183, 186]
+};
+function roleGroupButtons(bundle, group) {
+  const catalog = new Set(bundleButtonCatalog(bundle).map((entry) => entry.code));
+  return ROLE_GROUP_BUTTON_IDS[group].filter((code) => catalog.has(code));
+}
+function deviceRoleBindings(bundle, deviceId, group) {
+  const device = findDevice(bundle, Number(deviceId));
+  const groupIds = new Set(roleGroupButtons(bundle, group));
+  const byButton = /* @__PURE__ */ new Map();
+  for (const row of device?.button_bindings ?? []) {
+    const buttonId = Number(row?.button_id || 0);
+    if (groupIds.has(buttonId) && Number(row?.command_id || 0) > 0) byButton.set(buttonId, row);
+  }
+  return byButton;
+}
+function roleMappableButtonCount(bundle, deviceId, group) {
+  return deviceRoleBindings(bundle, deviceId, group).size;
+}
+function activityRoleAssignments(bundle, activityId) {
+  const activity = findBundleActivity(bundle, activityId);
+  return ACTIVITY_ROLE_GROUPS.map((group) => {
+    const buttons = roleGroupButtons(bundle, group);
+    const totalCount = buttons.length;
+    const groupSet = new Set(buttons);
+    const bound = (activity?.button_bindings ?? []).filter(
+      (row) => groupSet.has(Number(row?.button_id || 0)) && Number(row?.device_id || 0) > 0
+    );
+    const unused = {
+      group,
+      state: "unused",
+      deviceId: null,
+      deviceName: null,
+      boundCount: 0,
+      totalCount
+    };
+    if (!bundle || !activity || bound.length === 0) return unused;
+    const selfId = Number(activity.device?.device_id || 0);
+    const targetIds = /* @__PURE__ */ new Set();
+    for (const row of bound) {
+      targetIds.add(Number(row?.device_id || 0));
+      const lpDeviceId = Number(row?.long_press_device_id || 0);
+      if (lpDeviceId > 0) targetIds.add(lpDeviceId);
+    }
+    const [only] = [...targetIds];
+    if (targetIds.size !== 1 || only === selfId) {
+      return { group, state: "custom", deviceId: null, deviceName: null, boundCount: bound.length, totalCount };
+    }
+    const mapped = deviceRoleBindings(bundle, only, group);
+    const exact = bound.length === mapped.size && bound.every((row) => {
+      const ref = mapped.get(Number(row?.button_id || 0));
+      if (!ref) return false;
+      if (Number(row?.command_id || 0) !== Number(ref?.command_id || 0)) return false;
+      const rowLp = Number(row?.long_press_command_id || 0);
+      const refLp = Number(ref?.long_press_command_id || 0);
+      if (rowLp !== refLp) return false;
+      return rowLp === 0 || Number(row?.long_press_device_id || 0) === only;
+    });
+    return {
+      group,
+      state: exact ? "device" : "customized",
+      deviceId: only,
+      deviceName: deviceNameFor(bundle, only),
+      boundCount: bound.length,
+      totalCount
+    };
+  });
+}
+function setActivityRoleDevice(bundle, activityId, group, deviceId) {
+  const aId = Number(activityId);
+  const buttons = roleGroupButtons(bundle, group);
+  const groupSet = new Set(buttons);
+  const mapped = deviceId != null && Number(deviceId) > 0 ? deviceRoleBindings(bundle, Number(deviceId), group) : null;
+  const next = updateActivity(bundle, aId, (activity) => {
+    let rows = (activity.button_bindings ?? []).filter(
+      (row) => !groupSet.has(Number(row?.button_id || 0))
+    );
+    if (mapped) {
+      const dId = Number(deviceId);
+      for (const buttonId of buttons) {
+        const ref = mapped.get(buttonId);
+        if (!ref) continue;
+        const row = {
+          button_id: buttonId,
+          button_name: buttonName(buttonId),
+          device_id: dId,
+          command_id: Number(ref.command_id)
+        };
+        const lpCommandId = Number(ref?.long_press_command_id || 0);
+        if (lpCommandId > 0) {
+          row.long_press_device_id = dId;
+          row.long_press_command_id = lpCommandId;
+        }
+        rows = upsertBindingRow(rows, row);
+      }
+    }
+    return { ...activity, button_bindings: rows };
+  });
+  return reconcileActivityPowerMacros(next, aId);
+}
+var HA_ACTION_HOST_NAME = "Home Assistant";
+var HA_ACTION_HOST_BRAND = "m3tac0de";
+var HA_ACTION_MAX_SLOTS = 10;
+var HA_ACTION_LIBRARY_TYPE = 28;
+var HA_ACTION_DEFAULT_PORT = 8060;
+var MAX_DEVICE_ID = 99;
+var HA_IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
+function isHaActionHostEntry(entry) {
+  return Boolean(entry?.ha_action_host);
+}
+function isHaActionDeviceId(bundle, deviceId) {
+  return (bundle?.devices ?? []).some(
+    (entry) => isHaActionHostEntry(entry) && Number(entry?.device?.device_id || 0) === Number(deviceId)
+  );
+}
+function parseHaActionAddress(value) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const [hostPart, portPart, ...rest] = raw.split(":");
+  if (rest.length > 0) return null;
+  const host = hostPart.trim();
+  if (!HA_IPV4_PATTERN.test(host)) return null;
+  if (portPart === void 0 || portPart.trim() === "") {
+    return { host, port: HA_ACTION_DEFAULT_PORT };
+  }
+  const port = Number(portPart.trim());
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
+  return { host, port };
+}
+function bundleHaActionTarget(bundle) {
+  for (const entry of bundle?.devices ?? []) {
+    if (!isHaActionHostEntry(entry)) continue;
+    for (const row of entry.commands ?? []) {
+      const decoded = row?.restore_data?.decoded;
+      const host = String(decoded?.fields?.host || "");
+      const port = Number(decoded?.fields?.port || 0);
+      if (HA_IPV4_PATTERN.test(host) && port > 0) return { host, port };
+    }
+  }
+  return null;
+}
+function normalizeHaActionName(value) {
+  return String(value ?? "").trim().replace(/_/g, " ");
+}
+function haActionCallbackPath(deviceId, name) {
+  return `/launch/ha/${Number(deviceId)}/${encodeURIComponent(name)}/short`;
+}
+function asciiHexBytes(text) {
+  const out = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code > 127) throw new Error(`non-ASCII character in callback text: ${text[index]}`);
+    out.push(code);
+  }
+  return out;
+}
+function renderHaActionDataHex(target, path) {
+  const text = `POST ${path} HTTP/1.1\r
+Host:${target.host}:${target.port}\r
+Content-Type:application/x-www-form-urlencoded\r
+\r
+`;
+  const textBytes = asciiHexBytes(text);
+  const ipBytes = target.host.split(".").map((part) => Number(part) & 255);
+  const bytes = [
+    ...ipBytes,
+    target.port >> 8 & 255,
+    target.port & 255,
+    textBytes.length >> 8 & 255,
+    textBytes.length & 255,
+    ...textBytes
+  ];
+  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(" ");
+}
+function haActionCommandCodeHex(commandId) {
+  const code = 2e4 + (Number(commandId) & 255) & 281474976710655;
+  const hex = code.toString(16).padStart(12, "0");
+  return hex.replace(/(..)(?=.)/g, "$1 ");
+}
+function buildHaActionCommandRow(deviceId, commandId, name, target) {
+  const path = haActionCallbackPath(deviceId, name);
+  return {
+    command_id: commandId,
+    name,
+    restore_data: {
+      transport: "hub_code_record",
+      library_type: HA_ACTION_LIBRARY_TYPE,
+      command_code: haActionCommandCodeHex(commandId),
+      data_hex: renderHaActionDataHex(target, path),
+      decoded: {
+        class: "wifi_ip",
+        fields: {
+          host: target.host,
+          port: target.port,
+          method: "POST",
+          path,
+          header: "",
+          content_type: "application/x-www-form-urlencoded",
+          body: ""
+        },
+        trailer_hex: "",
+        edited: false
+      }
+    }
+  };
+}
+function refreshHaActionCallback(bundle, deviceId, commandId) {
+  if (!isHaActionDeviceId(bundle, deviceId)) return bundle;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((entry) => {
+      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== Number(deviceId)) {
+        return entry;
+      }
+      return {
+        ...entry,
+        commands: (entry.commands ?? []).map((row) => {
+          if (Number(row?.command_id || 0) !== Number(commandId)) return row;
+          const decoded = row?.restore_data?.decoded;
+          const host = String(decoded?.fields?.host || "");
+          const port = Number(decoded?.fields?.port || 0);
+          if (!HA_IPV4_PATTERN.test(host) || port <= 0) return row;
+          const name = normalizeHaActionName(String(row?.name || ""));
+          return buildHaActionCommandRow(Number(deviceId), Number(commandId), name, { host, port });
+        })
+      };
+    })
+  };
+}
+function allocateHaHostDeviceId(bundle) {
+  const used = /* @__PURE__ */ new Set();
+  for (const entry of bundle.devices ?? []) used.add(Number(entry?.device?.device_id || 0));
+  for (const entry of bundle.activities ?? []) used.add(Number(entry?.device?.device_id || 0));
+  for (let id = 1; id <= MAX_DEVICE_ID; id += 1) {
+    if (!used.has(id)) return id;
+  }
+  return null;
+}
+function buildHaHostEntry(deviceId, name, sort) {
+  return {
+    ha_action_host: true,
+    device: {
+      device_id: deviceId,
+      name,
+      brand: HA_ACTION_HOST_BRAND,
+      device_class: "wifi_ip",
+      device_class_code: 28,
+      icon: 1,
+      sort,
+      code_type: 28,
+      device_type: 16,
+      code_id_hex: Array(16).fill("00").join(" "),
+      hide: 0,
+      input_flag: 0,
+      channel: 0,
+      power_state: 0,
+      poll_time: 0,
+      input_mode: 2,
+      power_mode: 0,
+      power_style: 0,
+      share_mode: 0,
+      tail_marker: 1
+    },
+    commands: []
+  };
+}
+function provisionHaAction(bundle, rawName, target) {
+  const name = normalizeHaActionName(rawName) || "HA action";
+  const hosts = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry));
+  let next = bundle;
+  let hostEntry = hosts.find((entry) => (entry.commands ?? []).length < HA_ACTION_MAX_SLOTS);
+  let deviceId;
+  if (hostEntry) {
+    deviceId = Number(hostEntry.device?.device_id || 0);
+    if (deviceId <= 0) return null;
+  } else {
+    const allocated = allocateHaHostDeviceId(bundle);
+    if (allocated == null) return null;
+    deviceId = allocated;
+    const hostName = hosts.length === 0 ? HA_ACTION_HOST_NAME : `${HA_ACTION_HOST_NAME} ${hosts.length + 1}`;
+    const maxSort = (bundle.devices ?? []).reduce(
+      (max, entry) => Math.max(max, Number(entry?.device?.sort || 0)),
+      0
+    );
+    hostEntry = buildHaHostEntry(deviceId, hostName, maxSort + 1);
+    next = { ...bundle, devices: [...bundle.devices ?? [], hostEntry] };
+  }
+  const usedSlots = new Set(
+    (hostEntry.commands ?? []).map((row2) => Number(row2?.command_id || 0))
+  );
+  let commandId = 0;
+  for (let slot = 1; slot <= HA_ACTION_MAX_SLOTS; slot += 1) {
+    if (!usedSlots.has(slot)) {
+      commandId = slot;
+      break;
+    }
+  }
+  if (commandId === 0) return null;
+  const row = buildHaActionCommandRow(deviceId, commandId, name, target);
+  next = {
+    ...next,
+    devices: (next.devices ?? []).map((entry) => {
+      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== deviceId) return entry;
+      return { ...entry, commands: [...entry.commands ?? [], row] };
+    })
+  };
+  return { bundle: next, deviceId, commandId, name };
+}
+function addActivityHaActionFavorite(bundle, activityId, rawName, target) {
+  const provision = provisionHaAction(bundle, rawName, target);
+  if (!provision) return null;
+  return addBundleActivityFavorite(
+    provision.bundle,
+    Number(activityId),
+    provision.deviceId,
+    provision.commandId,
+    provision.name
+  );
+}
+function haActionCommandReferenced(bundle, deviceId, commandId) {
+  for (const activity of bundle.activities ?? []) {
+    for (const slot of activity?.favorite_slots ?? []) {
+      if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) return true;
+    }
+    for (const binding of activity?.button_bindings ?? []) {
+      if (Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId) return true;
+      if (Number(binding?.long_press_device_id || 0) === deviceId && Number(binding?.long_press_command_id || 0) === commandId) return true;
+    }
+    for (const macro of activity?.macros ?? []) {
+      for (const step of macro?.steps ?? []) {
+        if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
+        if (Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId) return true;
+      }
+    }
+  }
+  return false;
+}
+function pruneHaActionHosts(bundle) {
+  let next = bundle;
+  const hostIds = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry)).map((entry) => Number(entry?.device?.device_id || 0)).filter((id) => id > 0);
+  for (const deviceId of hostIds) {
+    const entry = (next.devices ?? []).find(
+      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId
+    );
+    if (!entry) continue;
+    for (const row of [...entry.commands ?? []]) {
+      const commandId = Number(row?.command_id || 0);
+      if (commandId > 0 && !haActionCommandReferenced(next, deviceId, commandId)) {
+        next = deleteBundleDeviceCommand(next, deviceId, commandId);
+      }
+    }
+    const refreshed = (next.devices ?? []).find(
+      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId
+    );
+    if (refreshed && (refreshed.commands ?? []).length === 0) {
+      next = deleteBundleDevice(next, deviceId);
+    }
+  }
+  return next;
+}
+
+// custom_components/sofabaton_x1s/www/src/tabs/activity-diff.ts
+var R2 = TOOLS_CARD_STRINGS.activities.review;
+var POWER_ON_MACRO_BUTTON_ID2 = 198;
+var SECTION_ORDER = [
+  "devices",
+  "start",
+  "buttons",
+  "shortcuts",
+  "end",
+  "device_wide"
+];
+function diffActivityForReview(baseline, edited, activityId) {
+  const buckets = {
+    devices: [],
+    start: [],
+    buttons: [],
+    shortcuts: [],
+    end: [],
+    device_wide: []
+  };
+  if (!baseline || !edited) return [];
+  const baseMembers = activityMemberViews(baseline, activityId);
+  const editMembers = activityMemberViews(edited, activityId);
+  const baseById = new Map(baseMembers.map((member) => [member.deviceId, member]));
+  const editById = new Map(editMembers.map((member) => [member.deviceId, member]));
+  diffMembership(buckets, baseById, editById);
+  diffStart(buckets, baseline, edited, activityId, baseById, editById);
+  diffButtons(buckets, baseline, edited, activityId);
+  diffShortcuts(buckets, baseline, edited, activityId);
+  diffEnd(buckets, baseById, editById);
+  diffDeviceWide(buckets, baseline, edited, editMembers);
+  return SECTION_ORDER.map((section) => ({ section, entries: buckets[section] })).filter((group) => group.entries.length > 0);
+}
+function diffMembership(buckets, baseById, editById) {
+  for (const [deviceId, member] of editById) {
+    if (!baseById.has(deviceId)) buckets.devices.push({ text: R2.deviceAdded(member.deviceName) });
+  }
+  for (const [deviceId, member] of baseById) {
+    if (!editById.has(deviceId)) buckets.devices.push({ text: R2.deviceRemoved(member.deviceName) });
+  }
+}
+function diffStart(buckets, baseline, edited, activityId, baseById, editById) {
+  for (const [deviceId, member] of editById) {
+    const before = baseById.get(deviceId);
+    if (!before) continue;
+    if (member.powersOn !== before.powersOn) {
+      buckets.start.push({ text: member.powersOn ? R2.powersOnNow(member.deviceName) : R2.powersOnNo(member.deviceName) });
+    }
+    if ((member.inputCommandId ?? null) !== (before.inputCommandId ?? null)) {
+      buckets.start.push({
+        text: member.inputCommandId != null && member.inputCommandName ? R2.inputChanged(member.deviceName, member.inputCommandName) : R2.inputCleared(member.deviceName)
+      });
+    }
+  }
+  const baseOrder = powerSequenceOrder(baseline, activityId);
+  const editOrder = powerSequenceOrder(edited, activityId);
+  if (baseOrder.length === editOrder.length && baseOrder.join(",") !== editOrder.join(",")) {
+    buckets.start.push({ text: R2.startReordered });
+  }
+}
+function powerSequenceOrder(bundle, activityId) {
+  return activityMacroStepItems(bundle, activityId, POWER_ON_MACRO_BUTTON_ID2).map((step) => Number(step.deviceId ?? 0)).filter((id) => id > 0);
+}
+function diffButtons(buckets, baseline, edited, activityId) {
+  const baseRoles = new Map(activityRoleAssignments(baseline, activityId).map((role) => [role.group, role]));
+  const editRoles = new Map(activityRoleAssignments(edited, activityId).map((role) => [role.group, role]));
+  for (const group of ACTIVITY_ROLE_GROUPS) {
+    const before = baseRoles.get(group);
+    const after = editRoles.get(group);
+    if (!after) continue;
+    const changed = !before || before.state !== after.state || (before.deviceId ?? null) !== (after.deviceId ?? null);
+    if (!changed) continue;
+    const label = R2.roleGroups[group] ?? group;
+    if (after.state === "unused") {
+      buckets.buttons.push({ text: R2.roleCleared(label) });
+    } else if (after.state === "device" && after.deviceName) {
+      buckets.buttons.push({ text: R2.roleNowControls(label, after.deviceName) });
+    } else {
+      buckets.buttons.push({ text: R2.roleCustomized(label) });
+    }
+  }
+}
+function shortcutIdentity(item) {
+  return `${item.kind}:${item.buttonId}`;
+}
+function diffShortcuts(buckets, baseline, edited, activityId) {
+  const base = activityQuickAccessItems(baseline, activityId);
+  const edit = activityQuickAccessItems(edited, activityId);
+  const baseById = new Map(base.map((item) => [shortcutIdentity(item), item]));
+  const editById = new Map(edit.map((item) => [shortcutIdentity(item), item]));
+  for (const [id, item] of editById) {
+    if (!baseById.has(id)) buckets.shortcuts.push({ text: R2.shortcutAdded(item.label) });
+  }
+  for (const [id, item] of baseById) {
+    if (!editById.has(id)) buckets.shortcuts.push({ text: R2.shortcutRemoved(item.label) });
+  }
+  for (const [id, item] of editById) {
+    const before = baseById.get(id);
+    if (before && before.label !== item.label) {
+      buckets.shortcuts.push({ text: R2.shortcutRenamed(before.label, item.label) });
+    }
+  }
+  const baseIds = base.map(shortcutIdentity);
+  const editIds = edit.map(shortcutIdentity);
+  if (baseIds.length === editIds.length && baseIds.length > 0 && [...baseIds].sort().join(",") === [...editIds].sort().join(",") && baseIds.join(",") !== editIds.join(",")) {
+    buckets.shortcuts.push({ text: R2.shortcutsReordered });
+  }
+}
+function diffEnd(buckets, baseById, editById) {
+  for (const [deviceId, member] of editById) {
+    const before = baseById.get(deviceId);
+    if (!before) continue;
+    if (member.powersOff !== before.powersOff) {
+      buckets.end.push({ text: member.powersOff ? R2.powersOffNow(member.deviceName) : R2.powersOffNo(member.deviceName) });
+    }
+  }
+}
+function diffDeviceWide(buckets, baseline, edited, editMembers) {
+  for (const member of editMembers) {
+    const before = deviceIdleBehavior(baseline, member.deviceId);
+    const after = deviceIdleBehavior(edited, member.deviceId);
+    if (before !== after) {
+      const label = R2.idleShort[Number(after ?? 0)] ?? String(after);
+      buckets.device_wide.push({ text: R2.idleChanged(member.deviceName, label), global: true });
+    }
+  }
+  for (const device of bundleDeviceOptions(edited)) {
+    const deviceId = device.id;
+    const before = new Map(deviceCommandItems(baseline, deviceId).map((cmd) => [cmd.commandId, cmd.label]));
+    const after = deviceCommandItems(edited, deviceId);
+    for (const cmd of after) {
+      const prev = before.get(cmd.commandId);
+      if (prev != null && prev !== cmd.label) {
+        buckets.device_wide.push({ text: R2.commandRenamed(prev, cmd.label, device.label), global: true });
+      }
+    }
+  }
+}
 
 // custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
 var S3 = TOOLS_CARD_STRINGS.backup;
@@ -4036,1917 +6148,6 @@ var backupTabStyles = i`
     }
 `;
 
-// custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
-var DECODED_CLASS_FORM_SPECS = {
-  wifi_ip: {
-    title: "HTTP request",
-    subtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
-    fields: [
-      { key: "host", label: "Host (IPv4)", helper: "e.g. 192.168.2.77" },
-      { key: "port", label: "Port", numeric: true },
-      { key: "method", label: "HTTP method", helper: "e.g. GET, POST" },
-      { key: "path", label: "Path" },
-      {
-        key: "header",
-        label: "Extra headers",
-        multiline: true,
-        crlfOnWire: true,
-        helper: "One header per line. Host and Content-Length are added automatically."
-      },
-      { key: "content_type", label: "Content type" },
-      { key: "body", label: "Body", multiline: true }
-    ]
-  },
-  wifi_roku: {
-    title: "Roku ECP request",
-    fields: [
-      { key: "path", label: "ECP URL path", helper: "e.g. /launch/12 or /keypress/Home" }
-    ]
-  },
-  wifi_hue: {
-    title: "Hue REST request",
-    subtitle: "Body block is injected verbatim between Host headers and the network write.",
-    fields: [
-      { key: "path", label: "URL path" },
-      {
-        key: "body_block",
-        label: "Body block (raw wire string)",
-        multiline: true,
-        escapedDisplay: true,
-        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
-      }
-    ]
-  },
-  wifi_sonos: {
-    title: "Sonos UPnP request",
-    subtitle: "Body block is injected verbatim between Host headers and the network write.",
-    fields: [
-      { key: "path", label: "URL path" },
-      {
-        key: "body_block",
-        label: "Body block (raw wire string)",
-        multiline: true,
-        escapedDisplay: true,
-        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
-      }
-    ]
-  },
-  ir: {
-    title: "Descriptive IR payload",
-    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR blobs are not editable here.",
-    fields: [
-      {
-        key: "descriptor",
-        label: "Descriptor",
-        helper: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2"
-      }
-    ]
-  }
-};
-function normalizeDecodableClass(value) {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized in DECODED_CLASS_FORM_SPECS) {
-    return normalized;
-  }
-  return null;
-}
-function commandDecodedBlock(bundle, deviceId, commandId) {
-  if (!bundle) return null;
-  const normalizedDeviceId = Number(deviceId);
-  const normalizedCommandId = Number(commandId);
-  const device = (bundle.devices ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId
-  );
-  if (!device) return null;
-  const command = (device.commands ?? []).find(
-    (entry) => Number(entry?.command_id || 0) === normalizedCommandId
-  );
-  if (!command) return null;
-  const restoreData = command.restore_data;
-  if (!restoreData || typeof restoreData !== "object") return null;
-  const decoded = restoreData.decoded;
-  if (!decoded || typeof decoded !== "object") return null;
-  const decodedRecord = decoded;
-  const className = normalizeDecodableClass(decodedRecord.class);
-  if (!className) return null;
-  const fields = decodedRecord.fields;
-  if (!fields || typeof fields !== "object") return null;
-  return {
-    className,
-    fields: { ...fields },
-    trailerHex: String(decodedRecord.trailer_hex ?? ""),
-    edited: Boolean(decodedRecord.edited)
-  };
-}
-function updateCommandDecodedFields(bundle, deviceId, commandId, newFields) {
-  const normalizedDeviceId = Number(deviceId);
-  const normalizedCommandId = Number(commandId);
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((device) => {
-      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
-      return {
-        ...device,
-        commands: (device.commands ?? []).map((command) => {
-          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
-          const restoreData = command.restore_data;
-          if (!restoreData || typeof restoreData !== "object") return command;
-          const decoded = restoreData.decoded;
-          if (!decoded || typeof decoded !== "object") return command;
-          const decodedRecord = decoded;
-          const existingFields = decodedRecord.fields ?? {};
-          return {
-            ...command,
-            restore_data: {
-              ...restoreData,
-              decoded: {
-                ...decodedRecord,
-                fields: { ...existingFields, ...newFields },
-                edited: true
-              }
-            }
-          };
-        })
-      };
-    })
-  };
-}
-var INTERNAL_POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
-function compareByHubOrder(left, right) {
-  return left.sortKey - right.sortKey || left.id - right.id;
-}
-function readSortKey(block) {
-  const value = Number(block?.sort);
-  return Number.isFinite(value) ? value : 0;
-}
-function bundleActivityOptions(bundle) {
-  return [...bundle?.activities ?? []].map((activity) => {
-    const block = activity?.device;
-    const id = Number(block?.device_id || 0);
-    return {
-      id,
-      sortKey: readSortKey(block),
-      label: String(block?.name || `Activity ${id}`),
-      meta: `${(activity?.referenced_source_device_ids ?? []).length} linked devices`
-    };
-  }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
-}
-function bundleDeviceOptions(bundle) {
-  return [...bundle?.devices ?? []].map((device) => {
-    const block = device?.device;
-    const id = Number(block?.device_id || 0);
-    return {
-      id,
-      sortKey: readSortKey(block),
-      label: String(block?.name || `Device ${id}`),
-      meta: String(block?.device_class || "").trim() || void 0
-    };
-  }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
-}
-function normalizeHubVersion(value) {
-  const normalized = String(value ?? "").trim().toUpperCase();
-  if (!normalized) return null;
-  if (normalized.includes("X1S")) return "X1S";
-  if (normalized.includes("X2")) return "X2";
-  if (normalized.includes("X1")) return "X1";
-  return null;
-}
-function renameBundleHub(bundle, name) {
-  const trimmed = String(name ?? "").trim();
-  if (!trimmed) return bundle;
-  return {
-    ...bundle,
-    hub: { ...bundle.hub ?? {}, name: trimmed }
-  };
-}
-function renameInList(list, id, name) {
-  const trimmed = String(name ?? "").trim();
-  return (list ?? []).map((entry) => {
-    const block = entry?.device;
-    if (!block || Number(block.device_id || 0) !== id) return entry;
-    return { ...entry, device: { ...block, name: trimmed || block.name || `Device ${id}` } };
-  });
-}
-function renameBundleActivity(bundle, activityId, name) {
-  return { ...bundle, activities: renameInList(bundle.activities, Number(activityId), name) };
-}
-function renameBundleDevice(bundle, deviceId, name) {
-  return { ...bundle, devices: renameInList(bundle.devices, Number(deviceId), name) };
-}
-function updateActivity(bundle, activityId, updater) {
-  const normalizedId = Number(activityId);
-  return {
-    ...bundle,
-    activities: (bundle.activities ?? []).map((activity) => {
-      if (Number(activity?.device?.device_id || 0) !== normalizedId) return activity;
-      return updater(activity);
-    })
-  };
-}
-function updateDeviceCommandLabel(bundle, deviceId, commandId, name) {
-  const normalizedDeviceId = Number(deviceId);
-  const normalizedCommandId = Number(commandId);
-  const trimmed = String(name ?? "").trim();
-  const next = {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((device) => {
-      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
-      return {
-        ...device,
-        commands: (device.commands ?? []).map((command) => {
-          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
-          return { ...command, name: trimmed };
-        })
-      };
-    })
-  };
-  return refreshHaActionCallback(next, normalizedDeviceId, normalizedCommandId);
-}
-function commandLabelFor(bundle, deviceId, commandId) {
-  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
-  const command = (device?.commands ?? []).find((entry) => Number(entry?.command_id || 0) === Number(commandId));
-  return String(command?.name || "").trim();
-}
-function favoriteLabel(bundle, row) {
-  const explicit = String(row?.name || "").trim();
-  if (explicit) return explicit;
-  const deviceId = Number(row?.device_id || 0);
-  const commandId = Number(row?.command_id || 0);
-  const derived = commandLabelFor(bundle, deviceId, commandId);
-  if (derived) return derived;
-  return `Favorite ${Number(row?.button_id || 0) || "?"}`;
-}
-function sortByButtonId(rows) {
-  return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
-}
-function isEditableActivityMacro(row) {
-  const buttonId = Number(row?.button_id || 0);
-  const normalizedName = String(row?.name || "").trim().toUpperCase();
-  if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(buttonId)) return false;
-  if (normalizedName === "POWER_ON" || normalizedName === "POWER_OFF") return false;
-  return true;
-}
-function activityQuickAccessItems(bundle, activityId) {
-  if (!bundle) return [];
-  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
-  if (!activity) return [];
-  const items = [];
-  for (const row of sortByButtonId(activity.macros).filter(isEditableActivityMacro)) {
-    const buttonId = Number(row?.button_id || 0);
-    if (buttonId <= 0) continue;
-    items.push({
-      kind: "macro",
-      activityId: Number(activityId),
-      buttonId,
-      label: String(row?.name || `Macro ${buttonId}`)
-    });
-  }
-  for (const row of sortByButtonId(activity.favorite_slots)) {
-    const buttonId = Number(row?.button_id || 0);
-    if (buttonId <= 0) continue;
-    items.push({
-      kind: "favorite",
-      activityId: Number(activityId),
-      buttonId,
-      label: favoriteLabel(bundle, row),
-      deviceId: Number(row?.device_id || 0) || void 0,
-      commandId: Number(row?.command_id || 0) || void 0
-    });
-  }
-  return items.sort((left, right) => left.buttonId - right.buttonId);
-}
-function renameBundleActivityMacro(bundle, activityId, buttonId, name) {
-  const normalizedButtonId = Number(buttonId);
-  const trimmed = String(name ?? "").trim();
-  return updateActivity(bundle, activityId, (activity) => ({
-    ...activity,
-    macros: (activity.macros ?? []).map((row) => Number(row?.button_id || 0) === normalizedButtonId ? { ...row, name: trimmed } : row)
-  }));
-}
-function renameBundleActivityFavorite(bundle, activityId, buttonId, name) {
-  const normalizedButtonId = Number(buttonId);
-  const trimmed = String(name ?? "").trim();
-  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
-  const row = (activity?.favorite_slots ?? []).find((entry) => Number(entry?.button_id || 0) === normalizedButtonId);
-  const deviceId = Number(row?.device_id || 0);
-  const commandId = Number(row?.command_id || 0);
-  let nextBundle = bundle;
-  if (deviceId > 0 && commandId > 0) {
-    nextBundle = updateDeviceCommandLabel(nextBundle, deviceId, commandId, trimmed);
-  }
-  return updateActivity(nextBundle, activityId, (current) => ({
-    ...current,
-    favorite_slots: (current.favorite_slots ?? []).map((entry) => Number(entry?.button_id || 0) === normalizedButtonId ? { ...entry, name: trimmed } : entry)
-  }));
-}
-function deviceCommandItems(bundle, deviceId) {
-  if (!bundle) return [];
-  const normalizedDeviceId = Number(deviceId);
-  const device = (bundle.devices ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId
-  );
-  if (!device) return [];
-  const items = [];
-  for (const row of device.commands ?? []) {
-    const commandId = Number(row?.command_id || 0);
-    if (commandId <= 0) continue;
-    const label = String(row?.name || "").trim() || `Command ${commandId}`;
-    items.push({ deviceId: normalizedDeviceId, commandId, label });
-  }
-  return items.sort((left, right) => left.commandId - right.commandId);
-}
-function bundleDeviceClass(bundle, deviceId) {
-  if (!bundle) return null;
-  const normalizedId = Number(deviceId);
-  const device = (bundle.devices ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
-  );
-  if (!device) return null;
-  return String(device.device?.device_class ?? "").trim().toLowerCase() || null;
-}
-function deviceIpAddress(bundle, deviceId) {
-  if (!bundle) return null;
-  const normalizedId = Number(deviceId);
-  const device = (bundle.devices ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
-  );
-  if (!device?.device) return null;
-  const raw = String(device.device.ip_address ?? "").trim();
-  return raw || null;
-}
-function updateBundleDeviceIp(bundle, deviceId, ip) {
-  const normalizedId = Number(deviceId);
-  const trimmed = String(ip ?? "").trim();
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((device) => {
-      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
-      if (!device.device) return device;
-      return {
-        ...device,
-        device: { ...device.device, ip_address: trimmed || null }
-      };
-    })
-  };
-}
-var IDLE_BEHAVIOR_AUTO_OFF = 1;
-var IDLE_BEHAVIOR_ALWAYS_ON = 2;
-var IDLE_BEHAVIOR_STAY_ON = 3;
-var IDLE_BEHAVIOR_DISABLED = 4;
-function deviceIdleBehavior(bundle, deviceId) {
-  if (!bundle) return null;
-  const normalizedId = Number(deviceId);
-  const device = (bundle.devices ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
-  );
-  if (!device?.device) return null;
-  const raw = device.device.idle_behavior ?? device.device.power_mode;
-  if (raw == null) return null;
-  const mode = Number(raw);
-  return Number.isFinite(mode) ? mode & 255 : null;
-}
-function updateBundleDeviceIdleBehavior(bundle, deviceId, mode) {
-  const normalizedId = Number(deviceId);
-  const normalizedMode = Number(mode) & 255;
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((device) => {
-      if (Number(device?.device?.device_id || 0) !== normalizedId) return device;
-      if (!device.device) return device;
-      return {
-        ...device,
-        device: { ...device.device, idle_behavior: normalizedMode }
-      };
-    })
-  };
-}
-function renameBundleDeviceCommand(bundle, deviceId, commandId, name) {
-  return updateDeviceCommandLabel(bundle, Number(deviceId), Number(commandId), String(name ?? "").trim());
-}
-function reorderBundleActivityQuickAccess(bundle, activityId, orderedItems) {
-  const normalizedActivityId = Number(activityId);
-  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedActivityId);
-  if (!activity) return bundle;
-  const macrosByButtonId = /* @__PURE__ */ new Map();
-  for (const row of activity.macros ?? []) {
-    macrosByButtonId.set(Number(row?.button_id || 0), row);
-  }
-  const favoritesByButtonId = /* @__PURE__ */ new Map();
-  for (const row of activity.favorite_slots ?? []) {
-    favoritesByButtonId.set(Number(row?.button_id || 0), row);
-  }
-  const orderedMacroButtonIds = new Set(
-    orderedItems.filter((item) => item.kind === "macro").map((item) => Number(item.buttonId))
-  );
-  const macroRows = [];
-  const favoriteRows = [];
-  orderedItems.forEach((item, index) => {
-    const nextButtonId = index + 1;
-    if (item.kind === "macro") {
-      const row2 = macrosByButtonId.get(Number(item.buttonId));
-      if (row2) macroRows.push({ ...row2, button_id: nextButtonId });
-      return;
-    }
-    const row = favoritesByButtonId.get(Number(item.buttonId));
-    if (row) favoriteRows.push({ ...row, button_id: nextButtonId });
-  });
-  for (const row of activity.macros ?? []) {
-    if (!orderedMacroButtonIds.has(Number(row?.button_id || 0))) {
-      macroRows.push(row);
-    }
-  }
-  return updateActivity(bundle, normalizedActivityId, (current) => ({
-    ...current,
-    macros: macroRows,
-    favorite_slots: favoriteRows
-  }));
-}
-function stepMatchesDevice(step, deviceId) {
-  return Number(step?.device_id || 0) === deviceId;
-}
-function stepMatchesCommand(step, deviceId, commandId) {
-  return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
-}
-var MACRO_DELAY_SENTINEL = 255;
-function isMacroDelayStep(step) {
-  return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
-}
-function filterMacroSteps(steps, shouldRemove) {
-  const list = steps ?? [];
-  const result = [];
-  for (let index = 0; index < list.length; index += 1) {
-    if (shouldRemove(list[index])) {
-      while (index + 1 < list.length && isMacroDelayStep(list[index + 1])) {
-        index += 1;
-      }
-      continue;
-    }
-    result.push(list[index]);
-  }
-  return result;
-}
-function countRemovedMacroSteps(steps, shouldRemove) {
-  const original = (steps ?? []).length;
-  return original - filterMacroSteps(steps, shouldRemove).length;
-}
-function clearBindingLongPress(binding) {
-  const { long_press_device_id, long_press_command_id, ...rest } = binding;
-  return rest;
-}
-function cascadeBindingForDeletedDevice(binding, deviceId) {
-  if (Number(binding?.device_id || 0) === deviceId) return null;
-  if (Number(binding?.long_press_device_id || 0) === deviceId) return clearBindingLongPress(binding);
-  return binding;
-}
-function cascadeBindingForDeletedCommand(binding, deviceId, commandId, deviceScoped) {
-  const shortMatches = deviceScoped ? Number(binding?.command_id || 0) === commandId : Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId;
-  if (shortMatches) return null;
-  const longMatches = deviceScoped ? Number(binding?.long_press_command_id || 0) === commandId : Number(binding?.long_press_device_id || 0) === deviceId && Number(binding?.long_press_command_id || 0) === commandId;
-  if (longMatches) return clearBindingLongPress(binding);
-  return binding;
-}
-function cascadeBindingForDeletedMacro(binding, activityId, macroButtonId) {
-  const shortMatches = Number(binding?.device_id || 0) === activityId && Number(binding?.command_id || 0) === macroButtonId;
-  if (shortMatches) return null;
-  const longMatches = Number(binding?.long_press_device_id || 0) === activityId && Number(binding?.long_press_command_id || 0) === macroButtonId;
-  if (longMatches) return clearBindingLongPress(binding);
-  return binding;
-}
-function applyBindingCascade(bindings, transform) {
-  const result = [];
-  for (const binding of bindings ?? []) {
-    const next = transform(binding);
-    if (next !== null) result.push(next);
-  }
-  return result;
-}
-function countAffectedBindings(bindings, transform) {
-  let count = 0;
-  for (const binding of bindings ?? []) {
-    const next = transform(binding);
-    if (next === null || next !== binding) count += 1;
-  }
-  return count;
-}
-function bundleDeleteImpact(bundle, target) {
-  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
-  if (!bundle) return empty;
-  if (target.kind === "device") {
-    const deviceId = Number(target.deviceId);
-    let favorites = 0;
-    let macroSteps = 0;
-    let activities = 0;
-    let bindings = 0;
-    for (const activity of bundle.activities ?? []) {
-      if ((activity?.referenced_source_device_ids ?? []).some((id) => Number(id) === deviceId)) {
-        activities += 1;
-      }
-      for (const slot of activity?.favorite_slots ?? []) {
-        if (Number(slot?.device_id || 0) === deviceId) favorites += 1;
-      }
-      for (const macro of activity?.macros ?? []) {
-        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId));
-      }
-      bindings += countAffectedBindings(
-        activity?.button_bindings,
-        (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
-      );
-    }
-    return { favorites, macroSteps, activities, bindings };
-  }
-  if (target.kind === "command") {
-    const deviceId = Number(target.deviceId);
-    const commandId = Number(target.commandId);
-    let favorites = 0;
-    let macroSteps = 0;
-    let bindings = 0;
-    for (const activity of bundle.activities ?? []) {
-      for (const slot of activity?.favorite_slots ?? []) {
-        if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) {
-          favorites += 1;
-        }
-      }
-      for (const macro of activity?.macros ?? []) {
-        macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, deviceId, commandId));
-      }
-      bindings += countAffectedBindings(
-        activity?.button_bindings,
-        (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, false)
-      );
-    }
-    const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === deviceId);
-    bindings += countAffectedBindings(
-      device?.button_bindings,
-      (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true)
-    );
-    return { favorites, macroSteps, activities: 0, bindings };
-  }
-  if (target.kind === "activity_member") {
-    return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
-  }
-  return empty;
-}
-function backupDeleteHasCascade(impact) {
-  return impact.favorites > 0 || impact.macroSteps > 0 || impact.activities > 0 || impact.bindings > 0;
-}
-function deleteBundleActivity(bundle, activityId) {
-  const id = Number(activityId);
-  return {
-    ...bundle,
-    activities: (bundle.activities ?? []).filter((activity) => Number(activity?.device?.device_id || 0) !== id)
-  };
-}
-function stripDeviceFromActivity(activity, deviceId) {
-  return {
-    ...activity,
-    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
-      (id) => Number(id) !== deviceId
-    ),
-    favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.device_id || 0) !== deviceId),
-    macros: (activity.macros ?? []).map((macro) => ({
-      ...macro,
-      steps: filterMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, deviceId))
-    })),
-    button_bindings: applyBindingCascade(
-      activity.button_bindings,
-      (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
-    )
-  };
-}
-function deleteBundleDevice(bundle, deviceId) {
-  const id = Number(deviceId);
-  const next = {
-    ...bundle,
-    devices: (bundle.devices ?? []).filter((device) => Number(device?.device?.device_id || 0) !== id),
-    activities: (bundle.activities ?? []).map((activity) => stripDeviceFromActivity(activity, id))
-  };
-  return reconcileBundlePowerMacros(next);
-}
-function deleteBundleDeviceCommand(bundle, deviceId, commandId) {
-  const dId = Number(deviceId);
-  const cId = Number(commandId);
-  const next = {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((device) => {
-      if (Number(device?.device?.device_id || 0) !== dId) return device;
-      return {
-        ...device,
-        commands: (device.commands ?? []).filter((command) => Number(command?.command_id || 0) !== cId),
-        button_bindings: applyBindingCascade(
-          device.button_bindings,
-          (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true)
-        )
-      };
-    }),
-    activities: (bundle.activities ?? []).map((activity) => ({
-      ...activity,
-      favorite_slots: (activity.favorite_slots ?? []).filter(
-        (slot) => !(Number(slot?.device_id || 0) === dId && Number(slot?.command_id || 0) === cId)
-      ),
-      macros: (activity.macros ?? []).map((macro) => ({
-        ...macro,
-        steps: filterMacroSteps(macro?.steps, (step) => stepMatchesCommand(step, dId, cId))
-      })),
-      button_bindings: applyBindingCascade(
-        activity.button_bindings,
-        (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, false)
-      )
-    }))
-  };
-  return reconcileBundlePowerMacros(next);
-}
-function deleteBundleActivityQuickAccess(bundle, activityId, kind, buttonId) {
-  const bId = Number(buttonId);
-  const next = updateActivity(bundle, activityId, (activity) => {
-    if (kind === "favorite") {
-      return {
-        ...activity,
-        favorite_slots: (activity.favorite_slots ?? []).filter((slot) => Number(slot?.button_id || 0) !== bId)
-      };
-    }
-    return {
-      ...activity,
-      macros: (activity.macros ?? []).filter((macro) => Number(macro?.button_id || 0) !== bId),
-      // A button bound to this macro now dangles — drop it (or clear the
-      // long press if only that referenced the macro).
-      button_bindings: applyBindingCascade(
-        activity.button_bindings,
-        (binding) => cascadeBindingForDeletedMacro(binding, Number(activityId), bId)
-      )
-    };
-  });
-  return reconcileActivityPowerMacros(next, Number(activityId));
-}
-function nextQuickAccessButtonId(activity) {
-  let max = 0;
-  const consider = (value) => {
-    if (value > 0 && !INTERNAL_POWER_MACRO_BUTTON_IDS.has(value) && value > max) max = value;
-  };
-  for (const slot of activity.favorite_slots ?? []) consider(Number(slot?.button_id || 0));
-  for (const macro of activity.macros ?? []) consider(Number(macro?.button_id || 0));
-  return max + 1;
-}
-function addBundleActivityFavorite(bundle, activityId, deviceId, commandId, name) {
-  const dId = Number(deviceId);
-  const cId = Number(commandId);
-  if (dId <= 0 || cId <= 0) return bundle;
-  const trimmed = String(name ?? "").trim();
-  const next = updateActivity(bundle, activityId, (activity) => {
-    const slot = {
-      button_id: nextQuickAccessButtonId(activity),
-      device_id: dId,
-      command_id: cId,
-      name: trimmed
-    };
-    return { ...activity, favorite_slots: [...activity.favorite_slots ?? [], slot] };
-  });
-  return reconcileActivityPowerMacros(next, Number(activityId));
-}
-function applyBundleDelete(bundle, target) {
-  switch (target.kind) {
-    case "activity":
-      return deleteBundleActivity(bundle, target.activityId);
-    case "device":
-      return deleteBundleDevice(bundle, target.deviceId);
-    case "command":
-      return deleteBundleDeviceCommand(bundle, target.deviceId, target.commandId);
-    case "favorite":
-      return deleteBundleActivityQuickAccess(bundle, target.activityId, "favorite", target.buttonId);
-    case "macro":
-      return deleteBundleActivityQuickAccess(bundle, target.activityId, "macro", target.buttonId);
-    case "activity_binding":
-      return deleteActivityButtonBinding(bundle, target.activityId, target.buttonId);
-    case "device_binding":
-      return deleteDeviceButtonBinding(bundle, target.deviceId, target.buttonId);
-    case "activity_member":
-      return removeActivityMemberDevice(bundle, target.activityId, target.deviceId);
-  }
-}
-var POWER_ON_MACRO_BUTTON_ID = 198;
-var POWER_OFF_MACRO_BUTTON_ID = 199;
-var DEVICE_POWER_ON_REF_COMMAND = 198;
-var DEVICE_POWER_OFF_REF_COMMAND = 199;
-var DEVICE_INPUT_REF_COMMAND = 197;
-var POWER_MACRO_DELAY_BUTTON_CODE = 281474976710655;
-var POWER_STEP_DEFAULT_DELAY = 255;
-function powerMacroDelayRow(delay) {
-  return {
-    device_id: 255,
-    command_id: 255,
-    button_code: POWER_MACRO_DELAY_BUTTON_CODE,
-    duration: 255,
-    delay: delay & 255
-  };
-}
-function powerStep(deviceId, commandId, duration = 0) {
-  return {
-    device_id: Number(deviceId),
-    command_id: commandId,
-    button_code: 0,
-    duration: duration & 255,
-    delay: POWER_STEP_DEFAULT_DELAY
-  };
-}
-function activityPowerDeviceIds(activity) {
-  const ids = /* @__PURE__ */ new Set();
-  for (const macro of activity.macros ?? []) {
-    const buttonId = Number(macro?.button_id || 0);
-    if (buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID) continue;
-    for (const step of macro?.steps ?? []) {
-      if (isMacroDelayStep(step)) continue;
-      const command = Number(step?.command_id || 0);
-      if (command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND) {
-        const deviceId = Number(step?.device_id || 0);
-        if (deviceId > 0) ids.add(deviceId);
-      }
-    }
-  }
-  return ids;
-}
-function activityMemberDeviceIds(activity) {
-  const selfId = Number(activity?.device?.device_id || 0);
-  const ids = activityPowerDeviceIds(activity);
-  const add = (value) => {
-    const id = Number(value || 0);
-    if (id > 0 && id !== selfId) ids.add(id);
-  };
-  for (const slot of activity.favorite_slots ?? []) add(slot?.device_id);
-  for (const binding of activity.button_bindings ?? []) {
-    add(binding?.device_id);
-    add(binding?.long_press_device_id);
-  }
-  for (const macro of activity.macros ?? []) {
-    for (const step of macro?.steps ?? []) {
-      if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
-      add(step?.device_id);
-    }
-  }
-  return [...ids].sort((left, right) => left - right);
-}
-function reconcilePowerMacroSteps(existingSteps, members, refCommands, seedIds) {
-  const memberSet = new Set(members);
-  const kept = (existingSteps ?? []).filter((step) => {
-    if (isMacroDelayStep(step)) return true;
-    const deviceId = Number(step?.device_id || 0);
-    return deviceId > 0 ? memberSet.has(deviceId) : true;
-  });
-  const out = [...kept];
-  for (const deviceId of members) {
-    if (!seedIds.has(deviceId)) continue;
-    for (const command of refCommands) {
-      const present = out.some(
-        (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command
-      );
-      if (!present) out.push(powerStep(deviceId, command));
-    }
-  }
-  return out;
-}
-function reconcileActivityPowerMacros(bundle, activityId, extraMemberIds = []) {
-  return updateActivity(bundle, activityId, (activity) => {
-    const selfId = Number(activity?.device?.device_id || 0);
-    const powerIds = activityPowerDeviceIds(activity);
-    const memberSet = new Set(activityMemberDeviceIds(activity));
-    for (const id of extraMemberIds) {
-      const extraId = Number(id || 0);
-      if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
-    }
-    const members = [...memberSet].sort((left, right) => left - right);
-    const seedIds = new Set(members.filter((id) => !powerIds.has(id)));
-    const macros = [...activity.macros ?? []];
-    const ensure = (buttonId, name, refCommands) => {
-      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
-      const existing = index >= 0 ? macros[index] : null;
-      if (!existing && members.length === 0) return;
-      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands, seedIds);
-      const next = {
-        ...existing ?? {},
-        button_id: buttonId,
-        name: existing?.name ?? name,
-        steps
-      };
-      if (index >= 0) macros[index] = next;
-      else macros.push(next);
-    };
-    ensure(POWER_ON_MACRO_BUTTON_ID, "POWER_ON", [DEVICE_POWER_ON_REF_COMMAND, DEVICE_INPUT_REF_COMMAND]);
-    ensure(POWER_OFF_MACRO_BUTTON_ID, "POWER_OFF", [DEVICE_POWER_OFF_REF_COMMAND]);
-    return { ...activity, macros, referenced_source_device_ids: members };
-  });
-}
-function reconcileBundlePowerMacros(bundle) {
-  let next = bundle;
-  for (const activity of bundle.activities ?? []) {
-    const id = Number(activity?.device?.device_id || 0);
-    if (id > 0) next = reconcileActivityPowerMacros(next, id);
-  }
-  return next;
-}
-function findBundleActivity(bundle, activityId) {
-  return (bundle?.activities ?? []).find(
-    (entry) => Number(entry?.device?.device_id || 0) === Number(activityId)
-  );
-}
-function activityMemberViews(bundle, activityId) {
-  const activity = findBundleActivity(bundle, activityId);
-  if (!bundle || !activity) return [];
-  const members = activityMemberDeviceIds(activity).filter((id) => !isHaActionDeviceId(bundle, id));
-  const memberSet = new Set(members);
-  const macroFor = (buttonId) => (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
-  const powerOn = macroFor(POWER_ON_MACRO_BUTTON_ID);
-  const powerOff = macroFor(POWER_OFF_MACRO_BUTTON_ID);
-  const order = [];
-  const push = (value) => {
-    const id = Number(value || 0);
-    if (id > 0 && memberSet.has(id) && !order.includes(id)) order.push(id);
-  };
-  for (const step of powerOn?.steps ?? []) {
-    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
-  }
-  for (const step of powerOff?.steps ?? []) {
-    if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
-  }
-  for (const id of members) push(id);
-  return order.map((deviceId) => {
-    const onSteps = (powerOn?.steps ?? []).filter(
-      (step) => !isMacroDelayStep(step) && Number(step?.device_id || 0) === deviceId
-    );
-    const powersOn = onSteps.some(
-      (step) => Number(step?.command_id || 0) === DEVICE_POWER_ON_REF_COMMAND
-    );
-    const inputStep = onSteps.find(
-      (step) => Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND
-    );
-    const inputOrdinal = Number(inputStep?.duration || 0);
-    const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === inputOrdinal);
-    const powersOff = (powerOff?.steps ?? []).some(
-      (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, deviceId, DEVICE_POWER_OFF_REF_COMMAND)
-    );
-    return {
-      deviceId,
-      deviceName: deviceNameFor(bundle, deviceId),
-      powersOn,
-      inputOrdinal,
-      inputCommandId: input?.commandId ?? null,
-      inputCommandName: input?.name || (inputOrdinal > 0 ? `Input ${inputOrdinal}` : null),
-      powersOff
-    };
-  });
-}
-function activityAddableDevices(bundle, activityId) {
-  const activity = findBundleActivity(bundle, activityId);
-  if (!bundle || !activity) return [];
-  const members = new Set(activityMemberDeviceIds(activity));
-  return bundleDeviceOptions(bundle).filter(
-    (option) => !members.has(option.id) && !isHaActionDeviceId(bundle, option.id)
-  );
-}
-function addActivityMemberDevice(bundle, activityId, deviceId) {
-  const dId = Number(deviceId);
-  const aId = Number(activityId);
-  if (dId <= 0 || dId === aId || !findDevice(bundle, dId)) return bundle;
-  const activity = findBundleActivity(bundle, aId);
-  if (!activity) return bundle;
-  if (activityMemberDeviceIds(activity).includes(dId)) return bundle;
-  return reconcileActivityPowerMacros(bundle, aId, [dId]);
-}
-function removeActivityMemberDevice(bundle, activityId, deviceId) {
-  const aId = Number(activityId);
-  const next = updateActivity(
-    bundle,
-    aId,
-    (activity) => stripDeviceFromActivity(activity, Number(deviceId))
-  );
-  return reconcileActivityPowerMacros(next, aId);
-}
-function activityMemberRemovalImpact(bundle, activityId, deviceId) {
-  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
-  const activity = findBundleActivity(bundle, activityId);
-  if (!activity) return empty;
-  const dId = Number(deviceId);
-  let favorites = 0;
-  for (const slot of activity.favorite_slots ?? []) {
-    if (Number(slot?.device_id || 0) === dId) favorites += 1;
-  }
-  let macroSteps = 0;
-  for (const macro of activity.macros ?? []) {
-    if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) {
-      for (const step of macro?.steps ?? []) {
-        if (!isMacroDelayStep(step) && !isPowerRefStep(step) && stepMatchesDevice(step, dId)) {
-          macroSteps += 1;
-        }
-      }
-    } else {
-      macroSteps += countRemovedMacroSteps(macro?.steps, (step) => stepMatchesDevice(step, dId));
-    }
-  }
-  const bindings = countAffectedBindings(
-    activity.button_bindings,
-    (binding) => cascadeBindingForDeletedDevice(binding, dId)
-  );
-  return { favorites, macroSteps, activities: 0, bindings };
-}
-function powerRefDeviceOrder(activity) {
-  const order = [];
-  const push = (value) => {
-    const id = Number(value || 0);
-    if (id > 0 && !order.includes(id)) order.push(id);
-  };
-  for (const buttonId of [POWER_ON_MACRO_BUTTON_ID, POWER_OFF_MACRO_BUTTON_ID]) {
-    const macro = (activity.macros ?? []).find((entry) => Number(entry?.button_id || 0) === buttonId);
-    for (const step of macro?.steps ?? []) {
-      if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
-    }
-  }
-  return order;
-}
-function setActivityPowerRefStep(activity, deviceId, buttonId, refCommand, present) {
-  const dId = Number(deviceId);
-  const macros = [...activity.macros ?? []];
-  const macroIndex = (id) => macros.findIndex((macro) => Number(macro?.button_id || 0) === id);
-  const index = macroIndex(buttonId);
-  const target = index >= 0 ? macros[index] : null;
-  const steps = [...target?.steps ?? []];
-  const findRef = (command) => steps.findIndex(
-    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, command)
-  );
-  const refIndex = findRef(refCommand);
-  if (present === refIndex >= 0) return activity;
-  const commit = (nextSteps) => {
-    const name = buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON";
-    const next2 = {
-      ...target ?? { button_id: buttonId, name },
-      steps: nextSteps
-    };
-    if (index >= 0) macros[index] = next2;
-    else macros.push(next2);
-    return { ...activity, macros };
-  };
-  if (present) {
-    let insertAt = steps.length;
-    if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
-      const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
-      if (inputIndex >= 0) insertAt = inputIndex;
-    }
-    if (insertAt === steps.length) {
-      const order = powerRefDeviceOrder(activity);
-      const myPos = order.indexOf(dId);
-      if (myPos >= 0) {
-        const later = steps.findIndex(
-          (step) => !isMacroDelayStep(step) && isPowerRefStep(step) && order.indexOf(Number(step?.device_id || 0)) > myPos
-        );
-        if (later >= 0) insertAt = later;
-      }
-    }
-    steps.splice(insertAt, 0, powerStep(dId, refCommand));
-    return commit(steps);
-  }
-  if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
-    const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
-    if (inputIndex >= 0) {
-      const inputStep = steps[inputIndex];
-      const without = steps.filter((_2, i4) => i4 !== refIndex && i4 !== inputIndex);
-      const insertAt = refIndex - (inputIndex < refIndex ? 1 : 0);
-      without.splice(insertAt, 0, inputStep);
-      return commit(without);
-    }
-    return commit(steps.map((step, i4) => i4 === refIndex ? powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0) : step));
-  }
-  const withoutOff = filterMacroSteps(steps, (step) => stepMatchesCommand(step, dId, refCommand));
-  let next = commit(withoutOff);
-  if (!activityMemberDeviceIds(next).includes(dId)) {
-    next = setActivityPowerRefStep(next, dId, POWER_ON_MACRO_BUTTON_ID, DEVICE_INPUT_REF_COMMAND, true);
-  }
-  return next;
-}
-function setActivityDevicePowerOff(bundle, activityId, deviceId, powersOff) {
-  return updateActivity(bundle, Number(activityId), (activity) => {
-    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
-    return setActivityPowerRefStep(
-      activity,
-      deviceId,
-      POWER_OFF_MACRO_BUTTON_ID,
-      DEVICE_POWER_OFF_REF_COMMAND,
-      Boolean(powersOff)
-    );
-  });
-}
-function setActivityDevicePowerOn(bundle, activityId, deviceId, powersOn) {
-  return updateActivity(bundle, Number(activityId), (activity) => {
-    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
-    return setActivityPowerRefStep(
-      activity,
-      deviceId,
-      POWER_ON_MACRO_BUTTON_ID,
-      DEVICE_POWER_ON_REF_COMMAND,
-      Boolean(powersOn)
-    );
-  });
-}
-var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
-function synthesizeCommandCode(commandId) {
-  return SYNTHETIC_COMMAND_CODE_BASE + (Number(commandId) & 255);
-}
-function findDevice(bundle, deviceId) {
-  return (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
-}
-function inputEntryOrdinal(entry) {
-  return Number(entry?.input_index ?? entry?.ordinal ?? 0);
-}
-function deviceInputEntries(bundle, deviceId) {
-  const device = findDevice(bundle, deviceId);
-  const entries = device?.input_record?.entries ?? [];
-  return entries.map((entry) => ({
-    commandId: Number(entry?.command_id || 0),
-    ordinal: inputEntryOrdinal(entry),
-    name: String(entry?.name || entry?.label || "").trim()
-  })).filter((entry) => entry.commandId > 0).sort((left, right) => left.ordinal - right.ordinal);
-}
-function ensureDeviceInput(bundle, deviceId, commandId) {
-  const dId = Number(deviceId);
-  const cId = Number(commandId);
-  const device = findDevice(bundle, dId);
-  const existingEntries = device?.input_record?.entries ?? [];
-  const reused = existingEntries.find((entry) => Number(entry?.command_id || 0) === cId);
-  if (reused) {
-    return { bundle, ordinal: inputEntryOrdinal(reused) };
-  }
-  const nextOrdinal = existingEntries.reduce((max, entry) => Math.max(max, inputEntryOrdinal(entry)), 0) + 1;
-  const newEntry = {
-    command_id: cId,
-    fid: synthesizeCommandCode(cId),
-    input_index: nextOrdinal,
-    name: commandLabelFor(bundle, dId, cId) || `Input ${cId}`
-  };
-  const nextBundle = {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((entry) => {
-      if (Number(entry?.device?.device_id || 0) !== dId) return entry;
-      const record = { ...entry.input_record ?? {} };
-      record.entries = [...existingEntries, newEntry];
-      return { ...entry, input_record: record };
-    })
-  };
-  return { bundle: nextBundle, ordinal: nextOrdinal };
-}
-function setActivityPowerInputOrdinal(activity, deviceId, ordinal) {
-  const dId = Number(deviceId);
-  return {
-    ...activity,
-    macros: (activity.macros ?? []).map((macro) => {
-      if (Number(macro?.button_id || 0) !== POWER_ON_MACRO_BUTTON_ID) return macro;
-      let found = false;
-      const steps = (macro.steps ?? []).map((step) => {
-        if (!isMacroDelayStep(step) && Number(step?.device_id || 0) === dId && Number(step?.command_id || 0) === DEVICE_INPUT_REF_COMMAND) {
-          found = true;
-          return { ...step, duration: ordinal & 255 };
-        }
-        return step;
-      });
-      if (!found) steps.push(powerStep(dId, DEVICE_INPUT_REF_COMMAND, ordinal));
-      return { ...macro, steps };
-    })
-  };
-}
-function setActivityDeviceInput(bundle, activityId, deviceId, commandId) {
-  const cId = Number(commandId);
-  if (cId <= 0) return bundle;
-  const ensured = ensureDeviceInput(bundle, deviceId, cId);
-  return updateActivity(
-    ensured.bundle,
-    activityId,
-    (activity) => setActivityPowerInputOrdinal(activity, deviceId, ensured.ordinal)
-  );
-}
-function clearActivityDeviceInput(bundle, activityId, deviceId) {
-  return updateActivity(bundle, activityId, (activity) => setActivityPowerInputOrdinal(activity, deviceId, 0));
-}
-function isPowerRefStep(step) {
-  const command = Number(step?.command_id || 0);
-  return command === DEVICE_INPUT_REF_COMMAND || command === DEVICE_POWER_ON_REF_COMMAND || command === DEVICE_POWER_OFF_REF_COMMAND;
-}
-function defaultMacroName(buttonId) {
-  if (buttonId === POWER_ON_MACRO_BUTTON_ID) return "POWER_ON";
-  if (buttonId === POWER_OFF_MACRO_BUTTON_ID) return "POWER_OFF";
-  return `Macro ${buttonId}`;
-}
-function deviceMacroDelayStep(delay) {
-  return { command_id: 255, duration: 255, delay: Number(delay) & 255 };
-}
-function groupMacroSteps(steps) {
-  const prefix = [];
-  const groups = [];
-  for (const step of steps ?? []) {
-    if (isMacroDelayStep(step)) {
-      if (groups.length === 0) prefix.push(step);
-      else groups[groups.length - 1].trailing.push(step);
-    } else {
-      groups.push({ head: step, trailing: [] });
-    }
-  }
-  return { prefix, groups };
-}
-function flattenMacroGroups(prefix, groups) {
-  const out = [...prefix];
-  for (const group of groups) out.push(group.head, ...group.trailing);
-  return out;
-}
-function groupWait(group) {
-  return group.trailing.length > 0 ? Number(group.trailing[0]?.delay || 0) : 0;
-}
-function applyGroupWait(group, waitByte, isActivity) {
-  const value = Number(waitByte) & 255;
-  if (group.trailing.length > 0) {
-    group.trailing = [{ ...group.trailing[0], delay: value }, ...group.trailing.slice(1)];
-  } else if (value > 0) {
-    group.trailing = [isActivity ? powerMacroDelayRow(value) : deviceMacroDelayStep(value)];
-  }
-}
-function deviceMacroStepItems(bundle, deviceId, buttonId) {
-  const device = findDevice(bundle, deviceId);
-  const macro = (device?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
-  const { groups } = groupMacroSteps(macro?.steps);
-  return groups.map((group, index) => {
-    const commandId = Number(group.head?.command_id || 0);
-    return {
-      index,
-      kind: "command",
-      commandId,
-      deviceId: null,
-      label: commandNameOrFallback(bundle, Number(deviceId), commandId),
-      hold: Number(group.head?.duration || 0),
-      wait: groupWait(group)
-    };
-  });
-}
-function updateDeviceMacro(bundle, deviceId, buttonId, transform) {
-  const dId = Number(deviceId);
-  const bId = Number(buttonId);
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((device) => {
-      if (Number(device?.device?.device_id || 0) !== dId) return device;
-      const macros = [...device.macros ?? []];
-      const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
-      const existing = index >= 0 ? macros[index] : null;
-      const next = {
-        ...existing ?? {},
-        button_id: bId,
-        name: existing?.name ?? defaultMacroName(bId),
-        steps: transform(existing?.steps ?? [])
-      };
-      if (index >= 0) macros[index] = next;
-      else macros.push(next);
-      return { ...device, macros };
-    })
-  };
-}
-function patchMacroStep(step, patch, isActivityMacro) {
-  const next = { ...step };
-  if (isMacroDelayStep(step)) {
-    if (patch.wait !== void 0) next.delay = Number(patch.wait) & 255;
-    return next;
-  }
-  if (patch.commandId !== void 0) {
-    next.command_id = Number(patch.commandId);
-    if (isActivityMacro) next.button_code = synthesizeCommandCode(Number(patch.commandId));
-  }
-  if (patch.deviceId !== void 0 && isActivityMacro) next.device_id = Number(patch.deviceId);
-  if (patch.hold !== void 0) next.duration = Number(patch.hold) & 255;
-  return next;
-}
-function addDeviceMacroCommandStep(bundle, deviceId, buttonId, commandId, hold = 0) {
-  if (Number(commandId) <= 0) return bundle;
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => [
-    ...steps,
-    { command_id: Number(commandId), duration: Number(hold) & 255, delay: 255 }
-  ]);
-}
-function updateDeviceMacroStep(bundle, deviceId, buttonId, index, patch) {
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
-    const { prefix, groups } = groupMacroSteps(steps);
-    const group = groups[Number(index)];
-    if (!group) return steps;
-    group.head = patchMacroStep(group.head, patch, false);
-    return flattenMacroGroups(prefix, groups);
-  });
-}
-function setDeviceMacroStepWait(bundle, deviceId, buttonId, index, wait) {
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
-    const { prefix, groups } = groupMacroSteps(steps);
-    const group = groups[Number(index)];
-    if (!group) return steps;
-    applyGroupWait(group, wait, false);
-    return flattenMacroGroups(prefix, groups);
-  });
-}
-function removeDeviceMacroStep(bundle, deviceId, buttonId, index) {
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
-    const { prefix, groups } = groupMacroSteps(steps);
-    if (Number(index) < 0 || Number(index) >= groups.length) return steps;
-    groups.splice(Number(index), 1);
-    return flattenMacroGroups(prefix, groups);
-  });
-}
-function reorderDeviceMacroSteps(bundle, deviceId, buttonId, orderedIndices) {
-  return updateDeviceMacro(bundle, deviceId, buttonId, (steps) => {
-    const { prefix, groups } = groupMacroSteps(steps);
-    const reordered = orderedIndices.map((i4) => groups[Number(i4)]).filter((group) => Boolean(group));
-    if (reordered.length !== groups.length) return steps;
-    return flattenMacroGroups(prefix, reordered);
-  });
-}
-function activityUserMacroSummaries(bundle, activityId) {
-  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
-  return (activity?.macros ?? []).map((macro) => ({ buttonId: Number(macro?.button_id || 0), macro })).filter(({ buttonId }) => buttonId > 0 && buttonId !== POWER_ON_MACRO_BUTTON_ID && buttonId !== POWER_OFF_MACRO_BUTTON_ID).map(({ buttonId, macro }) => ({
-    buttonId,
-    name: String(macro?.name || `Macro ${buttonId}`),
-    commandStepCount: (macro?.steps ?? []).filter((step) => !isMacroDelayStep(step)).length
-  })).sort((left, right) => left.buttonId - right.buttonId);
-}
-function activityMacroStepItems(bundle, activityId, buttonId) {
-  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
-  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
-  const { groups } = groupMacroSteps(macro?.steps);
-  return groups.map((group, index) => {
-    const head = group.head;
-    const wait = groupWait(group);
-    const deviceId = Number(head?.device_id || 0);
-    const commandId = Number(head?.command_id || 0);
-    const deviceName = deviceNameFor(bundle, deviceId);
-    if (commandId === DEVICE_POWER_ON_REF_COMMAND || commandId === DEVICE_POWER_OFF_REF_COMMAND) {
-      const verb = commandId === DEVICE_POWER_ON_REF_COMMAND ? "Power on" : "Power off";
-      return { index, kind: "power", commandId, deviceId, label: `${verb} \xB7 ${deviceName}`, hold: 0, wait, protected: true };
-    }
-    if (commandId === DEVICE_INPUT_REF_COMMAND) {
-      const ordinal = Number(head?.duration || 0);
-      const input = deviceInputEntries(bundle, deviceId).find((entry) => entry.ordinal === ordinal);
-      const inputLabel = input?.name || (ordinal > 0 ? `Input ${ordinal}` : "no input");
-      return { index, kind: "input", commandId: input?.commandId ?? null, deviceId, label: `Input \xB7 ${deviceName}: ${inputLabel}`, hold: 0, wait, protected: true };
-    }
-    return {
-      index,
-      kind: "command",
-      commandId,
-      deviceId,
-      label: `${deviceName} \xB7 ${commandNameOrFallback(bundle, deviceId, commandId)}`,
-      hold: Number(head?.duration || 0),
-      wait
-    };
-  });
-}
-function updateActivityMacro(bundle, activityId, buttonId, transform) {
-  const bId = Number(buttonId);
-  const next = updateActivity(bundle, activityId, (activity) => {
-    const macros = [...activity.macros ?? []];
-    const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === bId);
-    const existing = index >= 0 ? macros[index] : null;
-    const nextMacro = {
-      ...existing ?? {},
-      button_id: bId,
-      name: existing?.name ?? `Macro ${bId}`,
-      steps: transform(existing?.steps ?? [])
-    };
-    if (index >= 0) macros[index] = nextMacro;
-    else macros.push(nextMacro);
-    return { ...activity, macros };
-  });
-  return reconcileActivityPowerMacros(next, Number(activityId));
-}
-function addActivityUserMacro(bundle, activityId, name) {
-  return updateActivity(bundle, activityId, (activity) => ({
-    ...activity,
-    macros: [...activity.macros ?? [], {
-      button_id: nextQuickAccessButtonId(activity),
-      name: String(name ?? "").trim() || "Macro",
-      steps: []
-    }]
-  }));
-}
-function addActivityMacroCommandStep(bundle, activityId, buttonId, deviceId, commandId, hold = 0) {
-  if (Number(deviceId) <= 0 || Number(commandId) <= 0) return bundle;
-  return updateActivityMacro(bundle, activityId, buttonId, (steps) => [...steps, {
-    device_id: Number(deviceId),
-    command_id: Number(commandId),
-    button_code: synthesizeCommandCode(Number(commandId)),
-    duration: Number(hold) & 255,
-    delay: 255
-  }]);
-}
-function updateActivityMacroStep(bundle, activityId, buttonId, index, patch) {
-  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
-    const { prefix, groups } = groupMacroSteps(steps);
-    const group = groups[Number(index)];
-    if (!group) return steps;
-    group.head = patchMacroStep(group.head, patch, true);
-    return flattenMacroGroups(prefix, groups);
-  });
-}
-function setActivityMacroStepWait(bundle, activityId, buttonId, index, wait) {
-  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
-    const { prefix, groups } = groupMacroSteps(steps);
-    const group = groups[Number(index)];
-    if (!group) return steps;
-    applyGroupWait(group, wait, true);
-    return flattenMacroGroups(prefix, groups);
-  });
-}
-function removeActivityMacroStep(bundle, activityId, buttonId, index) {
-  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
-    const { prefix, groups } = groupMacroSteps(steps);
-    const group = groups[Number(index)];
-    if (!group) return steps;
-    if (isPowerRefStep(group.head)) return steps;
-    groups.splice(Number(index), 1);
-    return flattenMacroGroups(prefix, groups);
-  });
-}
-function reorderActivityMacroSteps(bundle, activityId, buttonId, orderedIndices) {
-  return updateActivityMacro(bundle, activityId, buttonId, (steps) => {
-    const { prefix, groups } = groupMacroSteps(steps);
-    const reordered = orderedIndices.map((i4) => groups[Number(i4)]).filter((group) => Boolean(group));
-    if (reordered.length !== groups.length) return steps;
-    return flattenMacroGroups(prefix, reordered);
-  });
-}
-var SHARED_BUTTON_CATALOG = [
-  { code: 174, name: "Up", group: "Navigation" },
-  { code: 178, name: "Down", group: "Navigation" },
-  { code: 175, name: "Left", group: "Navigation" },
-  { code: 177, name: "Right", group: "Navigation" },
-  { code: 176, name: "OK", group: "Navigation" },
-  { code: 180, name: "Home", group: "Navigation" },
-  { code: 179, name: "Back", group: "Navigation" },
-  { code: 181, name: "Menu", group: "Navigation" },
-  { code: 182, name: "Volume Up", group: "Volume & Channel" },
-  { code: 185, name: "Volume Down", group: "Volume & Channel" },
-  { code: 184, name: "Mute", group: "Volume & Channel" },
-  { code: 183, name: "Channel Up", group: "Volume & Channel" },
-  { code: 186, name: "Channel Down", group: "Volume & Channel" },
-  { code: 187, name: "Rewind", group: "Transport" },
-  { code: 188, name: "Pause", group: "Transport" },
-  { code: 189, name: "Forward", group: "Transport" },
-  { code: 190, name: "Red", group: "Colour" },
-  { code: 191, name: "Green", group: "Colour" },
-  { code: 192, name: "Yellow", group: "Colour" },
-  { code: 193, name: "Blue", group: "Colour" }
-];
-var X2_EXTRA_BUTTON_CATALOG = [
-  { code: 153, name: "A", group: "Extra" },
-  { code: 152, name: "B", group: "Extra" },
-  { code: 151, name: "C", group: "Extra" },
-  { code: 154, name: "Exit", group: "Extra" },
-  { code: 155, name: "DVR", group: "Extra" },
-  { code: 156, name: "Play", group: "Extra" },
-  { code: 157, name: "Guide", group: "Extra" }
-];
-var BUTTON_NAME_BY_CODE = new Map(
-  [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG].map((entry) => [entry.code, entry.name])
-);
-function bundleButtonCatalog(bundle) {
-  if (normalizeHubVersion(bundle?.hub?.version) === "X2") {
-    return [...SHARED_BUTTON_CATALOG, ...X2_EXTRA_BUTTON_CATALOG];
-  }
-  return [...SHARED_BUTTON_CATALOG];
-}
-function buttonName(code) {
-  return BUTTON_NAME_BY_CODE.get(Number(code)) ?? `Button 0x${Number(code).toString(16).toUpperCase()}`;
-}
-function deviceNameFor(bundle, deviceId) {
-  const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
-  return String(device?.device?.name || "").trim() || `Device ${Number(deviceId)}`;
-}
-function commandNameOrFallback(bundle, deviceId, commandId) {
-  return commandLabelFor(bundle, deviceId, commandId) || `Command ${Number(commandId)}`;
-}
-function activityMacroName(bundle, activityId, buttonId) {
-  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
-  const macro = (activity?.macros ?? []).find((entry) => Number(entry?.button_id || 0) === Number(buttonId));
-  return String(macro?.name || "").trim() || `Macro ${Number(buttonId)}`;
-}
-function activityBindingTargetLabel(bundle, activityId, targetDeviceId, targetCommandId) {
-  if (targetDeviceId === Number(activityId)) {
-    return `Macro \xB7 ${activityMacroName(bundle, activityId, targetCommandId)}`;
-  }
-  return `${deviceNameFor(bundle, targetDeviceId)} \xB7 ${commandNameOrFallback(bundle, targetDeviceId, targetCommandId)}`;
-}
-function sortBindingsByButtonId(rows) {
-  return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
-}
-function activityButtonBindingItems(bundle, activityId) {
-  if (!bundle) return [];
-  const activity = (bundle.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
-  if (!activity) return [];
-  const items = [];
-  for (const row of sortBindingsByButtonId(activity.button_bindings)) {
-    const buttonId = Number(row?.button_id || 0);
-    const deviceId = Number(row?.device_id || 0);
-    const commandId = Number(row?.command_id || 0);
-    if (buttonId <= 0 || deviceId <= 0) continue;
-    const item = {
-      buttonId,
-      buttonName: buttonName(buttonId),
-      deviceId,
-      commandId,
-      isMacroTarget: deviceId === Number(activityId),
-      shortPressLabel: activityBindingTargetLabel(bundle, Number(activityId), deviceId, commandId)
-    };
-    const lpDeviceId = Number(row?.long_press_device_id || 0);
-    const lpCommandId = Number(row?.long_press_command_id || 0);
-    if (lpDeviceId > 0 && lpCommandId > 0) {
-      item.longPress = {
-        deviceId: lpDeviceId,
-        commandId: lpCommandId,
-        isMacroTarget: lpDeviceId === Number(activityId),
-        label: activityBindingTargetLabel(bundle, Number(activityId), lpDeviceId, lpCommandId)
-      };
-    }
-    items.push(item);
-  }
-  return items;
-}
-function deviceButtonBindingItems(bundle, deviceId) {
-  if (!bundle) return [];
-  const normalizedDeviceId = Number(deviceId);
-  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId);
-  if (!device) return [];
-  const items = [];
-  for (const row of sortBindingsByButtonId(device.button_bindings)) {
-    const buttonId = Number(row?.button_id || 0);
-    const commandId = Number(row?.command_id || 0);
-    if (buttonId <= 0 || commandId <= 0) continue;
-    const item = {
-      buttonId,
-      buttonName: buttonName(buttonId),
-      commandId,
-      shortPressLabel: commandNameOrFallback(bundle, normalizedDeviceId, commandId)
-    };
-    const lpCommandId = Number(row?.long_press_command_id || 0);
-    if (lpCommandId > 0) {
-      item.longPress = {
-        commandId: lpCommandId,
-        label: commandNameOrFallback(bundle, normalizedDeviceId, lpCommandId)
-      };
-    }
-    items.push(item);
-  }
-  return items;
-}
-function boundButtonIds(rows) {
-  return new Set((rows ?? []).map((row) => Number(row?.button_id || 0)).filter((id) => id > 0));
-}
-function unboundButtonsForActivity(bundle, activityId) {
-  const activity = (bundle?.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
-  const used = boundButtonIds(activity?.button_bindings);
-  return bundleButtonCatalog(bundle).filter((entry) => !used.has(entry.code));
-}
-function unboundButtonsForDevice(bundle, deviceId) {
-  const device = (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
-  const used = boundButtonIds(device?.button_bindings);
-  return bundleButtonCatalog(bundle).filter((entry) => !used.has(entry.code));
-}
-function upsertBindingRow(rows, row) {
-  const buttonId = Number(row.button_id || 0);
-  const next = (rows ?? []).filter((entry) => Number(entry?.button_id || 0) !== buttonId);
-  next.push(row);
-  return sortBindingsByButtonId(next);
-}
-function upsertActivityButtonBinding(bundle, activityId, input) {
-  const buttonId = Number(input.buttonId);
-  const deviceId = Number(input.deviceId);
-  const commandId = Number(input.commandId);
-  if (buttonId <= 0 || deviceId <= 0 || commandId <= 0) return bundle;
-  const row = {
-    button_id: buttonId,
-    button_name: buttonName(buttonId),
-    device_id: deviceId,
-    command_id: commandId
-  };
-  const lpDeviceId = Number(input.longPress?.deviceId || 0);
-  const lpCommandId = Number(input.longPress?.commandId || 0);
-  if (lpDeviceId > 0 && lpCommandId > 0) {
-    row.long_press_device_id = lpDeviceId;
-    row.long_press_command_id = lpCommandId;
-  }
-  const next = updateActivity(bundle, activityId, (activity) => ({
-    ...activity,
-    button_bindings: upsertBindingRow(activity.button_bindings, row)
-  }));
-  return reconcileActivityPowerMacros(next, Number(activityId));
-}
-function upsertDeviceButtonBinding(bundle, deviceId, input) {
-  const normalizedDeviceId = Number(deviceId);
-  const buttonId = Number(input.buttonId);
-  const commandId = Number(input.commandId);
-  if (buttonId <= 0 || commandId <= 0) return bundle;
-  const row = {
-    button_id: buttonId,
-    button_name: buttonName(buttonId),
-    command_id: commandId,
-    command_name: commandLabelFor(bundle, normalizedDeviceId, commandId) || void 0
-  };
-  const lpCommandId = Number(input.longPressCommandId || 0);
-  if (lpCommandId > 0) row.long_press_command_id = lpCommandId;
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((device) => {
-      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
-      return { ...device, button_bindings: upsertBindingRow(device.button_bindings, row) };
-    })
-  };
-}
-function deleteActivityButtonBinding(bundle, activityId, buttonId) {
-  const bId = Number(buttonId);
-  const next = updateActivity(bundle, activityId, (activity) => ({
-    ...activity,
-    button_bindings: (activity.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
-  }));
-  return reconcileActivityPowerMacros(next, Number(activityId));
-}
-function deleteDeviceButtonBinding(bundle, deviceId, buttonId) {
-  const dId = Number(deviceId);
-  const bId = Number(buttonId);
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((device) => {
-      if (Number(device?.device?.device_id || 0) !== dId) return device;
-      return {
-        ...device,
-        button_bindings: (device.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
-      };
-    })
-  };
-}
-var ACTIVITY_ROLE_GROUPS = [
-  "volume",
-  "navigation",
-  "playback",
-  "channels"
-];
-var ROLE_GROUP_BUTTON_IDS = {
-  volume: [182, 185, 184],
-  navigation: [174, 178, 175, 177, 176, 179, 180, 181],
-  playback: [156, 188, 187, 189],
-  channels: [183, 186]
-};
-function roleGroupButtons(bundle, group) {
-  const catalog = new Set(bundleButtonCatalog(bundle).map((entry) => entry.code));
-  return ROLE_GROUP_BUTTON_IDS[group].filter((code) => catalog.has(code));
-}
-function deviceRoleBindings(bundle, deviceId, group) {
-  const device = findDevice(bundle, Number(deviceId));
-  const groupIds = new Set(roleGroupButtons(bundle, group));
-  const byButton = /* @__PURE__ */ new Map();
-  for (const row of device?.button_bindings ?? []) {
-    const buttonId = Number(row?.button_id || 0);
-    if (groupIds.has(buttonId) && Number(row?.command_id || 0) > 0) byButton.set(buttonId, row);
-  }
-  return byButton;
-}
-function roleMappableButtonCount(bundle, deviceId, group) {
-  return deviceRoleBindings(bundle, deviceId, group).size;
-}
-function activityRoleAssignments(bundle, activityId) {
-  const activity = findBundleActivity(bundle, activityId);
-  return ACTIVITY_ROLE_GROUPS.map((group) => {
-    const buttons = roleGroupButtons(bundle, group);
-    const totalCount = buttons.length;
-    const groupSet = new Set(buttons);
-    const bound = (activity?.button_bindings ?? []).filter(
-      (row) => groupSet.has(Number(row?.button_id || 0)) && Number(row?.device_id || 0) > 0
-    );
-    const unused = {
-      group,
-      state: "unused",
-      deviceId: null,
-      deviceName: null,
-      boundCount: 0,
-      totalCount
-    };
-    if (!bundle || !activity || bound.length === 0) return unused;
-    const selfId = Number(activity.device?.device_id || 0);
-    const targetIds = /* @__PURE__ */ new Set();
-    for (const row of bound) {
-      targetIds.add(Number(row?.device_id || 0));
-      const lpDeviceId = Number(row?.long_press_device_id || 0);
-      if (lpDeviceId > 0) targetIds.add(lpDeviceId);
-    }
-    const [only] = [...targetIds];
-    if (targetIds.size !== 1 || only === selfId) {
-      return { group, state: "custom", deviceId: null, deviceName: null, boundCount: bound.length, totalCount };
-    }
-    const mapped = deviceRoleBindings(bundle, only, group);
-    const exact = bound.length === mapped.size && bound.every((row) => {
-      const ref = mapped.get(Number(row?.button_id || 0));
-      if (!ref) return false;
-      if (Number(row?.command_id || 0) !== Number(ref?.command_id || 0)) return false;
-      const rowLp = Number(row?.long_press_command_id || 0);
-      const refLp = Number(ref?.long_press_command_id || 0);
-      if (rowLp !== refLp) return false;
-      return rowLp === 0 || Number(row?.long_press_device_id || 0) === only;
-    });
-    return {
-      group,
-      state: exact ? "device" : "customized",
-      deviceId: only,
-      deviceName: deviceNameFor(bundle, only),
-      boundCount: bound.length,
-      totalCount
-    };
-  });
-}
-function setActivityRoleDevice(bundle, activityId, group, deviceId) {
-  const aId = Number(activityId);
-  const buttons = roleGroupButtons(bundle, group);
-  const groupSet = new Set(buttons);
-  const mapped = deviceId != null && Number(deviceId) > 0 ? deviceRoleBindings(bundle, Number(deviceId), group) : null;
-  const next = updateActivity(bundle, aId, (activity) => {
-    let rows = (activity.button_bindings ?? []).filter(
-      (row) => !groupSet.has(Number(row?.button_id || 0))
-    );
-    if (mapped) {
-      const dId = Number(deviceId);
-      for (const buttonId of buttons) {
-        const ref = mapped.get(buttonId);
-        if (!ref) continue;
-        const row = {
-          button_id: buttonId,
-          button_name: buttonName(buttonId),
-          device_id: dId,
-          command_id: Number(ref.command_id)
-        };
-        const lpCommandId = Number(ref?.long_press_command_id || 0);
-        if (lpCommandId > 0) {
-          row.long_press_device_id = dId;
-          row.long_press_command_id = lpCommandId;
-        }
-        rows = upsertBindingRow(rows, row);
-      }
-    }
-    return { ...activity, button_bindings: rows };
-  });
-  return reconcileActivityPowerMacros(next, aId);
-}
-var HA_ACTION_HOST_NAME = "Home Assistant";
-var HA_ACTION_HOST_BRAND = "m3tac0de";
-var HA_ACTION_MAX_SLOTS = 10;
-var HA_ACTION_LIBRARY_TYPE = 28;
-var HA_ACTION_DEFAULT_PORT = 8060;
-var MAX_DEVICE_ID = 99;
-var HA_IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-function isHaActionHostEntry(entry) {
-  return Boolean(entry?.ha_action_host);
-}
-function isHaActionDeviceId(bundle, deviceId) {
-  return (bundle?.devices ?? []).some(
-    (entry) => isHaActionHostEntry(entry) && Number(entry?.device?.device_id || 0) === Number(deviceId)
-  );
-}
-function parseHaActionAddress(value) {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const [hostPart, portPart, ...rest] = raw.split(":");
-  if (rest.length > 0) return null;
-  const host = hostPart.trim();
-  if (!HA_IPV4_PATTERN.test(host)) return null;
-  if (portPart === void 0 || portPart.trim() === "") {
-    return { host, port: HA_ACTION_DEFAULT_PORT };
-  }
-  const port = Number(portPart.trim());
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
-  return { host, port };
-}
-function bundleHaActionTarget(bundle) {
-  for (const entry of bundle?.devices ?? []) {
-    if (!isHaActionHostEntry(entry)) continue;
-    for (const row of entry.commands ?? []) {
-      const decoded = row?.restore_data?.decoded;
-      const host = String(decoded?.fields?.host || "");
-      const port = Number(decoded?.fields?.port || 0);
-      if (HA_IPV4_PATTERN.test(host) && port > 0) return { host, port };
-    }
-  }
-  return null;
-}
-function normalizeHaActionName(value) {
-  return String(value ?? "").trim().replace(/_/g, " ");
-}
-function haActionCallbackPath(deviceId, name) {
-  return `/launch/ha/${Number(deviceId)}/${encodeURIComponent(name)}/short`;
-}
-function asciiHexBytes(text) {
-  const out = [];
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    if (code > 127) throw new Error(`non-ASCII character in callback text: ${text[index]}`);
-    out.push(code);
-  }
-  return out;
-}
-function renderHaActionDataHex(target, path) {
-  const text = `POST ${path} HTTP/1.1\r
-Host:${target.host}:${target.port}\r
-Content-Type:application/x-www-form-urlencoded\r
-\r
-`;
-  const textBytes = asciiHexBytes(text);
-  const ipBytes = target.host.split(".").map((part) => Number(part) & 255);
-  const bytes = [
-    ...ipBytes,
-    target.port >> 8 & 255,
-    target.port & 255,
-    textBytes.length >> 8 & 255,
-    textBytes.length & 255,
-    ...textBytes
-  ];
-  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(" ");
-}
-function haActionCommandCodeHex(commandId) {
-  const code = 2e4 + (Number(commandId) & 255) & 281474976710655;
-  const hex = code.toString(16).padStart(12, "0");
-  return hex.replace(/(..)(?=.)/g, "$1 ");
-}
-function buildHaActionCommandRow(deviceId, commandId, name, target) {
-  const path = haActionCallbackPath(deviceId, name);
-  return {
-    command_id: commandId,
-    name,
-    restore_data: {
-      transport: "hub_code_record",
-      library_type: HA_ACTION_LIBRARY_TYPE,
-      command_code: haActionCommandCodeHex(commandId),
-      data_hex: renderHaActionDataHex(target, path),
-      decoded: {
-        class: "wifi_ip",
-        fields: {
-          host: target.host,
-          port: target.port,
-          method: "POST",
-          path,
-          header: "",
-          content_type: "application/x-www-form-urlencoded",
-          body: ""
-        },
-        trailer_hex: "",
-        edited: false
-      }
-    }
-  };
-}
-function refreshHaActionCallback(bundle, deviceId, commandId) {
-  if (!isHaActionDeviceId(bundle, deviceId)) return bundle;
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((entry) => {
-      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== Number(deviceId)) {
-        return entry;
-      }
-      return {
-        ...entry,
-        commands: (entry.commands ?? []).map((row) => {
-          if (Number(row?.command_id || 0) !== Number(commandId)) return row;
-          const decoded = row?.restore_data?.decoded;
-          const host = String(decoded?.fields?.host || "");
-          const port = Number(decoded?.fields?.port || 0);
-          if (!HA_IPV4_PATTERN.test(host) || port <= 0) return row;
-          const name = normalizeHaActionName(String(row?.name || ""));
-          return buildHaActionCommandRow(Number(deviceId), Number(commandId), name, { host, port });
-        })
-      };
-    })
-  };
-}
-function allocateHaHostDeviceId(bundle) {
-  const used = /* @__PURE__ */ new Set();
-  for (const entry of bundle.devices ?? []) used.add(Number(entry?.device?.device_id || 0));
-  for (const entry of bundle.activities ?? []) used.add(Number(entry?.device?.device_id || 0));
-  for (let id = 1; id <= MAX_DEVICE_ID; id += 1) {
-    if (!used.has(id)) return id;
-  }
-  return null;
-}
-function buildHaHostEntry(deviceId, name, sort) {
-  return {
-    ha_action_host: true,
-    device: {
-      device_id: deviceId,
-      name,
-      brand: HA_ACTION_HOST_BRAND,
-      device_class: "wifi_ip",
-      device_class_code: 28,
-      icon: 1,
-      sort,
-      code_type: 28,
-      device_type: 16,
-      code_id_hex: Array(16).fill("00").join(" "),
-      hide: 0,
-      input_flag: 0,
-      channel: 0,
-      power_state: 0,
-      poll_time: 0,
-      input_mode: 2,
-      power_mode: 0,
-      power_style: 0,
-      share_mode: 0,
-      tail_marker: 1
-    },
-    commands: []
-  };
-}
-function provisionHaAction(bundle, rawName, target) {
-  const name = normalizeHaActionName(rawName) || "HA action";
-  const hosts = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry));
-  let next = bundle;
-  let hostEntry = hosts.find((entry) => (entry.commands ?? []).length < HA_ACTION_MAX_SLOTS);
-  let deviceId;
-  if (hostEntry) {
-    deviceId = Number(hostEntry.device?.device_id || 0);
-    if (deviceId <= 0) return null;
-  } else {
-    const allocated = allocateHaHostDeviceId(bundle);
-    if (allocated == null) return null;
-    deviceId = allocated;
-    const hostName = hosts.length === 0 ? HA_ACTION_HOST_NAME : `${HA_ACTION_HOST_NAME} ${hosts.length + 1}`;
-    const maxSort = (bundle.devices ?? []).reduce(
-      (max, entry) => Math.max(max, Number(entry?.device?.sort || 0)),
-      0
-    );
-    hostEntry = buildHaHostEntry(deviceId, hostName, maxSort + 1);
-    next = { ...bundle, devices: [...bundle.devices ?? [], hostEntry] };
-  }
-  const usedSlots = new Set(
-    (hostEntry.commands ?? []).map((row2) => Number(row2?.command_id || 0))
-  );
-  let commandId = 0;
-  for (let slot = 1; slot <= HA_ACTION_MAX_SLOTS; slot += 1) {
-    if (!usedSlots.has(slot)) {
-      commandId = slot;
-      break;
-    }
-  }
-  if (commandId === 0) return null;
-  const row = buildHaActionCommandRow(deviceId, commandId, name, target);
-  next = {
-    ...next,
-    devices: (next.devices ?? []).map((entry) => {
-      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== deviceId) return entry;
-      return { ...entry, commands: [...entry.commands ?? [], row] };
-    })
-  };
-  return { bundle: next, deviceId, commandId, name };
-}
-function addActivityHaActionFavorite(bundle, activityId, rawName, target) {
-  const provision = provisionHaAction(bundle, rawName, target);
-  if (!provision) return null;
-  return addBundleActivityFavorite(
-    provision.bundle,
-    Number(activityId),
-    provision.deviceId,
-    provision.commandId,
-    provision.name
-  );
-}
-function haActionCommandReferenced(bundle, deviceId, commandId) {
-  for (const activity of bundle.activities ?? []) {
-    for (const slot of activity?.favorite_slots ?? []) {
-      if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) return true;
-    }
-    for (const binding of activity?.button_bindings ?? []) {
-      if (Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId) return true;
-      if (Number(binding?.long_press_device_id || 0) === deviceId && Number(binding?.long_press_command_id || 0) === commandId) return true;
-    }
-    for (const macro of activity?.macros ?? []) {
-      for (const step of macro?.steps ?? []) {
-        if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
-        if (Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId) return true;
-      }
-    }
-  }
-  return false;
-}
-function pruneHaActionHosts(bundle) {
-  let next = bundle;
-  const hostIds = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry)).map((entry) => Number(entry?.device?.device_id || 0)).filter((id) => id > 0);
-  for (const deviceId of hostIds) {
-    const entry = (next.devices ?? []).find(
-      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId
-    );
-    if (!entry) continue;
-    for (const row of [...entry.commands ?? []]) {
-      const commandId = Number(row?.command_id || 0);
-      if (commandId > 0 && !haActionCommandReferenced(next, deviceId, commandId)) {
-        next = deleteBundleDeviceCommand(next, deviceId, commandId);
-      }
-    }
-    const refreshed = (next.devices ?? []).find(
-      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId
-    );
-    if (refreshed && (refreshed.commands ?? []).length === 0) {
-      next = deleteBundleDevice(next, deviceId);
-    }
-  }
-  return next;
-}
-
 // custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view.ts
 var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
@@ -6029,6 +6230,13 @@ var SofabatonEditDetailView = class extends i3 {
     this._requestClose = () => {
       this.dispatchEvent(new CustomEvent("close"));
     };
+    // ── Live-mode header (§4.3) ─────────────────────────────────────────
+    // In live mode the host owns Review / Sync / Discard; the element just
+    // signals intent. In backup mode these render nothing (the header shows
+    // rename/delete instead) and the chip reads "Unsaved".
+    this._requestReview = () => this.dispatchEvent(new CustomEvent("review-request"));
+    this._requestSync = () => this.dispatchEvent(new CustomEvent("sync-request"));
+    this._requestDiscard = () => this.dispatchEvent(new CustomEvent("discard-request"));
     this._handleEditDetailScroll = (event) => {
       const scrollEl = event.currentTarget;
       if (!scrollEl) return;
@@ -6625,6 +6833,31 @@ var SofabatonEditDetailView = class extends i3 {
     :host {
       flex-direction: column;
     }
+    /* Live-mode header action cluster (Discard / Review / Sync). */
+    .live-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .live-btn {
+      border: 1px solid var(--divider-color);
+      border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 6px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+    }
+    .live-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .live-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    .live-btn:disabled {
+      cursor: default;
+      opacity: 0.42;
+      color: var(--disabled-text-color, var(--secondary-text-color));
+      border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
+      background: transparent;
+    }
+    .live-btn:disabled:hover { border-color: color-mix(in srgb, var(--divider-color) 88%, transparent); }
   `];
   }
   connectedCallback() {
@@ -6673,6 +6906,23 @@ var SofabatonEditDetailView = class extends i3 {
     this.bundle = pruneHaActionHosts(next);
     this.dispatchEvent(new CustomEvent("bundle-change", { detail: { bundle: this.bundle } }));
   }
+  _renderDirtyChip() {
+    if (!this.dirty) return A;
+    if (this.mode === "live") {
+      return T`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.activities.notSyncedTooltip}>${TOOLS_CARD_STRINGS.activities.notSyncedChip}</span>`;
+    }
+    return T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`;
+  }
+  _renderLiveHeaderActions() {
+    const S6 = TOOLS_CARD_STRINGS.activities;
+    return T`
+      <div class="detail-title-actions live-actions">
+        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestDiscard}>${S6.discard}</button>
+        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestReview}>${S6.reviewChanges}</button>
+        <button class="live-btn live-btn--primary" ?disabled=${!this.dirty} @click=${this._requestSync}>${S6.sync}</button>
+      </div>
+    `;
+  }
   render() {
     if (!this.bundle || this.entityId == null) return A;
     if (this._macroEditor) {
@@ -6704,8 +6954,8 @@ var SofabatonEditDetailView = class extends i3 {
     ])}
                   <div class="detail-title">${params.title}</div>
                 </div>
-                ${this.dirty && this.mode !== "live" ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
-                ${this.mode === "live" ? A : T`
+                ${this._renderDirtyChip()}
+                ${this.mode === "live" ? this._renderLiveHeaderActions() : T`
                       <div class="detail-title-actions">
                         <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
                           <ha-icon icon="mdi:pencil"></ha-icon>
@@ -6864,7 +7114,7 @@ var SofabatonEditDetailView = class extends i3 {
     ])}
                   <div class="detail-title">${S6.bindingsViewTitle}</div>
                 </div>
-                ${this.dirty && this.mode !== "live" ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${this._renderDirtyChip()}
               </div>
             </div>
           </div>
@@ -8003,7 +8253,7 @@ var SofabatonEditDetailView = class extends i3 {
     ])}
                   <div class="detail-title">${editor.name}</div>
                 </div>
-                ${this.dirty && this.mode !== "live" ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${this._renderDirtyChip()}
                 ${canRename ? T`
                       <div class="detail-title-actions">
                         <button
@@ -8345,6 +8595,10 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
     this._captureError = null;
     this._sessionRestored = false;
     this._sessionSavedAt = 0;
+    this._dirty = false;
+    this._reviewOpen = false;
+    this._discardConfirmOpen = false;
+    this._syncNoticeOpen = false;
     this._captureOperationId = null;
     this._progressUnsub = null;
     this._sessionRestoreTried = false;
@@ -8368,6 +8622,37 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
     // ── Editing (§4.3) — interactive but ephemeral in L2 ───────────────
     this._handleBundleChange = (event) => {
       this._working = event.detail.bundle;
+      this._recomputeDirty();
+    };
+    this._openReview = () => {
+      if (!this._dirty) return;
+      this._reviewOpen = true;
+    };
+    this._closeReview = () => {
+      this._reviewOpen = false;
+    };
+    // Sync is stubbed until the L4 engine lands: surface a "coming soon"
+    // notice instead of writing to the hub. Edits stay intact.
+    this._requestSync = () => {
+      if (!this._dirty) return;
+      this._reviewOpen = false;
+      this._syncNoticeOpen = true;
+    };
+    this._closeSyncNotice = () => {
+      this._syncNoticeOpen = false;
+    };
+    this._openDiscardConfirm = () => {
+      if (!this._dirty) return;
+      this._discardConfirmOpen = true;
+    };
+    this._closeDiscardConfirm = () => {
+      this._discardConfirmOpen = false;
+    };
+    this._discardChanges = () => {
+      if (this._baseline) this._working = structuredClone(this._baseline);
+      this._recomputeDirty();
+      this._reviewOpen = false;
+      this._discardConfirmOpen = false;
     };
     this._closeEditor = () => {
       this._clearSession();
@@ -8402,7 +8687,11 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
       _captureProgress: { state: true },
       _captureError: { state: true },
       _sessionRestored: { state: true },
-      _sessionSavedAt: { state: true }
+      _sessionSavedAt: { state: true },
+      _dirty: { state: true },
+      _reviewOpen: { state: true },
+      _discardConfirmOpen: { state: true },
+      _syncNoticeOpen: { state: true }
     };
   }
   static {
@@ -8507,6 +8796,47 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
       cursor: pointer;
     }
     .session-banner-btn:hover { border-color: var(--primary-color); }
+    .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
+    .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
+    /* Review / discard / sync dialogs (§4.4). */
+    .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+    .dialog {
+      width: min(640px, calc(100vw - 36px));
+      max-height: min(82vh, 820px);
+      display: flex;
+      flex-direction: column;
+      border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
+      border: 1px solid var(--divider-color);
+      background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+      box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
+      overflow: hidden;
+    }
+    .dialog--small { width: min(460px, calc(100vw - 36px)); }
+    .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .dialog-header { border-bottom: 1px solid var(--divider-color); }
+    .dialog-title { font-size: 16px; font-weight: 700; flex: 1; color: var(--primary-text-color); }
+    .dialog-close {
+      width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+      background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); cursor: pointer;
+    }
+    .dialog-close:hover { border-color: var(--primary-color); color: var(--primary-text-color); }
+    .dialog-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+    .dialog-text { font-size: 14px; line-height: 1.55; color: var(--primary-text-color); }
+    .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; }
+    .dialog-footer-actions { display: flex; gap: 8px; }
+    .review-group { display: flex; flex-direction: column; gap: 6px; }
+    .review-group-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color);
+    }
+    .review-entry-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+    .review-entry { font-size: 13.5px; line-height: 1.5; color: var(--primary-text-color); }
+    .review-global-note { color: var(--secondary-text-color); font-style: italic; margin-left: 6px; }
+    .review-empty { font-size: 14px; color: var(--secondary-text-color); }
+    @media (max-width: 640px) {
+      .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+      .dialog, .dialog--small { width: 100%; max-height: 100%; border-radius: 0; }
+    }
   `];
   }
   disconnectedCallback() {
@@ -8553,6 +8883,7 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
         activityId: this._activityId,
         baseline: this._baseline,
         working: this._working ?? this._baseline,
+        dirty: this._dirty,
         captureGeneration
       };
       window.localStorage.setItem(key, JSON.stringify(payload));
@@ -8595,6 +8926,7 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
       this._activityId = activityId;
       this._sessionSavedAt = savedAt;
       this._sessionRestored = true;
+      this._recomputeDirty();
       this._stage = "editing";
     } catch {
       try {
@@ -8619,6 +8951,7 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
         if (bundle) {
           this._baseline = bundle;
           this._working = structuredClone(bundle);
+          this._dirty = false;
           this._sessionSavedAt = Date.now();
           this._sessionRestored = false;
           this._captureProgress = null;
@@ -8653,6 +8986,14 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
   _isProgressRunning(progress) {
     return !!progress && ["pending", "running"].includes(String(progress.status || ""));
   }
+  _recomputeDirty() {
+    this._dirty = !!this._baseline && !!this._working && JSON.stringify(this._working) !== JSON.stringify(this._baseline);
+  }
+  // ── Review / Sync / Discard (§4.4) ─────────────────────────────────
+  _reviewGroups() {
+    if (this._activityId == null) return [];
+    return diffActivityForReview(this._baseline, this._working, this._activityId);
+  }
   _resetToList() {
     this._stage = "list";
     this._activityId = null;
@@ -8663,6 +9004,10 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
     this._captureOperationId = null;
     this._sessionRestored = false;
     this._sessionSavedAt = 0;
+    this._dirty = false;
+    this._reviewOpen = false;
+    this._discardConfirmOpen = false;
+    this._syncNoticeOpen = false;
   }
   // ── Data ───────────────────────────────────────────────────────────
   _activityItems() {
@@ -8797,11 +9142,111 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
           .bundle=${this._working}
           kind="activity"
           .entityId=${this._activityId}
-          .dirty=${false}
+          .dirty=${this._dirty}
           mode="live"
           @bundle-change=${this._handleBundleChange}
+          @review-request=${this._openReview}
+          @sync-request=${this._requestSync}
+          @discard-request=${this._openDiscardConfirm}
           @close=${this._closeEditor}
         ></sofabaton-edit-detail-view>
+        ${this._reviewOpen ? this._renderReviewDialog() : A}
+        ${this._discardConfirmOpen ? this._renderDiscardDialog() : A}
+        ${this._syncNoticeOpen ? this._renderSyncNoticeDialog() : A}
+      </div>
+    `;
+  }
+  _renderReviewDialog() {
+    const S6 = TOOLS_CARD_STRINGS.activities;
+    const groups = this._reviewGroups();
+    return T`
+      <div class="modal-backdrop" @click=${this._closeReview}>
+        <div class="dialog" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S6.reviewTitle}</div>
+            <button class="dialog-close" @click=${this._closeReview}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${groups.length ? groups.map((group) => T`
+                  <div class="review-group">
+                    <div class="review-group-title">${this._reviewSectionTitle(group.section)}</div>
+                    <ul class="review-entry-list">
+                      ${group.entries.map((entry) => T`
+                        <li class="review-entry">
+                          ${entry.text}
+                          ${entry.global ? T`<span class="review-global-note">(${S6.reviewAppliesEverywhere})</span>` : A}
+                        </li>
+                      `)}
+                    </ul>
+                  </div>
+                `) : T`<div class="review-empty">${S6.reviewEmpty}</div>`}
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-danger" @click=${this._openDiscardConfirm}>${S6.reviewDiscardAll}</button>
+            <div class="dialog-footer-actions">
+              <button class="btn" @click=${this._closeReview}>${S6.reviewKeepEditing}</button>
+              <button class="btn btn-primary" @click=${this._requestSync}>${S6.reviewSyncNow}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _reviewSectionTitle(section) {
+    const R3 = TOOLS_CARD_STRINGS.activities.review;
+    switch (section) {
+      case "devices":
+        return R3.sectionDevices;
+      case "start":
+        return R3.sectionStart;
+      case "buttons":
+        return R3.sectionButtons;
+      case "shortcuts":
+        return R3.sectionShortcuts;
+      case "end":
+        return R3.sectionEnd;
+      case "device_wide":
+        return R3.sectionDeviceWide;
+    }
+  }
+  _renderDiscardDialog() {
+    const S6 = TOOLS_CARD_STRINGS.activities;
+    return T`
+      <div class="modal-backdrop" @click=${this._closeDiscardConfirm}>
+        <div class="dialog dialog--small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S6.discardConfirmTitle}</div>
+            <button class="dialog-close" @click=${this._closeDiscardConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body"><div class="dialog-text">${S6.discardConfirmBody}</div></div>
+          <div class="dialog-footer">
+            <span></span>
+            <div class="dialog-footer-actions">
+              <button class="btn" @click=${this._closeDiscardConfirm}>${S6.discardConfirmCancel}</button>
+              <button class="btn btn-danger" @click=${this._discardChanges}>${S6.discardConfirmConfirm}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderSyncNoticeDialog() {
+    const S6 = TOOLS_CARD_STRINGS.activities;
+    return T`
+      <div class="modal-backdrop" @click=${this._closeSyncNotice}>
+        <div class="dialog dialog--small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S6.syncComingSoonTitle}</div>
+            <button class="dialog-close" @click=${this._closeSyncNotice}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body"><div class="dialog-text">${S6.syncComingSoonBody}</div></div>
+          <div class="dialog-footer">
+            <span></span>
+            <div class="dialog-footer-actions">
+              <button class="btn btn-primary" @click=${this._closeSyncNotice}>${S6.back}</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -8978,4 +9423,58 @@ test("activities tab drops the in-memory session when the hub picker switches hu
   assert.equal(element._stage, "list");
   assert.equal(element._baseline, null);
   assert.equal(element._activityId, null);
+});
+test("activities tab tracks dirty on bundle-change and clears it when reverted", () => {
+  const element = new ActivitiesTabElement();
+  const base = sampleBundle();
+  element._baseline = base;
+  element._working = structuredClone(base);
+  element._activityId = 101;
+  element._recomputeDirty();
+  assert.equal(element._dirty, false);
+  const mutated = structuredClone(base);
+  mutated.activities[0].device.name = "Changed";
+  element._handleBundleChange({ detail: { bundle: mutated } });
+  assert.equal(element._dirty, true);
+  element._handleBundleChange({ detail: { bundle: structuredClone(base) } });
+  assert.equal(element._dirty, false);
+});
+test("activities tab discard restores the working bundle to the baseline and clears dirty", () => {
+  const element = new ActivitiesTabElement();
+  const base = sampleBundle();
+  element._baseline = base;
+  const mutated = structuredClone(base);
+  mutated.activities[0].device.name = "Changed";
+  element._working = mutated;
+  element._activityId = 101;
+  element._recomputeDirty();
+  element._discardConfirmOpen = true;
+  assert.equal(element._dirty, true);
+  element._discardChanges();
+  assert.equal(element._dirty, false);
+  assert.equal(element._working.activities[0].device.name, "Watch TV");
+  assert.equal(element._discardConfirmOpen, false);
+});
+test("activities tab opens the review dialog only when dirty", () => {
+  const element = new ActivitiesTabElement();
+  element._baseline = sampleBundle();
+  element._working = structuredClone(element._baseline);
+  element._activityId = 101;
+  element._dirty = false;
+  element._openReview();
+  assert.equal(element._reviewOpen, false);
+  element._dirty = true;
+  element._openReview();
+  assert.equal(element._reviewOpen, true);
+});
+test("activities tab sync is stubbed to a coming-soon notice (no hub write)", () => {
+  const element = new ActivitiesTabElement();
+  element._baseline = sampleBundle();
+  element._working = structuredClone(element._baseline);
+  element._activityId = 101;
+  element._dirty = true;
+  element._reviewOpen = true;
+  element._requestSync();
+  assert.equal(element._reviewOpen, false);
+  assert.equal(element._syncNoticeOpen, true);
 });

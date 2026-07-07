@@ -1794,7 +1794,69 @@ var TOOLS_CARD_STRINGS = {
     back: "Back",
     // Session restore banner (§4.6).
     sessionRestoreBanner: (name, time) => `Continuing your edit of "${name}" from ${time}`,
-    sessionReload: "Reload from hub instead"
+    sessionReload: "Reload from hub instead",
+    // Live-mode edit header (§4.3).
+    notSyncedChip: "Not synced",
+    notSyncedTooltip: "Changes are local until you press Sync.",
+    reviewChanges: "Review changes",
+    sync: "Sync",
+    discard: "Discard",
+    // Review dialog (§4.4).
+    reviewTitle: "Review changes",
+    reviewEmpty: "No changes to sync yet.",
+    reviewSyncNow: "Sync now",
+    reviewKeepEditing: "Keep editing",
+    reviewDiscardAll: "Discard all changes",
+    reviewAppliesEverywhere: "applies everywhere",
+    reviewAppliesEveryActivity: "applies to every activity",
+    // Sync is stubbed until Phase L4 lands.
+    syncComingSoonTitle: "Live sync is coming soon",
+    syncComingSoonBody: "Writing changes back to the hub arrives in a later update (Phase L4). Your edits are safe here in the meantime.",
+    // Discard confirmation.
+    discardConfirmTitle: "Discard all changes?",
+    discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
+    discardConfirmCancel: "Keep editing",
+    discardConfirmConfirm: "Discard changes",
+    // Review-list section titles + entry templates (activity-diff.ts).
+    review: {
+      sectionDevices: "Devices",
+      sectionStart: "When it starts",
+      sectionButtons: "Buttons",
+      sectionShortcuts: "Shortcuts",
+      sectionEnd: "When it ends",
+      sectionDeviceWide: "Device-wide changes",
+      deviceAdded: (name) => `Added "${name}" to this activity.`,
+      deviceRemoved: (name) => `Removed "${name}" from this activity.`,
+      inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
+      inputCleared: (device) => `"${device}" input cleared.`,
+      powersOnNow: (device) => `"${device}" now turns on with this activity.`,
+      powersOnNo: (device) => `"${device}" no longer turns on with this activity.`,
+      startReordered: "Start sequence reordered.",
+      roleNowControls: (group, device) => `${group} now control "${device}".`,
+      roleCustomized: (group) => `${group} customized.`,
+      roleCleared: (group) => `${group} no longer assigned.`,
+      shortcutAdded: (name) => `Added "${name}".`,
+      shortcutRemoved: (name) => `Removed "${name}".`,
+      shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
+      shortcutsReordered: "Reordered shortcuts.",
+      powersOffNow: (device) => `"${device}" now turns off with this activity.`,
+      powersOffNo: (device) => `"${device}" now stays on.`,
+      idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
+      commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
+      roleGroups: {
+        volume: "Volume buttons",
+        navigation: "Navigation buttons",
+        playback: "Playback buttons",
+        channels: "Channel buttons"
+      },
+      idleShort: {
+        0: "not set",
+        1: "turns off when idle",
+        2: "never switches off",
+        3: "stays on",
+        4: "not managed by the hub"
+      }
+    }
   },
   backup: {
     loading: "Loading backup tools...",
@@ -6479,6 +6541,13 @@ var SofabatonEditDetailView = class extends i3 {
     this._requestClose = () => {
       this.dispatchEvent(new CustomEvent("close"));
     };
+    // ── Live-mode header (§4.3) ─────────────────────────────────────────
+    // In live mode the host owns Review / Sync / Discard; the element just
+    // signals intent. In backup mode these render nothing (the header shows
+    // rename/delete instead) and the chip reads "Unsaved".
+    this._requestReview = () => this.dispatchEvent(new CustomEvent("review-request"));
+    this._requestSync = () => this.dispatchEvent(new CustomEvent("sync-request"));
+    this._requestDiscard = () => this.dispatchEvent(new CustomEvent("discard-request"));
     this._handleEditDetailScroll = (event) => {
       const scrollEl = event.currentTarget;
       if (!scrollEl) return;
@@ -7075,6 +7144,31 @@ var SofabatonEditDetailView = class extends i3 {
     :host {
       flex-direction: column;
     }
+    /* Live-mode header action cluster (Discard / Review / Sync). */
+    .live-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .live-btn {
+      border: 1px solid var(--divider-color);
+      border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 6px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+    }
+    .live-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .live-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    .live-btn:disabled {
+      cursor: default;
+      opacity: 0.42;
+      color: var(--disabled-text-color, var(--secondary-text-color));
+      border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
+      background: transparent;
+    }
+    .live-btn:disabled:hover { border-color: color-mix(in srgb, var(--divider-color) 88%, transparent); }
   `];
   }
   connectedCallback() {
@@ -7123,6 +7217,23 @@ var SofabatonEditDetailView = class extends i3 {
     this.bundle = pruneHaActionHosts(next);
     this.dispatchEvent(new CustomEvent("bundle-change", { detail: { bundle: this.bundle } }));
   }
+  _renderDirtyChip() {
+    if (!this.dirty) return A;
+    if (this.mode === "live") {
+      return T`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.activities.notSyncedTooltip}>${TOOLS_CARD_STRINGS.activities.notSyncedChip}</span>`;
+    }
+    return T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`;
+  }
+  _renderLiveHeaderActions() {
+    const S4 = TOOLS_CARD_STRINGS.activities;
+    return T`
+      <div class="detail-title-actions live-actions">
+        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestDiscard}>${S4.discard}</button>
+        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestReview}>${S4.reviewChanges}</button>
+        <button class="live-btn live-btn--primary" ?disabled=${!this.dirty} @click=${this._requestSync}>${S4.sync}</button>
+      </div>
+    `;
+  }
   render() {
     if (!this.bundle || this.entityId == null) return A;
     if (this._macroEditor) {
@@ -7154,8 +7265,8 @@ var SofabatonEditDetailView = class extends i3 {
     ])}
                   <div class="detail-title">${params.title}</div>
                 </div>
-                ${this.dirty && this.mode !== "live" ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
-                ${this.mode === "live" ? A : T`
+                ${this._renderDirtyChip()}
+                ${this.mode === "live" ? this._renderLiveHeaderActions() : T`
                       <div class="detail-title-actions">
                         <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
                           <ha-icon icon="mdi:pencil"></ha-icon>
@@ -7314,7 +7425,7 @@ var SofabatonEditDetailView = class extends i3 {
     ])}
                   <div class="detail-title">${S4.bindingsViewTitle}</div>
                 </div>
-                ${this.dirty && this.mode !== "live" ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${this._renderDirtyChip()}
               </div>
             </div>
           </div>
@@ -8453,7 +8564,7 @@ var SofabatonEditDetailView = class extends i3 {
     ])}
                   <div class="detail-title">${editor.name}</div>
                 </div>
-                ${this.dirty && this.mode !== "live" ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${this._renderDirtyChip()}
                 ${canRename ? T`
                       <div class="detail-title-actions">
                         <button

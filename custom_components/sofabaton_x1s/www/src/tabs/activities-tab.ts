@@ -24,6 +24,7 @@ import type {
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { formatError, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../strings";
+import { diffActivityForReview, type ActivityReviewGroup } from "./activity-diff";
 import "./edit-detail-view";
 
 type ActivitiesStage = "list" | "capturing" | "editing";
@@ -59,6 +60,10 @@ class SofabatonActivitiesTab extends LitElement {
     _captureError: { state: true },
     _sessionRestored: { state: true },
     _sessionSavedAt: { state: true },
+    _dirty: { state: true },
+    _reviewOpen: { state: true },
+    _discardConfirmOpen: { state: true },
+    _syncNoticeOpen: { state: true },
   };
 
   static styles = [operationProgressStyles, css`
@@ -162,6 +167,47 @@ class SofabatonActivitiesTab extends LitElement {
       cursor: pointer;
     }
     .session-banner-btn:hover { border-color: var(--primary-color); }
+    .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
+    .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
+    /* Review / discard / sync dialogs (§4.4). */
+    .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+    .dialog {
+      width: min(640px, calc(100vw - 36px));
+      max-height: min(82vh, 820px);
+      display: flex;
+      flex-direction: column;
+      border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
+      border: 1px solid var(--divider-color);
+      background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+      box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
+      overflow: hidden;
+    }
+    .dialog--small { width: min(460px, calc(100vw - 36px)); }
+    .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .dialog-header { border-bottom: 1px solid var(--divider-color); }
+    .dialog-title { font-size: 16px; font-weight: 700; flex: 1; color: var(--primary-text-color); }
+    .dialog-close {
+      width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+      background: var(--ha-card-background, var(--card-background-color)); color: var(--secondary-text-color); cursor: pointer;
+    }
+    .dialog-close:hover { border-color: var(--primary-color); color: var(--primary-text-color); }
+    .dialog-body { padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+    .dialog-text { font-size: 14px; line-height: 1.55; color: var(--primary-text-color); }
+    .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; }
+    .dialog-footer-actions { display: flex; gap: 8px; }
+    .review-group { display: flex; flex-direction: column; gap: 6px; }
+    .review-group-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--secondary-text-color);
+    }
+    .review-entry-list { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+    .review-entry { font-size: 13.5px; line-height: 1.5; color: var(--primary-text-color); }
+    .review-global-note { color: var(--secondary-text-color); font-style: italic; margin-left: 6px; }
+    .review-empty { font-size: 14px; color: var(--secondary-text-color); }
+    @media (max-width: 640px) {
+      .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+      .dialog, .dialog--small { width: 100%; max-height: 100%; border-radius: 0; }
+    }
   `];
 
   hass: HassLike | null = null;
@@ -182,6 +228,10 @@ class SofabatonActivitiesTab extends LitElement {
   private _captureError: string | null = null;
   private _sessionRestored = false;
   private _sessionSavedAt = 0;
+  private _dirty = false;
+  private _reviewOpen = false;
+  private _discardConfirmOpen = false;
+  private _syncNoticeOpen = false;
 
   private _captureOperationId: string | null = null;
   private _progressUnsub: (() => void) | null = null;
@@ -239,6 +289,7 @@ class SofabatonActivitiesTab extends LitElement {
         activityId: this._activityId,
         baseline: this._baseline,
         working: this._working ?? this._baseline,
+        dirty: this._dirty,
         captureGeneration,
       };
       window.localStorage.setItem(key, JSON.stringify(payload));
@@ -273,6 +324,7 @@ class SofabatonActivitiesTab extends LitElement {
         activityId?: number;
         baseline?: unknown;
         working?: unknown;
+        dirty?: boolean;
       };
       const savedAt = Number(parsed?.savedAt);
       if (!Number.isFinite(savedAt) || Date.now() - savedAt > SofabatonActivitiesTab._SESSION_TTL_MS) {
@@ -290,6 +342,7 @@ class SofabatonActivitiesTab extends LitElement {
       this._activityId = activityId;
       this._sessionSavedAt = savedAt;
       this._sessionRestored = true;
+      this._recomputeDirty();
       this._stage = "editing";
     } catch {
       try {
@@ -335,6 +388,7 @@ class SofabatonActivitiesTab extends LitElement {
         if (bundle) {
           this._baseline = bundle;
           this._working = structuredClone(bundle);
+          this._dirty = false;
           this._sessionSavedAt = Date.now();
           this._sessionRestored = false;
           this._captureProgress = null;
@@ -373,15 +427,66 @@ class SofabatonActivitiesTab extends LitElement {
   // ── Editing (§4.3) — interactive but ephemeral in L2 ───────────────
 
   private _handleBundleChange = (event: CustomEvent<{ bundle: BackupBundlePayload }>) => {
-    // The detail element already ran its HA-action prune sweep. In L2 the
-    // edited bundle is ephemeral: keep it in memory so drill-ins respond,
-    // but do not mark anything for sync.
+    // The detail element already ran its HA-action prune sweep. Store the
+    // edited bundle, recompute dirty against the captured baseline, and let
+    // updated() persist it to the session (§4.4).
     this._working = event.detail.bundle;
+    this._recomputeDirty();
+  };
+
+  private _recomputeDirty() {
+    this._dirty = !!this._baseline
+      && !!this._working
+      && JSON.stringify(this._working) !== JSON.stringify(this._baseline);
+  }
+
+  // ── Review / Sync / Discard (§4.4) ─────────────────────────────────
+
+  private _reviewGroups(): ActivityReviewGroup[] {
+    if (this._activityId == null) return [];
+    return diffActivityForReview(this._baseline, this._working, this._activityId);
+  }
+
+  private _openReview = () => {
+    if (!this._dirty) return;
+    this._reviewOpen = true;
+  };
+
+  private _closeReview = () => {
+    this._reviewOpen = false;
+  };
+
+  // Sync is stubbed until the L4 engine lands: surface a "coming soon"
+  // notice instead of writing to the hub. Edits stay intact.
+  private _requestSync = () => {
+    if (!this._dirty) return;
+    this._reviewOpen = false;
+    this._syncNoticeOpen = true;
+  };
+
+  private _closeSyncNotice = () => {
+    this._syncNoticeOpen = false;
+  };
+
+  private _openDiscardConfirm = () => {
+    if (!this._dirty) return;
+    this._discardConfirmOpen = true;
+  };
+
+  private _closeDiscardConfirm = () => {
+    this._discardConfirmOpen = false;
+  };
+
+  private _discardChanges = () => {
+    if (this._baseline) this._working = structuredClone(this._baseline);
+    this._recomputeDirty();
+    this._reviewOpen = false;
+    this._discardConfirmOpen = false;
   };
 
   private _closeEditor = () => {
-    // Leaving the editor deliberately discards the (ephemeral) draft and its
-    // persisted baseline; a re-open re-captures fresh from the hub.
+    // Leaving the editor deliberately discards the draft and its persisted
+    // session; a re-open re-captures fresh from the hub.
     this._clearSession();
     this._resetToList();
   };
@@ -401,6 +506,10 @@ class SofabatonActivitiesTab extends LitElement {
     this._captureOperationId = null;
     this._sessionRestored = false;
     this._sessionSavedAt = 0;
+    this._dirty = false;
+    this._reviewOpen = false;
+    this._discardConfirmOpen = false;
+    this._syncNoticeOpen = false;
   }
 
   // ── Data ───────────────────────────────────────────────────────────
@@ -548,11 +657,113 @@ class SofabatonActivitiesTab extends LitElement {
           .bundle=${this._working}
           kind="activity"
           .entityId=${this._activityId}
-          .dirty=${false}
+          .dirty=${this._dirty}
           mode="live"
           @bundle-change=${this._handleBundleChange}
+          @review-request=${this._openReview}
+          @sync-request=${this._requestSync}
+          @discard-request=${this._openDiscardConfirm}
           @close=${this._closeEditor}
         ></sofabaton-edit-detail-view>
+        ${this._reviewOpen ? this._renderReviewDialog() : nothing}
+        ${this._discardConfirmOpen ? this._renderDiscardDialog() : nothing}
+        ${this._syncNoticeOpen ? this._renderSyncNoticeDialog() : nothing}
+      </div>
+    `;
+  }
+
+  private _renderReviewDialog() {
+    const S = TOOLS_CARD_STRINGS.activities;
+    const groups = this._reviewGroups();
+    return html`
+      <div class="modal-backdrop" @click=${this._closeReview}>
+        <div class="dialog" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S.reviewTitle}</div>
+            <button class="dialog-close" @click=${this._closeReview}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${groups.length
+              ? groups.map((group) => html`
+                  <div class="review-group">
+                    <div class="review-group-title">${this._reviewSectionTitle(group.section)}</div>
+                    <ul class="review-entry-list">
+                      ${group.entries.map((entry) => html`
+                        <li class="review-entry">
+                          ${entry.text}
+                          ${entry.global
+                            ? html`<span class="review-global-note">(${S.reviewAppliesEverywhere})</span>`
+                            : nothing}
+                        </li>
+                      `)}
+                    </ul>
+                  </div>
+                `)
+              : html`<div class="review-empty">${S.reviewEmpty}</div>`}
+          </div>
+          <div class="dialog-footer">
+            <button class="btn btn-danger" @click=${this._openDiscardConfirm}>${S.reviewDiscardAll}</button>
+            <div class="dialog-footer-actions">
+              <button class="btn" @click=${this._closeReview}>${S.reviewKeepEditing}</button>
+              <button class="btn btn-primary" @click=${this._requestSync}>${S.reviewSyncNow}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _reviewSectionTitle(section: ActivityReviewGroup["section"]): string {
+    const R = TOOLS_CARD_STRINGS.activities.review;
+    switch (section) {
+      case "devices": return R.sectionDevices;
+      case "start": return R.sectionStart;
+      case "buttons": return R.sectionButtons;
+      case "shortcuts": return R.sectionShortcuts;
+      case "end": return R.sectionEnd;
+      case "device_wide": return R.sectionDeviceWide;
+    }
+  }
+
+  private _renderDiscardDialog() {
+    const S = TOOLS_CARD_STRINGS.activities;
+    return html`
+      <div class="modal-backdrop" @click=${this._closeDiscardConfirm}>
+        <div class="dialog dialog--small" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S.discardConfirmTitle}</div>
+            <button class="dialog-close" @click=${this._closeDiscardConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body"><div class="dialog-text">${S.discardConfirmBody}</div></div>
+          <div class="dialog-footer">
+            <span></span>
+            <div class="dialog-footer-actions">
+              <button class="btn" @click=${this._closeDiscardConfirm}>${S.discardConfirmCancel}</button>
+              <button class="btn btn-danger" @click=${this._discardChanges}>${S.discardConfirmConfirm}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private _renderSyncNoticeDialog() {
+    const S = TOOLS_CARD_STRINGS.activities;
+    return html`
+      <div class="modal-backdrop" @click=${this._closeSyncNotice}>
+        <div class="dialog dialog--small" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S.syncComingSoonTitle}</div>
+            <button class="dialog-close" @click=${this._closeSyncNotice}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body"><div class="dialog-text">${S.syncComingSoonBody}</div></div>
+          <div class="dialog-footer">
+            <span></span>
+            <div class="dialog-footer-actions">
+              <button class="btn btn-primary" @click=${this._closeSyncNotice}>${S.back}</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }

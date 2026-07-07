@@ -224,6 +224,31 @@ export class SofabatonEditDetailView extends LitElement {
     :host {
       flex-direction: column;
     }
+    /* Live-mode header action cluster (Discard / Review / Sync). */
+    .live-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .live-btn {
+      border: 1px solid var(--divider-color);
+      border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      padding: 6px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+    }
+    .live-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .live-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    .live-btn:disabled {
+      cursor: default;
+      opacity: 0.42;
+      color: var(--disabled-text-color, var(--secondary-text-color));
+      border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
+      background: transparent;
+    }
+    .live-btn:disabled:hover { border-color: color-mix(in srgb, var(--divider-color) 88%, transparent); }
   `];
 
   // ── Host-owned props ───────────────────────────────────────────────
@@ -343,6 +368,33 @@ export class SofabatonEditDetailView extends LitElement {
     this.dispatchEvent(new CustomEvent("close"));
   };
 
+  // ── Live-mode header (§4.3) ─────────────────────────────────────────
+  // In live mode the host owns Review / Sync / Discard; the element just
+  // signals intent. In backup mode these render nothing (the header shows
+  // rename/delete instead) and the chip reads "Unsaved".
+  private _requestReview = () => this.dispatchEvent(new CustomEvent("review-request"));
+  private _requestSync = () => this.dispatchEvent(new CustomEvent("sync-request"));
+  private _requestDiscard = () => this.dispatchEvent(new CustomEvent("discard-request"));
+
+  private _renderDirtyChip() {
+    if (!this.dirty) return nothing;
+    if (this.mode === "live") {
+      return html`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.activities.notSyncedTooltip}>${TOOLS_CARD_STRINGS.activities.notSyncedChip}</span>`;
+    }
+    return html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`;
+  }
+
+  private _renderLiveHeaderActions() {
+    const S = TOOLS_CARD_STRINGS.activities;
+    return html`
+      <div class="detail-title-actions live-actions">
+        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestDiscard}>${S.discard}</button>
+        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestReview}>${S.reviewChanges}</button>
+        <button class="live-btn live-btn--primary" ?disabled=${!this.dirty} @click=${this._requestSync}>${S.sync}</button>
+      </div>
+    `;
+  }
+
   protected render() {
     if (!this.bundle || this.entityId == null) return nothing;
     if (this._macroEditor) {
@@ -382,11 +434,9 @@ export class SofabatonEditDetailView extends LitElement {
                   ])}
                   <div class="detail-title">${params.title}</div>
                 </div>
-                ${this.dirty && this.mode !== "live"
-                  ? html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`
-                  : nothing}
+                ${this._renderDirtyChip()}
                 ${this.mode === "live"
-                  ? nothing
+                  ? this._renderLiveHeaderActions()
                   : html`
                       <div class="detail-title-actions">
                         <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
@@ -623,9 +673,7 @@ export class SofabatonEditDetailView extends LitElement {
                   ])}
                   <div class="detail-title">${S.bindingsViewTitle}</div>
                 </div>
-                ${this.dirty && this.mode !== "live"
-                  ? html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`
-                  : nothing}
+                ${this._renderDirtyChip()}
               </div>
             </div>
           </div>
@@ -2518,9 +2566,7 @@ export class SofabatonEditDetailView extends LitElement {
                   ])}
                   <div class="detail-title">${editor.name}</div>
                 </div>
-                ${this.dirty && this.mode !== "live"
-                  ? html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`
-                  : nothing}
+                ${this._renderDirtyChip()}
                 ${canRename
                   ? html`
                       <div class="detail-title-actions">
