@@ -388,7 +388,7 @@ Object.defineProperties(EventShim.prototype, {
   stopPropagation: enumerableProperty,
   isTrusted: enumerableProperty
 });
-var CustomEventShim = (_b = class CustomEvent extends EventShim {
+var CustomEventShim = (_b = class CustomEvent2 extends EventShim {
   constructor(type, options = {}) {
     super(type, options);
     _CustomEvent_detail.set(this, void 0);
@@ -1648,6 +1648,7 @@ var TOOLS_CARD_STRINGS = {
     blobsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/blobs.md"
   },
   tabs: {
+    activities: "Activities",
     cache: "Cache",
     wifiCommands: "Wifi Commands",
     wifiShort: "Wifi",
@@ -1765,6 +1766,35 @@ var TOOLS_CARD_STRINGS = {
     save: "Save",
     saving: "Saving...",
     commandName: "Command name"
+  },
+  activities: {
+    loading: "Loading activities...",
+    selectHub: "Select a hub to edit its activities.",
+    listSubtitle: "Choose an activity to edit. Changes stay on your device until you sync them to the hub.",
+    activityFallback: (id) => `Activity ${id}`,
+    rowMeta: (devices, shortcuts) => {
+      const deviceLabel = `${devices} ${devices === 1 ? "device" : "devices"}`;
+      const shortcutLabel = `${shortcuts} ${shortcuts === 1 ? "shortcut" : "shortcuts"}`;
+      return `${deviceLabel} \xB7 ${shortcutLabel}`;
+    },
+    // Guard panels (§4.1), rendered inside the tab.
+    appConnectedTitle: "The Sofabaton app is connected",
+    appConnectedBody: "Close the Sofabaton app to edit activities.",
+    operationRunningTitle: "Another operation is running",
+    operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
+    emptyTitle: "No activities yet",
+    emptyBody: "This hub has no activities to edit.",
+    // Capture flow (§4.2).
+    captureTitle: "Reading your hub",
+    captureMessage: "Reading your hub's configuration\u2026",
+    captureMessageWithStep: (current, total) => `Reading your hub's configuration\u2026 (device ${current} of ${total})`,
+    captureFailedTitle: "Couldn't read the hub",
+    captureFailedBody: "The hub stopped responding before we finished reading it.",
+    retry: "Retry",
+    back: "Back",
+    // Session restore banner (§4.6).
+    sessionRestoreBanner: (name, time) => `Continuing your edit of "${name}" from ${time}`,
+    sessionReload: "Reload from hub instead"
   },
   backup: {
     loading: "Loading backup tools...",
@@ -2230,6 +2260,1450 @@ function renderOperationProgress(view) {
     </div>
   `;
 }
+
+// custom_components/sofabaton_x1s/www/src/tabs/backup-tab-styles.ts
+var backupTabStyles = i`
+    :host {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      --backup-radius-sm: calc(var(--ha-card-border-radius, 12px) * 0.85);
+      --backup-radius-md: var(--ha-card-border-radius, 12px);
+      --backup-radius-lg: calc(var(--ha-card-border-radius, 12px) * 1.33);
+      --backup-radius-xl: calc(var(--ha-card-border-radius, 12px) * 1.8);
+      --backup-radius-pill: calc(var(--ha-card-border-radius, 12px) * 999);
+    }
+    .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
+    .state {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--secondary-text-color);
+      text-align: center;
+      padding: 24px;
+      line-height: 1.6;
+    }
+    .state.error { color: var(--error-color, #db4437); }
+    .blocked-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 24px 16px;
+      text-align: center;
+      color: var(--secondary-text-color);
+      line-height: 1.6;
+    }
+    .blocked-state-title {
+      color: var(--primary-text-color);
+      font-size: 16px;
+      font-weight: 700;
+    }
+    .blocked-state-sub {
+      max-width: 340px;
+      font-size: 13px;
+    }
+    .backup-panel {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .backup-body {
+      gap: 12px;
+    }
+    .restore-body {
+      gap: 12px;
+    }
+
+    .header-primary-btn {
+      flex: 0 0 auto;
+      min-width: 114px;
+      min-height: 42px;
+      padding: 0 18px;
+      border-radius: var(--backup-radius-md);
+      border: 1px solid color-mix(in srgb, var(--primary-color) 75%, white 10%);
+      background: color-mix(in srgb, var(--primary-color) 20%, white 80%);
+      color: var(--primary-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+    .header-primary-btn:hover:not(:disabled) {
+      border-color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 24%, white 76%);
+    }
+    .header-primary-btn:disabled {
+      opacity: 0.45;
+      cursor: default;
+    }
+    .backup-action-row {
+      display: flex;
+      justify-content: flex-start;
+    }
+    .backup-drawer-sub { color: var(--secondary-text-color); font-size: 13px; line-height: 1.5; }
+    .backup-section-title { color: var(--primary-text-color); font-size: 13px; font-weight: 700; }
+
+    .backup-config-view {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .restore-config-view {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .backup-scope-group { display: grid; gap: 8px; }
+    ha-radio-group.scope-form--md {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      width: 100%;
+      --ha-radio-option-active-color: var(--primary-color);
+      --ha-radio-option-checked-background-color: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
+    }
+    ha-radio-group.scope-form--md ha-radio-option {
+      min-width: 0;
+    }
+    @media (max-width: 380px) {
+      ha-radio-group.scope-form--md { grid-template-columns: 1fr; }
+    }
+    .compat-radio-group {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      width: 100%;
+    }
+    .compat-radio-option {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-md);
+      background: var(--ha-card-background, var(--card-background-color));
+      color: var(--primary-text-color);
+      cursor: pointer;
+      transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
+    }
+    .compat-radio-option:hover {
+      border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
+    }
+    .compat-radio-option.selected {
+      border-color: color-mix(in srgb, var(--primary-color) 70%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .compat-radio-option.disabled {
+      opacity: 0.58;
+      cursor: default;
+    }
+    .compat-radio-option-label {
+      min-width: 0;
+      flex: 1 1 auto;
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.4;
+    }
+    @media (max-width: 380px) {
+      .compat-radio-group { grid-template-columns: 1fr; }
+    }
+    .compat-choice {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      flex: 0 0 auto;
+      accent-color: var(--primary-color);
+    }
+
+    .backup-devices-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .backup-devices-head-main {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .backup-selected-count {
+      color: var(--primary-color);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .backup-link-btn {
+      border: none;
+      background: transparent;
+      color: var(--primary-color);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0;
+    }
+    .backup-link-btn:disabled { opacity: 0.48; cursor: default; }
+
+    .selection-card {
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-md);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
+      overflow: hidden;
+      min-height: 0;
+    }
+    .backup-config-view .selection-card {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    .restore-config-view .selection-card {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    .edit-config-view .selection-card {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    .selection-list { display: flex; flex-direction: column; max-height: 340px; overflow-y: auto; }
+    .backup-config-view .selection-list {
+      max-height: none;
+      height: 100%;
+      min-height: 0;
+    }
+    .restore-config-view .selection-list {
+      max-height: none;
+      height: 100%;
+      min-height: 0;
+    }
+    .edit-config-view .selection-list {
+      max-height: none;
+      height: 100%;
+      min-height: 0;
+    }
+    .selection-empty {
+      padding: 16px 14px;
+      font-size: 13px;
+      color: var(--secondary-text-color);
+    }
+    .selection-group-header {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 0 14px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 94%, white 6%);
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+    }
+    .selection-group-header:first-child { border-top: none; }
+    .edit-config-view .selection-group-header {
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 94%, white 6%);
+    }
+    .selection-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+      cursor: pointer;
+    }
+    .selection-row:first-child { border-top: none; }
+    .selection-row ha-checkbox { flex: 0 0 auto; }
+    .selection-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      flex: 1 1 auto;
+    }
+    .selection-label {
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .selection-meta {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      margin-left: 8px;
+    }
+    .selection-sub {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .edit-body { padding-top: 0; padding-bottom: 8px; display: flex; flex-direction: column; gap: 8px; align-content: normal; }
+    .edit-config-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+    .edit-selection-row {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+      cursor: pointer;
+    }
+    .edit-selection-row:first-child { border-top: none; }
+    .edit-selection-row:hover {
+      background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+    }
+    .edit-order-sortable { display: block; }
+    .edit-order-sortable-container { display: block; }
+    /* Inside a sortable wrapper, ":first-child" of the row would not match
+       (the row's parent is the wrapper, not the list). Re-strip the border
+       on the first row of each wrapped group so groups still read cleanly. */
+    .edit-order-sortable-container .edit-selection-row:first-child { border-top: none; }
+    .edit-row-drag {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--secondary-text-color);
+      cursor: grab;
+      touch-action: none;
+      padding: 2px;
+      margin-left: -4px;
+    }
+    .edit-row-drag:active { cursor: grabbing; }
+    .edit-row-drag ha-icon { --mdc-icon-size: 18px; }
+    .selection-chevron {
+      color: var(--secondary-text-color);
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .selection-chevron ha-icon { --mdc-icon-size: 18px; }
+
+    /* ── Automatic-power dropdown (device Power section) ─────────────── */
+    /* Genuine overlay popup: the menu is absolutely positioned so opening
+       it never reflows the sequence rows below. A transparent fixed
+       backdrop catches click-away. */
+    /* The control is its own field, a sibling of (not inside) the
+       sequence list, so the list's overflow:hidden can't clip the popup. */
+    .power-control {
+      position: relative;
+      display: block;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-lg);
+      background: var(--ha-card-background, var(--card-background-color));
+    }
+    .power-control-trigger {
+      width: 100%;
+      border: none;
+      border-radius: inherit;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+    .power-control-trigger:hover {
+      background: color-mix(in srgb, var(--primary-color) 6%, transparent);
+    }
+    .power-control-trigger .selection-chevron ha-icon { transition: transform 120ms ease; }
+    .power-control[data-open="true"] .power-control-trigger .selection-chevron ha-icon {
+      transform: rotate(180deg);
+    }
+    .power-control-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      border: none;
+      background: transparent;
+      padding: 0;
+      cursor: default;
+    }
+    .power-control-menu {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      z-index: 31;
+      display: flex;
+      flex-direction: column;
+      background: var(--card-background-color, var(--ha-card-background, var(--secondary-background-color, #fff)));
+      border: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
+      border-radius: 10px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+      overflow: hidden;
+    }
+    .power-control-option {
+      width: 100%;
+      border: none;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      text-align: left;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      padding: 10px 14px;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 50%, transparent);
+      cursor: pointer;
+    }
+    .power-control-option:first-child { border-top: none; }
+    .power-control-option:hover {
+      background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+    }
+    .power-control-option[aria-checked="true"] .selection-label { color: var(--primary-color); }
+    .power-control-option .selection-chevron ha-icon { color: var(--primary-color); }
+
+    /* Power-on/off sequence rows, dimmed + inert when power control is off */
+    .power-sequences[data-disabled="true"] { opacity: 0.45; pointer-events: none; }
+    .power-sequences-note {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      line-height: 1.45;
+      padding: 8px 14px 0;
+    }
+    .tab-panel--detail { padding: 0; }
+    .detail-view {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      overflow: hidden;
+    }
+    .sticky-header {
+      position: sticky;
+      z-index: 2;
+      background: var(--ha-card-background, var(--card-background-color));
+    }
+    .sticky-header { top: 0; }
+    .detail-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .detail-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-width: 0;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--divider-color);
+    }
+    .detail-title-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      flex: 1;
+    }
+    .detail-title-stack {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+    .detail-crumbs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      white-space: nowrap;
+      font-size: 11px;
+      line-height: 1.1;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+    }
+    .detail-crumb {
+      flex: 0 1 auto;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      padding: 0;
+      font: inherit;
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transition: color 120ms ease;
+    }
+    .detail-crumb:hover {
+      color: var(--primary-color);
+      text-decoration: underline;
+    }
+    .detail-crumb-sep {
+      flex: 0 0 auto;
+      color: color-mix(in srgb, var(--secondary-text-color) 55%, transparent);
+    }
+    .detail-title-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .detail-title {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.15;
+      color: var(--primary-text-color);
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .detail-section-nav {
+      display: flex;
+      align-items: stretch;
+      min-height: 34px;
+      margin: 10px 16px;
+      border: 1px solid color-mix(in srgb, var(--divider-color) 88%, transparent);
+      border-radius: var(--backup-radius-md);
+      overflow: hidden;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 76%, transparent);
+    }
+    .detail-section-nav-btn {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 0 10px;
+      border: none;
+      border-right: 1px solid color-mix(in srgb, var(--divider-color) 82%, transparent);
+      background: transparent;
+      color: color-mix(in srgb, var(--secondary-text-color) 88%, var(--primary-text-color) 12%);
+      font: inherit;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .detail-section-nav-btn:last-child {
+      border-right: none;
+    }
+    .detail-section-nav-btn:hover {
+      background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+      color: var(--primary-text-color);
+    }
+    .detail-section-nav-btn.active {
+      color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+      box-shadow: inset 0 -2px 0 var(--primary-color);
+    }
+    .detail-section-nav-btn ha-icon {
+      --mdc-icon-size: 16px;
+      flex: 0 0 auto;
+    }
+    .detail-section-nav-label {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    /* Match the Wifi Commands tab's detail-view back button so the
+       affordance is identical across the card: padded pill with a
+       bold label-weight, content-sized (not a fixed square). */
+    .back-btn {
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-weight: 700;
+      padding: 8px 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    .back-btn:hover {
+      border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
+    }
+    .edit-detail-card {
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-lg);
+      padding: 14px;
+      background: var(--ha-card-background, var(--card-background-color));
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .edit-detail-copy {
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .edit-field-group {
+      display: grid;
+      gap: 8px;
+    }
+    .edit-field-label {
+      color: var(--secondary-text-color);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .edit-field-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .edit-row-input {
+      flex: 1 1 auto;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary-text-color);
+      background: var(--ha-card-background, var(--card-background-color));
+      border: 1px solid color-mix(in srgb, var(--primary-color) 65%, var(--divider-color));
+      border-radius: var(--backup-radius-sm);
+      padding: 4px 10px;
+      outline: none;
+    }
+    .edit-row-input:focus { border-color: var(--primary-color); }
+    .edit-support-card {
+      border: 1px dashed color-mix(in srgb, var(--divider-color) 88%, transparent);
+      border-radius: var(--backup-radius-md);
+      padding: 12px 14px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      line-height: 1.5;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
+    }
+    .icon-btn, .dialog-close {
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: var(--ha-card-background, var(--card-background-color));
+      color: var(--secondary-text-color);
+      cursor: pointer;
+      transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease;
+    }
+    .icon-btn:hover:not(:disabled),
+    .dialog-close:hover {
+      border-color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
+      color: var(--primary-text-color);
+    }
+    .icon-btn:active,
+    .dialog-close:active { transform: translateY(1px); }
+    .icon-btn:disabled { opacity: 0.45; cursor: default; }
+    .icon-btn ha-icon { --mdc-icon-size: 16px; }
+    /* Destructive variant of .icon-btn — used for the inline delete
+       (trash) action next to the rename pencil on rows and detail
+       headers. Resting state stays neutral so the row doesn't read as
+       alarming; the danger tone only appears on hover / focus. */
+    .icon-btn--danger:hover:not(:disabled) {
+      border-color: var(--error-color, #db4437);
+      background: color-mix(in srgb, var(--error-color, #db4437) 10%, var(--ha-card-background, var(--card-background-color)));
+      color: var(--error-color, #db4437);
+    }
+    .quick-access-head-main {
+      min-width: 0;
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .quick-access-add-btn {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 12px;
+      border-radius: var(--backup-radius-md);
+      border: 1px solid color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
+      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+      color: var(--primary-color);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: border-color 120ms ease, background 120ms ease;
+    }
+    .quick-access-add-btn:hover {
+      border-color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 16%, transparent);
+    }
+    .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; }
+    .quick-access-head-actions {
+      display: inline-flex;
+      gap: 8px;
+      flex: 0 0 auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .power-device-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 12px 14px;
+    }
+    .power-device-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .power-device-controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .power-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+      flex: 1 1 160px;
+    }
+    .power-field--delay { flex: 0 1 120px; }
+    .power-field-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+    }
+    .power-device-controls .decoded-field-input { font-size: 13px; }
+    .quick-access-section {
+      display: grid;
+      gap: 12px;
+      scroll-margin-top: 16px;
+    }
+    .quick-access-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .quick-access-title {
+      color: var(--primary-text-color);
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .quick-access-sub {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .quick-access-list {
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-lg);
+      background: var(--ha-card-background, var(--card-background-color));
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Lists whose rows open absolutely-positioned overlay menus (role
+       pickers, idle-behavior pickers). overflow:hidden would clip the
+       popups at the list edge, so these opt into visible overflow; the
+       footer row carries its own corner radius instead. */
+    .quick-access-list--overlays {
+      overflow: visible;
+    }
+    .quick-access-sortable {
+      display: block;
+    }
+    .quick-access-sortable-container {
+      display: block;
+    }
+    .quick-access-sortable-item {
+      display: block;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .quick-access-sortable-item:first-child {
+      border-top: none;
+    }
+    .quick-access-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 14px;
+    }
+    /* Variant for rows that don't carry a drag handle (e.g. Device commands,
+       which have no concept of ordering). Drop the leading column so the
+       label sits flush with the row padding. */
+    .quick-access-row--no-drag {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .quick-access-main {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .quick-access-label-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .quick-access-label {
+      min-width: 0;
+      color: var(--primary-text-color);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.4;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .quick-access-chip {
+      flex: 0 0 auto;
+      border-radius: var(--backup-radius-pill);
+      padding: 3px 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      border: 1px solid var(--divider-color);
+      color: var(--secondary-text-color);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 74%, transparent);
+    }
+    .quick-access-meta {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .quick-access-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+    }
+    /* Inline per-row wait control: the delay that trails this command.
+       The "Delay" caption stacks above the number inside the same bordered
+       pill so the label and field read as one piece. The caption is tiny
+       and the pill stays shorter than the row, so it adds no row height. */
+    .step-wait {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      flex: 0 0 auto;
+      padding: 2px 6px 3px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 60%, transparent);
+      cursor: text;
+    }
+    .step-wait:focus-within {
+      border-color: var(--primary-color);
+    }
+    .step-wait-caption {
+      font-size: 9px;
+      line-height: 1;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      text-transform: uppercase;
+      color: var(--secondary-text-color);
+      pointer-events: none;
+    }
+    .step-wait-field {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 3px;
+    }
+    .step-wait-input {
+      width: 42px;
+      min-width: 0;
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: right;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .step-wait-input::-webkit-outer-spin-button,
+    .step-wait-input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .step-wait-unit {
+      color: var(--secondary-text-color);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .quick-access-drag {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+      touch-action: none;
+    }
+    .quick-access-drag:active {
+      cursor: grabbing;
+    }
+    .quick-access-empty {
+      border: 1px dashed color-mix(in srgb, var(--divider-color) 88%, transparent);
+      border-radius: var(--backup-radius-md);
+      padding: 12px 14px;
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      line-height: 1.5;
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
+    }
+    .dialog-btn {
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      padding: 8px 12px;
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .dialog-btn:hover:not(:disabled) {
+      border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
+    }
+    .dialog-btn-primary {
+      border-color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+    }
+    .dialog-btn-danger {
+      border-color: var(--error-color, #db4437);
+      color: var(--error-color, #db4437);
+      background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent);
+    }
+    .dialog-btn-danger:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--error-color, #db4437) 18%, transparent);
+    }
+    .dialog-btn:disabled { opacity: 0.45; cursor: default; }
+    .delete-impact-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .delete-impact-list li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--primary-text-color);
+    }
+    .delete-impact-list ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--secondary-text-color);
+      flex: 0 0 auto;
+    }
+    .delete-replace-note {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      line-height: 1.45;
+    }
+    .delete-replace-note ha-icon { --mdc-icon-size: 16px; flex: 0 0 auto; }
+    select.decoded-field-input { cursor: pointer; }
+    .binding-toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .binding-static-field {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary-text-color);
+      padding: 8px 10px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
+    }
+    .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
+    .dialog.small { width: min(500px, calc(100vw - 36px)); }
+    .dialog.medium { width: min(640px, calc(100vw - 36px)); }
+    /* "Advanced" foldout that wraps the structured-payload form
+       inside the Change Command dialog. Mirrors the Wifi Commands
+       command-config popup so the affordance reads the same way
+       across the card. */
+    .advanced-section {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 6px;
+      padding-top: 10px;
+      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+    }
+    .advanced-toggle {
+      width: fit-content;
+      border: 0;
+      background: transparent;
+      color: var(--secondary-text-color);
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      text-align: left;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+    }
+    .advanced-toggle:hover { color: var(--primary-text-color); }
+    .advanced-toggle-copy { display: block; }
+    .advanced-toggle ha-icon { --mdc-icon-size: 18px; transition: transform 120ms ease; }
+    .advanced-toggle.expanded ha-icon { transform: rotate(180deg); }
+    .advanced-panel { display: grid; gap: 14px; padding-top: 2px; }
+    .decoded-form {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
+    .decoded-form-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--primary-text-color);
+    }
+    .decoded-form-sub {
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      line-height: 1.4;
+    }
+    .decoded-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .decoded-field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--secondary-text-color);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .decoded-field-input {
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+      font-size: 13px;
+      color: var(--primary-text-color);
+      background: var(--ha-color-form-background, var(--secondary-background-color));
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      padding: 8px 10px;
+    }
+    .decoded-field-input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+    .decoded-field-input--multiline {
+      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+      resize: vertical;
+      min-height: 60px;
+      white-space: pre;
+    }
+    /* Escaped wire-string fields are conceptually one long string with
+       visible \\n escapes. Wrap on the textarea edge rather than
+       overflowing horizontally, and break long URL-like tokens so the
+       string never runs off the right side. */
+    .decoded-field-input--escaped {
+      white-space: pre-wrap;
+      word-break: break-all;
+      overflow-wrap: anywhere;
+    }
+    .decoded-field-helper {
+      font-size: 11px;
+      color: var(--secondary-text-color);
+      line-height: 1.35;
+    }
+    .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+    .dialog-header { border-bottom: 1px solid var(--divider-color); }
+    .dialog-title { font-size: 16px; flex: 1; color: var(--primary-text-color); }
+    .dialog-body {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+      --ha-color-form-background: var(
+        --input-fill-color,
+        var(
+          --secondary-background-color,
+          color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)
+        )
+      );
+      --ha-color-form-background-hover: var(--ha-color-form-background);
+    }
+    .dialog-body ha-input,
+    .dialog-body ha-textfield {
+      width: 100%;
+    }
+    .dialog-body ha-input {
+      --ha-input-padding-top: 0;
+      --ha-input-padding-bottom: 0;
+    }
+    .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; }
+    .dialog-footer-actions { display: flex; gap: 8px; }
+    .dialog-footer-note { min-height: 18px; font-size: 13px; color: var(--error-color, #db4437); }
+
+    .status-box {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--backup-radius-sm);
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--secondary-text-color);
+    }
+    .status-box.success {
+      color: #2e7d32;
+      border-color: color-mix(in srgb, #2e7d32 35%, var(--divider-color));
+      background: color-mix(in srgb, #2e7d32 5%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .status-box.error {
+      color: var(--error-color, #db4437);
+      border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color));
+      background: color-mix(in srgb, var(--error-color, #db4437) 5%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .status-box.warning {
+      border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 35%, var(--divider-color));
+      background: color-mix(in srgb, var(--warning-color, #f59e0b) 5%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .status-icon { display: inline-flex; color: inherit; flex: 0 0 auto; }
+    .status-icon ha-icon { --mdc-icon-size: 18px; }
+
+    .action-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center; }
+    .primary-btn, .secondary-btn {
+      border-radius: var(--backup-radius-md);
+      padding: 10px 16px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+    .primary-btn {
+      border: 1px solid color-mix(in srgb, var(--primary-color) 65%, var(--divider-color));
+      color: var(--primary-text-color);
+      background: color-mix(in srgb, var(--primary-color) 16%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .secondary-btn {
+      border: 1px solid var(--divider-color);
+      color: var(--primary-text-color);
+      background: transparent;
+    }
+    .primary-btn:hover:not(:disabled), .secondary-btn:hover:not(:disabled) { transform: translateY(-1px); }
+    .primary-btn:disabled, .secondary-btn:disabled { opacity: 0.48; cursor: default; transform: none; }
+
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: var(--backup-radius-pill);
+      border: 1px solid var(--divider-color);
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
+    }
+
+    .backup-complete-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 10px;
+      border: 1px solid color-mix(in srgb, var(--primary-color) 20%, var(--divider-color));
+      border-radius: var(--backup-radius-xl);
+      padding: 28px 18px;
+      background:
+        radial-gradient(circle at top, color-mix(in srgb, var(--primary-color) 14%, transparent), transparent 44%),
+        color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, transparent);
+    }
+    .backup-complete-icon {
+      width: 64px;
+      height: 64px;
+      display: grid;
+      place-items: center;
+      border-radius: var(--backup-radius-pill);
+      color: var(--primary-color);
+      background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+    }
+    .backup-complete-icon ha-icon { --mdc-icon-size: 30px; }
+    .backup-complete-title {
+      color: var(--primary-text-color);
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .backup-complete-sub {
+      color: var(--secondary-text-color);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .backup-downloaded-note,
+    .backup-expired-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .backup-downloaded-note {
+      color: var(--success-color, #43a047);
+    }
+    .backup-expired-note {
+      color: var(--warning-color, #ff9800);
+    }
+    .backup-downloaded-note ha-icon,
+    .backup-expired-note ha-icon {
+      --mdc-icon-size: 16px;
+    }
+
+    .mode-option-btn {
+      width: 100%;
+      min-width: 0;
+      min-height: 36px;
+      border: none;
+      background: transparent;
+      color: var(--primary-text-color);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      padding: 8px 14px;
+    }
+    .restore-action-row {
+      display: flex;
+      justify-content: flex-start;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: nowrap;
+      min-width: 0;
+    }
+    .restore-action-row .primary-btn { flex: 0 0 auto; }
+    .filename-btn {
+      flex: 1 1 0;
+      min-width: 0;
+      max-width: 100%;
+      display: block;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    input[type="file"] { display: none; }
+
+    /* Compact hub-name row on the Edit overview. Hub name is only
+       applied at restore time when the user chooses to wipe the hub,
+       so it earns a single thin row instead of its own card. */
+    .edit-hub-name-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
+      background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 96%, black);
+      font-size: 13px;
+      min-width: 0;
+    }
+    .edit-hub-name-label {
+      flex: 0 0 auto;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--secondary-text-color);
+    }
+    .edit-hub-name-value {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--primary-text-color);
+    }
+    .edit-hub-name-row .icon-btn {
+      flex: 0 0 auto;
+      padding: 2px;
+    }
+    .edit-hub-name-row .icon-btn ha-icon { --mdc-icon-size: 18px; }
+
+    /* Unsaved-changes indicators.
+       .edit-unsaved-chip is the compact pill used in the detail
+       sticky-header next to the title. .edit-unsaved-banner is the
+       wider notice on the overview page above the action row.
+       .primary-btn--unsaved decorates the Download button with a
+       dot when there are pending edits. */
+    .edit-unsaved-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex: 0 0 auto;
+      padding: 2px 8px 2px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-radius: 999px;
+      color: var(--warning-color, #f59e0b);
+      background: color-mix(in srgb, var(--warning-color, #f59e0b) 16%, transparent);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
+    }
+    .edit-unsaved-chip::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--warning-color, #f59e0b);
+    }
+    .edit-unsaved-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
+      background: color-mix(in srgb, var(--warning-color, #f59e0b) 10%, transparent);
+      color: var(--primary-text-color);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .edit-unsaved-banner ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--warning-color, #f59e0b);
+      flex: 0 0 auto;
+    }
+    .primary-btn--unsaved::after {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-left: 8px;
+      border-radius: 50%;
+      background: var(--warning-color, #f59e0b);
+      vertical-align: middle;
+    }
+
+    @media (max-width: 380px) {
+      .backup-scope-options { grid-template-columns: 1fr; }
+      .backup-scope-option + .backup-scope-option {
+        border-left: none;
+        border-top: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
+      }
+      .quick-access-row {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+      }
+      .quick-access-actions {
+        justify-content: flex-end;
+      }
+      .edit-field-row,
+      .restore-action-row {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .detail-title-actions {
+        gap: 6px;
+        min-width: max-content;
+      }
+      .detail-section-nav {
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      .detail-section-nav::-webkit-scrollbar {
+        display: none;
+      }
+      .detail-section-nav-btn {
+        flex-basis: auto;
+        min-width: max-content;
+        padding-inline: 12px;
+      }
+      .restore-action-row > .primary-btn,
+      .restore-action-row > .secondary-btn {
+        width: 100%;
+      }
+      .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
+      .dialog, .dialog.small {
+        width: min(100vw, 100%);
+        max-height: calc(100vh - max(env(safe-area-inset-top), 8px));
+        border-radius: var(--backup-radius-xl) var(--backup-radius-xl) 0 0;
+      }
+      .dialog-footer {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .dialog-footer-actions {
+        width: 100%;
+      }
+      .dialog-footer-actions .dialog-btn {
+        flex: 1 1 0;
+      }
+      .dialog-footer-note {
+        min-height: 0;
+      }
+    }
+`;
 
 // custom_components/sofabaton_x1s/www/src/tabs/activity-editor.ts
 var S3 = TOOLS_CARD_STRINGS.backup;
@@ -3009,25 +4483,25 @@ function readSortKey(block) {
 }
 function bundleActivityOptions(bundle) {
   return [...bundle?.activities ?? []].map((activity) => {
-    const block = activity?.device || {};
-    const id = Number(block.device_id || 0);
+    const block = activity?.device;
+    const id = Number(block?.device_id || 0);
     return {
       id,
       sortKey: readSortKey(block),
-      label: String(block.name || `Activity ${id}`),
+      label: String(block?.name || `Activity ${id}`),
       meta: `${(activity?.referenced_source_device_ids ?? []).length} linked devices`
     };
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
 function bundleDeviceOptions(bundle) {
   return [...bundle?.devices ?? []].map((device) => {
-    const block = device?.device || {};
-    const id = Number(block.device_id || 0);
+    const block = device?.device;
+    const id = Number(block?.device_id || 0);
     return {
       id,
       sortKey: readSortKey(block),
-      label: String(block.name || `Device ${id}`),
-      meta: String(block.device_class || "").trim() || void 0
+      label: String(block?.name || `Device ${id}`),
+      meta: String(block?.device_class || "").trim() || void 0
     };
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }
@@ -4923,62 +6397,32 @@ function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   }
 }
 
-// custom_components/sofabaton_x1s/www/src/tabs/backup-tab.ts
+// custom_components/sofabaton_x1s/www/src/tabs/edit-detail-view.ts
 var POWER_MACRO_BUTTON_IDS = /* @__PURE__ */ new Set([198, 199]);
 var IP_HEAD_DEVICE_CLASSES = /* @__PURE__ */ new Set(["wifi_hue", "wifi_roku", "wifi_sonos"]);
 var IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-var BACKUP_SECTION_ITEMS = [
-  { id: "make", icon: "mdi:content-save-move-outline", label: "Make" },
-  { id: "edit", icon: "mdi:pencil-box-outline", label: "Edit" },
-  { id: "restore", icon: "mdi:database-import-outline", label: "Restore" }
-];
-var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
+function bundleSupportsUnicodeNames(bundle) {
+  const version = String(bundle?.hub?.version || "").toUpperCase();
+  return version.includes("X2") || version.includes("X1S");
+}
+function sanitizeBundleName(bundle, value) {
+  const pattern = bundleSupportsUnicodeNames(bundle) ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu : /[^A-Za-z0-9 ]+/g;
+  return String(value ?? "").replace(pattern, "").slice(0, 20);
+}
+function useLegacyTextField() {
+  return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
+}
+var SofabatonEditDetailView = class extends i3 {
   constructor() {
     super(...arguments);
-    this.hass = null;
-    this.hub = null;
-    this.cacheHub = null;
-    this.hubCommandBusy = false;
-    this.hubCommandBusyLabel = null;
-    this.loading = false;
-    this.error = null;
-    this.persistentCacheEnabled = false;
-    this.selectedHubProxyConnected = false;
-    this.blockedTitle = null;
-    this.blockedMessage = null;
-    this.selectedSection = "make";
-    this.setSelectedSection = () => {
-    };
-    this._backupScope = "whole_hub";
-    this._backupDeviceIds = [];
-    this._backupError = null;
-    this._backupProgress = null;
-    this._restoreError = null;
-    this._restoreSuccess = null;
-    this._restoreProgress = null;
-    this._restoreMode = "merge";
-    this._restoreBundle = null;
-    this._restoreFilename = "";
-    this._restoreActivityIds = [];
-    this._restoreManualDeviceIds = [];
-    this._progressUnsub = null;
-    this._loadedBackupEntryId = "";
-    this._backupHydrating = false;
-    // Op-ids the user has already acknowledged (via Complete, error
-    // dismiss, etc.). The sync function skips re-applying terminal
-    // status for any op in this set, so subscription events or stale
-    // server snapshots cannot snap the view back to a "complete" or
-    // "failed" view the user has already moved past. Cleared opportunistically
-    // when the op stops appearing in the server snapshot.
-    this._acknowledgedOpIds = /* @__PURE__ */ new Set();
-    this._editBundle = null;
-    this._editFilename = "";
-    this._editError = null;
-    this._editDetailKind = null;
-    this._editDetailId = null;
+    // ── Host-owned props ───────────────────────────────────────────────
+    this.bundle = null;
+    this.kind = "activity";
+    this.entityId = null;
+    this.dirty = false;
+    this.mode = "backup";
+    // ── Transient view state (moved 1:1 from backup-tab) ──────────────
     this._editDetailActiveSection = "power";
-    // Whether the power-control option menu (the two-line dropdown in the
-    // device Power section) is expanded. Reset whenever a detail view opens.
     this._powerControlMenuOpen = false;
     this._addDeviceMenuOpen = false;
     this._roleMenuOpen = null;
@@ -5002,42 +6446,16 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._editRenameDialogDraft = "";
     this._editRenameDialogError = "";
     this._editRenameDialogTarget = null;
-    // Whether the structured-payload form is expanded inside the
-    // rename dialog. Defaults to collapsed because payload editing is
-    // an advanced use case — most users only want to rename. Reset on
-    // every dialog open / close so each session starts collapsed.
     this._decodedFormExpanded = false;
-    // True when `_editBundle` has user-made changes that have not yet
-    // been downloaded. Flipped on by every edit handler (rename, reorder,
-    // decoded payload, IP, etc.) and on session restore (those ARE
-    // unsaved edits). Flipped off by `_downloadEditedBundle` and by
-    // any path that loads a fresh bundle from file. Drives the
-    // "Unsaved" indicators in the Edit overview and detail header.
-    this._editBundleDirty = false;
-    // Per-field text drafts for the structured-payload editor that shows
-    // inside the rename dialog when the target command is in a decodable
-    // class. Keyed by the spec's `key`. Empty for non-command targets and
-    // for command targets without a decoded block.
     this._editRenameDialogDecodedDrafts = {};
-    // Snapshot of the decoded block at dialog-open time, used to:
-    //   (a) skip the bundle update entirely when nothing changed, and
-    //   (b) decide whether to render the structured-payload form.
     this._editRenameDialogDecodedSnapshot = null;
-    // Delete-confirm dialog: the entity queued for deletion (drives the
-    // dialog open state), plus its display name for the dialog title.
     this._confirmDeleteTarget = null;
     this._confirmDeleteLabel = "";
-    // Add-favorite picker: open flag, the device + command the new
-    // favorite will play, the editable display name, and a validation note.
     this._addFavoriteOpen = false;
     this._addFavoriteDeviceId = null;
     this._addFavoriteCommandId = null;
     this._addFavoriteName = "";
     this._addFavoriteError = "";
-    // Button-binding add/edit dialog. `_bindingScope` mirrors the detail
-    // we're in; `_bindingEditButtonId` is null in add mode and the locked
-    // button id when editing an existing binding. Long-press fields apply
-    // only when the toggle is on (and the device id only at activity scope).
     this._bindingDialogOpen = false;
     this._bindingScope = "activity";
     this._bindingEditButtonId = null;
@@ -5048,9 +6466,6 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._bindingLpDeviceId = null;
     this._bindingLpCommandId = null;
     this._bindingError = "";
-    // Macro step editor: which macro's steps are open (null = not in the step
-    // editor), and the add/edit-step dialog state. `scope` mirrors the detail
-    // we drilled in from; `buttonId` identifies the macro within that entity.
     this._macroEditor = null;
     this._stepDialogOpen = false;
     this._stepDialogEditIndex = null;
@@ -5060,12 +6475,10 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._stepHoldSeconds = "0";
     this._stepError = "";
     this._haSortableReady = Boolean(customElements.get("ha-sortable"));
-    this._backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
-    this._editSessionRestoreTried = false;
-    // entry_id of the hub the currently-loaded restore bundle was picked
-    // against. Used to detect hub-picker switches and drop a bundle that is no
-    // longer valid for the now-selected hub.
-    this._restoreHubEntryId = null;
+    /** Ask the host to leave the detail view (back button, entity delete). */
+    this._requestClose = () => {
+      this.dispatchEvent(new CustomEvent("close"));
+    };
     this._handleEditDetailScroll = (event) => {
       const scrollEl = event.currentTarget;
       if (!scrollEl) return;
@@ -5108,8 +6521,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     };
     this._handleRoleAssign = (group, deviceId) => {
       this._roleMenuOpen = null;
-      if (!this._editBundle || this._editDetailId == null) return;
-      const current = activityRoleAssignments(this._editBundle, Number(this._editDetailId)).find((role) => role.group === group);
+      if (!this.bundle || this.entityId == null) return;
+      const current = activityRoleAssignments(this.bundle, Number(this.entityId)).find((role) => role.group === group);
       if (current && current.deviceId === deviceId && current.state !== "customized" && deviceId != null) return;
       if (current && (current.state === "customized" || current.state === "custom")) {
         this._roleConfirm = { group, deviceId };
@@ -5132,16 +6545,16 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     };
     this._handleAddMemberDevice = (deviceId) => {
       this._addDeviceMenuOpen = false;
-      if (!this._editBundle || this._editDetailId == null) return;
+      if (!this.bundle || this.entityId == null) return;
       this._commitEditBundleEdit(
-        addActivityMemberDevice(this._editBundle, Number(this._editDetailId), deviceId)
+        addActivityMemberDevice(this.bundle, Number(this.entityId), deviceId)
       );
     };
     this._openMemberRemoveConfirm = (member) => {
-      if (this._editDetailId == null) return;
+      if (this.entityId == null) return;
       this._confirmDeleteTarget = {
         kind: "activity_member",
-        activityId: Number(this._editDetailId),
+        activityId: Number(this.entityId),
         deviceId: member.deviceId
       };
       this._confirmDeleteLabel = member.deviceName;
@@ -5158,27 +6571,27 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       if (this._editRenameDialogTarget?.kind === "device_ip") {
         this._editRenameDialogDraft = input.value;
       } else {
-        const value = this._sanitizeBundleName(input.value);
+        const value = sanitizeBundleName(this.bundle, input.value);
         input.value = value;
         this._editRenameDialogDraft = value;
       }
       this._editRenameDialogError = "";
     };
     this._openDetailRenameDialog = () => {
-      if (!this._editDetailKind || this._editDetailId == null) return;
+      if (!this.kind || this.entityId == null) return;
       this._editRenameDialogTarget = {
         kind: "detail",
-        entityKind: this._editDetailKind,
-        entityId: this._editDetailId
+        entityKind: this.kind,
+        entityId: this.entityId
       };
       this._editRenameDialogDraft = this._selectedEditTitle();
       this._editRenameDialogError = "";
       this._editRenameDialogOpen = true;
     };
     this._openHubNameRenameDialog = () => {
-      if (!this._editBundle) return;
+      if (!this.bundle) return;
       this._editRenameDialogTarget = { kind: "hub_name" };
-      this._editRenameDialogDraft = this._sanitizeBundleName(String(this._editBundle.hub?.name ?? ""));
+      this._editRenameDialogDraft = sanitizeBundleName(this.bundle, String(this.bundle.hub?.name ?? ""));
       this._editRenameDialogError = "";
       this._editRenameDialogDecodedSnapshot = null;
       this._editRenameDialogDecodedDrafts = {};
@@ -5195,9 +6608,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     };
     // ── Delete (with cascade-aware confirm) ─────────────────────────────
     this._openDetailDeleteConfirm = () => {
-      if (!this._editDetailKind || this._editDetailId == null) return;
-      const id = Number(this._editDetailId);
-      this._confirmDeleteTarget = this._editDetailKind === "activity" ? { kind: "activity", activityId: id } : { kind: "device", deviceId: id };
+      if (!this.kind || this.entityId == null) return;
+      const id = Number(this.entityId);
+      this._confirmDeleteTarget = this.kind === "activity" ? { kind: "activity", activityId: id } : { kind: "device", deviceId: id };
       this._confirmDeleteLabel = this._selectedEditTitle();
     };
     this._closeDeleteConfirm = () => {
@@ -5206,10 +6619,10 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     };
     this._confirmDelete = () => {
       const target = this._confirmDeleteTarget;
-      if (!target || !this._editBundle) return;
-      this._commitEditBundleEdit(applyBundleDelete(this._editBundle, target));
+      if (!target || !this.bundle) return;
+      this._commitEditBundleEdit(applyBundleDelete(this.bundle, target));
       if (target.kind === "activity" || target.kind === "device") {
-        this._closeEditDetail();
+        this._requestClose();
       }
       this._closeDeleteConfirm();
     };
@@ -5218,17 +6631,17 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     // a device command, a custom action (steps picked next), or a Home
     // Assistant action. The kind selector swaps the dialog's fields.
     this._openAddShortcutDialog = () => {
-      if (this._editDetailId == null || !this._editBundle) return;
-      const devices = bundleDeviceOptions(this._editBundle);
+      if (this.entityId == null || !this.bundle) return;
+      const devices = bundleDeviceOptions(this.bundle);
       const firstDeviceId = devices[0]?.id ?? null;
-      const commands = firstDeviceId != null ? deviceCommandItems(this._editBundle, firstDeviceId) : [];
+      const commands = firstDeviceId != null ? deviceCommandItems(this.bundle, firstDeviceId) : [];
       this._addShortcutKind = "command";
       this._addFavoriteDeviceId = firstDeviceId;
       this._addFavoriteCommandId = commands[0]?.commandId ?? null;
       this._addFavoriteName = commands[0]?.label ?? "";
       this._addFavoriteError = "";
       this._addShortcutActionName = "";
-      const existing = bundleHaActionTarget(this._editBundle);
+      const existing = bundleHaActionTarget(this.bundle);
       let prefill = existing ? `${existing.host}:${existing.port}` : "";
       if (!prefill && typeof window !== "undefined") {
         const candidate = parseHaActionAddress(window.location.hostname);
@@ -5252,7 +6665,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._handleAddFavoriteDeviceChange = (event) => {
       const value = Number(event.target.value);
       this._addFavoriteDeviceId = Number.isFinite(value) ? value : null;
-      const commands = this._addFavoriteDeviceId != null && this._editBundle ? deviceCommandItems(this._editBundle, this._addFavoriteDeviceId) : [];
+      const commands = this._addFavoriteDeviceId != null && this.bundle ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId) : [];
       this._addFavoriteCommandId = commands[0]?.commandId ?? null;
       this._addFavoriteName = commands[0]?.label ?? "";
       this._addFavoriteError = "";
@@ -5260,8 +6673,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._handleAddFavoriteCommandChange = (event) => {
       const value = Number(event.target.value);
       this._addFavoriteCommandId = Number.isFinite(value) ? value : null;
-      if (this._editBundle && this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null) {
-        const command = deviceCommandItems(this._editBundle, this._addFavoriteDeviceId).find((item) => item.commandId === this._addFavoriteCommandId);
+      if (this.bundle && this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null) {
+        const command = deviceCommandItems(this.bundle, this._addFavoriteDeviceId).find((item) => item.commandId === this._addFavoriteCommandId);
         this._addFavoriteName = command?.label ?? "";
       }
       this._addFavoriteError = "";
@@ -5270,15 +6683,15 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._addFavoriteName = event.target.value;
     };
     this._applyAddFavorite = () => {
-      if (!this._editBundle || this._editDetailId == null) return;
+      if (!this.bundle || this.entityId == null) return;
       if (this._addFavoriteDeviceId == null || this._addFavoriteCommandId == null) {
         this._addFavoriteError = TOOLS_CARD_STRINGS.backup.addFavoriteNoCommands;
         return;
       }
-      const name = this._sanitizeBundleName(this._addFavoriteName);
+      const name = sanitizeBundleName(this.bundle, this._addFavoriteName);
       this._commitEditBundleEdit(addBundleActivityFavorite(
-        this._editBundle,
-        Number(this._editDetailId),
+        this.bundle,
+        Number(this.entityId),
         this._addFavoriteDeviceId,
         this._addFavoriteCommandId,
         name
@@ -5286,15 +6699,15 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._closeAddFavoriteDialog();
     };
     this._applyAddShortcut = () => {
-      if (!this._editBundle || this._editDetailId == null) return;
+      if (!this.bundle || this.entityId == null) return;
       if (this._addShortcutKind === "command") {
         this._applyAddFavorite();
         return;
       }
       if (this._addShortcutKind === "action") {
-        const activityId = Number(this._editDetailId);
-        const name = this._sanitizeBundleName(this._addShortcutActionName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
-        const next = addActivityUserMacro(this._editBundle, activityId, name);
+        const activityId = Number(this.entityId);
+        const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
+        const next = addActivityUserMacro(this.bundle, activityId, name);
         this._commitEditBundleEdit(next);
         this._closeAddFavoriteDialog();
         const summaries = activityUserMacroSummaries(next, activityId);
@@ -5312,8 +6725,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._haActionError = "";
     };
     this._applyHaAction = () => {
-      if (!this._editBundle || this._editDetailId == null) return;
-      const name = this._sanitizeBundleName(this._haActionName).trim();
+      if (!this.bundle || this.entityId == null) return;
+      const name = sanitizeBundleName(this.bundle, this._haActionName).trim();
       if (!name) {
         this._haActionError = TOOLS_CARD_STRINGS.backup.haActionNameRequired;
         return;
@@ -5323,7 +6736,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         this._haActionError = TOOLS_CARD_STRINGS.backup.haActionInvalidAddress;
         return;
       }
-      const next = addActivityHaActionFavorite(this._editBundle, Number(this._editDetailId), name, target);
+      const next = addActivityHaActionFavorite(this.bundle, Number(this.entityId), name, target);
       if (!next) {
         this._haActionError = TOOLS_CARD_STRINGS.backup.haActionNoSlots;
         return;
@@ -5331,64 +6744,20 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._commitEditBundleEdit(next);
       this._closeAddFavoriteDialog();
     };
-    this._openEditFilePicker = () => {
-      this.renderRoot.querySelector("#edit-file-input")?.click();
-    };
-    this._handleEditFilePicked = async (event) => {
-      const input = event.currentTarget;
-      const file = input?.files?.[0];
-      if (!file) return;
-      this._editError = null;
-      try {
-        const text = await file.text();
-        const bundle = validateBackupBundle(JSON.parse(text));
-        this._editBundle = bundle;
-        this._editFilename = file.name;
-        this._editBundleDirty = false;
-        this._closeEditDetail();
-      } catch (error) {
-        this._editBundle = null;
-        this._editFilename = "";
-        this._editBundleDirty = false;
-        this._closeEditDetail();
-        this._editError = formatError(error);
-      } finally {
-        if (input) input.value = "";
-      }
-    };
-    this._closeEditDetail = () => {
-      this._editDetailKind = null;
-      this._editDetailId = null;
-      this._editDetailActiveSection = "power";
-      this._powerControlMenuOpen = false;
-      this._addDeviceMenuOpen = false;
-      this._roleMenuOpen = null;
-      this._roleConfirm = null;
-      this._bindingsView = false;
-      this._endIdleMenuDeviceId = null;
-      this._closeHaActionDialog();
-      this._editDetailNameDraft = "";
-      this._closeEditRenameDialog();
-      this._closeDeleteConfirm();
-      this._closeAddFavoriteDialog();
-      this._closeBindingDialog();
-      this._macroEditor = null;
-      this._closeStepDialog();
-    };
     this._applyEditRenameDialog = () => {
       const target = this._editRenameDialogTarget;
-      if (!target || !this._editBundle) return;
+      if (!target || !this.bundle) return;
       if (target.kind === "device_ip") {
         const draft = this._editRenameDialogDraft.trim();
         if (draft && !IPV4_PATTERN.test(draft)) {
           this._editRenameDialogError = "Enter a dotted-decimal IPv4 address (e.g. 192.168.1.42), or clear the field to remove the IP.";
           return;
         }
-        this._commitEditBundleEdit(updateBundleDeviceIp(this._editBundle, target.deviceId, draft));
+        this._commitEditBundleEdit(updateBundleDeviceIp(this.bundle, target.deviceId, draft));
         this._closeEditRenameDialog();
         return;
       }
-      const next = this._sanitizeBundleName(this._editRenameDialogDraft);
+      const next = sanitizeBundleName(this.bundle, this._editRenameDialogDraft);
       if (!next) {
         this._editRenameDialogError = "Enter a name to continue.";
         return;
@@ -5401,12 +6770,12 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         return;
       }
       if (target.kind === "hub_name") {
-        this._commitEditBundleEdit(renameBundleHub(this._editBundle, next));
+        this._commitEditBundleEdit(renameBundleHub(this.bundle, next));
         this._closeEditRenameDialog();
         return;
       }
       if (target.kind === "macro") {
-        this._commitEditBundleEdit(renameBundleActivityMacro(this._editBundle, target.activityId, target.buttonId, next));
+        this._commitEditBundleEdit(renameBundleActivityMacro(this.bundle, target.activityId, target.buttonId, next));
         if (this._macroEditor && this._macroEditor.scope === "activity" && this._macroEditor.entityId === target.activityId && this._macroEditor.buttonId === target.buttonId) {
           this._macroEditor = { ...this._macroEditor, name: next };
         }
@@ -5414,7 +6783,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         return;
       }
       if (target.kind === "command") {
-        let nextBundle = renameBundleDeviceCommand(this._editBundle, target.deviceId, target.commandId, next);
+        let nextBundle = renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next);
         const snapshot = this._editRenameDialogDecodedSnapshot;
         if (snapshot) {
           const changedFields = this._collectChangedDecodedFields(snapshot);
@@ -5431,78 +6800,28 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         this._closeEditRenameDialog();
         return;
       }
-      this._commitEditBundleEdit(renameBundleActivityFavorite(this._editBundle, target.activityId, target.buttonId, next));
+      this._commitEditBundleEdit(renameBundleActivityFavorite(this.bundle, target.activityId, target.buttonId, next));
       this._closeEditRenameDialog();
-    };
-    this._handleEditActivityOrderSort = (event) => {
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      this._reorderEditTopLevel(event, "activity");
-    };
-    this._handleEditDeviceOrderSort = (event) => {
-      event.stopPropagation();
-      event.stopImmediatePropagation();
-      this._reorderEditTopLevel(event, "device");
     };
     this._handleActivityQuickAccessSort = (event) => {
       event.stopPropagation();
       event.stopImmediatePropagation();
-      if (!this._editBundle || this._editDetailId == null) return;
+      if (!this.bundle || this.entityId == null) return;
       const sortableEvent = event;
       const oldIndex = Number(sortableEvent.detail?.oldIndex);
       const newIndex = Number(sortableEvent.detail?.newIndex);
       if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
-      const items = activityQuickAccessItems(this._editBundle, this._editDetailId);
+      const items = activityQuickAccessItems(this.bundle, this.entityId);
       if (oldIndex < 0 || newIndex < 0 || oldIndex >= items.length || newIndex >= items.length) return;
       const nextItems = [...items];
       const [moved] = nextItems.splice(oldIndex, 1);
       if (!moved) return;
       nextItems.splice(newIndex, 0, moved);
       this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
-        this._editBundle,
-        this._editDetailId,
+        this.bundle,
+        this.entityId,
         nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
       ));
-    };
-    this._downloadEditedBundle = async () => {
-      if (!this._editBundle || !this.hass || !this.hub) return;
-      const base = this._editFilename.replace(/\.json$/i, "") || "sofabaton_backup";
-      const filename = `${base}_edited.json`;
-      let operationId = "";
-      try {
-        const result = await this.api().stashEditedBackup(this.hub.entry_id, this._editBundle, filename);
-        operationId = String(result?.operation_id || "");
-      } catch (error) {
-        this._editError = formatError(error);
-        return;
-      }
-      if (!operationId) {
-        this._editError = "Failed to prepare edited backup for download.";
-        return;
-      }
-      const path = `/api/sofabaton_x1s/backup/download/${encodeURIComponent(operationId)}`;
-      let url = path;
-      try {
-        const signed = await this.hass.callWS({
-          type: "auth/sign_path",
-          path,
-          expires: 600
-        });
-        if (signed?.path) url = signed.path;
-      } catch (error) {
-        console.error("[sofabaton] auth/sign_path failed", error);
-        this._editError = formatError(error);
-        return;
-      }
-      const anchor = document.createElement("a");
-      anchor.target = "_blank";
-      anchor.href = url;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      anchor.dispatchEvent(new MouseEvent("click"));
-      document.body.removeChild(anchor);
-      this._clearEditSession();
-      this._editBundleDirty = false;
     };
     this._closeBindingDialog = () => {
       this._bindingDialogOpen = false;
@@ -5531,9 +6850,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._handleBindingLongPressToggle = (event) => {
       const enabled = Boolean(event.target.checked);
       this._bindingLongPressEnabled = enabled;
-      if (!enabled || !this._editBundle) return;
+      if (!enabled || !this.bundle) return;
       if (this._bindingLpDeviceId == null) {
-        this._bindingLpDeviceId = this._bindingScope === "activity" ? this._bindingDeviceId : Number(this._editDetailId);
+        this._bindingLpDeviceId = this._bindingScope === "activity" ? this._bindingDeviceId : Number(this.entityId);
       }
       if (this._bindingLpCommandId == null) {
         this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
@@ -5549,17 +6868,17 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._bindingLpCommandId = Number.isFinite(value) ? value : null;
     };
     this._applyBinding = () => {
-      if (!this._editBundle || this._editDetailId == null) return;
+      if (!this.bundle || this.entityId == null) return;
       const buttonId = Number(this._bindingButtonId);
       const commandId = Number(this._bindingCommandId);
-      const entityId = Number(this._editDetailId);
+      const entityId = Number(this.entityId);
       if (!buttonId || !commandId || this._bindingScope === "activity" && !this._bindingDeviceId) {
         this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
         return;
       }
       if (this._bindingScope === "activity") {
         const longPress = this._bindingLongPressEnabled && this._bindingLpDeviceId && this._bindingLpCommandId ? { deviceId: Number(this._bindingLpDeviceId), commandId: Number(this._bindingLpCommandId) } : null;
-        this._commitEditBundleEdit(upsertActivityButtonBinding(this._editBundle, entityId, {
+        this._commitEditBundleEdit(upsertActivityButtonBinding(this.bundle, entityId, {
           buttonId,
           deviceId: Number(this._bindingDeviceId),
           commandId,
@@ -5567,7 +6886,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         }));
       } else {
         const longPressCommandId = this._bindingLongPressEnabled && this._bindingLpCommandId ? Number(this._bindingLpCommandId) : null;
-        this._commitEditBundleEdit(upsertDeviceButtonBinding(this._editBundle, entityId, {
+        this._commitEditBundleEdit(upsertDeviceButtonBinding(this.bundle, entityId, {
           buttonId,
           commandId,
           longPressCommandId
@@ -5594,12 +6913,12 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     };
     this._openAddStepDialog = () => {
       const editor = this._macroEditor;
-      if (!editor || !this._editBundle) return;
+      if (!editor || !this.bundle) return;
       this._stepDialogEditIndex = null;
       this._stepKind = "command";
-      this._stepDeviceId = editor.scope === "activity" ? bundleDeviceOptions(this._editBundle)[0]?.id ?? null : editor.entityId;
+      this._stepDeviceId = editor.scope === "activity" ? bundleDeviceOptions(this.bundle)[0]?.id ?? null : editor.entityId;
       const commandDeviceId = editor.scope === "activity" ? this._stepDeviceId : editor.entityId;
-      const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
+      const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
       this._stepCommandId = commands[0]?.commandId ?? null;
       this._stepHoldSeconds = "0";
       this._stepError = "";
@@ -5617,7 +6936,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._handleStepDeviceChange = (event) => {
       const value = Number(event.target.value);
       this._stepDeviceId = Number.isFinite(value) ? value : null;
-      const commands = this._stepDeviceId != null && this._editBundle ? deviceCommandItems(this._editBundle, this._stepDeviceId) : [];
+      const commands = this._stepDeviceId != null && this.bundle ? deviceCommandItems(this.bundle, this._stepDeviceId) : [];
       this._stepCommandId = commands[0]?.commandId ?? null;
     };
     this._handleStepCommandChange = (event) => {
@@ -5635,23 +6954,23 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     // Inline per-row wait edit: the attached delay travels with its command.
     this._handleStepWaitChange = (item, event) => {
       const editor = this._macroEditor;
-      if (!editor || !this._editBundle) return;
+      if (!editor || !this.bundle) return;
       const input = event.target;
       const waitByte = this._secondsToByte(input.value);
       input.value = this._byteToSeconds(waitByte);
-      const next = editor.scope === "device" ? setDeviceMacroStepWait(this._editBundle, editor.entityId, editor.buttonId, item.index, waitByte) : setActivityMacroStepWait(this._editBundle, editor.entityId, editor.buttonId, item.index, waitByte);
+      const next = editor.scope === "device" ? setDeviceMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte) : setActivityMacroStepWait(this.bundle, editor.entityId, editor.buttonId, item.index, waitByte);
       this._commitEditBundleEdit(next);
     };
     this._applyStep = () => {
       const editor = this._macroEditor;
-      if (!editor || !this._editBundle) return;
+      if (!editor || !this.bundle) return;
       const timeByte = this._secondsToByte(this._stepHoldSeconds);
       const editIndex = this._stepDialogEditIndex;
       const isDevice = editor.scope === "device";
       if (this._stepKind === "input") {
         const deviceId2 = Number(this._stepDeviceId);
         if (deviceId2 > 0) {
-          const next2 = this._stepCommandId == null ? clearActivityDeviceInput(this._editBundle, editor.entityId, deviceId2) : setActivityDeviceInput(this._editBundle, editor.entityId, deviceId2, Number(this._stepCommandId));
+          const next2 = this._stepCommandId == null ? clearActivityDeviceInput(this.bundle, editor.entityId, deviceId2) : setActivityDeviceInput(this.bundle, editor.entityId, deviceId2, Number(this._stepCommandId));
           this._commitEditBundleEdit(next2);
         }
         this._closeStepDialog();
@@ -5665,9 +6984,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       const deviceId = Number(this._stepDeviceId);
       let next;
       if (editIndex === null) {
-        next = isDevice ? addDeviceMacroCommandStep(this._editBundle, editor.entityId, editor.buttonId, commandId, timeByte) : addActivityMacroCommandStep(this._editBundle, editor.entityId, editor.buttonId, deviceId, commandId, timeByte);
+        next = isDevice ? addDeviceMacroCommandStep(this.bundle, editor.entityId, editor.buttonId, commandId, timeByte) : addActivityMacroCommandStep(this.bundle, editor.entityId, editor.buttonId, deviceId, commandId, timeByte);
       } else {
-        next = isDevice ? updateDeviceMacroStep(this._editBundle, editor.entityId, editor.buttonId, editIndex, { commandId, hold: timeByte }) : updateActivityMacroStep(this._editBundle, editor.entityId, editor.buttonId, editIndex, { deviceId, commandId, hold: timeByte });
+        next = isDevice ? updateDeviceMacroStep(this.bundle, editor.entityId, editor.buttonId, editIndex, { commandId, hold: timeByte }) : updateActivityMacroStep(this.bundle, editor.entityId, editor.buttonId, editIndex, { deviceId, commandId, hold: timeByte });
       }
       this._commitEditBundleEdit(next);
       this._closeStepDialog();
@@ -5676,7 +6995,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       event.stopPropagation();
       event.stopImmediatePropagation();
       const editor = this._macroEditor;
-      if (!editor || !this._editBundle) return;
+      if (!editor || !this.bundle) return;
       const sortableEvent = event;
       const oldIndex = Number(sortableEvent.detail?.oldIndex);
       const newIndex = Number(sortableEvent.detail?.newIndex);
@@ -5686,76 +7005,20 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       const order = items.map((_2, index) => index);
       const [moved] = order.splice(oldIndex, 1);
       order.splice(newIndex, 0, moved);
-      const next = editor.scope === "device" ? reorderDeviceMacroSteps(this._editBundle, editor.entityId, editor.buttonId, order) : reorderActivityMacroSteps(this._editBundle, editor.entityId, editor.buttonId, order);
+      const next = editor.scope === "device" ? reorderDeviceMacroSteps(this.bundle, editor.entityId, editor.buttonId, order) : reorderActivityMacroSteps(this.bundle, editor.entityId, editor.buttonId, order);
       this._commitEditBundleEdit(next);
     };
     this._togglePowerControlMenu = () => {
       this._powerControlMenuOpen = !this._powerControlMenuOpen;
     };
-    this._toggleAllBackupDevices = () => {
-      const devices = backupDeviceOptions(this.cacheHub);
-      const allIds = devices.map((device) => device.id);
-      this._backupDeviceIds = this._backupDeviceIds.length === allIds.length ? [] : allIds;
-    };
-    this._selectAllRestoreItems = () => {
-      const activities = bundleActivityOptions(this._restoreBundle).map((activity) => activity.id);
-      const devices = bundleDeviceOptions(this._restoreBundle).map((device) => device.id);
-      this._restoreActivityIds = activities;
-      this._restoreManualDeviceIds = devices;
-    };
-    this._clearRestoreSelection = () => {
-      this._restoreActivityIds = [];
-      this._restoreManualDeviceIds = [];
-    };
-    this._resetBackupComposer = () => {
-      this._backupError = null;
-      this._backupProgress = null;
-      this._backupScope = "whole_hub";
-      this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
-    };
-    this._resetRestoreComposer = () => {
-      this._restoreError = null;
-      this._restoreSuccess = null;
-      this._restoreProgress = null;
-      this._restoreMode = "merge";
-    };
   }
   static {
     this.properties = {
-      hass: { attribute: false },
-      hub: { attribute: false },
-      cacheHub: { attribute: false },
-      setHubCommandBusy: { attribute: false },
-      refreshControlPanelState: { attribute: false },
-      hubCommandBusy: { type: Boolean },
-      hubCommandBusyLabel: { type: String },
-      loading: { type: Boolean },
-      error: { type: String },
-      persistentCacheEnabled: { type: Boolean },
-      selectedHubProxyConnected: { type: Boolean },
-      blockedTitle: { type: String },
-      blockedMessage: { type: String },
-      selectedSection: { attribute: false },
-      setSelectedSection: { attribute: false },
-      _backupScope: { state: true },
-      _backupDeviceIds: { state: true },
-      _backupError: { state: true },
-      _backupProgress: { state: true },
-      _restoreError: { state: true },
-      _restoreSuccess: { state: true },
-      _restoreProgress: { state: true },
-      _restoreMode: { state: true },
-      _restoreBundle: { state: true },
-      _restoreFilename: { state: true },
-      _restoreActivityIds: { state: true },
-      _restoreManualDeviceIds: { state: true },
-      _loadedBackupEntryId: { state: true },
-      _backupHydrating: { state: true },
-      _editBundle: { state: true },
-      _editFilename: { state: true },
-      _editError: { state: true },
-      _editDetailKind: { state: true },
-      _editDetailId: { state: true },
+      bundle: { attribute: false },
+      kind: { attribute: false },
+      entityId: { attribute: false },
+      dirty: { type: Boolean },
+      mode: { type: String },
       _editDetailActiveSection: { state: true },
       _editDetailNameDraft: { state: true },
       _editRenameDialogOpen: { state: true },
@@ -5790,7 +7053,6 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       _stepCommandId: { state: true },
       _stepHoldSeconds: { state: true },
       _stepError: { state: true },
-      _editBundleDirty: { state: true },
       _haSortableReady: { state: true },
       _powerControlMenuOpen: { state: true },
       _addDeviceMenuOpen: { state: true },
@@ -5806,1458 +7068,14 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     };
   }
   static {
-    this.styles = [secondaryTabStyles, operationProgressStyles, activityEditorStyles, i`
+    // The whole backup-tab stylesheet ships to both shadow roots (see
+    // backup-tab-styles.ts); the :host rule it carries gives this element
+    // the same flex-fill layout the tab-panel had inside backup-tab.
+    this.styles = [activityEditorStyles, backupTabStyles, i`
     :host {
-      display: flex;
-      flex: 1;
-      min-height: 0;
-      --backup-radius-sm: calc(var(--ha-card-border-radius, 12px) * 0.85);
-      --backup-radius-md: var(--ha-card-border-radius, 12px);
-      --backup-radius-lg: calc(var(--ha-card-border-radius, 12px) * 1.33);
-      --backup-radius-xl: calc(var(--ha-card-border-radius, 12px) * 1.8);
-      --backup-radius-pill: calc(var(--ha-card-border-radius, 12px) * 999);
-    }
-    .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
-    .state {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--secondary-text-color);
-      text-align: center;
-      padding: 24px;
-      line-height: 1.6;
-    }
-    .state.error { color: var(--error-color, #db4437); }
-    .blocked-state {
-      flex: 1;
-      display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 24px 16px;
-      text-align: center;
-      color: var(--secondary-text-color);
-      line-height: 1.6;
-    }
-    .blocked-state-title {
-      color: var(--primary-text-color);
-      font-size: 16px;
-      font-weight: 700;
-    }
-    .blocked-state-sub {
-      max-width: 340px;
-      font-size: 13px;
-    }
-    .backup-panel {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-    }
-    .backup-body {
-      gap: 12px;
-    }
-    .restore-body {
-      gap: 12px;
-    }
-
-    .header-primary-btn {
-      flex: 0 0 auto;
-      min-width: 114px;
-      min-height: 42px;
-      padding: 0 18px;
-      border-radius: var(--backup-radius-md);
-      border: 1px solid color-mix(in srgb, var(--primary-color) 75%, white 10%);
-      background: color-mix(in srgb, var(--primary-color) 20%, white 80%);
-      color: var(--primary-color);
-      font: inherit;
-      font-size: 13px;
-      font-weight: 700;
-      line-height: 1;
-      cursor: pointer;
-      transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
-    }
-    .header-primary-btn:hover:not(:disabled) {
-      border-color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 24%, white 76%);
-    }
-    .header-primary-btn:disabled {
-      opacity: 0.45;
-      cursor: default;
-    }
-    .backup-action-row {
-      display: flex;
-      justify-content: flex-start;
-    }
-    .backup-drawer-sub { color: var(--secondary-text-color); font-size: 13px; line-height: 1.5; }
-    .backup-section-title { color: var(--primary-text-color); font-size: 13px; font-weight: 700; }
-
-    .backup-config-view {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .restore-config-view {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .backup-scope-group { display: grid; gap: 8px; }
-    ha-radio-group.scope-form--md {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      width: 100%;
-      --ha-radio-option-active-color: var(--primary-color);
-      --ha-radio-option-checked-background-color: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
-    }
-    ha-radio-group.scope-form--md ha-radio-option {
-      min-width: 0;
-    }
-    @media (max-width: 380px) {
-      ha-radio-group.scope-form--md { grid-template-columns: 1fr; }
-    }
-    .compat-radio-group {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      width: 100%;
-    }
-    .compat-radio-option {
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 14px;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-md);
-      background: var(--ha-card-background, var(--card-background-color));
-      color: var(--primary-text-color);
-      cursor: pointer;
-      transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
-    }
-    .compat-radio-option:hover {
-      border-color: color-mix(in srgb, var(--primary-color) 45%, var(--divider-color));
-    }
-    .compat-radio-option.selected {
-      border-color: color-mix(in srgb, var(--primary-color) 70%, var(--divider-color));
-      background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .compat-radio-option.disabled {
-      opacity: 0.58;
-      cursor: default;
-    }
-    .compat-radio-option-label {
-      min-width: 0;
-      flex: 1 1 auto;
-      font-size: 13px;
-      font-weight: 600;
-      line-height: 1.4;
-    }
-    @media (max-width: 380px) {
-      .compat-radio-group { grid-template-columns: 1fr; }
-    }
-    .compat-choice {
-      width: 18px;
-      height: 18px;
-      margin: 0;
-      flex: 0 0 auto;
-      accent-color: var(--primary-color);
-    }
-
-    .backup-devices-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    .backup-devices-head-main {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      flex-wrap: wrap;
-    }
-    .backup-selected-count {
-      color: var(--primary-color);
-      font-size: 12px;
-      font-weight: 700;
-    }
-    .backup-link-btn {
-      border: none;
-      background: transparent;
-      color: var(--primary-color);
-      font: inherit;
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      padding: 0;
-    }
-    .backup-link-btn:disabled { opacity: 0.48; cursor: default; }
-
-    .selection-card {
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-md);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
-      overflow: hidden;
-      min-height: 0;
-    }
-    .backup-config-view .selection-card {
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-    .restore-config-view .selection-card {
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-    .edit-config-view .selection-card {
-      flex: 1 1 auto;
-      min-height: 0;
-    }
-    .selection-list { display: flex; flex-direction: column; max-height: 340px; overflow-y: auto; }
-    .backup-config-view .selection-list {
-      max-height: none;
-      height: 100%;
-      min-height: 0;
-    }
-    .restore-config-view .selection-list {
-      max-height: none;
-      height: 100%;
-      min-height: 0;
-    }
-    .edit-config-view .selection-list {
-      max-height: none;
-      height: 100%;
-      min-height: 0;
-    }
-    .selection-empty {
-      padding: 16px 14px;
-      font-size: 13px;
-      color: var(--secondary-text-color);
-    }
-    .selection-group-header {
-      position: sticky;
-      top: 0;
-      z-index: 1;
-      display: flex;
-      align-items: center;
-      min-height: 36px;
-      padding: 0 14px;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--secondary-text-color);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 94%, white 6%);
-      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
-    }
-    .selection-group-header:first-child { border-top: none; }
-    .edit-config-view .selection-group-header {
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 94%, white 6%);
-    }
-    .selection-row {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      padding: 10px 14px;
-      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
-      cursor: pointer;
-    }
-    .selection-row:first-child { border-top: none; }
-    .selection-row ha-checkbox { flex: 0 0 auto; }
-    .selection-main {
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-      flex: 1 1 auto;
-    }
-    .selection-label {
-      color: var(--primary-text-color);
-      font-size: 13px;
-      font-weight: 600;
-    }
-    .selection-meta {
-      color: var(--secondary-text-color);
-      font-size: 12px;
-      font-weight: 600;
-      white-space: nowrap;
-      margin-left: 8px;
-    }
-    .selection-sub {
-      color: var(--secondary-text-color);
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    .edit-body { padding-top: 0; padding-bottom: 8px; display: flex; flex-direction: column; gap: 8px; align-content: normal; }
-    .edit-config-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-    .edit-selection-row {
-      width: 100%;
-      border: none;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      text-align: left;
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      padding: 10px 14px;
-      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
-      cursor: pointer;
-    }
-    .edit-selection-row:first-child { border-top: none; }
-    .edit-selection-row:hover {
-      background: color-mix(in srgb, var(--primary-color) 6%, transparent);
-    }
-    .edit-order-sortable { display: block; }
-    .edit-order-sortable-container { display: block; }
-    /* Inside a sortable wrapper, ":first-child" of the row would not match
-       (the row's parent is the wrapper, not the list). Re-strip the border
-       on the first row of each wrapped group so groups still read cleanly. */
-    .edit-order-sortable-container .edit-selection-row:first-child { border-top: none; }
-    .edit-row-drag {
-      flex: 0 0 auto;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--secondary-text-color);
-      cursor: grab;
-      touch-action: none;
-      padding: 2px;
-      margin-left: -4px;
-    }
-    .edit-row-drag:active { cursor: grabbing; }
-    .edit-row-drag ha-icon { --mdc-icon-size: 18px; }
-    .selection-chevron {
-      color: var(--secondary-text-color);
-      flex: 0 0 auto;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .selection-chevron ha-icon { --mdc-icon-size: 18px; }
-
-    /* ── Automatic-power dropdown (device Power section) ─────────────── */
-    /* Genuine overlay popup: the menu is absolutely positioned so opening
-       it never reflows the sequence rows below. A transparent fixed
-       backdrop catches click-away. */
-    /* The control is its own field, a sibling of (not inside) the
-       sequence list, so the list's overflow:hidden can't clip the popup. */
-    .power-control {
-      position: relative;
-      display: block;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-lg);
-      background: var(--ha-card-background, var(--card-background-color));
-    }
-    .power-control-trigger {
-      width: 100%;
-      border: none;
-      border-radius: inherit;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      text-align: left;
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      padding: 10px 14px;
-      cursor: pointer;
-    }
-    .power-control-trigger:hover {
-      background: color-mix(in srgb, var(--primary-color) 6%, transparent);
-    }
-    .power-control-trigger .selection-chevron ha-icon { transition: transform 120ms ease; }
-    .power-control[data-open="true"] .power-control-trigger .selection-chevron ha-icon {
-      transform: rotate(180deg);
-    }
-    .power-control-backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 30;
-      border: none;
-      background: transparent;
-      padding: 0;
-      cursor: default;
-    }
-    .power-control-menu {
-      position: absolute;
-      top: calc(100% + 4px);
-      left: 0;
-      right: 0;
-      z-index: 31;
-      display: flex;
-      flex-direction: column;
-      background: var(--card-background-color, var(--ha-card-background, var(--secondary-background-color, #fff)));
-      border: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
-      border-radius: 10px;
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
-      overflow: hidden;
-    }
-    .power-control-option {
-      width: 100%;
-      border: none;
-      background: transparent;
-      color: inherit;
-      font: inherit;
-      text-align: left;
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      padding: 10px 14px;
-      border-top: 1px solid color-mix(in srgb, var(--divider-color) 50%, transparent);
-      cursor: pointer;
-    }
-    .power-control-option:first-child { border-top: none; }
-    .power-control-option:hover {
-      background: color-mix(in srgb, var(--primary-color) 8%, transparent);
-    }
-    .power-control-option[aria-checked="true"] .selection-label { color: var(--primary-color); }
-    .power-control-option .selection-chevron ha-icon { color: var(--primary-color); }
-
-    /* Power-on/off sequence rows, dimmed + inert when power control is off */
-    .power-sequences[data-disabled="true"] { opacity: 0.45; pointer-events: none; }
-    .power-sequences-note {
-      color: var(--secondary-text-color);
-      font-size: 12px;
-      line-height: 1.45;
-      padding: 8px 14px 0;
-    }
-    .tab-panel--detail { padding: 0; }
-    .detail-view {
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      overflow: hidden;
-    }
-    .sticky-header {
-      position: sticky;
-      z-index: 2;
-      background: var(--ha-card-background, var(--card-background-color));
-    }
-    .sticky-header { top: 0; }
-    .detail-scroll {
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    .detail-title-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      min-width: 0;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--divider-color);
-    }
-    .detail-title-main {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      min-width: 0;
-      flex: 1;
-    }
-    .detail-title-stack {
-      display: flex;
-      flex-direction: column;
-      min-width: 0;
-      flex: 1 1 auto;
-    }
-    .detail-crumbs {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      min-width: 0;
-      max-width: 100%;
-      overflow: hidden;
-      white-space: nowrap;
-      font-size: 11px;
-      line-height: 1.1;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
-      color: var(--secondary-text-color);
-    }
-    .detail-crumb {
-      flex: 0 1 auto;
-      min-width: 0;
-      border: none;
-      background: transparent;
-      padding: 0;
-      font: inherit;
-      color: var(--secondary-text-color);
-      cursor: pointer;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      transition: color 120ms ease;
-    }
-    .detail-crumb:hover {
-      color: var(--primary-color);
-      text-decoration: underline;
-    }
-    .detail-crumb-sep {
-      flex: 0 0 auto;
-      color: color-mix(in srgb, var(--secondary-text-color) 55%, transparent);
-    }
-    .detail-title-actions {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      flex: 0 0 auto;
-    }
-    .detail-title {
-      font-size: 18px;
-      font-weight: 700;
-      line-height: 1.15;
-      color: var(--primary-text-color);
-      min-width: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .detail-section-nav {
-      display: flex;
-      align-items: stretch;
-      min-height: 34px;
-      margin: 10px 16px;
-      border: 1px solid color-mix(in srgb, var(--divider-color) 88%, transparent);
-      border-radius: var(--backup-radius-md);
-      overflow: hidden;
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 76%, transparent);
-    }
-    .detail-section-nav-btn {
-      flex: 1 1 0;
-      min-width: 0;
-      min-height: 34px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 0 10px;
-      border: none;
-      border-right: 1px solid color-mix(in srgb, var(--divider-color) 82%, transparent);
-      background: transparent;
-      color: color-mix(in srgb, var(--secondary-text-color) 88%, var(--primary-text-color) 12%);
-      font: inherit;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-    .detail-section-nav-btn:last-child {
-      border-right: none;
-    }
-    .detail-section-nav-btn:hover {
-      background: color-mix(in srgb, var(--primary-color) 8%, transparent);
-      color: var(--primary-text-color);
-    }
-    .detail-section-nav-btn.active {
-      color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-      box-shadow: inset 0 -2px 0 var(--primary-color);
-    }
-    .detail-section-nav-btn ha-icon {
-      --mdc-icon-size: 16px;
-      flex: 0 0 auto;
-    }
-    .detail-section-nav-label {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-    /* Match the Wifi Commands tab's detail-view back button so the
-       affordance is identical across the card: padded pill with a
-       bold label-weight, content-sized (not a fixed square). */
-    .back-btn {
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      background: transparent;
-      color: var(--primary-text-color);
-      font: inherit;
-      font-weight: 700;
-      padding: 8px 12px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      flex: 0 0 auto;
-    }
-    .back-btn:hover {
-      border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
-    }
-    .edit-detail-card {
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-lg);
-      padding: 14px;
-      background: var(--ha-card-background, var(--card-background-color));
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .edit-detail-copy {
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-    .edit-field-group {
-      display: grid;
-      gap: 8px;
-    }
-    .edit-field-label {
-      color: var(--secondary-text-color);
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-    }
-    .edit-field-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-    }
-    .edit-row-input {
-      flex: 1 1 auto;
-      width: 100%;
-      min-width: 0;
-      max-width: 100%;
-      font: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--primary-text-color);
-      background: var(--ha-card-background, var(--card-background-color));
-      border: 1px solid color-mix(in srgb, var(--primary-color) 65%, var(--divider-color));
-      border-radius: var(--backup-radius-sm);
-      padding: 4px 10px;
-      outline: none;
-    }
-    .edit-row-input:focus { border-color: var(--primary-color); }
-    .edit-support-card {
-      border: 1px dashed color-mix(in srgb, var(--divider-color) 88%, transparent);
-      border-radius: var(--backup-radius-md);
-      padding: 12px 14px;
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      line-height: 1.5;
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
-    }
-    .icon-btn, .dialog-close {
-      flex: 0 0 auto;
-      width: 34px;
-      height: 34px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      background: var(--ha-card-background, var(--card-background-color));
-      color: var(--secondary-text-color);
-      cursor: pointer;
-      transition: border-color 120ms ease, background-color 120ms ease, transform 80ms ease, color 120ms ease;
-    }
-    .icon-btn:hover:not(:disabled),
-    .dialog-close:hover {
-      border-color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 10%, var(--ha-card-background, var(--card-background-color)));
-      color: var(--primary-text-color);
-    }
-    .icon-btn:active,
-    .dialog-close:active { transform: translateY(1px); }
-    .icon-btn:disabled { opacity: 0.45; cursor: default; }
-    .icon-btn ha-icon { --mdc-icon-size: 16px; }
-    /* Destructive variant of .icon-btn — used for the inline delete
-       (trash) action next to the rename pencil on rows and detail
-       headers. Resting state stays neutral so the row doesn't read as
-       alarming; the danger tone only appears on hover / focus. */
-    .icon-btn--danger:hover:not(:disabled) {
-      border-color: var(--error-color, #db4437);
-      background: color-mix(in srgb, var(--error-color, #db4437) 10%, var(--ha-card-background, var(--card-background-color)));
-      color: var(--error-color, #db4437);
-    }
-    .quick-access-head-main {
-      min-width: 0;
-      flex: 1 1 auto;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .quick-access-add-btn {
-      flex: 0 0 auto;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 7px 12px;
-      border-radius: var(--backup-radius-md);
-      border: 1px solid color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
-      background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-      color: var(--primary-color);
-      font: inherit;
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: border-color 120ms ease, background 120ms ease;
-    }
-    .quick-access-add-btn:hover {
-      border-color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 16%, transparent);
-    }
-    .quick-access-add-btn ha-icon { --mdc-icon-size: 16px; }
-    .quick-access-head-actions {
-      display: inline-flex;
-      gap: 8px;
-      flex: 0 0 auto;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-    .power-device-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr);
-      gap: 10px;
-      align-items: center;
-      padding: 12px 14px;
-    }
-    .power-device-main {
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .power-device-controls {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .power-field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      min-width: 0;
-      flex: 1 1 160px;
-    }
-    .power-field--delay { flex: 0 1 120px; }
-    .power-field-label {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--secondary-text-color);
-    }
-    .power-device-controls .decoded-field-input { font-size: 13px; }
-    .quick-access-section {
-      display: grid;
-      gap: 12px;
-      scroll-margin-top: 16px;
-    }
-    .quick-access-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    .quick-access-title {
-      color: var(--primary-text-color);
-      font-size: 14px;
-      font-weight: 700;
-    }
-    .quick-access-sub {
-      color: var(--secondary-text-color);
-      font-size: 12px;
-      line-height: 1.45;
-    }
-    .quick-access-list {
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-lg);
-      background: var(--ha-card-background, var(--card-background-color));
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-    /* Lists whose rows open absolutely-positioned overlay menus (role
-       pickers, idle-behavior pickers). overflow:hidden would clip the
-       popups at the list edge, so these opt into visible overflow; the
-       footer row carries its own corner radius instead. */
-    .quick-access-list--overlays {
-      overflow: visible;
-    }
-    .quick-access-sortable {
-      display: block;
-    }
-    .quick-access-sortable-container {
-      display: block;
-    }
-    .quick-access-sortable-item {
-      display: block;
-      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
-      user-select: none;
-      -webkit-user-select: none;
-    }
-    .quick-access-sortable-item:first-child {
-      border-top: none;
-    }
-    .quick-access-row {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: center;
-      padding: 12px 14px;
-    }
-    /* Variant for rows that don't carry a drag handle (e.g. Device commands,
-       which have no concept of ordering). Drop the leading column so the
-       label sits flush with the row padding. */
-    .quick-access-row--no-drag {
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
-    .quick-access-main {
-      min-width: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .quick-access-label-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-    }
-    .quick-access-label {
-      min-width: 0;
-      color: var(--primary-text-color);
-      font-size: 13px;
-      font-weight: 700;
-      line-height: 1.4;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .quick-access-chip {
-      flex: 0 0 auto;
-      border-radius: var(--backup-radius-pill);
-      padding: 3px 8px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
-      border: 1px solid var(--divider-color);
-      color: var(--secondary-text-color);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 74%, transparent);
-    }
-    .quick-access-meta {
-      color: var(--secondary-text-color);
-      font-size: 12px;
-      line-height: 1.4;
-    }
-    .quick-access-actions {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      flex: 0 0 auto;
-    }
-    /* Inline per-row wait control: the delay that trails this command.
-       The "Delay" caption stacks above the number inside the same bordered
-       pill so the label and field read as one piece. The caption is tiny
-       and the pill stays shorter than the row, so it adds no row height. */
-    .step-wait {
-      display: inline-flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 1px;
-      flex: 0 0 auto;
-      padding: 2px 6px 3px;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 60%, transparent);
-      cursor: text;
-    }
-    .step-wait:focus-within {
-      border-color: var(--primary-color);
-    }
-    .step-wait-caption {
-      font-size: 9px;
-      line-height: 1;
-      font-weight: 600;
-      letter-spacing: 0.4px;
-      text-transform: uppercase;
-      color: var(--secondary-text-color);
-      pointer-events: none;
-    }
-    .step-wait-field {
-      display: inline-flex;
-      align-items: baseline;
-      gap: 3px;
-    }
-    .step-wait-input {
-      width: 42px;
-      min-width: 0;
-      padding: 0;
-      border: none;
-      background: transparent;
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      text-align: right;
-      outline: none;
-      -moz-appearance: textfield;
-    }
-    .step-wait-input::-webkit-outer-spin-button,
-    .step-wait-input::-webkit-inner-spin-button {
-      -webkit-appearance: none;
-      margin: 0;
-    }
-    .step-wait-unit {
-      color: var(--secondary-text-color);
-      font-size: 12px;
-      font-weight: 600;
-    }
-    .quick-access-drag {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      cursor: grab;
-      touch-action: none;
-    }
-    .quick-access-drag:active {
-      cursor: grabbing;
-    }
-    .quick-access-empty {
-      border: 1px dashed color-mix(in srgb, var(--divider-color) 88%, transparent);
-      border-radius: var(--backup-radius-md);
-      padding: 12px 14px;
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      line-height: 1.5;
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
-    }
-    .dialog-btn {
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      padding: 8px 12px;
-      background: transparent;
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .dialog-btn:hover:not(:disabled) {
-      border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
-    }
-    .dialog-btn-primary {
-      border-color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 18%, transparent);
-    }
-    .dialog-btn-danger {
-      border-color: var(--error-color, #db4437);
-      color: var(--error-color, #db4437);
-      background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent);
-    }
-    .dialog-btn-danger:hover:not(:disabled) {
-      background: color-mix(in srgb, var(--error-color, #db4437) 18%, transparent);
-    }
-    .dialog-btn:disabled { opacity: 0.45; cursor: default; }
-    .delete-impact-list {
-      margin: 0;
-      padding: 0;
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .delete-impact-list li {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-size: 13px;
-      color: var(--primary-text-color);
-    }
-    .delete-impact-list ha-icon {
-      --mdc-icon-size: 18px;
-      color: var(--secondary-text-color);
-      flex: 0 0 auto;
-    }
-    .delete-replace-note {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12px;
-      color: var(--secondary-text-color);
-      line-height: 1.45;
-    }
-    .delete-replace-note ha-icon { --mdc-icon-size: 16px; flex: 0 0 auto; }
-    select.decoded-field-input { cursor: pointer; }
-    .binding-toggle-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-    }
-    .binding-static-field {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--primary-text-color);
-      padding: 8px 10px;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 54%, transparent);
-    }
-    .modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
-    .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
-    .dialog.small { width: min(500px, calc(100vw - 36px)); }
-    .dialog.medium { width: min(640px, calc(100vw - 36px)); }
-    /* "Advanced" foldout that wraps the structured-payload form
-       inside the Change Command dialog. Mirrors the Wifi Commands
-       command-config popup so the affordance reads the same way
-       across the card. */
-    .advanced-section {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      margin-top: 6px;
-      padding-top: 10px;
-      border-top: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
-    }
-    .advanced-toggle {
-      width: fit-content;
-      border: 0;
-      background: transparent;
-      color: var(--secondary-text-color);
-      padding: 0;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      text-align: left;
-      font: inherit;
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      cursor: pointer;
-    }
-    .advanced-toggle:hover { color: var(--primary-text-color); }
-    .advanced-toggle-copy { display: block; }
-    .advanced-toggle ha-icon { --mdc-icon-size: 18px; transition: transform 120ms ease; }
-    .advanced-toggle.expanded ha-icon { transform: rotate(180deg); }
-    .advanced-panel { display: grid; gap: 14px; padding-top: 2px; }
-    .decoded-form {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .decoded-form-head { display: flex; flex-direction: column; gap: 2px; }
-    .decoded-form-title {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--primary-text-color);
-    }
-    .decoded-form-sub {
-      font-size: 12px;
-      color: var(--secondary-text-color);
-      line-height: 1.4;
-    }
-    .decoded-field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .decoded-field-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--secondary-text-color);
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .decoded-field-input {
-      width: 100%;
-      box-sizing: border-box;
-      font: inherit;
-      font-size: 13px;
-      color: var(--primary-text-color);
-      background: var(--ha-color-form-background, var(--secondary-background-color));
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      padding: 8px 10px;
-    }
-    .decoded-field-input:focus {
-      outline: none;
-      border-color: var(--primary-color);
-    }
-    .decoded-field-input--multiline {
-      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
-      resize: vertical;
-      min-height: 60px;
-      white-space: pre;
-    }
-    /* Escaped wire-string fields are conceptually one long string with
-       visible \\n escapes. Wrap on the textarea edge rather than
-       overflowing horizontally, and break long URL-like tokens so the
-       string never runs off the right side. */
-    .decoded-field-input--escaped {
-      white-space: pre-wrap;
-      word-break: break-all;
-      overflow-wrap: anywhere;
-    }
-    .decoded-field-helper {
-      font-size: 11px;
-      color: var(--secondary-text-color);
-      line-height: 1.35;
-    }
-    .dialog-header, .dialog-footer { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
-    .dialog-header { border-bottom: 1px solid var(--divider-color); }
-    .dialog-title { font-size: 16px; flex: 1; color: var(--primary-text-color); }
-    .dialog-body {
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      overflow-y: auto;
-      --ha-color-form-background: var(
-        --input-fill-color,
-        var(
-          --secondary-background-color,
-          color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, black)
-        )
-      );
-      --ha-color-form-background-hover: var(--ha-color-form-background);
-    }
-    .dialog-body ha-input,
-    .dialog-body ha-textfield {
-      width: 100%;
-    }
-    .dialog-body ha-input {
-      --ha-input-padding-top: 0;
-      --ha-input-padding-bottom: 0;
-    }
-    .dialog-footer { border-top: 1px solid var(--divider-color); justify-content: space-between; }
-    .dialog-footer-actions { display: flex; gap: 8px; }
-    .dialog-footer-note { min-height: 18px; font-size: 13px; color: var(--error-color, #db4437); }
-
-    .status-box {
-      display: flex;
-      align-items: flex-start;
-      gap: 10px;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--backup-radius-sm);
-      padding: 10px 12px;
-      font-size: 13px;
-      line-height: 1.45;
-      color: var(--secondary-text-color);
-    }
-    .status-box.success {
-      color: #2e7d32;
-      border-color: color-mix(in srgb, #2e7d32 35%, var(--divider-color));
-      background: color-mix(in srgb, #2e7d32 5%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .status-box.error {
-      color: var(--error-color, #db4437);
-      border-color: color-mix(in srgb, var(--error-color, #db4437) 35%, var(--divider-color));
-      background: color-mix(in srgb, var(--error-color, #db4437) 5%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .status-box.warning {
-      border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 35%, var(--divider-color));
-      background: color-mix(in srgb, var(--warning-color, #f59e0b) 5%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .status-icon { display: inline-flex; color: inherit; flex: 0 0 auto; }
-    .status-icon ha-icon { --mdc-icon-size: 18px; }
-
-    .action-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center; }
-    .primary-btn, .secondary-btn {
-      border-radius: var(--backup-radius-md);
-      padding: 10px 16px;
-      font: inherit;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: transform 120ms ease, border-color 120ms ease, background 120ms ease;
-    }
-    .primary-btn {
-      border: 1px solid color-mix(in srgb, var(--primary-color) 65%, var(--divider-color));
-      color: var(--primary-text-color);
-      background: color-mix(in srgb, var(--primary-color) 16%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .secondary-btn {
-      border: 1px solid var(--divider-color);
-      color: var(--primary-text-color);
-      background: transparent;
-    }
-    .primary-btn:hover:not(:disabled), .secondary-btn:hover:not(:disabled) { transform: translateY(-1px); }
-    .primary-btn:disabled, .secondary-btn:disabled { opacity: 0.48; cursor: default; transform: none; }
-
-    .file-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: var(--backup-radius-pill);
-      border: 1px solid var(--divider-color);
-      font-size: 12px;
-      color: var(--secondary-text-color);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 72%, transparent);
-    }
-
-    .backup-complete-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      gap: 10px;
-      border: 1px solid color-mix(in srgb, var(--primary-color) 20%, var(--divider-color));
-      border-radius: var(--backup-radius-xl);
-      padding: 28px 18px;
-      background:
-        radial-gradient(circle at top, color-mix(in srgb, var(--primary-color) 14%, transparent), transparent 44%),
-        color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 92%, transparent);
-    }
-    .backup-complete-icon {
-      width: 64px;
-      height: 64px;
-      display: grid;
-      place-items: center;
-      border-radius: var(--backup-radius-pill);
-      color: var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 14%, transparent);
-    }
-    .backup-complete-icon ha-icon { --mdc-icon-size: 30px; }
-    .backup-complete-title {
-      color: var(--primary-text-color);
-      font-size: 20px;
-      font-weight: 700;
-    }
-    .backup-complete-sub {
-      color: var(--secondary-text-color);
-      font-size: 13px;
-      line-height: 1.5;
-    }
-
-    .backup-downloaded-note,
-    .backup-expired-note {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 10px;
-      font-size: 12px;
-      font-weight: 600;
-    }
-    .backup-downloaded-note {
-      color: var(--success-color, #43a047);
-    }
-    .backup-expired-note {
-      color: var(--warning-color, #ff9800);
-    }
-    .backup-downloaded-note ha-icon,
-    .backup-expired-note ha-icon {
-      --mdc-icon-size: 16px;
-    }
-
-    .mode-option-btn {
-      width: 100%;
-      min-width: 0;
-      min-height: 36px;
-      border: none;
-      background: transparent;
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      text-align: left;
-      padding: 8px 14px;
-    }
-    .restore-action-row {
-      display: flex;
-      justify-content: flex-start;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: nowrap;
-      min-width: 0;
-    }
-    .restore-action-row .primary-btn { flex: 0 0 auto; }
-    .filename-btn {
-      flex: 1 1 0;
-      min-width: 0;
-      max-width: 100%;
-      display: block;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    input[type="file"] { display: none; }
-
-    /* Compact hub-name row on the Edit overview. Hub name is only
-       applied at restore time when the user chooses to wipe the hub,
-       so it earns a single thin row instead of its own card. */
-    .edit-hub-name-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 10px;
-      border-radius: var(--backup-radius-sm);
-      border: 1px solid color-mix(in srgb, var(--divider-color) 72%, transparent);
-      background: color-mix(in srgb, var(--ha-card-background, var(--card-background-color)) 96%, black);
-      font-size: 13px;
-      min-width: 0;
-    }
-    .edit-hub-name-label {
-      flex: 0 0 auto;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      color: var(--secondary-text-color);
-    }
-    .edit-hub-name-value {
-      flex: 1 1 auto;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      color: var(--primary-text-color);
-    }
-    .edit-hub-name-row .icon-btn {
-      flex: 0 0 auto;
-      padding: 2px;
-    }
-    .edit-hub-name-row .icon-btn ha-icon { --mdc-icon-size: 18px; }
-
-    /* Unsaved-changes indicators.
-       .edit-unsaved-chip is the compact pill used in the detail
-       sticky-header next to the title. .edit-unsaved-banner is the
-       wider notice on the overview page above the action row.
-       .primary-btn--unsaved decorates the Download button with a
-       dot when there are pending edits. */
-    .edit-unsaved-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      flex: 0 0 auto;
-      padding: 2px 8px 2px 6px;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      border-radius: 999px;
-      color: var(--warning-color, #f59e0b);
-      background: color-mix(in srgb, var(--warning-color, #f59e0b) 16%, transparent);
-      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
-    }
-    .edit-unsaved-chip::before {
-      content: "";
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--warning-color, #f59e0b);
-    }
-    .edit-unsaved-banner {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 12px;
-      border-radius: var(--backup-radius-sm);
-      border: 1px solid color-mix(in srgb, var(--warning-color, #f59e0b) 35%, transparent);
-      background: color-mix(in srgb, var(--warning-color, #f59e0b) 10%, transparent);
-      color: var(--primary-text-color);
-      font-size: 13px;
-      line-height: 1.4;
-    }
-    .edit-unsaved-banner ha-icon {
-      --mdc-icon-size: 18px;
-      color: var(--warning-color, #f59e0b);
-      flex: 0 0 auto;
-    }
-    .primary-btn--unsaved::after {
-      content: "";
-      display: inline-block;
-      width: 8px;
-      height: 8px;
-      margin-left: 8px;
-      border-radius: 50%;
-      background: var(--warning-color, #f59e0b);
-      vertical-align: middle;
-    }
-
-    @media (max-width: 380px) {
-      .backup-scope-options { grid-template-columns: 1fr; }
-      .backup-scope-option + .backup-scope-option {
-        border-left: none;
-        border-top: 1px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
-      }
-      .quick-access-row {
-        grid-template-columns: auto minmax(0, 1fr) auto;
-      }
-      .quick-access-actions {
-        justify-content: flex-end;
-      }
-      .edit-field-row,
-      .restore-action-row {
-        align-items: stretch;
-        flex-direction: column;
-      }
-      .detail-title-actions {
-        gap: 6px;
-        min-width: max-content;
-      }
-      .detail-section-nav {
-        overflow-x: auto;
-        scrollbar-width: none;
-      }
-      .detail-section-nav::-webkit-scrollbar {
-        display: none;
-      }
-      .detail-section-nav-btn {
-        flex-basis: auto;
-        min-width: max-content;
-        padding-inline: 12px;
-      }
-      .restore-action-row > .primary-btn,
-      .restore-action-row > .secondary-btn {
-        width: 100%;
-      }
-      .modal-backdrop { padding: max(env(safe-area-inset-top), 8px) 0 0; align-items: flex-start; }
-      .dialog, .dialog.small {
-        width: min(100vw, 100%);
-        max-height: calc(100vh - max(env(safe-area-inset-top), 8px));
-        border-radius: var(--backup-radius-xl) var(--backup-radius-xl) 0 0;
-      }
-      .dialog-footer {
-        flex-direction: column;
-        align-items: stretch;
-      }
-      .dialog-footer-actions {
-        width: 100%;
-      }
-      .dialog-footer-actions .dialog-btn {
-        flex: 1 1 0;
-      }
-      .dialog-footer-note {
-        min-height: 0;
-      }
     }
   `];
-  }
-  static {
-    this._EDIT_SESSION_TTL_MS = 60 * 60 * 1e3;
-  }
-  static {
-    this._EDIT_SESSION_KEY_PREFIX = "sofabaton.backup-edit-session.v1.";
-  }
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    this._teardownProgressSubscription();
   }
   connectedCallback() {
     super.connectedCallback();
@@ -7267,425 +7085,90 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       });
     }
   }
-  updated(changed) {
-    if (changed.has("hub")) {
-      void this._syncBackupOperationState();
-      this._editSessionRestoreTried = false;
-      const nextEntryId = String(this.hub?.entry_id || "").trim() || null;
-      if (this._restoreHubEntryId && nextEntryId !== this._restoreHubEntryId) {
-        this._resetRestoreBundleForHubSwitch();
-      }
-      this._restoreHubEntryId = nextEntryId;
-    }
-    if (changed.has("cacheHub") && this.cacheHub && !this._backupDeviceIds.length) {
-      this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
-    }
-    if (!this._editSessionRestoreTried && this.hub && this.selectedSection === "edit" && !this._editBundle) {
-      this._editSessionRestoreTried = true;
-      this._restoreEditSession();
-    }
-    if (changed.has("_editBundle") || changed.has("_editFilename") || changed.has("_editDetailKind") || changed.has("_editDetailId") || changed.has("_editBundleDirty")) {
-      this._persistEditSession();
+  // Lit reuses the element instance when the host re-renders with a
+  // different entity, so all transient view state must reset exactly the
+  // way backup-tab's _openEditDetail/_closeEditDetail pair used to.
+  willUpdate(changed) {
+    if (changed.has("kind") || changed.has("entityId")) {
+      this._resetForEntity();
     }
   }
-  _editSessionStorageKey() {
-    const entryId = this.hub?.entry_id;
-    if (!entryId) return null;
-    return `${_SofabatonBackupTab._EDIT_SESSION_KEY_PREFIX}${entryId}`;
-  }
-  _persistEditSession() {
-    const key = this._editSessionStorageKey();
-    if (!key) return;
-    try {
-      if (!this._editBundle) {
-        window.localStorage.removeItem(key);
-        return;
-      }
-      const payload = {
-        savedAt: Date.now(),
-        filename: this._editFilename || "",
-        bundle: this._editBundle,
-        dirty: this._editBundleDirty,
-        detail: this._editDetailKind && this._editDetailId != null ? { kind: this._editDetailKind, id: this._editDetailId } : null
-      };
-      window.localStorage.setItem(key, JSON.stringify(payload));
-    } catch {
-    }
-  }
-  _clearEditSession() {
-    const key = this._editSessionStorageKey();
-    if (!key) return;
-    try {
-      window.localStorage.removeItem(key);
-    } catch {
-    }
+  _resetForEntity() {
+    this._editDetailActiveSection = this.kind === "activity" ? "devices" : "power";
+    this._powerControlMenuOpen = false;
+    this._addDeviceMenuOpen = false;
+    this._addDeviceMenuAnchor = null;
+    this._roleMenuOpen = null;
+    this._roleMenuAnchor = null;
+    this._roleConfirm = null;
+    this._bindingsView = false;
+    this._endIdleMenuDeviceId = null;
+    this._endIdleMenuAnchor = null;
+    this._closeHaActionDialog();
+    this._editDetailNameDraft = sanitizeBundleName(this.bundle, this._selectedEditTitle());
+    this._closeEditRenameDialog();
+    this._closeDeleteConfirm();
+    this._closeAddFavoriteDialog();
+    this._closeBindingDialog();
+    this._macroEditor = null;
+    this._closeStepDialog();
   }
   /**
-   * Wipe the in-memory edit draft AND the persisted session.
-   * Called when the user starts a new backup or restore so they don't return
-   * to the Edit tab and mistake a stale draft for the file they just produced.
+   * Commit a mutated bundle from any edit handler. The element applies
+   * the HA-action plumbing sweep and updates its own prop synchronously
+   * (handlers read the fresh bundle in the same tick), then hands the
+   * result to the host, which owns dirty/persistence semantics.
    */
-  _discardEditSession() {
-    this._editBundle = null;
-    this._editFilename = "";
-    this._editError = null;
-    this._editBundleDirty = false;
-    this._closeEditDetail();
-    this._clearEditSession();
-  }
-  _restoreEditSession() {
-    const key = this._editSessionStorageKey();
-    if (!key) return;
-    let raw = null;
-    try {
-      raw = window.localStorage.getItem(key);
-    } catch {
-      return;
-    }
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw);
-      const savedAt = Number(parsed?.savedAt);
-      if (!Number.isFinite(savedAt) || Date.now() - savedAt > _SofabatonBackupTab._EDIT_SESSION_TTL_MS) {
-        window.localStorage.removeItem(key);
-        return;
-      }
-      const bundle = validateBackupBundle(parsed.bundle);
-      this._editBundle = bundle;
-      this._editFilename = typeof parsed.filename === "string" ? parsed.filename : "";
-      if (parsed.detail && parsed.detail.kind && Number.isFinite(Number(parsed.detail.id))) {
-        this._editDetailKind = parsed.detail.kind;
-        this._editDetailId = Number(parsed.detail.id);
-        this._powerControlMenuOpen = false;
-      }
-      this._editBundleDirty = Boolean(parsed.dirty);
-    } catch {
-      try {
-        window.localStorage.removeItem(key);
-      } catch {
-      }
-    }
+  _commitEditBundleEdit(next) {
+    this.bundle = pruneHaActionHosts(next);
+    this.dispatchEvent(new CustomEvent("bundle-change", { detail: { bundle: this.bundle } }));
   }
   render() {
-    if (this.loading) {
-      return T`<div class="tab-panel"><div class="state">Loading backup tools…</div></div>`;
-    }
-    if (this.error) {
-      return T`<div class="tab-panel"><div class="state error">${this.error}</div></div>`;
-    }
-    if (!this.hub || !this.hass) {
-      return T`<div class="tab-panel"><div class="state">${TOOLS_CARD_STRINGS.backup.selectHub}</div></div>`;
-    }
-    if (this.blockedTitle && this.blockedMessage) {
-      return T`
-        <div class="tab-panel">
-          <div class="blocked-state">
-            <div class="blocked-state-title">${this.blockedTitle}</div>
-            <div class="blocked-state-sub">${this.blockedMessage}</div>
-          </div>
-        </div>
-      `;
-    }
-    if (this.selectedSection === "edit" && this._macroEditor && this._editBundle) {
+    if (!this.bundle || this.entityId == null) return A;
+    if (this._macroEditor) {
       return this._renderMacroStepEditorView(this._macroEditor);
     }
-    if (this.selectedSection === "edit" && this._bindingsView && this._editBundle && this._editDetailKind === "activity" && this._editDetailId != null) {
+    if (this._bindingsView && this.kind === "activity") {
       return this._renderActivityBindingsView();
     }
-    if (this.selectedSection === "edit" && this._editDetailKind && this._editDetailId != null) {
-      const detailTitle = this._selectedEditTitle();
-      if (detailTitle) {
-        return this._renderEditDetailView({
-          kind: this._editDetailKind,
-          title: detailTitle
-        });
-      }
-    }
-    return T`
-      <div class="tab-panel">
-        ${renderSecondaryTabShell({
-      items: BACKUP_SECTION_ITEMS,
-      selectedId: this.selectedSection,
-      onSelect: (section) => this.setSelectedSection(section),
-      connected: true,
-      shellClassName: "backup-panel secondary-view-shell--edge",
-      content: this.selectedSection === "make" ? this._renderBackupSectionContent() : this.selectedSection === "edit" ? this._renderEditSectionContent() : this._renderRestoreSectionContent()
-    })}
-      </div>
-    `;
-  }
-  _renderBackupSectionContent() {
-    const devices = backupDeviceOptions(this.cacheHub);
-    const wholeHub = this._backupScope === "whole_hub";
-    const selectedDeviceIds = wholeHub ? devices.map((device) => device.id) : this._backupDeviceIds;
-    const isRunning = this._isProgressRunning(this._backupProgress);
-    const isSuccess = String(this._backupProgress?.status || "") === "success";
-    const allDevicesSelected = devices.length > 0 && this._backupDeviceIds.length === devices.length;
-    const summary = this._backupResultSummary(this._backupProgress?.backup);
-    return T`
-      ${renderSecondaryTabContent({
-      connected: true,
-      contentClassName: "backup-body",
-      content: T`
-            <div class="backup-drawer-sub">
-              ${isRunning ? TOOLS_CARD_STRINGS.backup.creatingSubtitle : isSuccess ? TOOLS_CARD_STRINGS.backup.readySubtitle : TOOLS_CARD_STRINGS.backup.chooseSubtitle}
-            </div>
-            ${!this.persistentCacheEnabled || !this.cacheHub ? this._renderStatus("warning", "mdi:database-off-outline", TOOLS_CARD_STRINGS.backup.enablePersistentCache) : A}
-            ${this._backupError ? this._renderStatus("error", "mdi:alert-circle-outline", this._backupError) : A}
-            ${isRunning && this._backupProgress ? this._renderProgressCard(this._backupProgress, "backup") : isSuccess ? (() => {
-        const hasBundle = !!this._backupProgress?.backup;
-        const wasDownloaded = !!this._backupProgress?.backup_downloaded;
-        const expired = !!this._backupProgress?.backup_expired;
-        return T`
-                  <div class="backup-complete-card">
-                    <div class="backup-complete-icon"><ha-icon icon="mdi:check-decagram-outline"></ha-icon></div>
-                    <div class="backup-complete-title">${TOOLS_CARD_STRINGS.backup.completedTitle}</div>
-                    <div class="backup-complete-sub">${summary}</div>
-                    ${expired ? T`<div class="backup-expired-note">
-                          <ha-icon icon="mdi:clock-alert-outline"></ha-icon>
-                          ${TOOLS_CARD_STRINGS.backup.expired}
-                        </div>` : wasDownloaded ? T`<div class="backup-downloaded-note">
-                            <ha-icon icon="mdi:check-circle-outline"></ha-icon>
-                            ${TOOLS_CARD_STRINGS.backup.downloaded}
-                          </div>` : A}
-                    <div class="action-row">
-                      <button class="primary-btn" ?disabled=${!hasBundle} @click=${this._downloadLatestBackup}>
-                        ${wasDownloaded ? TOOLS_CARD_STRINGS.backup.downloadAgain : TOOLS_CARD_STRINGS.backup.downloadBackup}
-                      </button>
-                      <button class="secondary-btn" @click=${() => void this._completeBackupResult()}>${TOOLS_CARD_STRINGS.backup.complete}</button>
-                    </div>
-                  </div>
-                `;
-      })() : T`
-                  <div class="backup-config-view">
-                  <div class="backup-scope-group">
-                    ${this._renderScopeGroup({
-        value: this._backupScope,
-        disabled: this._backupLocked() || !this.cacheHub,
-        options: [
-          { value: "whole_hub", label: TOOLS_CARD_STRINGS.backup.entireHub },
-          { value: "individual_devices", label: TOOLS_CARD_STRINGS.backup.selectedDevices }
-        ],
-        onChange: (next) => this._setBackupScope(next)
-      })}
-                  </div>
-                  ${!wholeHub ? T`
-                    <div class="backup-devices-head">
-                      <div class="backup-devices-head-main">
-                        <div class="backup-section-title">${TOOLS_CARD_STRINGS.backup.devicesToInclude}</div>
-                        <div class="backup-selected-count">${TOOLS_CARD_STRINGS.backup.selectedCount(this._backupDeviceIds.length)}</div>
-                      </div>
-                      <button class="backup-link-btn" ?disabled=${this._backupLocked() || !this.cacheHub} @click=${this._toggleAllBackupDevices}>
-                        ${allDevicesSelected ? TOOLS_CARD_STRINGS.backup.deselectAll : TOOLS_CARD_STRINGS.backup.selectAll}
-                      </button>
-                    </div>
-                    <div class="selection-card">
-                      <div class="selection-list">
-                        ${devices.length ? devices.map((device) => T`
-                              <div
-                                class="selection-row"
-                                @click=${() => {
-        if (this._backupLocked() || !this.cacheHub) return;
-        this._setBackupDevice(device.id, !selectedDeviceIds.includes(device.id));
-      }}
-                              >
-                                ${this._renderCheckboxControl({
-        checked: selectedDeviceIds.includes(device.id),
-        disabled: this._backupLocked() || !this.cacheHub,
-        onChange: (checked) => this._setBackupDevice(device.id, checked)
-      })}
-                                <span class="selection-main">
-                                  <span class="selection-label">${device.label}</span>
-                                </span>
-                                ${device.meta ? T`<span class="selection-meta">${device.meta}</span>` : A}
-                              </div>
-                            `) : T`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noDevicesAvailable}</div>`}
-                      </div>
-                    </div>
-                  ` : A}
-                  <div class="backup-action-row">
-                    <button
-                      class="primary-btn header-primary-btn"
-                      ?disabled=${this._backupActionDisabled()}
-                      @click=${() => void this._runBackup()}
-                    >
-                      ${isRunning ? TOOLS_CARD_STRINGS.backup.working : TOOLS_CARD_STRINGS.backup.startBackup}
-                    </button>
-                  </div>
-                  </div>
-                `}
-        `
-    })}
-    `;
-  }
-  _renderEditSectionContent() {
-    const bundle = this._editBundle;
-    const activityOptions = bundleActivityOptions(bundle);
-    const deviceOptions = bundleEditableDeviceOptions(bundle);
-    return T`
-      ${renderSecondaryTabContent({
-      connected: true,
-      contentClassName: "edit-body",
-      content: T`
-            ${this._editError ? this._renderStatus("error", "mdi:alert-circle-outline", this._editError) : A}
-            <input id="edit-file-input" type="file" accept=".json,application/json" @change=${this._handleEditFilePicked} />
-            ${bundle ? T`
-              ${this._renderEditOverview({
-        activityOptions,
-        deviceOptions
-      })}
-            ` : T`
-              <div class="edit-config-view">
-                <div class="backup-drawer-sub">
-                  ${TOOLS_CARD_STRINGS.backup.editLoadPrompt}
-                </div>
-                <div class="restore-action-row">
-                  <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || TOOLS_CARD_STRINGS.backup.chooseBackupFile}</button>
-                </div>
-              </div>
-            `}
-            ${this._renderEditRenameDialog()}
-            ${this._renderDeleteConfirmDialog()}
-            ${this._renderAddFavoriteDialog()}
-        `
-    })}
-    `;
-  }
-  _renderEditOverview(params) {
-    const activitiesSortable = this._haSortableReady && params.activityOptions.length > 1;
-    const devicesSortable = this._haSortableReady && params.deviceOptions.length > 1;
-    const renderActivityRows = () => params.activityOptions.map((option) => this._renderEditCollectionRow(
-      option,
-      () => this._openEditDetail("activity", option.id, option.label),
-      activitiesSortable
-    ));
-    const renderDeviceRows = () => params.deviceOptions.map((option) => this._renderEditCollectionRow(
-      option,
-      () => this._openEditDetail("device", option.id, option.label),
-      devicesSortable
-    ));
-    const hubName = String(this._editBundle?.hub?.name ?? "").trim();
-    return T`
-      <div class="edit-config-view">
-        <div class="backup-drawer-sub">
-          ${TOOLS_CARD_STRINGS.backup.editLoadPrompt}
-          ${this._haSortableReady ? TOOLS_CARD_STRINGS.backup.reorderHint : ""}
-        </div>
-        <div class="edit-hub-name-row" title="Hub name is only applied at restore time when the user opts to wipe the hub.">
-          <span class="edit-hub-name-label">${TOOLS_CARD_STRINGS.backup.hubName}</span>
-          <span class="edit-hub-name-value">${hubName || TOOLS_CARD_STRINGS.backup.hubNameNotSet}</span>
-          <button
-            class="icon-btn"
-            @click=${this._openHubNameRenameDialog}
-            aria-label=${TOOLS_CARD_STRINGS.backup.renameHub}
-          >
-            <ha-icon icon="mdi:pencil"></ha-icon>
-          </button>
-        </div>
-        <div class="selection-card">
-          <div class="selection-list">
-            ${params.activityOptions.length ? T`
-                  <div class="selection-group-header">${TOOLS_CARD_STRINGS.backup.activities}</div>
-                  ${activitiesSortable ? T`
-                        <ha-sortable
-                          class="edit-order-sortable"
-                          draggable-selector=".edit-selection-row"
-                          handle-selector=".edit-row-drag"
-                          animation="180"
-                          @item-moved=${this._handleEditActivityOrderSort}
-                        >
-                          <div class="edit-order-sortable-container">
-                            ${renderActivityRows()}
-                          </div>
-                        </ha-sortable>
-                      ` : renderActivityRows()}
-                ` : T`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noActivitiesInFile}</div>`}
-            ${params.deviceOptions.length ? T`
-                  <div class="selection-group-header">${TOOLS_CARD_STRINGS.backup.devices}</div>
-                  ${devicesSortable ? T`
-                        <ha-sortable
-                          class="edit-order-sortable"
-                          draggable-selector=".edit-selection-row"
-                          handle-selector=".edit-row-drag"
-                          animation="180"
-                          @item-moved=${this._handleEditDeviceOrderSort}
-                        >
-                          <div class="edit-order-sortable-container">
-                            ${renderDeviceRows()}
-                          </div>
-                        </ha-sortable>
-                      ` : renderDeviceRows()}
-                ` : T`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noDevicesInFile}</div>`}
-          </div>
-        </div>
-        ${this._editBundleDirty ? T`
-              <div class="edit-unsaved-banner" role="status">
-                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-                <span>${TOOLS_CARD_STRINGS.backup.unsavedChanges}<strong>${TOOLS_CARD_STRINGS.backup.downloadEditedBackupStrong}</strong>${TOOLS_CARD_STRINGS.backup.unsavedChangesSuffix}</span>
-              </div>
-            ` : A}
-        <div class="restore-action-row">
-          <button
-            class="primary-btn${this._editBundleDirty ? " primary-btn--unsaved" : ""}"
-            @click=${this._downloadEditedBundle}
-          >${TOOLS_CARD_STRINGS.backup.downloadEditedBackup}</button>
-          <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || TOOLS_CARD_STRINGS.backup.chooseBackupFile}</button>
-        </div>
-      </div>
-    `;
-  }
-  _renderEditCollectionRow(option, onSelect, showDragHandle) {
-    return T`
-      <button class="edit-selection-row" @click=${onSelect}>
-        ${showDragHandle ? T`
-              <span
-                class="edit-row-drag"
-                aria-hidden="true"
-                @click=${(event) => event.stopPropagation()}
-              >
-                <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
-              </span>
-            ` : A}
-        <span class="selection-main">
-          <span class="selection-label">${option.label}</span>
-        </span>
-        ${option.meta ? T`<span class="selection-meta">${option.meta}</span>` : A}
-        <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
-      </button>
-    `;
+    const title = this._selectedEditTitle();
+    if (!title) return A;
+    return this._renderEditDetailView({ kind: this.kind, title });
   }
   _renderEditDetailView(params) {
     const sectionItems = this._editDetailSectionItems(params.kind);
-    const activityQuickAccess = params.kind === "activity" && this._editDetailId != null ? activityQuickAccessItems(this._editBundle, this._editDetailId) : [];
-    const deviceCommands = params.kind === "device" && this._editDetailId != null ? deviceCommandItems(this._editBundle, this._editDetailId) : [];
+    const activityQuickAccess = params.kind === "activity" && this.entityId != null ? activityQuickAccessItems(this.bundle, this.entityId) : [];
+    const deviceCommands = params.kind === "device" && this.entityId != null ? deviceCommandItems(this.bundle, this.entityId) : [];
     return T`
       <div class="tab-panel tab-panel--detail">
         <div class="detail-view">
           <div class="sticky-header">
             <div class="detail-title-row">
               <div class="detail-title-main">
-                <button class="back-btn" @click=${this._closeEditDetail}>
+                <button class="back-btn" @click=${this._requestClose}>
                   <ha-icon icon="mdi:arrow-left"></ha-icon>
                 </button>
                 <div class="detail-title-stack">
                   ${this._renderDetailCrumbs([
-      { label: this._entityKindCrumbLabel(params.kind), onClick: this._closeEditDetail }
+      { label: this._entityKindCrumbLabel(params.kind), onClick: this._requestClose }
     ])}
                   <div class="detail-title">${params.title}</div>
                 </div>
-                ${this._editBundleDirty ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
-                <div class="detail-title-actions">
-                  <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
-                  <button
-                    class="icon-btn icon-btn--danger"
-                    @click=${this._openDetailDeleteConfirm}
-                    aria-label=${params.kind === "activity" ? TOOLS_CARD_STRINGS.backup.deleteActivityAria : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
-                  >
-                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                  </button>
-                </div>
+                ${this.dirty && this.mode !== "live" ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${this.mode === "live" ? A : T`
+                      <div class="detail-title-actions">
+                        <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
+                          <ha-icon icon="mdi:pencil"></ha-icon>
+                        </button>
+                        <button
+                          class="icon-btn icon-btn--danger"
+                          @click=${this._openDetailDeleteConfirm}
+                          aria-label=${params.kind === "activity" ? TOOLS_CARD_STRINGS.backup.deleteActivityAria : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
+                        >
+                          <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                        </button>
+                      </div>
+                    `}
               </div>
             </div>
             ${this._renderEditDetailSectionNav(sectionItems)}
@@ -7698,7 +7181,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                   ${this._renderActivityQuickAccessSection(activityQuickAccess)}
                   ${this._renderActivityEndSection()}
                 ` : T`
-                  ${this._renderPowerSetupSection("device", Number(this._editDetailId))}
+                  ${this._renderPowerSetupSection("device", Number(this.entityId))}
                   ${this._renderDeviceNetworkSection()}
                   ${this._renderDeviceCommandsSection(deviceCommands)}
                   ${this._renderButtonBindingsSection("device")}
@@ -7724,7 +7207,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
         { id: "end", icon: "mdi:power", label: S4.activitySectionEnd }
       ];
     }
-    const hasNetworkSection = this._editDetailId != null && this._editBundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this._editBundle, Number(this._editDetailId)) ?? "") : false;
+    const hasNetworkSection = this.entityId != null && this.bundle ? IP_HEAD_DEVICE_CLASSES.has(bundleDeviceClass(this.bundle, Number(this.entityId)) ?? "") : false;
     return [
       { id: "power", icon: "mdi:power-plug-outline", label: "Power" },
       ...hasNetworkSection ? [{ id: "network", icon: "mdi:lan-connect", label: "Network" }] : [],
@@ -7761,9 +7244,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._editDetailActiveSection = sectionId;
   }
   _renderBindingsListBody(kind) {
-    if (this._editDetailId == null || !this._editBundle) return A;
-    const entityId = Number(this._editDetailId);
-    const items = kind === "activity" ? activityButtonBindingItems(this._editBundle, entityId) : deviceButtonBindingItems(this._editBundle, entityId);
+    if (this.entityId == null || !this.bundle) return A;
+    const entityId = Number(this.entityId);
+    const items = kind === "activity" ? activityButtonBindingItems(this.bundle, entityId) : deviceButtonBindingItems(this.bundle, entityId);
     if (!items.length) {
       return T`<div class="quick-access-empty">${TOOLS_CARD_STRINGS.backup.buttonBindingsEmpty}</div>`;
     }
@@ -7776,9 +7259,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _renderAddBindingButton(kind) {
-    if (this._editDetailId == null || !this._editBundle) return A;
-    const entityId = Number(this._editDetailId);
-    const unbound = kind === "activity" ? unboundButtonsForActivity(this._editBundle, entityId) : unboundButtonsForDevice(this._editBundle, entityId);
+    if (this.entityId == null || !this.bundle) return A;
+    const entityId = Number(this.entityId);
+    const unbound = kind === "activity" ? unboundButtonsForActivity(this.bundle, entityId) : unboundButtonsForDevice(this.bundle, entityId);
     return T`
       <button
         class="quick-access-add-btn"
@@ -7791,7 +7274,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _renderButtonBindingsSection(kind) {
-    if (this._editDetailId == null || !this._editBundle) return A;
+    if (this.entityId == null || !this.bundle) return A;
     const S4 = TOOLS_CARD_STRINGS.backup;
     const isActivity = kind === "activity";
     return T`
@@ -7826,12 +7309,12 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                 </button>
                 <div class="detail-title-stack">
                   ${this._renderDetailCrumbs([
-      { label: this._entityKindCrumbLabel("activity"), onClick: this._closeEditDetail },
+      { label: this._entityKindCrumbLabel("activity"), onClick: this._requestClose },
       { label: this._selectedEditTitle(), onClick: this._closeBindingsView }
     ])}
                   <div class="detail-title">${S4.bindingsViewTitle}</div>
                 </div>
-                ${this._editBundleDirty ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${this.dirty && this.mode !== "live" ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
               </div>
             </div>
           </div>
@@ -7855,9 +7338,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   }
   // ── Role-based button assignment (activity) ──────────────────────────
   _renderActivityRolesBlock() {
-    if (this._editDetailId == null || !this._editBundle) return A;
-    const bundle = this._editBundle;
-    const activityId = Number(this._editDetailId);
+    if (this.entityId == null || !this.bundle) return A;
+    const bundle = this.bundle;
+    const activityId = Number(this.entityId);
     const memberOptions = activityMemberViews(bundle, activityId).map((member) => ({
       deviceId: member.deviceId,
       label: member.deviceName
@@ -7887,9 +7370,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     });
   }
   _applyRoleAssign(group, deviceId) {
-    if (!this._editBundle || this._editDetailId == null) return;
+    if (!this.bundle || this.entityId == null) return;
     this._commitEditBundleEdit(
-      setActivityRoleDevice(this._editBundle, Number(this._editDetailId), group, deviceId)
+      setActivityRoleDevice(this.bundle, Number(this.entityId), group, deviceId)
     );
   }
   _renderRoleConfirmDialog() {
@@ -7952,14 +7435,14 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   // Thin hosts around the render helpers in activity-editor.ts: gather
   // data from the edit bundle, translate callbacks into bundle commits.
   _activityMemberViews() {
-    if (this._editDetailId == null || !this._editBundle) return [];
-    return activityMemberViews(this._editBundle, Number(this._editDetailId));
+    if (this.entityId == null || !this.bundle) return [];
+    return activityMemberViews(this.bundle, Number(this.entityId));
   }
   _renderActivityDevicesSection() {
-    if (this._editDetailId == null || !this._editBundle) return A;
+    if (this.entityId == null || !this.bundle) return A;
     return renderActivityDevicesSection({
       members: this._activityMemberViews(),
-      addable: activityAddableDevices(this._editBundle, Number(this._editDetailId)),
+      addable: activityAddableDevices(this.bundle, Number(this.entityId)),
       menuOpen: this._addDeviceMenuOpen,
       menuAnchor: this._addDeviceMenuAnchor,
       onToggleMenu: this._toggleAddDeviceMenu,
@@ -7968,20 +7451,20 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     });
   }
   _renderActivityStartSection() {
-    if (this._editDetailId == null || !this._editBundle) return A;
-    const activityId = Number(this._editDetailId);
+    if (this.entityId == null || !this.bundle) return A;
+    const activityId = Number(this.entityId);
     return renderActivityStartSection({
       members: this._activityMemberViews(),
-      commandsFor: (deviceId) => this._editBundle ? deviceCommandItems(this._editBundle, deviceId) : [],
+      commandsFor: (deviceId) => this.bundle ? deviceCommandItems(this.bundle, deviceId) : [],
       onTogglePowerOn: (member) => {
-        if (!this._editBundle) return;
+        if (!this.bundle) return;
         this._commitEditBundleEdit(
-          setActivityDevicePowerOn(this._editBundle, activityId, member.deviceId, !member.powersOn)
+          setActivityDevicePowerOn(this.bundle, activityId, member.deviceId, !member.powersOn)
         );
       },
       onInputChange: (deviceId, commandId) => {
-        if (!this._editBundle) return;
-        this._commitEditBundleEdit(commandId == null ? clearActivityDeviceInput(this._editBundle, activityId, deviceId) : setActivityDeviceInput(this._editBundle, activityId, deviceId, commandId));
+        if (!this.bundle) return;
+        this._commitEditBundleEdit(commandId == null ? clearActivityDeviceInput(this.bundle, activityId, deviceId) : setActivityDeviceInput(this.bundle, activityId, deviceId, commandId));
       },
       sequenceMeta: TOOLS_CARD_STRINGS.backup.macroStepsCount(
         this._powerSetupStepCount("activity", activityId, 198)
@@ -7990,11 +7473,11 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     });
   }
   _renderActivityEndSection() {
-    if (this._editDetailId == null || !this._editBundle) return A;
-    const activityId = Number(this._editDetailId);
+    if (this.entityId == null || !this.bundle) return A;
+    const activityId = Number(this.entityId);
     return renderActivityEndSection({
       members: this._activityMemberViews(),
-      idleModeFor: (deviceId) => deviceIdleBehavior(this._editBundle, deviceId),
+      idleModeFor: (deviceId) => deviceIdleBehavior(this.bundle, deviceId),
       idleOptions: this._powerControlOptions(),
       idleMenuDeviceId: this._endIdleMenuDeviceId,
       idleMenuAnchor: this._endIdleMenuAnchor,
@@ -8004,14 +7487,14 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       },
       onIdleChange: (deviceId, mode) => {
         this._endIdleMenuDeviceId = null;
-        if (!this._editBundle) return;
-        if (deviceIdleBehavior(this._editBundle, deviceId) === mode) return;
-        this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this._editBundle, deviceId, mode));
+        if (!this.bundle) return;
+        if (deviceIdleBehavior(this.bundle, deviceId) === mode) return;
+        this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this.bundle, deviceId, mode));
       },
       onTogglePowerOff: (member, powersOff) => {
-        if (!this._editBundle) return;
+        if (!this.bundle) return;
         this._commitEditBundleEdit(
-          setActivityDevicePowerOff(this._editBundle, activityId, member.deviceId, powersOff)
+          setActivityDevicePowerOff(this.bundle, activityId, member.deviceId, powersOff)
         );
       },
       sequenceMeta: TOOLS_CARD_STRINGS.backup.macroStepsCount(
@@ -8029,11 +7512,11 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
    * the structured-payload form.
    */
   _renderDeviceNetworkSection() {
-    if (this._editDetailId == null || !this._editBundle) return A;
-    const deviceId = Number(this._editDetailId);
-    const deviceClass = bundleDeviceClass(this._editBundle, deviceId) ?? "";
+    if (this.entityId == null || !this.bundle) return A;
+    const deviceId = Number(this.entityId);
+    const deviceClass = bundleDeviceClass(this.bundle, deviceId) ?? "";
     if (!IP_HEAD_DEVICE_CLASSES.has(deviceClass)) return A;
-    const ip = deviceIpAddress(this._editBundle, deviceId);
+    const ip = deviceIpAddress(this.bundle, deviceId);
     return T`
       <div class="quick-access-section" data-edit-section="network">
         <div class="quick-access-head">
@@ -8070,7 +7553,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _renderDeviceCommandsSection(items) {
-    if (this._editDetailId == null) return A;
+    if (this.entityId == null) return A;
     return T`
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
@@ -8123,7 +7606,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _renderActivityQuickAccessSection(items) {
-    if (this._editDetailId == null) return A;
+    if (this.entityId == null) return A;
     const rows = items.map((item) => this._renderActivityQuickAccessRow(item));
     return T`
       <div class="quick-access-section" data-edit-section="quick_access">
@@ -8165,10 +7648,10 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   // shortcut shows which device it plays on. Slot ids are storage detail.
   _quickAccessRowMeta(item) {
     if (item.kind === "macro") {
-      const summary = this._editDetailId != null ? activityUserMacroSummaries(this._editBundle, Number(this._editDetailId)).find((macro) => macro.buttonId === item.buttonId) : void 0;
+      const summary = this.entityId != null ? activityUserMacroSummaries(this.bundle, Number(this.entityId)).find((macro) => macro.buttonId === item.buttonId) : void 0;
       return TOOLS_CARD_STRINGS.backup.macroStepsCount(summary?.commandStepCount ?? 0);
     }
-    const device = (this._editBundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
+    const device = (this.bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(item.deviceId || 0));
     return String(device?.device?.name || "").trim() || `Device ${item.deviceId ?? "?"}`;
   }
   _renderActivityQuickAccessRow(item) {
@@ -8182,7 +7665,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
               <div class="quick-access-chip">
-                ${item.kind === "macro" ? TOOLS_CARD_STRINGS.backup.shortcutChipAction : isHaActionDeviceId(this._editBundle, Number(item.deviceId || 0)) ? TOOLS_CARD_STRINGS.backup.haActionChip : TOOLS_CARD_STRINGS.backup.shortcutChipCommand}
+                ${item.kind === "macro" ? TOOLS_CARD_STRINGS.backup.shortcutChipAction : isHaActionDeviceId(this.bundle, Number(item.deviceId || 0)) ? TOOLS_CARD_STRINGS.backup.haActionChip : TOOLS_CARD_STRINGS.backup.shortcutChipCommand}
               </div>
             </div>
             <div class="quick-access-meta">${this._quickAccessRowMeta(item)}</div>
@@ -8207,7 +7690,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
             ${item.kind === "macro" ? T`
                   <button
                     class="icon-btn"
-                    @click=${() => this._openMacroEditor("activity", Number(this._editDetailId), item.buttonId, item.label)}
+                    @click=${() => this._openMacroEditor("activity", Number(this.entityId), item.buttonId, item.label)}
                     aria-label=${TOOLS_CARD_STRINGS.backup.editStepsAria}
                   >
                     <ha-icon icon="mdi:playlist-edit"></ha-icon>
@@ -8232,17 +7715,6 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       </div>
     `;
   }
-  _bundleSupportsUnicodeNames() {
-    const version = String(this._editBundle?.hub?.version || "").toUpperCase();
-    return version.includes("X2") || version.includes("X1S");
-  }
-  _sanitizeBundleName(value) {
-    const pattern = this._bundleSupportsUnicodeNames() ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu : /[^A-Za-z0-9 ]+/g;
-    return String(value ?? "").replace(pattern, "").slice(0, 20);
-  }
-  _useLegacyTextField() {
-    return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
-  }
   _renderEditRenameDialog() {
     if (!this._editRenameDialogOpen || !this._editRenameDialogTarget) return A;
     const label = this._editRenameDialogLabel();
@@ -8256,7 +7728,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
             <button class="dialog-close" @click=${this._closeEditRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
-            ${this._useLegacyTextField() ? T`
+            ${useLegacyTextField() ? T`
                   <ha-textfield
                     id="sb-backup-edit-name"
                     .label=${this._editRenameFieldLabel()}
@@ -8438,23 +7910,23 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   _openDeviceIpRenameDialog(deviceId) {
     const normalizedId = Number(deviceId);
     this._editRenameDialogTarget = { kind: "device_ip", deviceId: normalizedId };
-    this._editRenameDialogDraft = deviceIpAddress(this._editBundle, normalizedId) || "";
+    this._editRenameDialogDraft = deviceIpAddress(this.bundle, normalizedId) || "";
     this._editRenameDialogError = "";
     this._editRenameDialogDecodedSnapshot = null;
     this._editRenameDialogDecodedDrafts = {};
     this._editRenameDialogOpen = true;
   }
   _openDeviceCommandRenameDialog(commandId) {
-    if (this._editDetailId == null) return;
-    const deviceId = Number(this._editDetailId);
+    if (this.entityId == null) return;
+    const deviceId = Number(this.entityId);
     const normalizedCommandId = Number(commandId);
     this._editRenameDialogTarget = { kind: "command", deviceId, commandId: normalizedCommandId };
-    const item = deviceCommandItems(this._editBundle, deviceId).find(
+    const item = deviceCommandItems(this.bundle, deviceId).find(
       (entry) => entry.commandId === normalizedCommandId
     );
     this._editRenameDialogDraft = item?.label || "";
     this._editRenameDialogError = "";
-    const decoded = commandDecodedBlock(this._editBundle, deviceId, normalizedCommandId);
+    const decoded = commandDecodedBlock(this.bundle, deviceId, normalizedCommandId);
     this._editRenameDialogDecodedSnapshot = decoded;
     this._editRenameDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
     this._decodedFormExpanded = false;
@@ -8479,9 +7951,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     return stringValue;
   }
   _openQuickAccessRenameDialog(kind, buttonId) {
-    if (this._editDetailId == null) return;
-    this._editRenameDialogTarget = kind === "macro" ? { kind: "macro", activityId: this._editDetailId, buttonId } : { kind: "favorite", activityId: this._editDetailId, buttonId };
-    const item = activityQuickAccessItems(this._editBundle, this._editDetailId).find(
+    if (this.entityId == null) return;
+    this._editRenameDialogTarget = kind === "macro" ? { kind: "macro", activityId: this.entityId, buttonId } : { kind: "favorite", activityId: this.entityId, buttonId };
+    const item = activityQuickAccessItems(this.bundle, this.entityId).find(
       (entry) => entry.kind === kind && entry.buttonId === Number(buttonId)
     );
     this._editRenameDialogDraft = item?.label || "";
@@ -8489,17 +7961,17 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._editRenameDialogOpen = true;
   }
   _openCommandDeleteConfirm(commandId, label) {
-    if (this._editDetailId == null) return;
+    if (this.entityId == null) return;
     this._confirmDeleteTarget = {
       kind: "command",
-      deviceId: Number(this._editDetailId),
+      deviceId: Number(this.entityId),
       commandId: Number(commandId)
     };
     this._confirmDeleteLabel = label;
   }
   _openQuickAccessDeleteConfirm(kind, buttonId, label) {
-    if (this._editDetailId == null) return;
-    const activityId = Number(this._editDetailId);
+    if (this.entityId == null) return;
+    const activityId = Number(this.entityId);
     this._confirmDeleteTarget = kind === "macro" ? { kind: "macro", activityId, buttonId: Number(buttonId) } : { kind: "favorite", activityId, buttonId: Number(buttonId) };
     this._confirmDeleteLabel = label;
   }
@@ -8524,15 +7996,15 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     }
   }
   _openBindingDeleteConfirm(kind, buttonId, name) {
-    if (this._editDetailId == null) return;
-    const entityId = Number(this._editDetailId);
+    if (this.entityId == null) return;
+    const entityId = Number(this.entityId);
     this._confirmDeleteTarget = kind === "activity" ? { kind: "activity_binding", activityId: entityId, buttonId: Number(buttonId) } : { kind: "device_binding", deviceId: entityId, buttonId: Number(buttonId) };
     this._confirmDeleteLabel = name;
   }
   _renderDeleteConfirmDialog() {
     const target = this._confirmDeleteTarget;
-    if (!target || !this._editBundle) return A;
-    const impact = bundleDeleteImpact(this._editBundle, target);
+    if (!target || !this.bundle) return A;
+    const impact = bundleDeleteImpact(this.bundle, target);
     const hasCascade = backupDeleteHasCascade(impact);
     return T`
       <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
@@ -8570,11 +8042,11 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _renderAddFavoriteDialog() {
-    if (!this._addFavoriteOpen || !this._editBundle) return A;
+    if (!this._addFavoriteOpen || !this.bundle) return A;
     const S4 = TOOLS_CARD_STRINGS.backup;
     const kind = this._addShortcutKind;
-    const devices = bundleDeviceOptions(this._editBundle);
-    const commands = this._addFavoriteDeviceId != null ? deviceCommandItems(this._editBundle, this._addFavoriteDeviceId) : [];
+    const devices = bundleDeviceOptions(this.bundle);
+    const commands = this._addFavoriteDeviceId != null ? deviceCommandItems(this.bundle, this._addFavoriteDeviceId) : [];
     const canAdd = kind !== "command" || this._addFavoriteDeviceId != null && this._addFavoriteCommandId != null;
     const commandFields = devices.length === 0 ? T`<div class="backup-drawer-sub">${S4.addFavoriteNoDevices}</div>` : T`
           <div class="decoded-field">
@@ -8688,40 +8160,13 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       </div>
     `;
   }
-  /**
-   * Commit a mutated bundle from any edit handler. Centralizes the
-   * "this counts as a user edit" decision so loaders (file pick,
-   * session restore, discard) can keep using the direct
-   * `this._editBundle = ...` assignment to bypass the dirty flag.
-   */
-  _commitEditBundleEdit(next) {
-    this._editBundle = pruneHaActionHosts(next);
-    this._editBundleDirty = true;
-  }
   _applyActivityRename(activityId, name) {
-    if (!this._editBundle) return;
-    this._commitEditBundleEdit(renameBundleActivity(this._editBundle, activityId, name));
+    if (!this.bundle) return;
+    this._commitEditBundleEdit(renameBundleActivity(this.bundle, activityId, name));
   }
   _applyDeviceRename(deviceId, name) {
-    if (!this._editBundle) return;
-    this._commitEditBundleEdit(renameBundleDevice(this._editBundle, deviceId, name));
-  }
-  _openEditDetail(kind, id, name) {
-    this._editDetailKind = kind;
-    this._editDetailId = Number(id);
-    this._editDetailActiveSection = kind === "activity" ? "devices" : "power";
-    this._powerControlMenuOpen = false;
-    this._addDeviceMenuOpen = false;
-    this._roleMenuOpen = null;
-    this._roleConfirm = null;
-    this._bindingsView = false;
-    this._endIdleMenuDeviceId = null;
-    this._editDetailNameDraft = this._sanitizeBundleName(name);
-  }
-  _selectedEditTitle() {
-    if (!this._editBundle || !this._editDetailKind || this._editDetailId == null) return "";
-    const options = this._editDetailKind === "activity" ? bundleActivityOptions(this._editBundle) : bundleDeviceOptions(this._editBundle);
-    return options.find((option) => option.id === this._editDetailId)?.label || "";
+    if (!this.bundle) return;
+    this._commitEditBundleEdit(renameBundleDevice(this.bundle, deviceId, name));
   }
   _entityKindCrumbLabel(kind) {
     return kind === "activity" ? TOOLS_CARD_STRINGS.backup.crumbActivities : TOOLS_CARD_STRINGS.backup.crumbDevices;
@@ -8742,62 +8187,47 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _applyEditDetailRename() {
-    const next = this._sanitizeBundleName(this._editDetailNameDraft);
-    if (!next || !this._editDetailKind || this._editDetailId == null) return;
-    if (this._editDetailKind === "activity") this._applyActivityRename(this._editDetailId, next);
-    else this._applyDeviceRename(this._editDetailId, next);
+    const next = sanitizeBundleName(this.bundle, this._editDetailNameDraft);
+    if (!next || !this.kind || this.entityId == null) return;
+    if (this.kind === "activity") this._applyActivityRename(this.entityId, next);
+    else this._applyDeviceRename(this.entityId, next);
     this._editDetailNameDraft = next;
   }
   _moveActivityQuickAccessItem(index, delta) {
-    if (!this._editBundle || this._editDetailId == null) return;
-    const items = activityQuickAccessItems(this._editBundle, this._editDetailId);
+    if (!this.bundle || this.entityId == null) return;
+    const items = activityQuickAccessItems(this.bundle, this.entityId);
     const nextIndex = index + delta;
     if (index < 0 || nextIndex < 0 || index >= items.length || nextIndex >= items.length) return;
     const nextItems = [...items];
     const [moved] = nextItems.splice(index, 1);
     nextItems.splice(nextIndex, 0, moved);
     this._commitEditBundleEdit(reorderBundleActivityQuickAccess(
-      this._editBundle,
-      this._editDetailId,
+      this.bundle,
+      this.entityId,
       nextItems.map((item) => ({ kind: item.kind, buttonId: item.buttonId }))
     ));
   }
   _moveQuickAccessByIdentity(kind, buttonId, delta) {
-    if (!this._editBundle || this._editDetailId == null) return;
-    const items = activityQuickAccessItems(this._editBundle, this._editDetailId);
+    if (!this.bundle || this.entityId == null) return;
+    const items = activityQuickAccessItems(this.bundle, this.entityId);
     const index = items.findIndex((item) => item.kind === kind && item.buttonId === Number(buttonId));
     if (index === -1) return;
     this._moveActivityQuickAccessItem(index, delta);
-  }
-  _reorderEditTopLevel(event, kind) {
-    if (!this._editBundle) return;
-    const sortableEvent = event;
-    const oldIndex = Number(sortableEvent.detail?.oldIndex);
-    const newIndex = Number(sortableEvent.detail?.newIndex);
-    if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
-    const current = kind === "activity" ? bundleActivityOptions(this._editBundle) : bundleDeviceOptions(this._editBundle);
-    if (oldIndex < 0 || newIndex < 0 || oldIndex >= current.length || newIndex >= current.length) return;
-    const nextOptions = [...current];
-    const [moved] = nextOptions.splice(oldIndex, 1);
-    if (!moved) return;
-    nextOptions.splice(newIndex, 0, moved);
-    const orderedIds = nextOptions.map((option) => option.id);
-    this._commitEditBundleEdit(kind === "activity" ? reorderBundleActivities(this._editBundle, orderedIds) : reorderBundleDevices(this._editBundle, orderedIds));
   }
   // ── Button bindings (add / edit picker) ─────────────────────────────
   // The activity's own id, usable as a binding target that plays one of its
   // macros — offered only when the activity actually has user macros. Encodes
   // device_id = activity id, command_id = macro button id (hub keymap model).
   _activityMacroTargetId() {
-    if (this._bindingScope !== "activity" || this._editDetailId == null || !this._editBundle) return null;
-    const id = Number(this._editDetailId);
-    return activityUserMacroSummaries(this._editBundle, id).length > 0 ? id : null;
+    if (this._bindingScope !== "activity" || this.entityId == null || !this.bundle) return null;
+    const id = Number(this.entityId);
+    return activityUserMacroSummaries(this.bundle, id).length > 0 ? id : null;
   }
   // Activity binding target-device options: source devices plus the
   // "this activity · macros" target when available.
   _bindingDeviceOptions() {
-    if (!this._editBundle) return [];
-    const options = bundleDeviceOptions(this._editBundle).map((device) => ({ value: device.id, label: device.label }));
+    if (!this.bundle) return [];
+    const options = bundleDeviceOptions(this.bundle).map((device) => ({ value: device.id, label: device.label }));
     const macroTargetId = this._activityMacroTargetId();
     if (macroTargetId != null) {
       options.push({ value: macroTargetId, label: TOOLS_CARD_STRINGS.backup.bindingMacroTarget });
@@ -8807,28 +8237,28 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   // Command options for a chosen target: the activity's own macros when the
   // target is the activity itself, otherwise the target device's commands.
   _bindingCommandOptions(targetDeviceId) {
-    if (targetDeviceId == null || !this._editBundle) return [];
-    if (this._bindingScope === "activity" && this._editDetailId != null && targetDeviceId === Number(this._editDetailId)) {
-      return activityUserMacroSummaries(this._editBundle, Number(this._editDetailId)).map((macro) => ({ value: macro.buttonId, label: macro.name }));
+    if (targetDeviceId == null || !this.bundle) return [];
+    if (this._bindingScope === "activity" && this.entityId != null && targetDeviceId === Number(this.entityId)) {
+      return activityUserMacroSummaries(this.bundle, Number(this.entityId)).map((macro) => ({ value: macro.buttonId, label: macro.name }));
     }
-    return deviceCommandItems(this._editBundle, targetDeviceId).map((command) => ({ value: command.commandId, label: command.label }));
+    return deviceCommandItems(this.bundle, targetDeviceId).map((command) => ({ value: command.commandId, label: command.label }));
   }
   _openAddBindingDialog(kind) {
-    if (this._editDetailId == null || !this._editBundle) return;
-    const entityId = Number(this._editDetailId);
-    const unbound = kind === "activity" ? unboundButtonsForActivity(this._editBundle, entityId) : unboundButtonsForDevice(this._editBundle, entityId);
+    if (this.entityId == null || !this.bundle) return;
+    const entityId = Number(this.entityId);
+    const unbound = kind === "activity" ? unboundButtonsForActivity(this.bundle, entityId) : unboundButtonsForDevice(this.bundle, entityId);
     if (!unbound.length) return;
     this._bindingScope = kind;
     this._bindingEditButtonId = null;
     this._bindingButtonId = unbound[0].code;
     if (kind === "activity") {
-      const devices = bundleDeviceOptions(this._editBundle);
+      const devices = bundleDeviceOptions(this.bundle);
       this._bindingDeviceId = devices[0]?.id ?? null;
     } else {
       this._bindingDeviceId = entityId;
     }
     const commandDeviceId = kind === "activity" ? this._bindingDeviceId : entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
+    const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
     this._bindingCommandId = commands[0]?.commandId ?? null;
     this._bindingLongPressEnabled = false;
     this._bindingLpDeviceId = this._bindingDeviceId;
@@ -8837,9 +8267,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._bindingDialogOpen = true;
   }
   _openEditBindingDialog(kind, buttonId) {
-    if (this._editDetailId == null || !this._editBundle) return;
-    const entityId = Number(this._editDetailId);
-    const items = kind === "activity" ? activityButtonBindingItems(this._editBundle, entityId) : deviceButtonBindingItems(this._editBundle, entityId);
+    if (this.entityId == null || !this.bundle) return;
+    const entityId = Number(this.entityId);
+    const items = kind === "activity" ? activityButtonBindingItems(this.bundle, entityId) : deviceButtonBindingItems(this.bundle, entityId);
     const item = items.find((entry) => entry.buttonId === Number(buttonId));
     if (!item) return;
     this._bindingScope = kind;
@@ -8868,11 +8298,11 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _renderBindingDialog() {
-    if (!this._bindingDialogOpen || !this._editBundle || this._editDetailId == null) return A;
+    if (!this._bindingDialogOpen || !this.bundle || this.entityId == null) return A;
     const scope = this._bindingScope;
-    const entityId = Number(this._editDetailId);
+    const entityId = Number(this.entityId);
     const isEdit = this._bindingEditButtonId != null;
-    const unbound = scope === "activity" ? unboundButtonsForActivity(this._editBundle, entityId) : unboundButtonsForDevice(this._editBundle, entityId);
+    const unbound = scope === "activity" ? unboundButtonsForActivity(this.bundle, entityId) : unboundButtonsForDevice(this.bundle, entityId);
     const deviceOptions = this._bindingDeviceOptions();
     const commandDeviceId = scope === "activity" ? this._bindingDeviceId : entityId;
     const commandOptions = this._bindingCommandOptions(commandDeviceId);
@@ -8976,8 +8406,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   }
   _currentMacroStepItems() {
     const editor = this._macroEditor;
-    if (!editor || !this._editBundle) return [];
-    return editor.scope === "device" ? deviceMacroStepItems(this._editBundle, editor.entityId, editor.buttonId) : activityMacroStepItems(this._editBundle, editor.entityId, editor.buttonId);
+    if (!editor || !this.bundle) return [];
+    return editor.scope === "device" ? deviceMacroStepItems(this.bundle, editor.entityId, editor.buttonId) : activityMacroStepItems(this.bundle, editor.entityId, editor.buttonId);
   }
   _openEditStepDialog(item) {
     const editor = this._macroEditor;
@@ -8998,8 +8428,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   }
   _removeStep(index) {
     const editor = this._macroEditor;
-    if (!editor || !this._editBundle) return;
-    const next = editor.scope === "device" ? removeDeviceMacroStep(this._editBundle, editor.entityId, editor.buttonId, index) : removeActivityMacroStep(this._editBundle, editor.entityId, editor.buttonId, index);
+    if (!editor || !this.bundle) return;
+    const next = editor.scope === "device" ? removeDeviceMacroStep(this.bundle, editor.entityId, editor.buttonId, index) : removeActivityMacroStep(this.bundle, editor.entityId, editor.buttonId, index);
     this._commitEditBundleEdit(next);
   }
   _renderMacroStepEditorView(editor) {
@@ -9018,12 +8448,12 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
                 </button>
                 <div class="detail-title-stack">
                   ${this._renderDetailCrumbs([
-      { label: this._entityKindCrumbLabel(editor.scope), onClick: this._closeEditDetail },
+      { label: this._entityKindCrumbLabel(editor.scope), onClick: this._requestClose },
       { label: this._selectedEditTitle(), onClick: this._closeMacroEditor }
     ])}
                   <div class="detail-title">${editor.name}</div>
                 </div>
-                ${this._editBundleDirty ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
+                ${this.dirty && this.mode !== "live" ? T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>` : A}
                 ${canRename ? T`
                       <div class="detail-title-actions">
                         <button
@@ -9124,14 +8554,14 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     `;
   }
   _renderStepDialog() {
-    if (!this._stepDialogOpen || !this._editBundle || !this._macroEditor) return A;
+    if (!this._stepDialogOpen || !this.bundle || !this._macroEditor) return A;
     const editor = this._macroEditor;
     const isEdit = this._stepDialogEditIndex !== null;
     const isActivity = editor.scope === "activity";
     const isInput = this._stepKind === "input";
-    const devices = bundleDeviceOptions(this._editBundle);
+    const devices = bundleDeviceOptions(this.bundle);
     const commandDeviceId = isInput ? this._stepDeviceId : isActivity ? this._stepDeviceId : editor.entityId;
-    const commands = commandDeviceId != null ? deviceCommandItems(this._editBundle, commandDeviceId) : [];
+    const commands = commandDeviceId != null ? deviceCommandItems(this.bundle, commandDeviceId) : [];
     const canSave = isInput || this._stepCommandId != null && (!isActivity || this._stepDeviceId != null);
     const title = isInput ? TOOLS_CARD_STRINGS.backup.inputStepTitle : isEdit ? TOOLS_CARD_STRINGS.backup.stepDialogEditTitle : TOOLS_CARD_STRINGS.backup.stepDialogAddTitle;
     return T`
@@ -9200,8 +8630,8 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   }
   // ── Power On/Off setup (shared by Device and Activity details) ──────
   _powerSetupStepCount(scope, entityId, buttonId) {
-    if (!this._editBundle) return 0;
-    return scope === "device" ? deviceMacroStepItems(this._editBundle, entityId, buttonId).length : activityMacroStepItems(this._editBundle, entityId, buttonId).length;
+    if (!this.bundle) return 0;
+    return scope === "device" ? deviceMacroStepItems(this.bundle, entityId, buttonId).length : activityMacroStepItems(this.bundle, entityId, buttonId).length;
   }
   _renderPowerSetupRow(scope, entityId, buttonId, label, disabled) {
     const count = this._powerSetupStepCount(scope, entityId, buttonId);
@@ -9230,10 +8660,10 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   // "Don't control power" makes the hub ignore the sequences, so they render
   // inert. Activities have no idle behavior, so they get only the sequences.
   _renderPowerSetupSection(scope, entityId) {
-    if (this._editDetailId == null || !this._editBundle) return A;
+    if (this.entityId == null || !this.bundle) return A;
     const S4 = TOOLS_CARD_STRINGS.backup;
     const isDevice = scope === "device";
-    const mode = isDevice ? deviceIdleBehavior(this._editBundle, entityId) : null;
+    const mode = isDevice ? deviceIdleBehavior(this.bundle, entityId) : null;
     const sequencesDisabled = isDevice && mode === IDLE_BEHAVIOR_DISABLED;
     return T`
       <div class="quick-access-section" data-edit-section="power">
@@ -9275,9 +8705,9 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
   }
   _selectPowerControl(deviceId, mode) {
     this._powerControlMenuOpen = false;
-    if (!this._editBundle) return;
-    if (deviceIdleBehavior(this._editBundle, deviceId) === mode) return;
-    this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this._editBundle, deviceId, mode));
+    if (!this.bundle) return;
+    if (deviceIdleBehavior(this.bundle, deviceId) === mode) return;
+    this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this.bundle, deviceId, mode));
   }
   _renderPowerControlDropdown(deviceId, mode) {
     const S4 = TOOLS_CARD_STRINGS.backup;
@@ -9333,6 +8763,772 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
             ` : A}
       </div>
     `;
+  }
+  _selectedEditTitle() {
+    if (!this.bundle || !this.kind || this.entityId == null) return "";
+    const options = this.kind === "activity" ? bundleActivityOptions(this.bundle) : bundleDeviceOptions(this.bundle);
+    return options.find((option) => option.id === this.entityId)?.label || "";
+  }
+};
+if (!customElements.get("sofabaton-edit-detail-view")) {
+  customElements.define("sofabaton-edit-detail-view", SofabatonEditDetailView);
+}
+
+// custom_components/sofabaton_x1s/www/src/tabs/backup-tab.ts
+var BACKUP_SECTION_ITEMS = [
+  { id: "make", icon: "mdi:content-save-move-outline", label: "Make" },
+  { id: "edit", icon: "mdi:pencil-box-outline", label: "Edit" },
+  { id: "restore", icon: "mdi:database-import-outline", label: "Restore" }
+];
+var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
+  constructor() {
+    super(...arguments);
+    this.hass = null;
+    this.hub = null;
+    this.cacheHub = null;
+    this.hubCommandBusy = false;
+    this.hubCommandBusyLabel = null;
+    this.loading = false;
+    this.error = null;
+    this.persistentCacheEnabled = false;
+    this.selectedHubProxyConnected = false;
+    this.blockedTitle = null;
+    this.blockedMessage = null;
+    this.selectedSection = "make";
+    this.setSelectedSection = () => {
+    };
+    this._backupScope = "whole_hub";
+    this._backupDeviceIds = [];
+    this._backupError = null;
+    this._backupProgress = null;
+    this._restoreError = null;
+    this._restoreSuccess = null;
+    this._restoreProgress = null;
+    this._restoreMode = "merge";
+    this._restoreBundle = null;
+    this._restoreFilename = "";
+    this._restoreActivityIds = [];
+    this._restoreManualDeviceIds = [];
+    this._progressUnsub = null;
+    this._loadedBackupEntryId = "";
+    this._backupHydrating = false;
+    // Op-ids the user has already acknowledged (via Complete, error
+    // dismiss, etc.). The sync function skips re-applying terminal
+    // status for any op in this set, so subscription events or stale
+    // server snapshots cannot snap the view back to a "complete" or
+    // "failed" view the user has already moved past. Cleared opportunistically
+    // when the op stops appearing in the server snapshot.
+    this._acknowledgedOpIds = /* @__PURE__ */ new Set();
+    this._editBundle = null;
+    this._editFilename = "";
+    this._editError = null;
+    // Which entity's detail view is open. Everything below the entity
+    // list — sections, sub-views, dialogs — lives in the extracted
+    // <sofabaton-edit-detail-view> element; this host only tracks the
+    // selection (persisted with the edit session).
+    this._editDetailKind = null;
+    this._editDetailId = null;
+    // True when `_editBundle` has user-made changes that have not yet
+    // been downloaded. Flipped on by every edit handler (rename, reorder,
+    // decoded payload, IP, etc.) and on session restore (those ARE
+    // unsaved edits). Flipped off by `_downloadEditedBundle` and by
+    // any path that loads a fresh bundle from file. Drives the
+    // "Unsaved" indicators in the Edit overview and detail header.
+    this._editBundleDirty = false;
+    // Hub rename dialog (edit overview) — the entity-level rename
+    // machinery moved into the detail element with everything else.
+    this._hubRenameOpen = false;
+    this._hubRenameDraft = "";
+    this._hubRenameError = "";
+    this._haSortableReady = Boolean(customElements.get("ha-sortable"));
+    this._backupScopeRadioName = `sofabaton-backup-scope-${Math.random().toString(36).slice(2)}`;
+    this._editSessionRestoreTried = false;
+    // entry_id of the hub the currently-loaded restore bundle was picked
+    // against. Used to detect hub-picker switches and drop a bundle that is no
+    // longer valid for the now-selected hub.
+    this._restoreHubEntryId = null;
+    this._openEditFilePicker = () => {
+      this.renderRoot.querySelector("#edit-file-input")?.click();
+    };
+    this._handleEditFilePicked = async (event) => {
+      const input = event.currentTarget;
+      const file = input?.files?.[0];
+      if (!file) return;
+      this._editError = null;
+      try {
+        const text = await file.text();
+        const bundle = validateBackupBundle(JSON.parse(text));
+        this._editBundle = bundle;
+        this._editFilename = file.name;
+        this._editBundleDirty = false;
+        this._closeEditDetail();
+      } catch (error) {
+        this._editBundle = null;
+        this._editFilename = "";
+        this._editBundleDirty = false;
+        this._closeEditDetail();
+        this._editError = formatError(error);
+      } finally {
+        if (input) input.value = "";
+      }
+    };
+    this._closeEditDetail = () => {
+      this._editDetailKind = null;
+      this._editDetailId = null;
+    };
+    this._handleDetailBundleChange = (event) => {
+      this._editBundle = event.detail.bundle;
+      this._editBundleDirty = true;
+    };
+    // ── Hub rename (edit overview) ──────────────────────────────────────
+    // The entity/command rename machinery moved into the detail element;
+    // the hub name is the one rename that opens from the overview, so it
+    // keeps a minimal dialog here with the same look and name rules.
+    this._openHubNameRenameDialog = () => {
+      if (!this._editBundle) return;
+      this._hubRenameDraft = sanitizeBundleName(this._editBundle, String(this._editBundle.hub?.name ?? ""));
+      this._hubRenameError = "";
+      this._hubRenameOpen = true;
+    };
+    this._closeHubRenameDialog = () => {
+      this._hubRenameOpen = false;
+      this._hubRenameDraft = "";
+      this._hubRenameError = "";
+    };
+    this._handleHubRenameInput = (event) => {
+      const input = event.currentTarget;
+      const value = sanitizeBundleName(this._editBundle, input.value);
+      input.value = value;
+      this._hubRenameDraft = value;
+      this._hubRenameError = "";
+    };
+    this._applyHubRename = () => {
+      if (!this._editBundle) return;
+      const next = sanitizeBundleName(this._editBundle, this._hubRenameDraft);
+      if (!next) {
+        this._hubRenameError = "Enter a name to continue.";
+        return;
+      }
+      this._commitEditBundleEdit(renameBundleHub(this._editBundle, next));
+      this._closeHubRenameDialog();
+    };
+    this._handleEditActivityOrderSort = (event) => {
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      this._reorderEditTopLevel(event, "activity");
+    };
+    this._handleEditDeviceOrderSort = (event) => {
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      this._reorderEditTopLevel(event, "device");
+    };
+    this._downloadEditedBundle = async () => {
+      if (!this._editBundle || !this.hass || !this.hub) return;
+      const base = this._editFilename.replace(/\.json$/i, "") || "sofabaton_backup";
+      const filename = `${base}_edited.json`;
+      let operationId = "";
+      try {
+        const result = await this.api().stashEditedBackup(this.hub.entry_id, this._editBundle, filename);
+        operationId = String(result?.operation_id || "");
+      } catch (error) {
+        this._editError = formatError(error);
+        return;
+      }
+      if (!operationId) {
+        this._editError = "Failed to prepare edited backup for download.";
+        return;
+      }
+      const path = `/api/sofabaton_x1s/backup/download/${encodeURIComponent(operationId)}`;
+      let url = path;
+      try {
+        const signed = await this.hass.callWS({
+          type: "auth/sign_path",
+          path,
+          expires: 600
+        });
+        if (signed?.path) url = signed.path;
+      } catch (error) {
+        console.error("[sofabaton] auth/sign_path failed", error);
+        this._editError = formatError(error);
+        return;
+      }
+      const anchor = document.createElement("a");
+      anchor.target = "_blank";
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.dispatchEvent(new MouseEvent("click"));
+      document.body.removeChild(anchor);
+      this._clearEditSession();
+      this._editBundleDirty = false;
+    };
+    this._toggleAllBackupDevices = () => {
+      const devices = backupDeviceOptions(this.cacheHub);
+      const allIds = devices.map((device) => device.id);
+      this._backupDeviceIds = this._backupDeviceIds.length === allIds.length ? [] : allIds;
+    };
+    this._selectAllRestoreItems = () => {
+      const activities = bundleActivityOptions(this._restoreBundle).map((activity) => activity.id);
+      const devices = bundleDeviceOptions(this._restoreBundle).map((device) => device.id);
+      this._restoreActivityIds = activities;
+      this._restoreManualDeviceIds = devices;
+    };
+    this._clearRestoreSelection = () => {
+      this._restoreActivityIds = [];
+      this._restoreManualDeviceIds = [];
+    };
+    this._resetBackupComposer = () => {
+      this._backupError = null;
+      this._backupProgress = null;
+      this._backupScope = "whole_hub";
+      this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
+    };
+    this._resetRestoreComposer = () => {
+      this._restoreError = null;
+      this._restoreSuccess = null;
+      this._restoreProgress = null;
+      this._restoreMode = "merge";
+    };
+  }
+  static {
+    this.properties = {
+      hass: { attribute: false },
+      hub: { attribute: false },
+      cacheHub: { attribute: false },
+      setHubCommandBusy: { attribute: false },
+      refreshControlPanelState: { attribute: false },
+      hubCommandBusy: { type: Boolean },
+      hubCommandBusyLabel: { type: String },
+      loading: { type: Boolean },
+      error: { type: String },
+      persistentCacheEnabled: { type: Boolean },
+      selectedHubProxyConnected: { type: Boolean },
+      blockedTitle: { type: String },
+      blockedMessage: { type: String },
+      selectedSection: { attribute: false },
+      setSelectedSection: { attribute: false },
+      _backupScope: { state: true },
+      _backupDeviceIds: { state: true },
+      _backupError: { state: true },
+      _backupProgress: { state: true },
+      _restoreError: { state: true },
+      _restoreSuccess: { state: true },
+      _restoreProgress: { state: true },
+      _restoreMode: { state: true },
+      _restoreBundle: { state: true },
+      _restoreFilename: { state: true },
+      _restoreActivityIds: { state: true },
+      _restoreManualDeviceIds: { state: true },
+      _loadedBackupEntryId: { state: true },
+      _backupHydrating: { state: true },
+      _editBundle: { state: true },
+      _editFilename: { state: true },
+      _editError: { state: true },
+      _editDetailKind: { state: true },
+      _editDetailId: { state: true },
+      _editBundleDirty: { state: true },
+      _haSortableReady: { state: true },
+      _hubRenameOpen: { state: true },
+      _hubRenameDraft: { state: true },
+      _hubRenameError: { state: true }
+    };
+  }
+  static {
+    this.styles = [secondaryTabStyles, operationProgressStyles, backupTabStyles];
+  }
+  static {
+    this._EDIT_SESSION_TTL_MS = 60 * 60 * 1e3;
+  }
+  static {
+    this._EDIT_SESSION_KEY_PREFIX = "sofabaton.backup-edit-session.v1.";
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this._teardownProgressSubscription();
+  }
+  connectedCallback() {
+    super.connectedCallback();
+    if (!this._haSortableReady) {
+      void customElements.whenDefined("ha-sortable").then(() => {
+        this._haSortableReady = true;
+      });
+    }
+  }
+  updated(changed) {
+    if (changed.has("hub")) {
+      void this._syncBackupOperationState();
+      this._editSessionRestoreTried = false;
+      const nextEntryId = String(this.hub?.entry_id || "").trim() || null;
+      if (this._restoreHubEntryId && nextEntryId !== this._restoreHubEntryId) {
+        this._resetRestoreBundleForHubSwitch();
+      }
+      this._restoreHubEntryId = nextEntryId;
+    }
+    if (changed.has("cacheHub") && this.cacheHub && !this._backupDeviceIds.length) {
+      this._backupDeviceIds = backupDeviceOptions(this.cacheHub).map((device) => device.id);
+    }
+    if (!this._editSessionRestoreTried && this.hub && this.selectedSection === "edit" && !this._editBundle) {
+      this._editSessionRestoreTried = true;
+      this._restoreEditSession();
+    }
+    if (changed.has("_editBundle") || changed.has("_editFilename") || changed.has("_editDetailKind") || changed.has("_editDetailId") || changed.has("_editBundleDirty")) {
+      this._persistEditSession();
+    }
+  }
+  _editSessionStorageKey() {
+    const entryId = this.hub?.entry_id;
+    if (!entryId) return null;
+    return `${_SofabatonBackupTab._EDIT_SESSION_KEY_PREFIX}${entryId}`;
+  }
+  _persistEditSession() {
+    const key = this._editSessionStorageKey();
+    if (!key) return;
+    try {
+      if (!this._editBundle) {
+        window.localStorage.removeItem(key);
+        return;
+      }
+      const payload = {
+        savedAt: Date.now(),
+        filename: this._editFilename || "",
+        bundle: this._editBundle,
+        dirty: this._editBundleDirty,
+        detail: this._editDetailKind && this._editDetailId != null ? { kind: this._editDetailKind, id: this._editDetailId } : null
+      };
+      window.localStorage.setItem(key, JSON.stringify(payload));
+    } catch {
+    }
+  }
+  _clearEditSession() {
+    const key = this._editSessionStorageKey();
+    if (!key) return;
+    try {
+      window.localStorage.removeItem(key);
+    } catch {
+    }
+  }
+  /**
+   * Wipe the in-memory edit draft AND the persisted session.
+   * Called when the user starts a new backup or restore so they don't return
+   * to the Edit tab and mistake a stale draft for the file they just produced.
+   */
+  _discardEditSession() {
+    this._editBundle = null;
+    this._editFilename = "";
+    this._editError = null;
+    this._editBundleDirty = false;
+    this._closeEditDetail();
+    this._clearEditSession();
+  }
+  _restoreEditSession() {
+    const key = this._editSessionStorageKey();
+    if (!key) return;
+    let raw = null;
+    try {
+      raw = window.localStorage.getItem(key);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw);
+      const savedAt = Number(parsed?.savedAt);
+      if (!Number.isFinite(savedAt) || Date.now() - savedAt > _SofabatonBackupTab._EDIT_SESSION_TTL_MS) {
+        window.localStorage.removeItem(key);
+        return;
+      }
+      const bundle = validateBackupBundle(parsed.bundle);
+      this._editBundle = bundle;
+      this._editFilename = typeof parsed.filename === "string" ? parsed.filename : "";
+      if (parsed.detail && parsed.detail.kind && Number.isFinite(Number(parsed.detail.id))) {
+        this._editDetailKind = parsed.detail.kind;
+        this._editDetailId = Number(parsed.detail.id);
+      }
+      this._editBundleDirty = Boolean(parsed.dirty);
+    } catch {
+      try {
+        window.localStorage.removeItem(key);
+      } catch {
+      }
+    }
+  }
+  render() {
+    if (this.loading) {
+      return T`<div class="tab-panel"><div class="state">Loading backup tools…</div></div>`;
+    }
+    if (this.error) {
+      return T`<div class="tab-panel"><div class="state error">${this.error}</div></div>`;
+    }
+    if (!this.hub || !this.hass) {
+      return T`<div class="tab-panel"><div class="state">${TOOLS_CARD_STRINGS.backup.selectHub}</div></div>`;
+    }
+    if (this.blockedTitle && this.blockedMessage) {
+      return T`
+        <div class="tab-panel">
+          <div class="blocked-state">
+            <div class="blocked-state-title">${this.blockedTitle}</div>
+            <div class="blocked-state-sub">${this.blockedMessage}</div>
+          </div>
+        </div>
+      `;
+    }
+    if (this.selectedSection === "edit" && this._editDetailKind && this._editDetailId != null) {
+      const detailTitle = this._selectedEditTitle();
+      if (detailTitle) {
+        return T`
+          <sofabaton-edit-detail-view
+            .bundle=${this._editBundle}
+            .kind=${this._editDetailKind}
+            .entityId=${this._editDetailId}
+            .dirty=${this._editBundleDirty}
+            mode="backup"
+            @bundle-change=${this._handleDetailBundleChange}
+            @close=${this._closeEditDetail}
+          ></sofabaton-edit-detail-view>
+        `;
+      }
+    }
+    return T`
+      <div class="tab-panel">
+        ${renderSecondaryTabShell({
+      items: BACKUP_SECTION_ITEMS,
+      selectedId: this.selectedSection,
+      onSelect: (section) => this.setSelectedSection(section),
+      connected: true,
+      shellClassName: "backup-panel secondary-view-shell--edge",
+      content: this.selectedSection === "make" ? this._renderBackupSectionContent() : this.selectedSection === "edit" ? this._renderEditSectionContent() : this._renderRestoreSectionContent()
+    })}
+      </div>
+    `;
+  }
+  _renderBackupSectionContent() {
+    const devices = backupDeviceOptions(this.cacheHub);
+    const wholeHub = this._backupScope === "whole_hub";
+    const selectedDeviceIds = wholeHub ? devices.map((device) => device.id) : this._backupDeviceIds;
+    const isRunning = this._isProgressRunning(this._backupProgress);
+    const isSuccess = String(this._backupProgress?.status || "") === "success";
+    const allDevicesSelected = devices.length > 0 && this._backupDeviceIds.length === devices.length;
+    const summary = this._backupResultSummary(this._backupProgress?.backup);
+    return T`
+      ${renderSecondaryTabContent({
+      connected: true,
+      contentClassName: "backup-body",
+      content: T`
+            <div class="backup-drawer-sub">
+              ${isRunning ? TOOLS_CARD_STRINGS.backup.creatingSubtitle : isSuccess ? TOOLS_CARD_STRINGS.backup.readySubtitle : TOOLS_CARD_STRINGS.backup.chooseSubtitle}
+            </div>
+            ${!this.persistentCacheEnabled || !this.cacheHub ? this._renderStatus("warning", "mdi:database-off-outline", TOOLS_CARD_STRINGS.backup.enablePersistentCache) : A}
+            ${this._backupError ? this._renderStatus("error", "mdi:alert-circle-outline", this._backupError) : A}
+            ${isRunning && this._backupProgress ? this._renderProgressCard(this._backupProgress, "backup") : isSuccess ? (() => {
+        const hasBundle = !!this._backupProgress?.backup;
+        const wasDownloaded = !!this._backupProgress?.backup_downloaded;
+        const expired = !!this._backupProgress?.backup_expired;
+        return T`
+                  <div class="backup-complete-card">
+                    <div class="backup-complete-icon"><ha-icon icon="mdi:check-decagram-outline"></ha-icon></div>
+                    <div class="backup-complete-title">${TOOLS_CARD_STRINGS.backup.completedTitle}</div>
+                    <div class="backup-complete-sub">${summary}</div>
+                    ${expired ? T`<div class="backup-expired-note">
+                          <ha-icon icon="mdi:clock-alert-outline"></ha-icon>
+                          ${TOOLS_CARD_STRINGS.backup.expired}
+                        </div>` : wasDownloaded ? T`<div class="backup-downloaded-note">
+                            <ha-icon icon="mdi:check-circle-outline"></ha-icon>
+                            ${TOOLS_CARD_STRINGS.backup.downloaded}
+                          </div>` : A}
+                    <div class="action-row">
+                      <button class="primary-btn" ?disabled=${!hasBundle} @click=${this._downloadLatestBackup}>
+                        ${wasDownloaded ? TOOLS_CARD_STRINGS.backup.downloadAgain : TOOLS_CARD_STRINGS.backup.downloadBackup}
+                      </button>
+                      <button class="secondary-btn" @click=${() => void this._completeBackupResult()}>${TOOLS_CARD_STRINGS.backup.complete}</button>
+                    </div>
+                  </div>
+                `;
+      })() : T`
+                  <div class="backup-config-view">
+                  <div class="backup-scope-group">
+                    ${this._renderScopeGroup({
+        value: this._backupScope,
+        disabled: this._backupLocked() || !this.cacheHub,
+        options: [
+          { value: "whole_hub", label: TOOLS_CARD_STRINGS.backup.entireHub },
+          { value: "individual_devices", label: TOOLS_CARD_STRINGS.backup.selectedDevices }
+        ],
+        onChange: (next) => this._setBackupScope(next)
+      })}
+                  </div>
+                  ${!wholeHub ? T`
+                    <div class="backup-devices-head">
+                      <div class="backup-devices-head-main">
+                        <div class="backup-section-title">${TOOLS_CARD_STRINGS.backup.devicesToInclude}</div>
+                        <div class="backup-selected-count">${TOOLS_CARD_STRINGS.backup.selectedCount(this._backupDeviceIds.length)}</div>
+                      </div>
+                      <button class="backup-link-btn" ?disabled=${this._backupLocked() || !this.cacheHub} @click=${this._toggleAllBackupDevices}>
+                        ${allDevicesSelected ? TOOLS_CARD_STRINGS.backup.deselectAll : TOOLS_CARD_STRINGS.backup.selectAll}
+                      </button>
+                    </div>
+                    <div class="selection-card">
+                      <div class="selection-list">
+                        ${devices.length ? devices.map((device) => T`
+                              <div
+                                class="selection-row"
+                                @click=${() => {
+        if (this._backupLocked() || !this.cacheHub) return;
+        this._setBackupDevice(device.id, !selectedDeviceIds.includes(device.id));
+      }}
+                              >
+                                ${this._renderCheckboxControl({
+        checked: selectedDeviceIds.includes(device.id),
+        disabled: this._backupLocked() || !this.cacheHub,
+        onChange: (checked) => this._setBackupDevice(device.id, checked)
+      })}
+                                <span class="selection-main">
+                                  <span class="selection-label">${device.label}</span>
+                                </span>
+                                ${device.meta ? T`<span class="selection-meta">${device.meta}</span>` : A}
+                              </div>
+                            `) : T`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noDevicesAvailable}</div>`}
+                      </div>
+                    </div>
+                  ` : A}
+                  <div class="backup-action-row">
+                    <button
+                      class="primary-btn header-primary-btn"
+                      ?disabled=${this._backupActionDisabled()}
+                      @click=${() => void this._runBackup()}
+                    >
+                      ${isRunning ? TOOLS_CARD_STRINGS.backup.working : TOOLS_CARD_STRINGS.backup.startBackup}
+                    </button>
+                  </div>
+                  </div>
+                `}
+        `
+    })}
+    `;
+  }
+  _renderEditSectionContent() {
+    const bundle = this._editBundle;
+    const activityOptions = bundleActivityOptions(bundle);
+    const deviceOptions = bundleEditableDeviceOptions(bundle);
+    return T`
+      ${renderSecondaryTabContent({
+      connected: true,
+      contentClassName: "edit-body",
+      content: T`
+            ${this._editError ? this._renderStatus("error", "mdi:alert-circle-outline", this._editError) : A}
+            <input id="edit-file-input" type="file" accept=".json,application/json" @change=${this._handleEditFilePicked} />
+            ${bundle ? T`
+              ${this._renderEditOverview({
+        activityOptions,
+        deviceOptions
+      })}
+            ` : T`
+              <div class="edit-config-view">
+                <div class="backup-drawer-sub">
+                  ${TOOLS_CARD_STRINGS.backup.editLoadPrompt}
+                </div>
+                <div class="restore-action-row">
+                  <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || TOOLS_CARD_STRINGS.backup.chooseBackupFile}</button>
+                </div>
+              </div>
+            `}
+            ${this._renderHubRenameDialog()}
+        `
+    })}
+    `;
+  }
+  _renderEditOverview(params) {
+    const activitiesSortable = this._haSortableReady && params.activityOptions.length > 1;
+    const devicesSortable = this._haSortableReady && params.deviceOptions.length > 1;
+    const renderActivityRows = () => params.activityOptions.map((option) => this._renderEditCollectionRow(
+      option,
+      () => this._openEditDetail("activity", option.id, option.label),
+      activitiesSortable
+    ));
+    const renderDeviceRows = () => params.deviceOptions.map((option) => this._renderEditCollectionRow(
+      option,
+      () => this._openEditDetail("device", option.id, option.label),
+      devicesSortable
+    ));
+    const hubName = String(this._editBundle?.hub?.name ?? "").trim();
+    return T`
+      <div class="edit-config-view">
+        <div class="backup-drawer-sub">
+          ${TOOLS_CARD_STRINGS.backup.editLoadPrompt}
+          ${this._haSortableReady ? TOOLS_CARD_STRINGS.backup.reorderHint : ""}
+        </div>
+        <div class="edit-hub-name-row" title="Hub name is only applied at restore time when the user opts to wipe the hub.">
+          <span class="edit-hub-name-label">${TOOLS_CARD_STRINGS.backup.hubName}</span>
+          <span class="edit-hub-name-value">${hubName || TOOLS_CARD_STRINGS.backup.hubNameNotSet}</span>
+          <button
+            class="icon-btn"
+            @click=${this._openHubNameRenameDialog}
+            aria-label=${TOOLS_CARD_STRINGS.backup.renameHub}
+          >
+            <ha-icon icon="mdi:pencil"></ha-icon>
+          </button>
+        </div>
+        <div class="selection-card">
+          <div class="selection-list">
+            ${params.activityOptions.length ? T`
+                  <div class="selection-group-header">${TOOLS_CARD_STRINGS.backup.activities}</div>
+                  ${activitiesSortable ? T`
+                        <ha-sortable
+                          class="edit-order-sortable"
+                          draggable-selector=".edit-selection-row"
+                          handle-selector=".edit-row-drag"
+                          animation="180"
+                          @item-moved=${this._handleEditActivityOrderSort}
+                        >
+                          <div class="edit-order-sortable-container">
+                            ${renderActivityRows()}
+                          </div>
+                        </ha-sortable>
+                      ` : renderActivityRows()}
+                ` : T`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noActivitiesInFile}</div>`}
+            ${params.deviceOptions.length ? T`
+                  <div class="selection-group-header">${TOOLS_CARD_STRINGS.backup.devices}</div>
+                  ${devicesSortable ? T`
+                        <ha-sortable
+                          class="edit-order-sortable"
+                          draggable-selector=".edit-selection-row"
+                          handle-selector=".edit-row-drag"
+                          animation="180"
+                          @item-moved=${this._handleEditDeviceOrderSort}
+                        >
+                          <div class="edit-order-sortable-container">
+                            ${renderDeviceRows()}
+                          </div>
+                        </ha-sortable>
+                      ` : renderDeviceRows()}
+                ` : T`<div class="selection-empty">${TOOLS_CARD_STRINGS.backup.noDevicesInFile}</div>`}
+          </div>
+        </div>
+        ${this._editBundleDirty ? T`
+              <div class="edit-unsaved-banner" role="status">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>${TOOLS_CARD_STRINGS.backup.unsavedChanges}<strong>${TOOLS_CARD_STRINGS.backup.downloadEditedBackupStrong}</strong>${TOOLS_CARD_STRINGS.backup.unsavedChangesSuffix}</span>
+              </div>
+            ` : A}
+        <div class="restore-action-row">
+          <button
+            class="primary-btn${this._editBundleDirty ? " primary-btn--unsaved" : ""}"
+            @click=${this._downloadEditedBundle}
+          >${TOOLS_CARD_STRINGS.backup.downloadEditedBackup}</button>
+          <button class="secondary-btn filename-btn" @click=${this._openEditFilePicker}>${this._editFilename || TOOLS_CARD_STRINGS.backup.chooseBackupFile}</button>
+        </div>
+      </div>
+    `;
+  }
+  _renderEditCollectionRow(option, onSelect, showDragHandle) {
+    return T`
+      <button class="edit-selection-row" @click=${onSelect}>
+        ${showDragHandle ? T`
+              <span
+                class="edit-row-drag"
+                aria-hidden="true"
+                @click=${(event) => event.stopPropagation()}
+              >
+                <ha-icon icon="mdi:drag-vertical-variant"></ha-icon>
+              </span>
+            ` : A}
+        <span class="selection-main">
+          <span class="selection-label">${option.label}</span>
+        </span>
+        ${option.meta ? T`<span class="selection-meta">${option.meta}</span>` : A}
+        <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
+      </button>
+    `;
+  }
+  /**
+   * Commit a mutated bundle from any edit handler. Centralizes the
+   * "this counts as a user edit" decision so loaders (file pick,
+   * session restore, discard) can keep using the direct
+   * `this._editBundle = ...` assignment to bypass the dirty flag.
+   */
+  _commitEditBundleEdit(next) {
+    this._editBundle = pruneHaActionHosts(next);
+    this._editBundleDirty = true;
+  }
+  // Detail-view transient state (open menus/dialogs, sub-views) lives in
+  // the edit-detail element and resets itself when kind/entityId change,
+  // so opening and closing here is just entity selection.
+  _openEditDetail(kind, id, _name) {
+    this._editDetailKind = kind;
+    this._editDetailId = Number(id);
+  }
+  _renderHubRenameDialog() {
+    if (!this._hubRenameOpen) return A;
+    return T`
+      <div class="modal-backdrop" @click=${this._closeHubRenameDialog}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">Rename Hub</div>
+            <button class="dialog-close" @click=${this._closeHubRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body">
+            ${useLegacyTextField() ? T`
+                  <ha-textfield
+                    id="sb-backup-hub-name"
+                    .label=${"Name"}
+                    .maxLength=${20}
+                    .value=${this._hubRenameDraft}
+                    @input=${this._handleHubRenameInput}
+                    @change=${this._handleHubRenameInput}
+                    @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this._applyHubRename();
+      }
+    }}
+                  ></ha-textfield>
+                ` : T`
+                  <ha-input
+                    id="sb-backup-hub-name"
+                    type="text"
+                    .label=${"Name"}
+                    .maxlength=${20}
+                    .value=${this._hubRenameDraft}
+                    @input=${this._handleHubRenameInput}
+                    @change=${this._handleHubRenameInput}
+                    @keydown=${(event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        this._applyHubRename();
+      }
+    }}
+                  ></ha-input>
+                `}
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._hubRenameError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeHubRenameDialog}>Cancel</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyHubRename}>Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _selectedEditTitle() {
+    if (!this._editBundle || !this._editDetailKind || this._editDetailId == null) return "";
+    const options = this._editDetailKind === "activity" ? bundleActivityOptions(this._editBundle) : bundleDeviceOptions(this._editBundle);
+    return options.find((option) => option.id === this._editDetailId)?.label || "";
+  }
+  _reorderEditTopLevel(event, kind) {
+    if (!this._editBundle) return;
+    const sortableEvent = event;
+    const oldIndex = Number(sortableEvent.detail?.oldIndex);
+    const newIndex = Number(sortableEvent.detail?.newIndex);
+    if (!Number.isFinite(oldIndex) || !Number.isFinite(newIndex) || oldIndex === newIndex) return;
+    const current = kind === "activity" ? bundleActivityOptions(this._editBundle) : bundleDeviceOptions(this._editBundle);
+    if (oldIndex < 0 || newIndex < 0 || oldIndex >= current.length || newIndex >= current.length) return;
+    const nextOptions = [...current];
+    const [moved] = nextOptions.splice(oldIndex, 1);
+    if (!moved) return;
+    nextOptions.splice(newIndex, 0, moved);
+    const orderedIds = nextOptions.map((option) => option.id);
+    this._commitEditBundleEdit(kind === "activity" ? reorderBundleActivities(this._editBundle, orderedIds) : reorderBundleDevices(this._editBundle, orderedIds));
   }
   _renderRestoreSectionContent() {
     const isRunning = this._isProgressRunning(this._restoreProgress);
@@ -9858,6 +10054,7 @@ if (!customElements.get("sofabaton-backup-tab")) {
 
 // tests/frontend/backup-tab.test.ts
 var BackupTabElement = customElements.get("sofabaton-backup-tab");
+var EditDetailViewElement = customElements.get("sofabaton-edit-detail-view");
 function createHass(state, onBackupState) {
   return {
     states: {},
@@ -10046,8 +10243,8 @@ test("backup complete dismiss clears backend result and resets the make view", a
   assert.deepEqual(element._backupDeviceIds, [7]);
 });
 test("backup edit detail rename updates the selected device name in the bundle", () => {
-  const element = new BackupTabElement();
-  element._editBundle = {
+  const element = new EditDetailViewElement();
+  element.bundle = {
     kind: "hub_bundle",
     schema_version: 5,
     hub: { name: "Living Room", version: "X1S" },
@@ -10060,11 +10257,38 @@ test("backup edit detail rename updates the selected device name in the bundle",
       }
     ]
   };
-  element._openEditDetail("device", 7, "TV");
+  element.kind = "device";
+  element.entityId = 7;
   element._editDetailNameDraft = "Media Center";
   element._applyEditDetailRename();
   assert.equal(element._selectedEditTitle(), "Media Center");
-  assert.equal(element._editBundle.devices[0].device?.name, "Media Center");
+  assert.equal(element.bundle.devices[0].device?.name, "Media Center");
+});
+test("edit detail element reports edits through bundle-change", () => {
+  const element = new EditDetailViewElement();
+  element.bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { name: "Living Room", version: "X1S" },
+    activities: [],
+    devices: [
+      {
+        kind: "device",
+        complete: true,
+        device: { device_id: 7, name: "TV", device_class: "tv" }
+      }
+    ]
+  };
+  element.kind = "device";
+  element.entityId = 7;
+  let emitted = null;
+  element.addEventListener("bundle-change", (event) => {
+    emitted = event.detail.bundle;
+  });
+  element._editDetailNameDraft = "Media Center";
+  element._applyEditDetailRename();
+  assert.ok(emitted, "bundle-change should fire on commit");
+  assert.equal(emitted.devices[0].device?.name, "Media Center");
 });
 test("backup activity quick-access items derive favorite labels from bundled device commands", () => {
   const bundle = {

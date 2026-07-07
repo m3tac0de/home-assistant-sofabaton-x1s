@@ -7,6 +7,7 @@ export const TOOLS_CARD_STRINGS = {
     blobsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/blobs.md",
   },
   tabs: {
+    activities: "Activities",
     cache: "Cache",
     wifiCommands: "Wifi Commands",
     wifiShort: "Wifi",
@@ -127,6 +128,36 @@ export const TOOLS_CARD_STRINGS = {
     save: "Save",
     saving: "Saving...",
     commandName: "Command name",
+  },
+  activities: {
+    loading: "Loading activities...",
+    selectHub: "Select a hub to edit its activities.",
+    listSubtitle: "Choose an activity to edit. Changes stay on your device until you sync them to the hub.",
+    activityFallback: (id: number) => `Activity ${id}`,
+    rowMeta: (devices: number, shortcuts: number) => {
+      const deviceLabel = `${devices} ${devices === 1 ? "device" : "devices"}`;
+      const shortcutLabel = `${shortcuts} ${shortcuts === 1 ? "shortcut" : "shortcuts"}`;
+      return `${deviceLabel} · ${shortcutLabel}`;
+    },
+    // Guard panels (§4.1), rendered inside the tab.
+    appConnectedTitle: "The Sofabaton app is connected",
+    appConnectedBody: "Close the Sofabaton app to edit activities.",
+    operationRunningTitle: "Another operation is running",
+    operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
+    emptyTitle: "No activities yet",
+    emptyBody: "This hub has no activities to edit.",
+    // Capture flow (§4.2).
+    captureTitle: "Reading your hub",
+    captureMessage: "Reading your hub's configuration…",
+    captureMessageWithStep: (current: number, total: number) =>
+      `Reading your hub's configuration… (device ${current} of ${total})`,
+    captureFailedTitle: "Couldn't read the hub",
+    captureFailedBody: "The hub stopped responding before we finished reading it.",
+    retry: "Retry",
+    back: "Back",
+    // Session restore banner (§4.6).
+    sessionRestoreBanner: (name: string, time: string) => `Continuing your edit of "${name}" from ${time}`,
+    sessionReload: "Reload from hub instead",
   },
   backup: {
     loading: "Loading backup tools...",

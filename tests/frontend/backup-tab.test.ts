@@ -7,6 +7,9 @@ import { activityQuickAccessItems, reorderBundleActivityQuickAccess } from "../.
 const BackupTabElement = customElements.get("sofabaton-backup-tab") as {
   new (): HTMLElement;
 };
+const EditDetailViewElement = customElements.get("sofabaton-edit-detail-view") as {
+  new (): HTMLElement;
+};
 
 function createHass(state: BackupOperationStateResponse, onBackupState?: () => void): HassLike {
   return {
@@ -225,8 +228,10 @@ test("backup complete dismiss clears backend result and resets the make view", a
 });
 
 test("backup edit detail rename updates the selected device name in the bundle", () => {
-  const element = new BackupTabElement() as HTMLElement & Record<string, unknown>;
-  element._editBundle = {
+  // The rename flow lives in the extracted edit-detail element; the
+  // backup tab only routes the resulting bundle-change event.
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, unknown>;
+  element.bundle = {
     kind: "hub_bundle",
     schema_version: 5,
     hub: { name: "Living Room", version: "X1S" },
@@ -239,14 +244,43 @@ test("backup edit detail rename updates the selected device name in the bundle",
       },
     ],
   };
-
-  element._openEditDetail("device", 7, "TV");
+  element.kind = "device";
+  element.entityId = 7;
   element._editDetailNameDraft = "Media Center";
 
   element._applyEditDetailRename();
 
   assert.equal(element._selectedEditTitle(), "Media Center");
-  assert.equal(element._editBundle.devices[0].device?.name, "Media Center");
+  assert.equal((element.bundle as { devices: Array<{ device?: { name?: string } }> }).devices[0].device?.name, "Media Center");
+});
+
+test("edit detail element reports edits through bundle-change", () => {
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, unknown>;
+  element.bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { name: "Living Room", version: "X1S" },
+    activities: [],
+    devices: [
+      {
+        kind: "device",
+        complete: true,
+        device: { device_id: 7, name: "TV", device_class: "tv" },
+      },
+    ],
+  };
+  element.kind = "device";
+  element.entityId = 7;
+  let emitted: { devices: Array<{ device?: { name?: string } }> } | null = null;
+  (element as unknown as EventTarget).addEventListener("bundle-change", (event) => {
+    emitted = (event as CustomEvent<{ bundle: typeof emitted }>).detail.bundle;
+  });
+  element._editDetailNameDraft = "Media Center";
+
+  element._applyEditDetailRename();
+
+  assert.ok(emitted, "bundle-change should fire on commit");
+  assert.equal(emitted!.devices[0].device?.name, "Media Center");
 });
 
 test("backup activity quick-access items derive favorite labels from bundled device commands", () => {

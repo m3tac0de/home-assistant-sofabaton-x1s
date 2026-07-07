@@ -1424,7 +1424,7 @@ function connectionFingerprint(hass) {
 var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+var VALID_TABS = /* @__PURE__ */ new Set(["activities", "settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
 var VALID_CACHE_SECTIONS = /* @__PURE__ */ new Set(["activities", "devices"]);
 var VALID_BACKUP_SECTIONS = /* @__PURE__ */ new Set(["make", "edit", "restore"]);
 var VALID_BLOBS_SECTIONS = /* @__PURE__ */ new Set(["fetch", "test", "save"]);

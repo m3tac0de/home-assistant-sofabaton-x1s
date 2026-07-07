@@ -796,6 +796,14 @@
       ip_address:     "192.168.1.110",
       activity_count: 4,
       device_count:   3,
+      // control_panel/state surfaces the activity summary on the hub state;
+      // the Activities tab reads it from here (enriched by cache counts).
+      activities: [
+        { id: 101, name: "Watch TV",        favorite_count: 3, macro_count: 1 },
+        { id: 102, name: "Listen to Music", favorite_count: 2, macro_count: 0 },
+        { id: 103, name: "Game Mode",       favorite_count: 5, macro_count: 2 },
+        { id: 104, name: "Good Night",      favorite_count: 1, macro_count: 0 },
+      ],
       settings: {
         proxy_enabled:       false,
         hex_logging_enabled: false,
@@ -1673,6 +1681,52 @@
       // The branch redesign adds a device-list layer: you first see a list of
       // WifiDeviceSummary cards, then navigate into one to edit its command slots.
 
+      // ── Activities (live editor, Phase L2) ──────────────────────────────────────
+      {
+        id: "activities-list", group: "Activities",
+        label: "Activities — list",
+        states: STATES_CONNECTED,
+        postLoad: card => clickTab(card, "Activities"),
+      },
+      {
+        id: "activities-capture", group: "Activities",
+        label: "Activities — capture → edit",
+        states: STATES_CONNECTED,
+        handlers: {
+          "sofabaton_x1s/backup/export": () => ({ operation_id: "capture-1" }),
+        },
+        subscribe: (cb) => {
+          // Emit a successful whole-hub capture carrying the rich edit bundle.
+          setTimeout(() => cb({
+            operation_id: "capture-1",
+            kind: "backup_export",
+            entry_id: "hub-1",
+            status: "success",
+            backup: clone(EDIT_BACKUP_BUNDLE),
+          }), 200);
+          return Promise.resolve(() => {});
+        },
+        async postLoad(card) {
+          await clickTab(card, "Activities");
+          const tab = card.shadowRoot.querySelector("sofabaton-activities-tab");
+          if (!tab) return;
+          await tab.updateComplete;
+          const rows = [...tab.shadowRoot.querySelectorAll(".activity-row")];
+          const row = rows.find(r => r.textContent.includes("Watch TV"));
+          row?.click();
+          await tab.updateComplete;
+        },
+      },
+      {
+        id: "activities-app-connected", group: "Activities",
+        label: "Activities — app connected (blocked)",
+        states: STATES_PROXY,
+        state: {
+          ...BASE_STATE,
+          hubs: [{ ...HUB_1, proxy_client_connected: true }],
+        },
+        postLoad: card => clickTab(card, "Activities"),
+      },
       {
         id: "backup-compose", group: "Backup / Restore",
         label: "Backup composer",
