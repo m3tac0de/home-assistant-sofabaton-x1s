@@ -1161,13 +1161,13 @@ function readSortKey(block) {
 }
 function bundleDeviceOptions(bundle2) {
   return [...bundle2?.devices ?? []].map((device) => {
-    const block = device?.device || {};
-    const id = Number(block.device_id || 0);
+    const block = device?.device;
+    const id = Number(block?.device_id || 0);
     return {
       id,
       sortKey: readSortKey(block),
-      label: String(block.name || `Device ${id}`),
-      meta: String(block.device_class || "").trim() || void 0
+      label: String(block?.name || `Device ${id}`),
+      meta: String(block?.device_class || "").trim() || void 0
     };
   }).filter((option) => option.id > 0).sort(compareByHubOrder).map(({ id, label, meta }) => ({ id, label, meta }));
 }

@@ -32,7 +32,7 @@ const BACKEND_RETRY_MIN_MS = 2000;
 const BACKEND_RETRY_MAX_MS = 10000;
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+const VALID_TABS = new Set<TabId>(["activities", "settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
 const VALID_CACHE_SECTIONS = new Set<SectionId>(["activities", "devices"]);
 const VALID_BACKUP_SECTIONS = new Set<BackupSectionId>(["make", "edit", "restore"]);
 const VALID_BLOBS_SECTIONS = new Set<BlobsSectionId>(["fetch", "test", "save"]);

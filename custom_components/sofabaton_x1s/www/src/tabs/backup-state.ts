@@ -320,12 +320,12 @@ function readSortKey(block: OrderedBlock | undefined | null): number {
 export function bundleActivityOptions(bundle: BackupBundlePayload | null): BackupSelectionOption[] {
   return [...(bundle?.activities ?? [])]
     .map((activity) => {
-      const block = activity?.device || {};
-      const id = Number(block.device_id || 0);
+      const block = activity?.device;
+      const id = Number(block?.device_id || 0);
       return {
         id,
         sortKey: readSortKey(block),
-        label: String(block.name || `Activity ${id}`),
+        label: String(block?.name || `Activity ${id}`),
         meta: `${(activity?.referenced_source_device_ids ?? []).length} linked devices`,
       };
     })
@@ -337,13 +337,13 @@ export function bundleActivityOptions(bundle: BackupBundlePayload | null): Backu
 export function bundleDeviceOptions(bundle: BackupBundlePayload | null): BackupSelectionOption[] {
   return [...(bundle?.devices ?? [])]
     .map((device) => {
-      const block = device?.device || {};
-      const id = Number(block.device_id || 0);
+      const block = device?.device;
+      const id = Number(block?.device_id || 0);
       return {
         id,
         sortKey: readSortKey(block),
-        label: String(block.name || `Device ${id}`),
-        meta: String(block.device_class || "").trim() || undefined,
+        label: String(block?.name || `Device ${id}`),
+        meta: String(block?.device_class || "").trim() || undefined,
       };
     })
     .filter((option) => option.id > 0)

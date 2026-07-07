@@ -23,10 +23,17 @@ import { TOOLS_CARD_STRINGS } from "./strings";
 import "./tabs/blobs-tab";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
+import "./tabs/activities-tab";
 
 const TOOLS_TYPE = "sofabaton-control-panel";
 const LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
 const EDITOR_TYPE = `${TOOLS_TYPE}-editor`;
+
+declare global {
+  interface Window {
+    customCards?: Array<Record<string, unknown> & { type: string }>;
+  }
+}
 
 function resolveLoadedToolsFrontendVersion() {
   const version = new URL(import.meta.url, window.location.href).searchParams.get("v");
@@ -51,7 +58,7 @@ const DOC_LINKS: Partial<Record<TabId, { href: string; label: string }>> = {
 };
 
 function logOnce() {
-  const windowWithFlag = window as Window & Record<string, unknown>;
+  const windowWithFlag = window as unknown as Record<string, unknown>;
   if (windowWithFlag[LOG_ONCE_KEY]) return;
   windowWithFlag[LOG_ONCE_KEY] = true;
 
@@ -528,6 +535,7 @@ class SofabatonControlPanelCard extends LitElement {
 
   private renderPreview() {
     const features: Array<{ icon: string; label: string }> = [
+      { icon: "mdi:play-circle-outline", label: TOOLS_CARD_STRINGS.tabs.activities },
       { icon: "mdi:database-outline", label: TOOLS_CARD_STRINGS.tabs.cache },
       { icon: "mdi:wifi", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
       { icon: "mdi:cloud-upload-outline", label: TOOLS_CARD_STRINGS.tabs.backup },
@@ -606,6 +614,21 @@ class SofabatonControlPanelCard extends LitElement {
         loading: this._snapshot.logsLoading,
         error: this._snapshot.logsError,
       });
+    } else if (this._snapshot.selectedTab === "activities") {
+      const availability = resolveTabAvailability(this._snapshot, "activities");
+      activeTab = html`
+        <sofabaton-activities-tab
+          .loading=${this._snapshot.loading}
+          .error=${this._snapshot.loadError}
+          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
+          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
+          .hub=${hub}
+          .cacheHub=${cacheHub}
+          .hass=${this._snapshot.hass}
+          .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
+          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+        ></sofabaton-activities-tab>
+      `;
     } else if (this._snapshot.selectedTab === "wifi_commands") {
       const availability = resolveTabAvailability(this._snapshot, "wifi_commands");
       activeTab = html`

@@ -359,7 +359,10 @@ export function resolveTabAvailability(snapshot: ControlPanelSnapshot, tabId: Ta
     };
   }
 
-  if (tabId === "logs" || tabId === "settings" || tabId === "cache") {
+  // Activities renders its proxy-connected / busy guards *inside* the tab
+  // (§4.1) so the user can still see the activity list; it is never blocked
+  // at the tab level once the hub is connected.
+  if (tabId === "logs" || tabId === "settings" || tabId === "cache" || tabId === "activities") {
     return { kind: "available" };
   }
 

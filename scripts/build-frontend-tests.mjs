@@ -5,6 +5,8 @@ await mkdir("tests/frontend-dist", { recursive: true });
 
 await build({
   entryPoints: [
+    "tests/frontend/activities-tab.test.ts",
+    "tests/frontend/activity-diff.test.ts",
     "tests/frontend/backup-state.test.ts",
     "tests/frontend/backup-tab.test.ts",
     "tests/frontend/blobs-state.test.ts",

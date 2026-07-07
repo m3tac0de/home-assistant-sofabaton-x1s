@@ -7,6 +7,7 @@ export const TOOLS_CARD_STRINGS = {
     blobsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/blobs.md",
   },
   tabs: {
+    activities: "Activities",
     cache: "Cache",
     wifiCommands: "Wifi Commands",
     wifiShort: "Wifi",
@@ -127,6 +128,99 @@ export const TOOLS_CARD_STRINGS = {
     save: "Save",
     saving: "Saving...",
     commandName: "Command name",
+  },
+  activities: {
+    loading: "Loading activities...",
+    selectHub: "Select a hub to edit its activities.",
+    listSubtitle: "Choose an activity to edit. Changes stay on your device until you sync them to the hub.",
+    activityFallback: (id: number) => `Activity ${id}`,
+    rowMeta: (devices: number, shortcuts: number) => {
+      const deviceLabel = `${devices} ${devices === 1 ? "device" : "devices"}`;
+      const shortcutLabel = `${shortcuts} ${shortcuts === 1 ? "shortcut" : "shortcuts"}`;
+      return `${deviceLabel} · ${shortcutLabel}`;
+    },
+    // Guard panels (§4.1), rendered inside the tab.
+    appConnectedTitle: "The Sofabaton app is connected",
+    appConnectedBody: "Close the Sofabaton app to edit activities.",
+    operationRunningTitle: "Another operation is running",
+    operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
+    emptyTitle: "No activities yet",
+    emptyBody: "This hub has no activities to edit.",
+    // Capture flow (§4.2).
+    captureTitle: "Reading your hub",
+    captureMessage: "Reading your hub's configuration…",
+    captureMessageWithStep: (current: number, total: number) =>
+      `Reading your hub's configuration… (device ${current} of ${total})`,
+    captureFailedTitle: "Couldn't read the hub",
+    captureFailedBody: "The hub stopped responding before we finished reading it.",
+    retry: "Retry",
+    back: "Back",
+    // Session restore banner (§4.6).
+    sessionRestoreBanner: (name: string, time: string) => `Continuing your edit of "${name}" from ${time}`,
+    sessionReload: "Reload from hub instead",
+    // Live-mode edit header (§4.3).
+    notSyncedChip: "Not synced",
+    notSyncedTooltip: "Changes are local until you press Sync.",
+    reviewChanges: "Review changes",
+    sync: "Sync",
+    discard: "Discard",
+    // Review dialog (§4.4).
+    reviewTitle: "Review changes",
+    reviewEmpty: "No changes to sync yet.",
+    reviewSyncNow: "Sync now",
+    reviewKeepEditing: "Keep editing",
+    reviewDiscardAll: "Discard all changes",
+    reviewAppliesEverywhere: "applies everywhere",
+    reviewAppliesEveryActivity: "applies to every activity",
+    // Sync is stubbed until Phase L4 lands.
+    syncComingSoonTitle: "Live sync is coming soon",
+    syncComingSoonBody: "Writing changes back to the hub arrives in a later update (Phase L4). Your edits are safe here in the meantime.",
+    // Discard confirmation.
+    discardConfirmTitle: "Discard all changes?",
+    discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
+    discardConfirmCancel: "Keep editing",
+    discardConfirmConfirm: "Discard changes",
+    // Review-list section titles + entry templates (activity-diff.ts).
+    review: {
+      sectionDevices: "Devices",
+      sectionStart: "When it starts",
+      sectionButtons: "Buttons",
+      sectionShortcuts: "Shortcuts",
+      sectionEnd: "When it ends",
+      sectionDeviceWide: "Device-wide changes",
+      deviceAdded: (name: string) => `Added "${name}" to this activity.`,
+      deviceRemoved: (name: string) => `Removed "${name}" from this activity.`,
+      inputChanged: (device: string, input: string) => `"${device}" input changed to ${input}.`,
+      inputCleared: (device: string) => `"${device}" input cleared.`,
+      powersOnNow: (device: string) => `"${device}" now turns on with this activity.`,
+      powersOnNo: (device: string) => `"${device}" no longer turns on with this activity.`,
+      startReordered: "Start sequence reordered.",
+      roleNowControls: (group: string, device: string) => `${group} now control "${device}".`,
+      roleCustomized: (group: string) => `${group} customized.`,
+      roleCleared: (group: string) => `${group} no longer assigned.`,
+      shortcutAdded: (name: string) => `Added "${name}".`,
+      shortcutRemoved: (name: string) => `Removed "${name}".`,
+      shortcutRenamed: (oldName: string, newName: string) => `Renamed "${oldName}" → "${newName}".`,
+      shortcutsReordered: "Reordered shortcuts.",
+      powersOffNow: (device: string) => `"${device}" now turns off with this activity.`,
+      powersOffNo: (device: string) => `"${device}" now stays on.`,
+      idleChanged: (device: string, label: string) => `"${device}" idle behavior → ${label}.`,
+      commandRenamed: (oldName: string, newName: string, device: string) =>
+        `Renamed command "${oldName}" → "${newName}" on "${device}".`,
+      roleGroups: {
+        volume: "Volume buttons",
+        navigation: "Navigation buttons",
+        playback: "Playback buttons",
+        channels: "Channel buttons",
+      } as Record<string, string>,
+      idleShort: {
+        0: "not set",
+        1: "turns off when idle",
+        2: "never switches off",
+        3: "stays on",
+        4: "not managed by the hub",
+      } as Record<number, string>,
+    },
   },
   backup: {
     loading: "Loading backup tools...",
