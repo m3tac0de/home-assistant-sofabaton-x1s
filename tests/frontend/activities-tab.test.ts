@@ -65,56 +65,6 @@ test("activities tab prompts to refresh when the structural cache is missing", a
   assert.equal(element._baseline, null);
 });
 
-function hassWithGeneration(bundle: BackupBundlePayload | null, remoteGeneration: number) {
-  const hass = createHass(bundle) as HassLike & { states: Record<string, any> };
-  hass.states["remote.living_room"] = { attributes: { entry_id: "hub-1", cache_generation: remoteGeneration } };
-  return hass;
-}
-
-test("activities tab does NOT flag stale right after loading, even if the build generation lags", async () => {
-  // The bundle was built at an earlier generation, but the hub has bumped its
-  // generation several times settling the refresh burst. Opening must not
-  // false-positive — anchor to the currently observed generation instead.
-  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
-  element.hass = hassWithGeneration(sampleBundle(), 5);
-  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-
-  await element._startCapture(101);
-
-  assert.equal(element._stage, "editing");
-  assert.equal(element._cacheStale, false);
-  assert.equal(element._loadedGeneration, 5);
-});
-
-test("activities tab flags stale when the cache generation advances after load (past grace)", async () => {
-  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
-  const hass = hassWithGeneration(sampleBundle(), 5);
-  element.hass = hass;
-  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  await element._startCapture(101);
-  assert.equal(element._cacheStale, false);
-
-  // Grace expired, then an external change bumps the generation → diverged.
-  element._staleGraceUntil = 0;
-  hass.states["remote.living_room"].attributes.cache_generation = 6;
-  element.updated(new Map<string, unknown>([["hass", undefined]]));
-  assert.equal(element._cacheStale, true);
-});
-
-test("activities tab absorbs settling generation bumps within the grace window", async () => {
-  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
-  const hass = hassWithGeneration(sampleBundle(), 5);
-  element.hass = hass;
-  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  await element._startCapture(101);
-
-  // Still within the grace window: a trailing bump re-anchors, not flags.
-  hass.states["remote.living_room"].attributes.cache_generation = 7;
-  element.updated(new Map<string, unknown>([["hass", undefined]]));
-  assert.equal(element._cacheStale, false);
-  assert.equal(element._loadedGeneration, 7);
-});
-
 test("activities tab surfaces a structural-bundle read failure", async () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
   element.hass = {

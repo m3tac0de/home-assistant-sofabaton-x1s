@@ -120,6 +120,23 @@ test("diffActivityForReview reports a shortcut rename", () => {
   assert.match(allText(groups), /Renamed "Bar Power" → "Soundbar Power"/);
 });
 
+test("diffActivityForReview reports a shortcut reorder despite positional button_ids", () => {
+  const base = baseBundle();
+  const edited = structuredClone(base);
+  const activity = edited.activities.find(
+    (a) => Number(a.device?.device_id) === ACTIVITY_ID,
+  )!;
+  // Editor swaps the two favorites and reassigns button_ids positionally, so
+  // button_id is unchanged {1,2} but the content order flips.
+  activity.favorite_slots = [
+    { button_id: 1, device_id: 2, command_id: 20, name: "Bar Power" },
+    { button_id: 2, device_id: 1, command_id: 10, name: "TV Power" },
+  ];
+  const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
+  assert.match(allText(groups), /Reordered/);
+  assert.doesNotMatch(allText(groups), /Added|Removed/);
+});
+
 test("diffActivityForReview flags idle-behavior changes as device-wide/global", () => {
   const base = baseBundle();
   const edited = updateBundleDeviceIdleBehavior(base, 1, IDLE_BEHAVIOR_AUTO_OFF);

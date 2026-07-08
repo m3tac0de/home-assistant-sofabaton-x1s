@@ -178,6 +178,13 @@ function diffButtons(
 // ── Shortcuts (quick access) ──────────────────────────────────────────
 
 function shortcutIdentity(item: BackupActivityQuickAccessItem): string {
+  // The editor reassigns quick-access button_ids positionally on every edit,
+  // so button_id is a display position, not a stable identity. A favorite's
+  // durable identity is its content (device + command); fall back to button_id
+  // only for macros, which have no single command.
+  if (item.kind === "favorite" && item.deviceId != null && item.commandId != null) {
+    return `favorite:${item.deviceId}:${item.commandId}`;
+  }
   return `${item.kind}:${item.buttonId}`;
 }
 

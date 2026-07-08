@@ -22,23 +22,98 @@ from .activity_sync import SyncStep, build_activity_sync_plan
 from .macros import MacroKeyEntry, build_macro_save_payload
 from .protocol_const import FAMILY_FAV_DELETE
 
-_STALE_FIELDS = ("favorite_slots", "macros", "button_bindings")
-
+_POWER_MACRO_BUTTON_IDS = frozenset({198, 199})
+_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT = 12.0
 
 def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, default=str)
 
 
+def _int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _optional_int(value: Any) -> int | None:
+    normalized = _int(value)
+    return normalized & 0xFF if normalized else None
+
+
+def _favorite_signature(row: Mapping[str, Any]) -> dict[str, int]:
+    return {
+        "device_id": _int(row.get("device_id")) & 0xFF,
+        "command_id": _int(row.get("command_id")) & 0xFF,
+    }
+
+
+def _binding_signature(row: Mapping[str, Any]) -> dict[str, int | None]:
+    return {
+        "button_id": _int(row.get("button_id")) & 0xFF,
+        "device_id": _int(row.get("device_id")) & 0xFF,
+        "command_id": _int(row.get("command_id")) & 0xFF,
+        "long_press_device_id": _optional_int(row.get("long_press_device_id")),
+        "long_press_command_id": _optional_int(row.get("long_press_command_id")),
+    }
+
+
+def _macro_signature(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "button_id": _int(row.get("button_id")) & 0xFF,
+        "steps": [
+            {
+                "device_id": _int(step.get("device_id")) & 0xFF,
+                "command_id": _int(step.get("command_id")) & 0xFF,
+                "button_code": _int(step.get("button_code")) & 0xFFFFFFFFFFFF,
+                "duration": _int(step.get("duration")) & 0xFF,
+                "delay": _int(step.get("delay")) & 0xFF,
+            }
+            for step in row.get("steps") or []
+            if isinstance(step, Mapping)
+        ],
+    }
+
+
+def _rows_signature(
+    rows: Any,
+    row_fn: Callable[[Mapping[str, Any]], dict[str, Any]],
+    key_fn: Callable[[dict[str, Any]], Any],
+) -> list[dict[str, Any]]:
+    normalized: list[dict[str, Any]] = []
+    for row in rows or []:
+        if isinstance(row, Mapping):
+            normalized.append(row_fn(row))
+    return sorted(normalized, key=key_fn)
+
+
 def _activity_block_signature(activity: Mapping[str, Any] | None) -> str:
-    """Order-sensitive signature of the mutable parts of an activity block,
-    used to detect the hub changing underneath us between capture and sync."""
+    """Stable signature of the mutable parts of an activity block.
+
+    The live editor opens from the persisted structural cache, while this
+    pre-flight re-exports the activity. Compare only stable wire targets so
+    cache/export representation drift does not masquerade as a hub edit;
+    macro step order remains significant.
+    """
     if not activity:
         return ""
-    block = dict(activity.get("device") or {})
     return _canonical(
         {
-            "name": str(block.get("name") or ""),
-            **{field: activity.get(field) for field in _STALE_FIELDS},
+            "favorite_slots": _rows_signature(
+                activity.get("favorite_slots"),
+                _favorite_signature,
+                lambda item: (_int(item.get("device_id")), _int(item.get("command_id"))),
+            ),
+            "macros": _rows_signature(
+                activity.get("macros"),
+                _macro_signature,
+                lambda item: _int(item.get("button_id")),
+            ),
+            "button_bindings": _rows_signature(
+                activity.get("button_bindings"),
+                _binding_signature,
+                lambda item: _int(item.get("button_id")),
+            ),
         }
     )
 
@@ -104,12 +179,30 @@ class ActivitySyncMixin:
 
     def _activity_sync_is_stale(self, baseline: Mapping[str, Any], activity_id: int) -> bool:
         fresh = self.backup_activity(activity_id)
+        if not isinstance(fresh, Mapping):
+            self._log.warning("[ACTIVITY_SYNC] stale preflight skipped: activity 0x%02X could not be re-read",
+                              activity_id & 0xFF)
+            return False
+        if fresh.get("complete") is False:
+            self._log.warning("[ACTIVITY_SYNC] stale preflight skipped: activity 0x%02X re-read was incomplete",
+                              activity_id & 0xFF)
+            return False
         baseline_activity = None
         for activity in baseline.get("activities") or []:
             if int((activity.get("device") or {}).get("device_id") or 0) == activity_id:
                 baseline_activity = activity
                 break
-        return _activity_block_signature(fresh) != _activity_block_signature(baseline_activity)
+        fresh_signature = _activity_block_signature(fresh)
+        baseline_signature = _activity_block_signature(baseline_activity)
+        stale = fresh_signature != baseline_signature
+        if stale:
+            self._log.warning(
+                "[ACTIVITY_SYNC] stale preflight mismatch activity=0x%02X baseline=%s fresh=%s",
+                activity_id & 0xFF,
+                baseline_signature,
+                fresh_signature,
+            )
+        return stale
 
     # ── Step dispatch ───────────────────────────────────────────────────
 
@@ -156,10 +249,37 @@ class ActivitySyncMixin:
         ) is not None
 
     def _sync_step_favorite_order(self, payload: Mapping[str, Any]) -> bool:
-        return self.reorder_favorites(
-            int(payload["activity_id"]), [int(b) for b in payload.get("order") or []],
-            refresh_after_write=False,
-        ) is not None
+        # The desired order is carried as content pairs; resolve them to the
+        # hub's *current* fav_ids (which now include any favorites added earlier
+        # in this sync) so add-then-reorder positions the new favorite too.
+        activity_id = int(payload["activity_id"])
+        desired = payload.get("order_content") or []
+        fav_id_by_content = self._activity_sync_current_favorite_fav_ids(activity_id)
+        order: list[int] = []
+        for pair in desired:
+            if not isinstance(pair, (list, tuple)) or len(pair) < 2:
+                continue
+            content = (_int(pair[0]) & 0xFF, _int(pair[1]) & 0xFF)
+            fav_id = fav_id_by_content.get(content)
+            if fav_id is not None:
+                order.append(fav_id)
+        if len(order) < 2:
+            # Nothing resolvable (or a single item) — no reorder to perform.
+            return True
+        return self.reorder_favorites(activity_id, order, refresh_after_write=False) is not None
+
+    def _activity_sync_current_favorite_fav_ids(self, activity_id: int) -> dict[tuple[int, int], int]:
+        """Map favorite content ``(device_id, command_id)`` → the hub's current
+        fav_id. Refreshes the activity mapping first so favorites added earlier
+        in this sync are visible with their hub-assigned ids."""
+        self.request_activity_mapping(activity_id)
+        mapping: dict[tuple[int, int], int] = {}
+        state = getattr(self, "state", None)
+        slots = state.get_activity_favorite_slots(activity_id & 0xFF) if state is not None else []
+        for slot in slots or []:
+            content = (_int(slot.get("device_id")) & 0xFF, _int(slot.get("command_id")) & 0xFF)
+            mapping.setdefault(content, _int(slot.get("button_id")) & 0xFF)
+        return mapping
 
     def _sync_step_member_replay(self, payload: Mapping[str, Any]) -> bool:
         return self.add_device_to_activity(
@@ -190,12 +310,28 @@ class ActivitySyncMixin:
         activity_id = int(payload["activity_id"])
         button_id = int(payload["button_id"])
         key_sequence = self._macro_key_sequence_from_steps(payload.get("steps") or [])
+        label_slot = self._activity_sync_macro_label_slot(activity_id, button_id)
         wire = build_macro_save_payload(
             activity_id=activity_id & 0xFF,
             key_id=button_id & 0xFF,
             key_sequence=key_sequence,
+            label=str(payload.get("name") or ""),
+            hub_version=self.hub_version,
+            label_slot=label_slot,
         )
         return self._send_paged_macro_save(payload=wire, macro_button=button_id & 0xFF) is not None
+
+    def _activity_sync_macro_label_slot(self, activity_id: int, button_id: int) -> bytes | None:
+        if (button_id & 0xFF) not in _POWER_MACRO_BUTTON_IDS:
+            return None
+        getter = getattr(self, "get_cached_macro_records", None)
+        if not callable(getter):
+            return None
+        for record in getter(activity_id):
+            if (getattr(record, "key_id", 0) & 0xFF) == (button_id & 0xFF):
+                slot = getattr(record, "raw_label_slot", b"")
+                return bytes(slot) if slot else None
+        return None
 
     def _sync_step_inputs_write(self, payload: Mapping[str, Any]) -> bool:
         # Input-record rewrites are a device-side side-effect of the input
@@ -231,7 +367,7 @@ class ActivitySyncMixin:
             family=FAMILY_FAV_DELETE,
             payload=bytes([act_lo, btn_lo]),
             ack_opcode=0x0103,
-            timeout=7.5,
+            timeout=_ACTIVITY_SYNC_DELETE_ACK_TIMEOUT,
         )
         if not step.ok:
             return False

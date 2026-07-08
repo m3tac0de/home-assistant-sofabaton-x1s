@@ -1668,8 +1668,6 @@ var TOOLS_CARD_STRINGS = {
     capturingFromCache: "Loading activity from the hub cache\u2026",
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: "This activity isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.",
-    cacheStaleBanner: "The hub changed since this cache was refreshed \u2014 your view may be out of date.",
-    cacheStaleRefresh: "Refresh cache",
     // Session restore banner (§4.6).
     sessionRestoreBanner: (name, time) => `Continuing your edit of "${name}" from ${time}`,
     sessionReload: "Reload from hub instead",
@@ -1695,9 +1693,10 @@ var TOOLS_CARD_STRINGS = {
     syncFailedTitle: "Sync didn't finish",
     syncFailedStep: (step) => `The hub stopped at: ${step}`,
     syncStaleTitle: "This activity changed on the hub",
-    syncStaleBody: "Someone edited this activity on the hub after you loaded it. Reload to pick up their changes \u2014 your local edits will be discarded.",
+    syncStaleBody: "The activity was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.",
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
+    syncKeepEditing: "Keep editing",
     // Discard confirmation.
     discardConfirmTitle: "Discard all changes?",
     discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",

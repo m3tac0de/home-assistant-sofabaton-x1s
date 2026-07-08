@@ -4475,7 +4475,7 @@ def test_delete_favorite_requires_explicit_fav_id(monkeypatch) -> None:
         "status": "success",
     }
     assert steps == [
-        ("fav-delete-10[act=0x66 fav=0x04]", 0x10, bytes([0x66, 0x04]), 7.5),
+        ("fav-delete-10[act=0x66 fav=0x04]", 0x10, bytes([0x66, 0x04]), 12.0),
         ("fav-delete-reorder-61[act=0x66]", 0x61, bytes.fromhex("01 00 01 01 00 01 66 02 01 06 02 73"), 5.0),
         ("fav-delete-commit-65[act=0x66]", 0x65, b"\x66", 5.0),
     ]

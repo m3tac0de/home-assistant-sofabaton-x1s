@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import logging
+from types import SimpleNamespace
 
 from custom_components.sofabaton_x1s.lib.proxy_activity_sync import ActivitySyncMixin
 from tests.test_activity_sync_plan import base_bundle, _activity, _device, ACTIVITY_ID
@@ -22,6 +23,8 @@ class FakeProxy(ActivitySyncMixin):
         self._fail_kind = fail_kind
         self.calls: list[tuple] = []
         self.can_issue = True
+        self.hub_version = "X1S"
+        self.macro_records: list[object] = []
 
     # Environment
     def can_issue_commands(self) -> bool:
@@ -62,10 +65,23 @@ class FakeProxy(ActivitySyncMixin):
         return bool(self._record("delete_key", activity_id, button_id))
 
     def _send_paged_macro_save(self, *, payload, macro_button, **_kw):
-        return self._record("macro_write", macro_button)
+        return self._record("macro_write", macro_button, payload)
 
-    def _macro_key_sequence_from_steps(self, steps):
-        return list(steps)
+    def get_cached_macro_records(self, activity_id):
+        return list(self.macro_records)
+
+
+class DeleteKeyProxy(ActivitySyncMixin):
+    def __init__(self) -> None:
+        self.reset_count = 0
+        self.steps: list[dict] = []
+
+    def reset_ack_queues(self):
+        self.reset_count += 1
+
+    def _send_step(self, **kwargs):
+        self.steps.append(kwargs)
+        return SimpleNamespace(ok=True)
 
 
 def _kinds(calls):
@@ -103,6 +119,26 @@ def test_full_edit_dispatches_in_plan_order_and_reports_counters():
     assert result["counters"]["favorite_add"] == 1
 
 
+def test_favorite_reorder_resolves_content_to_current_fav_ids():
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    # Swap the two favorites (positional button_ids, content flipped).
+    _activity(edited)["favorite_slots"] = [
+        {"button_id": 1, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+        {"button_id": 2, "device_id": 1, "command_id": 10, "name": "TV Power"},
+    ]
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    # The hub's live favorites map content → fav_id (arbitrary ids, not 1..N).
+    proxy._activity_sync_current_favorite_fav_ids = lambda _act: {(2, 20): 7, (1, 10): 3}
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    order_call = next(c for c in proxy.calls if c[0] == "favorite_order")
+    # Bar Power then TV Power, resolved to the hub's live fav_ids [7, 3].
+    assert order_call[1][1] == [7, 3]
+
+
 def test_step_rejection_stops_and_reports_failed_at():
     base = base_bundle()
     edited = copy.deepcopy(base)
@@ -117,6 +153,41 @@ def test_step_rejection_stops_and_reports_failed_at():
     assert result["failed_at"].startswith("favorite_add")
     # No idle/remote steps ran after the rejected favorite_add.
     assert "remote_sync" not in _kinds(proxy.calls)
+
+
+def test_activity_sync_delete_key_allows_slow_status_ack():
+    proxy = DeleteKeyProxy()
+
+    result = proxy._activity_sync_delete_key(0x65, 0x01)
+
+    assert result is True
+    assert proxy.reset_count == 1
+    delete_step = proxy.steps[0]
+    assert delete_step["step_name"] == "activity-sync-delete-10[act=0x65 key=0x01]"
+    assert delete_step["ack_opcode"] == 0x0103
+    assert delete_step["timeout"] >= 10.0
+    commit_step = proxy.steps[1]
+    assert commit_step["step_name"] == "activity-sync-delete-commit-65[act=0x65]"
+    assert "timeout" not in commit_step
+
+
+def test_macro_write_passes_label_hub_version_and_preserves_power_label_slot():
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"][0]["steps"].append(
+        {"device_id": 1, "command_id": 10, "button_code": 0x010203040506, "duration": 0, "delay": 0}
+    )
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    raw_label_slot = "POWER_ON".encode("utf-16-be").ljust(58, b"\x00") + b"\x12\x34"
+    proxy.macro_records = [SimpleNamespace(key_id=198, raw_label_slot=raw_label_slot)]
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    macro_call = next(call for call in proxy.calls if call[0] == "macro_write")
+    assert macro_call[1][0] == 198
+    assert isinstance(macro_call[1][1], bytes)
+    assert raw_label_slot in macro_call[1][1]
 
 
 def test_stale_preflight_blocks_before_any_write():
@@ -135,6 +206,53 @@ def test_stale_preflight_blocks_before_any_write():
     assert result["status"] == "failed"
     assert result["failed_at"] == "stale_check"
     assert proxy.calls == []
+
+
+def test_stale_preflight_ignores_capture_noise_and_row_order():
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+    fresh = copy.deepcopy(_activity(base))
+    fresh["device"]["name"] = "Same hub state, different exported label"
+    fresh["favorite_slots"] = list(reversed(fresh["favorite_slots"]))
+    for slot in fresh["favorite_slots"]:
+        slot["button_id"] = int(slot["button_id"]) + 20
+        slot["source"] = "keymap"
+        slot["name"] = "ignored cache label"
+    fresh["button_bindings"] = list(reversed(fresh["button_bindings"]))
+    for binding in fresh["button_bindings"]:
+        binding["button_name"] = "Ignored display name"
+        binding["long_press_device_id"] = binding.get("long_press_device_id") or 0
+        binding["long_press_command_id"] = binding.get("long_press_command_id") or 0
+    fresh["macros"] = list(reversed(fresh["macros"]))
+    for macro in fresh["macros"]:
+        macro["name"] = f"ignored label {macro['button_id']}"
+    proxy = FakeProxy(fresh_activity=fresh)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    assert "favorite_add" in _kinds(proxy.calls)
+
+
+def test_stale_preflight_skips_incomplete_fresh_capture():
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+    fresh = copy.deepcopy(_activity(base))
+    fresh["complete"] = False
+    fresh["macros"] = []
+    fresh["button_bindings"] = []
+    proxy = FakeProxy(fresh_activity=fresh)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    assert "favorite_add" in _kinds(proxy.calls)
 
 
 def test_out_of_scope_plan_fails_before_writes():

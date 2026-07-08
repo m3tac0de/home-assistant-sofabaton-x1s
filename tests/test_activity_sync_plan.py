@@ -130,6 +130,71 @@ def test_favorite_delete() -> None:
     assert delete.payload["button_id"] == 2
 
 
+def test_favorite_reorder_emits_content_order_despite_positional_button_ids() -> None:
+    # Baseline: fav_id 1 = (dev 1, cmd 10), fav_id 2 = (dev 2, cmd 20).
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    # The editor reorders [A, B] -> [B, A] and reassigns button_ids positionally,
+    # so the edited bundle's button_ids are still 1,2 but the content is swapped.
+    _activity(edited)["favorite_slots"] = [
+        {"button_id": 1, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+        {"button_id": 2, "device_id": 1, "command_id": 10, "name": "TV Power"},
+    ]
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    kinds = _kinds(plan)
+    assert "favorite_order" in kinds
+    assert "favorite_add" not in kinds
+    assert "favorite_delete" not in kinds
+    # The desired order is carried as content (device, command); the executor
+    # resolves it to live fav_ids. New order: Bar Power then TV Power.
+    order_content = next(s for s in plan if s.kind == "favorite_order").payload["order_content"]
+    assert order_content == [[2, 20], [1, 10]]
+
+
+def test_favorite_append_does_not_emit_reorder() -> None:
+    # Appending a favorite at the end needs no reorder (the hub appends it).
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    kinds = _kinds(plan)
+    assert "favorite_add" in kinds
+    assert "favorite_order" not in kinds
+
+
+def test_favorite_add_then_reorder_emits_full_content_order() -> None:
+    # Insert a new favorite at the *front* → an add plus a reorder covering all
+    # three (the new one included, positioned by content).
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"] = [
+        {"button_id": 1, "device_id": 3, "command_id": 31, "name": "Netflix"},
+        {"button_id": 2, "device_id": 1, "command_id": 10, "name": "TV Power"},
+        {"button_id": 3, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+    ]
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    kinds = _kinds(plan)
+    assert "favorite_add" in kinds
+    assert "favorite_order" in kinds
+    # Add is dispatched before the reorder so the new fav_id exists to reorder.
+    assert kinds.index("favorite_add") < kinds.index("favorite_order")
+    order_content = next(s for s in plan if s.kind == "favorite_order").payload["order_content"]
+    assert order_content == [[3, 31], [1, 10], [2, 20]]
+
+
+def test_macro_rename_only_still_emits_macro_write() -> None:
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    # Rename the POWER_ON macro's label without touching its steps.
+    _activity(edited)["macros"][0]["name"] = "Turn everything on"
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    macro = next((s for s in plan if s.kind == "macro_write"), None)
+    assert macro is not None
+    assert macro.payload["name"] == "Turn everything on"
+
+
 def test_macro_change_produces_macro_write_with_ordering() -> None:
     base = base_bundle()
     edited = copy.deepcopy(base)

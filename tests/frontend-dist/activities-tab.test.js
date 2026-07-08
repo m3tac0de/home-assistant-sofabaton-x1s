@@ -1170,17 +1170,6 @@ function formatError(error) {
   }
   return "Unknown error (check Home Assistant logs)";
 }
-function remoteEntities(hass) {
-  return Object.keys(hass?.states ?? {}).filter((id) => id.startsWith("remote."));
-}
-function entityForHub(hass, hub) {
-  if (!hub) return null;
-  return remoteEntities(hass).find((id) => hass?.states?.[id]?.attributes?.entry_id === hub.entry_id) ?? null;
-}
-function remoteAttrsForHub(hass, hub) {
-  const entityId = entityForHub(hass, hub);
-  return (entityId ? hass?.states?.[entityId]?.attributes : void 0) ?? {};
-}
 function hubIcon(kind, classes = "") {
   const className = classes ? ` ${classes}` : "";
   if (kind === "hero") {
@@ -1362,8 +1351,6 @@ var TOOLS_CARD_STRINGS = {
     capturingFromCache: "Loading activity from the hub cache\u2026",
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: "This activity isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.",
-    cacheStaleBanner: "The hub changed since this cache was refreshed \u2014 your view may be out of date.",
-    cacheStaleRefresh: "Refresh cache",
     // Session restore banner (§4.6).
     sessionRestoreBanner: (name, time) => `Continuing your edit of "${name}" from ${time}`,
     sessionReload: "Reload from hub instead",
@@ -1389,9 +1376,10 @@ var TOOLS_CARD_STRINGS = {
     syncFailedTitle: "Sync didn't finish",
     syncFailedStep: (step) => `The hub stopped at: ${step}`,
     syncStaleTitle: "This activity changed on the hub",
-    syncStaleBody: "Someone edited this activity on the hub after you loaded it. Reload to pick up their changes \u2014 your local edits will be discarded.",
+    syncStaleBody: "The activity was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.",
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
+    syncKeepEditing: "Keep editing",
     // Discard confirmation.
     discardConfirmTitle: "Discard all changes?",
     discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
@@ -4081,6 +4069,9 @@ function diffButtons(buckets, baseline, edited, activityId) {
   }
 }
 function shortcutIdentity(item) {
+  if (item.kind === "favorite" && item.deviceId != null && item.commandId != null) {
+    return `favorite:${item.deviceId}:${item.commandId}`;
+  }
   return `${item.kind}:${item.buttonId}`;
 }
 function diffShortcuts(buckets, baseline, edited, activityId) {
@@ -6592,6 +6583,10 @@ var SofabatonEditDetailView = class extends i3 {
         return;
       }
       if (target.kind === "command") {
+        if (this.mode === "live") {
+          this._closeEditRenameDialog();
+          return;
+        }
         let nextBundle = renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next);
         const snapshot = this._editRenameDialogDecodedSnapshot;
         if (snapshot) {
@@ -6606,6 +6601,10 @@ var SofabatonEditDetailView = class extends i3 {
           }
         }
         this._commitEditBundleEdit(nextBundle);
+        this._closeEditRenameDialog();
+        return;
+      }
+      if (this.mode === "live") {
         this._closeEditRenameDialog();
         return;
       }
@@ -7410,7 +7409,7 @@ var SofabatonEditDetailView = class extends i3 {
         <div class="quick-access-head">
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
-            Use the pencil to rename a command. Names update everywhere the command is referenced.
+            ${this.mode === "live" ? "Command names are read-only in live activity sync." : "Use the pencil to rename a command. Names update everywhere the command is referenced."}
           </div>
         </div>
         ${items.length ? T`
@@ -7437,13 +7436,15 @@ var SofabatonEditDetailView = class extends i3 {
             </div>
           </div>
           <div class="quick-access-actions">
-            <button
-              class="icon-btn"
-              @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
-              aria-label="Rename command"
-            >
-              <ha-icon icon="mdi:pencil"></ha-icon>
-            </button>
+            ${this.mode === "live" ? A : T`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
+                    aria-label="Rename command"
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                `}
             <button
               class="icon-btn icon-btn--danger"
               @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
@@ -7547,13 +7548,15 @@ var SofabatonEditDetailView = class extends i3 {
                     <ha-icon icon="mdi:playlist-edit"></ha-icon>
                   </button>
                 ` : A}
-            <button
-              class="icon-btn"
-              @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.shortcutRenameAria(item.kind)}
-            >
-              <ha-icon icon="mdi:pencil"></ha-icon>
-            </button>
+            ${this.mode === "live" && item.kind === "favorite" ? A : T`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.shortcutRenameAria(item.kind)}
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                `}
             <button
               class="icon-btn icon-btn--danger"
               @click=${() => this._openQuickAccessDeleteConfirm(item.kind, item.buttonId, item.label)}
@@ -7768,6 +7771,7 @@ var SofabatonEditDetailView = class extends i3 {
     this._editRenameDialogOpen = true;
   }
   _openDeviceCommandRenameDialog(commandId) {
+    if (this.mode === "live") return;
     if (this.entityId == null) return;
     const deviceId = Number(this.entityId);
     const normalizedCommandId = Number(commandId);
@@ -7802,6 +7806,7 @@ var SofabatonEditDetailView = class extends i3 {
     return stringValue;
   }
   _openQuickAccessRenameDialog(kind, buttonId) {
+    if (this.mode === "live" && kind === "favorite") return;
     if (this.entityId == null) return;
     this._editRenameDialogTarget = kind === "macro" ? { kind: "macro", activityId: this.entityId, buttonId } : { kind: "favorite", activityId: this.entityId, buttonId };
     const item = activityQuickAccessItems(this.bundle, this.entityId).find(
@@ -8779,12 +8784,6 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
     this._syncError = null;
     this._syncFailedAt = null;
     this._syncSuccessNotice = false;
-    this._cacheStale = false;
-    // The hub cache_generation observed when the current bundle was loaded into
-    // the editor. The stale banner fires only when the backend moves *beyond*
-    // this — i.e. the cache diverges from what the editor is showing.
-    this._loadedGeneration = 0;
-    this._staleGraceUntil = 0;
     this._captureOperationId = null;
     this._syncOperationId = null;
     this._progressUnsub = null;
@@ -8796,17 +8795,17 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
     // an in-flight capture/edit whenever state refreshes.
     this._hubEntryId = null;
     // ── Capture flow (§4.2) — sourced from the blob-free structural cache ──
-    // Instead of a multi-minute whole-hub blob backup, read the cached
-    // structural hub_bundle (built by "Refresh entire hub cache"). If it's
-    // missing, prompt the user to refresh; if it's older than the hub's current
-    // cache generation, open the editor but flag it as possibly stale.
+    // Read the cached structural hub_bundle (built by "Refresh entire hub
+    // cache"); if it's missing, prompt the user to refresh. While editing, this
+    // bundle *is* the truth — the editor never second-guesses whether the hub
+    // has since changed. That reconciliation happens once, authoritatively, at
+    // sync time (the backend stale pre-flight).
     this._startCapture = async (activityId) => {
       if (!this.hub || !this.hass) return;
       this._activityId = activityId;
       this._captureError = null;
       this._captureProgress = null;
       this._sessionRestored = false;
-      this._cacheStale = false;
       this._stage = "capturing";
       try {
         const res = await this.api().getStructuralBundle(this.hub.entry_id);
@@ -8822,9 +8821,6 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
         this._working = structuredClone(bundle);
         this._dirty = false;
         this._sessionSavedAt = Date.now();
-        this._loadedGeneration = this._currentCacheGeneration();
-        this._staleGraceUntil = Date.now() + _SofabatonActivitiesTab._STALE_GRACE_MS;
-        this._cacheStale = false;
         this._stage = "editing";
       } catch (error) {
         this._captureError = formatError(error);
@@ -8900,13 +8896,6 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
     this._SESSION_KEY_PREFIX = "sofabaton_x1s:activities_tab:session:v1:";
   }
   static {
-    // Grace window after loading a bundle during which cache_generation
-    // increases are absorbed (re-anchored) rather than flagged stale. The hub
-    // bumps its generation many times as a refresh burst settles, so a naive
-    // "built != current" check false-positives immediately after a refresh.
-    this._STALE_GRACE_MS = 6e3;
-  }
-  static {
     this.properties = {
       hass: { attribute: false },
       hub: { attribute: false },
@@ -8931,8 +8920,7 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
       _syncProgress: { state: true },
       _syncError: { state: true },
       _syncFailedAt: { state: true },
-      _syncSuccessNotice: { state: true },
-      _cacheStale: { state: true }
+      _syncSuccessNotice: { state: true }
     };
   }
   static {
@@ -9109,9 +9097,6 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
     if (changed.has("_baseline") || changed.has("_working") || changed.has("_activityId")) {
       this._persistSession();
     }
-    if (changed.has("hass")) {
-      this._evaluateCacheStaleness();
-    }
   }
   // Card reloaded mid-sync: pick up a running activity_sync op from the
   // shared backup/state registry and resubscribe to its progress.
@@ -9148,7 +9133,6 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
         window.localStorage.removeItem(key);
         return;
       }
-      const captureGeneration = Number(remoteAttrsForHub(this.hass, this.hub).cache_generation ?? 0);
       const savedAt = this._sessionSavedAt || Date.now();
       this._sessionSavedAt = savedAt;
       const payload = {
@@ -9156,8 +9140,7 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
         activityId: this._activityId,
         baseline: this._baseline,
         working: this._working ?? this._baseline,
-        dirty: this._dirty,
-        captureGeneration
+        dirty: this._dirty
       };
       window.localStorage.setItem(key, JSON.stringify(payload));
     } catch {
@@ -9200,10 +9183,7 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
       this._sessionSavedAt = savedAt;
       this._sessionRestored = true;
       this._recomputeDirty();
-      this._loadedGeneration = Number(parsed.captureGeneration ?? this._currentCacheGeneration());
-      this._staleGraceUntil = 0;
       this._stage = "editing";
-      this._evaluateCacheStaleness();
     } catch {
       try {
         window.localStorage.removeItem(key);
@@ -9226,23 +9206,6 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
   }
   _recomputeDirty() {
     this._dirty = !!this._baseline && !!this._working && JSON.stringify(this._working) !== JSON.stringify(this._baseline);
-  }
-  _currentCacheGeneration() {
-    return Number(remoteAttrsForHub(this.hass, this.hub).cache_generation ?? 0);
-  }
-  // Re-evaluate whether the backend cache has diverged from the loaded bundle.
-  // Called on every hass update while an activity is open. During the grace
-  // window we absorb the settling bumps from our own refresh; after it, a
-  // higher generation means a genuine change landed under the editor.
-  _evaluateCacheStaleness() {
-    if (!this._baseline || this._stage !== "editing") return;
-    const current = this._currentCacheGeneration();
-    if (current <= this._loadedGeneration) return;
-    if (Date.now() < this._staleGraceUntil) {
-      this._loadedGeneration = current;
-      return;
-    }
-    this._cacheStale = true;
   }
   // ── Review / Sync / Discard (§4.4) ─────────────────────────────────
   _reviewGroups() {
@@ -9276,9 +9239,6 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
     this._syncOperationId = null;
     this._sessionSavedAt = Date.now();
     this._syncSuccessNotice = true;
-    this._loadedGeneration = this._currentCacheGeneration();
-    this._staleGraceUntil = Date.now() + _SofabatonActivitiesTab._STALE_GRACE_MS;
-    this._cacheStale = false;
     this._stage = "editing";
     try {
       await this.api().clearBackupResult(operationId);
@@ -9307,9 +9267,6 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
     this._syncFailedAt = null;
     this._syncOperationId = null;
     this._syncSuccessNotice = false;
-    this._cacheStale = false;
-    this._loadedGeneration = 0;
-    this._staleGraceUntil = 0;
   }
   // ── Data ───────────────────────────────────────────────────────────
   _activityItems() {
@@ -9462,7 +9419,6 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
       <div class="editing-shell">
         ${this._sessionRestored ? this._renderSessionBanner() : A}
         ${this._syncSuccessNotice ? this._renderSyncSuccessBanner() : A}
-        ${this._cacheStale ? this._renderStaleCacheBanner() : A}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
           kind="activity"
@@ -9477,22 +9433,6 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
         ></sofabaton-edit-detail-view>
         ${this._reviewOpen ? this._renderReviewDialog() : A}
         ${this._discardConfirmOpen ? this._renderDiscardDialog() : A}
-      </div>
-    `;
-  }
-  _renderStaleCacheBanner() {
-    const S6 = TOOLS_CARD_STRINGS.activities;
-    return T`
-      <div class="session-banner">
-        <span class="session-banner-text">${S6.cacheStaleBanner}</span>
-        <sofabaton-refresh-cache-button
-          .hass=${this.hass}
-          .entryId=${this.hub?.entry_id ?? ""}
-          .label=${S6.cacheStaleRefresh}
-          @refreshed=${() => {
-      if (this._activityId != null) void this._startCapture(this._activityId);
-    }}
-        ></sofabaton-refresh-cache-button>
       </div>
     `;
   }
@@ -9529,12 +9469,19 @@ var SofabatonActivitiesTab = class _SofabatonActivitiesTab extends i3 {
           </div>
           <div class="action-row">
             ${isStale ? A : T`<button class="btn btn-primary" @click=${this._retrySync}>${S6.syncRetry}</button>`}
-            <button class="btn ${isStale ? "btn-primary" : ""}" @click=${this._reloadFromHub}>${S6.syncReload}</button>
+            <sofabaton-refresh-cache-button
+              .hass=${this.hass}
+              .entryId=${this.hub?.entry_id ?? ""}
+              .label=${S6.syncReload}
+              @refreshed=${() => {
+      if (this._activityId != null) void this._startCapture(this._activityId);
+    }}
+            ></sofabaton-refresh-cache-button>
             <button class="btn" @click=${() => {
       this._stage = "editing";
       this._syncError = null;
       this._syncFailedAt = null;
-    }}>${S6.back}</button>
+    }}>${S6.syncKeepEditing}</button>
           </div>
         </div>
       </div>
@@ -9679,43 +9626,6 @@ test("activities tab prompts to refresh when the structural cache is missing", a
   await element._startCapture(101);
   assert.equal(element._stage, "needs_refresh");
   assert.equal(element._baseline, null);
-});
-function hassWithGeneration(bundle, remoteGeneration) {
-  const hass = createHass(bundle);
-  hass.states["remote.living_room"] = { attributes: { entry_id: "hub-1", cache_generation: remoteGeneration } };
-  return hass;
-}
-test("activities tab does NOT flag stale right after loading, even if the build generation lags", async () => {
-  const element = new ActivitiesTabElement();
-  element.hass = hassWithGeneration(sampleBundle(), 5);
-  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  await element._startCapture(101);
-  assert.equal(element._stage, "editing");
-  assert.equal(element._cacheStale, false);
-  assert.equal(element._loadedGeneration, 5);
-});
-test("activities tab flags stale when the cache generation advances after load (past grace)", async () => {
-  const element = new ActivitiesTabElement();
-  const hass = hassWithGeneration(sampleBundle(), 5);
-  element.hass = hass;
-  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  await element._startCapture(101);
-  assert.equal(element._cacheStale, false);
-  element._staleGraceUntil = 0;
-  hass.states["remote.living_room"].attributes.cache_generation = 6;
-  element.updated(/* @__PURE__ */ new Map([["hass", void 0]]));
-  assert.equal(element._cacheStale, true);
-});
-test("activities tab absorbs settling generation bumps within the grace window", async () => {
-  const element = new ActivitiesTabElement();
-  const hass = hassWithGeneration(sampleBundle(), 5);
-  element.hass = hass;
-  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  await element._startCapture(101);
-  hass.states["remote.living_room"].attributes.cache_generation = 7;
-  element.updated(/* @__PURE__ */ new Map([["hass", void 0]]));
-  assert.equal(element._cacheStale, false);
-  assert.equal(element._loadedGeneration, 7);
 });
 test("activities tab surfaces a structural-bundle read failure", async () => {
   const element = new ActivitiesTabElement();

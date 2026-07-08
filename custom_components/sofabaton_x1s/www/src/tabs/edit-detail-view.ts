@@ -984,7 +984,9 @@ export class SofabatonEditDetailView extends LitElement {
         <div class="quick-access-head">
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
-            Use the pencil to rename a command. Names update everywhere the command is referenced.
+            ${this.mode === "live"
+              ? "Command names are read-only in live activity sync."
+              : "Use the pencil to rename a command. Names update everywhere the command is referenced."}
           </div>
         </div>
         ${items.length
@@ -1014,13 +1016,17 @@ export class SofabatonEditDetailView extends LitElement {
             </div>
           </div>
           <div class="quick-access-actions">
-            <button
-              class="icon-btn"
-              @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
-              aria-label="Rename command"
-            >
-              <ha-icon icon="mdi:pencil"></ha-icon>
-            </button>
+            ${this.mode === "live"
+              ? nothing
+              : html`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
+                    aria-label="Rename command"
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                `}
             <button
               class="icon-btn icon-btn--danger"
               @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
@@ -1143,13 +1149,17 @@ export class SofabatonEditDetailView extends LitElement {
                   </button>
                 `
               : nothing}
-            <button
-              class="icon-btn"
-              @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.shortcutRenameAria(item.kind)}
-            >
-              <ha-icon icon="mdi:pencil"></ha-icon>
-            </button>
+            ${this.mode === "live" && item.kind === "favorite"
+              ? nothing
+              : html`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.shortcutRenameAria(item.kind)}
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                `}
             <button
               class="icon-btn icon-btn--danger"
               @click=${() => this._openQuickAccessDeleteConfirm(item.kind, item.buttonId, item.label)}
@@ -1435,6 +1445,7 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   private _openDeviceCommandRenameDialog(commandId: number) {
+    if (this.mode === "live") return;
     if (this.entityId == null) return;
     const deviceId = Number(this.entityId);
     const normalizedCommandId = Number(commandId);
@@ -1482,6 +1493,7 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   private _openQuickAccessRenameDialog(kind: BackupQuickAccessKind, buttonId: number) {
+    if (this.mode === "live" && kind === "favorite") return;
     if (this.entityId == null) return;
     this._editRenameDialogTarget = kind === "macro"
       ? { kind: "macro", activityId: this.entityId, buttonId }
@@ -1980,6 +1992,10 @@ export class SofabatonEditDetailView extends LitElement {
       return;
     }
     if (target.kind === "command") {
+      if (this.mode === "live") {
+        this._closeEditRenameDialog();
+        return;
+      }
       let nextBundle = renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next);
       // If the dialog rendered the structured-payload form, diff each
       // field against the snapshot and only push the bundle update when
@@ -1999,6 +2015,10 @@ export class SofabatonEditDetailView extends LitElement {
         }
       }
       this._commitEditBundleEdit(nextBundle);
+      this._closeEditRenameDialog();
+      return;
+    }
+    if (this.mode === "live") {
       this._closeEditRenameDialog();
       return;
     }

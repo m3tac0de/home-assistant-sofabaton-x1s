@@ -1833,8 +1833,6 @@ var TOOLS_CARD_STRINGS = {
     capturingFromCache: "Loading activity from the hub cache\u2026",
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: "This activity isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.",
-    cacheStaleBanner: "The hub changed since this cache was refreshed \u2014 your view may be out of date.",
-    cacheStaleRefresh: "Refresh cache",
     // Session restore banner (§4.6).
     sessionRestoreBanner: (name, time) => `Continuing your edit of "${name}" from ${time}`,
     sessionReload: "Reload from hub instead",
@@ -1860,9 +1858,10 @@ var TOOLS_CARD_STRINGS = {
     syncFailedTitle: "Sync didn't finish",
     syncFailedStep: (step) => `The hub stopped at: ${step}`,
     syncStaleTitle: "This activity changed on the hub",
-    syncStaleBody: "Someone edited this activity on the hub after you loaded it. Reload to pick up their changes \u2014 your local edits will be discarded.",
+    syncStaleBody: "The activity was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.",
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
+    syncKeepEditing: "Keep editing",
     // Discard confirmation.
     discardConfirmTitle: "Discard all changes?",
     discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
@@ -6903,6 +6902,10 @@ var SofabatonEditDetailView = class extends i3 {
         return;
       }
       if (target.kind === "command") {
+        if (this.mode === "live") {
+          this._closeEditRenameDialog();
+          return;
+        }
         let nextBundle = renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next);
         const snapshot = this._editRenameDialogDecodedSnapshot;
         if (snapshot) {
@@ -6917,6 +6920,10 @@ var SofabatonEditDetailView = class extends i3 {
           }
         }
         this._commitEditBundleEdit(nextBundle);
+        this._closeEditRenameDialog();
+        return;
+      }
+      if (this.mode === "live") {
         this._closeEditRenameDialog();
         return;
       }
@@ -7721,7 +7728,7 @@ var SofabatonEditDetailView = class extends i3 {
         <div class="quick-access-head">
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
-            Use the pencil to rename a command. Names update everywhere the command is referenced.
+            ${this.mode === "live" ? "Command names are read-only in live activity sync." : "Use the pencil to rename a command. Names update everywhere the command is referenced."}
           </div>
         </div>
         ${items.length ? T`
@@ -7748,13 +7755,15 @@ var SofabatonEditDetailView = class extends i3 {
             </div>
           </div>
           <div class="quick-access-actions">
-            <button
-              class="icon-btn"
-              @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
-              aria-label="Rename command"
-            >
-              <ha-icon icon="mdi:pencil"></ha-icon>
-            </button>
+            ${this.mode === "live" ? A : T`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
+                    aria-label="Rename command"
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                `}
             <button
               class="icon-btn icon-btn--danger"
               @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
@@ -7858,13 +7867,15 @@ var SofabatonEditDetailView = class extends i3 {
                     <ha-icon icon="mdi:playlist-edit"></ha-icon>
                   </button>
                 ` : A}
-            <button
-              class="icon-btn"
-              @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.shortcutRenameAria(item.kind)}
-            >
-              <ha-icon icon="mdi:pencil"></ha-icon>
-            </button>
+            ${this.mode === "live" && item.kind === "favorite" ? A : T`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openQuickAccessRenameDialog(item.kind, item.buttonId)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.shortcutRenameAria(item.kind)}
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
+                `}
             <button
               class="icon-btn icon-btn--danger"
               @click=${() => this._openQuickAccessDeleteConfirm(item.kind, item.buttonId, item.label)}
@@ -8079,6 +8090,7 @@ var SofabatonEditDetailView = class extends i3 {
     this._editRenameDialogOpen = true;
   }
   _openDeviceCommandRenameDialog(commandId) {
+    if (this.mode === "live") return;
     if (this.entityId == null) return;
     const deviceId = Number(this.entityId);
     const normalizedCommandId = Number(commandId);
@@ -8113,6 +8125,7 @@ var SofabatonEditDetailView = class extends i3 {
     return stringValue;
   }
   _openQuickAccessRenameDialog(kind, buttonId) {
+    if (this.mode === "live" && kind === "favorite") return;
     if (this.entityId == null) return;
     this._editRenameDialogTarget = kind === "macro" ? { kind: "macro", activityId: this.entityId, buttonId } : { kind: "favorite", activityId: this.entityId, buttonId };
     const item = activityQuickAccessItems(this.bundle, this.entityId).find(
@@ -10217,6 +10230,23 @@ if (!customElements.get("sofabaton-backup-tab")) {
 // tests/frontend/backup-tab.test.ts
 var BackupTabElement = customElements.get("sofabaton-backup-tab");
 var EditDetailViewElement = customElements.get("sofabaton-edit-detail-view");
+function templateHasValue(template, expected) {
+  if (template === expected) return true;
+  if (Array.isArray(template)) return template.some((value) => templateHasValue(value, expected));
+  if (template && typeof template === "object" && "values" in template) {
+    return templateHasValue(template.values ?? [], expected);
+  }
+  return false;
+}
+function templateHasString(template, expected) {
+  if (typeof template === "string") return template.includes(expected);
+  if (Array.isArray(template)) return template.some((value) => templateHasString(value, expected));
+  if (template && typeof template === "object") {
+    const maybeTemplate = template;
+    return templateHasString(maybeTemplate.strings ?? [], expected) || templateHasString(maybeTemplate.values ?? [], expected);
+  }
+  return false;
+}
 function createHass(state, onBackupState) {
   return {
     states: {},
@@ -10527,4 +10557,45 @@ test("backup activity quick-access items hide internal power macros", () => {
   const items = activityQuickAccessItems(bundle, 101);
   assert.deepEqual(items.map((item) => item.label), ["HDMI 1", "Lights Down"]);
   assert.deepEqual(items.map((item) => item.buttonId), [1, 2]);
+});
+test("live edit hides command and favorite rename affordances", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    activities: [
+      {
+        kind: "activity_backup",
+        complete: true,
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [{ button_id: 1, device_id: 7, command_id: 3, name: "HDMI 1" }],
+        macros: []
+      }
+    ],
+    devices: [
+      {
+        kind: "device_backup",
+        complete: true,
+        device: { device_id: 7, name: "Projector", device_class: "tv" },
+        commands: [{ command_id: 3, name: "HDMI 1" }]
+      }
+    ]
+  };
+  const element = new EditDetailViewElement();
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+  const favorite = activityQuickAccessItems(bundle, 101)[0];
+  element.mode = "backup";
+  assert.equal(templateHasValue(element._renderActivityQuickAccessRow(favorite), "Rename shortcut"), true);
+  assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), true);
+  element.mode = "live";
+  assert.equal(templateHasValue(element._renderActivityQuickAccessRow(favorite), "Rename shortcut"), false);
+  assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), false);
+  element._openQuickAccessRenameDialog("favorite", 1);
+  assert.equal(element._editRenameDialogOpen, false);
+  element.kind = "device";
+  element.entityId = 7;
+  element._openDeviceCommandRenameDialog(3);
+  assert.equal(element._editRenameDialogOpen, false);
 });

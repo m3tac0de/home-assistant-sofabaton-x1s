@@ -11,6 +11,26 @@ const EditDetailViewElement = customElements.get("sofabaton-edit-detail-view") a
   new (): HTMLElement;
 };
 
+function templateHasValue(template: unknown, expected: string): boolean {
+  if (template === expected) return true;
+  if (Array.isArray(template)) return template.some((value) => templateHasValue(value, expected));
+  if (template && typeof template === "object" && "values" in template) {
+    return templateHasValue((template as { values?: unknown[] }).values ?? [], expected);
+  }
+  return false;
+}
+
+function templateHasString(template: unknown, expected: string): boolean {
+  if (typeof template === "string") return template.includes(expected);
+  if (Array.isArray(template)) return template.some((value) => templateHasString(value, expected));
+  if (template && typeof template === "object") {
+    const maybeTemplate = template as { strings?: unknown[]; values?: unknown[] };
+    return templateHasString(maybeTemplate.strings ?? [], expected)
+      || templateHasString(maybeTemplate.values ?? [], expected);
+  }
+  return false;
+}
+
 function createHass(state: BackupOperationStateResponse, onBackupState?: () => void): HassLike {
   return {
     states: {},
@@ -366,4 +386,49 @@ test("backup activity quick-access items hide internal power macros", () => {
 
   assert.deepEqual(items.map((item) => item.label), ["HDMI 1", "Lights Down"]);
   assert.deepEqual(items.map((item) => item.buttonId), [1, 2]);
+});
+
+test("live edit hides command and favorite rename affordances", () => {
+  const bundle = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    activities: [
+      {
+        kind: "activity_backup",
+        complete: true,
+        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
+        favorite_slots: [{ button_id: 1, device_id: 7, command_id: 3, name: "HDMI 1" }],
+        macros: [],
+      },
+    ],
+    devices: [
+      {
+        kind: "device_backup",
+        complete: true,
+        device: { device_id: 7, name: "Projector", device_class: "tv" },
+        commands: [{ command_id: 3, name: "HDMI 1" }],
+      },
+    ],
+  } as any;
+  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
+  element.bundle = bundle;
+  element.kind = "activity";
+  element.entityId = 101;
+  const favorite = activityQuickAccessItems(bundle, 101)[0];
+
+  element.mode = "backup";
+  assert.equal(templateHasValue(element._renderActivityQuickAccessRow(favorite), "Rename shortcut"), true);
+  assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), true);
+
+  element.mode = "live";
+  assert.equal(templateHasValue(element._renderActivityQuickAccessRow(favorite), "Rename shortcut"), false);
+  assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), false);
+
+  element._openQuickAccessRenameDialog("favorite", 1);
+  assert.equal(element._editRenameDialogOpen, false);
+  element.kind = "device";
+  element.entityId = 7;
+  element._openDeviceCommandRenameDialog(3);
+  assert.equal(element._editRenameDialogOpen, false);
 });

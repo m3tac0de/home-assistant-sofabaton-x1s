@@ -341,8 +341,13 @@ def _plan_macros(
     for button_id in sorted(edit_macros):
         macro = edit_macros[button_id]
         base_macro = base_macros.get(button_id)
-        if base_macro is not None and _macro_steps_signature(base_macro) == _macro_steps_signature(macro):
-            continue
+        if base_macro is not None:
+            steps_changed = _macro_steps_signature(base_macro) != _macro_steps_signature(macro)
+            # A rename changes only the macro's label (steps untouched), so the
+            # name must be compared too — a name-only edit still needs a write.
+            name_changed = str(base_macro.get("name") or "") != str(macro.get("name") or "")
+            if not steps_changed and not name_changed:
+                continue
         label = _macro_label(button_id)
         out.append(
             SyncStep(
@@ -416,54 +421,93 @@ def _plan_bindings(
         )
 
 
+def _favorite_entries(
+    activity: Mapping[str, Any],
+) -> list[tuple[int, tuple[int, int], Mapping[str, Any]]]:
+    """Favorites in display order (button_id ascending) as
+    ``(button_id, (device_id, command_id), row)``.
+
+    On the hub a favorite's stable identity is its ``fav_id``, captured into
+    ``button_id``. But the editor reassigns ``button_id`` positionally on every
+    edit, so in an *edited* bundle ``button_id`` is only a display position —
+    the durable identity is the favorite's content ``(device_id, command_id)``.
+    """
+    entries: list[tuple[int, tuple[int, int], Mapping[str, Any]]] = []
+    for row in activity.get("favorite_slots") or []:
+        if not isinstance(row, Mapping):
+            continue
+        entries.append(
+            (_int(row.get("button_id")), (_int(row.get("device_id")), _int(row.get("command_id"))), row)
+        )
+    entries.sort(key=lambda item: item[0])
+    return entries
+
+
 def _plan_favorites(
     base_activity: Mapping[str, Any],
     edit_activity: Mapping[str, Any],
     activity_id: int,
     out: list[SyncStep],
 ) -> None:
-    base_favs = _rows_by_button(base_activity.get("favorite_slots"))
-    edit_favs = _rows_by_button(edit_activity.get("favorite_slots"))
-    # Deletes first (frees the ordering), then adds, then a reorder.
-    for button_id in sorted(set(base_favs) - set(edit_favs)):
-        out.append(
-            SyncStep(
-                kind="favorite_delete",
-                label="Removing a shortcut…",
-                payload={"activity_id": activity_id, "button_id": button_id},
+    # Favorites are matched by content, then mapped back to the hub fav_id via
+    # the baseline (whose button_id == the hub fav_id at capture). The editor's
+    # positional button_ids in the edited bundle are ignored.
+    base = _favorite_entries(base_activity)
+    edit = _favorite_entries(edit_activity)
+    base_fav_id_by_content: dict[tuple[int, int], int] = {}
+    for fav_id, content, _row in base:
+        base_fav_id_by_content.setdefault(content, fav_id)
+    edit_contents = [content for _bid, content, _row in edit]
+    edit_content_set = set(edit_contents)
+
+    # Deletes first (frees the ordering): baseline content no longer present.
+    for fav_id, content, _row in base:
+        if content not in edit_content_set:
+            out.append(
+                SyncStep(
+                    kind="favorite_delete",
+                    label="Removing a shortcut…",
+                    payload={"activity_id": activity_id, "button_id": fav_id},
+                )
             )
-        )
-    for button_id in sorted(set(edit_favs) - set(base_favs)):
-        fav = edit_favs[button_id]
-        out.append(
-            SyncStep(
-                kind="favorite_add",
-                label="Adding a shortcut…",
-                target_device_id=_int(fav.get("device_id")) or None,
-                payload={
-                    "activity_id": activity_id,
-                    "button_id": button_id,
-                    "device_id": _int(fav.get("device_id")),
-                    "command_id": _int(fav.get("command_id")),
-                    "name": str(fav.get("name") or ""),
-                },
+    # Adds: edited content with no baseline counterpart (the hub assigns the
+    # new fav_id, so no button_id is sent).
+    for _bid, content, row in edit:
+        if content not in base_fav_id_by_content:
+            device_id, command_id = content
+            out.append(
+                SyncStep(
+                    kind="favorite_add",
+                    label="Adding a shortcut…",
+                    target_device_id=device_id or None,
+                    payload={
+                        "activity_id": activity_id,
+                        "device_id": device_id,
+                        "command_id": command_id,
+                        "name": str(row.get("name") or ""),
+                    },
+                )
             )
-        )
-    # Reorder when the surviving set kept membership but changed order.
-    base_order = [bid for bid in _order(base_activity.get("favorite_slots")) if bid in edit_favs]
-    edit_order = [bid for bid in _order(edit_activity.get("favorite_slots")) if bid in base_favs]
-    if base_order and edit_order and set(base_order) == set(edit_order) and base_order != edit_order:
+    # Reorder: the hub assigns fav_ids to added favorites, so the desired final
+    # order is expressed as *content* and resolved to live fav_ids by the
+    # executor after the adds land (re-read). Emit it only when the edited order
+    # differs from what add/delete alone would produce — survivors kept in their
+    # baseline order with adds appended — i.e. a genuine reorder or a
+    # non-tail insertion.
+    added_contents = [content for _bid, content, _row in edit if content not in base_fav_id_by_content]
+    natural_order = [content for _bid, content, _row in base if content in edit_content_set] + added_contents
+    desired_order = edit_contents
+    if len(desired_order) > 1 and desired_order != natural_order:
         out.append(
             SyncStep(
                 kind="favorite_order",
                 label="Reordering shortcuts…",
-                payload={"activity_id": activity_id, "order": _order(edit_activity.get("favorite_slots"))},
+                payload={
+                    "activity_id": activity_id,
+                    "order_content": [[dev, cmd] for dev, cmd in desired_order],
+                },
             )
         )
-
-
-def _order(rows: Any) -> list[int]:
-    return [_int(row.get("button_id")) for row in rows or []]
 
 
 def _plan_rename(

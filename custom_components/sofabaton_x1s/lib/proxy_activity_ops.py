@@ -33,6 +33,8 @@ from .protocol_const import (
 
 log = logging.getLogger("x1proxy")
 
+_FAV_DELETE_ACK_TIMEOUT = 12.0
+
 
 # Position of the tail token block inside a CATALOG_ROW_ACTIVITY payload.
 # See the activity-row schema comment in ``opcode_handlers`` for details.
@@ -645,7 +647,7 @@ class ActivityOpsMixin:
             family=FAMILY_FAV_DELETE,
             payload=bytes([act_lo, validated_fav_id]),
             ack_opcode=0x0103,
-            timeout=7.5,
+            timeout=_FAV_DELETE_ACK_TIMEOUT,
         )
         if not _step.ok:
             return None

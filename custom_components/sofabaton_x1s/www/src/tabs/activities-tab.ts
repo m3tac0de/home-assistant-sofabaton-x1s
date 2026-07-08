@@ -22,7 +22,7 @@ import type {
   HassLike,
 } from "../shared/ha-context";
 import { ControlPanelApi } from "../shared/api/control-panel-api";
-import { formatError, remoteAttrsForHub } from "../shared/utils/control-panel-selectors";
+import { formatError } from "../shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../strings";
 import { diffActivityForReview, type ActivityReviewGroup } from "./activity-diff";
 import "./edit-detail-view";
@@ -42,11 +42,6 @@ const S = TOOLS_CARD_STRINGS.activities;
 class SofabatonActivitiesTab extends LitElement {
   private static readonly _SESSION_TTL_MS = 60 * 60 * 1000;
   private static readonly _SESSION_KEY_PREFIX = "sofabaton_x1s:activities_tab:session:v1:";
-  // Grace window after loading a bundle during which cache_generation
-  // increases are absorbed (re-anchored) rather than flagged stale. The hub
-  // bumps its generation many times as a refresh burst settles, so a naive
-  // "built != current" check false-positives immediately after a refresh.
-  private static readonly _STALE_GRACE_MS = 6000;
 
   static properties = {
     hass: { attribute: false },
@@ -73,7 +68,6 @@ class SofabatonActivitiesTab extends LitElement {
     _syncError: { state: true },
     _syncFailedAt: { state: true },
     _syncSuccessNotice: { state: true },
-    _cacheStale: { state: true },
   };
 
   static styles = [operationProgressStyles, css`
@@ -248,12 +242,6 @@ class SofabatonActivitiesTab extends LitElement {
   private _syncError: string | null = null;
   private _syncFailedAt: string | null = null;
   private _syncSuccessNotice = false;
-  private _cacheStale = false;
-  // The hub cache_generation observed when the current bundle was loaded into
-  // the editor. The stale banner fires only when the backend moves *beyond*
-  // this — i.e. the cache diverges from what the editor is showing.
-  private _loadedGeneration = 0;
-  private _staleGraceUntil = 0;
 
   private _captureOperationId: string | null = null;
   private _syncOperationId: string | null = null;
@@ -297,9 +285,6 @@ class SofabatonActivitiesTab extends LitElement {
     if (changed.has("_baseline") || changed.has("_working") || changed.has("_activityId")) {
       this._persistSession();
     }
-    if (changed.has("hass")) {
-      this._evaluateCacheStaleness();
-    }
   }
 
   // Card reloaded mid-sync: pick up a running activity_sync op from the
@@ -342,7 +327,6 @@ class SofabatonActivitiesTab extends LitElement {
         window.localStorage.removeItem(key);
         return;
       }
-      const captureGeneration = Number(remoteAttrsForHub(this.hass, this.hub).cache_generation ?? 0);
       const savedAt = this._sessionSavedAt || Date.now();
       this._sessionSavedAt = savedAt;
       const payload = {
@@ -351,7 +335,6 @@ class SofabatonActivitiesTab extends LitElement {
         baseline: this._baseline,
         working: this._working ?? this._baseline,
         dirty: this._dirty,
-        captureGeneration,
       };
       window.localStorage.setItem(key, JSON.stringify(payload));
     } catch {
@@ -386,7 +369,6 @@ class SofabatonActivitiesTab extends LitElement {
         baseline?: unknown;
         working?: unknown;
         dirty?: boolean;
-        captureGeneration?: number;
       };
       const savedAt = Number(parsed?.savedAt);
       if (!Number.isFinite(savedAt) || Date.now() - savedAt > SofabatonActivitiesTab._SESSION_TTL_MS) {
@@ -405,12 +387,7 @@ class SofabatonActivitiesTab extends LitElement {
       this._sessionSavedAt = savedAt;
       this._sessionRestored = true;
       this._recomputeDirty();
-      // A restored session was captured earlier; anchor to the generation it
-      // was saved at (no grace) so a hub change since then surfaces as stale.
-      this._loadedGeneration = Number(parsed.captureGeneration ?? this._currentCacheGeneration());
-      this._staleGraceUntil = 0;
       this._stage = "editing";
-      this._evaluateCacheStaleness();
     } catch {
       try {
         window.localStorage.removeItem(key);
@@ -421,10 +398,11 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
   // ── Capture flow (§4.2) — sourced from the blob-free structural cache ──
-  // Instead of a multi-minute whole-hub blob backup, read the cached
-  // structural hub_bundle (built by "Refresh entire hub cache"). If it's
-  // missing, prompt the user to refresh; if it's older than the hub's current
-  // cache generation, open the editor but flag it as possibly stale.
+  // Read the cached structural hub_bundle (built by "Refresh entire hub
+  // cache"); if it's missing, prompt the user to refresh. While editing, this
+  // bundle *is* the truth — the editor never second-guesses whether the hub
+  // has since changed. That reconciliation happens once, authoritatively, at
+  // sync time (the backend stale pre-flight).
 
   private _startCapture = async (activityId: number) => {
     if (!this.hub || !this.hass) return;
@@ -432,7 +410,6 @@ class SofabatonActivitiesTab extends LitElement {
     this._captureError = null;
     this._captureProgress = null;
     this._sessionRestored = false;
-    this._cacheStale = false;
     this._stage = "capturing";
     try {
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
@@ -448,13 +425,6 @@ class SofabatonActivitiesTab extends LitElement {
       this._working = structuredClone(bundle);
       this._dirty = false;
       this._sessionSavedAt = Date.now();
-      // Anchor staleness to the generation the frontend sees *now*, and give
-      // the refresh burst a grace window to settle. The bundle's own build
-      // generation is not used here (it lags the settled value); the backend
-      // sync pre-flight is the authoritative guard against a truly stale load.
-      this._loadedGeneration = this._currentCacheGeneration();
-      this._staleGraceUntil = Date.now() + SofabatonActivitiesTab._STALE_GRACE_MS;
-      this._cacheStale = false;
       this._stage = "editing";
     } catch (error) {
       this._captureError = formatError(error);
@@ -487,25 +457,6 @@ class SofabatonActivitiesTab extends LitElement {
     this._dirty = !!this._baseline
       && !!this._working
       && JSON.stringify(this._working) !== JSON.stringify(this._baseline);
-  }
-
-  private _currentCacheGeneration(): number {
-    return Number(remoteAttrsForHub(this.hass, this.hub).cache_generation ?? 0);
-  }
-
-  // Re-evaluate whether the backend cache has diverged from the loaded bundle.
-  // Called on every hass update while an activity is open. During the grace
-  // window we absorb the settling bumps from our own refresh; after it, a
-  // higher generation means a genuine change landed under the editor.
-  private _evaluateCacheStaleness(): void {
-    if (!this._baseline || this._stage !== "editing") return;
-    const current = this._currentCacheGeneration();
-    if (current <= this._loadedGeneration) return;
-    if (Date.now() < this._staleGraceUntil) {
-      this._loadedGeneration = current;
-      return;
-    }
-    this._cacheStale = true;
   }
 
   // ── Review / Sync / Discard (§4.4) ─────────────────────────────────
@@ -581,11 +532,6 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncOperationId = null;
     this._sessionSavedAt = Date.now();
     this._syncSuccessNotice = true;
-    // Our own sync bumps cache_generation (post-sync cache refresh); re-anchor
-    // so that self-inflicted bump isn't mistaken for an external change.
-    this._loadedGeneration = this._currentCacheGeneration();
-    this._staleGraceUntil = Date.now() + SofabatonActivitiesTab._STALE_GRACE_MS;
-    this._cacheStale = false;
     this._stage = "editing";
     try { await this.api().clearBackupResult(operationId); } catch { /* ignore */ }
     try { await this.refreshControlPanelState?.(); } catch { /* ignore */ }
@@ -641,9 +587,6 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncFailedAt = null;
     this._syncOperationId = null;
     this._syncSuccessNotice = false;
-    this._cacheStale = false;
-    this._loadedGeneration = 0;
-    this._staleGraceUntil = 0;
   }
 
   // ── Data ───────────────────────────────────────────────────────────
@@ -816,7 +759,6 @@ class SofabatonActivitiesTab extends LitElement {
       <div class="editing-shell">
         ${this._sessionRestored ? this._renderSessionBanner() : nothing}
         ${this._syncSuccessNotice ? this._renderSyncSuccessBanner() : nothing}
-        ${this._cacheStale ? this._renderStaleCacheBanner() : nothing}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
           kind="activity"
@@ -831,21 +773,6 @@ class SofabatonActivitiesTab extends LitElement {
         ></sofabaton-edit-detail-view>
         ${this._reviewOpen ? this._renderReviewDialog() : nothing}
         ${this._discardConfirmOpen ? this._renderDiscardDialog() : nothing}
-      </div>
-    `;
-  }
-
-  private _renderStaleCacheBanner() {
-    const S = TOOLS_CARD_STRINGS.activities;
-    return html`
-      <div class="session-banner">
-        <span class="session-banner-text">${S.cacheStaleBanner}</span>
-        <sofabaton-refresh-cache-button
-          .hass=${this.hass}
-          .entryId=${this.hub?.entry_id ?? ""}
-          .label=${S.cacheStaleRefresh}
-          @refreshed=${() => { if (this._activityId != null) void this._startCapture(this._activityId); }}
-        ></sofabaton-refresh-cache-button>
       </div>
     `;
   }
@@ -873,6 +800,9 @@ class SofabatonActivitiesTab extends LitElement {
   private _renderSyncFailed() {
     const S = TOOLS_CARD_STRINGS.activities;
     const isStale = this._syncFailedAt === "stale_check";
+    // "Reload from hub" must fetch genuinely fresh state — refresh the whole
+    // structural cache, then re-open the activity. Re-reading the existing
+    // (possibly stale) cache would just re-fail. Reloading discards edits.
     return html`
       <div class="tab-panel">
         <div class="capture-error">
@@ -885,8 +815,13 @@ class SofabatonActivitiesTab extends LitElement {
             ${isStale
               ? nothing
               : html`<button class="btn btn-primary" @click=${this._retrySync}>${S.syncRetry}</button>`}
-            <button class="btn ${isStale ? "btn-primary" : ""}" @click=${this._reloadFromHub}>${S.syncReload}</button>
-            <button class="btn" @click=${() => { this._stage = "editing"; this._syncError = null; this._syncFailedAt = null; }}>${S.back}</button>
+            <sofabaton-refresh-cache-button
+              .hass=${this.hass}
+              .entryId=${this.hub?.entry_id ?? ""}
+              .label=${S.syncReload}
+              @refreshed=${() => { if (this._activityId != null) void this._startCapture(this._activityId); }}
+            ></sofabaton-refresh-cache-button>
+            <button class="btn" @click=${() => { this._stage = "editing"; this._syncError = null; this._syncFailedAt = null; }}>${S.syncKeepEditing}</button>
           </div>
         </div>
       </div>
