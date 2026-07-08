@@ -36,6 +36,9 @@ export function renderCacheTab(params: {
   onToggleEntity: (key: string) => void;
   onRefreshSection: (sectionId: SectionId) => void;
   onRefreshEntry: (kind: "activity" | "device", targetId: number, key: string) => void;
+  // Host-supplied "Refresh entire hub cache" button (self-contained element);
+  // rendered above the per-entity refreshes, which stay for targeted updates.
+  refreshAllSlot?: unknown;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.cache.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -132,6 +135,9 @@ export function renderCacheTab(params: {
 
   return html`
     <div class="tab-panel">
+      ${params.refreshAllSlot
+        ? html`<div class="cache-refresh-all-bar" style="display:flex;justify-content:flex-end;padding:12px 12px 0;">${params.refreshAllSlot}</div>`
+        : null}
       ${params.staleData ? html`<div class="stale-banner"><span class="stale-banner-text">${TOOLS_CARD_STRINGS.cache.staleBanner}</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>${TOOLS_CARD_STRINGS.cache.refresh}</button></div>` : null}
       ${renderSecondaryTabShell({
         connected: true,

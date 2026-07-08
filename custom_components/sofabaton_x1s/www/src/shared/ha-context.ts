@@ -341,6 +341,9 @@ export interface BackupProgressEvent {
   total_steps?: number | null;
   current_device_id?: number | null;
   current_activity_id?: number | null;
+  // Activity-sync surfaces the failed plan step here (string kind + target);
+  // distinct from BackupRestoreResult.failed_at (a [phase, index] tuple).
+  failed_at?: string | null;
   filename?: string | null;
   backup?: BackupBundlePayload | null;
   backup_downloaded?: boolean | null;
@@ -352,6 +355,7 @@ export interface BackupProgressEvent {
 export interface BackupOperationStateResponse {
   backup_export?: BackupProgressEvent | null;
   backup_restore?: BackupProgressEvent | null;
+  activity_sync?: BackupProgressEvent | null;
   active_operation?: BackupProgressEvent | null;
 }
 

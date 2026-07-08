@@ -64,6 +64,36 @@ var ControlPanelApi = class {
       ...deviceIds?.length ? { device_ids: deviceIds } : {}
     });
   }
+  startActivitySync(entryId, activityId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/sync",
+      entry_id: entryId,
+      activity_id: activityId,
+      baseline,
+      edited
+    });
+  }
+  activitySyncPlan(entryId, activityId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/sync_plan",
+      entry_id: entryId,
+      activity_id: activityId,
+      baseline,
+      edited
+    });
+  }
+  startCacheRefresh(entryId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/cache/refresh_all",
+      entry_id: entryId
+    });
+  }
+  getStructuralBundle(entryId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/cache/structural_bundle",
+      entry_id: entryId
+    });
+  }
   stashEditedBackup(entryId, backup, filename) {
     return this.hass.callWS({
       type: "sofabaton_x1s/backup/stash_edited",

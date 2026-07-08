@@ -155,7 +155,7 @@ def test_backup_hub_wraps_single_device_in_bundle(monkeypatch) -> None:
     proxy = _proxy(monkeypatch)
     backed_up: list[int] = []
 
-    def _backup_device(device_id, *, wait_timeout: float = 10.0):
+    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True):
         backed_up.append(device_id)
         return {
             "kind": "device_backup",
@@ -179,6 +179,26 @@ def test_backup_hub_wraps_single_device_in_bundle(monkeypatch) -> None:
     assert len(result["devices"]) == 1
     assert result["activities"] == []
     assert backed_up == [7]
+
+
+def test_backup_hub_bundle_structural_propagates_include_blobs(monkeypatch) -> None:
+    """``include_blobs=False`` threads through to every per-device backup."""
+
+    proxy = _proxy(monkeypatch)
+    seen: list[bool] = []
+
+    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True):
+        seen.append(include_blobs)
+        return {"kind": "device_backup", "complete": True, "device": {"device_id": device_id, "name": "D"}}
+
+    monkeypatch.setattr(proxy, "backup_device", _backup_device)
+
+    proxy.backup_hub_bundle(
+        device_ids=[7, 8],
+        hub_info={"entry_id": "e", "name": "S", "version": HUB_VERSION_X1S},
+        include_blobs=False,
+    )
+    assert seen == [False, False]
 
 
 def test_backup_hub_rejects_empty_after_validation(monkeypatch) -> None:

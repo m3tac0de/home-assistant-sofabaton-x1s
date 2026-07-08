@@ -1501,6 +1501,64 @@ class SofabatonHub:
                 progress=progress_callback,
             )
         )
+
+    async def async_refresh_hub_cache(
+        self,
+        *,
+        progress_callback: Any = None,
+    ) -> dict[str, Any]:
+        """Refresh the whole hub's structural cache and return a blob-free
+        ``hub_bundle``.
+
+        Runs :meth:`X1Proxy.backup_hub_bundle` with ``include_blobs=False`` —
+        it refreshes the device + activity lists and every entity's structure
+        into proxy state, without the multi-minute per-command IR blob dump.
+        The caller persists the returned bundle (the live activity editor's
+        data source) and the summary export. ``progress_callback`` runs on the
+        executor thread (marshal to the loop, as with ``async_backup_hub``).
+        """
+
+        hub_info = {"entry_id": self.entry_id, "name": self.name, "version": self.version}
+        bundle = await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.backup_hub_bundle,
+                device_ids=None,
+                hub_info=hub_info,
+                progress=progress_callback,
+                include_blobs=False,
+            )
+        )
+        self._bump_cache_generation()
+        return bundle
+
+    async def async_sync_activity(
+        self,
+        *,
+        baseline: dict[str, Any],
+        edited: dict[str, Any],
+        activity_id: int,
+        progress_callback: Any = None,
+    ) -> dict[str, Any]:
+        """Sync one activity's edits to the live hub (Phase L4).
+
+        Diffs ``baseline`` vs ``edited`` (both ``hub_bundle`` payloads) and
+        issues targeted in-place writes against the existing activity id.
+        The engine lives in the library (:meth:`X1Proxy.sync_activity`);
+        this wrapper marshals it onto the executor thread. ``progress_callback``
+        runs on that thread — callers marshal to the loop themselves (same
+        contract as :meth:`async_restore_backup`).
+        """
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.sync_activity,
+                baseline=baseline,
+                edited=edited,
+                activity_id=int(activity_id),
+                progress_callback=progress_callback,
+            )
+        )
+
     async def async_erase_configuration(
         self,
         *,

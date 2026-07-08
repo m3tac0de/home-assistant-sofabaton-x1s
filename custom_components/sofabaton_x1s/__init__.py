@@ -61,8 +61,10 @@ from .command_config import (
     wifi_device_requires_listener,
 )
 from .cache_store import PersistentCacheStore
+from .lib.activity_sync import build_activity_sync_plan
 from .lib.commands import build_descriptive_ir_blob_body
 from .lib.hub_listener import bounce_hub_listener
+from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
@@ -1736,6 +1738,7 @@ async def _ws_backup_state(hass: HomeAssistant, connection, msg: dict[str, Any])
         {
             "backup_export": registry.latest_for_entry(hub.entry_id, kind="backup_export"),
             "backup_restore": registry.latest_for_entry(hub.entry_id, kind="backup_restore"),
+            "activity_sync": registry.latest_for_entry(hub.entry_id, kind="activity_sync"),
             "active_operation": registry.running_for_entry(hub.entry_id),
         },
     )
@@ -1768,6 +1771,324 @@ async def _ws_backup_clear_result(hass: HomeAssistant, connection, msg: dict[str
         return
     registry.dismiss_operation(msg["operation_id"])
     connection.send_result(msg["id"], {"ok": True})
+
+
+# ── Live activity sync (Phase L4) ───────────────────────────────────────
+# Reuses the backup operation registry (kind="activity_sync") and the shared
+# progress_subscribe / state / clear_result surface. The engine diffs the
+# captured baseline against the edited working bundle and issues targeted
+# in-place writes against the existing activity id.
+
+# failed_at values that mean no wire writes happened — these are dismissed
+# like restore's pre-flight failures so a card refresh cannot snap a stale
+# failure back onto the UI.
+_ACTIVITY_SYNC_PREWRITE_FAILURES = {"plan", "unavailable", "stale_check"}
+
+
+def _validate_activity_sync_inputs(msg: dict[str, Any]) -> tuple[dict, dict, int]:
+    baseline = msg.get("baseline")
+    edited = msg.get("edited")
+    activity_id = int(msg.get("activity_id") or 0)
+    for name, payload in (("baseline", baseline), ("edited", edited)):
+        if not isinstance(payload, dict):
+            raise ValueError(f"{name} must be a hub_bundle object")
+        if payload.get("kind") != "hub_bundle":
+            raise ValueError(f"{name} must declare kind == 'hub_bundle'")
+        if int(payload.get("schema_version", 0)) != HUB_BUNDLE_SCHEMA_VERSION:
+            raise ValueError(
+                f"{name} schema_version must be {HUB_BUNDLE_SCHEMA_VERSION}"
+            )
+    if not (0 < activity_id <= 0xFF):
+        raise ValueError("activity_id out of range")
+
+    def _has_activity(bundle: dict) -> bool:
+        return any(
+            int((a.get("device") or {}).get("device_id") or 0) == activity_id
+            for a in bundle.get("activities") or []
+        )
+
+    if not _has_activity(baseline) or not _has_activity(edited):
+        raise ValueError("activity_id is missing from one of the bundles")
+    return baseline, edited, activity_id
+
+
+async def _run_activity_sync_operation(
+    hass: HomeAssistant,
+    operation_id: str,
+    *,
+    hub: SofabatonHub,
+    baseline: dict[str, Any],
+    edited: dict[str, Any],
+    activity_id: int,
+) -> None:
+    registry = _backup_operation_registry(hass)
+
+    def _progress(**payload: Any) -> None:
+        registry.update_from_thread(operation_id, **payload)
+
+    try:
+        result = await hub.async_sync_activity(
+            baseline=baseline,
+            edited=edited,
+            activity_id=activity_id,
+            progress_callback=_progress,
+        )
+    except Exception as err:  # pragma: no cover - defensive; executor traps its own
+        registry.update(
+            operation_id,
+            status="failed",
+            phase="failed",
+            message=str(err) or "Sync failed",
+            error=str(err) or "Sync failed",
+            transient=True,
+        )
+        registry.dismiss_operation(operation_id)
+        return
+
+    if isinstance(result, dict) and str(result.get("status") or "") == "failed":
+        failed_at = str(result.get("failed_at") or "")
+        message = str(result.get("message") or f"Sync failed at {failed_at!r}.")
+        if failed_at in _ACTIVITY_SYNC_PREWRITE_FAILURES:
+            registry.update(
+                operation_id,
+                status="failed",
+                phase=failed_at or "failed",
+                message=message,
+                error=message,
+                failed_at=failed_at,
+                result=result,
+                transient=True,
+            )
+            registry.dismiss_operation(operation_id)
+            return
+        registry.update(
+            operation_id,
+            status="failed",
+            phase="failed",
+            message=message,
+            error=message,
+            failed_at=failed_at,
+            completed_steps=int(result.get("completed_steps") or 0),
+            result=result,
+        )
+        return
+
+    registry.update(
+        operation_id,
+        status="success",
+        phase="completed",
+        message="Synced to hub.",
+        completed_steps=int((result or {}).get("total_steps") or 0),
+        total_steps=int((result or {}).get("total_steps") or 0),
+        result=result or {"status": "success"},
+    )
+    # Success tail: refresh the persistent cache so cache_generation bumps and
+    # the remote card / cache tab pick up the new names, favorites, and macros
+    # without a manual refresh (same path as catalog/refresh).
+    try:
+        await hub.async_request_catalog("activities")
+        store = await _async_get_persistent_cache_store(hass)
+        if store.enabled:
+            payload = await hub.async_export_cache_state()
+            await store.async_set_hub_cache(hub.entry_id, payload)
+    except Exception:  # pragma: no cover - cache refresh is best-effort
+        _LOGGER.exception("[activity_sync] post-sync cache refresh failed")
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/activity/sync",
+        vol.Required("entry_id"): str,
+        vol.Required("activity_id"): vol.All(int, vol.Range(min=1, max=255)),
+        vol.Required("baseline"): dict,
+        vol.Required("edited"): dict,
+    }
+)
+@websocket_api.async_response
+async def _ws_activity_sync(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    registry = _backup_operation_registry(hass)
+    if registry.has_running_for_entry(hub.entry_id):
+        connection.send_error(msg["id"], "busy", "Another backup, restore, or sync operation is already running for this hub")
+        return
+
+    try:
+        _raise_if_hub_operation_locked(hass, hub, "_ws_activity_sync")
+        baseline, edited, activity_id = _validate_activity_sync_inputs(msg)
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_payload", str(err))
+        return
+
+    operation_id = registry.create(
+        kind="activity_sync",
+        entry_id=hub.entry_id,
+        initial_state={
+            "status": "pending",
+            "phase": "queued",
+            "message": "Starting sync…",
+            "completed_steps": 0,
+            "total_steps": 0,
+            "current_activity_id": activity_id,
+        },
+    )
+    hass.async_create_task(
+        _run_activity_sync_operation(
+            hass,
+            operation_id,
+            hub=hub,
+            baseline=baseline,
+            edited=edited,
+            activity_id=activity_id,
+        )
+    )
+    connection.send_result(msg["id"], {"operation_id": operation_id})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/activity/sync_plan",
+        vol.Required("entry_id"): str,
+        vol.Required("activity_id"): vol.All(int, vol.Range(min=1, max=255)),
+        vol.Required("baseline"): dict,
+        vol.Required("edited"): dict,
+    }
+)
+@websocket_api.async_response
+async def _ws_activity_sync_plan(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # Advisory: compute the write plan without executing so the review dialog
+    # can show "N hub writes" and surface plan-construction errors before the
+    # user commits. The frontend treats this as informational.
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    try:
+        baseline, edited, activity_id = _validate_activity_sync_inputs(msg)
+        plan = build_activity_sync_plan(baseline, edited, activity_id)
+    except ValueError as err:
+        connection.send_error(msg["id"], "invalid_payload", str(err))
+        return
+    connection.send_result(
+        msg["id"],
+        {
+            "step_count": len(plan),
+            "steps": [{"kind": step.kind, "label": step.label} for step in plan],
+        },
+    )
+
+
+# ── Whole-hub cache refresh + structural bundle (blob-free) ─────────────
+# One operation refreshes the entire hub's *structural* cache (no per-command
+# IR blob dump — seconds, not minutes) and persists a blob-free hub_bundle the
+# live activity editor reads instantly. Reuses the backup operation registry
+# (kind="cache_refresh") and progress surface.
+
+
+async def _run_cache_refresh_operation(
+    hass: HomeAssistant,
+    operation_id: str,
+    *,
+    hub: SofabatonHub,
+) -> None:
+    registry = _backup_operation_registry(hass)
+
+    def _progress(**payload: Any) -> None:
+        registry.update_from_thread(operation_id, **payload)
+
+    try:
+        bundle = await hub.async_refresh_hub_cache(progress_callback=_progress)
+        store = await _async_get_persistent_cache_store(hass)
+        if store.enabled:
+            await store.async_set_structural_bundle(
+                hub.entry_id,
+                {"bundle": bundle, "generation": hub.cache_generation},
+            )
+            summary = await hub.async_export_cache_state()
+            await store.async_set_hub_cache(hub.entry_id, summary)
+        registry.update(
+            operation_id,
+            status="success",
+            phase="completed",
+            message="Hub cache refreshed.",
+            generation=hub.cache_generation,
+        )
+    except Exception as err:
+        registry.update(
+            operation_id,
+            status="failed",
+            phase="failed",
+            message=str(err) or "Cache refresh failed",
+            error=str(err) or "Cache refresh failed",
+        )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/cache/refresh_all",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_refresh_all_cache(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    registry = _backup_operation_registry(hass)
+    if registry.has_running_for_entry(hub.entry_id):
+        connection.send_error(msg["id"], "busy", "Another operation is already running for this hub")
+        return
+
+    try:
+        _raise_if_hub_operation_locked(hass, hub, "_ws_refresh_all_cache")
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+
+    operation_id = registry.create(
+        kind="cache_refresh",
+        entry_id=hub.entry_id,
+        initial_state={
+            "status": "pending",
+            "phase": "queued",
+            "message": "Starting hub cache refresh…",
+            "completed_steps": 0,
+            "total_steps": 0,
+        },
+    )
+    hass.async_create_task(_run_cache_refresh_operation(hass, operation_id, hub=hub))
+    connection.send_result(msg["id"], {"operation_id": operation_id})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/cache/structural_bundle",
+        vol.Required("entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_structural_bundle(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+    store = await _async_get_persistent_cache_store(hass)
+    entry = await store.async_get_structural_bundle(hub.entry_id) if store.enabled else None
+    if not entry:
+        connection.send_result(msg["id"], {"bundle": None, "generation": None})
+        return
+    connection.send_result(
+        msg["id"],
+        {"bundle": entry.get("bundle"), "generation": entry.get("generation")},
+    )
 
 
 @websocket_api.websocket_command(
@@ -2049,6 +2370,10 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_backup_progress_subscribe)
     websocket_api.async_register_command(hass, _ws_backup_state)
     websocket_api.async_register_command(hass, _ws_backup_clear_result)
+    websocket_api.async_register_command(hass, _ws_activity_sync)
+    websocket_api.async_register_command(hass, _ws_activity_sync_plan)
+    websocket_api.async_register_command(hass, _ws_refresh_all_cache)
+    websocket_api.async_register_command(hass, _ws_get_structural_bundle)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_hub_logs)
     websocket_api.async_register_command(hass, _ws_subscribe_wifi_presses)

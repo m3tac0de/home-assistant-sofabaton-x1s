@@ -150,12 +150,19 @@ class BackupExportMixin:
         device_id: int,
         *,
         wait_timeout: float = 10.0,
+        include_blobs: bool = True,
     ) -> dict[str, Any] | None:
         """Build a restore-oriented ``device_backup`` payload from the hub.
 
         Returns ``None`` when the device is unknown. Captures only what a
         restore needs (schema, command table, keymap, macros, IR blobs);
         runtime state is deliberately excluded.
+
+        ``include_blobs=False`` skips the per-command IR blob dump — the
+        dominant cost of a whole-hub read. The result keeps command *labels*,
+        key bindings, macros, input records and idle behaviour (everything the
+        live activity editor needs) but is **not** restorable (no command
+        payloads). Used by the structural "refresh entire hub cache" path.
         """
 
         dev_lo = device_id & 0xFF
@@ -202,17 +209,21 @@ class BackupExportMixin:
         )
         raw_dump_class = _bx.uses_raw_command_dump(normalized_device_class)
 
-        dump = self.request_ir_command_dump(
-            dev_lo, command_id=None, timeout=max(wait_timeout, 15.0)
-        )
-        if raw_dump_class:
-            blob_source = dump
-        else:
-            blob_source = _bx.normalize_dump_to_blobs(
-                dump,
-                resolve_device_class=self._resolve_device_class,
-                fallback_device_id=dev_lo,
+        if include_blobs:
+            dump = self.request_ir_command_dump(
+                dev_lo, command_id=None, timeout=max(wait_timeout, 15.0)
             )
+            if raw_dump_class:
+                blob_source = dump
+            else:
+                blob_source = _bx.normalize_dump_to_blobs(
+                    dump,
+                    resolve_device_class=self._resolve_device_class,
+                    fallback_device_id=dev_lo,
+                )
+        else:
+            # Structural capture: skip the per-command IR dump entirely.
+            blob_source = None
 
         if skip_inputs:
             input_record: dict[str, Any] | None = None
@@ -231,8 +242,10 @@ class BackupExportMixin:
             for command_id, label in dict(command_labels).items()
         }
         blob_by_command: dict[int, dict[str, Any]] = {}
-        blobs_complete = False
-        if isinstance(blob_source, dict):
+        # A structural capture intentionally has no blobs, so it counts as
+        # "complete" for the blobs dimension (nothing was meant to be fetched).
+        blobs_complete = not include_blobs
+        if include_blobs and isinstance(blob_source, dict):
             blobs_complete = bool(blob_source.get("complete"))
             for command in blob_source.get("commands", []):
                 if not isinstance(command, dict):
@@ -371,6 +384,7 @@ class BackupExportMixin:
         hub_info: dict[str, Any] | None = None,
         wait_timeout: float = 10.0,
         progress: Callable[..., None] | None = None,
+        include_blobs: bool = True,
     ) -> dict[str, Any]:
         """Build a ``hub_bundle`` covering the requested scope.
 
@@ -378,6 +392,11 @@ class BackupExportMixin:
         restricts to those devices (no activities). ``progress`` receives
         the same status dicts the integration surfaces. ``hub_info``
         overrides the bundle's informational ``hub`` block.
+
+        ``include_blobs=False`` produces a **structural** bundle (no command
+        IR payloads) — dramatically faster because it skips the per-command
+        blob dump. Same `hub_bundle` shape; suitable for the live activity
+        editor (which never reads blobs) but not for restore.
         """
 
         def _progress(**payload: Any) -> None:
@@ -427,7 +446,7 @@ class BackupExportMixin:
                 total_steps=total_steps,
                 current_device_id=dev_id,
             )
-            payload = self.backup_device(dev_id, wait_timeout=wait_timeout)
+            payload = self.backup_device(dev_id, wait_timeout=wait_timeout, include_blobs=include_blobs)
             if payload is None:
                 raise ValueError(f"Hub did not return device data for device {dev_id}")
             device_payloads.append(payload)

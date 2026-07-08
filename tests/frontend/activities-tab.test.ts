@@ -20,47 +20,29 @@ function sampleBundle(): BackupBundlePayload {
   } as unknown as BackupBundlePayload;
 }
 
-interface FakeHass extends HassLike {
-  __emit: (payload: unknown) => Promise<void> | void;
-}
-
-function createHass(exportBundle: BackupBundlePayload | null = sampleBundle()): FakeHass {
-  let progressCb: ((payload: unknown) => void) | undefined;
+// Fake hass serving the blob-free structural bundle from the cache.
+function createHass(
+  bundle: BackupBundlePayload | null = sampleBundle(),
+  generation = 0,
+): HassLike {
   return {
     states: {},
     async callWS<T>(message: Record<string, unknown>) {
       const type = String(message.type ?? "");
-      if (type === "sofabaton_x1s/backup/export") return { operation_id: "op-1" } as T;
+      if (type === "sofabaton_x1s/cache/structural_bundle") return { bundle, generation } as T;
       throw new Error(`Unexpected WS call: ${type}`);
     },
-    connection: {
-      async subscribeMessage(cb: (payload: unknown) => void) {
-        progressCb = cb;
-        return () => {};
-      },
-    },
-    __emit: (payload: unknown) => progressCb?.(payload),
-  } as FakeHass;
+    connection: null,
+  };
 }
 
-test("activities tab captures whole-hub and enters the edit stage with a cloned working bundle", async () => {
+test("activities tab loads the baseline from the structural cache and clones working", async () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
   const bundle = sampleBundle();
-  const hass = createHass(bundle);
-  element.hass = hass;
+  element.hass = createHass(bundle);
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  element.refreshControlPanelState = () => undefined;
 
   await element._startCapture(101);
-  assert.equal(element._stage, "capturing");
-
-  await hass.__emit({
-    operation_id: "op-1",
-    kind: "backup_export",
-    entry_id: "hub-1",
-    status: "success",
-    backup: bundle,
-  });
 
   assert.equal(element._stage, "editing");
   assert.equal(element._activityId, 101);
@@ -72,25 +54,80 @@ test("activities tab captures whole-hub and enters the edit stage with a cloned 
   assert.equal(element._baseline.activities[0].device.name, "Watch TV");
 });
 
-test("activities tab surfaces a capture failure without leaving the capturing stage", async () => {
+test("activities tab prompts to refresh when the structural cache is missing", async () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
-  const hass = createHass();
-  element.hass = hass;
+  element.hass = createHass(null);
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  element.refreshControlPanelState = () => undefined;
 
   await element._startCapture(101);
-  await hass.__emit({
-    operation_id: "op-1",
-    kind: "backup_export",
-    entry_id: "hub-1",
-    status: "failed",
-    error: "hub dropped",
-  });
+
+  assert.equal(element._stage, "needs_refresh");
+  assert.equal(element._baseline, null);
+});
+
+function hassWithGeneration(bundle: BackupBundlePayload | null, remoteGeneration: number) {
+  const hass = createHass(bundle) as HassLike & { states: Record<string, any> };
+  hass.states["remote.living_room"] = { attributes: { entry_id: "hub-1", cache_generation: remoteGeneration } };
+  return hass;
+}
+
+test("activities tab does NOT flag stale right after loading, even if the build generation lags", async () => {
+  // The bundle was built at an earlier generation, but the hub has bumped its
+  // generation several times settling the refresh burst. Opening must not
+  // false-positive — anchor to the currently observed generation instead.
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  element.hass = hassWithGeneration(sampleBundle(), 5);
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+
+  await element._startCapture(101);
+
+  assert.equal(element._stage, "editing");
+  assert.equal(element._cacheStale, false);
+  assert.equal(element._loadedGeneration, 5);
+});
+
+test("activities tab flags stale when the cache generation advances after load (past grace)", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const hass = hassWithGeneration(sampleBundle(), 5);
+  element.hass = hass;
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  await element._startCapture(101);
+  assert.equal(element._cacheStale, false);
+
+  // Grace expired, then an external change bumps the generation → diverged.
+  element._staleGraceUntil = 0;
+  hass.states["remote.living_room"].attributes.cache_generation = 6;
+  element.updated(new Map<string, unknown>([["hass", undefined]]));
+  assert.equal(element._cacheStale, true);
+});
+
+test("activities tab absorbs settling generation bumps within the grace window", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const hass = hassWithGeneration(sampleBundle(), 5);
+  element.hass = hass;
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  await element._startCapture(101);
+
+  // Still within the grace window: a trailing bump re-anchors, not flags.
+  hass.states["remote.living_room"].attributes.cache_generation = 7;
+  element.updated(new Map<string, unknown>([["hass", undefined]]));
+  assert.equal(element._cacheStale, false);
+  assert.equal(element._loadedGeneration, 7);
+});
+
+test("activities tab surfaces a structural-bundle read failure", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  element.hass = {
+    states: {},
+    async callWS() { throw new Error("boom"); },
+    connection: null,
+  } as HassLike;
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+
+  await element._startCapture(101);
 
   assert.equal(element._stage, "capturing");
-  assert.equal(element._baseline, null);
-  assert.match(String(element._captureError || ""), /hub dropped/);
+  assert.match(String(element._captureError || ""), /boom/);
 });
 
 test("activities tab shows the app-connected guard ahead of the list", () => {
@@ -174,6 +211,8 @@ test("activities tab persists the baseline session and restores it on re-entry",
 test("activities tab drops the in-memory session when the hub picker switches hubs", () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
   element.hub = { entry_id: "hub-1", activities: [] };
+  // Establish the current hub's entry_id (as the first render would).
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
   element._stage = "editing";
   element._baseline = sampleBundle();
   element._working = sampleBundle();
@@ -185,6 +224,22 @@ test("activities tab drops the in-memory session when the hub picker switches hu
   assert.equal(element._stage, "list");
   assert.equal(element._baseline, null);
   assert.equal(element._activityId, null);
+});
+
+test("activities tab keeps an in-flight capture when the hub object refreshes (same entry_id)", () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  element._stage = "capturing";
+  element._activityId = 101;
+
+  // A control_panel/state refresh hands us a NEW hub object with the SAME
+  // entry_id (e.g. active_backup_operation now populated by our own capture).
+  element.hub = { entry_id: "hub-1", activities: [], active_backup_operation: { status: "running" } };
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+
+  assert.equal(element._stage, "capturing");
+  assert.equal(element._activityId, 101);
 });
 
 test("activities tab tracks dirty on bundle-change and clears it when reverted", () => {
@@ -238,14 +293,87 @@ test("activities tab opens the review dialog only when dirty", () => {
   assert.equal(element._reviewOpen, true);
 });
 
-test("activities tab sync is stubbed to a coming-soon notice (no hub write)", () => {
+function createSyncHass() {
+  let progressCb: ((payload: unknown) => void) | undefined;
+  const calls: string[] = [];
+  const hass = {
+    states: {},
+    async callWS<T>(message: Record<string, unknown>) {
+      const type = String(message.type ?? "");
+      calls.push(type);
+      if (type === "sofabaton_x1s/activity/sync") return { operation_id: "sync-1" } as T;
+      if (type === "sofabaton_x1s/backup/clear_result") return { ok: true } as T;
+      throw new Error(`Unexpected WS call: ${type}`);
+    },
+    connection: {
+      async subscribeMessage(cb: (payload: unknown) => void) {
+        progressCb = cb;
+        return () => {};
+      },
+    },
+    __emit: (payload: unknown) => progressCb?.(payload),
+    __calls: calls,
+  };
+  return hass as typeof hass & { __emit: (p: unknown) => Promise<void> | void; __calls: string[] };
+}
+
+test("activities tab sync starts the engine and enters the syncing stage", async () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const hass = createSyncHass();
+  element.hass = hass;
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.refreshControlPanelState = () => undefined;
   element._baseline = sampleBundle();
   element._working = structuredClone(element._baseline);
   element._activityId = 101;
   element._dirty = true;
   element._reviewOpen = true;
-  element._requestSync();
+
+  await element._requestSync();
   assert.equal(element._reviewOpen, false);
-  assert.equal(element._syncNoticeOpen, true);
+  assert.equal(element._stage, "syncing");
+  assert.equal(hass.__calls.includes("sofabaton_x1s/activity/sync"), true);
+});
+
+test("activities tab sync success promotes working to baseline and clears dirty", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const hass = createSyncHass();
+  element.hass = hass;
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.refreshControlPanelState = () => undefined;
+  element._baseline = sampleBundle();
+  const edited = structuredClone(element._baseline);
+  edited.activities[0].device!.name = "Edited";
+  element._working = edited;
+  element._activityId = 101;
+  element._recomputeDirty();
+  assert.equal(element._dirty, true);
+
+  await element._requestSync();
+  await hass.__emit({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "success", total_steps: 2 });
+
+  assert.equal(element._stage, "editing");
+  assert.equal(element._dirty, false);
+  assert.equal(element._baseline.activities[0].device.name, "Edited");
+  assert.equal(element._syncSuccessNotice, true);
+});
+
+test("activities tab sync failure surfaces the failed step, stale maps to reload", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const hass = createSyncHass();
+  element.hass = hass;
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.refreshControlPanelState = () => undefined;
+  element._baseline = sampleBundle();
+  element._working = structuredClone(element._baseline);
+  element._activityId = 101;
+  element._dirty = true;
+
+  await element._requestSync();
+  await hass.__emit({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "failed", failed_at: "stale_check", error: "changed" });
+
+  assert.equal(element._stage, "sync_failed");
+  assert.equal(element._syncFailedAt, "stale_check");
+  // Edits are preserved on failure (baseline untouched).
+  assert.equal(element._dirty, true);
 });

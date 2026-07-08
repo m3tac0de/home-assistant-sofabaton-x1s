@@ -1693,17 +1693,21 @@
         label: "Activities — capture → edit",
         states: STATES_CONNECTED,
         handlers: {
-          "sofabaton_x1s/backup/export": () => ({ operation_id: "capture-1" }),
+          // Capture now reads the cached blob-free structural bundle (instant).
+          "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: clone(EDIT_BACKUP_BUNDLE), generation: 1 }),
+          "sofabaton_x1s/activity/sync": () => ({ operation_id: "sync-1" }),
+          "sofabaton_x1s/activity/sync_plan": () => ({ step_count: 2, steps: [
+            { kind: "member_replay", label: "Adding a device to the activity…" },
+            { kind: "favorite_add", label: "Adding a shortcut…" },
+          ] }),
         },
-        subscribe: (cb) => {
-          // Emit a successful whole-hub capture carrying the rich edit bundle.
-          setTimeout(() => cb({
-            operation_id: "capture-1",
-            kind: "backup_export",
-            entry_id: "hub-1",
-            status: "success",
-            backup: clone(EDIT_BACKUP_BUNDLE),
-          }), 200);
+        subscribe: (cb, msg) => {
+          const opId = String(msg && msg.operation_id || "");
+          if (opId === "sync-1") {
+            // Scripted sync progress → success.
+            setTimeout(() => cb({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "running", phase: "writing", message: "Adding a shortcut…", completed_steps: 1, total_steps: 2 }), 120);
+            setTimeout(() => cb({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "success", total_steps: 2 }), 400);
+          }
           return Promise.resolve(() => {});
         },
         async postLoad(card) {
@@ -1716,6 +1720,44 @@
           row?.click();
           await tab.updateComplete;
         },
+      },
+      {
+        id: "activities-needs-refresh", group: "Activities",
+        label: "Activities — needs cache refresh",
+        states: STATES_CONNECTED,
+        handlers: {
+          // No structural bundle cached yet → clicking an activity prompts a refresh.
+          "sofabaton_x1s/cache/structural_bundle": () => ({ bundle: null, generation: null }),
+          "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "refresh-1" }),
+        },
+        subscribe: (cb) => {
+          setTimeout(() => cb({ operation_id: "refresh-1", kind: "cache_refresh", entry_id: "hub-1", status: "running", message: "Reading your hub's configuration…" }), 100);
+          setTimeout(() => cb({ operation_id: "refresh-1", kind: "cache_refresh", entry_id: "hub-1", status: "success" }), 400);
+          return Promise.resolve(() => {});
+        },
+        async postLoad(card) {
+          await clickTab(card, "Activities");
+          const tab = card.shadowRoot.querySelector("sofabaton-activities-tab");
+          if (!tab) return;
+          await tab.updateComplete;
+          const row = [...tab.shadowRoot.querySelectorAll(".activity-row")].find(r => r.textContent.includes("Watch TV"));
+          row?.click();
+          await tab.updateComplete;
+        },
+      },
+      {
+        id: "cache-refresh-all", group: "Activities",
+        label: "Cache — refresh all button",
+        states: STATES_CONNECTED,
+        handlers: {
+          "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "refresh-1" }),
+        },
+        subscribe: (cb) => {
+          setTimeout(() => cb({ operation_id: "refresh-1", kind: "cache_refresh", entry_id: "hub-1", status: "running", message: "Reading your hub's configuration…" }), 100);
+          setTimeout(() => cb({ operation_id: "refresh-1", kind: "cache_refresh", entry_id: "hub-1", status: "success" }), 500);
+          return Promise.resolve(() => {});
+        },
+        postLoad: card => clickTab(card, "Cache"),
       },
       {
         id: "activities-app-connected", group: "Activities",

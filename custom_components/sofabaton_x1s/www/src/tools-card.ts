@@ -24,6 +24,7 @@ import "./tabs/blobs-tab";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
 import "./tabs/activities-tab";
+import "./components/refresh-cache-button";
 
 const TOOLS_TYPE = "sofabaton-control-panel";
 const LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
@@ -707,6 +708,16 @@ class SofabatonControlPanelCard extends LitElement {
         onToggleEntity: (key) => this._store.toggleEntity(key),
         onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
         onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
+        refreshAllSlot: hub
+          ? html`
+              <sofabaton-refresh-cache-button
+                .hass=${this._snapshot.hass}
+                .entryId=${hub.entry_id}
+                .disabled=${sharedHubCommandBusy || proxyClientConnected(this._snapshot.hass, hub)}
+                @refreshed=${() => void this._store.loadState({ silent: true })}
+              ></sofabaton-refresh-cache-button>
+            `
+          : null,
       });
     }
 

@@ -159,6 +159,7 @@ from .proxy_wifi_device import WifiDeviceMixin
 from .proxy_backup import CacheBackupMixin
 from .proxy_backup_export import BackupExportMixin
 from .proxy_activity_ops import ActivityOpsMixin
+from .proxy_activity_sync import ActivitySyncMixin
 from .proxy_ack_waiters import AckWaitersMixin
 from .proxy_catalog import CatalogMixin
 from .proxy_frame_decode import FrameDecodeMixin, _hexdump
@@ -367,7 +368,7 @@ def _enable_keepalive(sock: socket.socket, *, idle: int = 30, interval: int = 10
 # ============================================================================
 # Proxy
 # ============================================================================
-class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, CacheBackupMixin, WifiDeviceMixin, RemoteBatteryMixin, RestoreMixin, BackupExportMixin):
+class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, ActivityOpsMixin, ActivitySyncMixin, CacheBackupMixin, WifiDeviceMixin, RemoteBatteryMixin, RestoreMixin, BackupExportMixin):
     def __init__(
         self,
         real_hub_ip: str,

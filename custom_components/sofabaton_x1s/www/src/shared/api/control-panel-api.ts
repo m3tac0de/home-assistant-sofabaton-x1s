@@ -83,6 +83,50 @@ export class ControlPanelApi {
     });
   }
 
+  startActivitySync(
+    entryId: string,
+    activityId: number,
+    baseline: BackupBundlePayload,
+    edited: BackupBundlePayload,
+  ) {
+    return this.hass.callWS<BackupOperationStartResponse>({
+      type: "sofabaton_x1s/activity/sync",
+      entry_id: entryId,
+      activity_id: activityId,
+      baseline,
+      edited,
+    });
+  }
+
+  activitySyncPlan(
+    entryId: string,
+    activityId: number,
+    baseline: BackupBundlePayload,
+    edited: BackupBundlePayload,
+  ) {
+    return this.hass.callWS<{ step_count: number; steps: Array<{ kind: string; label: string }> }>({
+      type: "sofabaton_x1s/activity/sync_plan",
+      entry_id: entryId,
+      activity_id: activityId,
+      baseline,
+      edited,
+    });
+  }
+
+  startCacheRefresh(entryId: string) {
+    return this.hass.callWS<BackupOperationStartResponse>({
+      type: "sofabaton_x1s/cache/refresh_all",
+      entry_id: entryId,
+    });
+  }
+
+  getStructuralBundle(entryId: string) {
+    return this.hass.callWS<{ bundle: BackupBundlePayload | null; generation: number | null }>({
+      type: "sofabaton_x1s/cache/structural_bundle",
+      entry_id: entryId,
+    });
+  }
+
   stashEditedBackup(entryId: string, backup: BackupBundlePayload, filename: string) {
     return this.hass.callWS<{ operation_id: string }>({
       type: "sofabaton_x1s/backup/stash_edited",

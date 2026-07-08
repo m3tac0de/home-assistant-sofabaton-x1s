@@ -68,10 +68,26 @@ class PersistentCacheStore:
         hubs[entry_id] = deepcopy(payload)
         await self._store.async_save(self._data)
 
+    async def async_get_structural_bundle(self, entry_id: str) -> dict[str, Any] | None:
+        """Blob-free structural ``hub_bundle`` the live activity editor reads
+        (kept separate from the Cache-tab summary payload)."""
+        bundles = self._data.setdefault("structural_bundles", {})
+        entry = bundles.get(entry_id)
+        return deepcopy(entry) if isinstance(entry, dict) else None
+
+    async def async_set_structural_bundle(self, entry_id: str, payload: dict[str, Any]) -> None:
+        bundles = self._data.setdefault("structural_bundles", {})
+        bundles[entry_id] = deepcopy(payload)
+        await self._store.async_save(self._data)
+
     async def async_clear_hub_cache(self, entry_id: str) -> None:
         hubs = self._data.setdefault("hubs", {})
         if entry_id in hubs:
             hubs.pop(entry_id, None)
+            await self._store.async_save(self._data)
+        bundles = self._data.setdefault("structural_bundles", {})
+        if entry_id in bundles:
+            bundles.pop(entry_id, None)
             await self._store.async_save(self._data)
 
     async def async_clear_all_hub_cache(self) -> None:

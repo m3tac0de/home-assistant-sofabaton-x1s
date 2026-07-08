@@ -1594,6 +1594,13 @@ var TOOLS_CARD_STRINGS = {
     empty: "No log lines captured for this hub yet.",
     liveConsole: "Live Console"
   },
+  cacheRefresh: {
+    label: "Refresh entire hub cache",
+    running: "Refreshing\u2026",
+    starting: "Starting hub cache refresh\u2026",
+    working: "Reading your hub's configuration\u2026",
+    done: "Hub cache refreshed."
+  },
   progress: {
     homeAssistant: "Home Assistant",
     sofabatonHub: "Sofabaton Hub",
@@ -1657,6 +1664,12 @@ var TOOLS_CARD_STRINGS = {
     captureFailedBody: "The hub stopped responding before we finished reading it.",
     retry: "Retry",
     back: "Back",
+    // Cache-sourced capture (blob-free structural bundle).
+    capturingFromCache: "Loading activity from the hub cache\u2026",
+    needsRefreshTitle: "Refresh the hub cache to edit",
+    needsRefreshBody: "This activity isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.",
+    cacheStaleBanner: "The hub changed since this cache was refreshed \u2014 your view may be out of date.",
+    cacheStaleRefresh: "Refresh cache",
     // Session restore banner (§4.6).
     sessionRestoreBanner: (name, time) => `Continuing your edit of "${name}" from ${time}`,
     sessionReload: "Reload from hub instead",
@@ -1674,9 +1687,17 @@ var TOOLS_CARD_STRINGS = {
     reviewDiscardAll: "Discard all changes",
     reviewAppliesEverywhere: "applies everywhere",
     reviewAppliesEveryActivity: "applies to every activity",
-    // Sync is stubbed until Phase L4 lands.
-    syncComingSoonTitle: "Live sync is coming soon",
-    syncComingSoonBody: "Writing changes back to the hub arrives in a later update (Phase L4). Your edits are safe here in the meantime.",
+    // Sync flow (§4.5).
+    syncingTitle: "Syncing to your hub",
+    syncingMessage: "Writing your changes to the hub\u2026",
+    syncSuccess: "Synced to hub.",
+    syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
+    syncFailedTitle: "Sync didn't finish",
+    syncFailedStep: (step) => `The hub stopped at: ${step}`,
+    syncStaleTitle: "This activity changed on the hub",
+    syncStaleBody: "Someone edited this activity on the hub after you loaded it. Reload to pick up their changes \u2014 your local edits will be discarded.",
+    syncRetry: "Retry sync",
+    syncReload: "Reload from hub",
     // Discard confirmation.
     discardConfirmTitle: "Discard all changes?",
     discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
