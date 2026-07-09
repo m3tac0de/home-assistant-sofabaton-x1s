@@ -5,12 +5,9 @@
  * Lists the hub's activities, captures the whole-hub bundle when one is
  * clicked (reusing the existing backup/export operation + progress
  * subscription), then hosts the extracted <sofabaton-edit-detail-view>
- * in mode="live". L2 is deliberately a skeleton: the edit view is
- * interactive but ephemeral — `bundle-change` updates an in-memory
- * `working` clone so drill-ins respond, but nothing is written back to the
- * hub, there is no dirty/Review/Sync, and only the captured `baseline` is
- * persisted to a localStorage session. Change tracking (L3) and the sync
- * engine (L4) build on top of this.
+ * in mode="live". `bundle-change` updates an in-memory `working` clone;
+ * changes stay alive while this edit view is active and are written to the
+ * hub only through the sync flow.
  */
 import { LitElement, css, html, nothing } from "lit";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
@@ -40,9 +37,6 @@ interface ActivityListItem {
 const S = TOOLS_CARD_STRINGS.activities;
 
 class SofabatonActivitiesTab extends LitElement {
-  private static readonly _SESSION_TTL_MS = 60 * 60 * 1000;
-  private static readonly _SESSION_KEY_PREFIX = "sofabaton_x1s:activities_tab:session:v1:";
-
   static properties = {
     hass: { attribute: false },
     hub: { attribute: false },
@@ -59,11 +53,10 @@ class SofabatonActivitiesTab extends LitElement {
     _working: { state: true },
     _captureProgress: { state: true },
     _captureError: { state: true },
-    _sessionRestored: { state: true },
-    _sessionSavedAt: { state: true },
     _dirty: { state: true },
     _reviewOpen: { state: true },
     _discardConfirmOpen: { state: true },
+    _exitConfirmOpen: { state: true },
     _syncProgress: { state: true },
     _syncError: { state: true },
     _syncFailedAt: { state: true },
@@ -148,7 +141,7 @@ class SofabatonActivitiesTab extends LitElement {
     .btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
     .editing-shell { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .editing-shell sofabaton-edit-detail-view { flex: 1; min-height: 0; display: flex; }
-    .session-banner {
+    .notice-banner {
       display: flex;
       align-items: center;
       gap: 12px;
@@ -158,8 +151,8 @@ class SofabatonActivitiesTab extends LitElement {
       color: var(--primary-text-color);
       font-size: 13px;
     }
-    .session-banner-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .session-banner-btn {
+    .notice-banner-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .notice-banner-btn {
       flex: 0 0 auto;
       border: 1px solid var(--divider-color);
       border-radius: 999px;
@@ -170,9 +163,9 @@ class SofabatonActivitiesTab extends LitElement {
       padding: 4px 12px;
       cursor: pointer;
     }
-    .session-banner-btn:hover { border-color: var(--primary-color); }
+    .notice-banner-btn:hover { border-color: var(--primary-color); }
     .sync-success-banner { background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color))); }
-    .sync-success-banner .session-banner-text { display: inline-flex; align-items: center; gap: 6px; color: #2e7d32; }
+    .sync-success-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: #2e7d32; }
     .sync-success-banner ha-icon { --mdc-icon-size: 18px; }
     .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
     .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
@@ -233,11 +226,10 @@ class SofabatonActivitiesTab extends LitElement {
   private _working: BackupBundlePayload | null = null;
   private _captureProgress: BackupProgressEvent | null = null;
   private _captureError: string | null = null;
-  private _sessionRestored = false;
-  private _sessionSavedAt = 0;
   private _dirty = false;
   private _reviewOpen = false;
   private _discardConfirmOpen = false;
+  private _exitConfirmOpen = false;
   private _syncProgress: BackupProgressEvent | null = null;
   private _syncError: string | null = null;
   private _syncFailedAt: string | null = null;
@@ -246,9 +238,9 @@ class SofabatonActivitiesTab extends LitElement {
   private _captureOperationId: string | null = null;
   private _syncOperationId: string | null = null;
   private _progressUnsub: (() => void) | null = null;
-  private _sessionRestoreTried = false;
   private _syncStateHydratedFor: string | null = null;
-  // entry_id of the hub the current stage/session belongs to. The `hub` prop
+  private _exitAfterSync = false;
+  // entry_id of the hub the current stage belongs to. The `hub` prop
   // is a fresh object on every control_panel/state refresh, so we key reset
   // decisions on the entry_id — not object identity — to avoid tearing down
   // an in-flight capture/edit whenever state refreshes.
@@ -269,21 +261,13 @@ class SofabatonActivitiesTab extends LitElement {
       if (this._hubEntryId !== null && nextEntryId !== this._hubEntryId) {
         this._teardownProgressSubscription();
         this._resetToList();
-        this._sessionRestoreTried = false;
         this._syncStateHydratedFor = null;
       }
       this._hubEntryId = nextEntryId;
     }
-    if (!this._sessionRestoreTried && this.hub && this._stage === "list" && !this._baseline) {
-      this._sessionRestoreTried = true;
-      this._restoreSession();
-    }
     if (this.hub && this._syncStateHydratedFor !== this.hub.entry_id) {
       this._syncStateHydratedFor = this.hub.entry_id;
       void this._hydrateRunningSync();
-    }
-    if (changed.has("_baseline") || changed.has("_working") || changed.has("_activityId")) {
-      this._persistSession();
     }
   }
 
@@ -311,92 +295,6 @@ class SofabatonActivitiesTab extends LitElement {
     return new ControlPanelApi(this.hass);
   }
 
-  // ── Session persistence (baseline + working; §4.6) ─────────────────
-
-  private _sessionKey(): string | null {
-    const entryId = this.hub?.entry_id;
-    if (!entryId) return null;
-    return `${SofabatonActivitiesTab._SESSION_KEY_PREFIX}${entryId}`;
-  }
-
-  private _persistSession() {
-    const key = this._sessionKey();
-    if (!key) return;
-    try {
-      if (!this._baseline || this._activityId == null) {
-        window.localStorage.removeItem(key);
-        return;
-      }
-      const savedAt = this._sessionSavedAt || Date.now();
-      this._sessionSavedAt = savedAt;
-      const payload = {
-        savedAt,
-        activityId: this._activityId,
-        baseline: this._baseline,
-        working: this._working ?? this._baseline,
-        dirty: this._dirty,
-      };
-      window.localStorage.setItem(key, JSON.stringify(payload));
-    } catch {
-      // localStorage can throw (quota, privacy mode) — degrade to memory-only.
-    }
-  }
-
-  private _clearSession() {
-    const key = this._sessionKey();
-    if (!key) return;
-    try {
-      window.localStorage.removeItem(key);
-    } catch {
-      // ignore
-    }
-  }
-
-  private _restoreSession() {
-    const key = this._sessionKey();
-    if (!key) return;
-    let raw: string | null = null;
-    try {
-      raw = window.localStorage.getItem(key);
-    } catch {
-      return;
-    }
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw) as {
-        savedAt?: number;
-        activityId?: number;
-        baseline?: unknown;
-        working?: unknown;
-        dirty?: boolean;
-      };
-      const savedAt = Number(parsed?.savedAt);
-      if (!Number.isFinite(savedAt) || Date.now() - savedAt > SofabatonActivitiesTab._SESSION_TTL_MS) {
-        window.localStorage.removeItem(key);
-        return;
-      }
-      const baseline = parsed.baseline as BackupBundlePayload | undefined;
-      const activityId = Number(parsed.activityId);
-      if (!baseline || !Array.isArray(baseline.activities) || !Number.isFinite(activityId)) {
-        window.localStorage.removeItem(key);
-        return;
-      }
-      this._baseline = baseline;
-      this._working = (parsed.working as BackupBundlePayload | undefined) ?? structuredClone(baseline);
-      this._activityId = activityId;
-      this._sessionSavedAt = savedAt;
-      this._sessionRestored = true;
-      this._recomputeDirty();
-      this._stage = "editing";
-    } catch {
-      try {
-        window.localStorage.removeItem(key);
-      } catch {
-        // ignore
-      }
-    }
-  }
-
   // ── Capture flow (§4.2) — sourced from the blob-free structural cache ──
   // Read the cached structural hub_bundle (built by "Refresh entire hub
   // cache"); if it's missing, prompt the user to refresh. While editing, this
@@ -409,7 +307,6 @@ class SofabatonActivitiesTab extends LitElement {
     this._activityId = activityId;
     this._captureError = null;
     this._captureProgress = null;
-    this._sessionRestored = false;
     this._stage = "capturing";
     try {
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
@@ -424,7 +321,6 @@ class SofabatonActivitiesTab extends LitElement {
       this._baseline = bundle;
       this._working = structuredClone(bundle);
       this._dirty = false;
-      this._sessionSavedAt = Date.now();
       this._stage = "editing";
     } catch (error) {
       this._captureError = formatError(error);
@@ -447,8 +343,7 @@ class SofabatonActivitiesTab extends LitElement {
 
   private _handleBundleChange = (event: CustomEvent<{ bundle: BackupBundlePayload }>) => {
     // The detail element already ran its HA-action prune sweep. Store the
-    // edited bundle, recompute dirty against the captured baseline, and let
-    // updated() persist it to the session (§4.4).
+    // edited bundle and recompute dirty against the captured baseline.
     this._working = event.detail.bundle;
     this._recomputeDirty();
   };
@@ -480,6 +375,7 @@ class SofabatonActivitiesTab extends LitElement {
   private _requestSync = async () => {
     if (!this._dirty || this._activityId == null || !this.hub || !this._baseline || !this._working) return;
     this._reviewOpen = false;
+    this._exitConfirmOpen = false;
     this._syncError = null;
     this._syncFailedAt = null;
     this._syncProgress = null;
@@ -498,6 +394,7 @@ class SofabatonActivitiesTab extends LitElement {
     } catch (error) {
       this._syncError = formatError(error);
       this._syncFailedAt = null;
+      this._exitAfterSync = false;
       this._stage = "sync_failed";
     }
   };
@@ -515,6 +412,7 @@ class SofabatonActivitiesTab extends LitElement {
         this._syncError = String(payload.error || payload.message || "Sync failed.");
         this._syncFailedAt = String(payload.failed_at || "");
         this._syncProgress = null;
+        this._exitAfterSync = false;
         this._stage = "sync_failed";
         return;
       }
@@ -524,17 +422,21 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
   private async _onSyncSuccess(operationId: string) {
-    // Promote working → baseline so the editor's baseline advances; dirty
-    // clears and the session persists the new baseline.
+    // Promote working → baseline so the editor's baseline advances and dirty clears.
     if (this._working) this._baseline = structuredClone(this._working);
     this._recomputeDirty();
     this._syncProgress = null;
     this._syncOperationId = null;
-    this._sessionSavedAt = Date.now();
+    const exitAfterSync = this._exitAfterSync;
+    this._exitAfterSync = false;
     this._syncSuccessNotice = true;
-    this._stage = "editing";
     try { await this.api().clearBackupResult(operationId); } catch { /* ignore */ }
     try { await this.refreshControlPanelState?.(); } catch { /* ignore */ }
+    if (exitAfterSync) {
+      this._resetToList();
+      return;
+    }
+    this._stage = "editing";
   }
 
   private _retrySync = () => {
@@ -558,10 +460,25 @@ class SofabatonActivitiesTab extends LitElement {
   };
 
   private _closeEditor = () => {
-    // Leaving the editor deliberately discards the draft and its persisted
-    // session; a re-open re-captures fresh from the hub.
-    this._clearSession();
+    if (this._dirty) {
+      this._exitConfirmOpen = true;
+      return;
+    }
     this._resetToList();
+  };
+
+  private _closeExitConfirm = () => {
+    this._exitConfirmOpen = false;
+  };
+
+  private _leaveWithoutSync = () => {
+    this._exitAfterSync = false;
+    this._resetToList();
+  };
+
+  private _syncAndLeave = () => {
+    this._exitAfterSync = true;
+    void this._requestSync();
   };
 
   private _reloadFromHub = () => {
@@ -577,16 +494,16 @@ class SofabatonActivitiesTab extends LitElement {
     this._captureProgress = null;
     this._captureError = null;
     this._captureOperationId = null;
-    this._sessionRestored = false;
-    this._sessionSavedAt = 0;
     this._dirty = false;
     this._reviewOpen = false;
     this._discardConfirmOpen = false;
+    this._exitConfirmOpen = false;
     this._syncProgress = null;
     this._syncError = null;
     this._syncFailedAt = null;
     this._syncOperationId = null;
     this._syncSuccessNotice = false;
+    this._exitAfterSync = false;
   }
 
   // ── Data ───────────────────────────────────────────────────────────
@@ -757,7 +674,6 @@ class SofabatonActivitiesTab extends LitElement {
   private _renderEditing() {
     return html`
       <div class="editing-shell">
-        ${this._sessionRestored ? this._renderSessionBanner() : nothing}
         ${this._syncSuccessNotice ? this._renderSyncSuccessBanner() : nothing}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
@@ -773,15 +689,16 @@ class SofabatonActivitiesTab extends LitElement {
         ></sofabaton-edit-detail-view>
         ${this._reviewOpen ? this._renderReviewDialog() : nothing}
         ${this._discardConfirmOpen ? this._renderDiscardDialog() : nothing}
+        ${this._exitConfirmOpen ? this._renderExitConfirmDialog() : nothing}
       </div>
     `;
   }
 
   private _renderSyncSuccessBanner() {
     return html`
-      <div class="session-banner sync-success-banner">
-        <span class="session-banner-text"><ha-icon icon="mdi:check-circle-outline"></ha-icon> ${TOOLS_CARD_STRINGS.activities.syncSuccess}</span>
-        <button class="session-banner-btn" @click=${() => { this._syncSuccessNotice = false; }}>${TOOLS_CARD_STRINGS.activities.discardConfirmCancel}</button>
+      <div class="notice-banner sync-success-banner">
+        <span class="notice-banner-text"><ha-icon icon="mdi:check-circle-outline"></ha-icon> ${TOOLS_CARD_STRINGS.activities.syncSuccess}</span>
+        <button class="notice-banner-btn" @click=${() => { this._syncSuccessNotice = false; }}>${TOOLS_CARD_STRINGS.activities.discardConfirmCancel}</button>
       </div>
     `;
   }
@@ -904,20 +821,24 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
 
-  private _renderSessionBanner() {
-    const activity = (this._baseline?.activities ?? []).find(
-      (candidate) => Number(candidate.device?.device_id) === this._activityId,
-    );
-    const name = String(activity?.device?.name || "").trim()
-      || S.activityFallback(Number(this._activityId));
-    const time = new Date(this._sessionSavedAt || Date.now()).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  private _renderExitConfirmDialog() {
+    const S = TOOLS_CARD_STRINGS.activities;
     return html`
-      <div class="session-banner">
-        <span class="session-banner-text">${S.sessionRestoreBanner(name, time)}</span>
-        <button class="session-banner-btn" @click=${this._reloadFromHub}>${S.sessionReload}</button>
+      <div class="modal-backdrop" @click=${this._closeExitConfirm}>
+        <div class="dialog dialog--small" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">${S.exitUnsyncedTitle}</div>
+            <button class="dialog-close" @click=${this._closeExitConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
+          </div>
+          <div class="dialog-body"><div class="dialog-text">${S.exitUnsyncedBody}</div></div>
+          <div class="dialog-footer">
+            <button class="btn btn-danger" @click=${this._leaveWithoutSync}>${S.exitWithoutSync}</button>
+            <div class="dialog-footer-actions">
+              <button class="btn" @click=${this._closeExitConfirm}>${S.discardConfirmCancel}</button>
+              <button class="btn btn-primary" @click=${this._syncAndLeave}>${S.exitSyncNow}</button>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }

@@ -2814,7 +2814,7 @@ export function deleteDeviceButtonBinding(
 
 // ── Role-based button assignment ─────────────────────────────────────
 //
-// The narrative editor's "While the activity is running" section asks
+// The narrative editor's "Buttons on the remote" section asks
 // four questions ("Volume buttons control …") instead of ~20 per-button
 // dialogs. Each answer fans out to individual KeyToKey binding rows,
 // copied from the target device's DEVICE-MODE bindings — cloud-sourced

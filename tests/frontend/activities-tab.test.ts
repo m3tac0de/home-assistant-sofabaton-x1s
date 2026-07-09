@@ -127,38 +127,29 @@ test("activities tab lists activities sorted by id when connected and idle", () 
   assert.match(result.strings.join(""), /activity-list/);
 });
 
-test("activities tab persists the baseline session and restores it on re-entry", () => {
-  const store = new Map<string, string>();
+test("activities tab does not restore a previous edit session on entry", () => {
   (globalThis as any).window = {
     localStorage: {
-      getItem: (key: string) => (store.has(key) ? store.get(key)! : null),
-      setItem: (key: string, value: string) => void store.set(key, value),
-      removeItem: (key: string) => void store.delete(key),
+      getItem: () => { throw new Error("activity edit should not read persisted sessions"); },
+      setItem: () => { throw new Error("activity edit should not write persisted sessions"); },
+      removeItem: () => { throw new Error("activity edit should not clear persisted sessions"); },
     },
   };
   try {
-    const bundle = sampleBundle();
-    const writer = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
-    writer.hub = { entry_id: "hub-1", activities: [] };
-    writer._baseline = bundle;
-    writer._working = structuredClone(bundle);
-    writer._activityId = 101;
-    writer._persistSession();
-    assert.equal(store.size, 1);
-
     const reader = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
     reader.hub = { entry_id: "hub-1", activities: [] };
-    reader.updated(new Map());
-    assert.equal(reader._stage, "editing");
-    assert.equal(reader._activityId, 101);
-    assert.equal(reader._sessionRestored, true);
-    assert.deepEqual(reader._baseline, bundle);
+    reader.updated(new Map<string, unknown>([["hub", undefined]]));
+
+    assert.equal(reader._stage, "list");
+    assert.equal(reader._activityId, null);
+    assert.equal(reader._baseline, null);
+    assert.equal(reader._working, null);
   } finally {
     delete (globalThis as any).window;
   }
 });
 
-test("activities tab drops the in-memory session when the hub picker switches hubs", () => {
+test("activities tab drops the active edit state when the hub picker switches hubs", () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
   element.hub = { entry_id: "hub-1", activities: [] };
   // Establish the current hub's entry_id (as the first render would).
@@ -227,6 +218,47 @@ test("activities tab discard restores the working bundle to the baseline and cle
   assert.equal(element._dirty, false);
   assert.equal(element._working.activities[0].device.name, "Watch TV");
   assert.equal(element._discardConfirmOpen, false);
+});
+
+test("activities tab back prompts before leaving a dirty edit", () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const base = sampleBundle();
+  const edited = structuredClone(base);
+  edited.activities[0].device!.name = "Edited";
+  element._stage = "editing";
+  element._baseline = base;
+  element._working = edited;
+  element._activityId = 101;
+  element._recomputeDirty();
+
+  element._closeEditor();
+
+  assert.equal(element._stage, "editing");
+  assert.equal(element._exitConfirmOpen, true);
+  assert.equal(element._dirty, true);
+  assert.equal(element._working.activities[0].device.name, "Edited");
+});
+
+test("activities tab leaving without sync discards the active edit", () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const base = sampleBundle();
+  const edited = structuredClone(base);
+  edited.activities[0].device!.name = "Edited";
+  element._stage = "editing";
+  element._baseline = base;
+  element._working = edited;
+  element._activityId = 101;
+  element._exitConfirmOpen = true;
+  element._recomputeDirty();
+
+  element._leaveWithoutSync();
+
+  assert.equal(element._stage, "list");
+  assert.equal(element._activityId, null);
+  assert.equal(element._baseline, null);
+  assert.equal(element._working, null);
+  assert.equal(element._dirty, false);
+  assert.equal(element._exitConfirmOpen, false);
 });
 
 test("activities tab opens the review dialog only when dirty", () => {
@@ -306,6 +338,36 @@ test("activities tab sync success promotes working to baseline and clears dirty"
   assert.equal(element._dirty, false);
   assert.equal(element._baseline.activities[0].device.name, "Edited");
   assert.equal(element._syncSuccessNotice, true);
+});
+
+test("activities tab sync-and-leave exits after a successful sync", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const hass = createSyncHass();
+  element.hass = hass;
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.refreshControlPanelState = () => undefined;
+  element._stage = "editing";
+  element._baseline = sampleBundle();
+  const edited = structuredClone(element._baseline);
+  edited.activities[0].device!.name = "Edited";
+  element._working = edited;
+  element._activityId = 101;
+  element._exitConfirmOpen = true;
+  element._recomputeDirty();
+
+  element._syncAndLeave();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(element._stage, "syncing");
+  assert.equal(hass.__calls.includes("sofabaton_x1s/activity/sync"), true);
+
+  await hass.__emit({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "success", total_steps: 2 });
+
+  assert.equal(element._stage, "list");
+  assert.equal(element._activityId, null);
+  assert.equal(element._baseline, null);
+  assert.equal(element._working, null);
+  assert.equal(element._dirty, false);
+  assert.equal(element._exitConfirmOpen, false);
 });
 
 test("activities tab sync failure surfaces the failed step, stale maps to reload", async () => {

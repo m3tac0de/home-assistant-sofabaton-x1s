@@ -1,23 +1,16 @@
 /**
- * Narrative activity-editor sections (docs/internal/activity-editor-plan.md).
+ * Shared activity-editor helpers.
  *
- * Render helpers for the activity detail view's story-order sections:
- * "Devices in this activity" (membership chips), "When the activity
- * starts" (per-device power-on + input), and "When the activity ends"
- * (per-device power-off). The shared sections (buttons, shortcuts) still
- * render in backup-tab.ts; state and dialogs stay in the host tab.
- *
- * Helpers are pure over a params object — data in, callbacks out — so the
- * live-hub rollout can reuse them against a different write-backend.
+ * The current activity detail view uses the full Power editor plus the
+ * role-based button assignment block here. The old Devices / Start / End
+ * narrative sections were removed when their useful controls moved into
+ * the underlying detail editors.
  */
 import { css, html, nothing, type TemplateResult } from "lit";
 import { TOOLS_CARD_STRINGS } from "../strings";
 import type {
   ActivityRoleAssignment,
   ActivityRoleGroupId,
-  BackupActivityMemberView,
-  BackupDeviceCommandItem,
-  BackupSelectionOption,
 } from "./backup-state";
 
 const S = TOOLS_CARD_STRINGS.backup;
@@ -54,85 +47,6 @@ export function menuAnchorRect(event: Event): DOMRect | null {
   return target instanceof HTMLElement ? target.getBoundingClientRect() : null;
 }
 
-export interface ActivityDevicesSectionParams {
-  members: BackupActivityMemberView[];
-  addable: BackupSelectionOption[];
-  menuOpen: boolean;
-  menuAnchor: DOMRect | null;
-  onToggleMenu(anchor: DOMRect | null): void;
-  onAdd(deviceId: number): void;
-  onRemove(member: BackupActivityMemberView): void;
-}
-
-export function renderActivityDevicesSection(params: ActivityDevicesSectionParams): TemplateResult {
-  return html`
-    <div class="quick-access-section" data-edit-section="devices">
-      <div class="quick-access-head">
-        <div class="quick-access-head-main">
-          <div class="quick-access-title">${S.activityDevicesTitle}</div>
-          <div class="quick-access-sub">${S.activityDevicesSub}</div>
-        </div>
-      </div>
-      <div class="member-chip-list">
-        ${params.members.map((member) => html`
-          <span class="member-chip">
-            <span class="member-chip-label">${member.deviceName}</span>
-            <button
-              class="member-chip-remove"
-              type="button"
-              aria-label=${S.activityRemoveDeviceAria(member.deviceName)}
-              @click=${() => params.onRemove(member)}
-            >
-              <ha-icon icon="mdi:close"></ha-icon>
-            </button>
-          </span>
-        `)}
-        <span class="member-add" data-open=${params.menuOpen ? "true" : "false"}>
-          <button
-            class="member-chip member-chip--add"
-            type="button"
-            @click=${(event: Event) => params.onToggleMenu(params.menuOpen ? null : menuAnchorRect(event))}
-          >
-            <ha-icon icon="mdi:plus"></ha-icon>
-            <span>${S.activityAddDevice}</span>
-          </button>
-          ${params.menuOpen
-            ? html`
-                <button
-                  class="member-add-backdrop"
-                  type="button"
-                  tabindex="-1"
-                  aria-hidden="true"
-                  @click=${() => params.onToggleMenu(null)}
-                ></button>
-                <div
-                  class="member-add-menu"
-                  role="listbox"
-                  aria-label=${S.activityAddDevice}
-                  style=${overlayMenuPosition(params.menuAnchor, "left")}
-                >
-                  ${params.addable.length
-                    ? params.addable.map((option) => html`
-                        <button
-                          class="member-add-option"
-                          type="button"
-                          role="option"
-                          @click=${() => params.onAdd(option.id)}
-                        >${option.label}</button>
-                      `)
-                    : html`<div class="member-add-empty">${S.activityAddDeviceNone}</div>`}
-                </div>
-              `
-            : nothing}
-        </span>
-      </div>
-      ${params.members.length === 0
-        ? html`<div class="quick-access-empty">${S.activityDevicesEmpty}</div>`
-        : nothing}
-    </div>
-  `;
-}
-
 /**
  * The uniform "drill deeper" affordance: the advanced-mode footer of a
  * list. It renders as the last row of a bordered quick-access list but
@@ -156,212 +70,6 @@ export function renderDrillInRow(params: {
         </span>
         <span class="selection-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
       </button>
-    </div>
-  `;
-}
-
-export interface ActivityStartSectionParams {
-  members: BackupActivityMemberView[];
-  commandsFor(deviceId: number): BackupDeviceCommandItem[];
-  onInputChange(deviceId: number, commandId: number | null): void;
-  sequenceMeta: string;
-  onOpenSequence(): void;
-}
-
-export function renderActivityStartSection(params: ActivityStartSectionParams): TemplateResult {
-  return html`
-    <div class="quick-access-section" data-edit-section="start">
-      <div class="quick-access-head">
-        <div class="quick-access-head-main">
-          <div class="quick-access-title">${S.activityStartTitle}</div>
-          <div class="quick-access-sub">${S.activityStartSub}</div>
-        </div>
-      </div>
-      ${params.members.length
-        ? html`
-            <div class="quick-access-list">
-              <div class="quick-access-sortable-container">
-                ${params.members.map((member) => renderStartRow(member, params))}
-                ${renderDrillInRow({
-                  label: S.sequenceRowLabel,
-                  meta: params.sequenceMeta,
-                  onOpen: params.onOpenSequence,
-                })}
-              </div>
-            </div>
-          `
-        : html`<div class="quick-access-empty">${S.activityDevicesEmpty}</div>`}
-    </div>
-  `;
-}
-
-function renderStartRow(
-  member: BackupActivityMemberView,
-  params: ActivityStartSectionParams,
-): TemplateResult {
-  const commands = params.commandsFor(member.deviceId);
-  // The configured input may reference a command that no longer exists on
-  // the device — keep it selectable so the user sees the current state.
-  const orphanInput = member.inputCommandId != null
-    && !commands.some((command) => command.commandId === member.inputCommandId);
-  return html`
-    <div class="quick-access-sortable-item">
-      <div class="quick-access-row quick-access-row--no-drag member-start-row">
-        <div class="quick-access-main">
-          <div class="quick-access-label-row">
-            <div class="quick-access-label">${member.deviceName}</div>
-          </div>
-        </div>
-        <div class="member-start-controls">
-          <label class="member-input-label">
-            <span>${S.activityStartInputLabel}</span>
-            <select
-              class="member-input-select"
-              aria-label=${S.activityStartInputAria(member.deviceName)}
-              @change=${(event: Event) => {
-                const raw = (event.target as HTMLSelectElement).value;
-                params.onInputChange(member.deviceId, raw === "" ? null : Number(raw));
-              }}
-            >
-              <option value="" ?selected=${member.inputCommandId == null}>${S.activityStartInputNone}</option>
-              ${orphanInput
-                ? html`<option value=${String(member.inputCommandId)} selected>${member.inputCommandName ?? `Input ${member.inputOrdinal}`}</option>`
-                : nothing}
-              ${commands.map((command) => html`
-                <option
-                  value=${String(command.commandId)}
-                  ?selected=${member.inputCommandId === command.commandId}
-                >${command.label}</option>
-              `)}
-            </select>
-          </label>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-export interface ActivityIdleOption {
-  mode: number;
-  label: string;
-  sub: string;
-}
-
-export interface ActivityEndSectionParams {
-  members: BackupActivityMemberView[];
-  /** Device-level automatic-power mode (idle behavior); null = not captured. */
-  idleModeFor(deviceId: number): number | null;
-  idleOptions: ActivityIdleOption[];
-  idleMenuDeviceId: number | null;
-  idleMenuAnchor: DOMRect | null;
-  onToggleIdleMenu(deviceId: number | null, anchor?: DOMRect | null): void;
-  onIdleChange(deviceId: number, mode: number): void;
-  sequenceMeta: string;
-  onOpenSequence(): void;
-}
-
-function idleSummaryLabel(mode: number | null): string {
-  switch (mode) {
-    case 1:
-      return S.activityIdleAutoOff;
-    case 2:
-      return S.activityIdleAlwaysOn;
-    case 3:
-      return S.activityIdleStayOn;
-    case 4:
-      return S.activityIdleDisabled;
-    default:
-      return S.activityIdleUnset;
-  }
-}
-
-export function renderActivityEndSection(params: ActivityEndSectionParams): TemplateResult {
-  return html`
-    <div class="quick-access-section" data-edit-section="end">
-      <div class="quick-access-head">
-        <div class="quick-access-head-main">
-          <div class="quick-access-title">${S.activityEndTitle}</div>
-          <div class="quick-access-sub">${S.activityEndSub}</div>
-        </div>
-      </div>
-      ${params.members.length
-        ? html`
-            <div class="quick-access-list quick-access-list--overlays">
-              <div class="quick-access-sortable-container">
-                ${params.members.map((member) => renderEndRow(member, params))}
-                ${renderDrillInRow({
-                  label: S.sequenceRowLabel,
-                  meta: params.sequenceMeta,
-                  onOpen: params.onOpenSequence,
-                })}
-              </div>
-            </div>
-          `
-        : html`<div class="quick-access-empty">${S.activityDevicesEmpty}</div>`}
-    </div>
-  `;
-}
-
-function renderEndRow(
-  member: BackupActivityMemberView,
-  params: ActivityEndSectionParams,
-): TemplateResult {
-  const idleMode = params.idleModeFor(member.deviceId);
-  const menuOpen = params.idleMenuDeviceId === member.deviceId;
-  return html`
-    <div class="quick-access-sortable-item">
-      <div class="quick-access-row quick-access-row--no-drag member-start-row">
-        <div class="quick-access-main">
-          <div class="quick-access-label-row">
-            <div class="quick-access-label">${member.deviceName}</div>
-          </div>
-          <span class="member-add member-idle-anchor" data-open=${menuOpen ? "true" : "false"}>
-            <button
-              class="member-idle-trigger"
-              type="button"
-              aria-haspopup="listbox"
-              aria-expanded=${menuOpen ? "true" : "false"}
-              aria-label=${S.activityIdleAria(member.deviceName)}
-              @click=${(event: Event) =>
-                params.onToggleIdleMenu(menuOpen ? null : member.deviceId, menuAnchorRect(event))}
-            >
-              <span>${idleSummaryLabel(idleMode)}</span>
-              <ha-icon icon="mdi:chevron-down"></ha-icon>
-            </button>
-            ${menuOpen
-              ? html`
-                  <button
-                    class="member-add-backdrop"
-                    type="button"
-                    tabindex="-1"
-                    aria-hidden="true"
-                    @click=${() => params.onToggleIdleMenu(null)}
-                  ></button>
-                  <div
-                    class="member-add-menu member-idle-menu"
-                    role="listbox"
-                    aria-label=${S.activityIdleAria(member.deviceName)}
-                    style=${overlayMenuPosition(params.idleMenuAnchor, "left")}
-                  >
-                    <div class="member-add-empty">${S.activityIdleMenuNote}</div>
-                    ${params.idleOptions.map((option) => html`
-                      <button
-                        class="member-add-option member-idle-option"
-                        type="button"
-                        role="option"
-                        aria-selected=${option.mode === idleMode ? "true" : "false"}
-                        @click=${() => params.onIdleChange(member.deviceId, option.mode)}
-                      >
-                        <span class="member-idle-option-label">${option.label}</span>
-                        <span class="member-idle-option-sub">${option.sub}</span>
-                      </button>
-                    `)}
-                  </div>
-                `
-              : nothing}
-          </span>
-        </div>
-      </div>
     </div>
   `;
 }
@@ -391,7 +99,7 @@ export interface ActivityRoleOption {
 
 export interface ActivityRolesBlockParams {
   roles: ActivityRoleAssignment[];
-  /** Candidate devices per group — the activity's members. */
+  /** Candidate devices per group: all editable source devices in the bundle. */
   optionsFor(group: ActivityRoleGroupId): ActivityRoleOption[];
   openGroup: ActivityRoleGroupId | null;
   menuAnchor: DOMRect | null;
@@ -499,52 +207,6 @@ function renderRoleRow(role: ActivityRoleAssignment, params: ActivityRolesBlockP
 }
 
 export const activityEditorStyles = css`
-  .member-chip-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-  }
-  .member-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 5px 8px 5px 12px;
-    border: 1px solid var(--divider-color);
-    border-radius: var(--backup-radius-pill);
-    font-size: 0.85rem;
-    color: var(--primary-text-color);
-    background: none;
-  }
-  .member-chip-label {
-    line-height: 1.2;
-  }
-  .member-chip-remove {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: none;
-    padding: 0;
-    margin: 0;
-    cursor: pointer;
-    color: var(--secondary-text-color);
-    --mdc-icon-size: 15px;
-  }
-  .member-chip-remove:hover {
-    color: var(--error-color, #db4437);
-  }
-  .member-chip--add {
-    border-style: dashed;
-    color: var(--secondary-text-color);
-    cursor: pointer;
-    padding: 5px 12px;
-    --mdc-icon-size: 15px;
-  }
-  .member-chip--add:hover {
-    color: var(--primary-text-color);
-    border-color: var(--primary-text-color);
-  }
   .member-add {
     position: relative;
     display: inline-flex;
@@ -593,71 +255,6 @@ export const activityEditorStyles = css`
     font-size: 0.85rem;
     color: var(--secondary-text-color);
     line-height: 1.4;
-  }
-  .member-start-row {
-    align-items: center;
-  }
-  .member-start-controls {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-  .member-input-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
-    color: var(--secondary-text-color);
-  }
-  .member-input-select {
-    max-width: 150px;
-    padding: 4px 6px;
-    border-radius: var(--backup-radius-sm);
-    border: 1px solid var(--divider-color);
-    background: var(--card-background-color, #fff);
-    color: var(--primary-text-color);
-    font-size: 0.85rem;
-  }
-  .member-idle-anchor {
-    display: inline-flex;
-    margin-top: 2px;
-  }
-  .member-idle-trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    border: none;
-    background: none;
-    padding: 0;
-    cursor: pointer;
-    font-size: 0.78rem;
-    color: var(--secondary-text-color);
-    text-align: left;
-    --mdc-icon-size: 14px;
-  }
-  .member-idle-trigger:hover {
-    color: var(--primary-text-color);
-  }
-  .member-idle-menu {
-    min-width: 260px;
-  }
-  .member-idle-option {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .member-idle-option[aria-selected="true"] {
-    background: var(--secondary-background-color);
-  }
-  .member-idle-option-label {
-    font-size: 0.88rem;
-  }
-  .member-idle-option-sub {
-    font-size: 0.75rem;
-    color: var(--secondary-text-color);
-    line-height: 1.35;
   }
   .role-row {
     display: flex;
