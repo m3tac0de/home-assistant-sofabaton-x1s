@@ -8,7 +8,6 @@ import {
   addBundleActivityFavorite,
   renameBundleActivityFavorite,
   renameBundleDeviceCommand,
-  setActivityDevicePowerOff,
   setActivityRoleDevice,
   updateBundleDeviceIdleBehavior,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
@@ -95,14 +94,6 @@ test("diffActivityForReview reports an added device under the Devices section", 
   const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
   assert.equal(sections(groups).includes("devices"), true);
   assert.match(allText(groups), /Added "Streamer"/);
-});
-
-test("diffActivityForReview reports a power-off change under the End section", () => {
-  const base = baseBundle();
-  const edited = setActivityDevicePowerOff(base, ACTIVITY_ID, 2, true);
-  const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
-  assert.equal(sections(groups).includes("end"), true);
-  assert.match(allText(groups), /"Soundbar" now turns off/);
 });
 
 test("diffActivityForReview reports an added shortcut under the Shortcuts section", () => {

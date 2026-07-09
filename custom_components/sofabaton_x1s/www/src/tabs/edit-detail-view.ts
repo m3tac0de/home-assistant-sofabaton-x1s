@@ -91,8 +91,6 @@ import {
   renameBundleDeviceCommand,
   renameBundleHub,
   setActivityDeviceInput,
-  setActivityDevicePowerOff,
-  setActivityDevicePowerOn,
   setActivityMacroStepWait,
   setDeviceMacroStepWait,
   unboundButtonsForActivity,
@@ -874,12 +872,6 @@ export class SofabatonEditDetailView extends LitElement {
     return renderActivityStartSection({
       members: this._activityMemberViews(),
       commandsFor: (deviceId) => (this.bundle ? deviceCommandItems(this.bundle, deviceId) : []),
-      onTogglePowerOn: (member) => {
-        if (!this.bundle) return;
-        this._commitEditBundleEdit(
-          setActivityDevicePowerOn(this.bundle, activityId, member.deviceId, !member.powersOn),
-        );
-      },
       onInputChange: (deviceId, commandId) => {
         if (!this.bundle) return;
         this._commitEditBundleEdit(commandId == null
@@ -912,12 +904,6 @@ export class SofabatonEditDetailView extends LitElement {
         if (!this.bundle) return;
         if (deviceIdleBehavior(this.bundle, deviceId) === mode) return;
         this._commitEditBundleEdit(updateBundleDeviceIdleBehavior(this.bundle, deviceId, mode));
-      },
-      onTogglePowerOff: (member, powersOff) => {
-        if (!this.bundle) return;
-        this._commitEditBundleEdit(
-          setActivityDevicePowerOff(this.bundle, activityId, member.deviceId, powersOff),
-        );
       },
       sequenceMeta: TOOLS_CARD_STRINGS.backup.macroStepsCount(
         this._powerSetupStepCount("activity", activityId, 199),

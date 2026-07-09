@@ -120,9 +120,6 @@ function diffStart(
   for (const [deviceId, member] of editById) {
     const before = baseById.get(deviceId);
     if (!before) continue; // added/removed handled by membership
-    if (member.powersOn !== before.powersOn) {
-      buckets.start.push({ text: member.powersOn ? R.powersOnNow(member.deviceName) : R.powersOnNo(member.deviceName) });
-    }
     if ((member.inputCommandId ?? null) !== (before.inputCommandId ?? null)) {
       buckets.start.push({
         text: member.inputCommandId != null && member.inputCommandName
@@ -227,17 +224,13 @@ function diffShortcuts(
 // ── When it ends (power-off) ──────────────────────────────────────────
 
 function diffEnd(
-  buckets: Record<ActivityReviewSection, ActivityReviewEntry[]>,
-  baseById: Map<number, BackupActivityMemberView>,
-  editById: Map<number, BackupActivityMemberView>,
+  _buckets: Record<ActivityReviewSection, ActivityReviewEntry[]>,
+  _baseById: Map<number, BackupActivityMemberView>,
+  _editById: Map<number, BackupActivityMemberView>,
 ) {
-  for (const [deviceId, member] of editById) {
-    const before = baseById.get(deviceId);
-    if (!before) continue;
-    if (member.powersOff !== before.powersOff) {
-      buckets.end.push({ text: member.powersOff ? R.powersOffNow(member.deviceName) : R.powersOffNo(member.deviceName) });
-    }
-  }
+  // Per-device end behavior is encoded by device-wide idle behavior, not by
+  // optional activity POWER_OFF refs. The idle diff is reported under
+  // Device-wide changes because it applies everywhere that device is used.
 }
 
 // ── Device-wide (idle behavior, command renames) ──────────────────────

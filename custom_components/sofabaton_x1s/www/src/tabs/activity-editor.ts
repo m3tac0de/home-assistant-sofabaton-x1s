@@ -163,7 +163,6 @@ export function renderDrillInRow(params: {
 export interface ActivityStartSectionParams {
   members: BackupActivityMemberView[];
   commandsFor(deviceId: number): BackupDeviceCommandItem[];
-  onTogglePowerOn(member: BackupActivityMemberView): void;
   onInputChange(deviceId: number, commandId: number | null): void;
   sequenceMeta: string;
   onOpenSequence(): void;
@@ -214,14 +213,6 @@ function renderStartRow(
           </div>
         </div>
         <div class="member-start-controls">
-          <button
-            class="member-power-pill"
-            type="button"
-            data-on=${member.powersOn ? "true" : "false"}
-            aria-pressed=${member.powersOn ? "true" : "false"}
-            aria-label=${S.activityStartToggleAria(member.deviceName)}
-            @click=${() => params.onTogglePowerOn(member)}
-          >${member.powersOn ? S.activityStartTurnsOn : S.activityStartStaysAsIs}</button>
           <label class="member-input-label">
             <span>${S.activityStartInputLabel}</span>
             <select
@@ -265,7 +256,6 @@ export interface ActivityEndSectionParams {
   idleMenuAnchor: DOMRect | null;
   onToggleIdleMenu(deviceId: number | null, anchor?: DOMRect | null): void;
   onIdleChange(deviceId: number, mode: number): void;
-  onTogglePowerOff(member: BackupActivityMemberView, powersOff: boolean): void;
   sequenceMeta: string;
   onOpenSequence(): void;
 }
@@ -370,16 +360,6 @@ function renderEndRow(
                 `
               : nothing}
           </span>
-        </div>
-        <div class="member-start-controls">
-          <button
-            class="member-power-pill"
-            type="button"
-            data-on=${member.powersOff ? "true" : "false"}
-            aria-pressed=${member.powersOff ? "true" : "false"}
-            aria-label=${S.activityEndToggleAria(member.deviceName)}
-            @click=${() => params.onTogglePowerOff(member, !member.powersOff)}
-          >${member.powersOff ? S.activityEndTurnsOff : S.activityEndStaysOn}</button>
         </div>
       </div>
     </div>
@@ -623,20 +603,6 @@ export const activityEditorStyles = css`
     gap: 10px;
     flex-wrap: wrap;
     justify-content: flex-end;
-  }
-  .member-power-pill {
-    border: 1px solid var(--divider-color);
-    border-radius: var(--backup-radius-pill);
-    background: none;
-    padding: 3px 10px;
-    font-size: 0.78rem;
-    cursor: pointer;
-    color: var(--secondary-text-color);
-    white-space: nowrap;
-  }
-  .member-power-pill[data-on="true"] {
-    color: var(--success-color, #0f9d58);
-    border-color: var(--success-color, #0f9d58);
   }
   .member-input-label {
     display: inline-flex;

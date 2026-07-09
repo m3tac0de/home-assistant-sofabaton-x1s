@@ -1721,21 +1721,46 @@ function activityMemberDeviceIds(activity) {
   }
   return [...ids].sort((left, right) => left - right);
 }
-function reconcilePowerMacroSteps(existingSteps, members, refCommands, seedIds) {
+function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
   const memberSet = new Set(members);
-  const kept = (existingSteps ?? []).filter((step) => {
-    if (isMacroDelayStep(step)) return true;
-    const deviceId = Number(step?.device_id || 0);
+  const { prefix, groups } = groupMacroSteps(existingSteps);
+  const kept = flattenMacroGroups(prefix, groups.filter((group) => {
+    const deviceId = Number(group.head?.device_id || 0);
     return deviceId > 0 ? memberSet.has(deviceId) : true;
-  });
+  }));
   const out = [...kept];
+  const memberOrder = new Map(members.map((id, index) => [id, index]));
+  const findRef = (deviceId, command) => out.findIndex(
+    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, deviceId, command)
+  );
+  const indexAfterGroupAt = (headIndex) => {
+    let index = headIndex + 1;
+    while (index < out.length && isMacroDelayStep(out[index])) index += 1;
+    return index;
+  };
+  const insertIndexFor = (deviceId, command) => {
+    if (command === DEVICE_POWER_ON_REF_COMMAND) {
+      const inputIndex = findRef(deviceId, DEVICE_INPUT_REF_COMMAND);
+      if (inputIndex >= 0) return inputIndex;
+    }
+    if (command === DEVICE_INPUT_REF_COMMAND) {
+      const powerIndex = findRef(deviceId, DEVICE_POWER_ON_REF_COMMAND);
+      if (powerIndex >= 0) return indexAfterGroupAt(powerIndex);
+    }
+    const myOrder = memberOrder.get(deviceId) ?? members.length;
+    const laterIndex = out.findIndex((step) => {
+      if (isMacroDelayStep(step) || !isPowerRefStep(step)) return false;
+      const otherOrder = memberOrder.get(Number(step?.device_id || 0));
+      return otherOrder != null && otherOrder > myOrder;
+    });
+    return laterIndex >= 0 ? laterIndex : out.length;
+  };
   for (const deviceId of members) {
-    if (!seedIds.has(deviceId)) continue;
     for (const command of refCommands) {
       const present = out.some(
         (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command
       );
-      if (!present) out.push(powerStep(deviceId, command));
+      if (!present) out.splice(insertIndexFor(deviceId, command), 0, powerStep(deviceId, command));
     }
   }
   return out;
@@ -1743,20 +1768,18 @@ function reconcilePowerMacroSteps(existingSteps, members, refCommands, seedIds) 
 function reconcileActivityPowerMacros(bundle2, activityId, extraMemberIds = []) {
   return updateActivity(bundle2, activityId, (activity) => {
     const selfId = Number(activity?.device?.device_id || 0);
-    const powerIds = activityPowerDeviceIds(activity);
     const memberSet = new Set(activityMemberDeviceIds(activity));
     for (const id of extraMemberIds) {
       const extraId = Number(id || 0);
       if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
     }
     const members = [...memberSet].sort((left, right) => left - right);
-    const seedIds = new Set(members.filter((id) => !powerIds.has(id)));
     const macros = [...activity.macros ?? []];
     const ensure = (buttonId, name, refCommands) => {
       const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
       const existing = index >= 0 ? macros[index] : null;
       if (!existing && members.length === 0) return;
-      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands, seedIds);
+      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands);
       const next = {
         ...existing ?? {},
         button_id: buttonId,
@@ -1883,103 +1906,6 @@ function activityMemberRemovalImpact(bundle2, activityId, deviceId) {
   );
   return { favorites, macroSteps, activities: 0, bindings };
 }
-function powerRefDeviceOrder(activity) {
-  const order = [];
-  const push = (value) => {
-    const id = Number(value || 0);
-    if (id > 0 && !order.includes(id)) order.push(id);
-  };
-  for (const buttonId of [POWER_ON_MACRO_BUTTON_ID, POWER_OFF_MACRO_BUTTON_ID]) {
-    const macro = (activity.macros ?? []).find((entry) => Number(entry?.button_id || 0) === buttonId);
-    for (const step of macro?.steps ?? []) {
-      if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
-    }
-  }
-  return order;
-}
-function setActivityPowerRefStep(activity, deviceId, buttonId, refCommand, present) {
-  const dId = Number(deviceId);
-  const macros = [...activity.macros ?? []];
-  const macroIndex = (id) => macros.findIndex((macro) => Number(macro?.button_id || 0) === id);
-  const index = macroIndex(buttonId);
-  const target = index >= 0 ? macros[index] : null;
-  const steps = [...target?.steps ?? []];
-  const findRef = (command) => steps.findIndex(
-    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, command)
-  );
-  const refIndex = findRef(refCommand);
-  if (present === refIndex >= 0) return activity;
-  const commit = (nextSteps) => {
-    const name = buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON";
-    const next2 = {
-      ...target ?? { button_id: buttonId, name },
-      steps: nextSteps
-    };
-    if (index >= 0) macros[index] = next2;
-    else macros.push(next2);
-    return { ...activity, macros };
-  };
-  if (present) {
-    let insertAt = steps.length;
-    if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
-      const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
-      if (inputIndex >= 0) insertAt = inputIndex;
-    }
-    if (insertAt === steps.length) {
-      const order = powerRefDeviceOrder(activity);
-      const myPos = order.indexOf(dId);
-      if (myPos >= 0) {
-        const later = steps.findIndex(
-          (step) => !isMacroDelayStep(step) && isPowerRefStep(step) && order.indexOf(Number(step?.device_id || 0)) > myPos
-        );
-        if (later >= 0) insertAt = later;
-      }
-    }
-    steps.splice(insertAt, 0, powerStep(dId, refCommand));
-    return commit(steps);
-  }
-  if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
-    const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
-    if (inputIndex >= 0) {
-      const inputStep = steps[inputIndex];
-      const without = steps.filter((_2, i4) => i4 !== refIndex && i4 !== inputIndex);
-      const insertAt = refIndex - (inputIndex < refIndex ? 1 : 0);
-      without.splice(insertAt, 0, inputStep);
-      return commit(without);
-    }
-    return commit(steps.map((step, i4) => i4 === refIndex ? powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0) : step));
-  }
-  const withoutOff = filterMacroSteps(steps, (step) => stepMatchesCommand(step, dId, refCommand));
-  let next = commit(withoutOff);
-  if (!activityMemberDeviceIds(next).includes(dId)) {
-    next = setActivityPowerRefStep(next, dId, POWER_ON_MACRO_BUTTON_ID, DEVICE_INPUT_REF_COMMAND, true);
-  }
-  return next;
-}
-function setActivityDevicePowerOff(bundle2, activityId, deviceId, powersOff) {
-  return updateActivity(bundle2, Number(activityId), (activity) => {
-    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
-    return setActivityPowerRefStep(
-      activity,
-      deviceId,
-      POWER_OFF_MACRO_BUTTON_ID,
-      DEVICE_POWER_OFF_REF_COMMAND,
-      Boolean(powersOff)
-    );
-  });
-}
-function setActivityDevicePowerOn(bundle2, activityId, deviceId, powersOn) {
-  return updateActivity(bundle2, Number(activityId), (activity) => {
-    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
-    return setActivityPowerRefStep(
-      activity,
-      deviceId,
-      POWER_ON_MACRO_BUTTON_ID,
-      DEVICE_POWER_ON_REF_COMMAND,
-      Boolean(powersOn)
-    );
-  });
-}
 var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
 function synthesizeCommandCode(commandId) {
   return SYNTHETIC_COMMAND_CODE_BASE + (Number(commandId) & 255);
@@ -2082,14 +2008,16 @@ function setActivityDeviceInput(bundle2, activityId, deviceId, commandId) {
   const cId = Number(commandId);
   if (cId <= 0) return bundle2;
   const ensured = ensureDeviceInput(bundle2, deviceId, cId);
+  const reconciled = reconcileActivityPowerMacros(ensured.bundle, Number(activityId));
   return updateActivity(
-    ensured.bundle,
+    reconciled,
     activityId,
     (activity) => setActivityPowerInputOrdinal(activity, deviceId, ensured.ordinal)
   );
 }
 function clearActivityDeviceInput(bundle2, activityId, deviceId) {
-  return updateActivity(bundle2, activityId, (activity) => setActivityPowerInputOrdinal(activity, deviceId, 0));
+  const reconciled = reconcileActivityPowerMacros(bundle2, Number(activityId));
+  return updateActivity(reconciled, activityId, (activity) => setActivityPowerInputOrdinal(activity, deviceId, 0));
 }
 function isPowerRefStep(step) {
   const command = Number(step?.command_id || 0);
@@ -3624,6 +3552,32 @@ test("setActivityMacroStepWait edits the wait on a protected power ref without t
   const headStep = next.activities[0].macros.find((m3) => m3.button_id === 198).steps[0];
   assert.deepEqual([headStep.device_id, headStep.command_id], [3, 198]);
 });
+test("reconcile inserts repaired input refs after an attached power wait", () => {
+  const base = realPowerActivity();
+  const partial = {
+    ...base,
+    activities: [{
+      ...base.activities[0],
+      macros: base.activities[0].macros.map((macro) => {
+        if (macro.button_id !== 198) return macro;
+        return {
+          ...macro,
+          steps: [
+            macro.steps[0],
+            { device_id: 255, command_id: 255, button_code: 281474976710655, duration: 255, delay: 8 },
+            ...macro.steps.slice(1).filter((step) => !(step.device_id === 3 && step.command_id === 197))
+          ]
+        };
+      })
+    }]
+  };
+  const fixed = reconcileActivityPowerMacros(partial, 101);
+  const steps = fixed.activities[0].macros.find((m3) => m3.button_id === 198).steps;
+  const c6 = steps.findIndex((step) => step.device_id === 3 && step.command_id === 198);
+  const c5 = steps.findIndex((step) => step.device_id === 3 && step.command_id === 197);
+  assert.deepEqual([steps[c6 + 1].device_id, steps[c6 + 1].command_id, steps[c6 + 1].delay], [255, 255, 8]);
+  assert.equal(c5, c6 + 2);
+});
 test("a user command added to a power macro is a deletable (non-protected) step", () => {
   const added = addActivityMacroCommandStep(realPowerActivity(), 101, 198, 9, 52, 0);
   const cmd = activityMacroStepItems(added, 101, 198).find((i4) => i4.kind === "command");
@@ -3733,36 +3687,28 @@ test("activityMemberRemovalImpact counts scoped user-visible references only", (
     { favorites: 1, macroSteps: 2, activities: 0, bindings: 1 }
   );
 });
-test("setActivityDevicePowerOff(false) removes the 0xC7 ref and survives reconcile", () => {
-  const leaveOn = setActivityDevicePowerOff(membershipBundle(), 101, 2, false);
-  const view = activityMemberViews(leaveOn, 101).find((v2) => v2.deviceId === 2);
-  assert.deepEqual([view.powersOn, view.powersOff], [true, false]);
-  const reconciled = reconcileActivityPowerMacros(leaveOn, 101);
-  assert.equal(activityMemberViews(reconciled, 101).find((v2) => v2.deviceId === 2).powersOff, false);
-  const backOn = setActivityDevicePowerOff(reconciled, 101, 2, true);
-  assert.equal(activityMemberViews(backOn, 101).find((v2) => v2.deviceId === 2).powersOff, true);
-});
-test("setActivityDevicePowerOn(false) encodes 'stays as is' and survives reconcile", () => {
-  const staysOn = setActivityDevicePowerOn(membershipBundle(), 101, 1, false);
-  const view = activityMemberViews(staysOn, 101).find((v2) => v2.deviceId === 1);
-  assert.deepEqual([view.powersOn, view.powersOff], [false, true]);
-  const reconciled = reconcileActivityPowerMacros(staysOn, 101);
-  assert.equal(activityMemberViews(reconciled, 101).find((v2) => v2.deviceId === 1).powersOn, false);
-});
-test("unchecking the last power ref keeps the device a member via a no-op input step", () => {
-  const joined = setActivityDevicePowerOn(addActivityMemberDevice(membershipBundle(), 101, 3), 101, 3, false);
-  const offOnly = {
-    ...joined,
+test("reconcile restores missing mandatory power refs for a member", () => {
+  const partial = addActivityMemberDevice(membershipBundle(), 101, 3);
+  const missing = {
+    ...partial,
     activities: [{
-      ...joined.activities[0],
-      macros: joined.activities[0].macros.map((m3) => m3.button_id === 198 ? { ...m3, steps: m3.steps.filter((s4) => !(s4.device_id === 3 && s4.command_id === 197)) } : m3)
+      ...partial.activities[0],
+      macros: partial.activities[0].macros.map((m3) => {
+        if (m3.button_id === 198) {
+          return { ...m3, steps: m3.steps.filter((s4) => !(s4.device_id === 3 && s4.command_id === 198)) };
+        }
+        if (m3.button_id === 199) {
+          return { ...m3, steps: m3.steps.filter((s4) => !(s4.device_id === 3 && s4.command_id === 199)) };
+        }
+        return m3;
+      })
     }]
   };
-  const noRefs = setActivityDevicePowerOff(offOnly, 101, 3, false);
-  const view = activityMemberViews(noRefs, 101).find((v2) => v2.deviceId === 3);
-  assert.deepEqual([view.powersOn, view.powersOff], [false, false]);
-  const reconciled = reconcileActivityPowerMacros(noRefs, 101);
-  assert.equal(activityMemberViews(reconciled, 101).some((v2) => v2.deviceId === 3), true);
+  const before = activityMemberViews(missing, 101).find((v2) => v2.deviceId === 3);
+  assert.deepEqual([before.powersOn, before.powersOff, before.inputOrdinal], [false, false, 0]);
+  const reconciled = reconcileActivityPowerMacros(missing, 101);
+  const after = activityMemberViews(reconciled, 101).find((v2) => v2.deviceId === 3);
+  assert.deepEqual([after.powersOn, after.powersOff, after.inputOrdinal], [true, true, 0]);
 });
 function roleBundle(hubVersion = "X1S") {
   return {
@@ -3937,21 +3883,29 @@ test("parseHaActionAddress accepts IPv4 with optional port", () => {
   assert.equal(parseHaActionAddress("192.168.1.10:70000"), null);
   assert.equal(parseHaActionAddress(""), null);
 });
-test("power pill toggles keep member order and step adjacency stable (interleaved macros)", () => {
-  assert.deepEqual(activityMemberViews(realPowerActivity(), 101).map((v2) => v2.deviceId), [3, 9]);
-  const off = setActivityDevicePowerOn(realPowerActivity(), 101, 3, false);
-  assert.deepEqual(activityMemberViews(off, 101).map((v2) => v2.deviceId), [3, 9]);
-  const on = setActivityDevicePowerOn(off, 101, 3, true);
-  assert.deepEqual(activityMemberViews(on, 101).map((v2) => v2.deviceId), [3, 9]);
-  const steps = on.activities[0].macros.find((m3) => m3.button_id === 198).steps;
-  const c6 = steps.findIndex((s4) => s4.device_id === 3 && s4.command_id === 198);
-  const c5 = steps.findIndex((s4) => s4.device_id === 3 && s4.command_id === 197);
-  assert.ok(c6 >= 0 && c5 === c6 + 1, `expected adjacent 0xC6/0xC5, got ${c6}/${c5}`);
-  const offEnd = setActivityDevicePowerOff(realPowerActivity(), 101, 3, false);
-  const onEnd = setActivityDevicePowerOff(offEnd, 101, 3, true);
-  assert.deepEqual(activityMemberViews(onEnd, 101).map((v2) => v2.deviceId), [3, 9]);
-  const offSteps = onEnd.activities[0].macros.find((m3) => m3.button_id === 199).steps;
-  assert.deepEqual(offSteps.map((s4) => s4.device_id), [3, 9]);
+test("reconcile repairs missing power refs in interleaved macros", () => {
+  const partial = {
+    ...realPowerActivity(),
+    activities: [{
+      ...realPowerActivity().activities[0],
+      macros: realPowerActivity().activities[0].macros.map((m3) => {
+        if (m3.button_id === 198) {
+          return { ...m3, steps: m3.steps.filter((s4) => !(s4.device_id === 3 && s4.command_id === 198)) };
+        }
+        if (m3.button_id === 199) {
+          return { ...m3, steps: m3.steps.filter((s4) => !(s4.device_id === 3 && s4.command_id === 199)) };
+        }
+        return m3;
+      })
+    }]
+  };
+  const fixed = reconcileActivityPowerMacros(partial, 101);
+  const onSteps = fixed.activities[0].macros.find((m3) => m3.button_id === 198).steps;
+  const c6 = onSteps.findIndex((s4) => s4.device_id === 3 && s4.command_id === 198);
+  const c5 = onSteps.findIndex((s4) => s4.device_id === 3 && s4.command_id === 197);
+  assert.ok(c6 >= 0 && c5 >= 0 && c6 < c5, `expected repaired 0xC6 before 0xC5, got ${c6}/${c5}`);
+  const offSteps = fixed.activities[0].macros.find((m3) => m3.button_id === 199).steps;
+  assert.deepEqual(offSteps.map((s4) => [s4.device_id, s4.command_id]), [[3, 199], [9, 199]]);
 });
 function chainBundle() {
   return {

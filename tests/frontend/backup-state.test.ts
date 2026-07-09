@@ -20,8 +20,6 @@ import {
   activityPowerDevices,
   addActivityMemberDevice,
   removeActivityMemberDevice,
-  setActivityDevicePowerOff,
-  setActivityDevicePowerOn,
   addActivityMacroCommandStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
@@ -868,6 +866,33 @@ test("setActivityMacroStepWait edits the wait on a protected power ref without t
   assert.deepEqual([headStep.device_id, headStep.command_id], [3, 198]);
 });
 
+test("reconcile inserts repaired input refs after an attached power wait", () => {
+  const base = realPowerActivity();
+  const partial = {
+    ...base,
+    activities: [{
+      ...base.activities[0],
+      macros: base.activities[0].macros!.map((macro) => {
+        if (macro.button_id !== 198) return macro;
+        return {
+          ...macro,
+          steps: [
+            macro.steps![0],
+            { device_id: 0xFF, command_id: 0xFF, button_code: 0xFFFFFFFFFFFF, duration: 0xFF, delay: 8 },
+            ...macro.steps!.slice(1).filter((step) => !(step.device_id === 3 && step.command_id === 0xC5)),
+          ],
+        };
+      }),
+    }],
+  };
+  const fixed = reconcileActivityPowerMacros(partial, 101);
+  const steps = fixed.activities[0].macros!.find((m) => m.button_id === 198)!.steps!;
+  const c6 = steps.findIndex((step) => step.device_id === 3 && step.command_id === 0xC6);
+  const c5 = steps.findIndex((step) => step.device_id === 3 && step.command_id === 0xC5);
+  assert.deepEqual([steps[c6 + 1].device_id, steps[c6 + 1].command_id, steps[c6 + 1].delay], [0xFF, 0xFF, 8]);
+  assert.equal(c5, c6 + 2);
+});
+
 test("a user command added to a power macro is a deletable (non-protected) step", () => {
   const added = addActivityMacroCommandStep(realPowerActivity(), 101, 198, 9, 52, 0);
   const cmd = activityMacroStepItems(added, 101, 198).find((i) => i.kind === "command")!;
@@ -1000,45 +1025,28 @@ test("activityMemberRemovalImpact counts scoped user-visible references only", (
   );
 });
 
-test("setActivityDevicePowerOff(false) removes the 0xC7 ref and survives reconcile", () => {
-  const leaveOn = setActivityDevicePowerOff(membershipBundle(), 101, 2, false);
-  const view = activityMemberViews(leaveOn, 101).find((v) => v.deviceId === 2)!;
-  assert.deepEqual([view.powersOn, view.powersOff], [true, false]);
-  // The "leave on" choice must not be re-completed by a later reconcile.
-  const reconciled = reconcileActivityPowerMacros(leaveOn, 101);
-  assert.equal(activityMemberViews(reconciled, 101).find((v) => v.deviceId === 2)!.powersOff, false);
-  // Re-enabling restores the ref step.
-  const backOn = setActivityDevicePowerOff(reconciled, 101, 2, true);
-  assert.equal(activityMemberViews(backOn, 101).find((v) => v.deviceId === 2)!.powersOff, true);
-});
-
-test("setActivityDevicePowerOn(false) encodes 'stays as is' and survives reconcile", () => {
-  const staysOn = setActivityDevicePowerOn(membershipBundle(), 101, 1, false);
-  const view = activityMemberViews(staysOn, 101).find((v) => v.deviceId === 1)!;
-  assert.deepEqual([view.powersOn, view.powersOff], [false, true]);
-  const reconciled = reconcileActivityPowerMacros(staysOn, 101);
-  assert.equal(activityMemberViews(reconciled, 101).find((v) => v.deviceId === 1)!.powersOn, false);
-});
-
-test("unchecking the last power ref keeps the device a member via a no-op input step", () => {
-  // Device 3 joins with only power refs (no favorite/binding/step), loses
-  // power-on, then its 0xC5 input step, leaving 0xC7 as its last
-  // representation. Unchecking power-off must not eject it from the activity.
-  const joined = setActivityDevicePowerOn(addActivityMemberDevice(membershipBundle(), 101, 3), 101, 3, false);
-  const offOnly = {
-    ...joined,
+test("reconcile restores missing mandatory power refs for a member", () => {
+  const partial = addActivityMemberDevice(membershipBundle(), 101, 3);
+  const missing = {
+    ...partial,
     activities: [{
-      ...joined.activities[0],
-      macros: joined.activities[0].macros!.map((m) => (m.button_id === 198
-        ? { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC5)) }
-        : m)),
+      ...partial.activities[0],
+      macros: partial.activities[0].macros!.map((m) => {
+        if (m.button_id === 198) {
+          return { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC6)) };
+        }
+        if (m.button_id === 199) {
+          return { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC7)) };
+        }
+        return m;
+      }),
     }],
   };
-  const noRefs = setActivityDevicePowerOff(offOnly, 101, 3, false);
-  const view = activityMemberViews(noRefs, 101).find((v) => v.deviceId === 3)!;
-  assert.deepEqual([view.powersOn, view.powersOff], [false, false]);
-  const reconciled = reconcileActivityPowerMacros(noRefs, 101);
-  assert.equal(activityMemberViews(reconciled, 101).some((v) => v.deviceId === 3), true);
+  const before = activityMemberViews(missing, 101).find((v) => v.deviceId === 3)!;
+  assert.deepEqual([before.powersOn, before.powersOff, before.inputOrdinal], [false, false, 0]);
+  const reconciled = reconcileActivityPowerMacros(missing, 101);
+  const after = activityMemberViews(reconciled, 101).find((v) => v.deviceId === 3)!;
+  assert.deepEqual([after.powersOn, after.powersOff, after.inputOrdinal], [true, true, 0]);
 });
 
 // ── Role-based button assignment ─────────────────────────────────────
@@ -1257,27 +1265,29 @@ test("parseHaActionAddress accepts IPv4 with optional port", () => {
   assert.equal(parseHaActionAddress(""), null);
 });
 
-test("power pill toggles keep member order and step adjacency stable (interleaved macros)", () => {
-  // realPowerActivity interleaves: dev3 0xC6 @0, dev9 0xC5 @1, dev9 0xC6 @2, dev3 0xC5 @3.
-  assert.deepEqual(activityMemberViews(realPowerActivity(), 101).map((v) => v.deviceId), [3, 9]);
-  // "Stays as is" for dev3: its anchor position must not move.
-  const off = setActivityDevicePowerOn(realPowerActivity(), 101, 3, false);
-  assert.deepEqual(activityMemberViews(off, 101).map((v) => v.deviceId), [3, 9]);
-  // Back to "turns on": order unchanged AND the 0xC6 sits directly before
-  // the device's own 0xC5, not appended at the sequence end.
-  const on = setActivityDevicePowerOn(off, 101, 3, true);
-  assert.deepEqual(activityMemberViews(on, 101).map((v) => v.deviceId), [3, 9]);
-  const steps = on.activities[0].macros!.find((m) => m.button_id === 198)!.steps!;
-  const c6 = steps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC6);
-  const c5 = steps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC5);
-  assert.ok(c6 >= 0 && c5 === c6 + 1, `expected adjacent 0xC6/0xC5, got ${c6}/${c5}`);
-  // END side: toggling dev3's power-off away and back must not push its
-  // 0xC7 behind dev9's in the POWER_OFF sequence.
-  const offEnd = setActivityDevicePowerOff(realPowerActivity(), 101, 3, false);
-  const onEnd = setActivityDevicePowerOff(offEnd, 101, 3, true);
-  assert.deepEqual(activityMemberViews(onEnd, 101).map((v) => v.deviceId), [3, 9]);
-  const offSteps = onEnd.activities[0].macros!.find((m) => m.button_id === 199)!.steps!;
-  assert.deepEqual(offSteps.map((s) => s.device_id), [3, 9]);
+test("reconcile repairs missing power refs in interleaved macros", () => {
+  const partial = {
+    ...realPowerActivity(),
+    activities: [{
+      ...realPowerActivity().activities[0],
+      macros: realPowerActivity().activities[0].macros!.map((m) => {
+        if (m.button_id === 198) {
+          return { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC6)) };
+        }
+        if (m.button_id === 199) {
+          return { ...m, steps: m.steps!.filter((s) => !(s.device_id === 3 && s.command_id === 0xC7)) };
+        }
+        return m;
+      }),
+    }],
+  };
+  const fixed = reconcileActivityPowerMacros(partial, 101);
+  const onSteps = fixed.activities[0].macros!.find((m) => m.button_id === 198)!.steps!;
+  const c6 = onSteps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC6);
+  const c5 = onSteps.findIndex((s) => s.device_id === 3 && s.command_id === 0xC5);
+  assert.ok(c6 >= 0 && c5 >= 0 && c6 < c5, `expected repaired 0xC6 before 0xC5, got ${c6}/${c5}`);
+  const offSteps = fixed.activities[0].macros!.find((m) => m.button_id === 199)!.steps!;
+  assert.deepEqual(offSteps.map((s) => [s.device_id, s.command_id]), [[3, 0xC7], [9, 0xC7]]);
 });
 
 // ── Cross-activity chain references (restore selection) ─────────────

@@ -211,8 +211,6 @@ var TOOLS_CARD_STRINGS = {
       deviceRemoved: (name) => `Removed "${name}" from this activity.`,
       inputChanged: (device, input) => `"${device}" input changed to ${input}.`,
       inputCleared: (device) => `"${device}" input cleared.`,
-      powersOnNow: (device) => `"${device}" now turns on with this activity.`,
-      powersOnNo: (device) => `"${device}" no longer turns on with this activity.`,
       startReordered: "Start sequence reordered.",
       roleNowControls: (group, device) => `${group} now control "${device}".`,
       roleCustomized: (group) => `${group} customized.`,
@@ -221,8 +219,6 @@ var TOOLS_CARD_STRINGS = {
       shortcutRemoved: (name) => `Removed "${name}".`,
       shortcutRenamed: (oldName, newName) => `Renamed "${oldName}" \u2192 "${newName}".`,
       shortcutsReordered: "Reordered shortcuts.",
-      powersOffNow: (device) => `"${device}" now turns off with this activity.`,
-      powersOffNo: (device) => `"${device}" now stays on.`,
       idleChanged: (device, label) => `"${device}" idle behavior \u2192 ${label}.`,
       commandRenamed: (oldName, newName, device) => `Renamed command "${oldName}" \u2192 "${newName}" on "${device}".`,
       roleGroups: {
@@ -399,10 +395,7 @@ var TOOLS_CARD_STRINGS = {
     activityRemoveDeviceAria: (name) => `Remove ${name} from this activity`,
     activityRemoveDeviceTitle: (name) => `Remove ${name} from this activity?`,
     activityStartTitle: "When the activity starts",
-    activityStartSub: "What each device does when this activity begins.",
-    activityStartTurnsOn: "Turns on",
-    activityStartStaysAsIs: "Stays as is",
-    activityStartToggleAria: (name) => `Toggle whether ${name} turns on`,
+    activityStartSub: "Each device runs its required power-on row here; pick the input it should use.",
     activityStartInputLabel: "Input",
     activityStartInputNone: "\u2014 none \u2014",
     activityStartInputAria: (name) => `Input for ${name}`,
@@ -415,10 +408,7 @@ var TOOLS_CARD_STRINGS = {
     activityShortcutsSubStatic: "Commands and custom actions shown on the remote's screen. Use the move buttons to reorder.",
     activityShortcutsEmpty: "No shortcuts yet. Add a command or a custom action.",
     activityEndTitle: "When the activity ends",
-    activityEndSub: "What each device does when this activity is switched off.",
-    activityEndTurnsOff: "Turns off",
-    activityEndStaysOn: "Stays on",
-    activityEndToggleAria: (name) => `Toggle whether ${name} turns off`,
+    activityEndSub: "Automatic power is device-wide; adjust it here and reorder the end sequence below.",
     // Per-device automatic power (device-level idle behavior, 0x0242).
     // Activity switches are governed by THIS, not the activity macros.
     activityIdleAutoOff: "Between activities: turns off when not needed",
@@ -1899,20 +1889,6 @@ var MACRO_DELAY_SENTINEL = 255;
 function isMacroDelayStep(step) {
   return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
 }
-function filterMacroSteps(steps, shouldRemove) {
-  const list = steps ?? [];
-  const result = [];
-  for (let index = 0; index < list.length; index += 1) {
-    if (shouldRemove(list[index])) {
-      while (index + 1 < list.length && isMacroDelayStep(list[index + 1])) {
-        index += 1;
-      }
-      continue;
-    }
-    result.push(list[index]);
-  }
-  return result;
-}
 function nextQuickAccessButtonId(activity) {
   let max = 0;
   const consider = (value) => {
@@ -1989,21 +1965,46 @@ function activityMemberDeviceIds(activity) {
   }
   return [...ids].sort((left, right) => left - right);
 }
-function reconcilePowerMacroSteps(existingSteps, members, refCommands, seedIds) {
+function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
   const memberSet = new Set(members);
-  const kept = (existingSteps ?? []).filter((step) => {
-    if (isMacroDelayStep(step)) return true;
-    const deviceId = Number(step?.device_id || 0);
+  const { prefix, groups } = groupMacroSteps(existingSteps);
+  const kept = flattenMacroGroups(prefix, groups.filter((group) => {
+    const deviceId = Number(group.head?.device_id || 0);
     return deviceId > 0 ? memberSet.has(deviceId) : true;
-  });
+  }));
   const out = [...kept];
+  const memberOrder = new Map(members.map((id, index) => [id, index]));
+  const findRef = (deviceId, command) => out.findIndex(
+    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, deviceId, command)
+  );
+  const indexAfterGroupAt = (headIndex) => {
+    let index = headIndex + 1;
+    while (index < out.length && isMacroDelayStep(out[index])) index += 1;
+    return index;
+  };
+  const insertIndexFor = (deviceId, command) => {
+    if (command === DEVICE_POWER_ON_REF_COMMAND) {
+      const inputIndex = findRef(deviceId, DEVICE_INPUT_REF_COMMAND);
+      if (inputIndex >= 0) return inputIndex;
+    }
+    if (command === DEVICE_INPUT_REF_COMMAND) {
+      const powerIndex = findRef(deviceId, DEVICE_POWER_ON_REF_COMMAND);
+      if (powerIndex >= 0) return indexAfterGroupAt(powerIndex);
+    }
+    const myOrder = memberOrder.get(deviceId) ?? members.length;
+    const laterIndex = out.findIndex((step) => {
+      if (isMacroDelayStep(step) || !isPowerRefStep(step)) return false;
+      const otherOrder = memberOrder.get(Number(step?.device_id || 0));
+      return otherOrder != null && otherOrder > myOrder;
+    });
+    return laterIndex >= 0 ? laterIndex : out.length;
+  };
   for (const deviceId of members) {
-    if (!seedIds.has(deviceId)) continue;
     for (const command of refCommands) {
       const present = out.some(
         (step) => Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === command
       );
-      if (!present) out.push(powerStep(deviceId, command));
+      if (!present) out.splice(insertIndexFor(deviceId, command), 0, powerStep(deviceId, command));
     }
   }
   return out;
@@ -2011,20 +2012,18 @@ function reconcilePowerMacroSteps(existingSteps, members, refCommands, seedIds) 
 function reconcileActivityPowerMacros(bundle, activityId, extraMemberIds = []) {
   return updateActivity(bundle, activityId, (activity) => {
     const selfId = Number(activity?.device?.device_id || 0);
-    const powerIds = activityPowerDeviceIds(activity);
     const memberSet = new Set(activityMemberDeviceIds(activity));
     for (const id of extraMemberIds) {
       const extraId = Number(id || 0);
       if (extraId > 0 && extraId !== selfId) memberSet.add(extraId);
     }
     const members = [...memberSet].sort((left, right) => left - right);
-    const seedIds = new Set(members.filter((id) => !powerIds.has(id)));
     const macros = [...activity.macros ?? []];
     const ensure = (buttonId, name, refCommands) => {
       const index = macros.findIndex((macro) => Number(macro?.button_id || 0) === buttonId);
       const existing = index >= 0 ? macros[index] : null;
       if (!existing && members.length === 0) return;
-      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands, seedIds);
+      const steps = reconcilePowerMacroSteps(existing?.steps, members, refCommands);
       const next = {
         ...existing ?? {},
         button_id: buttonId,
@@ -2099,91 +2098,6 @@ function addActivityMemberDevice(bundle, activityId, deviceId) {
   if (activityMemberDeviceIds(activity).includes(dId)) return bundle;
   return reconcileActivityPowerMacros(bundle, aId, [dId]);
 }
-function powerRefDeviceOrder(activity) {
-  const order = [];
-  const push = (value) => {
-    const id = Number(value || 0);
-    if (id > 0 && !order.includes(id)) order.push(id);
-  };
-  for (const buttonId of [POWER_ON_MACRO_BUTTON_ID, POWER_OFF_MACRO_BUTTON_ID]) {
-    const macro = (activity.macros ?? []).find((entry) => Number(entry?.button_id || 0) === buttonId);
-    for (const step of macro?.steps ?? []) {
-      if (!isMacroDelayStep(step) && isPowerRefStep(step)) push(step?.device_id);
-    }
-  }
-  return order;
-}
-function setActivityPowerRefStep(activity, deviceId, buttonId, refCommand, present) {
-  const dId = Number(deviceId);
-  const macros = [...activity.macros ?? []];
-  const macroIndex = (id) => macros.findIndex((macro) => Number(macro?.button_id || 0) === id);
-  const index = macroIndex(buttonId);
-  const target = index >= 0 ? macros[index] : null;
-  const steps = [...target?.steps ?? []];
-  const findRef = (command) => steps.findIndex(
-    (step) => !isMacroDelayStep(step) && stepMatchesCommand(step, dId, command)
-  );
-  const refIndex = findRef(refCommand);
-  if (present === refIndex >= 0) return activity;
-  const commit = (nextSteps) => {
-    const name = buttonId === POWER_OFF_MACRO_BUTTON_ID ? "POWER_OFF" : "POWER_ON";
-    const next2 = {
-      ...target ?? { button_id: buttonId, name },
-      steps: nextSteps
-    };
-    if (index >= 0) macros[index] = next2;
-    else macros.push(next2);
-    return { ...activity, macros };
-  };
-  if (present) {
-    let insertAt = steps.length;
-    if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
-      const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
-      if (inputIndex >= 0) insertAt = inputIndex;
-    }
-    if (insertAt === steps.length) {
-      const order = powerRefDeviceOrder(activity);
-      const myPos = order.indexOf(dId);
-      if (myPos >= 0) {
-        const later = steps.findIndex(
-          (step) => !isMacroDelayStep(step) && isPowerRefStep(step) && order.indexOf(Number(step?.device_id || 0)) > myPos
-        );
-        if (later >= 0) insertAt = later;
-      }
-    }
-    steps.splice(insertAt, 0, powerStep(dId, refCommand));
-    return commit(steps);
-  }
-  if (refCommand === DEVICE_POWER_ON_REF_COMMAND) {
-    const inputIndex = findRef(DEVICE_INPUT_REF_COMMAND);
-    if (inputIndex >= 0) {
-      const inputStep = steps[inputIndex];
-      const without = steps.filter((_2, i4) => i4 !== refIndex && i4 !== inputIndex);
-      const insertAt = refIndex - (inputIndex < refIndex ? 1 : 0);
-      without.splice(insertAt, 0, inputStep);
-      return commit(without);
-    }
-    return commit(steps.map((step, i4) => i4 === refIndex ? powerStep(dId, DEVICE_INPUT_REF_COMMAND, 0) : step));
-  }
-  const withoutOff = filterMacroSteps(steps, (step) => stepMatchesCommand(step, dId, refCommand));
-  let next = commit(withoutOff);
-  if (!activityMemberDeviceIds(next).includes(dId)) {
-    next = setActivityPowerRefStep(next, dId, POWER_ON_MACRO_BUTTON_ID, DEVICE_INPUT_REF_COMMAND, true);
-  }
-  return next;
-}
-function setActivityDevicePowerOff(bundle, activityId, deviceId, powersOff) {
-  return updateActivity(bundle, Number(activityId), (activity) => {
-    if (!activityMemberDeviceIds(activity).includes(Number(deviceId))) return activity;
-    return setActivityPowerRefStep(
-      activity,
-      deviceId,
-      POWER_OFF_MACRO_BUTTON_ID,
-      DEVICE_POWER_OFF_REF_COMMAND,
-      Boolean(powersOff)
-    );
-  });
-}
 function findDevice(bundle, deviceId) {
   return (bundle?.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
 }
@@ -2215,6 +2129,11 @@ function groupMacroSteps(steps) {
     }
   }
   return { prefix, groups };
+}
+function flattenMacroGroups(prefix, groups) {
+  const out = [...prefix];
+  for (const group of groups) out.push(group.head, ...group.trailing);
+  return out;
 }
 function groupWait(group) {
   return group.trailing.length > 0 ? Number(group.trailing[0]?.delay || 0) : 0;
@@ -2560,9 +2479,6 @@ function diffStart(buckets, baseline, edited, activityId, baseById, editById) {
   for (const [deviceId, member] of editById) {
     const before = baseById.get(deviceId);
     if (!before) continue;
-    if (member.powersOn !== before.powersOn) {
-      buckets.start.push({ text: member.powersOn ? R2.powersOnNow(member.deviceName) : R2.powersOnNo(member.deviceName) });
-    }
     if ((member.inputCommandId ?? null) !== (before.inputCommandId ?? null)) {
       buckets.start.push({
         text: member.inputCommandId != null && member.inputCommandName ? R2.inputChanged(member.deviceName, member.inputCommandName) : R2.inputCleared(member.deviceName)
@@ -2626,14 +2542,7 @@ function diffShortcuts(buckets, baseline, edited, activityId) {
     buckets.shortcuts.push({ text: R2.shortcutsReordered });
   }
 }
-function diffEnd(buckets, baseById, editById) {
-  for (const [deviceId, member] of editById) {
-    const before = baseById.get(deviceId);
-    if (!before) continue;
-    if (member.powersOff !== before.powersOff) {
-      buckets.end.push({ text: member.powersOff ? R2.powersOffNow(member.deviceName) : R2.powersOffNo(member.deviceName) });
-    }
-  }
+function diffEnd(_buckets, _baseById, _editById) {
 }
 function diffDeviceWide(buckets, baseline, edited, editMembers) {
   for (const member of editMembers) {
@@ -2740,13 +2649,6 @@ test("diffActivityForReview reports an added device under the Devices section", 
   const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
   assert.equal(sections(groups).includes("devices"), true);
   assert.match(allText(groups), /Added "Streamer"/);
-});
-test("diffActivityForReview reports a power-off change under the End section", () => {
-  const base = baseBundle();
-  const edited = setActivityDevicePowerOff(base, ACTIVITY_ID, 2, true);
-  const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
-  assert.equal(sections(groups).includes("end"), true);
-  assert.match(allText(groups), /"Soundbar" now turns off/);
 });
 test("diffActivityForReview reports an added shortcut under the Shortcuts section", () => {
   const base = baseBundle();
