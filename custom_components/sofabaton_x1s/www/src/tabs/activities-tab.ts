@@ -296,11 +296,14 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
   // ── Capture flow (§4.2) — sourced from the blob-free structural cache ──
-  // Read the cached structural hub_bundle (built by "Refresh entire hub
-  // cache"); if it's missing, prompt the user to refresh. While editing, this
-  // bundle *is* the truth — the editor never second-guesses whether the hub
-  // has since changed. That reconciliation happens once, authoritatively, at
-  // sync time (the backend stale pre-flight).
+  // Read the structural hub_bundle the backend assembles on demand from the
+  // canonical persistent cache (per-entity refreshes and syncs update it in
+  // place; payloads carry a per-entity `fetched_at`). If it's missing —
+  // meaning no structural refresh has ever run — prompt the user to refresh.
+  // While editing, this bundle *is* the truth — the editor never
+  // second-guesses whether the hub has since changed. That reconciliation
+  // happens once, authoritatively, at sync time (the backend stale
+  // pre-flight).
 
   private _startCapture = async (activityId: number) => {
     if (!this.hub || !this.hass) return;

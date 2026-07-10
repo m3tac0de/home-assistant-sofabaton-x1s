@@ -3350,6 +3350,27 @@ var backupTabStyles = i`
     .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog.medium { width: min(640px, calc(100vw - 36px)); }
+    /* Reminder banner inside the Edit Payload dialog nudging the user
+       toward Blobs → Test before overwriting a working command. */
+    .payload-test-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #ffa726) 45%, var(--divider-color));
+      background: color-mix(in srgb, var(--warning-color, #ffa726) 10%, transparent);
+      color: var(--primary-text-color);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .payload-test-note ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--warning-color, #ffa726);
+      flex: none;
+      margin-top: 1px;
+    }
     /* "Advanced" foldout that wraps the structured-payload form
        inside the Change Command dialog. Mirrors the Wifi Commands
        command-config popup so the affordance reads the same way
@@ -4174,6 +4195,51 @@ function updateCommandDecodedFields(bundle, deviceId, commandId, newFields) {
     })
   };
 }
+function commandRawPayloadHex(bundle, deviceId, commandId) {
+  if (!bundle) return null;
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(deviceId)
+  );
+  if (!device) return null;
+  const command = (device.commands ?? []).find(
+    (entry) => Number(entry?.command_id || 0) === Number(commandId)
+  );
+  if (!command) return null;
+  const restoreData = command.restore_data;
+  if (!restoreData || typeof restoreData !== "object") return null;
+  const dataHex = String(restoreData.data_hex ?? "").trim();
+  return dataHex || null;
+}
+function normalizeCommandPayloadHex(raw) {
+  const cleaned = String(raw ?? "").replace(/0x/gi, "").replace(/[\s,]+/g, "");
+  if (!cleaned || cleaned.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(cleaned)) {
+    return null;
+  }
+  return (cleaned.toLowerCase().match(/.{2}/g) ?? []).join(" ");
+}
+function updateCommandRawPayload(bundle, deviceId, commandId, dataHex) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          const restoreData = command.restore_data;
+          if (!restoreData || typeof restoreData !== "object") return command;
+          const { decoded: _stale, ...rest } = restoreData;
+          return {
+            ...command,
+            restore_data: { ...rest, data_hex: dataHex }
+          };
+        })
+      };
+    })
+  };
+}
 var HUB_VERSION_RANK = {
   X1: 1,
   X1S: 2,
@@ -4315,6 +4381,12 @@ function validateBackupBundle(raw) {
   if (Number(bundle.schema_version || 0) !== BACKUP_BUNDLE_SCHEMA_VERSION) {
     throw new Error(
       `Backup file schema_version must be ${BACKUP_BUNDLE_SCHEMA_VERSION} (got ${String(bundle.schema_version || "") || "unknown"}).`
+    );
+  }
+  const profile = String(bundle.payload_profile || "full_backup");
+  if (profile !== "full_backup") {
+    throw new Error(
+      "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead."
     );
   }
   if (!Array.isArray(bundle.devices) || !Array.isArray(bundle.activities)) {
@@ -6022,9 +6094,17 @@ var SofabatonEditDetailView = class extends i3 {
     this._editRenameDialogDraft = "";
     this._editRenameDialogError = "";
     this._editRenameDialogTarget = null;
-    this._decodedFormExpanded = false;
-    this._editRenameDialogDecodedDrafts = {};
-    this._editRenameDialogDecodedSnapshot = null;
+    // ── Payload dialog (structured decoded form OR raw hex) ────────────
+    // Separate from the rename dialog: renaming is the common case and
+    // stays a compact name-only form; payload editing has its own button
+    // and popup on each command row.
+    this._payloadDialogOpen = false;
+    this._payloadDialogTarget = null;
+    this._payloadDialogDecodedDrafts = {};
+    this._payloadDialogDecodedSnapshot = null;
+    this._payloadDialogRawSnapshot = "";
+    this._payloadDialogRawDraft = "";
+    this._payloadDialogError = "";
     this._confirmDeleteTarget = null;
     this._confirmDeleteLabel = "";
     this._addFavoriteOpen = false;
@@ -6130,10 +6210,15 @@ var SofabatonEditDetailView = class extends i3 {
       if (!pending) return;
       this._applyRoleAssign(pending.group, pending.deviceId);
     };
+    this._handleRawPayloadInput = (event) => {
+      const input = event.currentTarget;
+      this._payloadDialogRawDraft = input.value;
+      this._payloadDialogError = "";
+    };
     this._handleDecodedFieldInput = (event, fieldKey) => {
       const input = event.currentTarget;
-      this._editRenameDialogDecodedDrafts = {
-        ...this._editRenameDialogDecodedDrafts,
+      this._payloadDialogDecodedDrafts = {
+        ...this._payloadDialogDecodedDrafts,
         [fieldKey]: input.value
       };
     };
@@ -6164,18 +6249,54 @@ var SofabatonEditDetailView = class extends i3 {
       this._editRenameDialogTarget = { kind: "hub_name" };
       this._editRenameDialogDraft = sanitizeBundleName(this.bundle, String(this.bundle.hub?.name ?? ""));
       this._editRenameDialogError = "";
-      this._editRenameDialogDecodedSnapshot = null;
-      this._editRenameDialogDecodedDrafts = {};
       this._editRenameDialogOpen = true;
+    };
+    this._closeCommandPayloadDialog = () => {
+      this._payloadDialogOpen = false;
+      this._payloadDialogTarget = null;
+      this._payloadDialogDecodedSnapshot = null;
+      this._payloadDialogDecodedDrafts = {};
+      this._payloadDialogRawSnapshot = "";
+      this._payloadDialogRawDraft = "";
+      this._payloadDialogError = "";
+    };
+    this._applyCommandPayloadDialog = () => {
+      const target = this._payloadDialogTarget;
+      if (!target || !this.bundle || this.mode === "live") return;
+      const snapshot = this._payloadDialogDecodedSnapshot;
+      if (snapshot) {
+        const changedFields = this._collectChangedDecodedFields(snapshot);
+        if (changedFields) {
+          this._commitEditBundleEdit(updateCommandDecodedFields(
+            this.bundle,
+            target.deviceId,
+            target.commandId,
+            changedFields
+          ));
+        }
+        this._closeCommandPayloadDialog();
+        return;
+      }
+      const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
+      if (!normalized) {
+        this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+        return;
+      }
+      if (normalized !== normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
+        this._commitEditBundleEdit(updateCommandRawPayload(
+          this.bundle,
+          target.deviceId,
+          target.commandId,
+          normalized
+        ));
+      }
+      this._closeCommandPayloadDialog();
     };
     this._closeEditRenameDialog = () => {
       this._editRenameDialogOpen = false;
       this._editRenameDialogDraft = "";
       this._editRenameDialogError = "";
       this._editRenameDialogTarget = null;
-      this._editRenameDialogDecodedDrafts = {};
-      this._editRenameDialogDecodedSnapshot = null;
-      this._decodedFormExpanded = false;
     };
     // ── Delete (with cascade-aware confirm) ─────────────────────────────
     this._openDetailDeleteConfirm = () => {
@@ -6371,20 +6492,9 @@ var SofabatonEditDetailView = class extends i3 {
           this._closeEditRenameDialog();
           return;
         }
-        let nextBundle = renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next);
-        const snapshot = this._editRenameDialogDecodedSnapshot;
-        if (snapshot) {
-          const changedFields = this._collectChangedDecodedFields(snapshot);
-          if (changedFields) {
-            nextBundle = updateCommandDecodedFields(
-              nextBundle,
-              target.deviceId,
-              target.commandId,
-              changedFields
-            );
-          }
-        }
-        this._commitEditBundleEdit(nextBundle);
+        this._commitEditBundleEdit(
+          renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next)
+        );
         this._closeEditRenameDialog();
         return;
       }
@@ -6660,8 +6770,6 @@ var SofabatonEditDetailView = class extends i3 {
       this._editRenameDialogTarget = { kind: "macro", activityId: editor.entityId, buttonId: editor.buttonId };
       this._editRenameDialogDraft = editor.name;
       this._editRenameDialogError = "";
-      this._editRenameDialogDecodedSnapshot = null;
-      this._editRenameDialogDecodedDrafts = {};
       this._editRenameDialogOpen = true;
     };
     this._openAddStepDialog = () => {
@@ -6778,9 +6886,12 @@ var SofabatonEditDetailView = class extends i3 {
       _editRenameDialogDraft: { state: true },
       _editRenameDialogError: { state: true },
       _editRenameDialogTarget: { state: true },
-      _editRenameDialogDecodedDrafts: { state: true },
-      _editRenameDialogDecodedSnapshot: { state: true },
-      _decodedFormExpanded: { state: true },
+      _payloadDialogOpen: { state: true },
+      _payloadDialogTarget: { state: true },
+      _payloadDialogDecodedDrafts: { state: true },
+      _payloadDialogDecodedSnapshot: { state: true },
+      _payloadDialogRawDraft: { state: true },
+      _payloadDialogError: { state: true },
       _confirmDeleteTarget: { state: true },
       _confirmDeleteLabel: { state: true },
       _addFavoriteOpen: { state: true },
@@ -6988,6 +7099,7 @@ var SofabatonEditDetailView = class extends i3 {
           </div>
         </div>
         ${this._renderEditRenameDialog()}
+        ${this._renderCommandPayloadDialog()}
         ${this._renderDeleteConfirmDialog()}
         ${this._renderAddFavoriteDialog()}
         ${this._renderBindingDialog()}
@@ -7280,7 +7392,7 @@ var SofabatonEditDetailView = class extends i3 {
         <div class="quick-access-head">
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
-            ${this.mode === "live" ? "Command names are read-only in live activity sync." : "Use the pencil to rename a command. Names update everywhere the command is referenced."}
+            ${this.mode === "live" ? "Command names are read-only in live activity sync." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
           </div>
         </div>
         ${items.length ? T`
@@ -7316,6 +7428,16 @@ var SofabatonEditDetailView = class extends i3 {
                     <ha-icon icon="mdi:pencil"></ha-icon>
                   </button>
                 `}
+            ${this.mode !== "live" && this._commandHasEditablePayload(item.commandId) ? T`
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openCommandPayloadDialog(item.commandId)}
+                    aria-label="Edit payload"
+                    title="Edit payload"
+                  >
+                    <ha-icon icon="mdi:code-braces"></ha-icon>
+                  </button>
+                ` : A}
             <button
               class="icon-btn icon-btn--danger"
               @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
@@ -7443,11 +7565,9 @@ var SofabatonEditDetailView = class extends i3 {
   _renderEditRenameDialog() {
     if (!this._editRenameDialogOpen || !this._editRenameDialogTarget) return A;
     const label = this._editRenameDialogLabel();
-    const decoded = this._editRenameDialogDecodedSnapshot;
-    const dialogSizeClass = decoded ? "medium" : "small";
     return T`
       <div class="modal-backdrop" @click=${this._closeEditRenameDialog}>
-        <div class="dialog ${dialogSizeClass}" @click=${(event) => event.stopPropagation()}>
+        <div class="dialog small" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title">${label}</div>
             <button class="dialog-close" @click=${this._closeEditRenameDialog}><ha-icon icon="mdi:close"></ha-icon></button>
@@ -7485,7 +7605,6 @@ var SofabatonEditDetailView = class extends i3 {
     }}
                   ></ha-input>
                 `}
-            ${decoded ? this._renderAdvancedPayloadFoldout(decoded.className) : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._editRenameDialogError}</div>
@@ -7499,33 +7618,67 @@ var SofabatonEditDetailView = class extends i3 {
     `;
   }
   /**
-   * Mirror the Wifi-Commands "Advanced" foldout: the structured-
-   * payload editor is rarely needed (renames are the common case),
-   * so it sits behind a collapsed toggle. Open / close persists for
-   * the current dialog session; close resets it back to collapsed.
+   * The payload popup: structured per-class form when the command has a
+   * decoded block, raw hex replacement otherwise. Every command with a
+   * captured payload (`restore_data.data_hex`) is editable — classes
+   * without a parser just get the raw bytes.
    */
-  _renderAdvancedPayloadFoldout(className) {
-    const expanded = this._decodedFormExpanded;
+  _renderCommandPayloadDialog() {
+    if (!this._payloadDialogOpen || !this._payloadDialogTarget) return A;
+    const decoded = this._payloadDialogDecodedSnapshot;
     return T`
-      <div class="advanced-section">
-        <button
-          class="advanced-toggle ${expanded ? "expanded" : ""}"
-          type="button"
-          @click=${() => {
-      this._decodedFormExpanded = !this._decodedFormExpanded;
-    }}
-          aria-expanded=${String(expanded)}
-        >
-          <span class="advanced-toggle-copy">
-            <span>Advanced</span>
-          </span>
-          <ha-icon icon="mdi:chevron-down"></ha-icon>
-        </button>
-        ${expanded ? T`
-          <div class="advanced-panel">
-            ${this._renderDecodedPayloadForm(className)}
+      <div class="modal-backdrop" @click=${this._closeCommandPayloadDialog}>
+        <div class="dialog medium" @click=${(event) => event.stopPropagation()}>
+          <div class="dialog-header">
+            <div class="dialog-title">Edit Payload</div>
+            <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
-        ` : A}
+          <div class="dialog-body">
+            ${decoded ? this._renderDecodedPayloadForm(decoded.className) : this._renderRawPayloadForm()}
+            <div class="payload-test-note">
+              <ha-icon icon="mdi:flash-outline"></ha-icon>
+              <span>
+                Verify a changed payload before trusting it: for IR payloads,
+                Blobs &rarr; Test plays the bytes on the hub without saving.
+                Save here only once the payload does what you expect.
+              </span>
+            </div>
+          </div>
+          <div class="dialog-footer">
+            <div class="dialog-footer-note">${this._payloadDialogError}</div>
+            <div class="dialog-footer-actions">
+              <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>Cancel</button>
+              <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>Save</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  _renderRawPayloadForm() {
+    return T`
+      <div class="decoded-form">
+        <div class="decoded-form-head">
+          <div class="decoded-form-title">Raw payload</div>
+          <div class="decoded-form-sub">
+            No structured editor exists for this device class; the bytes below
+            are replayed to the hub verbatim on restore.
+          </div>
+        </div>
+        <label class="decoded-field">
+          <span class="decoded-field-label">Payload (hex bytes)</span>
+          <textarea
+            class="decoded-field-input decoded-field-input--multiline"
+            rows="6"
+            spellcheck="false"
+            .value=${this._payloadDialogRawDraft}
+            @input=${this._handleRawPayloadInput}
+            @change=${this._handleRawPayloadInput}
+          ></textarea>
+          <span class="decoded-field-helper">
+            Byte pairs like "0a 4f 22" &mdash; whitespace and 0x prefixes are tolerated.
+          </span>
+        </label>
       </div>
     `;
   }
@@ -7543,7 +7696,7 @@ var SofabatonEditDetailView = class extends i3 {
     `;
   }
   _renderDecodedField(field) {
-    const value = this._editRenameDialogDecodedDrafts[field.key] ?? "";
+    const value = this._payloadDialogDecodedDrafts[field.key] ?? "";
     const onInput = (event) => this._handleDecodedFieldInput(event, field.key);
     const multilineClass = field.escapedDisplay ? "decoded-field-input--multiline decoded-field-input--escaped" : "decoded-field-input--multiline";
     return T`
@@ -7582,7 +7735,7 @@ var SofabatonEditDetailView = class extends i3 {
     if (target.kind === "favorite") return "Rename Favorite";
     if (target.kind === "device_ip") return "Edit IP address";
     if (target.kind === "hub_name") return "Rename Hub";
-    return "Change Command";
+    return "Rename Command";
   }
   /** Per-target label & max length used by the dialog's primary text input. */
   _editRenameFieldLabel() {
@@ -7603,7 +7756,7 @@ var SofabatonEditDetailView = class extends i3 {
     const changed = {};
     let touched = false;
     for (const field of spec.fields) {
-      const draft = this._editRenameDialogDecodedDrafts[field.key] ?? "";
+      const draft = this._payloadDialogDecodedDrafts[field.key] ?? "";
       const original = this._fieldValueToDraft(snapshot.fields[field.key], field);
       if (draft === original) continue;
       changed[field.key] = this._draftToFieldValue(draft, field);
@@ -7637,8 +7790,6 @@ var SofabatonEditDetailView = class extends i3 {
     this._editRenameDialogTarget = { kind: "device_ip", deviceId: normalizedId };
     this._editRenameDialogDraft = deviceIpAddress(this.bundle, normalizedId) || "";
     this._editRenameDialogError = "";
-    this._editRenameDialogDecodedSnapshot = null;
-    this._editRenameDialogDecodedDrafts = {};
     this._editRenameDialogOpen = true;
   }
   _openDeviceCommandRenameDialog(commandId) {
@@ -7652,11 +7803,31 @@ var SofabatonEditDetailView = class extends i3 {
     );
     this._editRenameDialogDraft = item?.label || "";
     this._editRenameDialogError = "";
-    const decoded = commandDecodedBlock(this.bundle, deviceId, normalizedCommandId);
-    this._editRenameDialogDecodedSnapshot = decoded;
-    this._editRenameDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
-    this._decodedFormExpanded = false;
     this._editRenameDialogOpen = true;
+  }
+  /** True when the command carries anything the payload dialog can edit. */
+  _commandHasEditablePayload(commandId) {
+    if (this.entityId == null) return false;
+    const deviceId = Number(this.entityId);
+    return Boolean(
+      commandDecodedBlock(this.bundle, deviceId, Number(commandId)) || commandRawPayloadHex(this.bundle, deviceId, Number(commandId))
+    );
+  }
+  _openCommandPayloadDialog(commandId) {
+    if (this.mode === "live") return;
+    if (this.entityId == null) return;
+    const deviceId = Number(this.entityId);
+    const normalizedCommandId = Number(commandId);
+    const decoded = commandDecodedBlock(this.bundle, deviceId, normalizedCommandId);
+    const rawHex = decoded ? null : commandRawPayloadHex(this.bundle, deviceId, normalizedCommandId);
+    if (!decoded && !rawHex) return;
+    this._payloadDialogTarget = { deviceId, commandId: normalizedCommandId };
+    this._payloadDialogDecodedSnapshot = decoded;
+    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
+    this._payloadDialogRawSnapshot = rawHex ?? "";
+    this._payloadDialogRawDraft = rawHex ?? "";
+    this._payloadDialogError = "";
+    this._payloadDialogOpen = true;
   }
   _initialDecodedDrafts(decoded) {
     const spec = DECODED_CLASS_FORM_SPECS[decoded.className];

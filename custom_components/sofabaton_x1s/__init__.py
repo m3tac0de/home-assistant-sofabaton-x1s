@@ -1884,9 +1884,12 @@ async def _run_activity_sync_operation(
     )
     # Success tail: refresh the persistent cache so cache_generation bumps and
     # the remote card / cache tab pick up the new names, favorites, and macros
-    # without a manual refresh (same path as catalog/refresh).
+    # without a manual refresh (same path as catalog/refresh). The synced
+    # activity's structural detail is re-fetched so on-demand bundles serve a
+    # fresh baseline for the next edit instead of the pre-sync state.
     try:
         await hub.async_request_catalog("activities")
+        await hub.async_refresh_entity_structure(kind="activity", ent_id=activity_id)
         store = await _async_get_persistent_cache_store(hass)
         if store.enabled:
             payload = await hub.async_export_cache_state()
@@ -2003,13 +2006,11 @@ async def _run_cache_refresh_operation(
         registry.update_from_thread(operation_id, **payload)
 
     try:
-        bundle = await hub.async_refresh_hub_cache(progress_callback=_progress)
+        await hub.async_refresh_hub_cache(progress_callback=_progress)
         store = await _async_get_persistent_cache_store(hass)
         if store.enabled:
-            await store.async_set_structural_bundle(
-                hub.entry_id,
-                {"bundle": bundle, "generation": hub.cache_generation},
-            )
+            # The canonical cache now carries everything structural; the
+            # editor's bundle is assembled from it on demand.
             summary = await hub.async_export_cache_state()
             await store.async_set_hub_cache(hub.entry_id, summary)
         registry.update(
@@ -2080,14 +2081,17 @@ async def _ws_get_structural_bundle(hass: HomeAssistant, connection, msg: dict[s
     if hub is None:
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
+    # Assembled on demand from the canonical cache (proxy state); nothing is
+    # read from storage here. The persistent-cache gate stays so the editor
+    # remains an opt-in feature tied to caching being enabled.
     store = await _async_get_persistent_cache_store(hass)
-    entry = await store.async_get_structural_bundle(hub.entry_id) if store.enabled else None
-    if not entry:
+    bundle = await hub.async_get_structural_bundle() if store.enabled else None
+    if not bundle:
         connection.send_result(msg["id"], {"bundle": None, "generation": None})
         return
     connection.send_result(
         msg["id"],
-        {"bundle": entry.get("bundle"), "generation": entry.get("generation")},
+        {"bundle": bundle, "generation": hub.cache_generation},
     )
 
 
@@ -2289,8 +2293,10 @@ async def _ws_refresh_persistent_cache_entry(hass: HomeAssistant, connection, ms
         connection.send_error(msg["id"], "invalid_id", "target_id must be between 1 and 255")
         return
 
-    await hub.async_clear_cache_for(kind=msg["kind"], ent_id=target_id)
-    await hub.async_fetch_device_commands(target_id, wait_timeout=30.0)
+    # Full structural refresh (commands, buttons, macros, inputs, key-sort,
+    # idle behavior) rather than the old commands-only fetch, so per-entity
+    # refresh keeps the canonical cache bundle-grade.
+    await hub.async_refresh_entity_structure(kind=msg["kind"], ent_id=target_id)
     payload = await hub.async_export_cache_state()
     await store.async_set_hub_cache(hub.entry_id, payload)
     connection.send_result(msg["id"], {"ok": True})

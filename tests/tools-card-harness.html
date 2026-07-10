@@ -890,7 +890,9 @@
       devices: [
         { device: { device_id: 1, name: "Television", device_class: "ir", sort: 1 },
           commands: [
-            { command_id: 10, name: "Power" },
+            // Raw payload only (learned IR): exercises the raw-hex payload editor.
+            { command_id: 10, name: "Power",
+              restore_data: { transport: "hub_code_record", library_type: 0x0d, button_code: 0x1234, data_hex: "aa 01 02 03 0d 25" } },
             { command_id: 11, name: "Volume Up" },
             { command_id: 12, name: "Input HDMI1" },
           ],
@@ -925,7 +927,11 @@
         // the narrative activity editor's Devices section.
         { device: { device_id: 3, name: "Streamer", device_class: "ir", sort: 3 },
           commands: [
-            { command_id: 30, name: "Home" },
+            // Decoded block: exercises the structured payload editor.
+            { command_id: 30, name: "Home",
+              restore_data: { transport: "hub_code_record", library_type: 0x1c,
+                data_hex: "2f 6b 65 79 70 72 65 73 73 2f 48 6f 6d 65",
+                decoded: { class: "wifi_roku", fields: { path: "/keypress/Home" }, trailer_hex: "" } } },
             { command_id: 31, name: "Play" },
             { command_id: 32, name: "Up" },
             { command_id: 33, name: "Down" },

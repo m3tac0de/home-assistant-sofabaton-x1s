@@ -1019,6 +1019,27 @@ export const backupTabStyles = css`
     .dialog { width: min(760px, calc(100vw - 36px)); max-height: min(82vh, 900px); display: flex; flex-direction: column; border-radius: var(--backup-radius-lg); border: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28)); overflow: hidden; }
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog.medium { width: min(640px, calc(100vw - 36px)); }
+    /* Reminder banner inside the Edit Payload dialog nudging the user
+       toward Blobs → Test before overwriting a working command. */
+    .payload-test-note {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: var(--backup-radius-sm);
+      border: 1px solid color-mix(in srgb, var(--warning-color, #ffa726) 45%, var(--divider-color));
+      background: color-mix(in srgb, var(--warning-color, #ffa726) 10%, transparent);
+      color: var(--primary-text-color);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+    .payload-test-note ha-icon {
+      --mdc-icon-size: 18px;
+      color: var(--warning-color, #ffa726);
+      flex: none;
+      margin-top: 1px;
+    }
     /* "Advanced" foldout that wraps the structured-payload form
        inside the Change Command dialog. Mirrors the Wifi Commands
        command-config popup so the affordance reads the same way

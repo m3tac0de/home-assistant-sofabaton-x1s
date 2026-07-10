@@ -461,6 +461,32 @@ class CatalogMixin:
                 self._log.info("[DEV] STATUS_ACK 0x07 indicates an empty devices catalog; finishing burst")
             return finished
 
+        # Per-entity read bursts (macros, buttons, commands, activity_map)
+        # get the same "table is empty / not configured" answer: a bare
+        # STATUS_ACK 0x07 and no row burst. Finish the active burst now so
+        # its burst-end bookkeeping (pending-request discard, completion
+        # marking) runs immediately instead of after the scheduler's 5s
+        # response grace — a macro-less device otherwise stalls a whole-hub
+        # cache refresh ~5s per entity.
+        kind = self._burst.kind if self._burst.active else None
+        if kind and kind.split(":", 1)[0] in (
+            "macros",
+            "buttons",
+            "commands",
+            "activity_map",
+        ):
+            finished = self._burst.finish(
+                kind,
+                can_issue=self.can_issue_commands,
+                sender=self._send_cmd_frame,
+            )
+            if finished:
+                self._log.info(
+                    "[CATALOG] STATUS_ACK 0x07 indicates an empty %s reply; finishing burst",
+                    kind,
+                )
+            return finished
+
         return False
 
     def note_buttons_frame(self, act_lo: int, *, frame_no: int | None, total_frames: int | None) -> None:

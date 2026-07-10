@@ -38,6 +38,7 @@ class _Hub:
     def __init__(self):
         self.cleared = None
         self.fetched = None
+        self.refreshed = None
         self.cache_generation = 7
         self.host = "192.168.1.50"
         self.banner_model = None
@@ -57,6 +58,9 @@ class _Hub:
 
     async def async_fetch_device_commands(self, ent_id, wait_timeout=10.0):
         self.fetched = (ent_id, wait_timeout)
+
+    async def async_refresh_entity_structure(self, *, kind, ent_id):
+        self.refreshed = (kind, ent_id)
 
     async def async_export_cache_state(self):
         return {"devices": {"1": {"name": "TV"}}}
@@ -163,8 +167,9 @@ def test_ws_refresh_persistent_cache_entry(monkeypatch):
 
     assert conn.error is None
     assert conn.result == (2, {"ok": True})
-    assert hub.cleared == ("device", 17)
-    assert hub.fetched == (17, 30.0)
+    # Per-entity refresh is a full structural fetch now (not commands-only).
+    assert hub.refreshed == ("device", 17)
+    assert hub.fetched is None
     assert saved["entry-1"] == {"devices": {"1": {"name": "TV"}}}
 
 
@@ -306,8 +311,8 @@ def test_ws_refresh_persistent_cache_entry_by_entry_id(monkeypatch):
 
     assert conn.error is None
     assert conn.result == (4, {"ok": True})
-    assert hub.cleared == ("activity", 33)
-    assert hub.fetched == (33, 30.0)
+    assert hub.refreshed == ("activity", 33)
+    assert hub.fetched is None
     assert saved["entry-1"] == {"devices": {"1": {"name": "TV"}}}
 
 

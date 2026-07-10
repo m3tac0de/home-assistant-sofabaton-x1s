@@ -67,6 +67,7 @@ from .lib.blob_decoders import (
     is_decodable_class as is_blob_decodable_class,
     try_decode_blob as try_decode_command_blob,
 )
+from .lib.backup_export import PAYLOAD_PROFILE_FULL
 from .lib.commands import split_play_blob_tail
 from .lib.devices import DeviceConfig, parse_device_record
 from .lib.x1_proxy import X1Proxy
@@ -1531,6 +1532,51 @@ class SofabatonHub:
         self._bump_cache_generation()
         return bundle
 
+    async def async_get_structural_bundle(self) -> dict[str, Any] | None:
+        """Assemble the structural ``hub_bundle`` from cached proxy state.
+
+        Pure projection -- no hub I/O, so it is safe while the app client
+        owns the hub. Returns ``None`` until a backup-grade structural
+        fetch (whole-hub refresh, per-entity refresh, or a persistent-cache
+        import carrying ``detail_fetched_at``) has populated the state.
+        """
+
+        hub_info = {"entry_id": self.entry_id, "name": self.name, "version": self.version}
+        return await self.hass.async_add_executor_job(
+            partial(self._proxy.assemble_hub_bundle_from_state, hub_info=hub_info)
+        )
+
+    async def async_refresh_entity_structure(self, *, kind: str, ent_id: int) -> None:
+        """Refresh one entity's full structural detail into the proxy cache.
+
+        Runs the blob-free backup fetch for the entity (commands, buttons,
+        macros, inputs, key-sort and idle behavior for devices; keymap,
+        macros and favorites for activities) so structural bundles assembled
+        from state reflect the live hub. The returned payload is discarded
+        -- the fetch's side effect on proxy state is the point.
+        """
+
+        if kind == "device":
+            await self.hass.async_add_executor_job(
+                partial(self._proxy.backup_device, ent_id, include_blobs=False)
+            )
+            devs, ready = await self.hass.async_add_executor_job(self._proxy.get_devices)
+            self.devices_ready = ready
+            if ready:
+                self.devices = devs
+                self._devices_generation += 1
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_devices(self.entry_id))
+        else:
+            await self.hass.async_add_executor_job(
+                partial(self._proxy.backup_activity, ent_id)
+            )
+            self._bump_cache_generation()
+            async_dispatcher_send(self.hass, signal_activity(self.entry_id))
+
+        async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+        async_dispatcher_send(self.hass, signal_macros(self.entry_id))
+
     async def async_sync_activity(
         self,
         *,
@@ -1662,6 +1708,16 @@ class SofabatonHub:
                 f"{HUB_BUNDLE_SCHEMA_VERSION} "
                 f"(got {payload.get('schema_version')!r}); older bundles are "
                 "rejected -- no migrator is provided"
+            )
+        # Must be rejected HERE, before the replace-mode erase below: the lib
+        # repeats this check, but only after this method has already wiped the
+        # destination hub. A missing profile means a legacy full backup.
+        profile = str(payload.get("payload_profile") or PAYLOAD_PROFILE_FULL)
+        if profile != PAYLOAD_PROFILE_FULL:
+            raise ValueError(
+                f"restore_backup payload_profile is {profile!r}: structural "
+                "cache bundles carry no command payloads and cannot be "
+                "restored -- export a full backup instead"
             )
 
         devices = list(payload.get("devices") or [])

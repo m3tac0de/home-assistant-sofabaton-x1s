@@ -271,6 +271,66 @@ def test_status_ack_07_finishes_empty_devices_burst_immediately() -> None:
     assert devices == {}
 
 
+def test_status_ack_07_finishes_empty_macros_burst_immediately() -> None:
+    """A macro-less entity answers REQ_MACRO_LABELS with a bare STATUS_ACK
+    0x07; the macros burst must finish then, not after the scheduler's 5s
+    response grace (which stalled whole-hub cache refresh per entity)."""
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._pending_macro_requests.add(7)
+    proxy._burst.start("macros:7", now=0.0)
+
+    finished = proxy.note_catalog_status_ack(0x07)
+
+    assert finished is True
+    assert proxy._burst.active is False
+    assert 7 in proxy._macros_complete
+    assert 7 not in proxy._pending_macro_requests
+
+
+def test_status_ack_07_finishes_empty_buttons_burst_immediately() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._pending_button_requests.add(9)
+    proxy._burst.start("buttons:9", now=0.0)
+
+    finished = proxy.note_catalog_status_ack(0x07)
+
+    assert finished is True
+    assert proxy._burst.active is False
+    assert 9 not in proxy._pending_button_requests
+
+
+def test_status_ack_07_finishes_empty_commands_burst_immediately() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    proxy._pending_command_requests[5] = {0xFF}
+    proxy._burst.start("commands:5", now=0.0)
+
+    finished = proxy.note_catalog_status_ack(0x07)
+
+    assert finished is True
+    assert proxy._burst.active is False
+    assert 5 in proxy._commands_complete
+    assert 5 not in proxy._pending_command_requests
+
+
+def test_status_ack_07_ignores_unrelated_bursts_and_statuses() -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    # Non-0x07 statuses never touch the burst.
+    proxy._burst.start("macros:7", now=0.0)
+    assert proxy.note_catalog_status_ack(0x0C) is False
+    assert proxy._burst.active is True
+
+    # 0x07 with a burst kind outside the empty-reply family is left alone
+    # (ir_dump completion has its own pending/event bookkeeping).
+    proxy._burst.kind = "ir_dump:5:255"
+    assert proxy.note_catalog_status_ack(0x07) is False
+    assert proxy._burst.active is True
+
+
 def test_export_cache_state_omits_raw_body_bytes() -> None:
     """``raw_body`` is in-memory only; exports feed JSON-only sinks
     (persistent cache, control-panel WS payload) where bytes break

@@ -42,6 +42,7 @@ from .device_create import (
     run_device_create,
     synthesize_command_code,
 )
+from .backup_export import PAYLOAD_PROFILE_FULL
 from .blob_decoders import encode_decoded_blob, try_decode_blob
 from .devices import device_config_from_backup
 from .inputs import ControlKeyBlock, FavoriteSlot, InputEntry, build_inputs_write
@@ -1605,6 +1606,16 @@ class RestoreMixin:
                 "restore_hub_bundle payload schema_version must be "
                 f"{HUB_BUNDLE_SCHEMA_VERSION} "
                 f"(got {payload.get('schema_version')!r})"
+            )
+        # Bundles without a payload_profile predate the marker and are full
+        # backups by definition; an explicitly structural bundle carries no
+        # command payloads and must never be replayed onto a hub.
+        profile = str(payload.get("payload_profile") or PAYLOAD_PROFILE_FULL)
+        if profile != PAYLOAD_PROFILE_FULL:
+            raise ValueError(
+                f"restore_hub_bundle payload_profile is {profile!r}: "
+                "structural cache bundles carry no command payloads and "
+                "cannot be restored -- export a full backup instead"
             )
         if not self.can_issue_commands():
             self._log.info(

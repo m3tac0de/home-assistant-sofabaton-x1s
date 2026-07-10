@@ -62,6 +62,13 @@ other schema version — older or newer — are rejected, and no migrator is
 provided. The UI also refuses to restore a backup onto an **older** hub model.
 For example, a backup created on an `X2` hub will not restore onto an `X1S`.
 
+Bundles also carry a `payload_profile` field: `full_backup` for real backups
+(command payloads included) and `structural` for the blob-free cache shape the
+activity editor reads. Structural bundles cannot be restored or loaded into the
+backup editor — they carry no command payloads — and both the UI and the
+backend reject them. Files without the field are older full backups and keep
+restoring as before.
+
 The important detail is that this compatibility check is about the Sofabaton
 hub **model/version family** recorded in the bundle's `hub.version` field:
 `X1`, `X1S`, or `X2`. It is not comparing firmware build numbers.

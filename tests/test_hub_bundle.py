@@ -201,6 +201,52 @@ def test_backup_hub_bundle_structural_propagates_include_blobs(monkeypatch) -> N
     assert seen == [False, False]
 
 
+def test_backup_hub_bundle_stamps_payload_profile(monkeypatch) -> None:
+    """Bundles declare full_backup vs structural via ``payload_profile``."""
+
+    proxy = _proxy(monkeypatch)
+
+    def _backup_device(device_id, *, wait_timeout: float = 10.0, include_blobs: bool = True):
+        return {"kind": "device_backup", "complete": True, "device": {"device_id": device_id, "name": "D"}}
+
+    monkeypatch.setattr(proxy, "backup_device", _backup_device)
+    hub_info = {"entry_id": "e", "name": "S", "version": HUB_VERSION_X1S}
+
+    full = proxy.backup_hub_bundle(device_ids=[7], hub_info=hub_info)
+    assert full["payload_profile"] == "full_backup"
+
+    structural = proxy.backup_hub_bundle(
+        device_ids=[7], hub_info=hub_info, include_blobs=False
+    )
+    assert structural["payload_profile"] == "structural"
+
+
+def test_assemble_device_backup_payload_profile_defaults_to_full() -> None:
+    """Device payload assembly stamps the profile; the default is full."""
+
+    from custom_components.sofabaton_x1s.lib.backup_export import (
+        PAYLOAD_PROFILE_STRUCTURAL,
+        assemble_device_backup,
+    )
+
+    kwargs = dict(
+        device_block={"device_id": 7, "name": "D"},
+        command_rows=[],
+        button_rows=[],
+        macro_rows=[],
+        key_sort_row=None,
+        input_record=None,
+        complete=True,
+    )
+    assert assemble_device_backup(**kwargs)["payload_profile"] == "full_backup"
+    assert (
+        assemble_device_backup(**kwargs, payload_profile=PAYLOAD_PROFILE_STRUCTURAL)[
+            "payload_profile"
+        ]
+        == "structural"
+    )
+
+
 def test_backup_hub_rejects_empty_after_validation(monkeypatch) -> None:
     """Empty ``device_ids`` list raises (caller should pass ``None`` for whole-hub)."""
 
@@ -250,6 +296,31 @@ def test_restore_bundle_rejects_non_bundle_kind() -> None:
     )
     with pytest.raises(ValueError, match="kind == 'hub_bundle'"):
         proxy.restore_hub_bundle({"kind": "device_backup", "schema_version": 4})
+
+
+def test_restore_bundle_rejects_structural_profile() -> None:
+    """A structural (blob-free) bundle must never be replayed onto a hub."""
+
+    proxy = X1Proxy(
+        "127.0.0.1",
+        proxy_enabled=False,
+        diag_dump=False,
+        diag_parse=False,
+        hub_version=HUB_VERSION_X1S,
+    )
+    with pytest.raises(ValueError, match="structural cache bundles"):
+        proxy.restore_hub_bundle(
+            {
+                "kind": "hub_bundle",
+                "schema_version": 5,
+                "payload_profile": "structural",
+                "devices": [],
+                "activities": [],
+            }
+        )
+    # Legacy bundles carry no payload_profile and must keep restoring; the
+    # existing success-path tests in this file all omit the field, so their
+    # continued passing is the compatibility proof.
 
 
 def test_restore_bundle_devices_only_succeeds_and_returns_map(monkeypatch) -> None:
@@ -823,6 +894,45 @@ def test_async_restore_backup_replace_mode_aborts_on_erase_failure() -> None:
 
     hub._proxy.restore_hub_bundle.assert_not_called()
     hub._proxy.erase_configuration.assert_called_once()
+
+
+def test_async_restore_backup_rejects_structural_before_erase() -> None:
+    """A structural bundle must fail validation before the replace-mode erase
+    wipes the destination hub."""
+
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Sofabaton"
+    hub.version = HUB_VERSION_X1S
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.erase_configuration = MagicMock(
+        side_effect=AssertionError("erase must not run for a structural bundle")
+    )
+    hub._proxy.restore_hub_bundle = MagicMock(
+        side_effect=AssertionError("restore must not run for a structural bundle")
+    )
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "payload_profile": "structural",
+        "devices": [],
+        "activities": [{"kind": "activity_backup"}],
+    }
+
+    with pytest.raises(ValueError, match="structural cache bundles"):
+        _run(hub.async_restore_backup(bundle))
+
+    hub._proxy.erase_configuration.assert_not_called()
+    hub._proxy.restore_hub_bundle.assert_not_called()
 
 
 def test_async_restore_backup_replace_mode_proceeds_when_erase_succeeds() -> None:

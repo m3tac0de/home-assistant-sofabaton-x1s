@@ -306,6 +306,9 @@ export interface BackupBundlePayload {
   schema_version: number;
   captured_at?: string | null;
   complete?: boolean | null;
+  /** "full_backup" (payload-bearing, restorable) or "structural" (blob-free
+   * cache bundle, never restorable). Absent on legacy files == full_backup. */
+  payload_profile?: string | null;
   hub?: {
     entry_id?: string | null;
     name?: string | null;

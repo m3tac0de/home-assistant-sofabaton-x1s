@@ -1146,6 +1146,152 @@ o4?.({ LitElement: i3 });
 (s3.litElementVersions ??= []).push("4.2.2");
 
 // custom_components/sofabaton_x1s/www/src/tabs/backup-state.ts
+var DECODED_CLASS_FORM_SPECS = {
+  wifi_ip: {
+    title: "HTTP request",
+    subtitle: "Edits replay through the hub's wifi_ip writer. Host, port, and Content-Length are derived; you do not set them here.",
+    fields: [
+      { key: "host", label: "Host (IPv4)", helper: "e.g. 192.168.2.77" },
+      { key: "port", label: "Port", numeric: true },
+      { key: "method", label: "HTTP method", helper: "e.g. GET, POST" },
+      { key: "path", label: "Path" },
+      {
+        key: "header",
+        label: "Extra headers",
+        multiline: true,
+        crlfOnWire: true,
+        helper: "One header per line. Host and Content-Length are added automatically."
+      },
+      { key: "content_type", label: "Content type" },
+      { key: "body", label: "Body", multiline: true }
+    ]
+  },
+  wifi_roku: {
+    title: "Roku ECP request",
+    fields: [
+      { key: "path", label: "ECP URL path", helper: "e.g. /launch/12 or /keypress/Home" }
+    ]
+  },
+  wifi_hue: {
+    title: "Hue REST request",
+    subtitle: "Body block is injected verbatim between Host headers and the network write.",
+    fields: [
+      { key: "path", label: "URL path" },
+      {
+        key: "body_block",
+        label: "Body block (raw wire string)",
+        multiline: true,
+        escapedDisplay: true,
+        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
+      }
+    ]
+  },
+  wifi_sonos: {
+    title: "Sonos UPnP request",
+    subtitle: "Body block is injected verbatim between Host headers and the network write.",
+    fields: [
+      { key: "path", label: "URL path" },
+      {
+        key: "body_block",
+        label: "Body block (raw wire string)",
+        multiline: true,
+        escapedDisplay: true,
+        helper: "Single literal string sent to the device. Newlines are shown as \\n. You own the Content-Length value \u2014 it must match the body byte count."
+      }
+    ]
+  },
+  ir: {
+    title: "Descriptive IR payload",
+    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR blobs are not editable here.",
+    fields: [
+      {
+        key: "descriptor",
+        label: "Descriptor",
+        helper: "e.g. P:Sony12 R:40000 D:1 F:18 MUL:2"
+      }
+    ]
+  }
+};
+function normalizeDecodableClass(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized in DECODED_CLASS_FORM_SPECS) {
+    return normalized;
+  }
+  return null;
+}
+function commandDecodedBlock(bundle2, deviceId, commandId) {
+  if (!bundle2) return null;
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const device = (bundle2.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId
+  );
+  if (!device) return null;
+  const command = (device.commands ?? []).find(
+    (entry) => Number(entry?.command_id || 0) === normalizedCommandId
+  );
+  if (!command) return null;
+  const restoreData = command.restore_data;
+  if (!restoreData || typeof restoreData !== "object") return null;
+  const decoded = restoreData.decoded;
+  if (!decoded || typeof decoded !== "object") return null;
+  const decodedRecord = decoded;
+  const className = normalizeDecodableClass(decodedRecord.class);
+  if (!className) return null;
+  const fields = decodedRecord.fields;
+  if (!fields || typeof fields !== "object") return null;
+  return {
+    className,
+    fields: { ...fields },
+    trailerHex: String(decodedRecord.trailer_hex ?? ""),
+    edited: Boolean(decodedRecord.edited)
+  };
+}
+function commandRawPayloadHex(bundle2, deviceId, commandId) {
+  if (!bundle2) return null;
+  const device = (bundle2.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(deviceId)
+  );
+  if (!device) return null;
+  const command = (device.commands ?? []).find(
+    (entry) => Number(entry?.command_id || 0) === Number(commandId)
+  );
+  if (!command) return null;
+  const restoreData = command.restore_data;
+  if (!restoreData || typeof restoreData !== "object") return null;
+  const dataHex = String(restoreData.data_hex ?? "").trim();
+  return dataHex || null;
+}
+function normalizeCommandPayloadHex(raw) {
+  const cleaned = String(raw ?? "").replace(/0x/gi, "").replace(/[\s,]+/g, "");
+  if (!cleaned || cleaned.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(cleaned)) {
+    return null;
+  }
+  return (cleaned.toLowerCase().match(/.{2}/g) ?? []).join(" ");
+}
+function updateCommandRawPayload(bundle2, deviceId, commandId, dataHex) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle2,
+    devices: (bundle2.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          const restoreData = command.restore_data;
+          if (!restoreData || typeof restoreData !== "object") return command;
+          const { decoded: _stale, ...rest } = restoreData;
+          return {
+            ...command,
+            restore_data: { ...rest, data_hex: dataHex }
+          };
+        })
+      };
+    })
+  };
+}
 var HUB_VERSION_RANK = {
   X1: 1,
   X1S: 2,
@@ -1271,6 +1417,12 @@ function validateBackupBundle(raw) {
   if (Number(bundle2.schema_version || 0) !== BACKUP_BUNDLE_SCHEMA_VERSION) {
     throw new Error(
       `Backup file schema_version must be ${BACKUP_BUNDLE_SCHEMA_VERSION} (got ${String(bundle2.schema_version || "") || "unknown"}).`
+    );
+  }
+  const profile = String(bundle2.payload_profile || "full_backup");
+  if (profile !== "full_backup") {
+    throw new Error(
+      "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead."
     );
   }
   if (!Array.isArray(bundle2.devices) || !Array.isArray(bundle2.activities)) {
@@ -2914,6 +3066,13 @@ test("validateBackupBundle rejects wrong kinds and schemas", () => {
   assert.throws(() => validateBackupBundle({ kind: "device_backup", schema_version: 5 }), /not a Sofabaton hub bundle/i);
   assert.throws(() => validateBackupBundle({ kind: "hub_bundle", schema_version: 4, devices: [], activities: [] }), /schema_version must be 5/i);
 });
+test("validateBackupBundle rejects structural cache bundles, accepts explicit full", () => {
+  assert.throws(
+    () => validateBackupBundle({ ...bundle, payload_profile: "structural" }),
+    /structural cache bundle/i
+  );
+  assert.equal(validateBackupBundle({ ...bundle, payload_profile: "full_backup" }).kind, "hub_bundle");
+});
 test("normalizeHubVersion canonicalizes known hub model labels", () => {
   assert.equal(normalizeHubVersion("x1"), "X1");
   assert.equal(normalizeHubVersion("Sofabaton X1S"), "X1S");
@@ -3874,6 +4033,68 @@ test("renaming an HA-action shortcut re-renders the callback path", () => {
   assert.ok(String(restore.data_hex).length > 0);
   const ascii = String(restore.data_hex).split(" ").map((h3) => parseInt(h3, 16)).map((b3) => String.fromCharCode(b3)).join("");
   assert.ok(ascii.includes("/launch/ha/4/Movie%20mode/short"));
+});
+function rawPayloadBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    activities: [],
+    devices: [
+      {
+        device: { device_id: 9, name: "Soundbar", device_class: "bluetooth" },
+        commands: [
+          {
+            command_id: 1,
+            name: "Power",
+            restore_data: {
+              transport: "hub_code_record",
+              library_type: 14,
+              command_code: "00 00 00 00 12 34",
+              data_hex: "aa bb cc"
+            }
+          },
+          { command_id: 2, name: "Label only" },
+          {
+            command_id: 3,
+            name: "Decoded",
+            restore_data: {
+              transport: "hub_code_record",
+              library_type: 28,
+              data_hex: "0a 0b",
+              decoded: { class: "wifi_roku", fields: { path: "/keypress/Home" }, trailer_hex: "" }
+            }
+          }
+        ]
+      }
+    ]
+  };
+}
+test("normalizeCommandPayloadHex canonicalizes tolerant input and rejects bad hex", () => {
+  assert.equal(normalizeCommandPayloadHex("AABBCC"), "aa bb cc");
+  assert.equal(normalizeCommandPayloadHex("0xAA 0xBB\ncc,dd"), "aa bb cc dd");
+  assert.equal(normalizeCommandPayloadHex(""), null);
+  assert.equal(normalizeCommandPayloadHex("abc"), null);
+  assert.equal(normalizeCommandPayloadHex("zz"), null);
+});
+test("commandRawPayloadHex reads data_hex and is null without restore data", () => {
+  const bundle2 = rawPayloadBundle();
+  assert.equal(commandRawPayloadHex(bundle2, 9, 1), "aa bb cc");
+  assert.equal(commandRawPayloadHex(bundle2, 9, 2), null);
+  assert.equal(commandRawPayloadHex(bundle2, 9, 99), null);
+});
+test("updateCommandRawPayload replaces data_hex and drops a stale decoded block", () => {
+  const bundle2 = rawPayloadBundle();
+  const next = updateCommandRawPayload(bundle2, 9, 3, "de ad be ef");
+  const command = next.devices[0].commands.find((row) => row.command_id === 3);
+  const restore = command.restore_data;
+  assert.equal(restore.data_hex, "de ad be ef");
+  assert.equal("decoded" in restore, false);
+  assert.equal(commandDecodedBlock(next, 9, 3), null);
+  assert.equal(restore.library_type, 28);
+  assert.equal(commandRawPayloadHex(next, 9, 1), "aa bb cc");
+  const untouched = updateCommandRawPayload(bundle2, 9, 2, "de ad");
+  assert.equal(commandRawPayloadHex(untouched, 9, 2), null);
 });
 test("parseHaActionAddress accepts IPv4 with optional port", () => {
   assert.deepEqual(parseHaActionAddress("192.168.1.10:8060"), HA_TARGET);

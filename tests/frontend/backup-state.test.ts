@@ -46,6 +46,10 @@ import {
   deleteBundleActivityQuickAccess,
   deleteBundleDevice,
   deleteBundleDeviceCommand,
+  commandDecodedBlock,
+  commandRawPayloadHex,
+  normalizeCommandPayloadHex,
+  updateCommandRawPayload,
   deviceButtonBindingItems,
   deviceIdleBehavior,
   updateBundleDeviceIdleBehavior,
@@ -126,6 +130,16 @@ test("validateBackupBundle rejects wrong kinds and schemas", () => {
   assert.equal(validateBackupBundle(bundle).kind, "hub_bundle");
   assert.throws(() => validateBackupBundle({ kind: "device_backup", schema_version: 5 }), /not a Sofabaton hub bundle/i);
   assert.throws(() => validateBackupBundle({ kind: "hub_bundle", schema_version: 4, devices: [], activities: [] }), /schema_version must be 5/i);
+});
+
+test("validateBackupBundle rejects structural cache bundles, accepts explicit full", () => {
+  assert.throws(
+    () => validateBackupBundle({ ...bundle, payload_profile: "structural" }),
+    /structural cache bundle/i,
+  );
+  assert.equal(validateBackupBundle({ ...bundle, payload_profile: "full_backup" }).kind, "hub_bundle");
+  // Legacy files carry no payload_profile: the base fixture above already
+  // proves those keep validating.
 });
 
 test("normalizeHubVersion canonicalizes known hub model labels", () => {
@@ -1254,6 +1268,78 @@ test("renaming an HA-action shortcut re-renders the callback path", () => {
   const ascii = String(restore.data_hex).split(" ").map((h) => parseInt(h, 16))
     .map((b) => String.fromCharCode(b)).join("");
   assert.ok(ascii.includes("/launch/ha/4/Movie%20mode/short"));
+});
+
+// ── Raw payload editing ──────────────────────────────────────────────
+
+function rawPayloadBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    activities: [],
+    devices: [
+      {
+        device: { device_id: 9, name: "Soundbar", device_class: "bluetooth" },
+        commands: [
+          {
+            command_id: 1,
+            name: "Power",
+            restore_data: {
+              transport: "hub_code_record",
+              library_type: 0x0e,
+              command_code: "00 00 00 00 12 34",
+              data_hex: "aa bb cc",
+            },
+          },
+          { command_id: 2, name: "Label only" },
+          {
+            command_id: 3,
+            name: "Decoded",
+            restore_data: {
+              transport: "hub_code_record",
+              library_type: 0x1c,
+              data_hex: "0a 0b",
+              decoded: { class: "wifi_roku", fields: { path: "/keypress/Home" }, trailer_hex: "" },
+            },
+          },
+        ],
+      },
+    ],
+  } as any;
+}
+
+test("normalizeCommandPayloadHex canonicalizes tolerant input and rejects bad hex", () => {
+  assert.equal(normalizeCommandPayloadHex("AABBCC"), "aa bb cc");
+  assert.equal(normalizeCommandPayloadHex("0xAA 0xBB\ncc,dd"), "aa bb cc dd");
+  assert.equal(normalizeCommandPayloadHex(""), null);
+  assert.equal(normalizeCommandPayloadHex("abc"), null);
+  assert.equal(normalizeCommandPayloadHex("zz"), null);
+});
+
+test("commandRawPayloadHex reads data_hex and is null without restore data", () => {
+  const bundle = rawPayloadBundle();
+  assert.equal(commandRawPayloadHex(bundle, 9, 1), "aa bb cc");
+  assert.equal(commandRawPayloadHex(bundle, 9, 2), null);
+  assert.equal(commandRawPayloadHex(bundle, 9, 99), null);
+});
+
+test("updateCommandRawPayload replaces data_hex and drops a stale decoded block", () => {
+  const bundle = rawPayloadBundle();
+  const next = updateCommandRawPayload(bundle, 9, 3, "de ad be ef");
+  const command = next.devices[0].commands!.find((row: any) => row.command_id === 3)!;
+  const restore = command.restore_data as Record<string, any>;
+  assert.equal(restore.data_hex, "de ad be ef");
+  // The old decoded fields no longer describe the bytes; restore must
+  // replay the new hex verbatim, so the block is gone entirely.
+  assert.equal("decoded" in restore, false);
+  assert.equal(commandDecodedBlock(next, 9, 3), null);
+  // Untouched siblings and non-payload fields survive.
+  assert.equal(restore.library_type, 0x1c);
+  assert.equal(commandRawPayloadHex(next, 9, 1), "aa bb cc");
+  // Commands without restore_data are a no-op.
+  const untouched = updateCommandRawPayload(bundle, 9, 2, "de ad");
+  assert.equal(commandRawPayloadHex(untouched, 9, 2), null);
 });
 
 test("parseHaActionAddress accepts IPv4 with optional port", () => {

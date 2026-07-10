@@ -24,15 +24,18 @@ class _Conn:
 class _Hub:
     entry_id = "entry-1"
     name = "Living Room"
+    cache_generation = 7
+
+    def __init__(self, *, bundle=None):
+        self._bundle = bundle
+
+    async def async_get_structural_bundle(self):
+        return self._bundle
 
 
 class _Store:
-    def __init__(self, *, enabled=True, bundle=None):
+    def __init__(self, *, enabled=True):
         self.enabled = enabled
-        self._bundle = bundle
-
-    async def async_get_structural_bundle(self, entry_id):
-        return self._bundle
 
 
 def _run(coro):
@@ -98,7 +101,7 @@ def test_ws_refresh_all_cache_blocked_when_locked(monkeypatch):
 def test_ws_structural_bundle_present(monkeypatch):
     conn = _Conn()
     bundle = {"kind": "hub_bundle", "schema_version": 5, "devices": [], "activities": []}
-    _patch(monkeypatch, store=_Store(bundle={"bundle": bundle, "generation": 7}))
+    _patch(monkeypatch, hub=_Hub(bundle=bundle))
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
     _run(integration._ws_get_structural_bundle(hass, conn, {"id": 4, "entry_id": "entry-1"}))
     assert conn.error is None
@@ -108,8 +111,18 @@ def test_ws_structural_bundle_present(monkeypatch):
 
 def test_ws_structural_bundle_absent(monkeypatch):
     conn = _Conn()
-    _patch(monkeypatch, store=_Store(bundle=None))
+    _patch(monkeypatch, hub=_Hub(bundle=None))
     hass = SimpleNamespace(data={integration.DOMAIN: {}})
     _run(integration._ws_get_structural_bundle(hass, conn, {"id": 5, "entry_id": "entry-1"}))
+    assert conn.error is None
+    assert conn.result[1] == {"bundle": None, "generation": None}
+
+
+def test_ws_structural_bundle_gated_on_cache_enabled(monkeypatch):
+    conn = _Conn()
+    bundle = {"kind": "hub_bundle", "schema_version": 5, "devices": [], "activities": []}
+    _patch(monkeypatch, hub=_Hub(bundle=bundle), store=_Store(enabled=False))
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_get_structural_bundle(hass, conn, {"id": 6, "entry_id": "entry-1"}))
     assert conn.error is None
     assert conn.result[1] == {"bundle": None, "generation": None}

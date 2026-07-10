@@ -271,6 +271,86 @@ export function updateCommandDecodedFields(
   };
 }
 
+/**
+ * Read a command's raw wire payload (`restore_data.data_hex`) for the
+ * payload editor. Returns `null` when the command carries no captured
+ * payload — structural bundles, or classes whose export produces neither
+ * restore shape. The string keeps the bundle's own formatting
+ * (space-separated lowercase byte pairs).
+ */
+export function commandRawPayloadHex(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+  commandId: number,
+): string | null {
+  if (!bundle) return null;
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(deviceId),
+  );
+  if (!device) return null;
+  const command = (device.commands ?? []).find(
+    (entry) => Number(entry?.command_id || 0) === Number(commandId),
+  );
+  if (!command) return null;
+  const restoreData = (command as { restore_data?: unknown }).restore_data;
+  if (!restoreData || typeof restoreData !== "object") return null;
+  const dataHex = String((restoreData as Record<string, unknown>).data_hex ?? "").trim();
+  return dataHex || null;
+}
+
+/**
+ * Normalize user-entered payload hex to the bundle's canonical form
+ * (space-separated lowercase byte pairs, the shape `bytes.hex(" ")`
+ * produced on capture). Tolerates `0x` prefixes, commas, and arbitrary
+ * whitespace. Returns `null` when the input is not plausible hex
+ * (empty, odd digit count, or non-hex characters).
+ */
+export function normalizeCommandPayloadHex(raw: string): string | null {
+  const cleaned = String(raw ?? "").replace(/0x/gi, "").replace(/[\s,]+/g, "");
+  if (!cleaned || cleaned.length % 2 !== 0 || !/^[0-9a-fA-F]+$/.test(cleaned)) {
+    return null;
+  }
+  return (cleaned.toLowerCase().match(/.{2}/g) ?? []).join(" ");
+}
+
+/**
+ * Replace a command's raw payload (`restore_data.data_hex`) verbatim.
+ * Any `decoded` block is dropped in the same write: its structured
+ * fields no longer describe the new bytes, and leaving it (or its
+ * `edited` flag) in place would make the restore path re-encode stale
+ * fields instead of replaying the user's hex.
+ *
+ * No-op when the command has no `restore_data` to edit.
+ */
+export function updateCommandRawPayload(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+  dataHex: string,
+): BackupBundlePayload {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          const restoreData = (command as { restore_data?: unknown }).restore_data;
+          if (!restoreData || typeof restoreData !== "object") return command;
+          const { decoded: _stale, ...rest } = restoreData as Record<string, unknown>;
+          return {
+            ...command,
+            restore_data: { ...rest, data_hex: dataHex },
+          };
+        }),
+      };
+    }),
+  };
+}
+
 const HUB_VERSION_RANK: Record<string, number> = {
   X1: 1,
   X1S: 2,
@@ -490,6 +570,14 @@ export function validateBackupBundle(raw: unknown): BackupBundlePayload {
   if (Number(bundle.schema_version || 0) !== BACKUP_BUNDLE_SCHEMA_VERSION) {
     throw new Error(
       `Backup file schema_version must be ${BACKUP_BUNDLE_SCHEMA_VERSION} (got ${String(bundle.schema_version || "") || "unknown"}).`,
+    );
+  }
+  // A missing payload_profile means a legacy full backup; an explicitly
+  // structural bundle is the blob-free cache shape and can't be restored.
+  const profile = String(bundle.payload_profile || "full_backup");
+  if (profile !== "full_backup") {
+    throw new Error(
+      "This file is a structural cache bundle (no command payloads); it cannot be edited or restored. Export a full backup instead.",
     );
   }
   if (!Array.isArray(bundle.devices) || !Array.isArray(bundle.activities)) {

@@ -49,9 +49,25 @@ _NETWORK_CALLBACK_CLASSES = {
     DEVICE_CLASS_WIFI_SONOS,
 }
 
+# Payload profiles distinguish what a bundle-shaped payload *carries*, not
+# how complete the capture was. ``full_backup`` payloads include command
+# payload bodies (IR blobs / raw command dumps) and are restorable;
+# ``structural`` payloads deliberately omit them (labels, bindings, macros,
+# inputs only) and must never be accepted by restore. Payloads with no
+# ``payload_profile`` field predate the marker and are treated as
+# ``full_backup`` for compatibility with existing backup files.
+PAYLOAD_PROFILE_FULL = "full_backup"
+PAYLOAD_PROFILE_STRUCTURAL = "structural"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def now_iso() -> str:
+    """UTC ISO-8601 timestamp; the stamp format for ``fetched_at`` fields."""
+
+    return _now_iso()
 
 
 def is_network_callback_device_class(device_class: Any) -> bool:
@@ -455,12 +471,15 @@ def assemble_device_backup(
     key_sort_row: dict[str, Any] | None,
     input_record: dict[str, Any] | None,
     complete: bool,
+    payload_profile: str = PAYLOAD_PROFILE_FULL,
+    fetched_at: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "kind": "device_backup",
         "schema_version": DEVICE_BACKUP_SCHEMA_VERSION,
         "captured_at": _now_iso(),
         "complete": complete,
+        "payload_profile": payload_profile,
         "device": device_block,
         "commands": command_rows,
         "key_sort": dict(key_sort_row) if isinstance(key_sort_row, dict) else None,
@@ -468,6 +487,11 @@ def assemble_device_backup(
         "button_bindings": button_rows,
         "macros": macro_rows,
     }
+    if fetched_at:
+        # When the payload is assembled from cached state, ``captured_at``
+        # is assembly time; ``fetched_at`` is when the hub was last read.
+        payload["fetched_at"] = fetched_at
+    return payload
 
 
 def assemble_activity_backup(
@@ -478,8 +502,9 @@ def assemble_activity_backup(
     macro_rows: list[dict[str, Any]],
     referenced_source_device_ids: set[int],
     complete: bool,
+    fetched_at: str | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "kind": "activity_backup",
         "schema_version": ACTIVITY_BACKUP_SCHEMA_VERSION,
         "captured_at": _now_iso(),
@@ -492,6 +517,9 @@ def assemble_activity_backup(
         "macros": macro_rows,
         "referenced_source_device_ids": sorted(referenced_source_device_ids),
     }
+    if fetched_at:
+        payload["fetched_at"] = fetched_at
+    return payload
 
 
 def assemble_hub_bundle(
@@ -500,6 +528,7 @@ def assemble_hub_bundle(
     activity_payloads: list[dict[str, Any]],
     hub_info: dict[str, Any],
     total_steps: int | None = None,
+    payload_profile: str = PAYLOAD_PROFILE_FULL,
 ) -> dict[str, Any]:
     complete = all(bool(p.get("complete")) for p in device_payloads) and all(
         bool(p.get("complete")) for p in activity_payloads
@@ -509,6 +538,7 @@ def assemble_hub_bundle(
         "schema_version": HUB_BUNDLE_SCHEMA_VERSION,
         "captured_at": _now_iso(),
         "complete": complete,
+        "payload_profile": payload_profile,
         "hub": dict(hub_info),
         "devices": device_payloads,
         "activities": activity_payloads,
