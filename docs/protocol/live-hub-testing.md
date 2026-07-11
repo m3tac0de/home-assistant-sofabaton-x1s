@@ -183,6 +183,15 @@ Note the add/remove asymmetry: **add** uses `0x024F`
 Membership is derived from references, matching the offline
 `reconcileActivityPowerMacros` model. (Item V4.)
 
+2026-07-11 addendum: the hub does the reference cleanup itself.
+Rewriting **one** power macro so it no longer references a device is
+enough — the firmware cascade-removes the device from the activity,
+stripping its rows from the *other* power macro and deleting its
+keymap bindings, and acks that save with an off-key `0x0112` (see
+"Validated: activity-edit engine emissions" below). The app's rewrite
+of both macros + explicit `0x0210` deletes is thus belt-and-braces on
+top of firmware behavior.
+
 ### Activity rename = 0x7B38 full-record write
 
 `OP_ACTIVITY_CONFIRM` (`0x7B38`) writes the whole fixed-size activity
@@ -203,6 +212,128 @@ trace to derive an in-place `0x0E` update opcode. Live editing hides the
 command/favorite-rename affordance; offline backup editing keeps it
 (restore rewrites the whole family-0x0E command record). (Item V6 —
 resolved as "not offered live".)
+
+## Validated: device-edit write flows (X1 + X1S, 2026-07-11)
+
+Bench-validated the live *device* sync engine (`sync_device`,
+`build_device_sync_plan`) end-to-end against both hub models by issuing
+each write through the production engine on a sacrificial device
+(X1 fw dev `0x09`, X1S dev `0x0A`) and re-reading the device
+(`backup_device`, blob-free) after every leg. Both devices were synced
+back to their pre-bench baselines and verified equal. Full frame logs
+were captured with `diag_dump=True`.
+
+Confirmed on **both** X1 and X1S:
+
+- **Binding upsert on an existing device** — the family-`0x3E` keymap row
+  write addressed with the device id as the entity id, including the
+  long-press pair and in-place overwrite of an existing row. Stored rows
+  read back as `{device_id: <self>, command_id, long_press_device_id:
+  <self>, long_press_command_id}` — identical in shape to app-created
+  reference rows.
+- **Key-row delete at device scope** — `0x0210 [dev][key]` + `0x0165`
+  commit, previously proven only for activities. The hub's KeyToKey
+  table treats device and activity ids uniformly (split purely by the
+  id range, `>= 0x65` = activity).
+- **Device macro writes (power sequences 198/199)** — the single-page
+  family-`0x12` write (`build_macro_step`, the device-create/restore
+  builder; *not* the paged activity macro save). Step rows carry the
+  device's own id as the device byte and the synthetic `0x4E20 + cmd`
+  code as the 48-bit fid — app-written X1S baseline steps carry exactly
+  that synthetic code, confirming the convention. Delay rows are the
+  all-`0xFF` sentinel with the pause length in the final byte; they
+  round-trip through write → hub → re-read. Grow, truncating shrink,
+  and zero-step writes all land exactly; the label slot (30 B ASCII on
+  X1, 60 B UTF-16BE on X1S) is preserved across rewrites.
+- **Idle / automatic-power byte** — `0x0241` per-device write, both
+  directions.
+- **Multi-category plans** — one sync carrying macro + binding + idle
+  writes executes serially ack-gated in plan order, and the differ
+  emits only steps that actually changed.
+
+Notes:
+
+- Devices with no input record / key-sort configured capture as
+  `complete=False`, which makes the stale pre-flight log a "skipped"
+  warning instead of comparing. Harmless for the write paths, but such
+  devices get a weaker pre-flight.
+- The scope guard's immutable signature must exclude capture metadata
+  (`captured_at`, `fetched_at`, `complete`, `payload_profile`,
+  `key_sort`) — two captures of identical hub state differ in those.
+
+## Validated: activity-edit engine emissions (X1 + X1S, 2026-07-11)
+
+Bench-validated the live *activity* sync engine (`sync_activity`,
+`build_activity_sync_plan`) end-to-end against both hub models — the
+engine's **own emissions**, closing the §10 gate left open when the
+opcodes/shapes were proven from app traces (2026-07-07). Every write
+went through the production engine against a sacrificial activity
+("Bench Test", `0x68` on both hubs, itself created live through
+`restore_activity` — which validated the family-0x37 activity-create
+path as a bonus) and was verified by re-reading the activity
+(`backup_activity`) after each leg. Both hubs were synced back to their
+captured baselines and verified equal (X1 byte-equal; X1S equal except
+hub-stamped label-slot trailer metadata, below). Harness:
+`scripts/hub-bench/bench_{10,11,20,30,40,50}_*.py`; frame logs captured
+with `diag_dump=True`.
+
+Confirmed on **both** X1 and X1S:
+
+- **Favorites** — add (`command_to_favorite`; the hub assigns the next
+  free fav_id from 1, and the engine's post-add re-read resolution maps
+  content → live fav_id correctly), delete, and reorder
+  (`favorite_order` content pairs resolved to current fav_ids; hub 0x63
+  order table confirms the new order).
+- **Paged activity macro save** (`build_macro_save_payload` →
+  `_send_paged_macro_save`) — POWER_ON grow/shrink with a delay row
+  (all-0xFF sentinel + pause byte) round-trips exactly; 48-bit step
+  fids round-trip intact; `raw_label_slot` passthrough for 198/199 is
+  byte-preserved across every save (X1 30 B ASCII, X1S 60 B UTF-16BE).
+- **User-macro creation via direct fresh-key write** — writing the
+  editor's `button_id` as-is (e.g. key `0x01`) is accepted by both
+  hubs; the app's key-`0x00` assign-one path (hub assigns the key in
+  the 0x0112 ack) is NOT required. User-macro delete via
+  `0x0210 [act][key]` + `0x65` commit removes the row cleanly.
+- **Bindings at activity scope** — write, in-place overwrite (incl.
+  adding a long-press pair), and delete through the family-0x3E /
+  0x0210 primitives round-trip exactly.
+- **`member_replay`** (`add_device_to_activity`) — 0x024F member
+  confirms + power-macro replays land; combined multi-category plans
+  (member_replay → macro_write ×2 → binding_write → favorite_add →
+  remote_sync) execute serially ack-gated in plan order.
+
+Hub behaviors discovered (both firmwares unless noted):
+
+- **Cascading member removal**: a macro save that drops a device's
+  last power-macro reference makes the hub remove that device from the
+  activity entirely — it strips the device's rows from the *other*
+  power macro and deletes its keymap bindings, then acks `0x0112` with
+  a payload byte that is NOT the macro key (observed `0x01`, ~1.2 s
+  late). The final-page ack waiter must accept any `0x0112`;
+  rejections still arrive as `0x0103` with a non-zero status.
+- Keymap-derived favorites do not appear in the 0x63 favorites-order
+  table until a reorder writes them; an activity whose favorites are
+  all keymap-derived gets no 0x63 reply at all. Read favorites via the
+  keymap; use 0x63 only as ordering evidence.
+- **X1S only**: the duration byte on power-ref macro rows (0xC5/0xC6/
+  0xC7) is hub-owned — the firmware rewrites it from the target
+  device's power config (wrote 0, read back 1). Diffs must not treat
+  that byte as editor-controlled on power-ref rows.
+- **X1S only**: member operations stamp non-zero metadata into the
+  reserved trailer of the 198/199 label slots (observed `d4 d4`); the
+  raw_label_slot passthrough preserves it through subsequent saves, and
+  baseline comparisons must treat the trailer region as hub-owned.
+
+Engine bugs the bench caught (all fixed 2026-07-11):
+
+1. `_activity_sync_current_favorite_fav_ids` refreshed the mapping
+   fire-and-forget; the in-flight burst collided with the 0x0162 order
+   request sent next and the hub dropped it (no 0x63 reply → spurious
+   `favorite_order` failure). Now a synchronous keymap re-read.
+2. `_macro_key_sequence_from_steps` truncated 48-bit step fids to one
+   byte (`& 0xFF`).
+3. `_send_paged_macro_save` pinned the final-page 0x0112 ack payload to
+   the macro key, failing successful cascade-removal saves (above).
 
 ## Pending validation: HA-action blobs without inner-record trailer
 

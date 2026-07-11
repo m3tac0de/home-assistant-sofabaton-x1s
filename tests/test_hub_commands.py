@@ -338,14 +338,17 @@ def test_build_hub_code_record_restore_data_attaches_decoded_for_wifi_ip():
     )
 
     assert restore_data is not None
-    # data_hex preserved verbatim — restore path keeps working.
-    assert restore_data["data_hex"] == wifi_ip_full_hex
+    # data_hex is the stable blob body: the persisted write-context tail
+    # ("f1") is split into persist_tail_hex so restore seals a fresh one
+    # (live-bench finding: keeping it grew the record every round-trip).
+    assert restore_data["data_hex"] == wifi_ip_full_hex.rsplit(" ", 1)[0]
+    assert restore_data["persist_tail_hex"] == "f1"
     assert restore_data["transport"] == "hub_code_record"
     assert restore_data["library_type"] == 0x1C
 
     decoded = restore_data["decoded"]
     assert decoded["class"] == "wifi_ip"
-    assert decoded["trailer_hex"] == "f1"  # unstripped path keeps the byte
+    assert decoded["trailer_hex"] == ""  # tail no longer part of the body
     assert decoded["fields"]["host"] == "192.168.2.77"
     assert decoded["fields"]["port"] == 8060
     assert decoded["fields"]["path"] == "/launch/fc012c39d390/1/0/short"
@@ -391,7 +394,8 @@ def test_build_hub_code_record_restore_data_no_decoded_for_unsupported_class():
         command, device_class="bluetooth"
     )
     assert restore_data is not None
-    assert restore_data["data_hex"] == "0c 00 30 74"
+    assert restore_data["data_hex"] == "0c 00 30"
+    assert restore_data["persist_tail_hex"] == "74"
     assert "decoded" not in restore_data
 
 
@@ -1009,7 +1013,8 @@ def test_async_backup_device_emits_hub_code_record_for_network_callback_device(m
                 "transport": "hub_code_record",
                 "library_type": 0x1C,
                 "command_code": "00 00 00 00 4e 21",
-                "data_hex": "aa bb cc dd",
+                "data_hex": "aa bb cc",
+                "persist_tail_hex": "dd",
             },
         }
     ]
@@ -1116,7 +1121,8 @@ def test_async_backup_device_emits_hub_code_record_restore_data_for_bt_and_rf(
                 "transport": "hub_code_record",
                 "library_type": 0x03,
                 "command_code": "00 00 00 00 4e 25",
-                "data_hex": "aa bb cc dd",
+                "data_hex": "aa bb cc",
+                "persist_tail_hex": "dd",
             },
         }
     ]

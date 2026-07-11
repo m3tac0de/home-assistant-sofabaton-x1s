@@ -9,8 +9,11 @@ module is where the wire writes happen.
 Orchestration (ordering, ack-gating, failure-stop, progress, stale
 pre-flight) is unit-tested against a fake proxy that overrides the driver
 methods. The individual wire builders it calls are the same drivers restore
-and the vendor-app-derived activity ops already exercise in production;
-end-to-end wire correctness is gated by the doc's §10 live-hub checklist.
+and the vendor-app-derived activity ops already exercise in production.
+End-to-end wire correctness of the engine's own emissions is bench-validated
+on live X1 + X1S hubs for both scopes — see live-hub-testing.md
+"Validated: device-edit write flows" and "Validated: activity-edit engine
+emissions".
 """
 
 from __future__ import annotations
@@ -18,7 +21,13 @@ from __future__ import annotations
 import json
 from typing import Any, Callable, Mapping
 
-from .activity_sync import SyncStep, build_activity_sync_plan
+from .activity_sync import ACTIVITY_ID_BASE, SyncStep, build_activity_sync_plan, build_device_sync_plan
+from .device_create import (
+    build_macro_step,
+    build_macro_step_record,
+    run_create_sequence,
+    synthesize_command_code,
+)
 from .macros import MacroKeyEntry, build_macro_save_payload
 from .protocol_const import FAMILY_FAV_DELETE
 
@@ -85,6 +94,27 @@ def _rows_signature(
         if isinstance(row, Mapping):
             normalized.append(row_fn(row))
     return sorted(normalized, key=key_fn)
+
+
+def _device_block_signature(device: Mapping[str, Any] | None) -> str:
+    """Stable signature of the mutable parts of a device block (the
+    device-scope counterpart of :func:`_activity_block_signature`)."""
+    if not device:
+        return ""
+    return _canonical(
+        {
+            "macros": _rows_signature(
+                device.get("macros"),
+                _macro_signature,
+                lambda item: _int(item.get("button_id")),
+            ),
+            "button_bindings": _rows_signature(
+                device.get("button_bindings"),
+                _binding_signature,
+                lambda item: _int(item.get("button_id")),
+            ),
+        }
+    )
 
 
 def _activity_block_signature(activity: Mapping[str, Any] | None) -> str:
@@ -175,7 +205,94 @@ class ActivitySyncMixin:
         self.request_activity_mapping(activity_id)
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
 
+    def sync_device(
+        self,
+        *,
+        baseline: Mapping[str, Any],
+        edited: Mapping[str, Any],
+        device_id: int,
+        progress_callback: Callable[..., None] | None = None,
+    ) -> dict[str, Any]:
+        """Device-scoped counterpart of :meth:`sync_activity`.
+
+        Same orchestration (plan → stale pre-flight → serial ack-gated
+        writes); the step handlers are shared, addressing the keymap
+        primitives with the device id as the entity id.
+        """
+        device_id = int(device_id) & 0xFF
+
+        def _progress(**payload: Any) -> None:
+            if callable(progress_callback):
+                progress_callback(**payload)
+
+        if not self.can_issue_commands():
+            return {"status": "failed", "failed_at": "unavailable",
+                    "message": "The hub is not reachable (the Sofabaton app may be connected)."}
+
+        try:
+            plan = build_device_sync_plan(baseline, edited, device_id)
+        except ValueError as err:
+            return {"status": "failed", "failed_at": "plan", "message": str(err)}
+
+        if not plan:
+            return {"status": "success", "completed_steps": 0, "total_steps": 0, "counters": {}}
+
+        _progress(phase="stale_check", message="Checking the device hasn't changed…",
+                  completed_steps=0, total_steps=len(plan), current_device_id=device_id)
+        if self._device_sync_is_stale(baseline, device_id):
+            return {"status": "failed", "failed_at": "stale_check",
+                    "message": "This device changed on the hub after you loaded it."}
+
+        total = len(plan)
+        counters: dict[str, int] = {}
+        for index, step in enumerate(plan):
+            _progress(phase="writing", message=step.label, completed_steps=index,
+                      total_steps=total, current_device_id=device_id)
+            ok = self._dispatch_activity_sync_step(step)
+            if not ok:
+                target = "" if step.target_device_id is None else f" (device {step.target_device_id})"
+                return {"status": "failed", "failed_at": f"{step.kind}{target}",
+                        "message": f"The hub rejected: {step.label}", "completed_steps": index}
+            counters[step.kind] = counters.get(step.kind, 0) + 1
+
+        _progress(phase="completed", message="Synced to hub.", completed_steps=total,
+                  total_steps=total, current_device_id=device_id)
+        # Re-ingest the device's structural detail so proxy state (and the
+        # bundles assembled from it) reflect what was just written.
+        try:
+            self.backup_device(device_id, include_blobs=False)
+        except Exception:  # pragma: no cover - refresh is best-effort
+            self._log.exception("[DEVICE_SYNC] post-sync device re-read failed")
+        return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
+
     # ── Stale pre-flight ────────────────────────────────────────────────
+
+    def _device_sync_is_stale(self, baseline: Mapping[str, Any], device_id: int) -> bool:
+        fresh = self.backup_device(device_id, include_blobs=False)
+        if not isinstance(fresh, Mapping):
+            self._log.warning("[DEVICE_SYNC] stale preflight skipped: device 0x%02X could not be re-read",
+                              device_id & 0xFF)
+            return False
+        if fresh.get("complete") is False:
+            self._log.warning("[DEVICE_SYNC] stale preflight skipped: device 0x%02X re-read was incomplete",
+                              device_id & 0xFF)
+            return False
+        baseline_device = None
+        for device in baseline.get("devices") or []:
+            if int((device.get("device") or {}).get("device_id") or 0) == device_id:
+                baseline_device = device
+                break
+        fresh_signature = _device_block_signature(fresh)
+        baseline_signature = _device_block_signature(baseline_device)
+        stale = fresh_signature != baseline_signature
+        if stale:
+            self._log.warning(
+                "[DEVICE_SYNC] stale preflight mismatch device=0x%02X baseline=%s fresh=%s",
+                device_id & 0xFF,
+                baseline_signature,
+                fresh_signature,
+            )
+        return stale
 
     def _activity_sync_is_stale(self, baseline: Mapping[str, Any], activity_id: int) -> bool:
         fresh = self.backup_activity(activity_id)
@@ -270,12 +387,23 @@ class ActivitySyncMixin:
 
     def _activity_sync_current_favorite_fav_ids(self, activity_id: int) -> dict[tuple[int, int], int]:
         """Map favorite content ``(device_id, command_id)`` → the hub's current
-        fav_id. Refreshes the activity mapping first so favorites added earlier
-        in this sync are visible with their hub-assigned ids."""
-        self.request_activity_mapping(activity_id)
+        fav_id. Re-reads the activity keymap synchronously so favorites added
+        earlier in this sync are visible with their hub-assigned ids. The
+        refresh must complete before returning: an in-flight mapping burst
+        collides with the 0x0162 order request ``reorder_favorites`` sends
+        next and the hub drops the overlapped request (observed live on X1,
+        2026-07-11)."""
+        act_lo = activity_id & 0xFF
+        self.clear_entity_cache(act_lo, clear_buttons=True, clear_favorites=True)
+        self._fetch_and_wait(
+            f"buttons:{act_lo}",
+            lambda: self.get_buttons_for_entity(act_lo, fetch_if_missing=True),
+            lambda: act_lo in self.state.buttons,
+            timeout=10.0,
+        )
         mapping: dict[tuple[int, int], int] = {}
         state = getattr(self, "state", None)
-        slots = state.get_activity_favorite_slots(activity_id & 0xFF) if state is not None else []
+        slots = state.get_activity_favorite_slots(act_lo) if state is not None else []
         for slot in slots or []:
             content = (_int(slot.get("device_id")) & 0xFF, _int(slot.get("command_id")) & 0xFF)
             mapping.setdefault(content, _int(slot.get("button_id")) & 0xFF)
@@ -292,9 +420,10 @@ class ActivitySyncMixin:
     def _sync_step_remote_sync(self, payload: Mapping[str, Any]) -> bool:
         return bool(self.request_activity_mapping(int(payload["activity_id"])))
 
-    # Wire builders below are gated by the live-hub checklist (§10): the
-    # orchestration above is fully tested, but the exact bytes these emit
-    # need a bench pass before the affordance is trusted end-to-end.
+    # The builders below (delete, macro write) are bench-validated on live
+    # X1 + X1S hubs at BOTH scopes — see live-hub-testing.md "Validated:
+    # device-edit write flows" and "Validated: activity-edit engine
+    # emissions".
 
     def _sync_step_binding_delete(self, payload: Mapping[str, Any]) -> bool:
         return self._activity_sync_delete_key(
@@ -307,12 +436,14 @@ class ActivitySyncMixin:
         )
 
     def _sync_step_macro_write(self, payload: Mapping[str, Any]) -> bool:
-        activity_id = int(payload["activity_id"])
+        entity_id = int(payload["activity_id"])
         button_id = int(payload["button_id"])
+        if entity_id < ACTIVITY_ID_BASE:
+            return self._device_sync_macro_write(entity_id, button_id, payload)
         key_sequence = self._macro_key_sequence_from_steps(payload.get("steps") or [])
-        label_slot = self._activity_sync_macro_label_slot(activity_id, button_id)
+        label_slot = self._activity_sync_macro_label_slot(entity_id, button_id)
         wire = build_macro_save_payload(
-            activity_id=activity_id & 0xFF,
+            activity_id=entity_id & 0xFF,
             key_id=button_id & 0xFF,
             key_sequence=key_sequence,
             label=str(payload.get("name") or ""),
@@ -320,6 +451,50 @@ class ActivitySyncMixin:
             label_slot=label_slot,
         )
         return self._send_paged_macro_save(payload=wire, macro_button=button_id & 0xFF) is not None
+
+    def _device_sync_macro_write(self, device_id: int, button_id: int, payload: Mapping[str, Any]) -> bool:
+        """Device-scope macro write (incl. the 198/199 power sequences).
+
+        Devices use the single-page OP_3212 write that device create and
+        restore already exercise, not the paged activity macro save. Step
+        rows default the device byte to the device itself and the 48-bit
+        button code to the synthetic command code; a ``command_id == 0xFF``
+        row is the firmware's delay sentinel (all head bytes 0xFF).
+        """
+        dev_lo = device_id & 0xFF
+        step_records = bytearray()
+        for step in payload.get("steps") or []:
+            if not isinstance(step, Mapping):
+                continue
+            command_id = int(step.get("command_id") or 0) & 0xFF
+            if command_id == 0xFF:
+                step_records += build_macro_step_record(
+                    device_id=0xFF,
+                    command_id=0xFF,
+                    fid=0xFFFFFFFFFFFF,
+                    duration=0xFF,
+                    delay=int(step.get("delay", 0xFF)) & 0xFF,
+                )
+                continue
+            step_device = int(step.get("device_id") or 0) & 0xFF or dev_lo
+            fid = int(step.get("button_code") or 0) or synthesize_command_code(command_id)
+            step_records += build_macro_step_record(
+                device_id=step_device,
+                command_id=command_id,
+                fid=fid,
+                duration=int(step.get("duration", 0)) & 0xFF,
+                delay=int(step.get("delay", 0xFF)) & 0xFF,
+            )
+        step = build_macro_step(
+            hub_version=self.hub_version,
+            device_id=dev_lo,
+            key_id=button_id & 0xFF,
+            label=str(payload.get("name") or ""),
+            step_records=bytes(step_records),
+        )
+        self.reset_ack_queues()
+        result = run_create_sequence(self, [step])
+        return bool(result.success)
 
     def _activity_sync_macro_label_slot(self, activity_id: int, button_id: int) -> bytes | None:
         if (button_id & 0xFF) not in _POWER_MACRO_BUTTON_IDS:
@@ -392,7 +567,7 @@ class ActivitySyncMixin:
                 MacroKeyEntry(
                     device_id=int(step.get("device_id") or 0) & 0xFF,
                     key_id=command_id,
-                    fid=int(step.get("button_code") or 0) & 0xFF,
+                    fid=int(step.get("button_code") or 0) & 0xFFFFFFFFFFFF,
                     duration=int(step.get("duration") or 0) & 0xFF,
                     delay=int(step.get("delay") or 0) & 0xFF,
                 )

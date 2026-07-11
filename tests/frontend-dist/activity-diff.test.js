@@ -85,7 +85,8 @@ var TOOLS_CARD_STRINGS = {
     devices: "Devices",
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
-    editActivity: "Edit activity"
+    editActivity: "Edit activity",
+    editDevice: "Edit device"
   },
   logs: {
     loading: "Loading log stream...",
@@ -143,7 +144,7 @@ var TOOLS_CARD_STRINGS = {
     activityFallback: (id) => `Activity ${id}`,
     // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
-    appConnectedBody: "Close the Sofabaton app to edit activities.",
+    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
     // Capture flow (§4.2).
@@ -155,9 +156,9 @@ var TOOLS_CARD_STRINGS = {
     retry: "Retry",
     back: "Back",
     // Cache-sourced capture (blob-free structural bundle).
-    capturingFromCache: "Loading activity from the hub cache\u2026",
+    capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: "This activity isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.",
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
     // Session restore banner (§4.6).
     // Live-mode edit header (§4.3).
     notSyncedChip: "Not synced",
@@ -180,18 +181,18 @@ var TOOLS_CARD_STRINGS = {
     syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
     syncFailedTitle: "Sync didn't finish",
     syncFailedStep: (step) => `The hub stopped at: ${step}`,
-    syncStaleTitle: "This activity changed on the hub",
-    syncStaleBody: "The activity was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.",
+    syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
+    syncStaleBody: (kind) => `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.`,
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
     syncKeepEditing: "Keep editing",
     exitUnsyncedTitle: "Unsynced changes",
-    exitUnsyncedBody: "This activity has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.",
+    exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",
     exitWithoutSync: "Leave without syncing",
     // Discard confirmation.
     discardConfirmTitle: "Discard all changes?",
-    discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
+    discardConfirmBody: (kind) => `This throws away every edit you've made to this ${kind} and returns to the captured state.`,
     discardConfirmCancel: "Keep editing",
     discardConfirmConfirm: "Discard changes",
     // Review-list section titles + entry templates (activity-diff.ts).
@@ -229,6 +230,22 @@ var TOOLS_CARD_STRINGS = {
         3: "stays on",
         4: "not managed by the hub"
       }
+    },
+    // Review-list section titles + entry templates for the live *device*
+    // editor (activity-diff.ts, diffDeviceForReview).
+    deviceReview: {
+      sectionPower: "Power",
+      sectionButtons: "Buttons",
+      sectionMacros: "Macros",
+      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
+      powerOnChanged: "Power-on sequence updated.",
+      powerOffChanged: "Power-off sequence updated.",
+      macroAdded: (name) => `Added macro "${name}".`,
+      macroRemoved: (name) => `Removed macro "${name}".`,
+      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
+      macroChanged: (name) => `Edited macro "${name}".`,
+      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
+      bindingCleared: (button) => `"${button}" no longer bound.`
     }
   },
   backup: {
@@ -2187,6 +2204,33 @@ function commandNameOrFallback(bundle, deviceId, commandId) {
 function sortBindingsByButtonId(rows) {
   return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
 }
+function deviceButtonBindingItems(bundle, deviceId) {
+  if (!bundle) return [];
+  const normalizedDeviceId = Number(deviceId);
+  const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedDeviceId);
+  if (!device) return [];
+  const items = [];
+  for (const row of sortBindingsByButtonId(device.button_bindings)) {
+    const buttonId = Number(row?.button_id || 0);
+    const commandId = Number(row?.command_id || 0);
+    if (buttonId <= 0 || commandId <= 0) continue;
+    const item = {
+      buttonId,
+      buttonName: buttonName(buttonId),
+      commandId,
+      shortPressLabel: commandNameOrFallback(bundle, normalizedDeviceId, commandId)
+    };
+    const lpCommandId = Number(row?.long_press_command_id || 0);
+    if (lpCommandId > 0) {
+      item.longPress = {
+        commandId: lpCommandId,
+        label: commandNameOrFallback(bundle, normalizedDeviceId, lpCommandId)
+      };
+    }
+    items.push(item);
+  }
+  return items;
+}
 function upsertBindingRow(rows, row) {
   const buttonId = Number(row.button_id || 0);
   const next = (rows ?? []).filter((entry) => Number(entry?.button_id || 0) !== buttonId);
@@ -2402,6 +2446,7 @@ function refreshHaActionCallback(bundle, deviceId, commandId) {
 // custom_components/sofabaton_x1s/www/src/tabs/activity-diff.ts
 var R2 = TOOLS_CARD_STRINGS.activities.review;
 var POWER_ON_MACRO_BUTTON_ID2 = 198;
+var POWER_OFF_MACRO_BUTTON_ID2 = 199;
 var SECTION_ORDER = [
   "devices",
   "start",
@@ -2431,6 +2476,75 @@ function diffActivityForReview(baseline, edited, activityId) {
   diffEnd(buckets, baseById, editById);
   diffDeviceWide(buckets, baseline, edited, editMembers);
   return SECTION_ORDER.map((section) => ({ section, entries: buckets[section] })).filter((group) => group.entries.length > 0);
+}
+var DEVICE_SECTION_ORDER = ["power", "buttons", "macros"];
+function rawDeviceMacros(bundle, deviceId) {
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(deviceId)
+  );
+  const rows = /* @__PURE__ */ new Map();
+  for (const macro of device?.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId > 0) rows.set(buttonId, macro);
+  }
+  return rows;
+}
+function macroStepsSignature(macro) {
+  return JSON.stringify(macro?.steps ?? []);
+}
+function diffDeviceForReview(baseline, edited, deviceId) {
+  const D = TOOLS_CARD_STRINGS.activities.deviceReview;
+  const buckets = {
+    power: [],
+    buttons: [],
+    macros: []
+  };
+  if (!baseline || !edited) return [];
+  const idleBefore = deviceIdleBehavior(baseline, deviceId);
+  const idleAfter = deviceIdleBehavior(edited, deviceId);
+  if (idleBefore !== idleAfter) {
+    const label = R2.idleShort[Number(idleAfter ?? 0)] ?? String(idleAfter);
+    buckets.power.push({ text: D.powerControlChanged(label) });
+  }
+  const baseMacros = rawDeviceMacros(baseline, deviceId);
+  const editMacros = rawDeviceMacros(edited, deviceId);
+  for (const [buttonId, text] of [
+    [POWER_ON_MACRO_BUTTON_ID2, D.powerOnChanged],
+    [POWER_OFF_MACRO_BUTTON_ID2, D.powerOffChanged]
+  ]) {
+    if (macroStepsSignature(baseMacros.get(buttonId)) !== macroStepsSignature(editMacros.get(buttonId))) {
+      buckets.power.push({ text });
+    }
+  }
+  const isPower = (id) => id === POWER_ON_MACRO_BUTTON_ID2 || id === POWER_OFF_MACRO_BUTTON_ID2;
+  for (const [buttonId, macro] of editMacros) {
+    if (isPower(buttonId)) continue;
+    const before = baseMacros.get(buttonId);
+    const name = String(macro?.name || `Macro ${buttonId}`);
+    if (!before) {
+      buckets.macros.push({ text: D.macroAdded(name) });
+      continue;
+    }
+    const renamed = String(before?.name || "") !== String(macro?.name || "");
+    const stepsChanged = macroStepsSignature(before) !== macroStepsSignature(macro);
+    if (renamed) buckets.macros.push({ text: D.macroRenamed(String(before?.name || ""), name) });
+    if (stepsChanged) buckets.macros.push({ text: D.macroChanged(name) });
+  }
+  for (const [buttonId, macro] of baseMacros) {
+    if (isPower(buttonId) || editMacros.has(buttonId)) continue;
+    buckets.macros.push({ text: D.macroRemoved(String(macro?.name || `Macro ${buttonId}`)) });
+  }
+  const baseBindings = new Map(deviceButtonBindingItems(baseline, deviceId).map((item) => [item.buttonId, item]));
+  const editBindings = new Map(deviceButtonBindingItems(edited, deviceId).map((item) => [item.buttonId, item]));
+  for (const [buttonId, item] of editBindings) {
+    const before = baseBindings.get(buttonId);
+    const changed = !before || before.commandId !== item.commandId || (before.longPress?.commandId ?? null) !== (item.longPress?.commandId ?? null);
+    if (changed) buckets.buttons.push({ text: D.bindingBound(item.buttonName, item.shortPressLabel) });
+  }
+  for (const [buttonId, item] of baseBindings) {
+    if (!editBindings.has(buttonId)) buckets.buttons.push({ text: D.bindingCleared(item.buttonName) });
+  }
+  return DEVICE_SECTION_ORDER.map((section) => ({ section, entries: buckets[section] })).filter((group) => group.entries.length > 0);
 }
 function diffMembership(buckets, baseById, editById) {
   for (const [deviceId, member] of editById) {
@@ -2664,4 +2778,47 @@ test("diffActivityForReview reports a role reassignment under the Buttons sectio
   const edited = setActivityRoleDevice(base, ACTIVITY_ID, "volume", 2);
   const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
   assert.equal(sections(groups).includes("buttons"), true);
+});
+function deviceAllText(groups) {
+  return groups.flatMap((group) => group.entries.map((entry) => entry.text)).join(" | ");
+}
+test("diffDeviceForReview returns an empty list for an unchanged bundle", () => {
+  const base = baseBundle();
+  assert.deepEqual(diffDeviceForReview(base, structuredClone(base), 1), []);
+});
+test("diffDeviceForReview reports idle-behavior changes under Power", () => {
+  const base = baseBundle();
+  const edited = updateBundleDeviceIdleBehavior(base, 1, IDLE_BEHAVIOR_AUTO_OFF);
+  const groups = diffDeviceForReview(base, edited, 1);
+  assert.deepEqual(groups.map((group) => group.section), ["power"]);
+  assert.match(deviceAllText(groups), /Automatic power control/);
+});
+test("diffDeviceForReview reports binding changes under Buttons", () => {
+  const base = baseBundle();
+  const edited = structuredClone(base);
+  edited.devices[0].button_bindings = [{ button_id: 176, command_id: 11 }];
+  const groups = diffDeviceForReview(base, edited, 1);
+  assert.deepEqual(groups.map((group) => group.section), ["buttons"]);
+  assert.match(deviceAllText(groups), /"OK" now sends "Volume Up"/);
+});
+test("diffDeviceForReview reports cleared bindings under Buttons", () => {
+  const base = baseBundle();
+  const edited = structuredClone(base);
+  edited.devices[0].button_bindings = [];
+  const groups = diffDeviceForReview(base, edited, 1);
+  assert.match(deviceAllText(groups), /"OK" no longer bound/);
+});
+test("diffDeviceForReview reports power sequence and macro edits", () => {
+  const base = structuredClone(baseBundle());
+  base.devices[0].macros = [
+    { button_id: 198, name: "PWRON", steps: [] },
+    { button_id: 30, name: "Movie Mode", steps: [] }
+  ];
+  const edited = structuredClone(base);
+  edited.devices[0].macros[0].steps = [{ device_id: 1, command_id: 10, button_code: 0, duration: 0, delay: 255 }];
+  edited.devices[0].macros[1].name = "Cinema Mode";
+  const groups = diffDeviceForReview(base, edited, 1);
+  assert.deepEqual(groups.map((group) => group.section), ["power", "macros"]);
+  assert.match(deviceAllText(groups), /Power-on sequence updated/);
+  assert.match(deviceAllText(groups), /Renamed macro "Movie Mode" → "Cinema Mode"/);
 });

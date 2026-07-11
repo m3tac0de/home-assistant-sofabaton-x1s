@@ -81,7 +81,7 @@ export interface ControlPanelRemoteBatteryState {
 
 export interface ControlPanelRuntimeState {
   kind: "idle" | "app_connected" | "operation_running";
-  operation?: "wifi_deploy" | "backup_export" | "backup_restore" | "cache_refresh" | null;
+  operation?: "wifi_deploy" | "backup_export" | "backup_restore" | "cache_refresh" | "entity_sync" | null;
   label?: string | null;
   detail?: string | null;
   current_step?: number | null;
@@ -359,6 +359,7 @@ export interface BackupOperationStateResponse {
   backup_export?: BackupProgressEvent | null;
   backup_restore?: BackupProgressEvent | null;
   activity_sync?: BackupProgressEvent | null;
+  device_sync?: BackupProgressEvent | null;
   active_operation?: BackupProgressEvent | null;
 }
 

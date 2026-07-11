@@ -153,3 +153,57 @@ test("diffActivityForReview reports a role reassignment under the Buttons sectio
   const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
   assert.equal(sections(groups).includes("buttons"), true);
 });
+
+// ── Device review (live device editor) ────────────────────────────────
+
+import { diffDeviceForReview } from "../../custom_components/sofabaton_x1s/www/src/tabs/activity-diff";
+
+function deviceAllText(groups: ReturnType<typeof diffDeviceForReview>) {
+  return groups.flatMap((group) => group.entries.map((entry) => entry.text)).join(" | ");
+}
+
+test("diffDeviceForReview returns an empty list for an unchanged bundle", () => {
+  const base = baseBundle();
+  assert.deepEqual(diffDeviceForReview(base, structuredClone(base), 1), []);
+});
+
+test("diffDeviceForReview reports idle-behavior changes under Power", () => {
+  const base = baseBundle();
+  const edited = updateBundleDeviceIdleBehavior(base, 1, IDLE_BEHAVIOR_AUTO_OFF);
+  const groups = diffDeviceForReview(base, edited, 1);
+  assert.deepEqual(groups.map((group) => group.section), ["power"]);
+  assert.match(deviceAllText(groups), /Automatic power control/);
+});
+
+test("diffDeviceForReview reports binding changes under Buttons", () => {
+  const base = baseBundle();
+  const edited = structuredClone(base) as any;
+  // Rebind OK (0xB0) on Television to Volume Up, and drop the long press.
+  edited.devices[0].button_bindings = [{ button_id: 0xB0, command_id: 11 }];
+  const groups = diffDeviceForReview(base, edited, 1);
+  assert.deepEqual(groups.map((group) => group.section), ["buttons"]);
+  assert.match(deviceAllText(groups), /"OK" now sends "Volume Up"/);
+});
+
+test("diffDeviceForReview reports cleared bindings under Buttons", () => {
+  const base = baseBundle();
+  const edited = structuredClone(base) as any;
+  edited.devices[0].button_bindings = [];
+  const groups = diffDeviceForReview(base, edited, 1);
+  assert.match(deviceAllText(groups), /"OK" no longer bound/);
+});
+
+test("diffDeviceForReview reports power sequence and macro edits", () => {
+  const base = structuredClone(baseBundle()) as any;
+  base.devices[0].macros = [
+    { button_id: 198, name: "PWRON", steps: [] },
+    { button_id: 30, name: "Movie Mode", steps: [] },
+  ];
+  const edited = structuredClone(base) as any;
+  edited.devices[0].macros[0].steps = [{ device_id: 1, command_id: 10, button_code: 0, duration: 0, delay: 255 }];
+  edited.devices[0].macros[1].name = "Cinema Mode";
+  const groups = diffDeviceForReview(base, edited, 1);
+  assert.deepEqual(groups.map((group) => group.section), ["power", "macros"]);
+  assert.match(deviceAllText(groups), /Power-on sequence updated/);
+  assert.match(deviceAllText(groups), /Renamed macro "Movie Mode" → "Cinema Mode"/);
+});

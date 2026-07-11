@@ -230,6 +230,68 @@ def build_activity_sync_plan(
     return plan
 
 
+def build_device_sync_plan(
+    baseline: Mapping[str, Any],
+    edited: Mapping[str, Any],
+    device_id: int,
+) -> list[SyncStep]:
+    """Device-scoped counterpart of :func:`build_activity_sync_plan`.
+
+    The live *device* editor may change a device's key rows (macros —
+    including the power-on/off sequences — and button bindings), its
+    idle/power byte, and its input records. Everything else (name, command
+    records, network/head config, other devices, every activity) must be
+    byte-identical between the two bundles.
+
+    Key-row steps reuse the activity planners verbatim: the ``activity_id``
+    payload field is the *keymap entity id* the 0x3E / 0x0210 / macro-save
+    primitives address, which on this path is the device id (the hub's key
+    tables split device vs activity purely by the id range).
+    """
+
+    device_id = _int(device_id)
+    base_dev = _devices_by_id(baseline).get(device_id)
+    edit_dev = _devices_by_id(edited).get(device_id)
+    if base_dev is None or edit_dev is None:
+        raise ValueError("the edited device is missing from one of the bundles")
+
+    _assert_device_sync_in_scope(baseline, edited, device_id)
+
+    prereq: list[SyncStep] = []
+    macros: list[SyncStep] = []
+    bindings: list[SyncStep] = []
+    idle: list[SyncStep] = []
+
+    base_inputs = _input_entries(base_dev)
+    edit_inputs = _input_entries(edit_dev)
+    if edit_inputs is not None and _canonical(edit_inputs) != _canonical(base_inputs):
+        prereq.append(
+            SyncStep(
+                kind="inputs_write",
+                label=f"Updating inputs on device {device_id}…",
+                target_device_id=device_id,
+                payload={"device_id": device_id, "entries": list(edit_inputs)},
+            )
+        )
+
+    _plan_macros(base_dev, edit_dev, device_id, macros)
+    _plan_bindings(base_dev, edit_dev, device_id, bindings, default_device_id=device_id)
+
+    base_idle = _idle_mode(base_dev)
+    edit_idle = _idle_mode(edit_dev)
+    if edit_idle is not None and edit_idle != base_idle:
+        idle.append(
+            SyncStep(
+                kind="idle_behavior",
+                label="Updating automatic power control…",
+                target_device_id=device_id,
+                payload={"device_id": device_id, "mode": edit_idle},
+            )
+        )
+
+    return [*prereq, *macros, *bindings, *idle]
+
+
 # ── Scope guard ────────────────────────────────────────────────────────
 
 
@@ -256,6 +318,55 @@ def _assert_in_scope(baseline: Mapping[str, Any], edited: Mapping[str, Any], act
     for dev_id in set(base_devs) & set(edit_devs):
         if _device_core_signature(base_devs[dev_id]) != _device_core_signature(edit_devs[dev_id]):
             raise ValueError(f"edited bundle changed device 0x{dev_id:02X} outside allowed fields (out-of-scope changes)")
+
+
+# Bundle keys on a device the live device editor is allowed to mutate; the
+# rest of the device payload must stay byte-identical (plus the idle/power
+# byte inside the "device" block, popped below). Capture metadata is not
+# config — two captures of the same hub state must produce equal signatures.
+_DEVICE_SYNC_MUTABLE_KEYS = frozenset({"macros", "button_bindings", "input_record"})
+_DEVICE_SYNC_VOLATILE_KEYS = frozenset({"captured_at", "fetched_at", "complete", "payload_profile", "key_sort"})
+
+
+def _device_immutable_signature(device: Mapping[str, Any]) -> str:
+    trimmed = {
+        key: value
+        for key, value in device.items()
+        if key not in _DEVICE_SYNC_MUTABLE_KEYS and key not in _DEVICE_SYNC_VOLATILE_KEYS
+    }
+    block = dict(trimmed.get("device") or {})
+    block.pop("idle_behavior", None)
+    block.pop("power_mode", None)
+    trimmed["device"] = block
+    return _canonical(trimmed)
+
+
+def _assert_device_sync_in_scope(
+    baseline: Mapping[str, Any],
+    edited: Mapping[str, Any],
+    device_id: int,
+) -> None:
+    base_acts = _activities_by_id(baseline)
+    edit_acts = _activities_by_id(edited)
+    if set(base_acts) != set(edit_acts):
+        raise ValueError("edited bundle adds or removes an activity (out-of-scope changes)")
+    for act_id, edited_act in edit_acts.items():
+        if _canonical(edited_act) != _canonical(base_acts.get(act_id)):
+            raise ValueError(f"edited bundle changed activity 0x{act_id:02X} (out-of-scope changes)")
+
+    base_devs = _devices_by_id(baseline)
+    edit_devs = _devices_by_id(edited)
+    if set(base_devs) != set(edit_devs):
+        raise ValueError("edited bundle adds or removes a device (out-of-scope changes)")
+    for dev_id, edited_dev in edit_devs.items():
+        if dev_id == device_id:
+            continue
+        if _canonical(edited_dev) != _canonical(base_devs.get(dev_id)):
+            raise ValueError(f"edited bundle changed a different device 0x{dev_id:02X} (out-of-scope changes)")
+    if _device_immutable_signature(base_devs[device_id]) != _device_immutable_signature(edit_devs[device_id]):
+        raise ValueError(
+            f"edited bundle changed device 0x{device_id:02X} outside the live-editable fields (out-of-scope changes)"
+        )
 
 
 # ── Category planners ──────────────────────────────────────────────────
@@ -388,7 +499,11 @@ def _plan_bindings(
     edit_activity: Mapping[str, Any],
     activity_id: int,
     out: list[SyncStep],
+    *,
+    default_device_id: int | None = None,
 ) -> None:
+    # Device-scope binding rows carry no device_id — the source device is
+    # implicitly the device itself; ``default_device_id`` supplies it.
     base_bindings = _rows_by_button(base_activity.get("button_bindings"))
     edit_bindings = _rows_by_button(edit_activity.get("button_bindings"))
     for button_id in sorted(edit_bindings):
@@ -396,18 +511,23 @@ def _plan_bindings(
         base_binding = base_bindings.get(button_id)
         if base_binding is not None and _canonical(base_binding) == _canonical(binding):
             continue
+        device_id = _int(binding.get("device_id")) or _int(default_device_id or 0)
+        long_press_command_id = _int(binding.get("long_press_command_id"))
+        long_press_device_id = _int(binding.get("long_press_device_id"))
+        if long_press_command_id and not long_press_device_id:
+            long_press_device_id = _int(default_device_id or 0)
         out.append(
             SyncStep(
                 kind="binding_write",
                 label="Writing button assignments…",
-                target_device_id=_int(binding.get("device_id")) or None,
+                target_device_id=device_id or None,
                 payload={
                     "activity_id": activity_id,
                     "button_id": button_id,
-                    "device_id": _int(binding.get("device_id")),
+                    "device_id": device_id,
                     "command_id": _int(binding.get("command_id")),
-                    "long_press_device_id": _int(binding.get("long_press_device_id")),
-                    "long_press_command_id": _int(binding.get("long_press_command_id")),
+                    "long_press_device_id": long_press_device_id,
+                    "long_press_command_id": long_press_command_id,
                 },
             )
         )

@@ -1,14 +1,15 @@
 /**
- * The live activity editor session (Phase L2 of
- * docs/internal/live-activity-editor-plan.md).
+ * The live entity editor session (Phase L2 of
+ * docs/internal/live-activity-editor-plan.md, extended to devices).
  *
- * Opened from the Hub tab's Activities list (wrench button) with the
- * `activityId` property set: it captures that activity's bundle from the
+ * Opened from the Hub tab's Activities or Devices list (wrench button) with
+ * `kind` + `entityId` set: it captures that entity's bundle from the
  * structural cache, then hosts the extracted <sofabaton-edit-detail-view>
  * in mode="live". `bundle-change` updates an in-memory `working` clone;
  * changes stay alive while this edit view is active and are written to the
- * hub only through the sync flow. Leaving the editor dispatches
- * `editor-exit` so the host card returns to the Hub tab.
+ * hub only through the sync flow (`activity/sync` or `device/sync`).
+ * Leaving the editor dispatches `editor-exit` so the host card returns to
+ * the Hub tab.
  */
 import { LitElement, css, html, nothing } from "lit";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
@@ -21,7 +22,12 @@ import type {
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { formatError } from "../shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../strings";
-import { diffActivityForReview, type ActivityReviewGroup } from "./activity-diff";
+import {
+  diffActivityForReview,
+  diffDeviceForReview,
+  type ActivityReviewGroup,
+  type DeviceReviewGroup,
+} from "./activity-diff";
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
 
@@ -36,14 +42,15 @@ class SofabatonActivitiesTab extends LitElement {
     hass: { attribute: false },
     hub: { attribute: false },
     refreshControlPanelState: { attribute: false },
-    activityId: { type: Number },
+    kind: { type: String },
+    entityId: { type: Number },
     loading: { type: Boolean },
     error: { type: String },
     blockedTitle: { type: String },
     blockedMessage: { type: String },
     selectedHubProxyConnected: { type: Boolean },
     _stage: { state: true },
-    _activityId: { state: true },
+    _entityId: { state: true },
     _baseline: { state: true },
     _working: { state: true },
     _captureProgress: { state: true },
@@ -183,8 +190,9 @@ class SofabatonActivitiesTab extends LitElement {
   hass: HassLike | null = null;
   hub: ControlPanelHubState | null = null;
   refreshControlPanelState?: (() => Promise<unknown> | void) | null;
-  /** The activity to edit; the host sets this before mounting. */
-  activityId: number | null = null;
+  /** What is being edited; the host sets both before mounting. */
+  kind: "activity" | "device" = "activity";
+  entityId: number | null = null;
   loading = false;
   error: string | null = null;
   blockedTitle: string | null = null;
@@ -192,7 +200,7 @@ class SofabatonActivitiesTab extends LitElement {
   selectedHubProxyConnected = false;
 
   private _stage: ActivitiesStage = "list";
-  private _activityId: number | null = null;
+  private _entityId: number | null = null;
   private _baseline: BackupBundlePayload | null = null;
   private _working: BackupBundlePayload | null = null;
   private _captureProgress: BackupProgressEvent | null = null;
@@ -213,7 +221,7 @@ class SofabatonActivitiesTab extends LitElement {
   private _exitAfterSync = false;
   // Which requested activityId we already auto-opened, so returning to the
   // idle stage (close) doesn't immediately re-capture the same activity.
-  private _autoOpenedActivityId: number | null = null;
+  private _autoOpenedEntityId: number | null = null;
   // entry_id of the hub the current stage belongs to. The `hub` prop
   // is a fresh object on every control_panel/state refresh, so we key reset
   // decisions on the entry_id — not object identity — to avoid tearing down
@@ -246,15 +254,15 @@ class SofabatonActivitiesTab extends LitElement {
     this._maybeAutoOpen();
   }
 
-  // Direct-open: capture the requested activity as soon as the guards clear.
+  // Direct-open: capture the requested entity as soon as the guards clear.
   // Runs once per requested id — a close (back to the idle stage) must not
   // re-capture; the host tears the element down on `editor-exit`.
   private _maybeAutoOpen() {
-    const requested = this.activityId == null ? null : Number(this.activityId);
+    const requested = this.entityId == null ? null : Number(this.entityId);
     if (requested == null || !Number.isFinite(requested)) return;
-    if (this._stage !== "list" || this._autoOpenedActivityId === requested) return;
+    if (this._stage !== "list" || this._autoOpenedEntityId === requested) return;
     if (this._openBlocked()) return;
-    this._autoOpenedActivityId = requested;
+    this._autoOpenedEntityId = requested;
     void this._startCapture(requested);
   }
 
@@ -263,13 +271,13 @@ class SofabatonActivitiesTab extends LitElement {
       || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
   }
 
-  // Card reloaded mid-sync: pick up a running activity_sync op from the
+  // Card reloaded mid-sync: pick up a running sync op for this kind from the
   // shared backup/state registry and resubscribe to its progress.
   private async _hydrateRunningSync() {
     if (!this.hub || !this.hass) return;
     try {
       const state = await this.api().getBackupState(this.hub.entry_id);
-      const op = state?.activity_sync ?? null;
+      const op = (this.kind === "device" ? state?.device_sync : state?.activity_sync) ?? null;
       const running = !!op && ["pending", "running"].includes(String(op.status || ""));
       if (running && op?.operation_id) {
         this._syncOperationId = op.operation_id;
@@ -297,19 +305,20 @@ class SofabatonActivitiesTab extends LitElement {
   // happens once, authoritatively, at sync time (the backend stale
   // pre-flight).
 
-  private _startCapture = async (activityId: number) => {
+  private _startCapture = async (entityId: number) => {
     if (!this.hub || !this.hass) return;
-    this._activityId = activityId;
+    this._entityId = entityId;
     this._captureError = null;
     this._captureProgress = null;
     this._stage = "capturing";
     try {
       const res = await this.api().getStructuralBundle(this.hub.entry_id);
       const bundle = res?.bundle ?? null;
-      const hasActivity = !!bundle && (bundle.activities ?? []).some(
-        (candidate) => Number(candidate.device?.device_id) === activityId,
+      const entries = (this.kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
+      const hasEntity = !!bundle && entries.some(
+        (candidate) => Number(candidate.device?.device_id) === entityId,
       );
-      if (!bundle || !hasActivity) {
+      if (!bundle || !hasEntity) {
         this._stage = "needs_refresh";
         return;
       }
@@ -351,9 +360,12 @@ class SofabatonActivitiesTab extends LitElement {
 
   // ── Review / Sync / Discard (§4.4) ─────────────────────────────────
 
-  private _reviewGroups(): ActivityReviewGroup[] {
-    if (this._activityId == null) return [];
-    return diffActivityForReview(this._baseline, this._working, this._activityId);
+  private _reviewGroups(): Array<ActivityReviewGroup | DeviceReviewGroup> {
+    if (this._entityId == null) return [];
+    if (this.kind === "device") {
+      return diffDeviceForReview(this._baseline, this._working, this._entityId);
+    }
+    return diffActivityForReview(this._baseline, this._working, this._entityId);
   }
 
   private _openReview = () => {
@@ -368,7 +380,7 @@ class SofabatonActivitiesTab extends LitElement {
   // Start the real sync engine (§4.5): diff baseline vs working on the
   // backend and issue targeted in-place writes, streaming progress.
   private _requestSync = async () => {
-    if (!this._dirty || this._activityId == null || !this.hub || !this._baseline || !this._working) return;
+    if (!this._dirty || this._entityId == null || !this.hub || !this._baseline || !this._working) return;
     this._reviewOpen = false;
     this._exitConfirmOpen = false;
     this._syncError = null;
@@ -377,12 +389,9 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncSuccessNotice = false;
     this._stage = "syncing";
     try {
-      const start = await this.api().startActivitySync(
-        this.hub.entry_id,
-        this._activityId,
-        this._baseline,
-        this._working,
-      );
+      const start = this.kind === "device"
+        ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working)
+        : await this.api().startActivitySync(this.hub.entry_id, this._entityId, this._baseline, this._working);
       this._syncOperationId = start.operation_id;
       await this.refreshControlPanelState?.();
       await this._subscribeSync(start.operation_id);
@@ -477,14 +486,14 @@ class SofabatonActivitiesTab extends LitElement {
   };
 
   private _reloadFromHub = () => {
-    if (this._activityId == null) return;
-    void this._startCapture(this._activityId);
+    if (this._entityId == null) return;
+    void this._startCapture(this._entityId);
   };
 
   private _resetToList() {
-    const wasActive = this._stage !== "list" || this._activityId != null;
+    const wasActive = this._stage !== "list" || this._entityId != null;
     this._stage = "list";
-    this._activityId = null;
+    this._entityId = null;
     this._baseline = null;
     this._working = null;
     this._captureProgress = null;
@@ -530,7 +539,7 @@ class SofabatonActivitiesTab extends LitElement {
     if (this._stage === "sync_failed") {
       return this._renderSyncFailed();
     }
-    if (this._stage === "editing" && this._baseline && this._working && this._activityId != null) {
+    if (this._stage === "editing" && this._baseline && this._working && this._entityId != null) {
       return this._renderEditing();
     }
     if (this._stage === "capturing") {
@@ -565,7 +574,7 @@ class SofabatonActivitiesTab extends LitElement {
       <div class="tab-panel">
         <div class="guard-state">
           <div class="guard-icon"><ha-icon icon="mdi:database-arrow-down-outline"></ha-icon></div>
-          <div class="guard-sub">${S.capturingFromCache}</div>
+          <div class="guard-sub">${S.capturingFromCache(this.kind)}</div>
         </div>
       </div>
     `;
@@ -591,7 +600,7 @@ class SofabatonActivitiesTab extends LitElement {
       <div class="tab-panel">
         <div class="guard-state">
           <div class="guard-icon"><ha-icon icon="mdi:database-arrow-down-outline"></ha-icon></div>
-          <div class="guard-sub">${S.capturingFromCache}</div>
+          <div class="guard-sub">${S.capturingFromCache(this.kind)}</div>
         </div>
       </div>
     `;
@@ -604,12 +613,12 @@ class SofabatonActivitiesTab extends LitElement {
         <div class="capture-error">
           <div class="guard-icon"><ha-icon icon="mdi:database-refresh-outline"></ha-icon></div>
           <div class="capture-error-title">${S.needsRefreshTitle}</div>
-          <div class="guard-sub">${S.needsRefreshBody}</div>
+          <div class="guard-sub">${S.needsRefreshBody(this.kind)}</div>
           <div class="action-row">
             <sofabaton-refresh-cache-button
               .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
-              @refreshed=${() => { if (this._activityId != null) void this._startCapture(this._activityId); }}
+              @refreshed=${() => { if (this._entityId != null) void this._startCapture(this._entityId); }}
             ></sofabaton-refresh-cache-button>
             <button class="btn" @click=${() => this._resetToList()}>${S.back}</button>
           </div>
@@ -624,8 +633,8 @@ class SofabatonActivitiesTab extends LitElement {
         ${this._syncSuccessNotice ? this._renderSyncSuccessBanner() : nothing}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
-          kind="activity"
-          .entityId=${this._activityId}
+          .kind=${this.kind}
+          .entityId=${this._entityId}
           .dirty=${this._dirty}
           mode="live"
           @bundle-change=${this._handleBundleChange}
@@ -671,9 +680,9 @@ class SofabatonActivitiesTab extends LitElement {
       <div class="tab-panel">
         <div class="capture-error">
           <div class="guard-icon"><ha-icon icon=${isStale ? "mdi:sync-alert" : "mdi:alert-circle-outline"}></ha-icon></div>
-          <div class="capture-error-title">${isStale ? S.syncStaleTitle : S.syncFailedTitle}</div>
+          <div class="capture-error-title">${isStale ? S.syncStaleTitle(this.kind) : S.syncFailedTitle}</div>
           <div class="guard-sub">
-            ${isStale ? S.syncStaleBody : (this._syncError || S.syncFailedStep(String(this._syncFailedAt || "")))}
+            ${isStale ? S.syncStaleBody(this.kind) : (this._syncError || S.syncFailedStep(String(this._syncFailedAt || "")))}
           </div>
           <div class="action-row">
             ${isStale
@@ -683,7 +692,7 @@ class SofabatonActivitiesTab extends LitElement {
               .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
               .label=${S.syncReload}
-              @refreshed=${() => { if (this._activityId != null) void this._startCapture(this._activityId); }}
+              @refreshed=${() => { if (this._entityId != null) void this._startCapture(this._entityId); }}
             ></sofabaton-refresh-cache-button>
             <button class="btn" @click=${() => { this._stage = "editing"; this._syncError = null; this._syncFailedAt = null; }}>${S.syncKeepEditing}</button>
           </div>
@@ -733,15 +742,24 @@ class SofabatonActivitiesTab extends LitElement {
     `;
   }
 
-  private _reviewSectionTitle(section: ActivityReviewGroup["section"]): string {
+  private _reviewSectionTitle(section: ActivityReviewGroup["section"] | DeviceReviewGroup["section"]): string {
     const R = TOOLS_CARD_STRINGS.activities.review;
-    switch (section) {
+    const D = TOOLS_CARD_STRINGS.activities.deviceReview;
+    if (this.kind === "device") {
+      switch (section as DeviceReviewGroup["section"]) {
+        case "power": return D.sectionPower;
+        case "buttons": return D.sectionButtons;
+        case "macros": return D.sectionMacros;
+      }
+    }
+    switch (section as ActivityReviewGroup["section"]) {
       case "devices": return R.sectionDevices;
       case "start": return R.sectionStart;
       case "buttons": return R.sectionButtons;
       case "shortcuts": return R.sectionShortcuts;
       case "end": return R.sectionEnd;
       case "device_wide": return R.sectionDeviceWide;
+      default: return String(section);
     }
   }
 
@@ -754,7 +772,7 @@ class SofabatonActivitiesTab extends LitElement {
             <div class="dialog-title">${S.discardConfirmTitle}</div>
             <button class="dialog-close" @click=${this._closeDiscardConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
-          <div class="dialog-body"><div class="dialog-text">${S.discardConfirmBody}</div></div>
+          <div class="dialog-body"><div class="dialog-text">${S.discardConfirmBody(this.kind)}</div></div>
           <div class="dialog-footer">
             <span></span>
             <div class="dialog-footer-actions">
@@ -777,7 +795,7 @@ class SofabatonActivitiesTab extends LitElement {
             <div class="dialog-title">${S.exitUnsyncedTitle}</div>
             <button class="dialog-close" @click=${this._closeExitConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
-          <div class="dialog-body"><div class="dialog-text">${S.exitUnsyncedBody}</div></div>
+          <div class="dialog-body"><div class="dialog-text">${S.exitUnsyncedBody(this.kind)}</div></div>
           <div class="dialog-footer">
             <button class="btn btn-danger" @click=${this._leaveWithoutSync}>${S.exitWithoutSync}</button>
             <div class="dialog-footer-actions">

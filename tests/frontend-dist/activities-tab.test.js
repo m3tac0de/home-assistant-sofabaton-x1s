@@ -1271,7 +1271,8 @@ var TOOLS_CARD_STRINGS = {
     devices: "Devices",
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
-    editActivity: "Edit activity"
+    editActivity: "Edit activity",
+    editDevice: "Edit device"
   },
   logs: {
     loading: "Loading log stream...",
@@ -1329,7 +1330,7 @@ var TOOLS_CARD_STRINGS = {
     activityFallback: (id) => `Activity ${id}`,
     // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
-    appConnectedBody: "Close the Sofabaton app to edit activities.",
+    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
     // Capture flow (§4.2).
@@ -1341,9 +1342,9 @@ var TOOLS_CARD_STRINGS = {
     retry: "Retry",
     back: "Back",
     // Cache-sourced capture (blob-free structural bundle).
-    capturingFromCache: "Loading activity from the hub cache\u2026",
+    capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: "This activity isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.",
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
     // Session restore banner (§4.6).
     // Live-mode edit header (§4.3).
     notSyncedChip: "Not synced",
@@ -1366,18 +1367,18 @@ var TOOLS_CARD_STRINGS = {
     syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
     syncFailedTitle: "Sync didn't finish",
     syncFailedStep: (step) => `The hub stopped at: ${step}`,
-    syncStaleTitle: "This activity changed on the hub",
-    syncStaleBody: "The activity was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.",
+    syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
+    syncStaleBody: (kind) => `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.`,
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
     syncKeepEditing: "Keep editing",
     exitUnsyncedTitle: "Unsynced changes",
-    exitUnsyncedBody: "This activity has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.",
+    exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",
     exitWithoutSync: "Leave without syncing",
     // Discard confirmation.
     discardConfirmTitle: "Discard all changes?",
-    discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
+    discardConfirmBody: (kind) => `This throws away every edit you've made to this ${kind} and returns to the captured state.`,
     discardConfirmCancel: "Keep editing",
     discardConfirmConfirm: "Discard changes",
     // Review-list section titles + entry templates (activity-diff.ts).
@@ -1415,6 +1416,22 @@ var TOOLS_CARD_STRINGS = {
         3: "stays on",
         4: "not managed by the hub"
       }
+    },
+    // Review-list section titles + entry templates for the live *device*
+    // editor (activity-diff.ts, diffDeviceForReview).
+    deviceReview: {
+      sectionPower: "Power",
+      sectionButtons: "Buttons",
+      sectionMacros: "Macros",
+      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
+      powerOnChanged: "Power-on sequence updated.",
+      powerOffChanged: "Power-off sequence updated.",
+      macroAdded: (name) => `Added macro "${name}".`,
+      macroRemoved: (name) => `Removed macro "${name}".`,
+      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
+      macroChanged: (name) => `Edited macro "${name}".`,
+      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
+      bindingCleared: (button) => `"${button}" no longer bound.`
     }
   },
   backup: {
@@ -1921,6 +1938,24 @@ var ControlPanelApi = class {
       type: "sofabaton_x1s/activity/sync_plan",
       entry_id: entryId,
       activity_id: activityId,
+      baseline,
+      edited
+    });
+  }
+  startDeviceSync(entryId, deviceId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/sync",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited
+    });
+  }
+  deviceSyncPlan(entryId, deviceId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/sync_plan",
+      entry_id: entryId,
+      device_id: deviceId,
       baseline,
       edited
     });
@@ -3906,6 +3941,7 @@ function bundleEditableDeviceOptions(bundle) {
 // custom_components/sofabaton_x1s/www/src/tabs/activity-diff.ts
 var R2 = TOOLS_CARD_STRINGS.activities.review;
 var POWER_ON_MACRO_BUTTON_ID2 = 198;
+var POWER_OFF_MACRO_BUTTON_ID2 = 199;
 var SECTION_ORDER = [
   "devices",
   "start",
@@ -3935,6 +3971,75 @@ function diffActivityForReview(baseline, edited, activityId) {
   diffEnd(buckets, baseById, editById);
   diffDeviceWide(buckets, baseline, edited, editMembers);
   return SECTION_ORDER.map((section) => ({ section, entries: buckets[section] })).filter((group) => group.entries.length > 0);
+}
+var DEVICE_SECTION_ORDER = ["power", "buttons", "macros"];
+function rawDeviceMacros(bundle, deviceId) {
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(deviceId)
+  );
+  const rows = /* @__PURE__ */ new Map();
+  for (const macro of device?.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId > 0) rows.set(buttonId, macro);
+  }
+  return rows;
+}
+function macroStepsSignature(macro) {
+  return JSON.stringify(macro?.steps ?? []);
+}
+function diffDeviceForReview(baseline, edited, deviceId) {
+  const D = TOOLS_CARD_STRINGS.activities.deviceReview;
+  const buckets = {
+    power: [],
+    buttons: [],
+    macros: []
+  };
+  if (!baseline || !edited) return [];
+  const idleBefore = deviceIdleBehavior(baseline, deviceId);
+  const idleAfter = deviceIdleBehavior(edited, deviceId);
+  if (idleBefore !== idleAfter) {
+    const label = R2.idleShort[Number(idleAfter ?? 0)] ?? String(idleAfter);
+    buckets.power.push({ text: D.powerControlChanged(label) });
+  }
+  const baseMacros = rawDeviceMacros(baseline, deviceId);
+  const editMacros = rawDeviceMacros(edited, deviceId);
+  for (const [buttonId, text] of [
+    [POWER_ON_MACRO_BUTTON_ID2, D.powerOnChanged],
+    [POWER_OFF_MACRO_BUTTON_ID2, D.powerOffChanged]
+  ]) {
+    if (macroStepsSignature(baseMacros.get(buttonId)) !== macroStepsSignature(editMacros.get(buttonId))) {
+      buckets.power.push({ text });
+    }
+  }
+  const isPower = (id) => id === POWER_ON_MACRO_BUTTON_ID2 || id === POWER_OFF_MACRO_BUTTON_ID2;
+  for (const [buttonId, macro] of editMacros) {
+    if (isPower(buttonId)) continue;
+    const before = baseMacros.get(buttonId);
+    const name = String(macro?.name || `Macro ${buttonId}`);
+    if (!before) {
+      buckets.macros.push({ text: D.macroAdded(name) });
+      continue;
+    }
+    const renamed = String(before?.name || "") !== String(macro?.name || "");
+    const stepsChanged = macroStepsSignature(before) !== macroStepsSignature(macro);
+    if (renamed) buckets.macros.push({ text: D.macroRenamed(String(before?.name || ""), name) });
+    if (stepsChanged) buckets.macros.push({ text: D.macroChanged(name) });
+  }
+  for (const [buttonId, macro] of baseMacros) {
+    if (isPower(buttonId) || editMacros.has(buttonId)) continue;
+    buckets.macros.push({ text: D.macroRemoved(String(macro?.name || `Macro ${buttonId}`)) });
+  }
+  const baseBindings = new Map(deviceButtonBindingItems(baseline, deviceId).map((item) => [item.buttonId, item]));
+  const editBindings = new Map(deviceButtonBindingItems(edited, deviceId).map((item) => [item.buttonId, item]));
+  for (const [buttonId, item] of editBindings) {
+    const before = baseBindings.get(buttonId);
+    const changed = !before || before.commandId !== item.commandId || (before.longPress?.commandId ?? null) !== (item.longPress?.commandId ?? null);
+    if (changed) buckets.buttons.push({ text: D.bindingBound(item.buttonName, item.shortPressLabel) });
+  }
+  for (const [buttonId, item] of baseBindings) {
+    if (!editBindings.has(buttonId)) buckets.buttons.push({ text: D.bindingCleared(item.buttonName) });
+  }
+  return DEVICE_SECTION_ORDER.map((section) => ({ section, entries: buckets[section] })).filter((group) => group.entries.length > 0);
 }
 function diffMembership(buckets, baseById, editById) {
   for (const [deviceId, member] of editById) {
@@ -7080,13 +7185,15 @@ var SofabatonEditDetailView = class extends i3 {
                   <div class="quick-access-meta">IPv4 dotted-decimal address</div>
                 </div>
                 <div class="quick-access-actions">
-                  <button
-                    class="icon-btn"
-                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                    aria-label="Edit IP address"
-                  >
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
+                  ${this.mode === "live" ? A : T`
+                        <button
+                          class="icon-btn"
+                          @click=${() => this._openDeviceIpRenameDialog(deviceId)}
+                          aria-label="Edit IP address"
+                        >
+                          <ha-icon icon="mdi:pencil"></ha-icon>
+                        </button>
+                      `}
                 </div>
               </div>
             </div>
@@ -7102,7 +7209,7 @@ var SofabatonEditDetailView = class extends i3 {
         <div class="quick-access-head">
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
-            ${this.mode === "live" ? "Command names are read-only in live activity sync." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+            ${this.mode === "live" ? "Commands are read-only in live sync \u2014 rename, payload, and delete stay in Backup \u2192 Edit." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
           </div>
         </div>
         ${items.length ? T`
@@ -7148,13 +7255,15 @@ var SofabatonEditDetailView = class extends i3 {
                     <ha-icon icon="mdi:code-braces"></ha-icon>
                   </button>
                 ` : A}
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
+            ${this.mode === "live" ? A : T`
+                  <button
+                    class="icon-btn icon-btn--danger"
+                    @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
+                  >
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>
+                `}
           </div>
         </div>
       </div>
@@ -8838,15 +8947,16 @@ var SofabatonActivitiesTab = class extends i3 {
     super(...arguments);
     this.hass = null;
     this.hub = null;
-    /** The activity to edit; the host sets this before mounting. */
-    this.activityId = null;
+    /** What is being edited; the host sets both before mounting. */
+    this.kind = "activity";
+    this.entityId = null;
     this.loading = false;
     this.error = null;
     this.blockedTitle = null;
     this.blockedMessage = null;
     this.selectedHubProxyConnected = false;
     this._stage = "list";
-    this._activityId = null;
+    this._entityId = null;
     this._baseline = null;
     this._working = null;
     this._captureProgress = null;
@@ -8866,7 +8976,7 @@ var SofabatonActivitiesTab = class extends i3 {
     this._exitAfterSync = false;
     // Which requested activityId we already auto-opened, so returning to the
     // idle stage (close) doesn't immediately re-capture the same activity.
-    this._autoOpenedActivityId = null;
+    this._autoOpenedEntityId = null;
     // entry_id of the hub the current stage belongs to. The `hub` prop
     // is a fresh object on every control_panel/state refresh, so we key reset
     // decisions on the entry_id — not object identity — to avoid tearing down
@@ -8881,19 +8991,20 @@ var SofabatonActivitiesTab = class extends i3 {
     // second-guesses whether the hub has since changed. That reconciliation
     // happens once, authoritatively, at sync time (the backend stale
     // pre-flight).
-    this._startCapture = async (activityId) => {
+    this._startCapture = async (entityId) => {
       if (!this.hub || !this.hass) return;
-      this._activityId = activityId;
+      this._entityId = entityId;
       this._captureError = null;
       this._captureProgress = null;
       this._stage = "capturing";
       try {
         const res = await this.api().getStructuralBundle(this.hub.entry_id);
         const bundle = res?.bundle ?? null;
-        const hasActivity = !!bundle && (bundle.activities ?? []).some(
-          (candidate) => Number(candidate.device?.device_id) === activityId
+        const entries = (this.kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
+        const hasEntity = !!bundle && entries.some(
+          (candidate) => Number(candidate.device?.device_id) === entityId
         );
-        if (!bundle || !hasActivity) {
+        if (!bundle || !hasEntity) {
           this._stage = "needs_refresh";
           return;
         }
@@ -8920,7 +9031,7 @@ var SofabatonActivitiesTab = class extends i3 {
     // Start the real sync engine (§4.5): diff baseline vs working on the
     // backend and issue targeted in-place writes, streaming progress.
     this._requestSync = async () => {
-      if (!this._dirty || this._activityId == null || !this.hub || !this._baseline || !this._working) return;
+      if (!this._dirty || this._entityId == null || !this.hub || !this._baseline || !this._working) return;
       this._reviewOpen = false;
       this._exitConfirmOpen = false;
       this._syncError = null;
@@ -8929,12 +9040,7 @@ var SofabatonActivitiesTab = class extends i3 {
       this._syncSuccessNotice = false;
       this._stage = "syncing";
       try {
-        const start = await this.api().startActivitySync(
-          this.hub.entry_id,
-          this._activityId,
-          this._baseline,
-          this._working
-        );
+        const start = this.kind === "device" ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working) : await this.api().startActivitySync(this.hub.entry_id, this._entityId, this._baseline, this._working);
         this._syncOperationId = start.operation_id;
         await this.refreshControlPanelState?.();
         await this._subscribeSync(start.operation_id);
@@ -8980,8 +9086,8 @@ var SofabatonActivitiesTab = class extends i3 {
       void this._requestSync();
     };
     this._reloadFromHub = () => {
-      if (this._activityId == null) return;
-      void this._startCapture(this._activityId);
+      if (this._entityId == null) return;
+      void this._startCapture(this._entityId);
     };
   }
   static {
@@ -8989,14 +9095,15 @@ var SofabatonActivitiesTab = class extends i3 {
       hass: { attribute: false },
       hub: { attribute: false },
       refreshControlPanelState: { attribute: false },
-      activityId: { type: Number },
+      kind: { type: String },
+      entityId: { type: Number },
       loading: { type: Boolean },
       error: { type: String },
       blockedTitle: { type: String },
       blockedMessage: { type: String },
       selectedHubProxyConnected: { type: Boolean },
       _stage: { state: true },
-      _activityId: { state: true },
+      _entityId: { state: true },
       _baseline: { state: true },
       _working: { state: true },
       _captureProgress: { state: true },
@@ -9154,27 +9261,27 @@ var SofabatonActivitiesTab = class extends i3 {
     }
     this._maybeAutoOpen();
   }
-  // Direct-open: capture the requested activity as soon as the guards clear.
+  // Direct-open: capture the requested entity as soon as the guards clear.
   // Runs once per requested id — a close (back to the idle stage) must not
   // re-capture; the host tears the element down on `editor-exit`.
   _maybeAutoOpen() {
-    const requested = this.activityId == null ? null : Number(this.activityId);
+    const requested = this.entityId == null ? null : Number(this.entityId);
     if (requested == null || !Number.isFinite(requested)) return;
-    if (this._stage !== "list" || this._autoOpenedActivityId === requested) return;
+    if (this._stage !== "list" || this._autoOpenedEntityId === requested) return;
     if (this._openBlocked()) return;
-    this._autoOpenedActivityId = requested;
+    this._autoOpenedEntityId = requested;
     void this._startCapture(requested);
   }
   _openBlocked() {
     return this.selectedHubProxyConnected || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
   }
-  // Card reloaded mid-sync: pick up a running activity_sync op from the
+  // Card reloaded mid-sync: pick up a running sync op for this kind from the
   // shared backup/state registry and resubscribe to its progress.
   async _hydrateRunningSync() {
     if (!this.hub || !this.hass) return;
     try {
       const state = await this.api().getBackupState(this.hub.entry_id);
-      const op = state?.activity_sync ?? null;
+      const op = (this.kind === "device" ? state?.device_sync : state?.activity_sync) ?? null;
       const running = !!op && ["pending", "running"].includes(String(op.status || ""));
       if (running && op?.operation_id) {
         this._syncOperationId = op.operation_id;
@@ -9207,8 +9314,11 @@ var SofabatonActivitiesTab = class extends i3 {
   }
   // ── Review / Sync / Discard (§4.4) ─────────────────────────────────
   _reviewGroups() {
-    if (this._activityId == null) return [];
-    return diffActivityForReview(this._baseline, this._working, this._activityId);
+    if (this._entityId == null) return [];
+    if (this.kind === "device") {
+      return diffDeviceForReview(this._baseline, this._working, this._entityId);
+    }
+    return diffActivityForReview(this._baseline, this._working, this._entityId);
   }
   async _subscribeSync(operationId) {
     this._teardownProgressSubscription();
@@ -9254,9 +9364,9 @@ var SofabatonActivitiesTab = class extends i3 {
     this._stage = "editing";
   }
   _resetToList() {
-    const wasActive = this._stage !== "list" || this._activityId != null;
+    const wasActive = this._stage !== "list" || this._entityId != null;
     this._stage = "list";
-    this._activityId = null;
+    this._entityId = null;
     this._baseline = null;
     this._working = null;
     this._captureProgress = null;
@@ -9299,7 +9409,7 @@ var SofabatonActivitiesTab = class extends i3 {
     if (this._stage === "sync_failed") {
       return this._renderSyncFailed();
     }
-    if (this._stage === "editing" && this._baseline && this._working && this._activityId != null) {
+    if (this._stage === "editing" && this._baseline && this._working && this._entityId != null) {
       return this._renderEditing();
     }
     if (this._stage === "capturing") {
@@ -9332,7 +9442,7 @@ var SofabatonActivitiesTab = class extends i3 {
       <div class="tab-panel">
         <div class="guard-state">
           <div class="guard-icon"><ha-icon icon="mdi:database-arrow-down-outline"></ha-icon></div>
-          <div class="guard-sub">${S4.capturingFromCache}</div>
+          <div class="guard-sub">${S4.capturingFromCache(this.kind)}</div>
         </div>
       </div>
     `;
@@ -9357,7 +9467,7 @@ var SofabatonActivitiesTab = class extends i3 {
       <div class="tab-panel">
         <div class="guard-state">
           <div class="guard-icon"><ha-icon icon="mdi:database-arrow-down-outline"></ha-icon></div>
-          <div class="guard-sub">${S4.capturingFromCache}</div>
+          <div class="guard-sub">${S4.capturingFromCache(this.kind)}</div>
         </div>
       </div>
     `;
@@ -9369,13 +9479,13 @@ var SofabatonActivitiesTab = class extends i3 {
         <div class="capture-error">
           <div class="guard-icon"><ha-icon icon="mdi:database-refresh-outline"></ha-icon></div>
           <div class="capture-error-title">${S6.needsRefreshTitle}</div>
-          <div class="guard-sub">${S6.needsRefreshBody}</div>
+          <div class="guard-sub">${S6.needsRefreshBody(this.kind)}</div>
           <div class="action-row">
             <sofabaton-refresh-cache-button
               .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
               @refreshed=${() => {
-      if (this._activityId != null) void this._startCapture(this._activityId);
+      if (this._entityId != null) void this._startCapture(this._entityId);
     }}
             ></sofabaton-refresh-cache-button>
             <button class="btn" @click=${() => this._resetToList()}>${S6.back}</button>
@@ -9390,8 +9500,8 @@ var SofabatonActivitiesTab = class extends i3 {
         ${this._syncSuccessNotice ? this._renderSyncSuccessBanner() : A}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
-          kind="activity"
-          .entityId=${this._activityId}
+          .kind=${this.kind}
+          .entityId=${this._entityId}
           .dirty=${this._dirty}
           mode="live"
           @bundle-change=${this._handleBundleChange}
@@ -9433,9 +9543,9 @@ var SofabatonActivitiesTab = class extends i3 {
       <div class="tab-panel">
         <div class="capture-error">
           <div class="guard-icon"><ha-icon icon=${isStale ? "mdi:sync-alert" : "mdi:alert-circle-outline"}></ha-icon></div>
-          <div class="capture-error-title">${isStale ? S6.syncStaleTitle : S6.syncFailedTitle}</div>
+          <div class="capture-error-title">${isStale ? S6.syncStaleTitle(this.kind) : S6.syncFailedTitle}</div>
           <div class="guard-sub">
-            ${isStale ? S6.syncStaleBody : this._syncError || S6.syncFailedStep(String(this._syncFailedAt || ""))}
+            ${isStale ? S6.syncStaleBody(this.kind) : this._syncError || S6.syncFailedStep(String(this._syncFailedAt || ""))}
           </div>
           <div class="action-row">
             ${isStale ? A : T`<button class="btn btn-primary" @click=${this._retrySync}>${S6.syncRetry}</button>`}
@@ -9444,7 +9554,7 @@ var SofabatonActivitiesTab = class extends i3 {
               .entryId=${this.hub?.entry_id ?? ""}
               .label=${S6.syncReload}
               @refreshed=${() => {
-      if (this._activityId != null) void this._startCapture(this._activityId);
+      if (this._entityId != null) void this._startCapture(this._entityId);
     }}
             ></sofabaton-refresh-cache-button>
             <button class="btn" @click=${() => {
@@ -9495,6 +9605,17 @@ var SofabatonActivitiesTab = class extends i3 {
   }
   _reviewSectionTitle(section) {
     const R3 = TOOLS_CARD_STRINGS.activities.review;
+    const D = TOOLS_CARD_STRINGS.activities.deviceReview;
+    if (this.kind === "device") {
+      switch (section) {
+        case "power":
+          return D.sectionPower;
+        case "buttons":
+          return D.sectionButtons;
+        case "macros":
+          return D.sectionMacros;
+      }
+    }
     switch (section) {
       case "devices":
         return R3.sectionDevices;
@@ -9508,6 +9629,8 @@ var SofabatonActivitiesTab = class extends i3 {
         return R3.sectionEnd;
       case "device_wide":
         return R3.sectionDeviceWide;
+      default:
+        return String(section);
     }
   }
   _renderDiscardDialog() {
@@ -9519,7 +9642,7 @@ var SofabatonActivitiesTab = class extends i3 {
             <div class="dialog-title">${S6.discardConfirmTitle}</div>
             <button class="dialog-close" @click=${this._closeDiscardConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
-          <div class="dialog-body"><div class="dialog-text">${S6.discardConfirmBody}</div></div>
+          <div class="dialog-body"><div class="dialog-text">${S6.discardConfirmBody(this.kind)}</div></div>
           <div class="dialog-footer">
             <span></span>
             <div class="dialog-footer-actions">
@@ -9540,7 +9663,7 @@ var SofabatonActivitiesTab = class extends i3 {
             <div class="dialog-title">${S6.exitUnsyncedTitle}</div>
             <button class="dialog-close" @click=${this._closeExitConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
-          <div class="dialog-body"><div class="dialog-text">${S6.exitUnsyncedBody}</div></div>
+          <div class="dialog-body"><div class="dialog-text">${S6.exitUnsyncedBody(this.kind)}</div></div>
           <div class="dialog-footer">
             <button class="btn btn-danger" @click=${this._leaveWithoutSync}>${S6.exitWithoutSync}</button>
             <div class="dialog-footer-actions">
@@ -9587,7 +9710,7 @@ test("activities tab loads the baseline from the structural cache and clones wor
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
   await element._startCapture(101);
   assert.equal(element._stage, "editing");
-  assert.equal(element._activityId, 101);
+  assert.equal(element._entityId, 101);
   assert.equal(element._baseline, bundle);
   assert.notEqual(element._working, bundle);
   assert.deepEqual(element._working, bundle);
@@ -9637,27 +9760,27 @@ test("activity editor auto-opens the requested activity once guards are clear", 
   const element = new ActivitiesTabElement();
   element.hass = createHass(sampleBundle());
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  element.activityId = 101;
+  element.entityId = 101;
   element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(element._stage, "editing");
-  assert.equal(element._activityId, 101);
+  assert.equal(element._entityId, 101);
 });
 test("activity editor does not auto-open while a guard is active", () => {
   const element = new ActivitiesTabElement();
   element.hass = createHass(sampleBundle());
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
   element.selectedHubProxyConnected = true;
-  element.activityId = 101;
+  element.entityId = 101;
   element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
   assert.equal(element._stage, "list");
-  assert.equal(element._activityId, null);
+  assert.equal(element._entityId, null);
 });
 test("activity editor does not re-open the same activity after closing", async () => {
   const element = new ActivitiesTabElement();
   element.hass = createHass(sampleBundle());
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  element.activityId = 101;
+  element.entityId = 101;
   element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(element._stage, "editing");
@@ -9700,7 +9823,7 @@ test("activities tab does not restore a previous edit session on entry", () => {
     reader.hub = { entry_id: "hub-1", activities: [] };
     reader.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
     assert.equal(reader._stage, "list");
-    assert.equal(reader._activityId, null);
+    assert.equal(reader._entityId, null);
     assert.equal(reader._baseline, null);
     assert.equal(reader._working, null);
   } finally {
@@ -9714,30 +9837,30 @@ test("activities tab drops the active edit state when the hub picker switches hu
   element._stage = "editing";
   element._baseline = sampleBundle();
   element._working = sampleBundle();
-  element._activityId = 101;
+  element._entityId = 101;
   element.hub = { entry_id: "hub-2", activities: [] };
   element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
   assert.equal(element._stage, "list");
   assert.equal(element._baseline, null);
-  assert.equal(element._activityId, null);
+  assert.equal(element._entityId, null);
 });
 test("activities tab keeps an in-flight capture when the hub object refreshes (same entry_id)", () => {
   const element = new ActivitiesTabElement();
   element.hub = { entry_id: "hub-1", activities: [] };
   element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
   element._stage = "capturing";
-  element._activityId = 101;
+  element._entityId = 101;
   element.hub = { entry_id: "hub-1", activities: [], active_backup_operation: { status: "running" } };
   element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
   assert.equal(element._stage, "capturing");
-  assert.equal(element._activityId, 101);
+  assert.equal(element._entityId, 101);
 });
 test("activities tab tracks dirty on bundle-change and clears it when reverted", () => {
   const element = new ActivitiesTabElement();
   const base = sampleBundle();
   element._baseline = base;
   element._working = structuredClone(base);
-  element._activityId = 101;
+  element._entityId = 101;
   element._recomputeDirty();
   assert.equal(element._dirty, false);
   const mutated = structuredClone(base);
@@ -9754,7 +9877,7 @@ test("activities tab discard restores the working bundle to the baseline and cle
   const mutated = structuredClone(base);
   mutated.activities[0].device.name = "Changed";
   element._working = mutated;
-  element._activityId = 101;
+  element._entityId = 101;
   element._recomputeDirty();
   element._discardConfirmOpen = true;
   assert.equal(element._dirty, true);
@@ -9771,7 +9894,7 @@ test("activities tab back prompts before leaving a dirty edit", () => {
   element._stage = "editing";
   element._baseline = base;
   element._working = edited;
-  element._activityId = 101;
+  element._entityId = 101;
   element._recomputeDirty();
   element._closeEditor();
   assert.equal(element._stage, "editing");
@@ -9787,12 +9910,12 @@ test("activities tab leaving without sync discards the active edit", () => {
   element._stage = "editing";
   element._baseline = base;
   element._working = edited;
-  element._activityId = 101;
+  element._entityId = 101;
   element._exitConfirmOpen = true;
   element._recomputeDirty();
   element._leaveWithoutSync();
   assert.equal(element._stage, "list");
-  assert.equal(element._activityId, null);
+  assert.equal(element._entityId, null);
   assert.equal(element._baseline, null);
   assert.equal(element._working, null);
   assert.equal(element._dirty, false);
@@ -9802,7 +9925,7 @@ test("activities tab opens the review dialog only when dirty", () => {
   const element = new ActivitiesTabElement();
   element._baseline = sampleBundle();
   element._working = structuredClone(element._baseline);
-  element._activityId = 101;
+  element._entityId = 101;
   element._dirty = false;
   element._openReview();
   assert.equal(element._reviewOpen, false);
@@ -9819,6 +9942,7 @@ function createSyncHass() {
       const type = String(message.type ?? "");
       calls.push(type);
       if (type === "sofabaton_x1s/activity/sync") return { operation_id: "sync-1" };
+      if (type === "sofabaton_x1s/device/sync") return { operation_id: "sync-1" };
       if (type === "sofabaton_x1s/backup/clear_result") return { ok: true };
       throw new Error(`Unexpected WS call: ${type}`);
     },
@@ -9842,7 +9966,7 @@ test("activities tab sync starts the engine and enters the syncing stage", async
   element.refreshControlPanelState = () => void 0;
   element._baseline = sampleBundle();
   element._working = structuredClone(element._baseline);
-  element._activityId = 101;
+  element._entityId = 101;
   element._dirty = true;
   element._reviewOpen = true;
   await element._requestSync();
@@ -9860,7 +9984,7 @@ test("activities tab sync success promotes working to baseline and clears dirty"
   const edited = structuredClone(element._baseline);
   edited.activities[0].device.name = "Edited";
   element._working = edited;
-  element._activityId = 101;
+  element._entityId = 101;
   element._recomputeDirty();
   assert.equal(element._dirty, true);
   await element._requestSync();
@@ -9881,7 +10005,7 @@ test("activities tab sync-and-leave exits after a successful sync", async () => 
   const edited = structuredClone(element._baseline);
   edited.activities[0].device.name = "Edited";
   element._working = edited;
-  element._activityId = 101;
+  element._entityId = 101;
   element._exitConfirmOpen = true;
   element._recomputeDirty();
   element._syncAndLeave();
@@ -9890,11 +10014,65 @@ test("activities tab sync-and-leave exits after a successful sync", async () => 
   assert.equal(hass.__calls.includes("sofabaton_x1s/activity/sync"), true);
   await hass.__emit({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "success", total_steps: 2 });
   assert.equal(element._stage, "list");
-  assert.equal(element._activityId, null);
+  assert.equal(element._entityId, null);
   assert.equal(element._baseline, null);
   assert.equal(element._working, null);
   assert.equal(element._dirty, false);
   assert.equal(element._exitConfirmOpen, false);
+});
+function sampleDeviceBundle() {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1" },
+    devices: [{
+      device: { device_id: 5, name: "Television" },
+      macros: [{ button_id: 198, name: "PWRON", steps: [] }],
+      button_bindings: []
+    }],
+    activities: []
+  };
+}
+test("device editor auto-opens the requested device from the devices list", async () => {
+  const element = new ActivitiesTabElement();
+  element.hass = createHass(sampleDeviceBundle());
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.kind = "device";
+  element.entityId = 5;
+  element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(element._stage, "editing");
+  assert.equal(element._entityId, 5);
+});
+test("device editor prompts to refresh when the device is missing from the cache", async () => {
+  const element = new ActivitiesTabElement();
+  element.hass = createHass(sampleBundle());
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.kind = "device";
+  await element._startCapture(5);
+  assert.equal(element._stage, "needs_refresh");
+});
+test("device editor sync goes through device/sync", async () => {
+  const element = new ActivitiesTabElement();
+  const hass = createSyncHass();
+  element.hass = hass;
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.refreshControlPanelState = () => void 0;
+  element.kind = "device";
+  element._baseline = sampleDeviceBundle();
+  const edited = structuredClone(element._baseline);
+  edited.devices[0].macros[0].steps = [{ device_id: 5, command_id: 1, button_code: 2, duration: 0, delay: 0 }];
+  element._working = edited;
+  element._entityId = 5;
+  element._recomputeDirty();
+  assert.equal(element._dirty, true);
+  await element._requestSync();
+  assert.equal(element._stage, "syncing");
+  assert.equal(hass.__calls.includes("sofabaton_x1s/device/sync"), true);
+  assert.equal(hass.__calls.includes("sofabaton_x1s/activity/sync"), false);
+  await hass.__emit({ operation_id: "sync-1", kind: "device_sync", entry_id: "hub-1", status: "success", total_steps: 1 });
+  assert.equal(element._stage, "editing");
+  assert.equal(element._dirty, false);
 });
 test("activities tab sync failure surfaces the failed step, stale maps to reload", async () => {
   const element = new ActivitiesTabElement();
@@ -9904,7 +10082,7 @@ test("activities tab sync failure surfaces the failed step, stale maps to reload
   element.refreshControlPanelState = () => void 0;
   element._baseline = sampleBundle();
   element._working = structuredClone(element._baseline);
-  element._activityId = 101;
+  element._entityId = 101;
   element._dirty = true;
   await element._requestSync();
   await hass.__emit({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "failed", failed_at: "stale_check", error: "changed" });

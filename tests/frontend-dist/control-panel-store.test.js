@@ -82,6 +82,24 @@ var ControlPanelApi = class {
       edited
     });
   }
+  startDeviceSync(entryId, deviceId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/sync",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited
+    });
+  }
+  deviceSyncPlan(entryId, deviceId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/sync_plan",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited
+    });
+  }
   startCacheRefresh(entryId) {
     return this.hass.callWS({
       type: "sofabaton_x1s/cache/refresh_all",
@@ -2143,7 +2161,7 @@ var ControlPanelStore = class {
     const nextRuntime = nextHub?.runtime_state;
     if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
-      const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : "Wifi Device deployed successfully.";
+      const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : operation === "entity_sync" ? "Synced to hub." : "Wifi Device deployed successfully.";
       this.showRuntimeCompletion({
         tone: "success",
         label: successLabel

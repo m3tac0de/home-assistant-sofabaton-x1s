@@ -129,22 +129,20 @@ def test_try_finish_activities_burst_ends_burst_once_snapshot_is_complete() -> N
     assert proxy.state.current_activity_hint == 0x66
 
 
-def test_empty_activities_burst_commits_empty_snapshot_and_marks_ready() -> None:
+def test_silent_activities_burst_discards_snapshot_and_keeps_prior_state() -> None:
+    # Mirror of the devices case: silence means the request was dropped,
+    # not that the catalog is empty (an empty catalog answers 0x07).
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    proxy.state.activities = {0x65: {"name": "Keeper", "active": False, "needs_confirm": False}}
 
     proxy._begin_activity_request()
     proxy._burst.start("activities", now=0.0)
 
-    finished = proxy.try_finish_activities_burst()
-
-    assert finished is True
     proxy._on_activities_burst_end("activities")
     activities, ready = proxy.get_activities(force_refresh=False)
 
-    assert ready is True
-    assert activities == {}
-    assert proxy.state.activities == {}
-    assert proxy._activity_retry_due_at is None
+    assert ready is False
+    assert proxy.state.activities == {0x65: {"name": "Keeper", "active": False, "needs_confirm": False}}
 
 
 def test_status_ack_07_finishes_empty_activities_burst_immediately() -> None:
@@ -239,21 +237,23 @@ def test_try_finish_devices_burst_ends_burst_once_snapshot_is_complete() -> None
     }
 
 
-def test_empty_devices_burst_commits_empty_snapshot_and_marks_ready() -> None:
+def test_silent_devices_burst_discards_snapshot_and_keeps_prior_state() -> None:
+    # A devices request that ends with no rows AND no STATUS_ACK 0x07 was
+    # dropped by the hub (a truly empty catalog answers 0x07). It must be
+    # discarded, not committed as an empty catalog — committing wiped
+    # state.devices when a queued catalog retry fired mid write-sequence
+    # (live-bench finding, backup/restore chunk 2).
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+    proxy.state.devices = {5: {"name": "Keeper"}}
 
     proxy._begin_device_request()
     proxy._burst.start("devices", now=0.0)
 
-    finished = proxy.try_finish_devices_burst()
-
-    assert finished is True
     proxy._on_devices_burst_end("devices")
     devices, ready = proxy.get_devices(force_refresh=False)
 
-    assert ready is True
-    assert devices == {}
-    assert proxy.state.devices == {}
+    assert ready is False
+    assert proxy.state.devices == {5: {"name": "Keeper"}}
 
 
 def test_status_ack_07_finishes_empty_devices_burst_immediately() -> None:
@@ -300,6 +300,12 @@ def test_status_ack_07_finishes_empty_buttons_burst_immediately() -> None:
     assert finished is True
     assert proxy._burst.active is False
     assert 9 not in proxy._pending_button_requests
+    # The empty keymap is a definitive answer: the entity must be marked
+    # fetched, or backup_device waits out its timeout on
+    # ``dev_lo in state.buttons`` and stamps complete=False on a good
+    # capture (live-bench finding, backup/restore chunk 1).
+    assert proxy.state.buttons.get(9) == set()
+    assert proxy.get_buttons_for_entity(9, fetch_if_missing=False) == ([], True)
 
 
 def test_status_ack_07_finishes_empty_commands_burst_immediately() -> None:
@@ -3626,11 +3632,14 @@ def test_send_paged_macro_save_waits_for_each_chunk_ack(monkeypatch) -> None:
 
     ack = proxy._send_paged_macro_save(payload=oversized_payload, macro_button=ButtonName.POWER_ON)
 
-    assert ack == (0x0112, b"\xc6")
+    # The final-page 0x0112 ack is not pinned to the macro key: the hub may
+    # ack with a different payload byte (e.g. after a cascading member
+    # removal), so the waiter accepts any 0x0112.
+    assert ack == (0x0112, b"\x00")
     assert [family for family, _payload in sent_pages] == [0x12, 0x12]
     assert sent_pages[0][1][:9] == bytes.fromhex("01 00 01 01 00 02 65 c6 14")
     assert sent_pages[1][1][:3] == bytes.fromhex("01 00 02")
-    assert ack_calls == [[(0x0103, None)], [(0x0112, 198), (0x0103, None)]]
+    assert ack_calls == [[(0x0103, None)], [(0x0112, None), (0x0103, None)]]
 
 
 def test_send_paged_macro_save_treats_nonzero_status_byte_as_rejection(
@@ -3996,8 +4005,8 @@ def test_add_device_to_activity_x2_uses_same_assignment_flow_as_x1s(monkeypatch)
         [(0x0103, None)],
         [(0x0103, None)],
         [(0x0103, None)],
-        [(0x0112, 198), (0x0103, None)],
-        [(0x0112, 199), (0x0103, None)],
+        [(0x0112, None), (0x0103, None)],
+        [(0x0112, None), (0x0103, None)],
     ]
 
 

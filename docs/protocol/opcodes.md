@@ -108,6 +108,24 @@ Observed semantics:
 | family `0x63` | `FAV_ORDER_RESP` | `H->A` | Current `(favorite_id, slot)` ordering |
 | family `0x65` | `FAV_COMMIT` | `A->H` | Commit reorder/delete |
 
+Behavioral notes (bench-observed on X1 + X1S, 2026-07-11):
+
+- The hub assigns a new favorite the next free `fav_id` counting up
+  from 1, independent of ids already used by keymap-derived favorite
+  rows (a keymap slot at `0x58` coexists with a fresh favorite at
+  `0x01`).
+- The `0x63` order table only lists favorites that have been through
+  an explicit `SET_FAVORITES_ORDER` write. Keymap-derived favorites do
+  not appear in it until a reorder includes them, and an activity
+  whose favorites are all keymap-derived gets **no `0x63` reply at
+  all** (the `0x0162` request goes unanswered). Enumerate favorites
+  from the keymap (`REQ_BUTTONS`); use `0x63` only as ordering
+  evidence.
+- The hub serializes request handling and **drops** a `0x0162` sent
+  while a previous request's burst (e.g. `REQ_ACTIVITY_MAP 0x016C`)
+  is still streaming — no reply, no error. Wait for in-flight bursts
+  to finish before issuing the order request.
+
 ---
 
 ## H->A responses

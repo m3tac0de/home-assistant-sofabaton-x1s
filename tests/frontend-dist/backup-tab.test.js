@@ -1519,6 +1519,24 @@ var ControlPanelApi = class {
       edited
     });
   }
+  startDeviceSync(entryId, deviceId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/sync",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited
+    });
+  }
+  deviceSyncPlan(entryId, deviceId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/sync_plan",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited
+    });
+  }
   startCacheRefresh(entryId) {
     return this.hass.callWS({
       type: "sofabaton_x1s/cache/refresh_all",
@@ -1753,7 +1771,8 @@ var TOOLS_CARD_STRINGS = {
     devices: "Devices",
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
-    editActivity: "Edit activity"
+    editActivity: "Edit activity",
+    editDevice: "Edit device"
   },
   logs: {
     loading: "Loading log stream...",
@@ -1811,7 +1830,7 @@ var TOOLS_CARD_STRINGS = {
     activityFallback: (id) => `Activity ${id}`,
     // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
-    appConnectedBody: "Close the Sofabaton app to edit activities.",
+    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
     // Capture flow (§4.2).
@@ -1823,9 +1842,9 @@ var TOOLS_CARD_STRINGS = {
     retry: "Retry",
     back: "Back",
     // Cache-sourced capture (blob-free structural bundle).
-    capturingFromCache: "Loading activity from the hub cache\u2026",
+    capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: "This activity isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.",
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
     // Session restore banner (§4.6).
     // Live-mode edit header (§4.3).
     notSyncedChip: "Not synced",
@@ -1848,18 +1867,18 @@ var TOOLS_CARD_STRINGS = {
     syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
     syncFailedTitle: "Sync didn't finish",
     syncFailedStep: (step) => `The hub stopped at: ${step}`,
-    syncStaleTitle: "This activity changed on the hub",
-    syncStaleBody: "The activity was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.",
+    syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
+    syncStaleBody: (kind) => `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.`,
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
     syncKeepEditing: "Keep editing",
     exitUnsyncedTitle: "Unsynced changes",
-    exitUnsyncedBody: "This activity has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.",
+    exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",
     exitWithoutSync: "Leave without syncing",
     // Discard confirmation.
     discardConfirmTitle: "Discard all changes?",
-    discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
+    discardConfirmBody: (kind) => `This throws away every edit you've made to this ${kind} and returns to the captured state.`,
     discardConfirmCancel: "Keep editing",
     discardConfirmConfirm: "Discard changes",
     // Review-list section titles + entry templates (activity-diff.ts).
@@ -1897,6 +1916,22 @@ var TOOLS_CARD_STRINGS = {
         3: "stays on",
         4: "not managed by the hub"
       }
+    },
+    // Review-list section titles + entry templates for the live *device*
+    // editor (activity-diff.ts, diffDeviceForReview).
+    deviceReview: {
+      sectionPower: "Power",
+      sectionButtons: "Buttons",
+      sectionMacros: "Macros",
+      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
+      powerOnChanged: "Power-on sequence updated.",
+      powerOffChanged: "Power-off sequence updated.",
+      macroAdded: (name) => `Added macro "${name}".`,
+      macroRemoved: (name) => `Removed macro "${name}".`,
+      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
+      macroChanged: (name) => `Edited macro "${name}".`,
+      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
+      bindingCleared: (button) => `"${button}" no longer bound.`
     }
   },
   backup: {
@@ -7363,13 +7398,15 @@ var SofabatonEditDetailView = class extends i3 {
                   <div class="quick-access-meta">IPv4 dotted-decimal address</div>
                 </div>
                 <div class="quick-access-actions">
-                  <button
-                    class="icon-btn"
-                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                    aria-label="Edit IP address"
-                  >
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
+                  ${this.mode === "live" ? A : T`
+                        <button
+                          class="icon-btn"
+                          @click=${() => this._openDeviceIpRenameDialog(deviceId)}
+                          aria-label="Edit IP address"
+                        >
+                          <ha-icon icon="mdi:pencil"></ha-icon>
+                        </button>
+                      `}
                 </div>
               </div>
             </div>
@@ -7385,7 +7422,7 @@ var SofabatonEditDetailView = class extends i3 {
         <div class="quick-access-head">
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
-            ${this.mode === "live" ? "Command names are read-only in live activity sync." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+            ${this.mode === "live" ? "Commands are read-only in live sync \u2014 rename, payload, and delete stay in Backup \u2192 Edit." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
           </div>
         </div>
         ${items.length ? T`
@@ -7431,13 +7468,15 @@ var SofabatonEditDetailView = class extends i3 {
                     <ha-icon icon="mdi:code-braces"></ha-icon>
                   </button>
                 ` : A}
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
+            ${this.mode === "live" ? A : T`
+                  <button
+                    class="icon-btn icon-btn--danger"
+                    @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
+                  >
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>
+                `}
           </div>
         </div>
       </div>

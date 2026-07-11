@@ -652,6 +652,32 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
         )
         self._send_cmd_frame(opcode, payload)
 
+    def wait_for_read_burst_quiesce(self, timeout: float = 8.0) -> bool:
+        """Block until no read burst is streaming, up to ``timeout``.
+
+        The hub serializes requests and silently drops a frame that
+        arrives while it is answering a read burst (devices, activities,
+        commands, ...). Write steps call this before hitting the wire so
+        that e.g. a scheduled catalog refresh that fired between two
+        steps finishes first (live-bench finding: an X1 device-create
+        sent 1 ms after REQ_DEVICES was dropped and timed out).
+
+        Returns ``False`` when a burst is still active at timeout; the
+        caller proceeds anyway and the per-step ack timeout governs.
+        """
+
+        deadline = time.monotonic() + timeout
+        while self._burst.active and time.monotonic() < deadline:
+            time.sleep(0.05)
+        still_active = self._burst.active
+        if still_active:
+            self._log.warning(
+                "[WIFI] read burst (%s) still active after %.1fs quiesce wait",
+                self._burst.kind,
+                timeout,
+            )
+        return not still_active
+
     def _send_step(
         self,
         *,
@@ -704,6 +730,7 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
                 attempt,
                 total_attempts,
             )
+            self.wait_for_read_burst_quiesce()
             send_ts = time.monotonic()
             self._send_family_frame(family, payload)
 
@@ -1466,7 +1493,14 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
             if seq < len(paged_payloads):
                 candidates = [(0x0103, None)]
             else:
-                candidates = [(0x0112, macro_button), (0x0103, None)]
+                # The final-page 0x0112 ack usually echoes the macro key in
+                # payload[0], but not always: a save that drops a device's
+                # last power-macro reference makes the hub cascade-remove
+                # that device from the activity and ack with a different
+                # byte (observed live: 0x01 after ~1.2 s on X1). Accept any
+                # 0x0112 — rejections arrive as 0x0103 with a non-zero
+                # status, checked below.
+                candidates = [(0x0112, None), (0x0103, None)]
             last_ack = self.wait_for_ack_any(
                 candidates,
                 timeout=ack_timeout,
@@ -1497,6 +1531,17 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
                     f"0x{status:02X}" if status is not None else "?",
                 )
                 return None
+            if (
+                ack_opcode == 0x0112
+                and ack_payload
+                and ack_payload[0] != (macro_button & 0xFF)
+            ):
+                self._log.info(
+                    "%s macro save ack fallback button=0x%02X ack_payload=0x%02X",
+                    LogTag.ACTIVITY,
+                    macro_button,
+                    ack_payload[0],
+                )
 
         return last_ack
 

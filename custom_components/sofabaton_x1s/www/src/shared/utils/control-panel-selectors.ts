@@ -240,7 +240,7 @@ export type RuntimeState =
     }
   | {
       kind: "operation_running";
-      operation: "backup_export" | "backup_restore" | "cache_refresh" | "wifi_deploy";
+      operation: "backup_export" | "backup_restore" | "cache_refresh" | "entity_sync" | "wifi_deploy";
       label: string;
       detail: string;
       progress: {
@@ -300,7 +300,9 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
           ? "backup_export"
           : hubRuntime.operation === "cache_refresh"
             ? "cache_refresh"
-            : "wifi_deploy",
+            : hubRuntime.operation === "entity_sync"
+              ? "entity_sync"
+              : "wifi_deploy",
       label: String(hubRuntime.label || "Operation running"),
       detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
       progress: {

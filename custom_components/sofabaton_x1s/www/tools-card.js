@@ -1530,6 +1530,24 @@ var ControlPanelApi = class {
       edited
     });
   }
+  startDeviceSync(entryId, deviceId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/sync",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited
+    });
+  }
+  deviceSyncPlan(entryId, deviceId, baseline, edited) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/sync_plan",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited
+    });
+  }
   startCacheRefresh(entryId) {
     return this.hass.callWS({
       type: "sofabaton_x1s/cache/refresh_all",
@@ -1839,7 +1857,7 @@ function resolveRuntimeState(snapshot) {
     const percent = total > 0 ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
     return {
       kind: "operation_running",
-      operation: hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : "wifi_deploy",
+      operation: hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : "wifi_deploy",
       label: String(hubRuntime.label || "Operation running"),
       detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
       progress: {
@@ -2642,7 +2660,7 @@ var ControlPanelStore = class {
     const nextRuntime = nextHub?.runtime_state;
     if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
-      const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : "Wifi Device deployed successfully.";
+      const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : operation === "entity_sync" ? "Synced to hub." : "Wifi Device deployed successfully.";
       this.showRuntimeCompletion({
         tone: "success",
         label: successLabel
@@ -3001,7 +3019,8 @@ var TOOLS_CARD_STRINGS = {
     devices: "Devices",
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
-    editActivity: "Edit activity"
+    editActivity: "Edit activity",
+    editDevice: "Edit device"
   },
   logs: {
     loading: "Loading log stream...",
@@ -3059,7 +3078,7 @@ var TOOLS_CARD_STRINGS = {
     activityFallback: (id) => `Activity ${id}`,
     // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
-    appConnectedBody: "Close the Sofabaton app to edit activities.",
+    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
     // Capture flow (§4.2).
@@ -3071,9 +3090,9 @@ var TOOLS_CARD_STRINGS = {
     retry: "Retry",
     back: "Back",
     // Cache-sourced capture (blob-free structural bundle).
-    capturingFromCache: "Loading activity from the hub cache\u2026",
+    capturingFromCache: (kind) => `Loading ${kind} from the hub cache\u2026`,
     needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: "This activity isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.",
+    needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
     // Session restore banner (§4.6).
     // Live-mode edit header (§4.3).
     notSyncedChip: "Not synced",
@@ -3096,18 +3115,18 @@ var TOOLS_CARD_STRINGS = {
     syncPlanSummary: (count) => `${count} hub ${count === 1 ? "write" : "writes"}`,
     syncFailedTitle: "Sync didn't finish",
     syncFailedStep: (step) => `The hub stopped at: ${step}`,
-    syncStaleTitle: "This activity changed on the hub",
-    syncStaleBody: "The activity was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.",
+    syncStaleTitle: (kind) => `This ${kind} changed on the hub`,
+    syncStaleBody: (kind) => `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue \u2014 your unsaved edits will be discarded.`,
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
     syncKeepEditing: "Keep editing",
     exitUnsyncedTitle: "Unsynced changes",
-    exitUnsyncedBody: "This activity has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.",
+    exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",
     exitWithoutSync: "Leave without syncing",
     // Discard confirmation.
     discardConfirmTitle: "Discard all changes?",
-    discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
+    discardConfirmBody: (kind) => `This throws away every edit you've made to this ${kind} and returns to the captured state.`,
     discardConfirmCancel: "Keep editing",
     discardConfirmConfirm: "Discard changes",
     // Review-list section titles + entry templates (activity-diff.ts).
@@ -3145,6 +3164,22 @@ var TOOLS_CARD_STRINGS = {
         3: "stays on",
         4: "not managed by the hub"
       }
+    },
+    // Review-list section titles + entry templates for the live *device*
+    // editor (activity-diff.ts, diffDeviceForReview).
+    deviceReview: {
+      sectionPower: "Power",
+      sectionButtons: "Buttons",
+      sectionMacros: "Macros",
+      powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
+      powerOnChanged: "Power-on sequence updated.",
+      powerOffChanged: "Power-off sequence updated.",
+      macroAdded: (name) => `Added macro "${name}".`,
+      macroRemoved: (name) => `Removed macro "${name}".`,
+      macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
+      macroChanged: (name) => `Edited macro "${name}".`,
+      bindingBound: (button, command) => `"${button}" now sends "${command}".`,
+      bindingCleared: (button) => `"${button}" no longer bound.`
     }
   },
   backup: {
@@ -3760,6 +3795,10 @@ function renderCacheTab(params) {
           <span class="entity-meta">
             ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
             <span class="entity-count">${TOOLS_CARD_STRINGS.cache.deviceCommandCount(Number(device.command_count || 0))}</span>
+            <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editDevice} ?disabled=${locked2} @click=${(event) => {
+      event.stopPropagation();
+      params.onEditDevice(id);
+    }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked2} @click=${(event) => {
       event.stopPropagation();
       params.onRefreshEntry("device", id, key);
@@ -10286,13 +10325,15 @@ var SofabatonEditDetailView = class extends i4 {
                   <div class="quick-access-meta">IPv4 dotted-decimal address</div>
                 </div>
                 <div class="quick-access-actions">
-                  <button
-                    class="icon-btn"
-                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                    aria-label="Edit IP address"
-                  >
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
+                  ${this.mode === "live" ? A : b2`
+                        <button
+                          class="icon-btn"
+                          @click=${() => this._openDeviceIpRenameDialog(deviceId)}
+                          aria-label="Edit IP address"
+                        >
+                          <ha-icon icon="mdi:pencil"></ha-icon>
+                        </button>
+                      `}
                 </div>
               </div>
             </div>
@@ -10308,7 +10349,7 @@ var SofabatonEditDetailView = class extends i4 {
         <div class="quick-access-head">
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
-            ${this.mode === "live" ? "Command names are read-only in live activity sync." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+            ${this.mode === "live" ? "Commands are read-only in live sync \u2014 rename, payload, and delete stay in Backup \u2192 Edit." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
           </div>
         </div>
         ${items.length ? b2`
@@ -10354,13 +10395,15 @@ var SofabatonEditDetailView = class extends i4 {
                     <ha-icon icon="mdi:code-braces"></ha-icon>
                   </button>
                 ` : A}
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
+            ${this.mode === "live" ? A : b2`
+                  <button
+                    class="icon-btn icon-btn--danger"
+                    @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
+                  >
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>
+                `}
           </div>
         </div>
       </div>
@@ -15765,6 +15808,7 @@ if (!customElements.get("sofabaton-wifi-commands-tab")) {
 // custom_components/sofabaton_x1s/www/src/tabs/activity-diff.ts
 var R2 = TOOLS_CARD_STRINGS.activities.review;
 var POWER_ON_MACRO_BUTTON_ID2 = 198;
+var POWER_OFF_MACRO_BUTTON_ID2 = 199;
 var SECTION_ORDER = [
   "devices",
   "start",
@@ -15794,6 +15838,75 @@ function diffActivityForReview(baseline, edited, activityId) {
   diffEnd(buckets, baseById, editById);
   diffDeviceWide(buckets, baseline, edited, editMembers);
   return SECTION_ORDER.map((section) => ({ section, entries: buckets[section] })).filter((group) => group.entries.length > 0);
+}
+var DEVICE_SECTION_ORDER = ["power", "buttons", "macros"];
+function rawDeviceMacros(bundle, deviceId) {
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(deviceId)
+  );
+  const rows = /* @__PURE__ */ new Map();
+  for (const macro of device?.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId > 0) rows.set(buttonId, macro);
+  }
+  return rows;
+}
+function macroStepsSignature(macro) {
+  return JSON.stringify(macro?.steps ?? []);
+}
+function diffDeviceForReview(baseline, edited, deviceId) {
+  const D2 = TOOLS_CARD_STRINGS.activities.deviceReview;
+  const buckets = {
+    power: [],
+    buttons: [],
+    macros: []
+  };
+  if (!baseline || !edited) return [];
+  const idleBefore = deviceIdleBehavior(baseline, deviceId);
+  const idleAfter = deviceIdleBehavior(edited, deviceId);
+  if (idleBefore !== idleAfter) {
+    const label = R2.idleShort[Number(idleAfter ?? 0)] ?? String(idleAfter);
+    buckets.power.push({ text: D2.powerControlChanged(label) });
+  }
+  const baseMacros = rawDeviceMacros(baseline, deviceId);
+  const editMacros = rawDeviceMacros(edited, deviceId);
+  for (const [buttonId, text] of [
+    [POWER_ON_MACRO_BUTTON_ID2, D2.powerOnChanged],
+    [POWER_OFF_MACRO_BUTTON_ID2, D2.powerOffChanged]
+  ]) {
+    if (macroStepsSignature(baseMacros.get(buttonId)) !== macroStepsSignature(editMacros.get(buttonId))) {
+      buckets.power.push({ text });
+    }
+  }
+  const isPower = (id) => id === POWER_ON_MACRO_BUTTON_ID2 || id === POWER_OFF_MACRO_BUTTON_ID2;
+  for (const [buttonId, macro] of editMacros) {
+    if (isPower(buttonId)) continue;
+    const before = baseMacros.get(buttonId);
+    const name = String(macro?.name || `Macro ${buttonId}`);
+    if (!before) {
+      buckets.macros.push({ text: D2.macroAdded(name) });
+      continue;
+    }
+    const renamed = String(before?.name || "") !== String(macro?.name || "");
+    const stepsChanged = macroStepsSignature(before) !== macroStepsSignature(macro);
+    if (renamed) buckets.macros.push({ text: D2.macroRenamed(String(before?.name || ""), name) });
+    if (stepsChanged) buckets.macros.push({ text: D2.macroChanged(name) });
+  }
+  for (const [buttonId, macro] of baseMacros) {
+    if (isPower(buttonId) || editMacros.has(buttonId)) continue;
+    buckets.macros.push({ text: D2.macroRemoved(String(macro?.name || `Macro ${buttonId}`)) });
+  }
+  const baseBindings = new Map(deviceButtonBindingItems(baseline, deviceId).map((item) => [item.buttonId, item]));
+  const editBindings = new Map(deviceButtonBindingItems(edited, deviceId).map((item) => [item.buttonId, item]));
+  for (const [buttonId, item] of editBindings) {
+    const before = baseBindings.get(buttonId);
+    const changed = !before || before.commandId !== item.commandId || (before.longPress?.commandId ?? null) !== (item.longPress?.commandId ?? null);
+    if (changed) buckets.buttons.push({ text: D2.bindingBound(item.buttonName, item.shortPressLabel) });
+  }
+  for (const [buttonId, item] of baseBindings) {
+    if (!editBindings.has(buttonId)) buckets.buttons.push({ text: D2.bindingCleared(item.buttonName) });
+  }
+  return DEVICE_SECTION_ORDER.map((section) => ({ section, entries: buckets[section] })).filter((group) => group.entries.length > 0);
 }
 function diffMembership(buckets, baseById, editById) {
   for (const [deviceId, member] of editById) {
@@ -16023,15 +16136,16 @@ var SofabatonActivitiesTab = class extends i4 {
     super(...arguments);
     this.hass = null;
     this.hub = null;
-    /** The activity to edit; the host sets this before mounting. */
-    this.activityId = null;
+    /** What is being edited; the host sets both before mounting. */
+    this.kind = "activity";
+    this.entityId = null;
     this.loading = false;
     this.error = null;
     this.blockedTitle = null;
     this.blockedMessage = null;
     this.selectedHubProxyConnected = false;
     this._stage = "list";
-    this._activityId = null;
+    this._entityId = null;
     this._baseline = null;
     this._working = null;
     this._captureProgress = null;
@@ -16051,7 +16165,7 @@ var SofabatonActivitiesTab = class extends i4 {
     this._exitAfterSync = false;
     // Which requested activityId we already auto-opened, so returning to the
     // idle stage (close) doesn't immediately re-capture the same activity.
-    this._autoOpenedActivityId = null;
+    this._autoOpenedEntityId = null;
     // entry_id of the hub the current stage belongs to. The `hub` prop
     // is a fresh object on every control_panel/state refresh, so we key reset
     // decisions on the entry_id — not object identity — to avoid tearing down
@@ -16066,19 +16180,20 @@ var SofabatonActivitiesTab = class extends i4 {
     // second-guesses whether the hub has since changed. That reconciliation
     // happens once, authoritatively, at sync time (the backend stale
     // pre-flight).
-    this._startCapture = async (activityId) => {
+    this._startCapture = async (entityId) => {
       if (!this.hub || !this.hass) return;
-      this._activityId = activityId;
+      this._entityId = entityId;
       this._captureError = null;
       this._captureProgress = null;
       this._stage = "capturing";
       try {
         const res = await this.api().getStructuralBundle(this.hub.entry_id);
         const bundle = res?.bundle ?? null;
-        const hasActivity = !!bundle && (bundle.activities ?? []).some(
-          (candidate) => Number(candidate.device?.device_id) === activityId
+        const entries = (this.kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
+        const hasEntity = !!bundle && entries.some(
+          (candidate) => Number(candidate.device?.device_id) === entityId
         );
-        if (!bundle || !hasActivity) {
+        if (!bundle || !hasEntity) {
           this._stage = "needs_refresh";
           return;
         }
@@ -16105,7 +16220,7 @@ var SofabatonActivitiesTab = class extends i4 {
     // Start the real sync engine (§4.5): diff baseline vs working on the
     // backend and issue targeted in-place writes, streaming progress.
     this._requestSync = async () => {
-      if (!this._dirty || this._activityId == null || !this.hub || !this._baseline || !this._working) return;
+      if (!this._dirty || this._entityId == null || !this.hub || !this._baseline || !this._working) return;
       this._reviewOpen = false;
       this._exitConfirmOpen = false;
       this._syncError = null;
@@ -16114,12 +16229,7 @@ var SofabatonActivitiesTab = class extends i4 {
       this._syncSuccessNotice = false;
       this._stage = "syncing";
       try {
-        const start = await this.api().startActivitySync(
-          this.hub.entry_id,
-          this._activityId,
-          this._baseline,
-          this._working
-        );
+        const start = this.kind === "device" ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working) : await this.api().startActivitySync(this.hub.entry_id, this._entityId, this._baseline, this._working);
         this._syncOperationId = start.operation_id;
         await this.refreshControlPanelState?.();
         await this._subscribeSync(start.operation_id);
@@ -16165,8 +16275,8 @@ var SofabatonActivitiesTab = class extends i4 {
       void this._requestSync();
     };
     this._reloadFromHub = () => {
-      if (this._activityId == null) return;
-      void this._startCapture(this._activityId);
+      if (this._entityId == null) return;
+      void this._startCapture(this._entityId);
     };
   }
   disconnectedCallback() {
@@ -16189,27 +16299,27 @@ var SofabatonActivitiesTab = class extends i4 {
     }
     this._maybeAutoOpen();
   }
-  // Direct-open: capture the requested activity as soon as the guards clear.
+  // Direct-open: capture the requested entity as soon as the guards clear.
   // Runs once per requested id — a close (back to the idle stage) must not
   // re-capture; the host tears the element down on `editor-exit`.
   _maybeAutoOpen() {
-    const requested = this.activityId == null ? null : Number(this.activityId);
+    const requested = this.entityId == null ? null : Number(this.entityId);
     if (requested == null || !Number.isFinite(requested)) return;
-    if (this._stage !== "list" || this._autoOpenedActivityId === requested) return;
+    if (this._stage !== "list" || this._autoOpenedEntityId === requested) return;
     if (this._openBlocked()) return;
-    this._autoOpenedActivityId = requested;
+    this._autoOpenedEntityId = requested;
     void this._startCapture(requested);
   }
   _openBlocked() {
     return this.selectedHubProxyConnected || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
   }
-  // Card reloaded mid-sync: pick up a running activity_sync op from the
+  // Card reloaded mid-sync: pick up a running sync op for this kind from the
   // shared backup/state registry and resubscribe to its progress.
   async _hydrateRunningSync() {
     if (!this.hub || !this.hass) return;
     try {
       const state = await this.api().getBackupState(this.hub.entry_id);
-      const op = state?.activity_sync ?? null;
+      const op = (this.kind === "device" ? state?.device_sync : state?.activity_sync) ?? null;
       const running = !!op && ["pending", "running"].includes(String(op.status || ""));
       if (running && op?.operation_id) {
         this._syncOperationId = op.operation_id;
@@ -16242,8 +16352,11 @@ var SofabatonActivitiesTab = class extends i4 {
   }
   // ── Review / Sync / Discard (§4.4) ─────────────────────────────────
   _reviewGroups() {
-    if (this._activityId == null) return [];
-    return diffActivityForReview(this._baseline, this._working, this._activityId);
+    if (this._entityId == null) return [];
+    if (this.kind === "device") {
+      return diffDeviceForReview(this._baseline, this._working, this._entityId);
+    }
+    return diffActivityForReview(this._baseline, this._working, this._entityId);
   }
   async _subscribeSync(operationId) {
     this._teardownProgressSubscription();
@@ -16289,9 +16402,9 @@ var SofabatonActivitiesTab = class extends i4 {
     this._stage = "editing";
   }
   _resetToList() {
-    const wasActive = this._stage !== "list" || this._activityId != null;
+    const wasActive = this._stage !== "list" || this._entityId != null;
     this._stage = "list";
-    this._activityId = null;
+    this._entityId = null;
     this._baseline = null;
     this._working = null;
     this._captureProgress = null;
@@ -16334,7 +16447,7 @@ var SofabatonActivitiesTab = class extends i4 {
     if (this._stage === "sync_failed") {
       return this._renderSyncFailed();
     }
-    if (this._stage === "editing" && this._baseline && this._working && this._activityId != null) {
+    if (this._stage === "editing" && this._baseline && this._working && this._entityId != null) {
       return this._renderEditing();
     }
     if (this._stage === "capturing") {
@@ -16367,7 +16480,7 @@ var SofabatonActivitiesTab = class extends i4 {
       <div class="tab-panel">
         <div class="guard-state">
           <div class="guard-icon"><ha-icon icon="mdi:database-arrow-down-outline"></ha-icon></div>
-          <div class="guard-sub">${S4.capturingFromCache}</div>
+          <div class="guard-sub">${S4.capturingFromCache(this.kind)}</div>
         </div>
       </div>
     `;
@@ -16392,7 +16505,7 @@ var SofabatonActivitiesTab = class extends i4 {
       <div class="tab-panel">
         <div class="guard-state">
           <div class="guard-icon"><ha-icon icon="mdi:database-arrow-down-outline"></ha-icon></div>
-          <div class="guard-sub">${S4.capturingFromCache}</div>
+          <div class="guard-sub">${S4.capturingFromCache(this.kind)}</div>
         </div>
       </div>
     `;
@@ -16404,13 +16517,13 @@ var SofabatonActivitiesTab = class extends i4 {
         <div class="capture-error">
           <div class="guard-icon"><ha-icon icon="mdi:database-refresh-outline"></ha-icon></div>
           <div class="capture-error-title">${S5.needsRefreshTitle}</div>
-          <div class="guard-sub">${S5.needsRefreshBody}</div>
+          <div class="guard-sub">${S5.needsRefreshBody(this.kind)}</div>
           <div class="action-row">
             <sofabaton-refresh-cache-button
               .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
               @refreshed=${() => {
-      if (this._activityId != null) void this._startCapture(this._activityId);
+      if (this._entityId != null) void this._startCapture(this._entityId);
     }}
             ></sofabaton-refresh-cache-button>
             <button class="btn" @click=${() => this._resetToList()}>${S5.back}</button>
@@ -16425,8 +16538,8 @@ var SofabatonActivitiesTab = class extends i4 {
         ${this._syncSuccessNotice ? this._renderSyncSuccessBanner() : A}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
-          kind="activity"
-          .entityId=${this._activityId}
+          .kind=${this.kind}
+          .entityId=${this._entityId}
           .dirty=${this._dirty}
           mode="live"
           @bundle-change=${this._handleBundleChange}
@@ -16468,9 +16581,9 @@ var SofabatonActivitiesTab = class extends i4 {
       <div class="tab-panel">
         <div class="capture-error">
           <div class="guard-icon"><ha-icon icon=${isStale ? "mdi:sync-alert" : "mdi:alert-circle-outline"}></ha-icon></div>
-          <div class="capture-error-title">${isStale ? S5.syncStaleTitle : S5.syncFailedTitle}</div>
+          <div class="capture-error-title">${isStale ? S5.syncStaleTitle(this.kind) : S5.syncFailedTitle}</div>
           <div class="guard-sub">
-            ${isStale ? S5.syncStaleBody : this._syncError || S5.syncFailedStep(String(this._syncFailedAt || ""))}
+            ${isStale ? S5.syncStaleBody(this.kind) : this._syncError || S5.syncFailedStep(String(this._syncFailedAt || ""))}
           </div>
           <div class="action-row">
             ${isStale ? A : b2`<button class="btn btn-primary" @click=${this._retrySync}>${S5.syncRetry}</button>`}
@@ -16479,7 +16592,7 @@ var SofabatonActivitiesTab = class extends i4 {
               .entryId=${this.hub?.entry_id ?? ""}
               .label=${S5.syncReload}
               @refreshed=${() => {
-      if (this._activityId != null) void this._startCapture(this._activityId);
+      if (this._entityId != null) void this._startCapture(this._entityId);
     }}
             ></sofabaton-refresh-cache-button>
             <button class="btn" @click=${() => {
@@ -16530,6 +16643,17 @@ var SofabatonActivitiesTab = class extends i4 {
   }
   _reviewSectionTitle(section) {
     const R3 = TOOLS_CARD_STRINGS.activities.review;
+    const D2 = TOOLS_CARD_STRINGS.activities.deviceReview;
+    if (this.kind === "device") {
+      switch (section) {
+        case "power":
+          return D2.sectionPower;
+        case "buttons":
+          return D2.sectionButtons;
+        case "macros":
+          return D2.sectionMacros;
+      }
+    }
     switch (section) {
       case "devices":
         return R3.sectionDevices;
@@ -16543,6 +16667,8 @@ var SofabatonActivitiesTab = class extends i4 {
         return R3.sectionEnd;
       case "device_wide":
         return R3.sectionDeviceWide;
+      default:
+        return String(section);
     }
   }
   _renderDiscardDialog() {
@@ -16554,7 +16680,7 @@ var SofabatonActivitiesTab = class extends i4 {
             <div class="dialog-title">${S5.discardConfirmTitle}</div>
             <button class="dialog-close" @click=${this._closeDiscardConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
-          <div class="dialog-body"><div class="dialog-text">${S5.discardConfirmBody}</div></div>
+          <div class="dialog-body"><div class="dialog-text">${S5.discardConfirmBody(this.kind)}</div></div>
           <div class="dialog-footer">
             <span></span>
             <div class="dialog-footer-actions">
@@ -16575,7 +16701,7 @@ var SofabatonActivitiesTab = class extends i4 {
             <div class="dialog-title">${S5.exitUnsyncedTitle}</div>
             <button class="dialog-close" @click=${this._closeExitConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
-          <div class="dialog-body"><div class="dialog-text">${S5.exitUnsyncedBody}</div></div>
+          <div class="dialog-body"><div class="dialog-text">${S5.exitUnsyncedBody(this.kind)}</div></div>
           <div class="dialog-footer">
             <button class="btn btn-danger" @click=${this._leaveWithoutSync}>${S5.exitWithoutSync}</button>
             <div class="dialog-footer-actions">
@@ -16592,14 +16718,15 @@ SofabatonActivitiesTab.properties = {
   hass: { attribute: false },
   hub: { attribute: false },
   refreshControlPanelState: { attribute: false },
-  activityId: { type: Number },
+  kind: { type: String },
+  entityId: { type: Number },
   loading: { type: Boolean },
   error: { type: String },
   blockedTitle: { type: String },
   blockedMessage: { type: String },
   selectedHubProxyConnected: { type: Boolean },
   _stage: { state: true },
-  _activityId: { state: true },
+  _entityId: { state: true },
   _baseline: { state: true },
   _working: { state: true },
   _captureProgress: { state: true },
@@ -16847,9 +16974,9 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._hubPickerOpen = false;
     this._toolsMenuOpen = false;
     this._lastRenderedTab = null;
-    // Activity currently open in the live editor (wrench button in the Hub
+    // Entity currently open in the live editor (wrench buttons in the Hub
     // tab); while set, the Hub tab renders the editor instead of the cache.
-    this._editingActivityId = null;
+    this._editingEntity = null;
     this._irFlashClearTimer = null;
     this._irFlashClearForReceivedAt = null;
     this._pendingCacheScrollSnapshot = null;
@@ -16977,7 +17104,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
   }
   handleTabSelect(tabId) {
     this._toolsMenuOpen = false;
-    if (tabId !== "cache") this._editingActivityId = null;
+    if (tabId !== "cache") this._editingEntity = null;
     this._store.selectTab(tabId);
   }
   handleSettingToggle(setting, enabled) {
@@ -17292,18 +17419,19 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
         ></sofabaton-backup-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {
-      if (this._editingActivityId != null) {
+      if (this._editingEntity != null) {
         activeTab = b2`
           <sofabaton-activities-tab
             .loading=${this._snapshot.loading}
             .error=${this._snapshot.loadError}
             .hub=${hub}
             .hass=${this._snapshot.hass}
-            .activityId=${this._editingActivityId}
+            .kind=${this._editingEntity.kind}
+            .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             @editor-exit=${() => {
-          this._editingActivityId = null;
+          this._editingEntity = null;
           this.requestUpdate();
         }}
           ></sofabaton-activities-tab>
@@ -17331,7 +17459,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           refreshAllSpinning: this._snapshot.refreshBusy && this._snapshot.activeRefreshLabel === REFRESH_ALL_KEY,
           onRefreshAll: () => void this._store.refreshAllForHub(),
           onEditActivity: (activityId) => {
-            this._editingActivityId = activityId;
+            this._editingEntity = { kind: "activity", id: activityId };
+            this.requestUpdate();
+          },
+          onEditDevice: (deviceId) => {
+            this._editingEntity = { kind: "device", id: deviceId };
             this.requestUpdate();
           }
         });

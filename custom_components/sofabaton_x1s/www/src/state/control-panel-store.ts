@@ -838,7 +838,9 @@ export class ControlPanelStore {
         ? "Restore completed successfully."
         : operation === "backup_export"
           ? "Backup completed successfully."
-          : "Wifi Device deployed successfully.";
+          : operation === "entity_sync"
+            ? "Synced to hub."
+            : "Wifi Device deployed successfully.";
       this.showRuntimeCompletion({
         tone: "success",
         label: successLabel,

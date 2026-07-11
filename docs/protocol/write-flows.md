@@ -19,7 +19,7 @@ documented separately in [wifi-commands.md](wifi-commands.md).
 | family `0x0E` | `A->H` | Write one command/code record, paged as needed | `0x0103` |
 | family `0x3E` | `A->H` | Write one button-binding row | `0x013E`, `payload[0] = echoed button id` |
 | `0x0241` | `A->H` | Set idle/power behavior for one device | `0x0103` |
-| family `0x12` | `A->H` | Write one macro record | `0x0112`, `payload[0] = echoed macro key id` |
+| family `0x12` | `A->H` | Write one macro record | `0x0112`, `payload[0]` usually echoes the macro key id — but not always; see note below |
 | family `0x46` | `A->H` | Write one inputs page | `0x0103` |
 | family `0x61` | `A->H` | Write one device key-sort page | `0x0103` |
 | `0x0064` | `A->H` | Remote sync / refresh trigger | `0x0103` |
@@ -27,6 +27,20 @@ documented separately in [wifi-commands.md](wifi-commands.md).
 The generic status ack is described in [ack-handling.md](ack-handling.md). For
 these write families, `payload[0] == 0x00` means accepted and a non-zero first
 byte means rejected.
+
+**Macro-save ack caveat (family `0x12`)**: when a macro save at activity
+scope drops a device's last power-macro reference, the hub cascade-removes
+that device from the activity (strips its rows from the other power macro
+and deletes its keymap bindings) and acks the successful save with a
+`0x0112` whose `payload[0]` is NOT the written key (observed `0x01`,
+~1.2 s late, X1 2026-07-11). Wait for any `0x0112`; rejections arrive as
+`0x0103` with a non-zero status.
+
+**User-macro creation at activity scope**: writing a family-`0x12` record
+directly at a fresh key id (e.g. `0x01`) is accepted by both X1 and X1S —
+the official app's create flow (write key `0x00`, hub assigns the real key
+in the `0x0112` ack) is *not* required for a client that picks a free key
+itself. Bench-validated 2026-07-11.
 
 ---
 

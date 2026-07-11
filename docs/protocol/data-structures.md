@@ -438,6 +438,9 @@ Client guidance:
   printable bytes encountered in the region
 - if the declared key-entry count would overlap the trailing label slot, clamp
   to the entries that fit inside the region
+- the slot bytes after the encoded label are hub-owned metadata, not padding —
+  preserve them verbatim for any later re-save and exclude them from equality
+  comparisons (see "Macro write" below)
 
 ### Empty power-macro variant on X1S
 
@@ -484,7 +487,31 @@ byte 9        delay
 
 Observed ack:
 - reply opcode `0x0112`
-- `payload[0]` echoes the written macro key id
+- `payload[0]` usually echoes the written macro key id — but a save that
+  drops a device's last power-macro reference triggers a hub-side cascade
+  (device removed from the activity, its rows stripped from the other
+  power macro, its keymap bindings deleted) and the hub acks that
+  successful save with a different byte (observed `0x01`, ~1.2 s late; X1
+  2026-07-11). Accept any `0x0112`; rejections arrive as `0x0103` with a
+  non-zero status. See [ack-handling.md](ack-handling.md).
+
+Hub-owned bytes inside the record (bench-observed 2026-07-11):
+
+- **Power-ref row duration (X1S)**: on step rows whose command id is a
+  power/input reference (`0xC5`/`0xC6`/`0xC7`), the X1S firmware derives
+  the duration byte from the target device's own power configuration and
+  overwrites the written value (wrote `0x00`, read back `0x01` for a
+  power-capable device). X1 preserved the written value. Clients must not
+  treat this byte as round-trippable on power-ref rows.
+- **Label-slot trailer metadata**: the bytes after the encoded label in
+  the fixed-width slot are a reserved region the hub uses for its own
+  bookkeeping (X1 example `37 37 00 00 35 35`; X1S observed `d4 d4`
+  stamped at slot bytes 54–55 as a side effect of membership
+  operations). Writers must round-trip the slot verbatim on
+  read-modify-write — the hub rejects saves whose slot disagrees with
+  its stored metadata (status `0x0C`) — and comparisons must treat the
+  trailer region as hub-owned, since the hub may change it between two
+  otherwise identical captures.
 
 ---
 
@@ -689,6 +716,19 @@ Observed behavior:
   carry that persisted byte stream
 - page acknowledgments are observed through `0x0103`, with `payload[0] == 0x00`
   for accept and `payload[0] == 0x0C` for reject
+
+**Backup/restore consequence (live-validated 2026-07-11, both hubs).** When a
+command record is read back via the `0x020C` dump, the returned blob is
+`blob_body + persist_tail` — the persisted stream *including* that trailing
+byte. A backup that stored the dump verbatim and restored it verbatim therefore
+re-appended the tail over a body that already ended in one, growing the record
+by one byte on every backup→restore cycle. The backup exporter now splits the
+persist tail off (`data_hex` = stable body, `persist_tail_hex` = the stripped
+byte, additive/informational only) and the restore writer recomputes a fresh
+tail for the new write context. Round-trip equality is on the body; the tail is
+write-context-owned and legitimately differs between the app's original write
+and a replay (it covers device id, burst size, etc.). Verified byte-for-byte on
+X1 `ir`/`wifi_roku` and X1S `wifi_ip` command records.
 
 ---
 

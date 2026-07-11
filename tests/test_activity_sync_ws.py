@@ -131,3 +131,84 @@ def test_ws_activity_sync_plan_returns_step_summary(monkeypatch):
     kinds = [s["kind"] for s in conn.result[1]["steps"]]
     assert "favorite_add" in kinds
     assert kinds[-1] == "remote_sync"
+
+
+# ── Device sync (live device editor) ────────────────────────────────────
+
+
+def _device_bundle(bindings):
+    return {
+        "kind": "hub_bundle",
+        "schema_version": integration.HUB_BUNDLE_SCHEMA_VERSION,
+        "devices": [
+            {
+                "device": {"device_id": 1, "name": "TV"},
+                "macros": [],
+                "button_bindings": bindings,
+            }
+        ],
+        "activities": [],
+    }
+
+
+def test_ws_device_sync_starts_operation(monkeypatch):
+    conn = _Conn()
+    started = {}
+    _patch(monkeypatch)
+    hass = SimpleNamespace(
+        async_create_task=lambda coro: started.setdefault("coro", coro) or SimpleNamespace(),
+        data={integration.DOMAIN: {}},
+    )
+    _run(integration._ws_device_sync(hass, conn, {
+        "id": 6, "entry_id": "entry-1", "device_id": 1,
+        "baseline": _device_bundle([]),
+        "edited": _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}]),
+    }))
+    assert conn.error is None
+    assert "operation_id" in conn.result[1]
+    started["coro"].close()
+
+
+def test_ws_device_sync_missing_device_is_invalid(monkeypatch):
+    conn = _Conn()
+    _patch(monkeypatch)
+    hass = SimpleNamespace(async_create_task=lambda c: SimpleNamespace(), data={integration.DOMAIN: {}})
+    _run(integration._ws_device_sync(hass, conn, {
+        "id": 7, "entry_id": "entry-1", "device_id": 42,
+        "baseline": _device_bundle([]), "edited": _device_bundle([]),
+    }))
+    assert conn.error[1] == "invalid_payload"
+
+
+def test_ws_device_sync_registry_kind_is_device_sync(monkeypatch):
+    conn = _Conn()
+    started = {}
+    _patch(monkeypatch)
+    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    hass = SimpleNamespace(
+        async_create_task=lambda coro: started.setdefault("coro", coro) or SimpleNamespace(),
+        data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}},
+    )
+    _run(integration._ws_device_sync(hass, conn, {
+        "id": 8, "entry_id": "entry-1", "device_id": 1,
+        "baseline": _device_bundle([]),
+        "edited": _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}]),
+    }))
+    assert conn.error is None
+    op = registry.latest_for_entry("entry-1", kind="device_sync")
+    assert op is not None and op["kind"] == "device_sync"
+    started["coro"].close()
+
+
+def test_ws_device_sync_plan_returns_step_summary(monkeypatch):
+    conn = _Conn()
+    _patch(monkeypatch)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_sync_plan(hass, conn, {
+        "id": 9, "entry_id": "entry-1", "device_id": 1,
+        "baseline": _device_bundle([]),
+        "edited": _device_bundle([{"button_id": 0xB0, "device_id": 1, "command_id": 10}]),
+    }))
+    assert conn.error is None
+    kinds = [s["kind"] for s in conn.result[1]["steps"]]
+    assert kinds == ["binding_write"]

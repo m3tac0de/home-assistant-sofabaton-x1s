@@ -19,6 +19,7 @@ import {
   activityMemberViews,
   activityQuickAccessItems,
   activityRoleAssignments,
+  deviceButtonBindingItems,
   deviceCommandItems,
   deviceIdleBehavior,
   bundleDeviceOptions,
@@ -88,6 +89,109 @@ export function diffActivityForReview(
   diffDeviceWide(buckets, baseline, edited, editMembers);
 
   return SECTION_ORDER
+    .map((section) => ({ section, entries: buckets[section] }))
+    .filter((group) => group.entries.length > 0);
+}
+
+// ── Device review (live device editor) ────────────────────────────────
+
+export type DeviceReviewSection = "power" | "buttons" | "macros";
+
+export interface DeviceReviewGroup {
+  section: DeviceReviewSection;
+  entries: ActivityReviewEntry[];
+}
+
+const DEVICE_SECTION_ORDER: DeviceReviewSection[] = ["power", "buttons", "macros"];
+
+interface RawMacroRow {
+  button_id?: number;
+  name?: string;
+  steps?: unknown[];
+}
+
+function rawDeviceMacros(bundle: BackupBundlePayload, deviceId: number): Map<number, RawMacroRow> {
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === Number(deviceId),
+  ) as { macros?: RawMacroRow[] } | undefined;
+  const rows = new Map<number, RawMacroRow>();
+  for (const macro of device?.macros ?? []) {
+    const buttonId = Number(macro?.button_id || 0);
+    if (buttonId > 0) rows.set(buttonId, macro);
+  }
+  return rows;
+}
+
+function macroStepsSignature(macro: RawMacroRow | undefined): string {
+  return JSON.stringify(macro?.steps ?? []);
+}
+
+export function diffDeviceForReview(
+  baseline: BackupBundlePayload | null,
+  edited: BackupBundlePayload | null,
+  deviceId: number,
+): DeviceReviewGroup[] {
+  const D = TOOLS_CARD_STRINGS.activities.deviceReview;
+  const buckets: Record<DeviceReviewSection, ActivityReviewEntry[]> = {
+    power: [],
+    buttons: [],
+    macros: [],
+  };
+  if (!baseline || !edited) return [];
+
+  // Power: automatic power control byte + the two power sequences.
+  const idleBefore = deviceIdleBehavior(baseline, deviceId);
+  const idleAfter = deviceIdleBehavior(edited, deviceId);
+  if (idleBefore !== idleAfter) {
+    const label = R.idleShort[Number(idleAfter ?? 0)] ?? String(idleAfter);
+    buckets.power.push({ text: D.powerControlChanged(label) });
+  }
+  const baseMacros = rawDeviceMacros(baseline, deviceId);
+  const editMacros = rawDeviceMacros(edited, deviceId);
+  for (const [buttonId, text] of [
+    [POWER_ON_MACRO_BUTTON_ID, D.powerOnChanged],
+    [POWER_OFF_MACRO_BUTTON_ID, D.powerOffChanged],
+  ] as Array<[number, string]>) {
+    if (macroStepsSignature(baseMacros.get(buttonId)) !== macroStepsSignature(editMacros.get(buttonId))) {
+      buckets.power.push({ text });
+    }
+  }
+
+  // Macros (non-power): added / removed / renamed / steps edited.
+  const isPower = (id: number) => id === POWER_ON_MACRO_BUTTON_ID || id === POWER_OFF_MACRO_BUTTON_ID;
+  for (const [buttonId, macro] of editMacros) {
+    if (isPower(buttonId)) continue;
+    const before = baseMacros.get(buttonId);
+    const name = String(macro?.name || `Macro ${buttonId}`);
+    if (!before) {
+      buckets.macros.push({ text: D.macroAdded(name) });
+      continue;
+    }
+    const renamed = String(before?.name || "") !== String(macro?.name || "");
+    const stepsChanged = macroStepsSignature(before) !== macroStepsSignature(macro);
+    if (renamed) buckets.macros.push({ text: D.macroRenamed(String(before?.name || ""), name) });
+    if (stepsChanged) buckets.macros.push({ text: D.macroChanged(name) });
+  }
+  for (const [buttonId, macro] of baseMacros) {
+    if (isPower(buttonId) || editMacros.has(buttonId)) continue;
+    buckets.macros.push({ text: D.macroRemoved(String(macro?.name || `Macro ${buttonId}`)) });
+  }
+
+  // Buttons: the device's own binding rows.
+  const baseBindings = new Map(deviceButtonBindingItems(baseline, deviceId).map((item) => [item.buttonId, item]));
+  const editBindings = new Map(deviceButtonBindingItems(edited, deviceId).map((item) => [item.buttonId, item]));
+  for (const [buttonId, item] of editBindings) {
+    const before = baseBindings.get(buttonId);
+    const changed = !before
+      || before.commandId !== item.commandId
+      || (before.longPress?.commandId ?? null) !== (item.longPress?.commandId ?? null);
+    if (changed) buckets.buttons.push({ text: D.bindingBound(item.buttonName, item.shortPressLabel) });
+  }
+  for (const [buttonId, item] of baseBindings) {
+    if (!editBindings.has(buttonId)) buckets.buttons.push({ text: D.bindingCleared(item.buttonName) });
+  }
+
+  return DEVICE_SECTION_ORDER
     .map((section) => ({ section, entries: buckets[section] }))
     .filter((group) => group.entries.length > 0);
 }

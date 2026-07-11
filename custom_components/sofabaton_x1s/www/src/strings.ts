@@ -86,6 +86,7 @@ export const TOOLS_CARD_STRINGS = {
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
     editActivity: "Edit activity",
+    editDevice: "Edit device",
   },
   logs: {
     loading: "Loading log stream...",
@@ -143,7 +144,7 @@ export const TOOLS_CARD_STRINGS = {
     activityFallback: (id: number) => `Activity ${id}`,
     // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
-    appConnectedBody: "Close the Sofabaton app to edit activities.",
+    appConnectedBody: "Close the Sofabaton app to edit the hub configuration.",
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
     // Capture flow (§4.2).
@@ -156,9 +157,10 @@ export const TOOLS_CARD_STRINGS = {
     retry: "Retry",
     back: "Back",
     // Cache-sourced capture (blob-free structural bundle).
-    capturingFromCache: "Loading activity from the hub cache…",
+    capturingFromCache: (kind: "activity" | "device") => `Loading ${kind} from the hub cache…`,
     needsRefreshTitle: "Refresh the hub cache to edit",
-    needsRefreshBody: "This activity isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.",
+    needsRefreshBody: (kind: "activity" | "device") =>
+      `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
     // Session restore banner (§4.6).
     // Live-mode edit header (§4.3).
     notSyncedChip: "Not synced",
@@ -181,18 +183,21 @@ export const TOOLS_CARD_STRINGS = {
     syncPlanSummary: (count: number) => `${count} hub ${count === 1 ? "write" : "writes"}`,
     syncFailedTitle: "Sync didn't finish",
     syncFailedStep: (step: string) => `The hub stopped at: ${step}`,
-    syncStaleTitle: "This activity changed on the hub",
-    syncStaleBody: "The activity was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue — your unsaved edits will be discarded.",
+    syncStaleTitle: (kind: "activity" | "device") => `This ${kind} changed on the hub`,
+    syncStaleBody: (kind: "activity" | "device") =>
+      `The ${kind} was edited on the hub since you loaded it, so your changes can't be safely applied. Reload the hub's current version to continue — your unsaved edits will be discarded.`,
     syncRetry: "Retry sync",
     syncReload: "Reload from hub",
     syncKeepEditing: "Keep editing",
     exitUnsyncedTitle: "Unsynced changes",
-    exitUnsyncedBody: "This activity has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.",
+    exitUnsyncedBody: (kind: "activity" | "device") =>
+      `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",
     exitWithoutSync: "Leave without syncing",
     // Discard confirmation.
     discardConfirmTitle: "Discard all changes?",
-    discardConfirmBody: "This throws away every edit you've made to this activity and returns to the captured state.",
+    discardConfirmBody: (kind: "activity" | "device") =>
+      `This throws away every edit you've made to this ${kind} and returns to the captured state.`,
     discardConfirmCancel: "Keep editing",
     discardConfirmConfirm: "Discard changes",
     // Review-list section titles + entry templates (activity-diff.ts).
@@ -231,6 +236,22 @@ export const TOOLS_CARD_STRINGS = {
         3: "stays on",
         4: "not managed by the hub",
       } as Record<number, string>,
+    },
+    // Review-list section titles + entry templates for the live *device*
+    // editor (activity-diff.ts, diffDeviceForReview).
+    deviceReview: {
+      sectionPower: "Power",
+      sectionButtons: "Buttons",
+      sectionMacros: "Macros",
+      powerControlChanged: (label: string) => `Automatic power control → ${label}.`,
+      powerOnChanged: "Power-on sequence updated.",
+      powerOffChanged: "Power-off sequence updated.",
+      macroAdded: (name: string) => `Added macro "${name}".`,
+      macroRemoved: (name: string) => `Removed macro "${name}".`,
+      macroRenamed: (oldName: string, newName: string) => `Renamed macro "${oldName}" → "${newName}".`,
+      macroChanged: (name: string) => `Edited macro "${name}".`,
+      bindingBound: (button: string, command: string) => `"${button}" now sends "${command}".`,
+      bindingCleared: (button: string) => `"${button}" no longer bound.`,
     },
   },
   backup: {

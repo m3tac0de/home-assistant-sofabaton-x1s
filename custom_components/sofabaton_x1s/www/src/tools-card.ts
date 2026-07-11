@@ -162,9 +162,9 @@ class SofabatonControlPanelCard extends LitElement {
   private _hubPickerOpen = false;
   private _toolsMenuOpen = false;
   private _lastRenderedTab: TabId | null = null;
-  // Activity currently open in the live editor (wrench button in the Hub
+  // Entity currently open in the live editor (wrench buttons in the Hub
   // tab); while set, the Hub tab renders the editor instead of the cache.
-  private _editingActivityId: number | null = null;
+  private _editingEntity: { kind: "activity" | "device"; id: number } | null = null;
   private _irFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
   private _irFlashClearForReceivedAt: number | null = null;
   private _pendingCacheScrollSnapshot: {
@@ -319,9 +319,9 @@ class SofabatonControlPanelCard extends LitElement {
 
   private handleTabSelect(tabId: TabId) {
     this._toolsMenuOpen = false;
-    // Leaving the Hub tab abandons an open activity edit session (same
-    // behavior the standalone Activities tab had when switching away).
-    if (tabId !== "cache") this._editingActivityId = null;
+    // Leaving the Hub tab abandons an open edit session (same behavior the
+    // standalone Activities tab had when switching away).
+    if (tabId !== "cache") this._editingEntity = null;
     this._store.selectTab(tabId);
   }
 
@@ -678,18 +678,19 @@ class SofabatonControlPanelCard extends LitElement {
         ></sofabaton-backup-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {
-      if (this._editingActivityId != null) {
+      if (this._editingEntity != null) {
         activeTab = html`
           <sofabaton-activities-tab
             .loading=${this._snapshot.loading}
             .error=${this._snapshot.loadError}
             .hub=${hub}
             .hass=${this._snapshot.hass}
-            .activityId=${this._editingActivityId}
+            .kind=${this._editingEntity.kind}
+            .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
             @editor-exit=${() => {
-              this._editingActivityId = null;
+              this._editingEntity = null;
               this.requestUpdate();
             }}
           ></sofabaton-activities-tab>
@@ -718,7 +719,11 @@ class SofabatonControlPanelCard extends LitElement {
             this._snapshot.refreshBusy && this._snapshot.activeRefreshLabel === REFRESH_ALL_KEY,
           onRefreshAll: () => void this._store.refreshAllForHub(),
           onEditActivity: (activityId) => {
-            this._editingActivityId = activityId;
+            this._editingEntity = { kind: "activity", id: activityId };
+            this.requestUpdate();
+          },
+          onEditDevice: (deviceId) => {
+            this._editingEntity = { kind: "device", id: deviceId };
             this.requestUpdate();
           },
         });

@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 from custom_components.sofabaton_x1s.lib.proxy_activity_sync import ActivitySyncMixin
 from tests.test_activity_sync_plan import base_bundle, _activity, _device, ACTIVITY_ID
+from tests.test_device_sync_plan import base_bundle as device_base_bundle, DEVICE_ID
 
 
 class FakeProxy(ActivitySyncMixin):
@@ -32,6 +33,12 @@ class FakeProxy(ActivitySyncMixin):
 
     def backup_activity(self, activity_id, **_kw):
         return self._fresh_activity
+
+    def backup_device(self, device_id, **kw):
+        self.calls.append(("backup_device", (device_id,), kw))
+        return self._fresh_device
+
+    _fresh_device: dict | None = None
 
     # Drivers — record and honour the simulated rejection.
     def _record(self, kind, *args, **kwargs):
@@ -275,6 +282,120 @@ def test_unavailable_when_cannot_issue_commands():
     result = proxy.sync_activity(baseline=base, edited=copy.deepcopy(base), activity_id=ACTIVITY_ID)
     assert result["status"] == "failed"
     assert result["failed_at"] == "unavailable"
+
+
+# ── Device sync orchestration (live device editor) ─────────────────────
+
+
+def _device_of(bundle: dict, device_id: int = DEVICE_ID) -> dict:
+    return next(d for d in bundle["devices"] if d["device"]["device_id"] == device_id)
+
+
+def test_device_sync_dispatches_with_device_entity_id_and_refreshes():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _device_of(edited)["button_bindings"] = [{"button_id": 0xB0, "device_id": 1, "command_id": 11}]
+    _device_of(edited)["device"]["idle_behavior"] = 1
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    kinds = _kinds(proxy.calls)
+    assert kinds.index("binding_write") < kinds.index("idle_behavior")
+    # command_to_button is addressed with the device id as the keymap entity id.
+    binding_call = next(call for call in proxy.calls if call[0] == "binding_write")
+    assert binding_call[1][0] == DEVICE_ID
+    # Tail refresh re-reads the device (blob-free) after the writes.
+    assert kinds[-1] == "backup_device"
+    assert proxy.calls[-1][2].get("include_blobs") is False
+
+
+def test_device_macro_write_uses_the_single_page_device_builder():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    # Edit the power-on sequence: one command step plus a delay row.
+    _device_of(edited)["macros"][0]["steps"] = [
+        {"command_id": 10, "duration": 4, "delay": 255},
+        {"command_id": 255, "duration": 255, "delay": 3},
+    ]
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    frames: list[tuple[int, bytes]] = []
+    proxy._send_family_frame = lambda family, payload: frames.append((family, payload))
+    proxy.wait_for_ack_any = lambda candidates, **kw: (candidates[0][0], b"\xc6")
+    proxy.reset_ack_queues = lambda: None
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    assert len(frames) == 1
+    family, payload = frames[0]
+    assert family == 0x12
+    # Outer page wrapper [01 00 01], then body [01 00 01][dev][key][count]
+    # followed by 10-byte step rows.
+    assert payload[0:3] == b"\x01\x00\x01"
+    assert payload[3:6] == b"\x01\x00\x01"
+    assert payload[6] == DEVICE_ID
+    assert payload[7] == 198
+    assert payload[8] == 2
+    step1 = payload[9:19]
+    assert step1[0] == DEVICE_ID          # device byte defaults to self
+    assert step1[1] == 10                 # command id
+    assert int.from_bytes(step1[2:8], "big") == 0x4E20 + 10  # synthetic code
+    assert step1[8] == 4 and step1[9] == 255
+    step2 = payload[19:29]
+    assert step2[:9] == b"\xff" * 9 and step2[9] == 3  # delay sentinel row
+
+
+def test_device_sync_stale_preflight_blocks_before_any_write():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    edited_dev = _device_of(edited)
+    edited_dev["button_bindings"] = []
+    stale = copy.deepcopy(_device_of(base))
+    stale["button_bindings"].append({"button_id": 0xB6, "device_id": 1, "command_id": 11})
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = stale
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "failed"
+    assert result["failed_at"] == "stale_check"
+    assert _kinds(proxy.calls) == ["backup_device"]  # preflight read only
+
+
+def test_device_sync_out_of_scope_plan_fails_before_writes():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _device_of(edited)["commands"][0]["name"] = "Power Toggle"
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "failed"
+    assert result["failed_at"] == "plan"
+    assert proxy.calls == []
+
+
+def test_device_sync_progress_carries_device_id():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _device_of(edited)["device"]["idle_behavior"] = 1
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    events: list[dict] = []
+
+    proxy.sync_device(
+        baseline=base, edited=edited, device_id=DEVICE_ID,
+        progress_callback=lambda **payload: events.append(payload),
+    )
+
+    phases = [e.get("phase") for e in events]
+    assert phases[-1] == "completed"
+    assert all("current_device_id" in e for e in events)
 
 
 def test_progress_contract_matches_restore_shape():

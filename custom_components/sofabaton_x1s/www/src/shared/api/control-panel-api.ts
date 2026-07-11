@@ -113,6 +113,36 @@ export class ControlPanelApi {
     });
   }
 
+  startDeviceSync(
+    entryId: string,
+    deviceId: number,
+    baseline: BackupBundlePayload,
+    edited: BackupBundlePayload,
+  ) {
+    return this.hass.callWS<BackupOperationStartResponse>({
+      type: "sofabaton_x1s/device/sync",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited,
+    });
+  }
+
+  deviceSyncPlan(
+    entryId: string,
+    deviceId: number,
+    baseline: BackupBundlePayload,
+    edited: BackupBundlePayload,
+  ) {
+    return this.hass.callWS<{ step_count: number; steps: Array<{ kind: string; label: string }> }>({
+      type: "sofabaton_x1s/device/sync_plan",
+      entry_id: entryId,
+      device_id: deviceId,
+      baseline,
+      edited,
+    });
+  }
+
   startCacheRefresh(entryId: string) {
     return this.hass.callWS<BackupOperationStartResponse>({
       type: "sofabaton_x1s/cache/refresh_all",

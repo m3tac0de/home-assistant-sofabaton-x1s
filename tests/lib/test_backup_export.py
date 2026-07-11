@@ -88,11 +88,15 @@ def test_build_hub_code_record_restore_data_extracts_fields() -> None:
         ],
     }
     restore = bx.build_hub_code_record_restore_data(command, device_class="bluetooth")
+    # The dumped record is ``blob_body + persist_tail`` (write-context
+    # checksum the hub stores verbatim); data_hex carries the stable body
+    # and the tail is split off so restore can seal a fresh one.
     assert restore == {
         "transport": "hub_code_record",
         "library_type": 0x03,
         "command_code": "00 00 00 00 4e 25",
-        "data_hex": "aa bb cc dd",
+        "data_hex": "aa bb cc",
+        "persist_tail_hex": "dd",
     }
 
 

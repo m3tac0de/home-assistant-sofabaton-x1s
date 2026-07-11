@@ -191,12 +191,32 @@ def build_hub_code_record_restore_data(
     if not data_hex:
         return None
 
+    # The hub persists family-0x0E saved records as ``blob_body +
+    # persist_tail`` (write-context checksum; see data-structures.md
+    # "Save-specific trailing checksum"). Strip that tail here so
+    # ``data_hex`` is the stable blob body — the restore writer computes
+    # and appends a fresh tail for the new write context. Without this,
+    # every backup→restore round-trip grew the record by one byte
+    # (live-bench finding, backup/restore chunk 2). The IR path already
+    # does the equivalent split in ``normalize_dump_to_blobs``.
+    persist_tail_hex: str | None = None
+    try:
+        blob = bytes.fromhex(data_hex)
+    except ValueError:
+        blob = b""
+    if len(blob) >= 2:
+        body, tail = split_play_blob_tail(blob)
+        data_hex = body.hex(" ")
+        persist_tail_hex = f"{tail:02x}"
+
     restore_data: dict[str, Any] = {
         "transport": "hub_code_record",
         "library_type": payload[8],
         "command_code": payload[9:15].hex(" "),
         "data_hex": data_hex,
     }
+    if persist_tail_hex is not None:
+        restore_data["persist_tail_hex"] = persist_tail_hex
 
     if device_class and is_decodable_class(device_class):
         decoded_block = try_decode_blob(device_class, data_hex)

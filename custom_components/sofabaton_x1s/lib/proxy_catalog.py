@@ -380,7 +380,13 @@ class CatalogMixin:
         if expected == 0:
             return True
         if expected is None:
-            return len(self._activity_pending_rows) == 0
+            # No row ever arrived and no explicit empty-catalog ack: the
+            # request was dropped or unanswered (the hub answers a truly
+            # empty catalog with STATUS_ACK 0x07, which sets expected=0).
+            # Treating silence as "empty" committed a wiped snapshot when
+            # a queued catalog retry fired mid write-sequence (live-bench
+            # finding, backup/restore chunk 2).
+            return False
         if expected < 0:
             return False
         seen = set(self._activity_pending_rows.keys())
@@ -391,7 +397,9 @@ class CatalogMixin:
         if expected == 0:
             return True
         if expected is None:
-            return len(self._device_pending_rows) == 0
+            # See _activity_snapshot_complete: silence is a dropped
+            # request, not an empty catalog.
+            return False
         if expected < 0:
             return False
         seen = set(self._device_pending_rows.keys())
@@ -481,6 +489,13 @@ class CatalogMixin:
                 sender=self._send_cmd_frame,
             )
             if finished:
+                base, _, ent = kind.partition(":")
+                if base == "buttons" and ent.isdigit():
+                    # An empty keymap is a definitive answer: record the
+                    # entity so ``ent_lo in state.buttons`` (the fetch/
+                    # completeness predicate) treats it as fetched instead
+                    # of waiting out the timeout and reporting incomplete.
+                    self.state.buttons.setdefault(int(ent) & 0xFF, set())
                 self._log.info(
                     "[CATALOG] STATUS_ACK 0x07 indicates an empty %s reply; finishing burst",
                     kind,

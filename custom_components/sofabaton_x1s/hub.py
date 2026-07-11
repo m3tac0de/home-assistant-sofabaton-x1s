@@ -1605,6 +1605,27 @@ class SofabatonHub:
             )
         )
 
+    async def async_sync_device(
+        self,
+        *,
+        baseline: dict[str, Any],
+        edited: dict[str, Any],
+        device_id: int,
+        progress_callback: Any = None,
+    ) -> dict[str, Any]:
+        """Sync one device's edits to the live hub (device-scoped counterpart
+        of :meth:`async_sync_activity`; engine :meth:`X1Proxy.sync_device`)."""
+
+        return await self.hass.async_add_executor_job(
+            partial(
+                self._proxy.sync_device,
+                baseline=baseline,
+                edited=edited,
+                device_id=int(device_id),
+                progress_callback=progress_callback,
+            )
+        )
+
     async def async_erase_configuration(
         self,
         *,

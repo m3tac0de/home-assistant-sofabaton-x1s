@@ -867,13 +867,17 @@ export class SofabatonEditDetailView extends LitElement {
                   <div class="quick-access-meta">IPv4 dotted-decimal address</div>
                 </div>
                 <div class="quick-access-actions">
-                  <button
-                    class="icon-btn"
-                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                    aria-label="Edit IP address"
-                  >
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
+                  ${this.mode === "live"
+                    ? nothing
+                    : html`
+                        <button
+                          class="icon-btn"
+                          @click=${() => this._openDeviceIpRenameDialog(deviceId)}
+                          aria-label="Edit IP address"
+                        >
+                          <ha-icon icon="mdi:pencil"></ha-icon>
+                        </button>
+                      `}
                 </div>
               </div>
             </div>
@@ -891,7 +895,7 @@ export class SofabatonEditDetailView extends LitElement {
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
             ${this.mode === "live"
-              ? "Command names are read-only in live activity sync."
+              ? "Commands are read-only in live sync — rename, payload, and delete stay in Backup → Edit."
               : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
           </div>
         </div>
@@ -945,13 +949,17 @@ export class SofabatonEditDetailView extends LitElement {
                   </button>
                 `
               : nothing}
-            <button
-              class="icon-btn icon-btn--danger"
-              @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
-              aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
-            >
-              <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-            </button>
+            ${this.mode === "live"
+              ? nothing
+              : html`
+                  <button
+                    class="icon-btn icon-btn--danger"
+                    @click=${() => this._openCommandDeleteConfirm(item.commandId, item.label)}
+                    aria-label=${TOOLS_CARD_STRINGS.backup.deleteCommandAria}
+                  >
+                    <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+                  </button>
+                `}
           </div>
         </div>
       </div>

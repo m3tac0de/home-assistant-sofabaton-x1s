@@ -39,8 +39,9 @@ export function renderCacheTab(params: {
   // Whole-hub structural cache refresh ("Refresh all" in the panel header).
   refreshAllSpinning: boolean;
   onRefreshAll: () => void;
-  // Opens the live activity editor for one activity (wrench button).
+  // Opens the live editor for one activity or device (wrench buttons).
   onEditActivity: (activityId: number) => void;
+  onEditDevice: (deviceId: number) => void;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.cache.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -119,6 +120,7 @@ export function renderCacheTab(params: {
           <span class="entity-meta">
             ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
             <span class="entity-count">${TOOLS_CARD_STRINGS.cache.deviceCommandCount(Number(device.command_count || 0))}</span>
+            <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editDevice} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditDevice(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("device", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
             <span class="entity-chevron">▼</span>
           </span>

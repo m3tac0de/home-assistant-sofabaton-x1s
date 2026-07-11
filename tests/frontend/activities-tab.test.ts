@@ -1,4 +1,4 @@
-import test from "node:test";
+﻿import test from "node:test";
 import assert from "node:assert/strict";
 import "../../custom_components/sofabaton_x1s/www/src/tabs/activities-tab";
 import type { BackupBundlePayload, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
@@ -45,7 +45,7 @@ test("activities tab loads the baseline from the structural cache and clones wor
   await element._startCapture(101);
 
   assert.equal(element._stage, "editing");
-  assert.equal(element._activityId, 101);
+  assert.equal(element._entityId, 101);
   assert.equal(element._baseline, bundle);
   // working is an independent deep clone — mutating it must not touch baseline.
   assert.notEqual(element._working, bundle);
@@ -105,13 +105,13 @@ test("activity editor auto-opens the requested activity once guards are clear", 
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
   element.hass = createHass(sampleBundle());
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  element.activityId = 101;
+  element.entityId = 101;
 
   element.updated(new Map<string, unknown>([["hub", undefined]]));
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   assert.equal(element._stage, "editing");
-  assert.equal(element._activityId, 101);
+  assert.equal(element._entityId, 101);
 });
 
 test("activity editor does not auto-open while a guard is active", () => {
@@ -119,19 +119,19 @@ test("activity editor does not auto-open while a guard is active", () => {
   element.hass = createHass(sampleBundle());
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
   element.selectedHubProxyConnected = true;
-  element.activityId = 101;
+  element.entityId = 101;
 
   element.updated(new Map<string, unknown>([["hub", undefined]]));
 
   assert.equal(element._stage, "list");
-  assert.equal(element._activityId, null);
+  assert.equal(element._entityId, null);
 });
 
 test("activity editor does not re-open the same activity after closing", async () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
   element.hass = createHass(sampleBundle());
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
-  element.activityId = 101;
+  element.entityId = 101;
 
   element.updated(new Map<string, unknown>([["hub", undefined]]));
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -173,7 +173,7 @@ test("activities tab does not restore a previous edit session on entry", () => {
     reader.updated(new Map<string, unknown>([["hub", undefined]]));
 
     assert.equal(reader._stage, "list");
-    assert.equal(reader._activityId, null);
+    assert.equal(reader._entityId, null);
     assert.equal(reader._baseline, null);
     assert.equal(reader._working, null);
   } finally {
@@ -189,14 +189,14 @@ test("activities tab drops the active edit state when the hub picker switches hu
   element._stage = "editing";
   element._baseline = sampleBundle();
   element._working = sampleBundle();
-  element._activityId = 101;
+  element._entityId = 101;
 
   element.hub = { entry_id: "hub-2", activities: [] };
   element.updated(new Map<string, unknown>([["hub", undefined]]));
 
   assert.equal(element._stage, "list");
   assert.equal(element._baseline, null);
-  assert.equal(element._activityId, null);
+  assert.equal(element._entityId, null);
 });
 
 test("activities tab keeps an in-flight capture when the hub object refreshes (same entry_id)", () => {
@@ -204,7 +204,7 @@ test("activities tab keeps an in-flight capture when the hub object refreshes (s
   element.hub = { entry_id: "hub-1", activities: [] };
   element.updated(new Map<string, unknown>([["hub", undefined]]));
   element._stage = "capturing";
-  element._activityId = 101;
+  element._entityId = 101;
 
   // A control_panel/state refresh hands us a NEW hub object with the SAME
   // entry_id (e.g. active_backup_operation now populated by our own capture).
@@ -212,7 +212,7 @@ test("activities tab keeps an in-flight capture when the hub object refreshes (s
   element.updated(new Map<string, unknown>([["hub", undefined]]));
 
   assert.equal(element._stage, "capturing");
-  assert.equal(element._activityId, 101);
+  assert.equal(element._entityId, 101);
 });
 
 test("activities tab tracks dirty on bundle-change and clears it when reverted", () => {
@@ -220,7 +220,7 @@ test("activities tab tracks dirty on bundle-change and clears it when reverted",
   const base = sampleBundle();
   element._baseline = base;
   element._working = structuredClone(base);
-  element._activityId = 101;
+  element._entityId = 101;
   element._recomputeDirty();
   assert.equal(element._dirty, false);
 
@@ -241,7 +241,7 @@ test("activities tab discard restores the working bundle to the baseline and cle
   const mutated = structuredClone(base);
   mutated.activities[0].device!.name = "Changed";
   element._working = mutated;
-  element._activityId = 101;
+  element._entityId = 101;
   element._recomputeDirty();
   element._discardConfirmOpen = true;
   assert.equal(element._dirty, true);
@@ -260,7 +260,7 @@ test("activities tab back prompts before leaving a dirty edit", () => {
   element._stage = "editing";
   element._baseline = base;
   element._working = edited;
-  element._activityId = 101;
+  element._entityId = 101;
   element._recomputeDirty();
 
   element._closeEditor();
@@ -279,14 +279,14 @@ test("activities tab leaving without sync discards the active edit", () => {
   element._stage = "editing";
   element._baseline = base;
   element._working = edited;
-  element._activityId = 101;
+  element._entityId = 101;
   element._exitConfirmOpen = true;
   element._recomputeDirty();
 
   element._leaveWithoutSync();
 
   assert.equal(element._stage, "list");
-  assert.equal(element._activityId, null);
+  assert.equal(element._entityId, null);
   assert.equal(element._baseline, null);
   assert.equal(element._working, null);
   assert.equal(element._dirty, false);
@@ -297,7 +297,7 @@ test("activities tab opens the review dialog only when dirty", () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
   element._baseline = sampleBundle();
   element._working = structuredClone(element._baseline);
-  element._activityId = 101;
+  element._entityId = 101;
   element._dirty = false;
   element._openReview();
   assert.equal(element._reviewOpen, false);
@@ -316,6 +316,7 @@ function createSyncHass() {
       const type = String(message.type ?? "");
       calls.push(type);
       if (type === "sofabaton_x1s/activity/sync") return { operation_id: "sync-1" } as T;
+      if (type === "sofabaton_x1s/device/sync") return { operation_id: "sync-1" } as T;
       if (type === "sofabaton_x1s/backup/clear_result") return { ok: true } as T;
       throw new Error(`Unexpected WS call: ${type}`);
     },
@@ -339,7 +340,7 @@ test("activities tab sync starts the engine and enters the syncing stage", async
   element.refreshControlPanelState = () => undefined;
   element._baseline = sampleBundle();
   element._working = structuredClone(element._baseline);
-  element._activityId = 101;
+  element._entityId = 101;
   element._dirty = true;
   element._reviewOpen = true;
 
@@ -359,7 +360,7 @@ test("activities tab sync success promotes working to baseline and clears dirty"
   const edited = structuredClone(element._baseline);
   edited.activities[0].device!.name = "Edited";
   element._working = edited;
-  element._activityId = 101;
+  element._entityId = 101;
   element._recomputeDirty();
   assert.equal(element._dirty, true);
 
@@ -383,7 +384,7 @@ test("activities tab sync-and-leave exits after a successful sync", async () => 
   const edited = structuredClone(element._baseline);
   edited.activities[0].device!.name = "Edited";
   element._working = edited;
-  element._activityId = 101;
+  element._entityId = 101;
   element._exitConfirmOpen = true;
   element._recomputeDirty();
 
@@ -395,11 +396,76 @@ test("activities tab sync-and-leave exits after a successful sync", async () => 
   await hass.__emit({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "success", total_steps: 2 });
 
   assert.equal(element._stage, "list");
-  assert.equal(element._activityId, null);
+  assert.equal(element._entityId, null);
   assert.equal(element._baseline, null);
   assert.equal(element._working, null);
   assert.equal(element._dirty, false);
   assert.equal(element._exitConfirmOpen, false);
+});
+
+function sampleDeviceBundle(): BackupBundlePayload {
+  return {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1" },
+    devices: [{
+      device: { device_id: 5, name: "Television" },
+      macros: [{ button_id: 198, name: "PWRON", steps: [] }],
+      button_bindings: [],
+    }],
+    activities: [],
+  } as unknown as BackupBundlePayload;
+}
+
+test("device editor auto-opens the requested device from the devices list", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  element.hass = createHass(sampleDeviceBundle());
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.kind = "device";
+  element.entityId = 5;
+
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(element._stage, "editing");
+  assert.equal(element._entityId, 5);
+});
+
+test("device editor prompts to refresh when the device is missing from the cache", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  // Bundle exists but only carries activities — the requested device is absent.
+  element.hass = createHass(sampleBundle());
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.kind = "device";
+
+  await element._startCapture(5);
+
+  assert.equal(element._stage, "needs_refresh");
+});
+
+test("device editor sync goes through device/sync", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const hass = createSyncHass();
+  element.hass = hass;
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.refreshControlPanelState = () => undefined;
+  element.kind = "device";
+  element._baseline = sampleDeviceBundle();
+  const edited = structuredClone(element._baseline);
+  edited.devices[0].macros[0].steps = [{ device_id: 5, command_id: 1, button_code: 2, duration: 0, delay: 0 }];
+  element._working = edited;
+  element._entityId = 5;
+  element._recomputeDirty();
+  assert.equal(element._dirty, true);
+
+  await element._requestSync();
+  assert.equal(element._stage, "syncing");
+  assert.equal(hass.__calls.includes("sofabaton_x1s/device/sync"), true);
+  assert.equal(hass.__calls.includes("sofabaton_x1s/activity/sync"), false);
+
+  await hass.__emit({ operation_id: "sync-1", kind: "device_sync", entry_id: "hub-1", status: "success", total_steps: 1 });
+  assert.equal(element._stage, "editing");
+  assert.equal(element._dirty, false);
 });
 
 test("activities tab sync failure surfaces the failed step, stale maps to reload", async () => {
@@ -410,7 +476,7 @@ test("activities tab sync failure surfaces the failed step, stale maps to reload
   element.refreshControlPanelState = () => undefined;
   element._baseline = sampleBundle();
   element._working = structuredClone(element._baseline);
-  element._activityId = 101;
+  element._entityId = 101;
   element._dirty = true;
 
   await element._requestSync();

@@ -315,6 +315,12 @@ def run_create_sequence(
 
             while attempts_left > 0:
                 attempts_left -= 1
+                # Let any in-flight read burst finish before writing: the
+                # hub drops frames that arrive mid-burst (e.g. a queued
+                # catalog refresh answered between two steps).
+                quiesce = getattr(proxy, "wait_for_read_burst_quiesce", None)
+                if callable(quiesce):
+                    quiesce()
                 send_ts = time.monotonic()
                 proxy._send_family_frame(step.family, page_payload)
                 matched = proxy.wait_for_ack_any(
