@@ -1,4 +1,4 @@
-export type TabId = "activities" | "settings" | "wifi_commands" | "blobs" | "backup" | "cache" | "logs";
+export type TabId = "settings" | "wifi_commands" | "blobs" | "backup" | "cache" | "logs";
 export type SectionId = "activities" | "devices";
 export type BackupSectionId = "make" | "edit" | "restore";
 export type BlobsSectionId = "fetch" | "test" | "save";
@@ -81,7 +81,7 @@ export interface ControlPanelRemoteBatteryState {
 
 export interface ControlPanelRuntimeState {
   kind: "idle" | "app_connected" | "operation_running";
-  operation?: "wifi_deploy" | "backup_export" | "backup_restore" | null;
+  operation?: "wifi_deploy" | "backup_export" | "backup_restore" | "cache_refresh" | null;
   label?: string | null;
   detail?: string | null;
   current_step?: number | null;

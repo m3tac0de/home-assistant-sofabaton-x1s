@@ -1678,8 +1678,7 @@ var TOOLS_CARD_STRINGS = {
     blobsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/blobs.md"
   },
   tabs: {
-    activities: "Activities",
-    cache: "Cache",
+    cache: "Hub",
     wifiCommands: "Wifi Commands",
     wifiShort: "Wifi",
     backup: "Backup",
@@ -1752,7 +1751,9 @@ var TOOLS_CARD_STRINGS = {
     refresh: "Refresh",
     activities: "Activities",
     devices: "Devices",
-    refreshList: "Refresh list"
+    refreshList: "Refresh list",
+    refreshAll: "Refresh all",
+    editActivity: "Edit activity"
   },
   logs: {
     loading: "Loading log stream...",
@@ -1760,7 +1761,7 @@ var TOOLS_CARD_STRINGS = {
     liveConsole: "Live Console"
   },
   cacheRefresh: {
-    label: "Refresh entire hub cache",
+    label: "Refresh all",
     running: "Refreshing\u2026",
     starting: "Starting hub cache refresh\u2026",
     working: "Reading your hub's configuration\u2026",
@@ -1785,7 +1786,7 @@ var TOOLS_CARD_STRINGS = {
     selectOne: "Select one",
     device: "Device",
     command: "Command",
-    fetchNoCommands: "This device has no cached commands yet. Refresh that device from the Cache tab first.",
+    fetchNoCommands: "This device has no cached commands yet. Refresh that device from the Hub tab first.",
     fetchNoRecords: "The hub returned no blob records for this request.",
     commandFallback: (commandId) => `Command ${commandId}`,
     unknown: "unknown",
@@ -1798,7 +1799,7 @@ var TOOLS_CARD_STRINGS = {
     copy: "Copy",
     test: "Test",
     testing: "Testing...",
-    noIrDevices: "No IR devices found in the cache. Refresh devices from the Cache tab first.",
+    noIrDevices: "No IR devices found in the cache. Refresh devices from the Hub tab first.",
     irDevice: "IR device",
     save: "Save",
     saving: "Saving...",
@@ -1807,20 +1808,12 @@ var TOOLS_CARD_STRINGS = {
   activities: {
     loading: "Loading activities...",
     selectHub: "Select a hub to edit its activities.",
-    listSubtitle: "Choose an activity to edit. Changes stay on your device until you sync them to the hub.",
     activityFallback: (id) => `Activity ${id}`,
-    rowMeta: (devices, shortcuts) => {
-      const deviceLabel = `${devices} ${devices === 1 ? "device" : "devices"}`;
-      const shortcutLabel = `${shortcuts} ${shortcuts === 1 ? "shortcut" : "shortcuts"}`;
-      return `${deviceLabel} \xB7 ${shortcutLabel}`;
-    },
-    // Guard panels (§4.1), rendered inside the tab.
+    // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
     appConnectedBody: "Close the Sofabaton app to edit activities.",
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
-    emptyTitle: "No activities yet",
-    emptyBody: "This hub has no activities to edit.",
     // Capture flow (§4.2).
     captureTitle: "Reading your hub",
     captureMessage: "Reading your hub's configuration\u2026",

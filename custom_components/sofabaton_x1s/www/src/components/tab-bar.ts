@@ -9,7 +9,6 @@ export function renderTabBar(params: {
   onToggleToolsMenu: () => void;
 }) {
   const tabs: Array<{ id: TabId; label: string; shortLabel?: string; disabled: boolean }> = [
-    { id: "activities", label: TOOLS_CARD_STRINGS.tabs.activities, disabled: false },
     { id: "cache", label: TOOLS_CARD_STRINGS.tabs.cache, disabled: false },
     { id: "wifi_commands", label: TOOLS_CARD_STRINGS.tabs.wifiCommands, shortLabel: TOOLS_CARD_STRINGS.tabs.wifiShort, disabled: false },
     { id: "backup", label: TOOLS_CARD_STRINGS.tabs.backup, disabled: false },

@@ -36,9 +36,11 @@ export function renderCacheTab(params: {
   onToggleEntity: (key: string) => void;
   onRefreshSection: (sectionId: SectionId) => void;
   onRefreshEntry: (kind: "activity" | "device", targetId: number, key: string) => void;
-  // Host-supplied "Refresh entire hub cache" button (self-contained element);
-  // rendered above the per-entity refreshes, which stay for targeted updates.
-  refreshAllSlot?: unknown;
+  // Whole-hub structural cache refresh ("Refresh all" in the panel header).
+  refreshAllSpinning: boolean;
+  onRefreshAll: () => void;
+  // Opens the live activity editor for one activity (wrench button).
+  onEditActivity: (activityId: number) => void;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.cache.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -79,6 +81,7 @@ export function renderCacheTab(params: {
           <span class="entity-meta">
             ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
             <span class="entity-count entity-count--activity">${TOOLS_CARD_STRINGS.cache.activityCounts(favorites.length, macros.length, buttons.length)}</span>
+            <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editActivity} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditActivity(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("activity", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
             <span class="entity-chevron">▼</span>
           </span>
@@ -135,9 +138,6 @@ export function renderCacheTab(params: {
 
   return html`
     <div class="tab-panel">
-      ${params.refreshAllSlot
-        ? html`<div class="cache-refresh-all-bar" style="display:flex;justify-content:flex-end;padding:12px 12px 0;">${params.refreshAllSlot}</div>`
-        : null}
       ${params.staleData ? html`<div class="stale-banner"><span class="stale-banner-text">${TOOLS_CARD_STRINGS.cache.staleBanner}</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>${TOOLS_CARD_STRINGS.cache.refresh}</button></div>` : null}
       ${renderSecondaryTabShell({
         connected: true,
@@ -153,10 +153,18 @@ export function renderCacheTab(params: {
           header: html`
           <div class="secondary-panel-header secondary-panel-header--plain cache-panel-header">
             <span class="flex-spacer"></span>
-            <span class="refresh-list-label">${TOOLS_CARD_STRINGS.cache.refreshList}</span>
-            <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
-              <ha-icon icon="mdi:refresh"></ha-icon>
-            </button>
+            <span class="refresh-action">
+              <span class="refresh-list-label">${TOOLS_CARD_STRINGS.cache.refreshAll}</span>
+              <button class="icon-btn${params.refreshAllSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${params.onRefreshAll}>
+                <ha-icon icon="mdi:refresh"></ha-icon>
+              </button>
+            </span>
+            <span class="refresh-action">
+              <span class="refresh-list-label">${TOOLS_CARD_STRINGS.cache.refreshList}</span>
+              <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
+                <ha-icon icon="mdi:refresh"></ha-icon>
+              </button>
+            </span>
           </div>
           `,
           bodyClassName: "cache-panel-body",

@@ -1196,8 +1196,7 @@ var TOOLS_CARD_STRINGS = {
     blobsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/blobs.md"
   },
   tabs: {
-    activities: "Activities",
-    cache: "Cache",
+    cache: "Hub",
     wifiCommands: "Wifi Commands",
     wifiShort: "Wifi",
     backup: "Backup",
@@ -1270,7 +1269,9 @@ var TOOLS_CARD_STRINGS = {
     refresh: "Refresh",
     activities: "Activities",
     devices: "Devices",
-    refreshList: "Refresh list"
+    refreshList: "Refresh list",
+    refreshAll: "Refresh all",
+    editActivity: "Edit activity"
   },
   logs: {
     loading: "Loading log stream...",
@@ -1278,7 +1279,7 @@ var TOOLS_CARD_STRINGS = {
     liveConsole: "Live Console"
   },
   cacheRefresh: {
-    label: "Refresh entire hub cache",
+    label: "Refresh all",
     running: "Refreshing\u2026",
     starting: "Starting hub cache refresh\u2026",
     working: "Reading your hub's configuration\u2026",
@@ -1303,7 +1304,7 @@ var TOOLS_CARD_STRINGS = {
     selectOne: "Select one",
     device: "Device",
     command: "Command",
-    fetchNoCommands: "This device has no cached commands yet. Refresh that device from the Cache tab first.",
+    fetchNoCommands: "This device has no cached commands yet. Refresh that device from the Hub tab first.",
     fetchNoRecords: "The hub returned no blob records for this request.",
     commandFallback: (commandId) => `Command ${commandId}`,
     unknown: "unknown",
@@ -1316,7 +1317,7 @@ var TOOLS_CARD_STRINGS = {
     copy: "Copy",
     test: "Test",
     testing: "Testing...",
-    noIrDevices: "No IR devices found in the cache. Refresh devices from the Cache tab first.",
+    noIrDevices: "No IR devices found in the cache. Refresh devices from the Hub tab first.",
     irDevice: "IR device",
     save: "Save",
     saving: "Saving...",
@@ -1325,20 +1326,12 @@ var TOOLS_CARD_STRINGS = {
   activities: {
     loading: "Loading activities...",
     selectHub: "Select a hub to edit its activities.",
-    listSubtitle: "Choose an activity to edit. Changes stay on your device until you sync them to the hub.",
     activityFallback: (id) => `Activity ${id}`,
-    rowMeta: (devices, shortcuts) => {
-      const deviceLabel = `${devices} ${devices === 1 ? "device" : "devices"}`;
-      const shortcutLabel = `${shortcuts} ${shortcuts === 1 ? "shortcut" : "shortcuts"}`;
-      return `${deviceLabel} \xB7 ${shortcutLabel}`;
-    },
-    // Guard panels (§4.1), rendered inside the tab.
+    // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
     appConnectedBody: "Close the Sofabaton app to edit activities.",
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
-    emptyTitle: "No activities yet",
-    emptyBody: "This hub has no activities to edit.",
     // Capture flow (§4.2).
     captureTitle: "Reading your hub",
     captureMessage: "Reading your hub's configuration\u2026",
@@ -8845,7 +8838,8 @@ var SofabatonActivitiesTab = class extends i3 {
     super(...arguments);
     this.hass = null;
     this.hub = null;
-    this.cacheHub = null;
+    /** The activity to edit; the host sets this before mounting. */
+    this.activityId = null;
     this.loading = false;
     this.error = null;
     this.blockedTitle = null;
@@ -8870,6 +8864,9 @@ var SofabatonActivitiesTab = class extends i3 {
     this._progressUnsub = null;
     this._syncStateHydratedFor = null;
     this._exitAfterSync = false;
+    // Which requested activityId we already auto-opened, so returning to the
+    // idle stage (close) doesn't immediately re-capture the same activity.
+    this._autoOpenedActivityId = null;
     // entry_id of the hub the current stage belongs to. The `hub` prop
     // is a fresh object on every control_panel/state refresh, so we key reset
     // decisions on the entry_id — not object identity — to avoid tearing down
@@ -8991,8 +8988,8 @@ var SofabatonActivitiesTab = class extends i3 {
     this.properties = {
       hass: { attribute: false },
       hub: { attribute: false },
-      cacheHub: { attribute: false },
       refreshControlPanelState: { attribute: false },
+      activityId: { type: Number },
       loading: { type: Boolean },
       error: { type: String },
       blockedTitle: { type: String },
@@ -9026,31 +9023,6 @@ var SofabatonActivitiesTab = class extends i3 {
     .tab-panel--flush { padding: 0; }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
     .state.error { color: var(--error-color, #db4437); }
-    .list-subtitle { font-size: 13px; line-height: 1.5; color: var(--secondary-text-color); }
-    .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-    .activity-list { display: grid; gap: 6px; }
-    .activity-row {
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--ha-card-border-radius, 12px);
-      padding: 10px 12px;
-      background: var(--secondary-background-color, var(--ha-card-background));
-      text-align: left;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-      transition: border-color 120ms ease, background-color 120ms ease;
-    }
-    .activity-row:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .activity-row-lead { flex: 0 0 auto; color: var(--primary-color); display: inline-flex; }
-    .activity-row-lead ha-icon { --mdc-icon-size: 22px; }
-    .activity-row-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
-    .activity-row-name { font-size: 14px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .activity-row-meta { font-size: 12px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .activity-row-chevron { flex: 0 0 auto; color: var(--secondary-text-color); display: inline-flex; }
-    .activity-row-chevron ha-icon { --mdc-icon-size: 20px; }
     .guard-state {
       flex: 1;
       display: flex;
@@ -9180,6 +9152,21 @@ var SofabatonActivitiesTab = class extends i3 {
       this._syncStateHydratedFor = this.hub.entry_id;
       void this._hydrateRunningSync();
     }
+    this._maybeAutoOpen();
+  }
+  // Direct-open: capture the requested activity as soon as the guards clear.
+  // Runs once per requested id — a close (back to the idle stage) must not
+  // re-capture; the host tears the element down on `editor-exit`.
+  _maybeAutoOpen() {
+    const requested = this.activityId == null ? null : Number(this.activityId);
+    if (requested == null || !Number.isFinite(requested)) return;
+    if (this._stage !== "list" || this._autoOpenedActivityId === requested) return;
+    if (this._openBlocked()) return;
+    this._autoOpenedActivityId = requested;
+    void this._startCapture(requested);
+  }
+  _openBlocked() {
+    return this.selectedHubProxyConnected || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
   }
   // Card reloaded mid-sync: pick up a running activity_sync op from the
   // shared backup/state registry and resubscribe to its progress.
@@ -9267,6 +9254,7 @@ var SofabatonActivitiesTab = class extends i3 {
     this._stage = "editing";
   }
   _resetToList() {
+    const wasActive = this._stage !== "list" || this._activityId != null;
     this._stage = "list";
     this._activityId = null;
     this._baseline = null;
@@ -9284,32 +9272,9 @@ var SofabatonActivitiesTab = class extends i3 {
     this._syncOperationId = null;
     this._syncSuccessNotice = false;
     this._exitAfterSync = false;
-  }
-  // ── Data ───────────────────────────────────────────────────────────
-  _activityItems() {
-    const activities = this.cacheHub?.activities ?? this.hub?.activities ?? [];
-    const cacheFavorites = this.cacheHub?.activity_favorites ?? {};
-    const cacheMacros = this.cacheHub?.activity_macros ?? {};
-    return [...activities].map((activity) => {
-      const id = Number(activity.id);
-      const key = String(id);
-      const favorites = Number(
-        activity.favorite_count ?? (Array.isArray(cacheFavorites[key]) ? cacheFavorites[key].length : 0)
-      );
-      const macros = Number(
-        activity.macro_count ?? (Array.isArray(cacheMacros[key]) ? cacheMacros[key].length : 0)
-      );
-      return {
-        id,
-        // Device membership isn't surfaced on the hub-state activity
-        // summary (nor cheaply derivable from the cache), so the list meta
-        // line shows only the shortcut count until capture reveals the
-        // precise device set. rowMeta renders 0 devices gracefully.
-        name: String(activity.name || "").trim() || S4.activityFallback(id),
-        deviceCount: 0,
-        shortcutCount: favorites + macros
-      };
-    }).sort((left, right) => left.id - right.id);
+    if (wasActive) {
+      this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
+    }
   }
   // ── Render ─────────────────────────────────────────────────────────
   render() {
@@ -9340,7 +9305,7 @@ var SofabatonActivitiesTab = class extends i3 {
     if (this._stage === "capturing") {
       return this._renderCapturing();
     }
-    return this._renderList();
+    return this._renderIdle();
   }
   _renderGuard(icon, title, sub) {
     return T`
@@ -9353,33 +9318,21 @@ var SofabatonActivitiesTab = class extends i3 {
       </div>
     `;
   }
-  _renderList() {
+  // Idle stage: capture hasn't started yet (guards active) or the session is
+  // closing. Guard panels (§4.1) render full-panel, in priority order;
+  // otherwise _maybeAutoOpen is about to kick off the capture.
+  _renderIdle() {
     if (this.selectedHubProxyConnected) {
       return this._renderGuard("mdi:cellphone-link", S4.appConnectedTitle, S4.appConnectedBody);
     }
     if (this._isProgressRunning(this.hub?.active_backup_operation ?? null)) {
       return this._renderGuard("mdi:progress-clock", S4.operationRunningTitle, S4.operationRunningBody);
     }
-    const items = this._activityItems();
-    if (!items.length) {
-      return this._renderGuard("mdi:playlist-remove", S4.emptyTitle, S4.emptyBody);
-    }
     return T`
       <div class="tab-panel">
-        <div class="list-subtitle">${S4.listSubtitle}</div>
-        <div class="list-scroll">
-          <div class="activity-list">
-            ${items.map((item) => T`
-              <button class="activity-row" @click=${() => void this._startCapture(item.id)}>
-                <span class="activity-row-lead"><ha-icon icon="mdi:play-circle-outline"></ha-icon></span>
-                <span class="activity-row-main">
-                  <span class="activity-row-name">${item.name}</span>
-                  <span class="activity-row-meta">${S4.rowMeta(item.deviceCount, item.shortcutCount)}</span>
-                </span>
-                <span class="activity-row-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
-              </button>
-            `)}
-          </div>
+        <div class="guard-state">
+          <div class="guard-icon"><ha-icon icon="mdi:database-arrow-down-outline"></ha-icon></div>
+          <div class="guard-sub">${S4.capturingFromCache}</div>
         </div>
       </div>
     `;
@@ -9663,43 +9616,70 @@ test("activities tab surfaces a structural-bundle read failure", async () => {
   assert.equal(element._stage, "capturing");
   assert.match(String(element._captureError || ""), /boom/);
 });
-test("activities tab shows the app-connected guard ahead of the list", () => {
+test("activity editor shows the app-connected guard instead of opening", () => {
   const element = new ActivitiesTabElement();
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
   element.selectedHubProxyConnected = true;
-  const result = element._renderList();
+  const result = element._renderIdle();
   assert.equal(result.values.includes(S5.appConnectedTitle), true);
 });
-test("activities tab shows the busy guard when another operation is running", () => {
+test("activity editor shows the busy guard when another operation is running", () => {
   const element = new ActivitiesTabElement();
   element.hub = {
     entry_id: "hub-1",
     activities: [{ id: 101, name: "Watch TV" }],
     active_backup_operation: { operation_id: "x", kind: "backup_export", entry_id: "hub-1", status: "running" }
   };
-  const result = element._renderList();
+  const result = element._renderIdle();
   assert.equal(result.values.includes(S5.operationRunningTitle), true);
 });
-test("activities tab renders the empty guard when the hub has no activities", () => {
+test("activity editor auto-opens the requested activity once guards are clear", async () => {
   const element = new ActivitiesTabElement();
-  element.hub = { entry_id: "hub-1", activities: [] };
-  const result = element._renderList();
-  assert.equal(result.values.includes(S5.emptyTitle), true);
+  element.hass = createHass(sampleBundle());
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  element.activityId = 101;
+  element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(element._stage, "editing");
+  assert.equal(element._activityId, 101);
 });
-test("activities tab lists activities sorted by id when connected and idle", () => {
+test("activity editor does not auto-open while a guard is active", () => {
   const element = new ActivitiesTabElement();
-  element.hub = {
-    entry_id: "hub-1",
-    activities: [
-      { id: 102, name: "Listen", favorite_count: 2, macro_count: 1 },
-      { id: 101, name: "Watch TV", favorite_count: 0, macro_count: 0 }
-    ]
+  element.hass = createHass(sampleBundle());
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  element.selectedHubProxyConnected = true;
+  element.activityId = 101;
+  element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
+  assert.equal(element._stage, "list");
+  assert.equal(element._activityId, null);
+});
+test("activity editor does not re-open the same activity after closing", async () => {
+  const element = new ActivitiesTabElement();
+  element.hass = createHass(sampleBundle());
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  element.activityId = 101;
+  element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(element._stage, "editing");
+  element._closeEditor();
+  assert.equal(element._stage, "list");
+  element.updated(/* @__PURE__ */ new Map([["hub", void 0]]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(element._stage, "list");
+});
+test("activity editor dispatches editor-exit when the session closes", async () => {
+  const element = new ActivitiesTabElement();
+  element.hass = createHass(sampleBundle());
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  const events = [];
+  element.dispatchEvent = (event) => {
+    events.push(event.type);
+    return true;
   };
-  const items = element._activityItems();
-  assert.deepEqual(items.map((item) => item.id), [101, 102]);
-  assert.equal(items[1].shortcutCount, 3);
-  const result = element._renderList();
-  assert.match(result.strings.join(""), /activity-list/);
+  await element._startCapture(101);
+  assert.equal(element._stage, "editing");
+  element._closeEditor();
+  assert.equal(events.includes("editor-exit"), true);
 });
 test("activities tab does not restore a previous edit session on entry", () => {
   globalThis.window = {

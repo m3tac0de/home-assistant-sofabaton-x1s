@@ -694,11 +694,19 @@ async def _async_build_control_panel_runtime_payload(
     active_backup_operation = registry.running_for_entry(hub.entry_id)
     if active_backup_operation:
         kind = str(active_backup_operation.get("kind") or "").strip().lower()
-        operation = "backup_restore" if kind == "backup_restore" else "backup_export"
+        if kind == "backup_restore":
+            operation = "backup_restore"
+            label = "Restoring backup"
+        elif kind == "cache_refresh":
+            operation = "cache_refresh"
+            label = "Refreshing hub cache"
+        else:
+            operation = "backup_export"
+            label = "Creating backup"
         return {
             "kind": "operation_running",
             "operation": operation,
-            "label": "Restoring backup" if operation == "backup_restore" else "Creating backup",
+            "label": label,
             "detail": str(
                 active_backup_operation.get("message")
                 or active_backup_operation.get("phase")
@@ -1994,6 +2002,23 @@ async def _ws_activity_sync_plan(hass: HomeAssistant, connection, msg: dict[str,
 # (kind="cache_refresh") and progress surface.
 
 
+# The refresh reuses the library's bundle-export progress stream, whose
+# messages speak backup language ("Backing up device 3…"). The dock shows
+# them verbatim, so recast them as cache-refresh language here.
+_CACHE_REFRESH_MESSAGE_REWRITES = (
+    ("Backing up ", "Refreshing "),
+    ("Backed up ", "Refreshed "),
+    ("Finalizing backup bundle", "Finalizing hub cache"),
+)
+
+
+def _cache_refresh_progress_message(message: str) -> str:
+    for prefix, replacement in _CACHE_REFRESH_MESSAGE_REWRITES:
+        if message.startswith(prefix):
+            return replacement + message[len(prefix):]
+    return message
+
+
 async def _run_cache_refresh_operation(
     hass: HomeAssistant,
     operation_id: str,
@@ -2003,6 +2028,9 @@ async def _run_cache_refresh_operation(
     registry = _backup_operation_registry(hass)
 
     def _progress(**payload: Any) -> None:
+        message = payload.get("message")
+        if isinstance(message, str) and message:
+            payload["message"] = _cache_refresh_progress_message(message)
         registry.update_from_thread(operation_id, **payload)
 
     try:

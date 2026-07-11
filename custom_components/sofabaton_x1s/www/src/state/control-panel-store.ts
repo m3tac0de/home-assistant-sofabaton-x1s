@@ -32,7 +32,10 @@ const BACKEND_RETRY_MIN_MS = 2000;
 const BACKEND_RETRY_MAX_MS = 10000;
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-const VALID_TABS = new Set<TabId>(["activities", "settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+
+/** activeRefreshLabel sentinel for the whole-hub "Refresh all" operation. */
+export const REFRESH_ALL_KEY = "__refresh_all__";
 const VALID_CACHE_SECTIONS = new Set<SectionId>(["activities", "devices"]);
 const VALID_BACKUP_SECTIONS = new Set<BackupSectionId>(["make", "edit", "restore"]);
 const VALID_BLOBS_SECTIONS = new Set<BlobsSectionId>(["fetch", "test", "save"]);
@@ -599,6 +602,56 @@ export class ControlPanelStore {
     }
   }
 
+  /**
+   * Whole-hub structural cache refresh ("Refresh all" in the Hub tab).
+   * Starts the backend cache_refresh operation and follows its progress;
+   * running state and phase messages surface through the bottom dock
+   * (hub.runtime_state), so the button itself only spins.
+   */
+  async refreshAllForHub() {
+    if (this._isHubCommandBusy()) return;
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return;
+    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: REFRESH_ALL_KEY };
+    this.emit();
+    let unsubscribe: (() => void) | null = null;
+    try {
+      const start = await this.api().startCacheRefresh(hub.entry_id);
+      // Pull runtime_state promptly so the dock picks up the running operation.
+      void this.loadControlPanelState().catch(() => undefined);
+      const failure = await new Promise<string | null>((resolve) => {
+        this.api()
+          .subscribeBackupProgress(start.operation_id, (payload: BackupProgressEvent) => {
+            if (payload.status === "success") resolve(null);
+            else if (payload.status === "failed") {
+              resolve(String(payload.error || payload.message || "Cache refresh failed."));
+            }
+          })
+          .then((unsub) => { unsubscribe = unsub; })
+          .catch((error) => resolve(formatError(error)));
+      });
+      this.showRuntimeCompletion(
+        failure
+          ? { tone: "error", label: failure }
+          : { tone: "success", label: "Hub cache refreshed." },
+      );
+      await this.loadState({ silent: true });
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) });
+    } finally {
+      if (unsubscribe) {
+        try { (unsubscribe as () => void)(); } catch { /* ignore */ }
+      }
+      this._snapshot = {
+        ...this._snapshot,
+        refreshBusy: false,
+        activeRefreshLabel: null,
+        staleData: false,
+      };
+      this.emit();
+    }
+  }
+
   async refreshForHub(kind: RefreshKind, targetId: number, key: string) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
@@ -775,6 +828,10 @@ export class ControlPanelStore {
     if (
       previousRuntime?.kind === "operation_running"
       && nextRuntime?.kind !== "operation_running"
+      // Cache refreshes report their own completion (success or failure)
+      // through refreshAllForHub's progress subscription, which knows the
+      // real terminal status — the poll transition doesn't.
+      && previousRuntime.operation !== "cache_refresh"
     ) {
       const operation = previousRuntime.operation;
       const successLabel = operation === "backup_restore"

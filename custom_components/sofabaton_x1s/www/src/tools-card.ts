@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { cardStyles } from "./shared/styles/card-styles";
 import type { BackupSectionId, BlobsSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
-import { ControlPanelStore } from "./state/control-panel-store";
+import { ControlPanelStore, REFRESH_ALL_KEY } from "./state/control-panel-store";
 import {
   hubConnected,
   hubIcon,
@@ -24,7 +24,6 @@ import "./tabs/blobs-tab";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
 import "./tabs/activities-tab";
-import "./components/refresh-cache-button";
 
 const TOOLS_TYPE = "sofabaton-control-panel";
 const LOG_ONCE_KEY = `__${TOOLS_TYPE}_logged__`;
@@ -163,6 +162,9 @@ class SofabatonControlPanelCard extends LitElement {
   private _hubPickerOpen = false;
   private _toolsMenuOpen = false;
   private _lastRenderedTab: TabId | null = null;
+  // Activity currently open in the live editor (wrench button in the Hub
+  // tab); while set, the Hub tab renders the editor instead of the cache.
+  private _editingActivityId: number | null = null;
   private _irFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
   private _irFlashClearForReceivedAt: number | null = null;
   private _pendingCacheScrollSnapshot: {
@@ -317,6 +319,9 @@ class SofabatonControlPanelCard extends LitElement {
 
   private handleTabSelect(tabId: TabId) {
     this._toolsMenuOpen = false;
+    // Leaving the Hub tab abandons an open activity edit session (same
+    // behavior the standalone Activities tab had when switching away).
+    if (tabId !== "cache") this._editingActivityId = null;
     this._store.selectTab(tabId);
   }
 
@@ -536,7 +541,6 @@ class SofabatonControlPanelCard extends LitElement {
 
   private renderPreview() {
     const features: Array<{ icon: string; label: string }> = [
-      { icon: "mdi:play-circle-outline", label: TOOLS_CARD_STRINGS.tabs.activities },
       { icon: "mdi:database-outline", label: TOOLS_CARD_STRINGS.tabs.cache },
       { icon: "mdi:wifi", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
       { icon: "mdi:cloud-upload-outline", label: TOOLS_CARD_STRINGS.tabs.backup },
@@ -615,21 +619,6 @@ class SofabatonControlPanelCard extends LitElement {
         loading: this._snapshot.logsLoading,
         error: this._snapshot.logsError,
       });
-    } else if (this._snapshot.selectedTab === "activities") {
-      const availability = resolveTabAvailability(this._snapshot, "activities");
-      activeTab = html`
-        <sofabaton-activities-tab
-          .loading=${this._snapshot.loading}
-          .error=${this._snapshot.loadError}
-          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
-          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
-          .hub=${hub}
-          .cacheHub=${cacheHub}
-          .hass=${this._snapshot.hass}
-          .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
-          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
-        ></sofabaton-activities-tab>
-      `;
     } else if (this._snapshot.selectedTab === "wifi_commands") {
       const availability = resolveTabAvailability(this._snapshot, "wifi_commands");
       activeTab = html`
@@ -689,36 +678,51 @@ class SofabatonControlPanelCard extends LitElement {
         ></sofabaton-backup-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {
-      activeTab = renderCacheTab({
-        loading: this._snapshot.loading,
-        error: this._snapshot.loadError,
-        hub: cacheHub,
-        persistentCacheEnabled: cacheEnabled,
-        staleData: this._snapshot.staleData,
-        refreshBusy: this._snapshot.refreshBusy,
-        hubCommandBusy: sharedHubCommandBusy,
-        activeRefreshLabel: this._snapshot.activeRefreshLabel,
-        selectedSection: this._snapshot.selectedCacheSection,
-        openEntity: this._snapshot.openEntity,
-        selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
-        enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
-        onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
-        onRefreshStale: () => void this._store.refreshStale(),
-        onSelectSection: (sectionId) => this._store.selectCacheSection(sectionId),
-        onToggleEntity: (key) => this._store.toggleEntity(key),
-        onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
-        onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
-        refreshAllSlot: hub
-          ? html`
-              <sofabaton-refresh-cache-button
-                .hass=${this._snapshot.hass}
-                .entryId=${hub.entry_id}
-                .disabled=${sharedHubCommandBusy || proxyClientConnected(this._snapshot.hass, hub)}
-                @refreshed=${() => void this._store.loadState({ silent: true })}
-              ></sofabaton-refresh-cache-button>
-            `
-          : null,
-      });
+      if (this._editingActivityId != null) {
+        activeTab = html`
+          <sofabaton-activities-tab
+            .loading=${this._snapshot.loading}
+            .error=${this._snapshot.loadError}
+            .hub=${hub}
+            .hass=${this._snapshot.hass}
+            .activityId=${this._editingActivityId}
+            .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
+            .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+            @editor-exit=${() => {
+              this._editingActivityId = null;
+              this.requestUpdate();
+            }}
+          ></sofabaton-activities-tab>
+        `;
+      } else {
+        activeTab = renderCacheTab({
+          loading: this._snapshot.loading,
+          error: this._snapshot.loadError,
+          hub: cacheHub,
+          persistentCacheEnabled: cacheEnabled,
+          staleData: this._snapshot.staleData,
+          refreshBusy: this._snapshot.refreshBusy,
+          hubCommandBusy: sharedHubCommandBusy,
+          activeRefreshLabel: this._snapshot.activeRefreshLabel,
+          selectedSection: this._snapshot.selectedCacheSection,
+          openEntity: this._snapshot.openEntity,
+          selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
+          enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
+          onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
+          onRefreshStale: () => void this._store.refreshStale(),
+          onSelectSection: (sectionId) => this._store.selectCacheSection(sectionId),
+          onToggleEntity: (key) => this._store.toggleEntity(key),
+          onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
+          onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
+          refreshAllSpinning:
+            this._snapshot.refreshBusy && this._snapshot.activeRefreshLabel === REFRESH_ALL_KEY,
+          onRefreshAll: () => void this._store.refreshAllForHub(),
+          onEditActivity: (activityId) => {
+            this._editingActivityId = activityId;
+            this.requestUpdate();
+          },
+        });
+      }
     }
 
     return html`

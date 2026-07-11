@@ -98,6 +98,34 @@ def test_ws_refresh_all_cache_blocked_when_locked(monkeypatch):
     assert conn.error[1] == "unavailable"
 
 
+def test_cache_refresh_progress_messages_use_cache_language():
+    rewrite = integration._cache_refresh_progress_message
+    assert rewrite("Backing up device 11…") == "Refreshing device 11…"
+    assert rewrite("Backed up device 11.") == "Refreshed device 11."
+    assert rewrite("Backing up activity 101…") == "Refreshing activity 101…"
+    assert rewrite("Finalizing backup bundle…") == "Finalizing hub cache…"
+    assert (
+        rewrite("Refreshing devices and activities from the hub…")
+        == "Refreshing devices and activities from the hub…"
+    )
+
+
+def test_runtime_payload_labels_cache_refresh():
+    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry.create(
+        kind="cache_refresh",
+        entry_id="entry-1",
+        initial_state={"status": "running", "message": "Refreshing device 11…"},
+    )
+    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    hub = SimpleNamespace(entry_id="entry-1", client_connected=False)
+    payload = _run(integration._async_build_control_panel_runtime_payload(hass, hub))
+    assert payload["kind"] == "operation_running"
+    assert payload["operation"] == "cache_refresh"
+    assert payload["label"] == "Refreshing hub cache"
+    assert payload["detail"] == "Refreshing device 11…"
+
+
 def test_ws_structural_bundle_present(monkeypatch):
     conn = _Conn()
     bundle = {"kind": "hub_bundle", "schema_version": 5, "devices": [], "activities": []}

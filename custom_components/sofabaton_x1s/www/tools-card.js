@@ -1354,7 +1354,9 @@ var cardStyles = [secondaryTabStyles, i`
   .cache-panel-header {
     margin-top: 6px;
     margin-bottom: 8px;
+    gap: 18px;
   }
+  .cache-panel-header .refresh-action { display: inline-flex; align-items: center; gap: 8px; }
   .cache-panel-body,
   .secondary-tab-panel--connected .cache-panel-body {
     padding-top: 0;
@@ -1837,7 +1839,7 @@ function resolveRuntimeState(snapshot) {
     const percent = total > 0 ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
     return {
       kind: "operation_running",
-      operation: hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : "wifi_deploy",
+      operation: hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : "wifi_deploy",
       label: String(hubRuntime.label || "Operation running"),
       detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
       progress: {
@@ -1887,7 +1889,7 @@ function resolveTabAvailability(snapshot, tabId) {
       message: gateState.kind === "version_mismatch" ? "Refresh the dashboard to load the updated Sofabaton Control Panel card." : gateState.kind === "backend_unavailable" ? "Waiting for the Sofabaton X integration to finish starting." : "This hub is not connected, so the control panel is unavailable until the hub reconnects."
     };
   }
-  if (tabId === "logs" || tabId === "settings" || tabId === "cache" || tabId === "activities") {
+  if (tabId === "logs" || tabId === "settings" || tabId === "cache") {
     return { kind: "available" };
   }
   const hub = selectedHub(snapshot);
@@ -1951,7 +1953,8 @@ function hubIcon(kind, classes = "") {
 var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-var VALID_TABS = /* @__PURE__ */ new Set(["activities", "settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+var REFRESH_ALL_KEY = "__refresh_all__";
 var VALID_CACHE_SECTIONS = /* @__PURE__ */ new Set(["activities", "devices"]);
 var VALID_BACKUP_SECTIONS = /* @__PURE__ */ new Set(["make", "edit", "restore"]);
 var VALID_BLOBS_SECTIONS = /* @__PURE__ */ new Set(["fetch", "test", "save"]);
@@ -2425,6 +2428,54 @@ var ControlPanelStore = class {
       this.emit();
     }
   }
+  /**
+   * Whole-hub structural cache refresh ("Refresh all" in the Hub tab).
+   * Starts the backend cache_refresh operation and follows its progress;
+   * running state and phase messages surface through the bottom dock
+   * (hub.runtime_state), so the button itself only spins.
+   */
+  async refreshAllForHub() {
+    if (this._isHubCommandBusy()) return;
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return;
+    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: REFRESH_ALL_KEY };
+    this.emit();
+    let unsubscribe = null;
+    try {
+      const start = await this.api().startCacheRefresh(hub.entry_id);
+      void this.loadControlPanelState().catch(() => void 0);
+      const failure = await new Promise((resolve) => {
+        this.api().subscribeBackupProgress(start.operation_id, (payload) => {
+          if (payload.status === "success") resolve(null);
+          else if (payload.status === "failed") {
+            resolve(String(payload.error || payload.message || "Cache refresh failed."));
+          }
+        }).then((unsub) => {
+          unsubscribe = unsub;
+        }).catch((error) => resolve(formatError(error)));
+      });
+      this.showRuntimeCompletion(
+        failure ? { tone: "error", label: failure } : { tone: "success", label: "Hub cache refreshed." }
+      );
+      await this.loadState({ silent: true });
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) });
+    } finally {
+      if (unsubscribe) {
+        try {
+          unsubscribe();
+        } catch {
+        }
+      }
+      this._snapshot = {
+        ...this._snapshot,
+        refreshBusy: false,
+        activeRefreshLabel: null,
+        staleData: false
+      };
+      this.emit();
+    }
+  }
   async refreshForHub(kind, targetId, key) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
@@ -2589,7 +2640,7 @@ var ControlPanelStore = class {
     };
     const nextHub = selectedHub(this._snapshot);
     const nextRuntime = nextHub?.runtime_state;
-    if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running") {
+    if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
       const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : "Wifi Device deployed successfully.";
       this.showRuntimeCompletion({
@@ -2875,8 +2926,7 @@ var TOOLS_CARD_STRINGS = {
     blobsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/blobs.md"
   },
   tabs: {
-    activities: "Activities",
-    cache: "Cache",
+    cache: "Hub",
     wifiCommands: "Wifi Commands",
     wifiShort: "Wifi",
     backup: "Backup",
@@ -2949,7 +2999,9 @@ var TOOLS_CARD_STRINGS = {
     refresh: "Refresh",
     activities: "Activities",
     devices: "Devices",
-    refreshList: "Refresh list"
+    refreshList: "Refresh list",
+    refreshAll: "Refresh all",
+    editActivity: "Edit activity"
   },
   logs: {
     loading: "Loading log stream...",
@@ -2957,7 +3009,7 @@ var TOOLS_CARD_STRINGS = {
     liveConsole: "Live Console"
   },
   cacheRefresh: {
-    label: "Refresh entire hub cache",
+    label: "Refresh all",
     running: "Refreshing\u2026",
     starting: "Starting hub cache refresh\u2026",
     working: "Reading your hub's configuration\u2026",
@@ -2982,7 +3034,7 @@ var TOOLS_CARD_STRINGS = {
     selectOne: "Select one",
     device: "Device",
     command: "Command",
-    fetchNoCommands: "This device has no cached commands yet. Refresh that device from the Cache tab first.",
+    fetchNoCommands: "This device has no cached commands yet. Refresh that device from the Hub tab first.",
     fetchNoRecords: "The hub returned no blob records for this request.",
     commandFallback: (commandId) => `Command ${commandId}`,
     unknown: "unknown",
@@ -2995,7 +3047,7 @@ var TOOLS_CARD_STRINGS = {
     copy: "Copy",
     test: "Test",
     testing: "Testing...",
-    noIrDevices: "No IR devices found in the cache. Refresh devices from the Cache tab first.",
+    noIrDevices: "No IR devices found in the cache. Refresh devices from the Hub tab first.",
     irDevice: "IR device",
     save: "Save",
     saving: "Saving...",
@@ -3004,20 +3056,12 @@ var TOOLS_CARD_STRINGS = {
   activities: {
     loading: "Loading activities...",
     selectHub: "Select a hub to edit its activities.",
-    listSubtitle: "Choose an activity to edit. Changes stay on your device until you sync them to the hub.",
     activityFallback: (id) => `Activity ${id}`,
-    rowMeta: (devices, shortcuts) => {
-      const deviceLabel = `${devices} ${devices === 1 ? "device" : "devices"}`;
-      const shortcutLabel = `${shortcuts} ${shortcuts === 1 ? "shortcut" : "shortcuts"}`;
-      return `${deviceLabel} \xB7 ${shortcutLabel}`;
-    },
-    // Guard panels (§4.1), rendered inside the tab.
+    // Guard panels (§4.1), rendered inside the editor view.
     appConnectedTitle: "The Sofabaton app is connected",
     appConnectedBody: "Close the Sofabaton app to edit activities.",
     operationRunningTitle: "Another operation is running",
     operationRunningBody: "Wait for the current backup, restore, or sync to finish, then try again.",
-    emptyTitle: "No activities yet",
-    emptyBody: "This hub has no activities to edit.",
     // Capture flow (§4.2).
     captureTitle: "Reading your hub",
     captureMessage: "Reading your hub's configuration\u2026",
@@ -3408,7 +3452,6 @@ var TOOLS_CARD_STRINGS = {
 // custom_components/sofabaton_x1s/www/src/components/tab-bar.ts
 function renderTabBar(params) {
   const tabs = [
-    { id: "activities", label: TOOLS_CARD_STRINGS.tabs.activities, disabled: false },
     { id: "cache", label: TOOLS_CARD_STRINGS.tabs.cache, disabled: false },
     { id: "wifi_commands", label: TOOLS_CARD_STRINGS.tabs.wifiCommands, shortLabel: TOOLS_CARD_STRINGS.tabs.wifiShort, disabled: false },
     { id: "backup", label: TOOLS_CARD_STRINGS.tabs.backup, disabled: false },
@@ -3679,6 +3722,10 @@ function renderCacheTab(params) {
           <span class="entity-meta">
             ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
             <span class="entity-count entity-count--activity">${TOOLS_CARD_STRINGS.cache.activityCounts(favorites.length, macros.length, buttons.length)}</span>
+            <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editActivity} ?disabled=${locked2} @click=${(event) => {
+      event.stopPropagation();
+      params.onEditActivity(id);
+    }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked2} @click=${(event) => {
       event.stopPropagation();
       params.onRefreshEntry("activity", id, key);
@@ -3731,7 +3778,6 @@ function renderCacheTab(params) {
   const activeBody = selectedSection === "activities" ? activities.map(renderActivity) : devices.map(renderDevice);
   return b2`
     <div class="tab-panel">
-      ${params.refreshAllSlot ? b2`<div class="cache-refresh-all-bar" style="display:flex;justify-content:flex-end;padding:12px 12px 0;">${params.refreshAllSlot}</div>` : null}
       ${params.staleData ? b2`<div class="stale-banner"><span class="stale-banner-text">${TOOLS_CARD_STRINGS.cache.staleBanner}</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>${TOOLS_CARD_STRINGS.cache.refresh}</button></div>` : null}
       ${renderSecondaryTabShell({
     connected: true,
@@ -3747,10 +3793,18 @@ function renderCacheTab(params) {
       header: b2`
           <div class="secondary-panel-header secondary-panel-header--plain cache-panel-header">
             <span class="flex-spacer"></span>
-            <span class="refresh-list-label">${TOOLS_CARD_STRINGS.cache.refreshList}</span>
-            <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
-              <ha-icon icon="mdi:refresh"></ha-icon>
-            </button>
+            <span class="refresh-action">
+              <span class="refresh-list-label">${TOOLS_CARD_STRINGS.cache.refreshAll}</span>
+              <button class="icon-btn${params.refreshAllSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${params.onRefreshAll}>
+                <ha-icon icon="mdi:refresh"></ha-icon>
+              </button>
+            </span>
+            <span class="refresh-action">
+              <span class="refresh-list-label">${TOOLS_CARD_STRINGS.cache.refreshList}</span>
+              <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
+                <ha-icon icon="mdi:refresh"></ha-icon>
+              </button>
+            </span>
           </div>
           `,
       bodyClassName: "cache-panel-body",
@@ -15969,7 +16023,8 @@ var SofabatonActivitiesTab = class extends i4 {
     super(...arguments);
     this.hass = null;
     this.hub = null;
-    this.cacheHub = null;
+    /** The activity to edit; the host sets this before mounting. */
+    this.activityId = null;
     this.loading = false;
     this.error = null;
     this.blockedTitle = null;
@@ -15994,6 +16049,9 @@ var SofabatonActivitiesTab = class extends i4 {
     this._progressUnsub = null;
     this._syncStateHydratedFor = null;
     this._exitAfterSync = false;
+    // Which requested activityId we already auto-opened, so returning to the
+    // idle stage (close) doesn't immediately re-capture the same activity.
+    this._autoOpenedActivityId = null;
     // entry_id of the hub the current stage belongs to. The `hub` prop
     // is a fresh object on every control_panel/state refresh, so we key reset
     // decisions on the entry_id — not object identity — to avoid tearing down
@@ -16129,6 +16187,21 @@ var SofabatonActivitiesTab = class extends i4 {
       this._syncStateHydratedFor = this.hub.entry_id;
       void this._hydrateRunningSync();
     }
+    this._maybeAutoOpen();
+  }
+  // Direct-open: capture the requested activity as soon as the guards clear.
+  // Runs once per requested id — a close (back to the idle stage) must not
+  // re-capture; the host tears the element down on `editor-exit`.
+  _maybeAutoOpen() {
+    const requested = this.activityId == null ? null : Number(this.activityId);
+    if (requested == null || !Number.isFinite(requested)) return;
+    if (this._stage !== "list" || this._autoOpenedActivityId === requested) return;
+    if (this._openBlocked()) return;
+    this._autoOpenedActivityId = requested;
+    void this._startCapture(requested);
+  }
+  _openBlocked() {
+    return this.selectedHubProxyConnected || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
   }
   // Card reloaded mid-sync: pick up a running activity_sync op from the
   // shared backup/state registry and resubscribe to its progress.
@@ -16216,6 +16289,7 @@ var SofabatonActivitiesTab = class extends i4 {
     this._stage = "editing";
   }
   _resetToList() {
+    const wasActive = this._stage !== "list" || this._activityId != null;
     this._stage = "list";
     this._activityId = null;
     this._baseline = null;
@@ -16233,32 +16307,9 @@ var SofabatonActivitiesTab = class extends i4 {
     this._syncOperationId = null;
     this._syncSuccessNotice = false;
     this._exitAfterSync = false;
-  }
-  // ── Data ───────────────────────────────────────────────────────────
-  _activityItems() {
-    const activities = this.cacheHub?.activities ?? this.hub?.activities ?? [];
-    const cacheFavorites = this.cacheHub?.activity_favorites ?? {};
-    const cacheMacros = this.cacheHub?.activity_macros ?? {};
-    return [...activities].map((activity) => {
-      const id = Number(activity.id);
-      const key = String(id);
-      const favorites = Number(
-        activity.favorite_count ?? (Array.isArray(cacheFavorites[key]) ? cacheFavorites[key].length : 0)
-      );
-      const macros = Number(
-        activity.macro_count ?? (Array.isArray(cacheMacros[key]) ? cacheMacros[key].length : 0)
-      );
-      return {
-        id,
-        // Device membership isn't surfaced on the hub-state activity
-        // summary (nor cheaply derivable from the cache), so the list meta
-        // line shows only the shortcut count until capture reveals the
-        // precise device set. rowMeta renders 0 devices gracefully.
-        name: String(activity.name || "").trim() || S4.activityFallback(id),
-        deviceCount: 0,
-        shortcutCount: favorites + macros
-      };
-    }).sort((left, right) => left.id - right.id);
+    if (wasActive) {
+      this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
+    }
   }
   // ── Render ─────────────────────────────────────────────────────────
   render() {
@@ -16289,7 +16340,7 @@ var SofabatonActivitiesTab = class extends i4 {
     if (this._stage === "capturing") {
       return this._renderCapturing();
     }
-    return this._renderList();
+    return this._renderIdle();
   }
   _renderGuard(icon, title, sub) {
     return b2`
@@ -16302,33 +16353,21 @@ var SofabatonActivitiesTab = class extends i4 {
       </div>
     `;
   }
-  _renderList() {
+  // Idle stage: capture hasn't started yet (guards active) or the session is
+  // closing. Guard panels (§4.1) render full-panel, in priority order;
+  // otherwise _maybeAutoOpen is about to kick off the capture.
+  _renderIdle() {
     if (this.selectedHubProxyConnected) {
       return this._renderGuard("mdi:cellphone-link", S4.appConnectedTitle, S4.appConnectedBody);
     }
     if (this._isProgressRunning(this.hub?.active_backup_operation ?? null)) {
       return this._renderGuard("mdi:progress-clock", S4.operationRunningTitle, S4.operationRunningBody);
     }
-    const items = this._activityItems();
-    if (!items.length) {
-      return this._renderGuard("mdi:playlist-remove", S4.emptyTitle, S4.emptyBody);
-    }
     return b2`
       <div class="tab-panel">
-        <div class="list-subtitle">${S4.listSubtitle}</div>
-        <div class="list-scroll">
-          <div class="activity-list">
-            ${items.map((item) => b2`
-              <button class="activity-row" @click=${() => void this._startCapture(item.id)}>
-                <span class="activity-row-lead"><ha-icon icon="mdi:play-circle-outline"></ha-icon></span>
-                <span class="activity-row-main">
-                  <span class="activity-row-name">${item.name}</span>
-                  <span class="activity-row-meta">${S4.rowMeta(item.deviceCount, item.shortcutCount)}</span>
-                </span>
-                <span class="activity-row-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
-              </button>
-            `)}
-          </div>
+        <div class="guard-state">
+          <div class="guard-icon"><ha-icon icon="mdi:database-arrow-down-outline"></ha-icon></div>
+          <div class="guard-sub">${S4.capturingFromCache}</div>
         </div>
       </div>
     `;
@@ -16552,8 +16591,8 @@ var SofabatonActivitiesTab = class extends i4 {
 SofabatonActivitiesTab.properties = {
   hass: { attribute: false },
   hub: { attribute: false },
-  cacheHub: { attribute: false },
   refreshControlPanelState: { attribute: false },
+  activityId: { type: Number },
   loading: { type: Boolean },
   error: { type: String },
   blockedTitle: { type: String },
@@ -16585,31 +16624,6 @@ SofabatonActivitiesTab.styles = [operationProgressStyles, i`
     .tab-panel--flush { padding: 0; }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
     .state.error { color: var(--error-color, #db4437); }
-    .list-subtitle { font-size: 13px; line-height: 1.5; color: var(--secondary-text-color); }
-    .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-    .activity-list { display: grid; gap: 6px; }
-    .activity-row {
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--ha-card-border-radius, 12px);
-      padding: 10px 12px;
-      background: var(--secondary-background-color, var(--ha-card-background));
-      text-align: left;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-      transition: border-color 120ms ease, background-color 120ms ease;
-    }
-    .activity-row:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .activity-row-lead { flex: 0 0 auto; color: var(--primary-color); display: inline-flex; }
-    .activity-row-lead ha-icon { --mdc-icon-size: 22px; }
-    .activity-row-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
-    .activity-row-name { font-size: 14px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .activity-row-meta { font-size: 12px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .activity-row-chevron { flex: 0 0 auto; color: var(--secondary-text-color); display: inline-flex; }
-    .activity-row-chevron ha-icon { --mdc-icon-size: 20px; }
     .guard-state {
       flex: 1;
       display: flex;
@@ -16833,6 +16847,9 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._hubPickerOpen = false;
     this._toolsMenuOpen = false;
     this._lastRenderedTab = null;
+    // Activity currently open in the live editor (wrench button in the Hub
+    // tab); while set, the Hub tab renders the editor instead of the cache.
+    this._editingActivityId = null;
     this._irFlashClearTimer = null;
     this._irFlashClearForReceivedAt = null;
     this._pendingCacheScrollSnapshot = null;
@@ -16960,6 +16977,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
   }
   handleTabSelect(tabId) {
     this._toolsMenuOpen = false;
+    if (tabId !== "cache") this._editingActivityId = null;
     this._store.selectTab(tabId);
   }
   handleSettingToggle(setting, enabled) {
@@ -17145,7 +17163,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
   }
   renderPreview() {
     const features = [
-      { icon: "mdi:play-circle-outline", label: TOOLS_CARD_STRINGS.tabs.activities },
       { icon: "mdi:database-outline", label: TOOLS_CARD_STRINGS.tabs.cache },
       { icon: "mdi:wifi", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
       { icon: "mdi:cloud-upload-outline", label: TOOLS_CARD_STRINGS.tabs.backup },
@@ -17216,21 +17233,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
         loading: this._snapshot.logsLoading,
         error: this._snapshot.logsError
       });
-    } else if (this._snapshot.selectedTab === "activities") {
-      const availability = resolveTabAvailability(this._snapshot, "activities");
-      activeTab = b2`
-        <sofabaton-activities-tab
-          .loading=${this._snapshot.loading}
-          .error=${this._snapshot.loadError}
-          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
-          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
-          .hub=${hub}
-          .cacheHub=${cacheHub}
-          .hass=${this._snapshot.hass}
-          .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
-          .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
-        ></sofabaton-activities-tab>
-      `;
     } else if (this._snapshot.selectedTab === "wifi_commands") {
       const availability = resolveTabAvailability(this._snapshot, "wifi_commands");
       activeTab = b2`
@@ -17290,34 +17292,50 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
         ></sofabaton-backup-tab>
       `;
     } else if (this._snapshot.selectedTab === "cache") {
-      activeTab = renderCacheTab({
-        loading: this._snapshot.loading,
-        error: this._snapshot.loadError,
-        hub: cacheHub,
-        persistentCacheEnabled: cacheEnabled,
-        staleData: this._snapshot.staleData,
-        refreshBusy: this._snapshot.refreshBusy,
-        hubCommandBusy: sharedHubCommandBusy,
-        activeRefreshLabel: this._snapshot.activeRefreshLabel,
-        selectedSection: this._snapshot.selectedCacheSection,
-        openEntity: this._snapshot.openEntity,
-        selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
-        enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
-        onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
-        onRefreshStale: () => void this._store.refreshStale(),
-        onSelectSection: (sectionId) => this._store.selectCacheSection(sectionId),
-        onToggleEntity: (key) => this._store.toggleEntity(key),
-        onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
-        onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
-        refreshAllSlot: hub ? b2`
-              <sofabaton-refresh-cache-button
-                .hass=${this._snapshot.hass}
-                .entryId=${hub.entry_id}
-                .disabled=${sharedHubCommandBusy || proxyClientConnected(this._snapshot.hass, hub)}
-                @refreshed=${() => void this._store.loadState({ silent: true })}
-              ></sofabaton-refresh-cache-button>
-            ` : null
-      });
+      if (this._editingActivityId != null) {
+        activeTab = b2`
+          <sofabaton-activities-tab
+            .loading=${this._snapshot.loading}
+            .error=${this._snapshot.loadError}
+            .hub=${hub}
+            .hass=${this._snapshot.hass}
+            .activityId=${this._editingActivityId}
+            .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
+            .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+            @editor-exit=${() => {
+          this._editingActivityId = null;
+          this.requestUpdate();
+        }}
+          ></sofabaton-activities-tab>
+        `;
+      } else {
+        activeTab = renderCacheTab({
+          loading: this._snapshot.loading,
+          error: this._snapshot.loadError,
+          hub: cacheHub,
+          persistentCacheEnabled: cacheEnabled,
+          staleData: this._snapshot.staleData,
+          refreshBusy: this._snapshot.refreshBusy,
+          hubCommandBusy: sharedHubCommandBusy,
+          activeRefreshLabel: this._snapshot.activeRefreshLabel,
+          selectedSection: this._snapshot.selectedCacheSection,
+          openEntity: this._snapshot.openEntity,
+          selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
+          enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
+          onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
+          onRefreshStale: () => void this._store.refreshStale(),
+          onSelectSection: (sectionId) => this._store.selectCacheSection(sectionId),
+          onToggleEntity: (key) => this._store.toggleEntity(key),
+          onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
+          onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
+          refreshAllSpinning: this._snapshot.refreshBusy && this._snapshot.activeRefreshLabel === REFRESH_ALL_KEY,
+          onRefreshAll: () => void this._store.refreshAllForHub(),
+          onEditActivity: (activityId) => {
+            this._editingActivityId = activityId;
+            this.requestUpdate();
+          }
+        });
+      }
     }
     return b2`
       <ha-card>

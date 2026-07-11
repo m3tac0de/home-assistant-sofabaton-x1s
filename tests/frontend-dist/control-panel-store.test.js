@@ -1454,7 +1454,8 @@ function connectionFingerprint(hass) {
 var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-var VALID_TABS = /* @__PURE__ */ new Set(["activities", "settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+var REFRESH_ALL_KEY = "__refresh_all__";
 var VALID_CACHE_SECTIONS = /* @__PURE__ */ new Set(["activities", "devices"]);
 var VALID_BACKUP_SECTIONS = /* @__PURE__ */ new Set(["make", "edit", "restore"]);
 var VALID_BLOBS_SECTIONS = /* @__PURE__ */ new Set(["fetch", "test", "save"]);
@@ -1928,6 +1929,54 @@ var ControlPanelStore = class {
       this.emit();
     }
   }
+  /**
+   * Whole-hub structural cache refresh ("Refresh all" in the Hub tab).
+   * Starts the backend cache_refresh operation and follows its progress;
+   * running state and phase messages surface through the bottom dock
+   * (hub.runtime_state), so the button itself only spins.
+   */
+  async refreshAllForHub() {
+    if (this._isHubCommandBusy()) return;
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return;
+    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: REFRESH_ALL_KEY };
+    this.emit();
+    let unsubscribe = null;
+    try {
+      const start = await this.api().startCacheRefresh(hub.entry_id);
+      void this.loadControlPanelState().catch(() => void 0);
+      const failure = await new Promise((resolve) => {
+        this.api().subscribeBackupProgress(start.operation_id, (payload) => {
+          if (payload.status === "success") resolve(null);
+          else if (payload.status === "failed") {
+            resolve(String(payload.error || payload.message || "Cache refresh failed."));
+          }
+        }).then((unsub) => {
+          unsubscribe = unsub;
+        }).catch((error) => resolve(formatError(error)));
+      });
+      this.showRuntimeCompletion(
+        failure ? { tone: "error", label: failure } : { tone: "success", label: "Hub cache refreshed." }
+      );
+      await this.loadState({ silent: true });
+    } catch (error) {
+      this.showRuntimeCompletion({ tone: "error", label: formatError(error) });
+    } finally {
+      if (unsubscribe) {
+        try {
+          unsubscribe();
+        } catch {
+        }
+      }
+      this._snapshot = {
+        ...this._snapshot,
+        refreshBusy: false,
+        activeRefreshLabel: null,
+        staleData: false
+      };
+      this.emit();
+    }
+  }
   async refreshForHub(kind, targetId, key) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
@@ -2092,7 +2141,7 @@ var ControlPanelStore = class {
     };
     const nextHub = selectedHub(this._snapshot);
     const nextRuntime = nextHub?.runtime_state;
-    if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running") {
+    if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
       const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : "Wifi Device deployed successfully.";
       this.showRuntimeCompletion({

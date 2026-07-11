@@ -1368,6 +1368,21 @@
       await card.updateComplete;
     }
 
+    // Open the live activity editor from the Hub tab: find the activity row
+    // by name and click its wrench button.
+    async function openActivityEditor(card, activityName) {
+      await clickTab(card, "Hub");
+      await card.updateComplete;
+      const block = [...card.shadowRoot.querySelectorAll(".entity-block")]
+        .find(b => b.textContent.includes(activityName));
+      const wrench = block?.querySelector('ha-icon[icon="mdi:wrench"]')?.closest("button");
+      wrench?.click();
+      await card.updateComplete;
+      const editor = card.shadowRoot.querySelector("sofabaton-activities-tab");
+      if (editor) await editor.updateComplete;
+      return editor;
+    }
+
     // Click an ha-switch found near labelText inside the card's shadow root.
     // Our ha-switch stub renders a .track div (not an <input>); we click its
     // shadow track which fires the change event via the stub's own click handler.
@@ -1558,7 +1573,7 @@
         label: "8. Populated — Devices open",
         states: STATES_CONNECTED,
         async postLoad(card) {
-          await clickTab(card, "Cache");
+          await clickTab(card, "Hub");
           await clickAccordion(card, "devices");
         },
       },
@@ -1567,7 +1582,7 @@
         label: "9. WiFi device expanded (12 cmds)",
         states: STATES_CONNECTED,
         async postLoad(card) {
-          await clickTab(card, "Cache");
+          await clickTab(card, "Hub");
           await clickAccordion(card, "devices");
           await clickEntity(card, "dev-7");
         },
@@ -1577,7 +1592,7 @@
         label: "10. Stale data banner",
         states: STATES_CONNECTED,
         async postLoad(card) {
-          await clickTab(card, "Cache");
+          await clickTab(card, "Hub");
           card._store._refreshGraceUntil = 0;
           card.hass = {
             states: {
@@ -1602,7 +1617,7 @@
           "sofabaton_x1s/persistent_cache/refresh": () => new Promise(() => {}),
         },
         async postLoad(card) {
-          await clickTab(card, "Cache");
+          await clickTab(card, "Hub");
           await clickAccordion(card, "devices");
           await clickEntityRefresh(card, "dev-7");
         },
@@ -1613,7 +1628,7 @@
         states: STATES_CONNECTED,
         state: { ...BASE_STATE, persistent_cache_enabled: false },
         async postLoad(card) {
-          await clickTab(card, "Cache");
+          await clickTab(card, "Hub");
         },
       },
 
@@ -1687,16 +1702,10 @@
       // The branch redesign adds a device-list layer: you first see a list of
       // WifiDeviceSummary cards, then navigate into one to edit its command slots.
 
-      // ── Activities (live editor, Phase L2) ──────────────────────────────────────
+      // ── Activity editor (live, Phase L2) — opened from the Hub tab wrench ──────
       {
-        id: "activities-list", group: "Activities",
-        label: "Activities — list",
-        states: STATES_CONNECTED,
-        postLoad: card => clickTab(card, "Activities"),
-      },
-      {
-        id: "activities-capture", group: "Activities",
-        label: "Activities — capture → edit",
+        id: "activities-capture", group: "Activity Editor",
+        label: "Activity editor — open via wrench",
         states: STATES_CONNECTED,
         handlers: {
           // Capture now reads the cached blob-free structural bundle (instant).
@@ -1717,19 +1726,12 @@
           return Promise.resolve(() => {});
         },
         async postLoad(card) {
-          await clickTab(card, "Activities");
-          const tab = card.shadowRoot.querySelector("sofabaton-activities-tab");
-          if (!tab) return;
-          await tab.updateComplete;
-          const rows = [...tab.shadowRoot.querySelectorAll(".activity-row")];
-          const row = rows.find(r => r.textContent.includes("Watch TV"));
-          row?.click();
-          await tab.updateComplete;
+          await openActivityEditor(card, "Watch TV");
         },
       },
       {
-        id: "activities-needs-refresh", group: "Activities",
-        label: "Activities — needs cache refresh",
+        id: "activities-needs-refresh", group: "Activity Editor",
+        label: "Activity editor — needs cache refresh",
         states: STATES_CONNECTED,
         handlers: {
           // No structural bundle cached yet → clicking an activity prompts a refresh.
@@ -1742,18 +1744,12 @@
           return Promise.resolve(() => {});
         },
         async postLoad(card) {
-          await clickTab(card, "Activities");
-          const tab = card.shadowRoot.querySelector("sofabaton-activities-tab");
-          if (!tab) return;
-          await tab.updateComplete;
-          const row = [...tab.shadowRoot.querySelectorAll(".activity-row")].find(r => r.textContent.includes("Watch TV"));
-          row?.click();
-          await tab.updateComplete;
+          await openActivityEditor(card, "Watch TV");
         },
       },
       {
-        id: "cache-refresh-all", group: "Activities",
-        label: "Cache — refresh all button",
+        id: "cache-refresh-all", group: "Hub Tab",
+        label: "Hub — Refresh all",
         states: STATES_CONNECTED,
         handlers: {
           "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "refresh-1" }),
@@ -1763,17 +1759,17 @@
           setTimeout(() => cb({ operation_id: "refresh-1", kind: "cache_refresh", entry_id: "hub-1", status: "success" }), 500);
           return Promise.resolve(() => {});
         },
-        postLoad: card => clickTab(card, "Cache"),
+        postLoad: card => clickTab(card, "Hub"),
       },
       {
-        id: "activities-app-connected", group: "Activities",
-        label: "Activities — app connected (blocked)",
+        id: "activities-app-connected", group: "Hub Tab",
+        label: "Hub — app connected (edit/refresh disabled)",
         states: STATES_PROXY,
         state: {
           ...BASE_STATE,
           hubs: [{ ...HUB_1, proxy_client_connected: true }],
         },
-        postLoad: card => clickTab(card, "Activities"),
+        postLoad: card => clickTab(card, "Hub"),
       },
       {
         id: "backup-compose", group: "Backup / Restore",

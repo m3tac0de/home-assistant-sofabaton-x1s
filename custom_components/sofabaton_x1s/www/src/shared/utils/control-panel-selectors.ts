@@ -240,7 +240,7 @@ export type RuntimeState =
     }
   | {
       kind: "operation_running";
-      operation: "backup_export" | "backup_restore" | "wifi_deploy";
+      operation: "backup_export" | "backup_restore" | "cache_refresh" | "wifi_deploy";
       label: string;
       detail: string;
       progress: {
@@ -298,7 +298,9 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
         ? "backup_restore"
         : hubRuntime.operation === "backup_export"
           ? "backup_export"
-          : "wifi_deploy",
+          : hubRuntime.operation === "cache_refresh"
+            ? "cache_refresh"
+            : "wifi_deploy",
       label: String(hubRuntime.label || "Operation running"),
       detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
       progress: {
@@ -359,10 +361,7 @@ export function resolveTabAvailability(snapshot: ControlPanelSnapshot, tabId: Ta
     };
   }
 
-  // Activities renders its proxy-connected / busy guards *inside* the tab
-  // (§4.1) so the user can still see the activity list; it is never blocked
-  // at the tab level once the hub is connected.
-  if (tabId === "logs" || tabId === "settings" || tabId === "cache" || tabId === "activities") {
+  if (tabId === "logs" || tabId === "settings" || tabId === "cache") {
     return { kind: "available" };
   }
 

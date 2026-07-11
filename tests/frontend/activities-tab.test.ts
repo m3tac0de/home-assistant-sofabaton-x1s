@@ -80,16 +80,16 @@ test("activities tab surfaces a structural-bundle read failure", async () => {
   assert.match(String(element._captureError || ""), /boom/);
 });
 
-test("activities tab shows the app-connected guard ahead of the list", () => {
+test("activity editor shows the app-connected guard instead of opening", () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
   element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
   element.selectedHubProxyConnected = true;
 
-  const result = element._renderList();
+  const result = element._renderIdle();
   assert.equal((result.values as unknown[]).includes(S.appConnectedTitle), true);
 });
 
-test("activities tab shows the busy guard when another operation is running", () => {
+test("activity editor shows the busy guard when another operation is running", () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
   element.hub = {
     entry_id: "hub-1",
@@ -97,34 +97,66 @@ test("activities tab shows the busy guard when another operation is running", ()
     active_backup_operation: { operation_id: "x", kind: "backup_export", entry_id: "hub-1", status: "running" },
   };
 
-  const result = element._renderList();
+  const result = element._renderIdle();
   assert.equal((result.values as unknown[]).includes(S.operationRunningTitle), true);
 });
 
-test("activities tab renders the empty guard when the hub has no activities", () => {
+test("activity editor auto-opens the requested activity once guards are clear", async () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
-  element.hub = { entry_id: "hub-1", activities: [] };
+  element.hass = createHass(sampleBundle());
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  element.activityId = 101;
 
-  const result = element._renderList();
-  assert.equal((result.values as unknown[]).includes(S.emptyTitle), true);
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(element._stage, "editing");
+  assert.equal(element._activityId, 101);
 });
 
-test("activities tab lists activities sorted by id when connected and idle", () => {
+test("activity editor does not auto-open while a guard is active", () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
-  element.hub = {
-    entry_id: "hub-1",
-    activities: [
-      { id: 102, name: "Listen", favorite_count: 2, macro_count: 1 },
-      { id: 101, name: "Watch TV", favorite_count: 0, macro_count: 0 },
-    ],
-  };
+  element.hass = createHass(sampleBundle());
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  element.selectedHubProxyConnected = true;
+  element.activityId = 101;
 
-  const items = element._activityItems();
-  assert.deepEqual(items.map((item: { id: number }) => item.id), [101, 102]);
-  assert.equal(items[1].shortcutCount, 3);
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
 
-  const result = element._renderList();
-  assert.match(result.strings.join(""), /activity-list/);
+  assert.equal(element._stage, "list");
+  assert.equal(element._activityId, null);
+});
+
+test("activity editor does not re-open the same activity after closing", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  element.hass = createHass(sampleBundle());
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  element.activityId = 101;
+
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(element._stage, "editing");
+
+  element._closeEditor();
+  assert.equal(element._stage, "list");
+
+  element.updated(new Map<string, unknown>([["hub", undefined]]));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(element._stage, "list");
+});
+
+test("activity editor dispatches editor-exit when the session closes", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  element.hass = createHass(sampleBundle());
+  element.hub = { entry_id: "hub-1", activities: [{ id: 101, name: "Watch TV" }] };
+  const events: string[] = [];
+  element.dispatchEvent = (event: Event) => { events.push(event.type); return true; };
+
+  await element._startCapture(101);
+  assert.equal(element._stage, "editing");
+
+  element._closeEditor();
+  assert.equal(events.includes("editor-exit"), true);
 });
 
 test("activities tab does not restore a previous edit session on entry", () => {

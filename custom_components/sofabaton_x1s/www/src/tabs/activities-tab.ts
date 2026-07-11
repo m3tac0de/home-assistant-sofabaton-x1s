@@ -1,20 +1,20 @@
 /**
- * The live "Activities" tab (Phase L2 of
+ * The live activity editor session (Phase L2 of
  * docs/internal/live-activity-editor-plan.md).
  *
- * Lists the hub's activities, captures the whole-hub bundle when one is
- * clicked (reusing the existing backup/export operation + progress
- * subscription), then hosts the extracted <sofabaton-edit-detail-view>
+ * Opened from the Hub tab's Activities list (wrench button) with the
+ * `activityId` property set: it captures that activity's bundle from the
+ * structural cache, then hosts the extracted <sofabaton-edit-detail-view>
  * in mode="live". `bundle-change` updates an in-memory `working` clone;
  * changes stay alive while this edit view is active and are written to the
- * hub only through the sync flow.
+ * hub only through the sync flow. Leaving the editor dispatches
+ * `editor-exit` so the host card returns to the Hub tab.
  */
 import { LitElement, css, html, nothing } from "lit";
 import { operationProgressStyles, renderOperationProgress } from "../components/operation-progress";
 import type {
   BackupBundlePayload,
   BackupProgressEvent,
-  CacheHubState,
   ControlPanelHubState,
   HassLike,
 } from "../shared/ha-context";
@@ -25,14 +25,9 @@ import { diffActivityForReview, type ActivityReviewGroup } from "./activity-diff
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
 
+// "list" is the idle stage: no capture running yet (waiting on guards) or the
+// session is winding down after an exit.
 type ActivitiesStage = "list" | "capturing" | "editing" | "syncing" | "sync_failed" | "needs_refresh";
-
-interface ActivityListItem {
-  id: number;
-  name: string;
-  deviceCount: number;
-  shortcutCount: number;
-}
 
 const S = TOOLS_CARD_STRINGS.activities;
 
@@ -40,8 +35,8 @@ class SofabatonActivitiesTab extends LitElement {
   static properties = {
     hass: { attribute: false },
     hub: { attribute: false },
-    cacheHub: { attribute: false },
     refreshControlPanelState: { attribute: false },
+    activityId: { type: Number },
     loading: { type: Boolean },
     error: { type: String },
     blockedTitle: { type: String },
@@ -74,31 +69,6 @@ class SofabatonActivitiesTab extends LitElement {
     .tab-panel--flush { padding: 0; }
     .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
     .state.error { color: var(--error-color, #db4437); }
-    .list-subtitle { font-size: 13px; line-height: 1.5; color: var(--secondary-text-color); }
-    .list-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-    .activity-list { display: grid; gap: 6px; }
-    .activity-row {
-      width: 100%;
-      box-sizing: border-box;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--ha-card-border-radius, 12px);
-      padding: 10px 12px;
-      background: var(--secondary-background-color, var(--ha-card-background));
-      text-align: left;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-      transition: border-color 120ms ease, background-color 120ms ease;
-    }
-    .activity-row:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .activity-row-lead { flex: 0 0 auto; color: var(--primary-color); display: inline-flex; }
-    .activity-row-lead ha-icon { --mdc-icon-size: 22px; }
-    .activity-row-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
-    .activity-row-name { font-size: 14px; font-weight: 700; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .activity-row-meta { font-size: 12px; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .activity-row-chevron { flex: 0 0 auto; color: var(--secondary-text-color); display: inline-flex; }
-    .activity-row-chevron ha-icon { --mdc-icon-size: 20px; }
     .guard-state {
       flex: 1;
       display: flex;
@@ -212,8 +182,9 @@ class SofabatonActivitiesTab extends LitElement {
 
   hass: HassLike | null = null;
   hub: ControlPanelHubState | null = null;
-  cacheHub: CacheHubState | null = null;
   refreshControlPanelState?: (() => Promise<unknown> | void) | null;
+  /** The activity to edit; the host sets this before mounting. */
+  activityId: number | null = null;
   loading = false;
   error: string | null = null;
   blockedTitle: string | null = null;
@@ -240,6 +211,9 @@ class SofabatonActivitiesTab extends LitElement {
   private _progressUnsub: (() => void) | null = null;
   private _syncStateHydratedFor: string | null = null;
   private _exitAfterSync = false;
+  // Which requested activityId we already auto-opened, so returning to the
+  // idle stage (close) doesn't immediately re-capture the same activity.
+  private _autoOpenedActivityId: number | null = null;
   // entry_id of the hub the current stage belongs to. The `hub` prop
   // is a fresh object on every control_panel/state refresh, so we key reset
   // decisions on the entry_id — not object identity — to avoid tearing down
@@ -269,6 +243,24 @@ class SofabatonActivitiesTab extends LitElement {
       this._syncStateHydratedFor = this.hub.entry_id;
       void this._hydrateRunningSync();
     }
+    this._maybeAutoOpen();
+  }
+
+  // Direct-open: capture the requested activity as soon as the guards clear.
+  // Runs once per requested id — a close (back to the idle stage) must not
+  // re-capture; the host tears the element down on `editor-exit`.
+  private _maybeAutoOpen() {
+    const requested = this.activityId == null ? null : Number(this.activityId);
+    if (requested == null || !Number.isFinite(requested)) return;
+    if (this._stage !== "list" || this._autoOpenedActivityId === requested) return;
+    if (this._openBlocked()) return;
+    this._autoOpenedActivityId = requested;
+    void this._startCapture(requested);
+  }
+
+  private _openBlocked() {
+    return this.selectedHubProxyConnected
+      || this._isProgressRunning(this.hub?.active_backup_operation ?? null);
   }
 
   // Card reloaded mid-sync: pick up a running activity_sync op from the
@@ -490,6 +482,7 @@ class SofabatonActivitiesTab extends LitElement {
   };
 
   private _resetToList() {
+    const wasActive = this._stage !== "list" || this._activityId != null;
     this._stage = "list";
     this._activityId = null;
     this._baseline = null;
@@ -507,45 +500,9 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncOperationId = null;
     this._syncSuccessNotice = false;
     this._exitAfterSync = false;
-  }
-
-  // ── Data ───────────────────────────────────────────────────────────
-
-  private _activityItems(): ActivityListItem[] {
-    // Source: the persistent cache (`cacheHub.activities`) — the same source
-    // the Cache tab renders from, which carries id/name plus favorite/macro
-    // counts. Fall back to the control-panel/state hub summary if the cache
-    // hasn't populated yet.
-    const activities = (this.cacheHub?.activities ?? this.hub?.activities ?? []) as Array<{
-      id: number;
-      name?: string;
-      favorite_count?: number;
-      macro_count?: number;
-    }>;
-    const cacheFavorites = this.cacheHub?.activity_favorites ?? {};
-    const cacheMacros = this.cacheHub?.activity_macros ?? {};
-    return [...activities]
-      .map((activity) => {
-        const id = Number(activity.id);
-        const key = String(id);
-        const favorites = Number(
-          activity.favorite_count ?? (Array.isArray(cacheFavorites[key]) ? cacheFavorites[key].length : 0),
-        );
-        const macros = Number(
-          activity.macro_count ?? (Array.isArray(cacheMacros[key]) ? cacheMacros[key].length : 0),
-        );
-        return {
-          id,
-          // Device membership isn't surfaced on the hub-state activity
-          // summary (nor cheaply derivable from the cache), so the list meta
-          // line shows only the shortcut count until capture reveals the
-          // precise device set. rowMeta renders 0 devices gracefully.
-          name: String(activity.name || "").trim() || S.activityFallback(id),
-          deviceCount: 0,
-          shortcutCount: favorites + macros,
-        };
-      })
-      .sort((left, right) => left.id - right.id);
+    if (wasActive) {
+      this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
+    }
   }
 
   // ── Render ─────────────────────────────────────────────────────────
@@ -579,7 +536,7 @@ class SofabatonActivitiesTab extends LitElement {
     if (this._stage === "capturing") {
       return this._renderCapturing();
     }
-    return this._renderList();
+    return this._renderIdle();
   }
 
   private _renderGuard(icon: string, title: string, sub: string) {
@@ -594,34 +551,21 @@ class SofabatonActivitiesTab extends LitElement {
     `;
   }
 
-  private _renderList() {
-    // Guard panels (§4.1), full-panel, in priority order.
+  // Idle stage: capture hasn't started yet (guards active) or the session is
+  // closing. Guard panels (§4.1) render full-panel, in priority order;
+  // otherwise _maybeAutoOpen is about to kick off the capture.
+  private _renderIdle() {
     if (this.selectedHubProxyConnected) {
       return this._renderGuard("mdi:cellphone-link", S.appConnectedTitle, S.appConnectedBody);
     }
     if (this._isProgressRunning(this.hub?.active_backup_operation ?? null)) {
       return this._renderGuard("mdi:progress-clock", S.operationRunningTitle, S.operationRunningBody);
     }
-    const items = this._activityItems();
-    if (!items.length) {
-      return this._renderGuard("mdi:playlist-remove", S.emptyTitle, S.emptyBody);
-    }
     return html`
       <div class="tab-panel">
-        <div class="list-subtitle">${S.listSubtitle}</div>
-        <div class="list-scroll">
-          <div class="activity-list">
-            ${items.map((item) => html`
-              <button class="activity-row" @click=${() => void this._startCapture(item.id)}>
-                <span class="activity-row-lead"><ha-icon icon="mdi:play-circle-outline"></ha-icon></span>
-                <span class="activity-row-main">
-                  <span class="activity-row-name">${item.name}</span>
-                  <span class="activity-row-meta">${S.rowMeta(item.deviceCount, item.shortcutCount)}</span>
-                </span>
-                <span class="activity-row-chevron"><ha-icon icon="mdi:chevron-right"></ha-icon></span>
-              </button>
-            `)}
-          </div>
+        <div class="guard-state">
+          <div class="guard-icon"><ha-icon icon="mdi:database-arrow-down-outline"></ha-icon></div>
+          <div class="guard-sub">${S.capturingFromCache}</div>
         </div>
       </div>
     `;

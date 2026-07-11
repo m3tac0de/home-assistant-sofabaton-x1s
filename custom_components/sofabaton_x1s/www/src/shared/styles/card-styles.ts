@@ -453,7 +453,9 @@ export const cardStyles = [secondaryTabStyles, css`
   .cache-panel-header {
     margin-top: 6px;
     margin-bottom: 8px;
+    gap: 18px;
   }
+  .cache-panel-header .refresh-action { display: inline-flex; align-items: center; gap: 8px; }
   .cache-panel-body,
   .secondary-tab-panel--connected .cache-panel-body {
     padding-top: 0;
