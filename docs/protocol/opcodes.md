@@ -25,13 +25,13 @@ This document describes observed wire behavior. Implementation notes belong in
 | `0x023C` | `REQ_BUTTONS` | `[act_lo, 0xFF]` | All | Request activity keymap and favorite rows |
 | `0x025C` | `REQ_COMMANDS` | `[dev_lo, 0xFF]` or `[dev_lo, cmd_lo]` | All | Request full command list or one command label |
 | `0x020C` | `REQ_BLOB` | `[dev_lo, cmd_lo]` or `[dev_lo, 0xFF]` | X1, X1S observed | Request raw command/blob dump pages for one command or a full device snapshot |
-| `0x023F` | `REQ_ACTIVATE` | `[entity_lo, key_code]` | All | Activate an activity or send a device command |
+| `0x023F` | `REQ_ACTIVATE` | `[entity_lo, key_code]` | All | Activate an activity or send a device command. **wifi_ip caveat** (X1S live, 2026-07-12): one frame targeting a `wifi_ip` command makes the hub repeat the HTTP callback ~8-10/s indefinitely — this opcode path has no key-up, and `key_code=0x00` does not stop the repeat (probed live); only deleting the device (or presumably another activation) ended it. |
 | `0x016C` | `REQ_ACTIVITY_MAP` | `[act_lo]` | All observed | Request activity membership roster |
 | `0x024D` | `REQ_MACRO_LABELS` | `[act_lo, 0xFF]` or `[act_lo, macro_id]` | All observed | Request activity macro labels or one macro payload |
 | `0x0148` | `REQ_ACTIVITY_INPUTS` | `[dev_lo]` | All observed | Request input candidates for one device |
 | `0x0162` | `FAV_ORDER_REQ` | `[act_lo]` | All observed | Request current favorite ordering |
 | `0x0210` | `FAV_DELETE` | activity/favorite ids | All observed | Delete one favorite |
-| `0x0109` | `DELETE_DEVICE` | `[dev_lo]` | All observed | Delete one device |
+| `0x0109` | `DELETE_DEVICE` | `[id_lo]` | All observed | Delete one device **or activity**. The id range selects the target table: `< 0x65` deletes a device (id may be reused, followed by an activity-confirm sweep); `>= 0x65` deletes that activity directly. Live-validated on X1 + X1S: deleting an activity id removes only that activity, leaving devices and other activities intact. **Device-delete side effect**: the consistency sweep GCs every activity with exactly one member device (app-created or restored, any binding count); the purge can land seconds after the ack, so an immediate post-delete catalog read may still show the doomed activity. |
 | `0x0058` | `REQ_VERSION` | none observed | All observed | Request WiFi firmware and follow-up version/info banner frames |
 | `0x0140` | `PING2` | none observed | All observed | Keepalive probe |
 | `0x024F` | `ACTIVITY_DEVICE_CONFIRM` | `[dev_lo, include_flag]` | All observed | Confirm device membership during activity assignment |

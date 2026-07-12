@@ -231,12 +231,65 @@ def test_restore_activity_writes_favorite_slots(monkeypatch) -> None:
     assert result["restored_favorites"] == 2
     assert result["skipped_favorites"] == 0
     # Both favorites issued through the live add-favorite path, with
-    # device ids remapped through the device_id_map and the source
-    # slot id preserved.
+    # device ids remapped through the device_id_map. Display slots are a
+    # dense 1..N sequence in captured (button_id) order — NOT the source
+    # hub's stored button_id — because the target activity is fresh. On
+    # X1S the source slot drives the 0x61 stage length, so a non-sequential
+    # captured slot produced a hub reject (backup/restore chunk 3).
     assert favorite_calls == [
-        (0x55, 0x21, 1, 0xA0, False, False),
-        (0x55, 0x22, 2, 0xA1, False, False),
+        (0x55, 0x21, 1, 1, False, False),
+        (0x55, 0x22, 2, 2, False, False),
     ]
+
+
+def test_restore_activity_favorite_slots_skip_macro_keys(monkeypatch) -> None:
+    """Favorite slots must not land on keys occupied by user macros.
+
+    The favorite-map 0x3E step writes a keymap row at the slot's key, and
+    user macros share that key space: compressing favorites to 1..N while
+    a user macro sits at key 1 silently overwrites the macro. Live
+    finding, backup/restore chunk 6 (X1S "Watch a movie": macros at keys
+    1-2, favorites captured at 3..19, restored to 1..17 -> both macros
+    lost). Slots must be the lowest FREE keys instead.
+    """
+
+    proxy, _sequence_calls = _patched_proxy(monkeypatch)
+
+    favorite_calls: list[tuple[int, ...]] = []
+
+    def _command_to_favorite(activity_id, device_id, command_id, *, slot_id=None, **kwargs):
+        favorite_calls.append((activity_id, device_id, command_id, slot_id))
+        return {"status": "success"}
+
+    monkeypatch.setattr(proxy, "command_to_favorite", _command_to_favorite)
+
+    payload = _activity_backup(
+        favorites=[
+            {"button_id": 3, "device_id": 11, "command_id": 1},
+            {"button_id": 4, "device_id": 11, "command_id": 2},
+            {"button_id": 5, "device_id": 11, "command_id": 3},
+        ]
+    )
+    # User macros at keys 1 and 2 alongside the power macro.
+    payload["macros"] = [
+        {"button_id": 1, "name": "Macro A", "steps": [
+            {"device_id": 11, "command_id": 1, "button_code": 0x4E21},
+        ]},
+        {"button_id": 2, "name": "Macro B", "steps": [
+            {"device_id": 11, "command_id": 2, "button_code": 0x4E22},
+        ]},
+        {"button_id": 0xC6, "name": "Watch TV ON", "steps": [
+            {"device_id": 11, "command_id": 1, "button_code": 0x4E21},
+        ]},
+    ]
+
+    result = proxy.restore_activity(payload, device_id_map={11: 0x21})
+
+    assert result is not None
+    assert result["restored_favorites"] == 3
+    # Slots skip the macro-occupied keys 1 and 2 and reproduce the
+    # app's own layout (3, 4, 5).
+    assert [call[3] for call in favorite_calls] == [3, 4, 5]
 
 
 def test_restore_logs_skipped_favorite_with_unmapped_command(
@@ -270,9 +323,9 @@ def test_restore_logs_skipped_favorite_with_unmapped_command(
     assert result["skipped_favorites"] == 1
     # Only the well-formed favorite reached the live write path.
     assert len(favorite_calls) == 1
-    # The skipped one logged a WARNING citing the slot id.
+    # The skipped one logged a WARNING citing its (sequential) slot id.
     assert any(
-        "skipped favorite slot=0xA1" in record.getMessage()
+        "skipped favorite slot=2" in record.getMessage()
         for record in caplog.records
     )
 

@@ -335,42 +335,98 @@ Engine bugs the bench caught (all fixed 2026-07-11):
 3. `_send_paged_macro_save` pinned the final-page 0x0112 ack payload to
    the macro key, failing successful cascade-removal saves (above).
 
-## Pending validation: HA-action blobs without inner-record trailer
+## Validated: backup/restore write flows (X1 + X1S, 2026-07-11/12)
 
-The backup editor synthesizes `wifi_ip` command blobs for Home Assistant
-actions (`renderHaActionDataHex` in `www/src/tabs/backup-state.ts`) with
-NO 1-byte inner-record trailer — real hub-dumped records carry one (see
-`tests/test_wifi_ip_apps_backup_roundtrip.py`), computed over the outer
-command record by the hub. Replay is length-prefixed (`data[6:8]`
-declares the HTTP text length), so the trailer should be inert for
-sending, but two things need a live-hub check after restoring a bundle
-containing an editor-provisioned HA action:
+Bench-validated the whole backup → restore pipeline live on both hub
+models (`restore_device` for every present device class,
+`restore_activity` rich, `restore_hub_bundle` append and replace modes,
+`delete_device`, activity delete, `erase_configuration`). Program plan
+and per-chunk logs: `docs/internal/backup-restore-bench-plan.md`;
+harness `scripts/hub-bench/bench_6x/7x_*.py`. Every restore was verified
+by re-reading the restored entity and comparing content against the
+source with ids remapped and hub-owned bytes excluded
+(`scripts/hub-bench/bench_compare.py`).
 
-1. The family-0x0E save pages are acked `0x0103/0x00` (not `0x0C`).
-2. Pressing the restored shortcut fires the HTTP callback at the
-   configured `host:port` with the expected `/launch/ha/...` path.
+Confirmed:
 
-If the hub rejects trailer-less records, the fix belongs in the restore
-path (compute the outer-record checksum in `build_command_write_steps`),
-not in the TS writer.
+- **Device restore round-trip byte-perfect** on X1 `ir` + `wifi_roku`
+  and X1S `wifi_ip`: command blobs byte-equal, bindings (incl.
+  long-press), power macros, input page, idle byte, key-sort.
+- **`delete_device` (family 0x09)** — the per-activity confirm sweep is
+  a correct no-op for a device in no activity; **the same family with
+  an id >= 0x65 deletes that activity** (the delete path used for all
+  bench cleanup; see opcodes.md).
+- **Rich activity restore round-trip byte-perfect** (multi-member,
+  14–18 bindings, up to 17 favorites, delay rows, user macros).
+  Favorites replay through the live add path (0x3E map → 0x61 stage →
+  0x65 commit); display slots are assigned dense over the lowest FREE
+  keys — user macros share the favorite key space, so slots must skip
+  macro/binding keys or the 0x3E map overwrites the macro row (live
+  finding, chunk 6).
+- **Bundle restore, append mode**: device-id remap, per-device
+  command-id maps, dependency-ordered activities, `0xC5` "set input"
+  ordinal re-resolution through source input → command map →
+  destination input index.
+- **Cross-activity chain steps (former item V7)**: a POWER_OFF step
+  whose device byte references another activity is accepted by the
+  family-0x12 write and restores with the byte remapped through
+  `activity_id_map` (proven non-trivially: source 0x80 → assigned
+  0x69). Runtime behavior (ending A actually starting B) has not been
+  behaviorally observed live — only the write/remap path is validated.
+  Known gap: the bundle orchestrator builds `activity_id_map` from
+  in-bundle activities only, so a bundle activity chaining to an
+  activity already on the hub but absent from the bundle is rejected;
+  standalone `restore_activity` handles it via an explicit
+  `activity_id_map={id: id}`.
+- **HA-action blobs without inner-record trailer (former pending
+  gate)**: the hub accepts the editor's trailer-less `wifi_ip` records
+  as-is — every family-0x0E page acked `0x0103/0x00`, the record is
+  stored verbatim (re-read byte-equal, still trailer-less; the 0x020C
+  dump adds only the persist tail), and triggering the restored command
+  fires the HTTP POST at the configured `host:port` with the exact
+  `/launch/ha/...` path. No writer change needed on either side.
+- **`erase_configuration` (0x001D)**: acked in ~20 s on both hubs,
+  catalogs empty afterwards, no session drop observed (the documented
+  reconnect tolerance went unused). Replace-mode bundle restore onto
+  the erased hub rebuilt both hubs fully (X1 9 devices + 4 activities,
+  X1S 13 + 4) with every entity content-equal to the pre-erase capture;
+  on an empty hub the allocators reproduce the source ids exactly.
 
-## Pending validation: cross-activity chain steps
+Hub behaviors discovered:
 
-This is the one remaining open gate (item V7) for the live activity
-editor — it blocks only cross-activity chain editing, not the tab or the
-core sync engine (V1–V5 above are validated).
+- **Single-member activities are GC'd by the device-delete sweep**:
+  deleting *any* device purges every activity with exactly one member
+  device, app-created or restored, regardless of binding count. Real
+  multi-member activities are untouched. The purge can land *after* an
+  immediately-post-delete catalog snapshot — don't trust one for purge
+  conclusions.
+- **`REQ_ACTIVATE` (0x023F) on a `wifi_ip` command repeats the HTTP
+  callback ~8–10/s indefinitely** — no key-up exists on this opcode
+  path and `key_code=0x00` does not stop it (see opcodes.md). Real
+  remote presses send proper press/release via the remote↔hub link.
+- The hub silently **drops any frame sent while it is streaming a read
+  burst** — every write must quiesce reads first
+  (`wait_for_read_burst_quiesce`).
+- Family-0x0E saved records persist as `blob_body + 1-byte
+  write-context tail`; backups must split the tail off `data_hex` or
+  every backup→restore cycle grows the record by one byte
+  (data-structures.md "Save-specific trailing checksum").
 
-Stage 1 restore plumbing (activity_id_map, dependency-ordered activity
-restore) supports macro steps whose `device_id` is another ACTIVITY
-(>= 0x65) — the "activity A's power-off starts activity B" pattern.
-Firmware behavior is unvalidated; on a live hub confirm:
+Engine bugs the program caught (all fixed, regression-tested):
 
-1. The family-0x12 macro write is acked (`0x0112`) when a step row's
-   device byte is an activity id.
-2. Ending activity A actually starts activity B when A's POWER_OFF
-   carries a `{device_id: B, key 0xC6}` step.
-3. Restore of a bundle containing the chain lands with the remapped
-   activity id (check via a fresh backup of the restored hub).
-
-The backup editor has no UI for this yet (stage 2 of the proposal in
-the activity-editor plan); test bundles are hand-edited.
+1. Empty-keymap devices stamped `complete=False` on good captures
+   (bare STATUS_ACK 0x07 never recorded the entity in
+   `state.buttons`).
+2. A dropped catalog request was committed as an *empty* catalog,
+   wiping local state.
+3. Write steps fired mid read-burst were silently dropped by the hub
+   (device-create 0x0107 timeout).
+4. Backup→restore grew non-IR records one byte per cycle (persist
+   tail replayed verbatim).
+5. X1S favorite restore rejected non-sequential display slots
+   (0x013E echoes the slot; the 0x61 stage length derives from it).
+6. `0xC5` input re-resolution never ran on real bundles (resolver read
+   a `payload["inputs"]` key no producer emits; a unit test faked it).
+7. Dense favorite-slot reassignment clobbered user macros at keys 1–2
+   (favorite 0x3E map writes a keymap row at the slot's key; slots now
+   skip occupied keys).

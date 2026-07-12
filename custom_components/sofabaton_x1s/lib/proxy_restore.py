@@ -365,7 +365,21 @@ class RestoreMixin:
             )
             return raw_duration, True
 
+        # Real device backups carry the input list under
+        # ``input_record.entries`` (that is what ``backup_device`` /
+        # ``assemble_device_backup`` produce). A bare top-level ``inputs``
+        # list is also accepted for callers that pre-project it. The
+        # resolver historically only read ``inputs``, which no producer
+        # ever writes, so 0xC5 ordinal re-resolution silently no-op'd on
+        # every real bundle restore (live-bench finding, backup/restore
+        # chunk 4).
         source_inputs = source_device_payload.get("inputs")
+        if not isinstance(source_inputs, list):
+            input_record = source_device_payload.get("input_record")
+            if isinstance(input_record, dict):
+                entries = input_record.get("entries")
+                if isinstance(entries, list):
+                    source_inputs = entries
         if not isinstance(source_inputs, list):
             self._log.warning(
                 "[RESTORE] activity macro key=0x%02X dev=0x%02X 0xC5 step "
@@ -2002,16 +2016,49 @@ class RestoreMixin:
         # post_steps CreateStep batch above.
         restored_favorites = 0
         skipped_favorites = 0
+        # Favorites are replayed into a fresh activity, so their display
+        # slots must be a dense ascending sequence in captured order — NOT
+        # the source hub's stored ``button_id`` verbatim. On X1S the 0x013E
+        # map ACK echoes the slot we send, and command_to_favorite derives
+        # the 0x61 stage length from it — a non-sequential slot produced a
+        # bogus stage length and a hub reject (status 0x06). Live-validated
+        # 2026-07-12, backup/restore chunk 3.
+        #
+        # The sequence must SKIP keys this activity already occupies: the
+        # favorite-map 0x3E step writes a keymap row at the slot's key, and
+        # user macros share that key space — assigning slot 1 to a favorite
+        # while a user macro sits at key 1 silently overwrites the macro
+        # (live finding, backup/restore chunk 6: X1S "Watch a movie" lost
+        # its key-1/2 macros to favorites compressed from 3..19 to 1..17).
+        # Allocating the lowest free keys reproduces the app's own layout,
+        # so real activities round-trip to their captured slots.
+        occupied_keys: set[int] = set()
+        for macro_row in request.macros:
+            if isinstance(macro_row, dict):
+                occupied_keys.add(int(macro_row.get("button_id", 0)) & 0xFF)
+        for binding_row in request.button_bindings:
+            if isinstance(binding_row, dict):
+                occupied_keys.add(int(binding_row.get("button_id", 0)) & 0xFF)
+        occupied_keys.discard(0)
+
+        def _next_free_slot(start: int) -> int:
+            slot = start
+            while slot in occupied_keys:
+                slot += 1
+            return slot
+
+        next_slot = 0
         for row in sorted(
             (item for item in request.favorites if isinstance(item, dict)),
             key=lambda item: int(item.get("button_id", 0)),
         ):
             new_target_device = _map_device_id(row.get("device_id"))
             target_command_id = int(row.get("command_id", 0)) & 0xFF
-            slot_id = int(row.get("button_id", 0)) & 0xFF
+            next_slot = _next_free_slot(next_slot + 1)
+            slot_id = next_slot & 0xFF
             if new_target_device is None or target_command_id == 0:
                 self._log.warning(
-                    "[RESTORE] skipped favorite slot=0x%02X: unmapped device_id=%r "
+                    "[RESTORE] skipped favorite slot=%d: unmapped device_id=%r "
                     "or zero command_id",
                     slot_id,
                     row.get("device_id"),

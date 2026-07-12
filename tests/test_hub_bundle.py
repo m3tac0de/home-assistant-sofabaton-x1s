@@ -87,7 +87,15 @@ def _device_payload(
         "button_bindings": [],
         "macros": [],
         "favorite_slots": [],
-        "inputs": inputs or [],
+        # Real device backups carry the input list under
+        # ``input_record.entries`` — NOT a top-level ``inputs`` key. The
+        # 0xC5 ordinal resolver reads this shape; an earlier fixture faked
+        # an ``inputs`` key and hid that the resolver never matched real
+        # backups (backup/restore chunk 4).
+        "input_record": {
+            "device_id": source_device_id,
+            "entries": inputs or [],
+        },
     }
 
 

@@ -31,6 +31,176 @@ def _remap_cmd(cmd_map: dict[int, int], value: Any) -> Any:
         return value
 
 
+def _remap_dev(dev_map: dict[int, int], value: Any) -> Any:
+    """Map a source device id through the restore's device_id_map."""
+    if value in (None, 0, 0xFF, 255):
+        return value
+    try:
+        return dev_map.get(int(value), f"UNMAPPED({value})")
+    except (TypeError, ValueError):
+        return value
+
+
+def _is_noop_binding(row: dict[str, Any]) -> bool:
+    """True for placeholder rows bound to nothing (command 0, no long-press).
+
+    The app leaves such rows behind when a binding is cleared; they are
+    functionally inert (command 0 does not exist) and the restore path
+    deliberately skips them, so both sides exclude them from equality.
+    (Chunk 6 finding: X1 'Apple TV' FWD row.)
+    """
+    return (row.get("command_id") in (None, 0)) and (
+        row.get("long_press_command_id") in (None, 0)
+    )
+
+
+def compare_activity_backup(
+    source: dict[str, Any],
+    restored: dict[str, Any],
+    *,
+    device_id_map: dict[int, int],
+    expected_name: str,
+    hub_version: str,
+) -> tuple[list[str], list[str]]:
+    """Compare a source ``activity_backup`` against the re-read of its
+    restored copy. Returns ``(problems, notes)``.
+
+    Activity command references point at member *devices'* command ids,
+    which are stable (the devices already exist), so command ids are not
+    remapped — only member device ids are, via ``device_id_map``.
+    """
+
+    problems: list[str] = []
+    notes: list[str] = []
+
+    if not restored.get("complete"):
+        problems.append("restored re-read reports complete=False")
+
+    # ---- activity block (expected diffs: device_id, name, sort)
+    src_block = source.get("device") or {}
+    dst_block = restored.get("device") or {}
+    if dst_block.get("name") != expected_name:
+        problems.append(
+            f"activity name: expected {expected_name!r}, got {dst_block.get('name')!r}"
+        )
+    # power_state is a runtime flag (whether the activity is currently on);
+    # a fresh restore is always off, so it legitimately differs.
+    expected_diff = {"device_id", "name", "sort", "power_state", "entity_type"}
+    for key in sorted(set(src_block) | set(dst_block)):
+        if key in expected_diff:
+            continue
+        if src_block.get(key) != dst_block.get(key):
+            problems.append(
+                f"activity.{key}: source={src_block.get(key)!r} restored={dst_block.get(key)!r}"
+            )
+
+    # ---- button bindings: remap member device, command id stays
+    def _bind_key(row: dict[str, Any], remap: bool) -> tuple:
+        dev = row.get("device_id")
+        lpd = row.get("long_press_device_id")
+        if remap:
+            dev = _remap_dev(device_id_map, dev)
+            lpd = _remap_dev(device_id_map, lpd)
+        return (
+            row.get("button_id"),
+            dev,
+            row.get("command_id"),
+            lpd,
+            row.get("long_press_command_id"),
+        )
+
+    src_binds = sorted(
+        _bind_key(r, True)
+        for r in source.get("button_bindings") or []
+        if not _is_noop_binding(r)
+    )
+    dst_binds = sorted(
+        _bind_key(r, False)
+        for r in restored.get("button_bindings") or []
+        if not _is_noop_binding(r)
+    )
+    if src_binds != dst_binds:
+        missing = [b for b in src_binds if b not in dst_binds]
+        surplus = [b for b in dst_binds if b not in src_binds]
+        problems.append(f"button bindings differ: missing={missing} surplus={surplus}")
+
+    # ---- favorites: compare by content (device, command); slot/fav_id
+    # is hub-assigned, so surface a slot-only mismatch as a note.
+    def _fav_content(row: dict[str, Any], remap: bool) -> tuple:
+        dev = row.get("device_id")
+        if remap:
+            dev = _remap_dev(device_id_map, dev)
+        return (dev, row.get("command_id"))
+
+    src_favs = sorted(_fav_content(r, True) for r in source.get("favorite_slots") or [])
+    dst_favs = sorted(_fav_content(r, False) for r in restored.get("favorite_slots") or [])
+    if src_favs != dst_favs:
+        problems.append(
+            f"favorites differ by content: source={src_favs} restored={dst_favs}"
+        )
+    else:
+        # content matches; check slot ids
+        def _fav_slot(row, remap):
+            dev = row.get("device_id")
+            if remap:
+                dev = _remap_dev(device_id_map, dev)
+            return (row.get("button_id"), dev, row.get("command_id"))
+
+        src_slots = sorted(_fav_slot(r, True) for r in source.get("favorite_slots") or [])
+        dst_slots = sorted(_fav_slot(r, False) for r in restored.get("favorite_slots") or [])
+        if src_slots != dst_slots:
+            notes.append(f"favorite slot ids differ (hub-assigned): {src_slots} vs {dst_slots}")
+
+    # ---- macros keyed by button_id
+    src_macros = {int(m["button_id"]): m for m in source.get("macros") or []}
+    dst_macros = {int(m["button_id"]): m for m in restored.get("macros") or []}
+    if sorted(src_macros) != sorted(dst_macros):
+        problems.append(
+            f"macro keys differ: source={sorted(src_macros)} restored={sorted(dst_macros)}"
+        )
+    for btn, src_m in sorted(src_macros.items()):
+        dst_m = dst_macros.get(btn)
+        if dst_m is None:
+            continue
+        if src_m.get("name") != dst_m.get("name"):
+            problems.append(
+                f"macro 0x{btn:02X} name: {src_m.get('name')!r} != {dst_m.get('name')!r}"
+            )
+        src_steps = src_m.get("steps") or []
+        dst_steps = dst_m.get("steps") or []
+        if len(src_steps) != len(dst_steps):
+            problems.append(
+                f"macro 0x{btn:02X}: {len(src_steps)} steps != {len(dst_steps)} restored"
+            )
+            continue
+        for idx, (s, d) in enumerate(zip(src_steps, dst_steps)):
+            want_dev = _remap_dev(device_id_map, s.get("device_id"))
+            if want_dev != d.get("device_id"):
+                problems.append(
+                    f"macro 0x{btn:02X} step {idx} device: {want_dev} != {d.get('device_id')}"
+                )
+            if s.get("command_id") != d.get("command_id"):
+                problems.append(
+                    f"macro 0x{btn:02X} step {idx} command: "
+                    f"{s.get('command_id')} != {d.get('command_id')}"
+                )
+            if s.get("delay") != d.get("delay"):
+                problems.append(
+                    f"macro 0x{btn:02X} step {idx} delay: {s.get('delay')} != {d.get('delay')}"
+                )
+            if s.get("duration") != d.get("duration"):
+                msg = (
+                    f"macro 0x{btn:02X} step {idx} duration: "
+                    f"{s.get('duration')} != {d.get('duration')}"
+                )
+                if hub_version == "X1S":
+                    notes.append(msg + " (hub-owned on X1S: rewritten from device config)")
+                else:
+                    problems.append(msg)
+
+    return problems, notes
+
+
 def compare_device_backup(
     source: dict[str, Any],
     restored: dict[str, Any],
@@ -111,8 +281,16 @@ def compare_device_backup(
             lp = _remap_cmd(command_id_map, lp)
         return (row.get("button_id"), cmd, lp, row.get("button_name"), row.get("command_name"))
 
-    src_binds = sorted(_bind_key(r, True) for r in source.get("button_bindings") or [])
-    dst_binds = sorted(_bind_key(r, False) for r in restored.get("button_bindings") or [])
+    src_binds = sorted(
+        _bind_key(r, True)
+        for r in source.get("button_bindings") or []
+        if not _is_noop_binding(r)
+    )
+    dst_binds = sorted(
+        _bind_key(r, False)
+        for r in restored.get("button_bindings") or []
+        if not _is_noop_binding(r)
+    )
     if src_binds != dst_binds:
         missing = [b for b in src_binds if b not in dst_binds]
         surplus = [b for b in dst_binds if b not in src_binds]
