@@ -166,6 +166,35 @@ def test_flush_buffer_retries_after_blocking():
     assert buf == bytearray()
 
 
+def test_flush_buffer_send_does_not_export_shared_buffer():
+    """A concurrent send_local() extend() during the send syscall must not
+    die with BufferError (live-hub bench 2026-07-12): socket.send(bytearray)
+    holds a buffer export, so _flush_buffer must send from a copy. The fake
+    socket extends the buffer re-entrantly inside send() — with the shared
+    bytearray passed directly this raises BufferError."""
+    buf = bytearray(b"frame-one")
+
+    class ExtendingSocket:
+        extended = False
+
+        def send(self, data):
+            # Hold a buffer export over the send payload like the real
+            # socket.send C implementation does, then mutate the shared
+            # buffer — simulates the cross-thread send_local() landing
+            # mid-send. If `data` IS the shared bytearray, extend()
+            # raises BufferError here.
+            with memoryview(data):
+                if not self.extended:
+                    self.extended = True
+                    buf.extend(b"frame-two")
+            return len(data)
+
+    # old code (sock.send(buf)) dies with BufferError inside send()
+    assert transport_bridge._flush_buffer(ExtendingSocket(), buf, "test") is False
+    # both the original frame and the concurrently-appended one flushed
+    assert buf == bytearray()
+
+
 def test_flush_buffer_clears_on_error():
     buf = bytearray(b"data")
 

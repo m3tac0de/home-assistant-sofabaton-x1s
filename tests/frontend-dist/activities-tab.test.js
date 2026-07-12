@@ -2727,7 +2727,7 @@ function deleteBundleDeviceCommand(bundle, deviceId, commandId) {
       )
     }))
   };
-  return reconcileBundlePowerMacros(next);
+  return reconcileBundleMembershipChange(bundle, next);
 }
 function deleteBundleActivityQuickAccess(bundle, activityId, kind, buttonId) {
   const bId = Number(buttonId);
@@ -2749,7 +2749,7 @@ function deleteBundleActivityQuickAccess(bundle, activityId, kind, buttonId) {
       )
     };
   });
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 function nextQuickAccessButtonId(activity) {
   let max = 0;
@@ -2837,9 +2837,9 @@ function activityPowerDeviceIds(activity) {
   }
   return ids;
 }
-function activityMemberDeviceIds(activity) {
+function activityUsageDeviceIds(activity) {
   const selfId = Number(activity?.device?.device_id || 0);
-  const ids = activityPowerDeviceIds(activity);
+  const ids = /* @__PURE__ */ new Set();
   const add = (value) => {
     const id = Number(value || 0);
     if (id > 0 && id !== selfId) ids.add(id);
@@ -2855,6 +2855,11 @@ function activityMemberDeviceIds(activity) {
       add(step?.device_id);
     }
   }
+  return ids;
+}
+function activityMemberDeviceIds(activity) {
+  const ids = activityPowerDeviceIds(activity);
+  for (const id of activityUsageDeviceIds(activity)) ids.add(id);
   return [...ids].sort((left, right) => left - right);
 }
 function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
@@ -2935,6 +2940,42 @@ function reconcileBundlePowerMacros(bundle) {
   for (const activity of bundle.activities ?? []) {
     const id = Number(activity?.device?.device_id || 0);
     if (id > 0) next = reconcileActivityPowerMacros(next, id);
+  }
+  return next;
+}
+function reconcileActivityMembershipChange(before, after, activityId) {
+  const aId = Number(activityId);
+  const beforeActivity = (before.activities ?? []).find(
+    (activity) => Number(activity?.device?.device_id || 0) === aId
+  );
+  const afterActivity = (after.activities ?? []).find(
+    (activity) => Number(activity?.device?.device_id || 0) === aId
+  );
+  if (!afterActivity) return after;
+  const beforeUsage = beforeActivity ? activityUsageDeviceIds(beforeActivity) : /* @__PURE__ */ new Set();
+  const afterUsage = activityUsageDeviceIds(afterActivity);
+  const lost = new Set([...beforeUsage].filter((deviceId) => !afterUsage.has(deviceId)));
+  if (lost.size === 0) return reconcileActivityPowerMacros(after, aId);
+  const pruned = updateActivity(after, aId, (activity) => ({
+    ...activity,
+    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
+      (deviceId) => !lost.has(Number(deviceId))
+    ),
+    macros: (activity.macros ?? []).map((macro) => ({
+      ...macro,
+      steps: filterMacroSteps(
+        macro.steps,
+        (step) => isPowerRefStep(step) && lost.has(Number(step?.device_id || 0))
+      )
+    }))
+  }));
+  return reconcileActivityPowerMacros(pruned, aId);
+}
+function reconcileBundleMembershipChange(before, after) {
+  let next = after;
+  for (const activity of after.activities ?? []) {
+    const activityId = Number(activity?.device?.device_id || 0);
+    if (activityId > 0) next = reconcileActivityMembershipChange(before, next, activityId);
   }
   return next;
 }
@@ -3295,7 +3336,7 @@ function updateActivityMacro(bundle, activityId, buttonId, transform) {
     else macros.push(nextMacro);
     return { ...activity, macros };
   });
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 function addActivityUserMacro(bundle, activityId, name) {
   return updateActivity(bundle, activityId, (activity) => ({
@@ -3516,7 +3557,7 @@ function upsertActivityButtonBinding(bundle, activityId, input) {
     ...activity,
     button_bindings: upsertBindingRow(activity.button_bindings, row)
   }));
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 function upsertDeviceButtonBinding(bundle, deviceId, input) {
   const normalizedDeviceId = Number(deviceId);
@@ -3545,7 +3586,7 @@ function deleteActivityButtonBinding(bundle, activityId, buttonId) {
     ...activity,
     button_bindings: (activity.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
   }));
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 function deleteDeviceButtonBinding(bundle, deviceId, buttonId) {
   const dId = Number(deviceId);
@@ -3669,7 +3710,7 @@ function setActivityRoleDevice(bundle, activityId, group, deviceId) {
     }
     return { ...activity, button_bindings: rows };
   });
-  return reconcileActivityPowerMacros(next, aId);
+  return reconcileActivityMembershipChange(bundle, next, aId);
 }
 var HA_ACTION_HOST_NAME = "Home Assistant";
 var HA_ACTION_HOST_BRAND = "m3tac0de";

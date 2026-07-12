@@ -87,6 +87,12 @@ def _wifi_command_label(command_spec: Any, idx: int) -> str:
 # command buttons. The 0x4E2X codes mirror the synthetic codes the
 # keymap layer writes for the same slots so the binding rows can be
 # round-tripped against the records the hub stores.
+#
+# The 0x18.. key ids exist only inside the X1 family-0x0E write payloads:
+# the hub re-exposes the records in its command table as ids 1..20 (live-
+# validated X1 2026-07-12), the same numbering the X1S/X2 virtual-ip flow
+# writes directly — and that 1..20 space is what REQ_ACTIVATE and the
+# power/input binding rows address on both variants.
 _ROKU_APP_SLOTS: list[tuple[int, int]] = [
     (0x18, 0x4E21),
     (0x19, 0x4E22),

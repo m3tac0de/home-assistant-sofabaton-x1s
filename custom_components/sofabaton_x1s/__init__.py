@@ -62,6 +62,7 @@ from .command_config import (
 )
 from .cache_store import PersistentCacheStore
 from .lib.activity_sync import build_activity_sync_plan, build_device_sync_plan
+from .lib.bundle_validation import validate_hub_bundle_for_model
 from .lib.commands import build_descriptive_ir_blob_body
 from .lib.hub_listener import bounce_hub_listener
 from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
@@ -1800,7 +1801,12 @@ async def _ws_backup_clear_result(hass: HomeAssistant, connection, msg: dict[str
 _ACTIVITY_SYNC_PREWRITE_FAILURES = {"plan", "unavailable", "stale_check"}
 
 
-def _validate_entity_sync_inputs(msg: dict[str, Any], *, entity_kind: str) -> tuple[dict, dict, int]:
+def _validate_entity_sync_inputs(
+    msg: dict[str, Any],
+    *,
+    entity_kind: str,
+    hub_version: str | None = None,
+) -> tuple[dict, dict, int]:
     baseline = msg.get("baseline")
     edited = msg.get("edited")
     id_key = f"{entity_kind}_id"
@@ -1827,6 +1833,20 @@ def _validate_entity_sync_inputs(msg: dict[str, Any], *, entity_kind: str) -> tu
 
     if not _has_entity(baseline) or not _has_entity(edited):
         raise ValueError(f"{id_key} is missing from one of the bundles")
+    baseline_model = validate_hub_bundle_for_model(
+        baseline,
+        hub_version=hub_version,
+        payload_name="baseline",
+        enforce_editor_invariants=False,
+    )
+    edited_model = validate_hub_bundle_for_model(
+        edited,
+        hub_version=hub_version,
+        payload_name="edited",
+        enforce_editor_invariants=True,
+    )
+    if baseline_model != edited_model:
+        raise ValueError("baseline and edited bundles declare different hub models")
     return baseline, edited, entity_id
 
 
@@ -1944,7 +1964,11 @@ async def _handle_entity_sync_ws(
 
     try:
         _raise_if_hub_operation_locked(hass, hub, f"_ws_{entity_kind}_sync")
-        baseline, edited, entity_id = _validate_entity_sync_inputs(msg, entity_kind=entity_kind)
+        baseline, edited, entity_id = _validate_entity_sync_inputs(
+            msg,
+            entity_kind=entity_kind,
+            hub_version=getattr(hub, "version", None),
+        )
     except HomeAssistantError as err:
         connection.send_error(msg["id"], "unavailable", str(err))
         return
@@ -2021,7 +2045,11 @@ async def _handle_entity_sync_plan_ws(
         connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
         return
     try:
-        baseline, edited, entity_id = _validate_entity_sync_inputs(msg, entity_kind=entity_kind)
+        baseline, edited, entity_id = _validate_entity_sync_inputs(
+            msg,
+            entity_kind=entity_kind,
+            hub_version=getattr(hub, "version", None),
+        )
         if entity_kind == "device":
             plan = build_device_sync_plan(baseline, edited, entity_id)
         else:

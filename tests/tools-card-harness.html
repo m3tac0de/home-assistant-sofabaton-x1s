@@ -716,6 +716,11 @@
       }
     });
 
+    // The real Home Assistant element owns pointer/drag behavior and emits an
+    // `item-moved` event. Tests emit that public event directly; this stub only
+    // needs to make the capability visible before the editor is constructed.
+    customElements.define("ha-sortable", class extends HTMLElement {});
+
   </script>
 
   <!-- Card bundle — runs after stubs module above.
@@ -1176,6 +1181,7 @@
 
     const wsLogEl  = document.getElementById("ws-log");
     let   wsBuffer = [];
+    let   structuredCalls = [];
 
     function wsLog(type, dir) {
       const prefix = dir === "req" ? "→" : dir === "err" ? "✕" : "←";
@@ -1202,6 +1208,7 @@
 
         callWS(message) {
           const type = String(message.type ?? "");
+          structuredCalls.push({ channel: "ws", message: clone(message) });
           wsLog(type, "req");
 
           const handler = handlers[type];
@@ -1274,6 +1281,7 @@
         // callService needed by wifi-commands-tab → sync_command_config
         callService(domain, service, data) {
           const key = `${domain}.${service}`;
+          structuredCalls.push({ channel: "service", domain, service, data: clone(data) });
           wsLog(key, "req");
           const svcHandler = handlers[key];
           if (svcHandler) return svcHandler(data);
@@ -1287,6 +1295,7 @@
 
     async function loadScenario(scenario) {
       wsBuffer = [];
+      structuredCalls = [];
       wsLogEl.innerHTML = "";
 
       // Clear persisted view state so each scenario starts fresh.
@@ -1473,6 +1482,7 @@
     }
 
     function clone(value) {
+      if (value === undefined) return undefined;
       return JSON.parse(JSON.stringify(value));
     }
 
@@ -2215,6 +2225,32 @@
     ];
 
     // ── Build sidebar ─────────────────────────────────────────────────────────────
+
+    // Stable automation surface for browser tests. The harness remains useful
+    // manually, while a runner can select a scenario and inspect complete
+    // request payloads without reaching into the visual log or a real hub.
+    window.__toolsCardHarness = {
+      async loadScenario(id) {
+        const scenario = SCENARIOS.find((candidate) => String(candidate.id) === String(id));
+        if (!scenario) throw new Error(`Unknown tools-card scenario: ${id}`);
+        await loadScenario(scenario);
+      },
+      getCalls() {
+        return clone(structuredCalls);
+      },
+      clearCalls() {
+        structuredCalls = [];
+      },
+      getCard() {
+        return window._harnessCard ?? null;
+      },
+      getWorkingBundle() {
+        const card = window._harnessCard;
+        const editor = card?.shadowRoot?.querySelector("sofabaton-activities-tab");
+        return clone(editor?._working ?? null);
+      },
+      scenarioIds: SCENARIOS.map((scenario) => String(scenario.id)),
+    };
 
     const controlsEl = document.getElementById("controls");
     const groupEls   = {};

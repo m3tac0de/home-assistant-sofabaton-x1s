@@ -509,8 +509,13 @@ test("upsertDeviceButtonBinding writes a device-level binding", () => {
 });
 
 test("deleteActivityButtonBinding removes one binding", () => {
-  const b = deleteActivityButtonBinding(bindingBundle(), 101, 0xB0);
+  let b = deleteActivityButtonBinding(bindingBundle(), 101, 0xB0);
   assert.deepEqual(b.activities[0].button_bindings!.map((r) => r.button_id), [0xB6]);
+  assert.deepEqual(b.activities[0].referenced_source_device_ids, [2]);
+
+  b = deleteActivityButtonBinding(b, 101, 0xB6);
+  assert.deepEqual(b.activities[0].button_bindings, []);
+  assert.deepEqual(b.activities[0].referenced_source_device_ids, []);
 });
 
 test("deleting a device cascades to activity button bindings", () => {
@@ -826,16 +831,18 @@ test("reorderActivityMacroSteps carries a command's attached wait", () => {
   ]);
 });
 
-test("removeActivityMacroStep keeps the device in the power macros (additive membership)", () => {
+test("removeActivityMacroStep unlinks a device after its final macro reference is removed", () => {
   let b = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
   b = addActivityMacroCommandStep(b, 101, 1, 2, 20, 0);
   assert.deepEqual(b.activities[0].referenced_source_device_ids, [1, 2]);
-  // Removing device 2's only macro step does NOT drop it from the power
-  // macros — once a device is powered by the activity it stays (a device is
-  // only removed by deleting the device itself). Avoids dropping power-only
-  // devices that have no favorite/binding/macro reference.
+  // Device 2 has no remaining editable reference, so its generated linkage
+  // rows disappear while device 1 remains linked through its macro step.
   b = removeActivityMacroStep(b, 101, 1, 1);
-  assert.deepEqual(b.activities[0].referenced_source_device_ids, [1, 2]);
+  assert.deepEqual(b.activities[0].referenced_source_device_ids, [1]);
+  const powerRows = b.activities[0].macros!
+    .filter((macro) => macro.button_id === 198 || macro.button_id === 199)
+    .flatMap((macro) => macro.steps ?? []);
+  assert.equal(powerRows.some((step) => step.device_id === 2), false);
 });
 
 test("updateActivityMacroStep re-synthesizes button_code when the command changes", () => {
@@ -917,7 +924,7 @@ test("a user command added to a power macro is a deletable (non-protected) step"
   assert.equal(activityMacroStepItems(removed, 101, 198).some((i) => i.kind === "power" || i.kind === "input"), true);
 });
 
-test("deleting a favorite keeps its device in the power macros, but deleting the device removes it", () => {
+test("deleting a device's final favorite removes its generated power linkage", () => {
   const seeded = reconcileActivityPowerMacros({
     ...powerMacroBundle(),
     activities: [{
@@ -931,13 +938,10 @@ test("deleting a favorite keeps its device in the power macros, but deleting the
     }],
   }, 101);
   assert.deepEqual(seeded.activities[0].referenced_source_device_ids, [1, 2]);
-  // Deleting device 1's favorite leaves it in the power macros (additive).
+  // Device 1's favorite was its final editable reference.
   const afterFav = deleteBundleActivityQuickAccess(seeded, 101, "favorite", 1);
-  assert.deepEqual(afterFav.activities[0].referenced_source_device_ids, [1, 2]);
-  // Deleting the device entirely DOES remove it from the power macros.
-  const afterDevice = deleteBundleDevice(afterFav, 1);
-  assert.deepEqual(afterDevice.activities[0].referenced_source_device_ids, [2]);
-  const on = afterDevice.activities[0].macros!.find((m) => m.button_id === 198)!;
+  assert.deepEqual(afterFav.activities[0].referenced_source_device_ids, [2]);
+  const on = afterFav.activities[0].macros!.find((m) => m.button_id === 198)!;
   assert.deepEqual([...new Set(on.steps!.filter((s) => s.command_id === 0xC6).map((s) => s.device_id))], [2]);
 });
 

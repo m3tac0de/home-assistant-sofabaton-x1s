@@ -1,9 +1,11 @@
 """WS handler tests for the activity sync surface (Phase L4)."""
 
 import asyncio
+import copy
 import importlib
 from types import SimpleNamespace
 
+import pytest
 from homeassistant.exceptions import HomeAssistantError
 
 integration = importlib.import_module("custom_components.sofabaton_x1s.__init__")
@@ -24,18 +26,32 @@ class _Conn:
 class _Hub:
     entry_id = "entry-1"
     name = "Living Room"
+    version = "X1S"
 
 
 def _bundle(activity_favs):
     return {
         "kind": "hub_bundle",
         "schema_version": integration.HUB_BUNDLE_SCHEMA_VERSION,
-        "devices": [{"device": {"device_id": 1, "name": "TV"}}],
+        "hub": {"name": "Living Room", "version": "X1S"},
+        "devices": [{
+            "device": {"device_id": 1, "name": "TV"},
+            "commands": [{"command_id": 10, "name": "Power"}],
+        }],
         "activities": [
             {
                 "device": {"device_id": 101, "name": "Watch TV", "entity_type": "activity"},
+                "referenced_source_device_ids": [1],
                 "favorite_slots": activity_favs,
-                "macros": [],
+                "macros": [
+                    {"button_id": 198, "name": "POWER_ON", "steps": [
+                        {"device_id": 1, "command_id": 0xC6, "button_code": 0, "duration": 0, "delay": 0xFF},
+                        {"device_id": 1, "command_id": 0xC5, "button_code": 0, "duration": 0, "delay": 0xFF},
+                    ]},
+                    {"button_id": 199, "name": "POWER_OFF", "steps": [
+                        {"device_id": 1, "command_id": 0xC7, "button_code": 0, "duration": 0, "delay": 0xFF},
+                    ]},
+                ],
                 "button_bindings": [],
             }
         ],
@@ -107,6 +123,111 @@ def test_ws_activity_sync_invalid_payload(monkeypatch):
     assert conn.error[1] == "invalid_payload"
 
 
+def _unknown_favorite_device(bundle):
+    bundle["activities"][0]["favorite_slots"][0]["device_id"] = 2
+
+
+def _unknown_favorite_command(bundle):
+    bundle["activities"][0]["favorite_slots"][0]["command_id"] = 99
+
+
+def _duplicate_binding(bundle):
+    bundle["activities"][0]["button_bindings"] = [
+        {"button_id": 0xB0, "device_id": 1, "command_id": 10},
+        {"button_id": 0xB0, "device_id": 1, "command_id": 10},
+    ]
+
+
+def _unsupported_model_button(bundle):
+    bundle["activities"][0]["button_bindings"] = [
+        {"button_id": 0x99, "device_id": 1, "command_id": 10},
+    ]
+
+
+def _orphan_delay(bundle):
+    bundle["activities"][0]["macros"][0]["steps"].insert(
+        0, {"device_id": 0xFF, "command_id": 0xFF, "duration": 0xFF, "delay": 2}
+    )
+
+
+def _overflow_timing(bundle):
+    bundle["activities"][0]["macros"][0]["steps"][0]["duration"] = 256
+
+
+def _stale_link_mirror(bundle):
+    bundle["activities"][0]["referenced_source_device_ids"] = []
+
+
+def _missing_shutdown_row(bundle):
+    bundle["activities"][0]["macros"][1]["steps"] = []
+
+
+def _wrong_model(bundle):
+    bundle["hub"]["version"] = "X2"
+
+
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        _unknown_favorite_device,
+        _unknown_favorite_command,
+        _duplicate_binding,
+        _unsupported_model_button,
+        _orphan_delay,
+        _overflow_timing,
+        _stale_link_mirror,
+        _missing_shutdown_row,
+        _wrong_model,
+    ],
+    ids=lambda mutator: mutator.__name__.removeprefix("_"),
+)
+def test_ws_activity_sync_rejects_nested_invalid_payload_before_operation(monkeypatch, mutator):
+    conn = _Conn()
+    _patch(monkeypatch)
+    created_tasks = []
+    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    hass = SimpleNamespace(
+        async_create_task=lambda coro: created_tasks.append(coro),
+        data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}},
+    )
+    edited = copy.deepcopy(_bundle([
+        {"button_id": 9, "device_id": 1, "command_id": 10, "name": "Fav"},
+    ]))
+    mutator(edited)
+
+    _run(integration._ws_activity_sync(hass, conn, {
+        "id": 30,
+        "entry_id": "entry-1",
+        "activity_id": 101,
+        "baseline": _bundle([]),
+        "edited": edited,
+    }))
+
+    assert conn.result is None
+    assert conn.error[1] == "invalid_payload"
+    assert created_tasks == []
+    assert registry.latest_for_entry("entry-1", kind="activity_sync") is None
+
+
+def test_ws_activity_sync_plan_rejects_nested_invalid_payload(monkeypatch):
+    conn = _Conn()
+    _patch(monkeypatch)
+    edited = _bundle([{"button_id": 9, "device_id": 1, "command_id": 10, "name": "Fav"}])
+    _missing_shutdown_row(edited)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+
+    _run(integration._ws_activity_sync_plan(hass, conn, {
+        "id": 31,
+        "entry_id": "entry-1",
+        "activity_id": 101,
+        "baseline": _bundle([]),
+        "edited": edited,
+    }))
+
+    assert conn.result is None
+    assert conn.error[1] == "invalid_payload"
+
+
 def test_ws_activity_sync_blocked_when_locked(monkeypatch):
     conn = _Conn()
     _patch(monkeypatch, locked=True)
@@ -140,9 +261,11 @@ def _device_bundle(bindings):
     return {
         "kind": "hub_bundle",
         "schema_version": integration.HUB_BUNDLE_SCHEMA_VERSION,
+        "hub": {"name": "Living Room", "version": "X1S"},
         "devices": [
             {
                 "device": {"device_id": 1, "name": "TV"},
+                "commands": [{"command_id": 10, "name": "Power"}],
                 "macros": [],
                 "button_bindings": bindings,
             }

@@ -1365,7 +1365,7 @@ export function deleteBundleDeviceCommand(
       ),
     })),
   };
-  return reconcileBundlePowerMacros(next);
+  return reconcileBundleMembershipChange(bundle, next);
 }
 
 /**
@@ -1401,7 +1401,7 @@ export function deleteBundleActivityQuickAccess(
       ),
     };
   });
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 
 /**
@@ -1559,15 +1559,12 @@ function activityPowerDeviceIds(activity: BackupBundleActivityPayload): Set<numb
 }
 
 /**
- * Devices an Activity's power macros should contain: every device already
- * in the power macros (preserving power-only devices) plus every device a
- * favorite, button binding (incl. long-press), or user-macro step uses.
- * Membership is additive: a device stays once present and is removed only
- * through the explicit Remove device affordance.
+ * Devices directly used by editable Activity content. Mandatory power/input
+ * reference rows are generated linkage and deliberately do not count here.
  */
-function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[] {
+function activityUsageDeviceIds(activity: BackupBundleActivityPayload): Set<number> {
   const selfId = Number(activity?.device?.device_id || 0);
-  const ids = activityPowerDeviceIds(activity);
+  const ids = new Set<number>();
   const add = (value: unknown) => {
     const id = Number(value || 0);
     // The activity's own id appears as a binding target for MACRO bindings;
@@ -1588,6 +1585,17 @@ function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[
       add(step?.device_id);
     }
   }
+  return ids;
+}
+
+/**
+ * Devices an Activity currently links: presence in its generated power
+ * macros is canonical, while direct editable references are included so
+ * reconciliation can repair a missing power row.
+ */
+function activityMemberDeviceIds(activity: BackupBundleActivityPayload): number[] {
+  const ids = activityPowerDeviceIds(activity);
+  for (const id of activityUsageDeviceIds(activity)) ids.add(id);
   return [...ids].sort((left, right) => left - right);
 }
 
@@ -1653,8 +1661,7 @@ function reconcilePowerMacroSteps(
  * `referenced_source_device_ids`) into line with its member devices.
  * Idempotent and non-destructive: existing steps (inputs, delays, order)
  * are preserved, while missing mandatory reference rows are repaired.
- * `extraMemberIds` force devices with no reference anywhere into
- * membership: the seeding path used by "add device to activity".
+ * `extraMemberIds` explicitly seed devices with no editable reference.
  */
 export function reconcileActivityPowerMacros(
   bundle: BackupBundlePayload,
@@ -1700,13 +1707,65 @@ export function reconcileBundlePowerMacros(bundle: BackupBundlePayload): BackupB
   return next;
 }
 
+/**
+ * Remove generated linkage only for devices whose final editable reference
+ * disappeared during a mutation. Existing power-only members that were not
+ * affected by the edit are preserved.
+ */
+function reconcileActivityMembershipChange(
+  before: BackupBundlePayload,
+  after: BackupBundlePayload,
+  activityId: number,
+): BackupBundlePayload {
+  const aId = Number(activityId);
+  const beforeActivity = (before.activities ?? []).find(
+    (activity) => Number(activity?.device?.device_id || 0) === aId,
+  );
+  const afterActivity = (after.activities ?? []).find(
+    (activity) => Number(activity?.device?.device_id || 0) === aId,
+  );
+  if (!afterActivity) return after;
+
+  const beforeUsage = beforeActivity ? activityUsageDeviceIds(beforeActivity) : new Set<number>();
+  const afterUsage = activityUsageDeviceIds(afterActivity);
+  const lost = new Set([...beforeUsage].filter((deviceId) => !afterUsage.has(deviceId)));
+  if (lost.size === 0) return reconcileActivityPowerMacros(after, aId);
+
+  const pruned = updateActivity(after, aId, (activity) => ({
+    ...activity,
+    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
+      (deviceId) => !lost.has(Number(deviceId)),
+    ),
+    macros: (activity.macros ?? []).map((macro) => ({
+      ...macro,
+      steps: filterMacroSteps(
+        macro.steps,
+        (step) => isPowerRefStep(step) && lost.has(Number(step?.device_id || 0)),
+      ),
+    })),
+  }));
+  return reconcileActivityPowerMacros(pruned, aId);
+}
+
+/** Apply membership transition reconciliation to every surviving Activity. */
+function reconcileBundleMembershipChange(
+  before: BackupBundlePayload,
+  after: BackupBundlePayload,
+): BackupBundlePayload {
+  let next = after;
+  for (const activity of after.activities ?? []) {
+    const activityId = Number(activity?.device?.device_id || 0);
+    if (activityId > 0) next = reconcileActivityMembershipChange(before, next, activityId);
+  }
+  return next;
+}
+
 // ── Activity membership editing ─────────────────────────────────────
 //
-// Membership is DERIVED, not stored: a device belongs to an activity
-// because something references it (power-ref steps, favorites, button
-// bindings, macro steps); `referenced_source_device_ids` is a recomputed
-// mirror. "Add device" therefore seeds power-ref steps (the minimal
-// reference), and "remove device" strips every reference and reconciles.
+// Membership is encoded by power-ref steps; `referenced_source_device_ids`
+// is a recomputed mirror. Favorites, button bindings, and real macro steps
+// automatically create that linkage, and removing a device's final editable
+// reference removes its generated power rows.
 
 function findBundleActivity(
   bundle: BackupBundlePayload | null,
@@ -2463,7 +2522,7 @@ function updateActivityMacro(
     return { ...activity, macros };
   });
   // Step edits can change which devices the activity uses.
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 
 /** Create an empty user macro on an Activity at the next quick-access slot. */
@@ -2830,7 +2889,7 @@ export function upsertActivityButtonBinding(
     ...activity,
     button_bindings: upsertBindingRow(activity.button_bindings, row),
   }));
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 
 export interface DeviceBindingInput {
@@ -2877,7 +2936,7 @@ export function deleteActivityButtonBinding(
     ...activity,
     button_bindings: (activity.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId),
   }));
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle, next, Number(activityId));
 }
 
 /** Remove a Device button binding by button id. */
@@ -3075,7 +3134,7 @@ export function setActivityRoleDevice(
     }
     return { ...activity, button_bindings: rows };
   });
-  return reconcileActivityPowerMacros(next, aId);
+  return reconcileActivityMembershipChange(bundle, next, aId);
 }
 
 // ── Home Assistant actions ───────────────────────────────────────────

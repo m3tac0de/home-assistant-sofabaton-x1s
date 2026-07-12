@@ -124,6 +124,15 @@ Enables/Disables the HTTP listener / Wifi Device. Switched off by default. Autom
 `button.<hub>_resync_remote`  
 Forces a resync of the physical remote. Automatically called at the end of a hub synchronization sequence.
 
+## Before you sync: two hub-side caveats
+
+Re-syncing a Wifi Device (any sync after the first, and the automatic re-sync the integration offers when it detects the hub is out of step) begins by **deleting the managed device from the hub** and recreating it. Deleting a device triggers hub firmware behaviour that has two consequences worth knowing about:
+
+- **Single-device Activities are removed.** The hub automatically deletes any Activity that contains **exactly one device** whenever *any* device is deleted — including Activities unrelated to Wifi Commands. If you keep an Activity with a single device in it, a Wifi Commands re-sync will remove it. Add a second device to such an Activity, or back up before syncing, if you want to keep it.
+- **A hard button the Wifi Command replaced is left unbound, not restored.** If you assign a Wifi Command to a physical button that already did something in an Activity, deploying overwrites the old binding. Removing the Wifi Command later (or a re-sync) clears that button — it does **not** put the original function back. Re-bind the button through the app or a backup restore if you need its old behaviour.
+
+Both behaviours are the hub's own, not specific to this integration; the same happens when the official app deletes a device.
+
 ## Recovery
 
 - This feature involves reconfiguring the hub, it is therefore a good idea to create a backup of your hub configuration before using this feature.

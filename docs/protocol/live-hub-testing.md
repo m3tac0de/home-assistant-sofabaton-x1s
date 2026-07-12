@@ -441,3 +441,86 @@ Engine bugs the program caught (all fixed, regression-tested):
 7. Dense favorite-slot reassignment clobbered user macros at keys 1–2
    (favorite 0x3E map writes a keymap row at the slot's key; slots now
    skip occupied keys).
+
+## Validated: Wifi Commands deploy pipeline (X1 + X1S, 2026-07-12)
+
+Bench-validated the whole Wifi Commands hub-facing pipeline live on
+both hub models: per-variant `create_wifi_device` (X1 Roku-replay,
+X1S/X2 virtual-IP), the full `hub.async_sync_command_config` deploy
+wire order (create → `add_device_to_activity` → `command_to_favorite`
++ `reorder_favorites` → `command_to_button` → `resync_remote`), the
+re-sync/rollback cycle, and HTTP callback delivery. Program plan and
+per-chunk logs: `docs/internal/wifi-commands-bench-plan.md`; harness
+`scripts/hub-bench/bench_8x_*.py`, callback listener
+`scripts/hub-bench/bench_wifi_listener.py` (mirrors
+`roku_listener._write_response` byte-for-byte). Deploy-side
+verification was by re-read (`backup_device` for the created device,
+`backup_activity` for every touched activity); untouched activities
+were required byte-identical.
+
+Confirmed:
+
+- **`create_wifi_device` both variants**: the full deploy profile
+  (10 named slots → 20 command records with short + long-press,
+  `power_on/off_command_id`, `input_command_ids`) writes and re-reads
+  correctly. X1S virtual-IP records carry the callback `host:port`;
+  the X1 Roku device record carries the callback IP. Every record's
+  path is `/launch/<hub_action_id>/<device_id>/<command_index>/<short
+  |long>`. Live-firing a command produces exactly one callback.
+- **X1 command-id remapping**: the X1 Roku pipeline *writes* its
+  family-0x0E records at key ids `0x18..0x2B`, but the hub re-exposes
+  them in the command table as ids `1..20` — the same numbering the
+  X1S writes directly, and the id space `REQ_ACTIVATE` and the
+  power/input binding rows address on both variants.
+- **Full deploy interplay** (both hubs): the device joins each
+  activity's member table (prior members preserved); the activity
+  POWER_ON/POWER_OFF macros gain `(dev, 0xC6)` / `(dev, 0xC7)` steps
+  resolved through the device's family-0x12 power bindings; the
+  POWER_ON macro also gains a `(dev, 0xC5, input_index)` step for
+  every member (index 0 = no input); favorites beyond the 4th get a
+  display slot via the explicit reorder (new favorites tail the
+  pre-existing ones in add order); short + long-press button bindings
+  land. Untouched activities stay byte-identical.
+- **Re-sync heals exactly**: after the managed-device delete that
+  opens a re-sync, recreate + re-deploy restores the activities with
+  no duplicate members, exactly the deployed favorites/bindings, and
+  correct macro step counts.
+- **Rollback is clean**: `add_device_to_activity` against a
+  nonexistent activity fails without partial writes; deleting the
+  half-deployed device returns the catalog to baseline.
+
+Hub behaviors discovered:
+
+- **`REQ_ACTIVATE` runs the activity power macros, but only on a real
+  state transition.** Driving activity on/off over TCP (`send_command
+  [act, POWER_ON/OFF]`, HA's own production path) delivers the wifi
+  device's power-on + input callbacks on idle→active and the power-off
+  callback on active→idle — one each. A `REQ_ACTIVATE` that does not
+  change state (already-active activity) is a no-op and emits nothing.
+- **A routine re-sync destroys a user's single-member activity.**
+  Every re-sync begins by deleting the managed device, and any device
+  delete GC's every one-device activity (backup/restore finding,
+  re-confirmed here on both hubs). See the user-facing caveat in
+  `docs/wifi_commands.md`.
+- **The delete sweep does not restore overwritten bindings.** Deploy
+  overwrites whatever a target hard button held; the subsequent
+  re-sync delete removes the row, leaving the button unbound rather
+  than returning it to its old function — a pre-existing binding on a
+  deploy-target button is permanently lost across a re-sync cycle.
+- **X1 quick-access order table keeps dangling ids after a delete.**
+  The 0x0162 order table still lists a deleted device's favorite ids;
+  a re-deploy's favorite-stage (family 0x61) is rejected `status=0x06`
+  until the 0x3E map steps re-bind every dangling id, after which the
+  stage + explicit reorder commit correct slots. X1S assigns fresh
+  fav ids and shows none of this. Untested watch item: an X1 re-sync
+  deploying *fewer* favorites than the prior deploy could leave order
+  ids dangling with no map step to re-bind them.
+
+Engine bug the program caught (fixed, regression-tested):
+
+1. `_flush_buffer` sent directly from the shared `_local_to_hub`
+   bytearray; `socket.send(bytearray)` holds a buffer-protocol export
+   for the syscall, so a concurrent `send_local()` → `extend()` on
+   another thread died with `BufferError: Existing exports of data:
+   object cannot be re-sized`. Now sends from a snapshot copy
+   (`transport_bridge._flush_buffer`).

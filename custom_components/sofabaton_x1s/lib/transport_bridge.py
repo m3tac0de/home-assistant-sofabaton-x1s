@@ -89,7 +89,15 @@ def _flush_buffer(
 
     while buf:
         try:
-            sent = sock.send(buf)
+            # Send from a snapshot copy, never the shared bytearray
+            # itself: socket.send(bytearray) holds a buffer-protocol
+            # export for the duration of the syscall, and a concurrent
+            # send_local() extend() on another thread then dies with
+            # "BufferError: Existing exports of data: object cannot be
+            # re-sized" (live-hub bench, 2026-07-12). The copy is a few
+            # hundred bytes at most; del buf[:sent] below interleaves
+            # GIL-atomically with a concurrent extend.
+            sent = sock.send(bytes(buf))
         except (BlockingIOError, InterruptedError):
             break
         except OSError as exc:

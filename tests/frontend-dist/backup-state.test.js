@@ -1743,7 +1743,7 @@ function deleteBundleDeviceCommand(bundle2, deviceId, commandId) {
       )
     }))
   };
-  return reconcileBundlePowerMacros(next);
+  return reconcileBundleMembershipChange(bundle2, next);
 }
 function deleteBundleActivityQuickAccess(bundle2, activityId, kind, buttonId) {
   const bId = Number(buttonId);
@@ -1765,7 +1765,7 @@ function deleteBundleActivityQuickAccess(bundle2, activityId, kind, buttonId) {
       )
     };
   });
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle2, next, Number(activityId));
 }
 function nextQuickAccessButtonId(activity) {
   let max = 0;
@@ -1853,9 +1853,9 @@ function activityPowerDeviceIds(activity) {
   }
   return ids;
 }
-function activityMemberDeviceIds(activity) {
+function activityUsageDeviceIds(activity) {
   const selfId = Number(activity?.device?.device_id || 0);
-  const ids = activityPowerDeviceIds(activity);
+  const ids = /* @__PURE__ */ new Set();
   const add = (value) => {
     const id = Number(value || 0);
     if (id > 0 && id !== selfId) ids.add(id);
@@ -1871,6 +1871,11 @@ function activityMemberDeviceIds(activity) {
       add(step?.device_id);
     }
   }
+  return ids;
+}
+function activityMemberDeviceIds(activity) {
+  const ids = activityPowerDeviceIds(activity);
+  for (const id of activityUsageDeviceIds(activity)) ids.add(id);
   return [...ids].sort((left, right) => left - right);
 }
 function reconcilePowerMacroSteps(existingSteps, members, refCommands) {
@@ -1951,6 +1956,42 @@ function reconcileBundlePowerMacros(bundle2) {
   for (const activity of bundle2.activities ?? []) {
     const id = Number(activity?.device?.device_id || 0);
     if (id > 0) next = reconcileActivityPowerMacros(next, id);
+  }
+  return next;
+}
+function reconcileActivityMembershipChange(before, after, activityId) {
+  const aId = Number(activityId);
+  const beforeActivity = (before.activities ?? []).find(
+    (activity) => Number(activity?.device?.device_id || 0) === aId
+  );
+  const afterActivity = (after.activities ?? []).find(
+    (activity) => Number(activity?.device?.device_id || 0) === aId
+  );
+  if (!afterActivity) return after;
+  const beforeUsage = beforeActivity ? activityUsageDeviceIds(beforeActivity) : /* @__PURE__ */ new Set();
+  const afterUsage = activityUsageDeviceIds(afterActivity);
+  const lost = new Set([...beforeUsage].filter((deviceId) => !afterUsage.has(deviceId)));
+  if (lost.size === 0) return reconcileActivityPowerMacros(after, aId);
+  const pruned = updateActivity(after, aId, (activity) => ({
+    ...activity,
+    referenced_source_device_ids: (activity.referenced_source_device_ids ?? []).filter(
+      (deviceId) => !lost.has(Number(deviceId))
+    ),
+    macros: (activity.macros ?? []).map((macro) => ({
+      ...macro,
+      steps: filterMacroSteps(
+        macro.steps,
+        (step) => isPowerRefStep(step) && lost.has(Number(step?.device_id || 0))
+      )
+    }))
+  }));
+  return reconcileActivityPowerMacros(pruned, aId);
+}
+function reconcileBundleMembershipChange(before, after) {
+  let next = after;
+  for (const activity of after.activities ?? []) {
+    const activityId = Number(activity?.device?.device_id || 0);
+    if (activityId > 0) next = reconcileActivityMembershipChange(before, next, activityId);
   }
   return next;
 }
@@ -2353,7 +2394,7 @@ function updateActivityMacro(bundle2, activityId, buttonId, transform) {
     else macros.push(nextMacro);
     return { ...activity, macros };
   });
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle2, next, Number(activityId));
 }
 function addActivityUserMacro(bundle2, activityId, name) {
   return updateActivity(bundle2, activityId, (activity) => ({
@@ -2569,7 +2610,7 @@ function upsertActivityButtonBinding(bundle2, activityId, input) {
     ...activity,
     button_bindings: upsertBindingRow(activity.button_bindings, row)
   }));
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle2, next, Number(activityId));
 }
 function upsertDeviceButtonBinding(bundle2, deviceId, input) {
   const normalizedDeviceId = Number(deviceId);
@@ -2598,7 +2639,7 @@ function deleteActivityButtonBinding(bundle2, activityId, buttonId) {
     ...activity,
     button_bindings: (activity.button_bindings ?? []).filter((row) => Number(row?.button_id || 0) !== bId)
   }));
-  return reconcileActivityPowerMacros(next, Number(activityId));
+  return reconcileActivityMembershipChange(bundle2, next, Number(activityId));
 }
 function deleteDeviceButtonBinding(bundle2, deviceId, buttonId) {
   const dId = Number(deviceId);
@@ -2722,7 +2763,7 @@ function setActivityRoleDevice(bundle2, activityId, group, deviceId) {
     }
     return { ...activity, button_bindings: rows };
   });
-  return reconcileActivityPowerMacros(next, aId);
+  return reconcileActivityMembershipChange(bundle2, next, aId);
 }
 var HA_ACTION_HOST_NAME = "Home Assistant";
 var HA_ACTION_HOST_BRAND = "m3tac0de";
@@ -3387,8 +3428,12 @@ test("upsertDeviceButtonBinding writes a device-level binding", () => {
   assert.deepEqual(dev2.button_bindings.map((r4) => [r4.button_id, r4.command_id]), [[184, 20]]);
 });
 test("deleteActivityButtonBinding removes one binding", () => {
-  const b3 = deleteActivityButtonBinding(bindingBundle(), 101, 176);
+  let b3 = deleteActivityButtonBinding(bindingBundle(), 101, 176);
   assert.deepEqual(b3.activities[0].button_bindings.map((r4) => r4.button_id), [182]);
+  assert.deepEqual(b3.activities[0].referenced_source_device_ids, [2]);
+  b3 = deleteActivityButtonBinding(b3, 101, 182);
+  assert.deepEqual(b3.activities[0].button_bindings, []);
+  assert.deepEqual(b3.activities[0].referenced_source_device_ids, []);
 });
 test("deleting a device cascades to activity button bindings", () => {
   const b3 = bindingBundle();
@@ -3666,12 +3711,14 @@ test("reorderActivityMacroSteps carries a command's attached wait", () => {
     ["TV \xB7 Power", 12]
   ]);
 });
-test("removeActivityMacroStep keeps the device in the power macros (additive membership)", () => {
+test("removeActivityMacroStep unlinks a device after its final macro reference is removed", () => {
   let b3 = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
   b3 = addActivityMacroCommandStep(b3, 101, 1, 2, 20, 0);
   assert.deepEqual(b3.activities[0].referenced_source_device_ids, [1, 2]);
   b3 = removeActivityMacroStep(b3, 101, 1, 1);
-  assert.deepEqual(b3.activities[0].referenced_source_device_ids, [1, 2]);
+  assert.deepEqual(b3.activities[0].referenced_source_device_ids, [1]);
+  const powerRows = b3.activities[0].macros.filter((macro) => macro.button_id === 198 || macro.button_id === 199).flatMap((macro) => macro.steps ?? []);
+  assert.equal(powerRows.some((step) => step.device_id === 2), false);
 });
 test("updateActivityMacroStep re-synthesizes button_code when the command changes", () => {
   let b3 = addActivityMacroCommandStep(userMacroBundle(), 101, 1, 1, 10, 0);
@@ -3745,7 +3792,7 @@ test("a user command added to a power macro is a deletable (non-protected) step"
   assert.equal(activityMacroStepItems(removed, 101, 198).some((i4) => i4.kind === "command"), false);
   assert.equal(activityMacroStepItems(removed, 101, 198).some((i4) => i4.kind === "power" || i4.kind === "input"), true);
 });
-test("deleting a favorite keeps its device in the power macros, but deleting the device removes it", () => {
+test("deleting a device's final favorite removes its generated power linkage", () => {
   const seeded = reconcileActivityPowerMacros({
     ...powerMacroBundle(),
     activities: [{
@@ -3760,10 +3807,8 @@ test("deleting a favorite keeps its device in the power macros, but deleting the
   }, 101);
   assert.deepEqual(seeded.activities[0].referenced_source_device_ids, [1, 2]);
   const afterFav = deleteBundleActivityQuickAccess(seeded, 101, "favorite", 1);
-  assert.deepEqual(afterFav.activities[0].referenced_source_device_ids, [1, 2]);
-  const afterDevice = deleteBundleDevice(afterFav, 1);
-  assert.deepEqual(afterDevice.activities[0].referenced_source_device_ids, [2]);
-  const on = afterDevice.activities[0].macros.find((m3) => m3.button_id === 198);
+  assert.deepEqual(afterFav.activities[0].referenced_source_device_ids, [2]);
+  const on = afterFav.activities[0].macros.find((m3) => m3.button_id === 198);
   assert.deepEqual([...new Set(on.steps.filter((s4) => s4.command_id === 198).map((s4) => s4.device_id))], [2]);
 });
 function membershipBundle() {
