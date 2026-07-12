@@ -400,10 +400,21 @@ Hub behaviors discovered:
   multi-member activities are untouched. The purge can land *after* an
   immediately-post-delete catalog snapshot — don't trust one for purge
   conclusions.
-- **`REQ_ACTIVATE` (0x023F) on a `wifi_ip` command repeats the HTTP
-  callback ~8–10/s indefinitely** — no key-up exists on this opcode
-  path and `key_code=0x00` does not stop it (see opcodes.md). Real
-  remote presses send proper press/release via the remote↔hub link.
+- **`REQ_ACTIVATE` (0x023F) on a `wifi_ip` command delivers exactly
+  one HTTP callback per frame — the earlier "infinite repeat" was a
+  delivery-retry loop, not key-repeat** (settled X1S 2026-07-12,
+  wifi-commands bench chunk 2, response-mode matrix). Against the
+  integration's exact response shape (`HTTP/1.1 200` + body +
+  `Connection: close`): one callback, then silence. Against the
+  chunk-5 replica (`HTTP/1.0 200`, empty body): the storm reproduces
+  (83 identical POSTs in 10 s, ~8.3/s) and **stops within ~5 s of the
+  live listener switching to the accepted shape** — the hub retries
+  delivery of the *same* callback until it gets a response it
+  accepts. A well-formed `HTTP/1.1 404` + body is accepted as
+  delivered (single callback — status code is not the criterion).
+  Connection refused: the hub gives up, no queue — nothing arrived
+  after the port reopened 15 s later. The exact accept discriminator
+  (HTTP version vs body vs headers) was not isolated.
 - The hub silently **drops any frame sent while it is streaming a read
   burst** — every write must quiesce reads first
   (`wait_for_read_burst_quiesce`).
