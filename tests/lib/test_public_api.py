@@ -85,6 +85,10 @@ CURATED_EXPORTS = {
     "AckOutcome",
     "InputsBurstResult",
     "SendStepResult",
+    # live-edit sync planners
+    "SyncStep",
+    "build_activity_sync_plan",
+    "build_device_sync_plan",
     # asyncio facade
     "AsyncHubBrowser",
     "AsyncXProxy",

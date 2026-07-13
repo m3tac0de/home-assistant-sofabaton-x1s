@@ -17,7 +17,9 @@ import {
   addActivityMacroCommandStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
+  addBundleDeviceCommand,
   addDeviceMacroCommandStep,
+  nextFreeDeviceCommandId,
   clearActivityDeviceInput,
   removeActivityMacroStep,
   reorderActivityMacroSteps,
@@ -308,6 +310,46 @@ test("deleteBundleDeviceCommand also removes the deleted command's trailing dela
     bundleDeleteImpact(b, { kind: "command", deviceId: 1, commandId: 10 }),
     { favorites: 0, macroSteps: 2, activities: 0, bindings: 0 },
   );
+});
+
+test("nextFreeDeviceCommandId picks the lowest unused id", () => {
+  const b = editableBundle();
+  // Device 1 carries commands 10 and 11 → the lowest free id is 1.
+  assert.equal(nextFreeDeviceCommandId(b, 1), 1);
+  const device1 = b.devices.find((d) => d.device?.device_id === 1)!;
+  device1.commands = Array.from({ length: 9 }, (_, i) => ({ command_id: i + 1, name: `C${i + 1}` }));
+  assert.equal(nextFreeDeviceCommandId(b, 1), 10);
+  assert.equal(nextFreeDeviceCommandId(b, 99), null);
+});
+
+test("addBundleDeviceCommand appends a new-flagged row on the target device only", () => {
+  const next = addBundleDeviceCommand(editableBundle(), 1, 12, "Netflix", {
+    transport: "hub_code_record",
+    data_hex: "0a4f23",
+  });
+  const device1 = next.devices.find((d) => d.device?.device_id === 1)!;
+  assert.deepEqual(device1.commands?.map((c) => c.command_id), [10, 11, 12]);
+  const added = device1.commands!.find((c) => c.command_id === 12)!;
+  assert.equal(added.name, "Netflix");
+  assert.deepEqual(added.restore_data, {
+    transport: "hub_code_record",
+    data_hex: "0a4f23",
+    new: true,
+  });
+  // Other devices untouched.
+  const device2 = next.devices.find((d) => d.device?.device_id === 2)!;
+  assert.deepEqual(device2.commands?.map((c) => c.command_id), [20]);
+});
+
+test("addBundleDeviceCommand is a no-op on a taken id or missing device", () => {
+  const base = editableBundle();
+  const taken = addBundleDeviceCommand(base, 1, 10, "Dup", { data_hex: "0a" });
+  assert.deepEqual(
+    taken.devices.find((d) => d.device?.device_id === 1)!.commands?.map((c) => c.command_id),
+    [10, 11],
+  );
+  const missing = addBundleDeviceCommand(base, 99, 1, "Ghost", { data_hex: "0a" });
+  assert.deepEqual(missing.devices.map((d) => d.device?.device_id), base.devices.map((d) => d.device?.device_id));
 });
 
 test("deleteBundleActivityQuickAccess removes one row and preserves power macros", () => {

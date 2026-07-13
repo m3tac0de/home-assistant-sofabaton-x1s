@@ -644,3 +644,50 @@ one `command_rename` step lands, the hub re-exposes the new name, and the
 payload / code / type / id-set / other commands are untouched. A command with
 *both* a rename and a payload edit is written once — the `command_payload` step
 carries the new label — so no double write.
+
+## Validated: command_add — new command via device Sync (X1 + X1S, 2026-07-13)
+
+Persisting a **brand-new command record** from the live device editor's
+"Add command" dialog is validated end-to-end through the production
+`sync_device` chain (`build_device_sync_plan` → scope guard → stale
+pre-flight → `_sync_step_command_add`). All runs were isolated on a
+*clone* of a sacrificial device (`restore_device` → adds → `delete_device`),
+so nothing permanent changed on either hub
+(`bench_98_command_add_sync.py`: X1 `TCL C8K 2`/`0x07` clone + X1S
+`Sonytst`/`0x09` clone; `bench_99_command_add_wifi.py`: X1 `test`/`0x09`
+wifi_roku clone + X1S `Lights`/`0x0A` wifi_ip clone; 50/50 checks OK):
+
+- **IR descriptor add** — a new-flagged row whose `restore_data.decoded`
+  carries `class: ir` + a descriptor synthesizes the record via
+  `build_descriptive_ir_blob_body` and lands through `persist_ir_blob` at
+  the frontend's provisional command id. The stored bytes read back equal
+  the synthesized body exactly (declared-length + magic + descriptor +
+  four trailing nulls), `library_type` is IR-DB `0x0D`, and every
+  pre-existing command stays byte-identical.
+- **Raw-hex add** — a new-flagged row with only `data_hex` lands through
+  `persist_command_record` with `library_type` **cloned from an existing
+  command's cached metadata** (a device's commands share one codec) and
+  `command_code 0` (no canonical button code asserted; the hub assigns on
+  accept — readback shows `button_code 0` until then). The executor then
+  runs the family-0x61 sort registration explicitly (persist_command_record,
+  unlike persist_ir_blob, leaves it to the caller).
+- **Decoded wifi add (cloned trailer)** — a new-flagged row whose decoded
+  block carries the class fields plus a template command's `trailer_hex`
+  re-encodes through `encode_decoded_blob` (round-trip verified by
+  `_edited_command_data_hex`) and lands correctly for both `wifi_roku`
+  (edited ECP path) and `wifi_ip` (full HTTP request shape). Readback
+  decodes to the edited fields with the template trailer byte-for-byte.
+  Shape note: captured wifi records on both hubs carry an **empty**
+  trailer (the canonical backup body already strips the per-record
+  checksum), so the template-trailer clone is a fidelity safeguard, not a
+  load-bearing requirement in practice.
+- **Display-sort registration** — after each add, the hub's family-0x61
+  key-sort blob (read back via `fetch_device_key_sort`) lists the new
+  command id. Devices without a prior key-sort blob get one created by
+  the write: existing commands appear as `(id, 0xFF)` ("unset" — id-order
+  display) and the new commands take positions `0, 1, …`. This matches
+  the behavior the shipped `persist_ir_blob` service always had.
+- **Scope guard** — an added command row *without* the dialog's
+  `restore_data.new` flag fails the plan
+  ("outside the live-editable fields"), on the hub, before any write.
+  Command deletes still trip the guard (deleting stays in Backup → Edit).

@@ -6218,6 +6218,49 @@ function updateBundleDeviceIdleBehavior(bundle, deviceId, mode) {
 function renameBundleDeviceCommand(bundle, deviceId, commandId, name) {
   return updateDeviceCommandLabel(bundle, Number(deviceId), Number(commandId), String(name ?? "").trim());
 }
+function nextFreeDeviceCommandId(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device) return null;
+  const used = new Set(
+    (device.commands ?? []).map((command) => Number(command?.command_id || 0))
+  );
+  for (let candidate = 1; candidate <= 255; candidate += 1) {
+    if (!used.has(candidate)) return candidate;
+  }
+  return null;
+}
+function addBundleDeviceCommand(bundle, deviceId, commandId, name, restoreData) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const trimmed = String(name ?? "").trim();
+  if (normalizedCommandId < 1 || normalizedCommandId > 255) return bundle;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      const commands = device.commands ?? [];
+      const taken = commands.some(
+        (command) => Number(command?.command_id || 0) === normalizedCommandId
+      );
+      if (taken) return device;
+      return {
+        ...device,
+        commands: [
+          ...commands,
+          {
+            command_id: normalizedCommandId,
+            name: trimmed || `Command ${normalizedCommandId}`,
+            restore_data: { ...restoreData, new: true }
+          }
+        ]
+      };
+    })
+  };
+}
 function reorderBundleActivities(bundle, orderedActivityIds) {
   return reorderBundleTopLevelEntries(bundle, "activities", orderedActivityIds);
 }
@@ -7495,6 +7538,14 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadLiveFetched = null;
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
+    // ── Add-command mode of the payload dialog (live mode only) ────────
+    // Same payload controls as command edit, plus a Name field. Decodable
+    // wifi classes seed their form (and the opaque record trailer) from an
+    // existing command fetched as a template; IR synthesizes from the
+    // descriptor alone on the backend, so it needs no template.
+    this._payloadDialogAddMode = false;
+    this._payloadDialogNameDraft = "";
+    this._addCommandPreparing = false;
     this._confirmDeleteTarget = null;
     this._confirmDeleteLabel = "";
     this._addFavoriteOpen = false;
@@ -7598,6 +7649,13 @@ var SofabatonEditDetailView = class extends i4 {
       if (!pending) return;
       this._applyRoleAssign(pending.group, pending.deviceId);
     };
+    this._handleAddCommandNameInput = (event) => {
+      const input = event.currentTarget;
+      const value = sanitizeBundleName(this.bundle, input.value);
+      input.value = value;
+      this._payloadDialogNameDraft = value;
+      this._payloadDialogError = "";
+    };
     this._handleRawPayloadInput = (event) => {
       const input = event.currentTarget;
       this._payloadDialogRawDraft = input.value;
@@ -7650,10 +7708,16 @@ var SofabatonEditDetailView = class extends i4 {
       this._payloadLiveFetched = null;
       this._payloadDialogTestStatus = "idle";
       this._payloadDialogTestError = "";
+      this._payloadDialogAddMode = false;
+      this._payloadDialogNameDraft = "";
     };
     this._applyCommandPayloadDialog = () => {
       const target = this._payloadDialogTarget;
       if (!target || !this.bundle) return;
+      if (this._payloadDialogAddMode) {
+        this._applyAddCommandDialog(target);
+        return;
+      }
       if (this.mode === "live") {
         this._applyLivePayloadDialog(target);
         return;
@@ -8217,6 +8281,7 @@ var SofabatonEditDetailView = class extends i4 {
     this._closeCommandPayloadDialog();
     this._payloadFetchingCommandId = null;
     this._payloadFetchError = "";
+    this._addCommandPreparing = false;
     this._closeDeleteConfirm();
     this._closeAddFavoriteDialog();
     this._closeBindingDialog();
@@ -8610,10 +8675,27 @@ var SofabatonEditDetailView = class extends i4 {
     return b2`
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
-          <div class="quick-access-title">Commands</div>
-          <div class="quick-access-sub">
-            ${this.mode === "live" ? "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+          <div class="quick-access-head-main">
+            <div class="quick-access-title">Commands</div>
+            <div class="quick-access-sub">
+              ${this.mode === "live" ? "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+            </div>
           </div>
+          ${this.mode === "live" ? b2`
+                <div class="quick-access-head-actions">
+                  <button
+                    class="quick-access-add-btn"
+                    ?disabled=${this._addCommandPreparing}
+                    @click=${() => void this._openAddCommandDialog()}
+                  >
+                    <ha-icon
+                      icon=${this._addCommandPreparing ? "mdi:loading" : "mdi:plus"}
+                      class=${this._addCommandPreparing ? "sb-spin" : ""}
+                    ></ha-icon>
+                    <span>Add command</span>
+                  </button>
+                </div>
+              ` : A}
         </div>
         ${this._payloadFetchError ? b2`
               <div class="section-status error" role="alert">
@@ -8632,13 +8714,14 @@ var SofabatonEditDetailView = class extends i4 {
     `;
   }
   _renderDeviceCommandRow(item) {
+    const pendingAdd = this._commandIsPendingAdd(item.commandId);
     return b2`
       <div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
         <div class="quick-access-row quick-access-row--no-drag">
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">command</div>
+              <div class="quick-access-chip">${pendingAdd ? "new command" : "command"}</div>
             </div>
             <div class="quick-access-meta">
               Command ID ${item.commandId}
@@ -8662,7 +8745,7 @@ var SofabatonEditDetailView = class extends i4 {
                     <ha-icon icon="mdi:code-braces"></ha-icon>
                   </button>
                 ` : A}
-            ${this.mode === "live" ? b2`
+            ${this.mode === "live" && !pendingAdd ? b2`
                   <button
                     class="icon-btn"
                     @click=${() => void this._liveFetchAndOpenPayload(item.commandId)}
@@ -8874,12 +8957,27 @@ var SofabatonEditDetailView = class extends i4 {
         <div class="dialog medium" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title-group">
-              <div class="dialog-title">Edit Payload</div>
+              <div class="dialog-title">${this._payloadDialogAddMode ? "Add Command" : "Edit Payload"}</div>
               ${deviceClass ? b2`<span class="payload-class-badge" title="Device class">${deviceClass}</span>` : A}
             </div>
             <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
+            ${this._payloadDialogAddMode ? b2`
+                  <label class="decoded-field">
+                    <span class="decoded-field-label">Name</span>
+                    <input
+                      class="decoded-field-input"
+                      type="text"
+                      maxlength="20"
+                      spellcheck="false"
+                      .value=${this._payloadDialogNameDraft}
+                      @input=${this._handleAddCommandNameInput}
+                      @change=${this._handleAddCommandNameInput}
+                    />
+                    <span class="decoded-field-helper">Shown on the remote and in every command picker.</span>
+                  </label>
+                ` : A}
             ${decoded ? this._renderDecodedPayloadForm(decoded.className) : this._renderRawPayloadForm()}
             ${this._liveDeviceIsIr() ? b2`
                   <div class="payload-test-note">
@@ -9068,6 +9166,21 @@ var SofabatonEditDetailView = class extends i4 {
     this._editRenameDialogError = "";
     this._editRenameDialogOpen = true;
   }
+  /**
+   * True when the command is a not-yet-synced addition (live mode): its
+   * bundle row carries the `restore_data.new` marker and there is nothing
+   * on the hub to fetch for it yet.
+   */
+  _commandIsPendingAdd(commandId) {
+    if (this.entityId == null || !this.bundle) return false;
+    const device = (this.bundle.devices ?? []).find(
+      (entry) => Number(entry?.device?.device_id || 0) === Number(this.entityId)
+    );
+    const command = (device?.commands ?? []).find(
+      (row) => Number(row?.command_id || 0) === Number(commandId)
+    );
+    return Boolean(command?.restore_data?.["new"]);
+  }
   /** True when the command carries anything the payload dialog can edit. */
   _commandHasEditablePayload(commandId) {
     if (this.entityId == null) return false;
@@ -9124,6 +9237,130 @@ var SofabatonEditDetailView = class extends i4 {
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
     this._payloadDialogOpen = true;
+  }
+  /**
+   * Open the payload dialog in add-command mode (live only). The controls
+   * mirror command edit for the device's class:
+   *
+   * * `ir` — blank descriptor form. The backend synthesizes the record
+   *   from the descriptor alone (`build_descriptive_ir_blob_body`), so no
+   *   template is needed and Test works before anything is saved.
+   * * decodable wifi classes — the structured form, seeded from an
+   *   existing command fetched as a template. The template supplies the
+   *   record's opaque trailer (a checksum region we cannot synthesize)
+   *   plus sensible defaults like host/port.
+   * * everything else — raw hex entry.
+   *
+   * Non-IR devices need at least one existing command: the template
+   * trailer and the codec (`library_type`) are both read from it.
+   */
+  async _openAddCommandDialog() {
+    if (this.mode !== "live" || this.entityId == null || !this.bundle) return;
+    if (this._addCommandPreparing) return;
+    const deviceId = Number(this.entityId);
+    const deviceClass = String(bundleDeviceClass(this.bundle, deviceId) || "").trim().toLowerCase();
+    this._payloadFetchError = "";
+    if (deviceClass === "ir") {
+      this._openAddDialogWithSnapshot(deviceId, {
+        className: "ir",
+        fields: { descriptor: "" },
+        trailerHex: "",
+        edited: false
+      });
+      return;
+    }
+    const existing = deviceCommandItems(this.bundle, deviceId);
+    if (!existing.length) {
+      this._payloadFetchError = "This device has no commands to use as a template \u2014 add its first command with the Sofabaton app.";
+      return;
+    }
+    if (deviceClass in DECODED_CLASS_FORM_SPECS && this.fetchCommandPayload) {
+      this._addCommandPreparing = true;
+      try {
+        const fetched = await this.fetchCommandPayload(deviceId, existing[0].commandId);
+        const decoded = this._decodedSnapshotFromFetch(fetched?.decoded ?? null);
+        if (decoded) {
+          this._openAddDialogWithSnapshot(deviceId, decoded);
+          return;
+        }
+      } catch (error) {
+        this._payloadFetchError = error instanceof Error ? error.message : String(error);
+        return;
+      } finally {
+        this._addCommandPreparing = false;
+      }
+    }
+    this._openAddDialogWithSnapshot(deviceId, null);
+  }
+  _openAddDialogWithSnapshot(deviceId, decoded) {
+    this._payloadDialogTarget = { deviceId, commandId: 0 };
+    this._payloadDialogAddMode = true;
+    this._payloadDialogNameDraft = "";
+    this._payloadLiveFetched = null;
+    this._payloadDialogDecodedSnapshot = decoded;
+    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
+    this._payloadDialogRawSnapshot = "";
+    this._payloadDialogRawDraft = "";
+    this._payloadDialogError = "";
+    this._payloadDialogTestStatus = "idle";
+    this._payloadDialogTestError = "";
+    this._payloadDialogOpen = true;
+  }
+  /**
+   * Commit a new command from the add dialog: allocate the next free id on
+   * the device and append a row whose `restore_data` carries the
+   * `new: true` marker the device-sync planner turns into a `command_add`
+   * step. Decoded forms serialize every field (there is no pristine
+   * baseline to diff against); raw entry normalizes the hex.
+   */
+  _applyAddCommandDialog(target) {
+    if (!this.bundle) return;
+    const name = sanitizeBundleName(this.bundle, this._payloadDialogNameDraft).trim();
+    if (!name) {
+      this._payloadDialogError = "Enter a name for the new command.";
+      return;
+    }
+    let restoreData;
+    const snapshot = this._payloadDialogDecodedSnapshot;
+    if (snapshot) {
+      const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
+      const fields = {};
+      for (const field of spec.fields) {
+        fields[field.key] = this._draftToFieldValue(this._payloadDialogDecodedDrafts[field.key] ?? "", field);
+      }
+      if (snapshot.className === "ir") {
+        const descriptor = String(fields["descriptor"] ?? "").trim();
+        if (!descriptor.startsWith("P:")) {
+          this._payloadDialogError = "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).";
+          return;
+        }
+      }
+      restoreData = {
+        transport: "hub_code_record",
+        decoded: {
+          class: snapshot.className,
+          trailer_hex: snapshot.trailerHex,
+          fields,
+          edited: true
+        }
+      };
+    } else {
+      const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
+      if (!normalized) {
+        this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+        return;
+      }
+      restoreData = { transport: "hub_code_record", data_hex: normalized };
+    }
+    const newId = nextFreeDeviceCommandId(this.bundle, target.deviceId);
+    if (newId == null) {
+      this._payloadDialogError = "This device has no free command slot left.";
+      return;
+    }
+    this._commitEditBundleEdit(
+      addBundleDeviceCommand(this.bundle, target.deviceId, newId, name, restoreData)
+    );
+    this._closeCommandPayloadDialog();
   }
   /** Convert a fetched decoded block into the editor's snapshot shape. */
   _decodedSnapshotFromFetch(decoded) {
@@ -10264,6 +10501,9 @@ SofabatonEditDetailView.properties = {
   _payloadFetchError: { state: true },
   _payloadDialogTestStatus: { state: true },
   _payloadDialogTestError: { state: true },
+  _payloadDialogAddMode: { state: true },
+  _payloadDialogNameDraft: { state: true },
+  _addCommandPreparing: { state: true },
   _confirmDeleteTarget: { state: true },
   _confirmDeleteLabel: { state: true },
   _addFavoriteOpen: { state: true },

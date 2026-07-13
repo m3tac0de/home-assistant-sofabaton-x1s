@@ -89,6 +89,20 @@ class FakeProxy(ActivitySyncMixin):
         self.calls.append(("command_payload", (), kwargs))
         return None if self._fail_kind == "command_payload" else {"status": "success"}
 
+    # command_add executor deps: the two persist primitives plus the
+    # family-0x61 sort registration persist_command_record leaves to the
+    # caller.
+    def persist_ir_blob(self, **kwargs):
+        self.calls.append(("persist_ir_blob", (), kwargs))
+        return None if self._fail_kind == "command_add" else {"status": "success"}
+
+    def persist_command_record(self, **kwargs):
+        self.calls.append(("persist_command_record", (), kwargs))
+        return None if self._fail_kind == "command_add" else {"status": "success"}
+
+    def _register_command_in_device_sort(self, **kwargs):
+        self.calls.append(("command_sort", (), kwargs))
+
     def _edited_command_data_hex(self, restore_data, command_id):
         # Raw-edit path by default (returns None → executor uses data_hex);
         # the decoded re-encode is covered by test_restore_edited_commands.
@@ -521,6 +535,130 @@ def test_command_payload_refuses_when_metadata_missing():
     assert result["status"] == "failed"
     assert result["failed_at"].startswith("command_payload")
     assert not any(c[0] == "command_payload" for c in proxy.calls)
+
+
+# ── command_add executor (live add-command dialog) ────────────────────
+
+
+def _append_new_command(bundle: dict, *, restore_data: dict, command_id: int = 12, name: str = "Netflix") -> None:
+    _device_of(bundle)["commands"].append({
+        "command_id": command_id,
+        "name": name,
+        "restore_data": {**restore_data, "new": True},
+    })
+
+
+def test_command_add_ir_descriptor_synthesizes_and_persists():
+    from custom_components.sofabaton_x1s.lib.commands import build_descriptive_ir_blob_body
+
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _append_new_command(edited, restore_data={
+        "transport": "hub_code_record",
+        "decoded": {
+            "class": "ir",
+            "trailer_hex": "",
+            "fields": {"descriptor": "P:Sony12 R:40000 D:1 F:18"},
+            "edited": True,
+        },
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    call = next(c for c in proxy.calls if c[0] == "persist_ir_blob")
+    kw = call[2]
+    assert kw["device_id"] == DEVICE_ID
+    assert kw["command_id"] == 12
+    assert kw["command_name"] == "Netflix"
+    # Synthesis path: validated descriptor + writer trailing nulls, exactly
+    # what the persist_ir_blob service would build for the same input.
+    assert kw["blob"] == build_descriptive_ir_blob_body("P:Sony12 R:40000 D:1 F:18")
+    # persist_ir_blob owns its own sort registration — no extra call.
+    assert not any(c[0] == "command_sort" for c in proxy.calls)
+
+
+def test_command_add_ir_rejects_bad_descriptor():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _append_new_command(edited, restore_data={
+        "transport": "hub_code_record",
+        "decoded": {"class": "ir", "trailer_hex": "", "fields": {"descriptor": "not a descriptor"}, "edited": True},
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "failed"
+    assert result["failed_at"].startswith("command_add")
+    assert not any(c[0] == "persist_ir_blob" for c in proxy.calls)
+
+
+def test_command_add_raw_clones_library_type_and_registers_sort():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _append_new_command(edited, restore_data={
+        "transport": "hub_code_record", "data_hex": "0a 4f 23",
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    # Non-IR record write: library_type is cloned from an existing command's
+    # cached metadata (a device's commands share one codec).
+    proxy.state.command_metadata = {DEVICE_ID: {10: {"library_type": 0x03, "button_code": 0x0102}}}
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    call = next(c for c in proxy.calls if c[0] == "persist_command_record")
+    kw = call[2]
+    assert kw["device_id"] == DEVICE_ID
+    assert kw["command_id"] == 12
+    assert kw["command_name"] == "Netflix"
+    assert kw["command_data"] == bytes.fromhex("0a4f23")
+    assert kw["library_type"] == 0x03
+    assert kw["command_code"] == 0  # hub assigns the canonical code on accept
+    # The fresh record is appended to the device's display-sort table.
+    sort_call = next(c for c in proxy.calls if c[0] == "command_sort")
+    assert sort_call[2]["new_command_id"] == 12
+
+
+def test_command_add_raw_refuses_without_metadata_to_clone():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _append_new_command(edited, restore_data={
+        "transport": "hub_code_record", "data_hex": "0a 4f 23",
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    # No cached record metadata on the device → no library_type to clone.
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "failed"
+    assert result["failed_at"].startswith("command_add")
+    assert not any(c[0] == "persist_command_record" for c in proxy.calls)
+
+
+def test_command_add_rejection_stops_the_sync():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _append_new_command(edited, restore_data={
+        "transport": "hub_code_record", "data_hex": "0a 4f 23",
+    })
+    _device_of(edited)["device"]["idle_behavior"] = 1
+    proxy = FakeProxy(fresh_activity=None, fail_kind="command_add")
+    proxy._fresh_device = _device_of(base)
+    proxy.state.command_metadata = {DEVICE_ID: {10: {"library_type": 0x0D, "button_code": 0x0102}}}
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "failed"
+    assert result["failed_at"].startswith("command_add")
+    # The add precedes everything else, so nothing further ran.
+    assert not any(c[0] == "idle_behavior" for c in proxy.calls)
 
 
 # ── command_rename executor (live command rename) ─────────────────────

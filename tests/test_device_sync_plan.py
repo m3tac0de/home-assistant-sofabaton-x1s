@@ -285,7 +285,8 @@ def test_command_payload_precedes_key_rows() -> None:
 
 def test_payload_edit_adding_a_command_is_out_of_scope() -> None:
     # A restore_data edit marker on a command id the baseline device does not
-    # have is not an overwrite target (adding a command is out of scope).
+    # have is not an overwrite target (adding a command without the dialog's
+    # explicit `new` flag is out of scope).
     base = base_bundle()
     edited = copy.deepcopy(base)
     _device(edited)["commands"].append(
@@ -293,5 +294,72 @@ def test_payload_edit_adding_a_command_is_out_of_scope() -> None:
             "library_type": 0x0D, "button_code": 99, "data_hex": "0a", "edited": True,
         }},
     )
+    with pytest.raises(ValueError, match="live-editable"):
+        build_device_sync_plan(base, edited, DEVICE_ID)
+
+
+# ── command_add (live add-command dialog) ───────────────────────────────
+
+
+def test_new_flagged_command_plans_command_add() -> None:
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"].append({
+        "command_id": 12,
+        "name": "Netflix",
+        "restore_data": {"transport": "hub_code_record", "data_hex": "0a 4f 23", "new": True},
+    })
+    plan = build_device_sync_plan(base, edited, DEVICE_ID)
+    assert _kinds(plan) == ["command_add"]
+    step = plan[0]
+    assert step.target_device_id == DEVICE_ID
+    assert step.payload["device_id"] == DEVICE_ID
+    assert step.payload["command_id"] == 12
+    assert step.payload["command_name"] == "Netflix"
+    assert step.payload["restore_data"]["data_hex"] == "0a 4f 23"
+
+
+def test_command_add_precedes_other_command_writes_and_key_rows() -> None:
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"].append({
+        "command_id": 12,
+        "name": "Netflix",
+        "restore_data": {
+            "transport": "hub_code_record",
+            "decoded": {"class": "ir", "trailer_hex": "", "fields": {"descriptor": "P:Sony12 D:1 F:18"}, "edited": True},
+            "new": True,
+        },
+    })
+    _device(edited)["commands"][0]["name"] = "Power Toggle"
+    _device(edited)["button_bindings"] = [
+        {"button_id": 0xB0, "device_id": 1, "command_id": 12},
+    ]
+    plan = build_device_sync_plan(base, edited, DEVICE_ID)
+    # The fresh record lands before the rename rewrite and before any key
+    # row that could reference the new command.
+    assert _kinds(plan) == ["command_add", "command_rename", "binding_write"]
+
+
+def test_renaming_a_pending_add_stays_inside_the_add_step() -> None:
+    # Renaming a not-yet-synced added row edits the row in place; the add
+    # step carries the final name and no separate command_rename is planned
+    # (the id is absent from the baseline).
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"].append({
+        "command_id": 12,
+        "name": "Renamed Later",
+        "restore_data": {"transport": "hub_code_record", "data_hex": "0a", "new": True},
+    })
+    plan = build_device_sync_plan(base, edited, DEVICE_ID)
+    assert _kinds(plan) == ["command_add"]
+    assert plan[0].payload["command_name"] == "Renamed Later"
+
+
+def test_removing_a_command_is_still_out_of_scope() -> None:
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _device(edited)["commands"].pop()
     with pytest.raises(ValueError, match="live-editable"):
         build_device_sync_plan(base, edited, DEVICE_ID)

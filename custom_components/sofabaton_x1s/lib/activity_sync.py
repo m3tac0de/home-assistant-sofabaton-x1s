@@ -187,6 +187,16 @@ def _command_payload_edited(command: Mapping[str, Any]) -> bool:
     return isinstance(decoded, Mapping) and bool(decoded.get("edited"))
 
 
+def _command_is_new(command: Mapping[str, Any]) -> bool:
+    """True when this command row is a live-editor *addition*: a row the
+    add-command dialog appended with an explicit ``restore_data.new``
+    marker. Captured bundles never carry the marker, so the device-sync
+    scope guard can ignore flagged rows (the ``command_add`` planner owns
+    them) while still rejecting unflagged id-set changes."""
+    restore_data = command.get("restore_data")
+    return isinstance(restore_data, Mapping) and bool(restore_data.get("new"))
+
+
 def _idle_mode(device: Mapping[str, Any]) -> int | None:
     block = device.get("device") or {}
     raw = block.get("idle_behavior")
@@ -251,9 +261,10 @@ def build_device_sync_plan(
 
     The live *device* editor may change a device's key rows (macros —
     including the power-on/off sequences — and button bindings), its
-    idle/power byte, and its input records. Everything else (name, command
-    records, network/head config, other devices, every activity) must be
-    byte-identical between the two bundles.
+    idle/power byte, its input records, and its command records (payload
+    overwrites, renames, and additions flagged ``restore_data.new``).
+    Everything else (name, network/head config, other devices, every
+    activity) must be byte-identical between the two bundles.
 
     Key-row steps reuse the activity planners verbatim: the ``activity_id``
     payload field is the *keymap entity id* the 0x3E / 0x0210 / macro-save
@@ -275,8 +286,9 @@ def build_device_sync_plan(
     idle: list[SyncStep] = []
     rename: list[SyncStep] = []
 
-    # Command-record rewrites first — payloads and renames precede the key
-    # rows (bindings / macros) that reference them.
+    # Command-record writes first — adds, payloads, and renames precede the
+    # key rows (bindings / macros) that reference them.
+    _plan_device_command_adds(base_dev, edit_dev, device_id, prereq)
     _plan_device_payloads(base_dev, edit_dev, device_id, prereq)
     _plan_device_command_renames(base_dev, edit_dev, device_id, prereq)
 
@@ -376,9 +388,14 @@ def _device_immutable_signature(device: Mapping[str, Any]) -> str:
     # a rename stays in scope while a command add/delete (id-set change) still
     # trips the guard. The blob-free baseline and the fetched-payload edited
     # bundle both collapse to the same id list here.
+    # Rows flagged ``restore_data.new`` are live-editor additions handled by
+    # the ``command_add`` planner, so they are excluded here: an add stays in
+    # scope while an unflagged id-set change (or any delete) still trips.
     commands = trimmed.get("commands")
     if commands is not None:
-        trimmed["commands"] = sorted(_int(cmd.get("command_id")) for cmd in commands)
+        trimmed["commands"] = sorted(
+            _int(cmd.get("command_id")) for cmd in commands if not _command_is_new(cmd)
+        )
     return _canonical(trimmed)
 
 
@@ -462,6 +479,44 @@ def _plan_device_side(
                     payload={"device_id": dev_id, "mode": edit_idle},
                 )
             )
+
+
+def _plan_device_command_adds(
+    base_dev: Mapping[str, Any],
+    edit_dev: Mapping[str, Any],
+    device_id: int,
+    out: list[SyncStep],
+) -> None:
+    """Emit a ``command_add`` for each command the live editor appended.
+
+    An added row is one whose id is absent from the baseline device and
+    whose ``restore_data`` carries the add-command dialog's ``new: true``
+    marker (unflagged additions never get here — the scope guard rejects
+    them). The full ``restore_data`` rides the step; the executor resolves
+    the record bytes (synthesizing a descriptive-IR blob, re-encoding a
+    decoded block, or using ``data_hex`` verbatim) and persists a fresh
+    family-0x0E record at the row's provisional command id.
+    """
+    base_ids = {_int(cmd.get("command_id")) for cmd in base_dev.get("commands") or []}
+    for command in edit_dev.get("commands") or []:
+        command_id = _int(command.get("command_id"))
+        if command_id in base_ids:
+            continue
+        if not _command_is_new(command):
+            continue
+        out.append(
+            SyncStep(
+                kind="command_add",
+                label=f"Adding a command on device {device_id}…",
+                target_device_id=device_id,
+                payload={
+                    "device_id": device_id,
+                    "command_id": command_id,
+                    "command_name": str(command.get("name") or ""),
+                    "restore_data": dict(command.get("restore_data") or {}),
+                },
+            )
+        )
 
 
 def _plan_device_payloads(

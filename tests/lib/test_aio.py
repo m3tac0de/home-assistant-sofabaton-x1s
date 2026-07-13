@@ -241,6 +241,8 @@ def test_human_surface_delegates_to_real_engine_methods() -> None:
         "ensure_commands_for_activity",
         "send_command",
         "can_issue_commands",
+        "sync_activity",
+        "sync_device",
     ]
     missing = [n for n in required if not callable(getattr(x1_proxy_mod.X1Proxy, n, None))]
     assert not missing, f"engine methods missing: {missing}"
@@ -257,6 +259,8 @@ def test_human_surface_delegates_to_real_engine_methods() -> None:
         "start_activity",
         "stop_activity",
         "find_remote",
+        "sync_activity",
+        "sync_device",
     ):
         assert callable(getattr(aio.AsyncXProxy, name, None)), f"missing facade method {name}"
 
@@ -587,6 +591,49 @@ def test_cache_snapshot_serializers_are_not_on_facade() -> None:
                 pass
             else:
                 raise AssertionError(f"{name} should not be exposed on the facade")
+
+    asyncio.run(main())
+
+
+def test_live_edit_sync_runs_in_executor_with_loop_progress() -> None:
+    # sync_activity/sync_device are explicit facade methods (not
+    # PROXY_METHODS delegates) so the progress callback lands on the event
+    # loop while the engine call itself runs in the executor.
+    async def main():
+        call_threads = {}
+        progress_threads: list[int] = []
+        done = asyncio.Event()
+
+        class WithSync(FakeProxy):
+            def sync_activity(self, *, baseline, edited, activity_id, progress_callback=None):
+                call_threads["activity"] = threading.get_ident()
+                if progress_callback is not None:
+                    progress_callback(phase="writing", completed_steps=0, total_steps=1)
+                return {"status": "success", "completed_steps": 1, "total_steps": 1}
+
+            def sync_device(self, *, baseline, edited, device_id, progress_callback=None):
+                call_threads["device"] = threading.get_ident()
+                return {"status": "success", "completed_steps": 0, "total_steps": 0}
+
+        proxy = _wrap(WithSync())
+        loop_thread = threading.get_ident()
+
+        def on_progress(**payload) -> None:
+            progress_threads.append(threading.get_ident())
+            done.set()
+
+        result = await proxy.sync_activity(
+            baseline={}, edited={}, activity_id=0x65, progress_callback=on_progress
+        )
+        assert result["status"] == "success"
+        assert call_threads["activity"] != loop_thread
+
+        await asyncio.wait_for(done.wait(), 5)
+        assert progress_threads == [loop_thread]
+
+        result = await proxy.sync_device(baseline={}, edited={}, device_id=3)
+        assert result == {"status": "success", "completed_steps": 0, "total_steps": 0}
+        assert call_threads["device"] != loop_thread
 
     asyncio.run(main())
 

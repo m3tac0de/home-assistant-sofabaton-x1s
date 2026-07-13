@@ -76,6 +76,15 @@ from .device_create import (  # noqa: F401
 # Step/ack result types surfaced by proxy operations.
 from .ack import AckOutcome, InputsBurstResult, SendStepResult  # noqa: F401
 
+# Live-edit sync planners (pure diff → write plan; the executor lives on
+# the proxy as sync_activity/sync_device). Exposed so consumers can
+# preview exactly what a sync would write before committing.
+from .activity_sync import (  # noqa: F401
+    SyncStep,
+    build_activity_sync_plan,
+    build_device_sync_plan,
+)
+
 # Asyncio facade over the threaded core.
 from .aio import AsyncHubBrowser, AsyncXProxy, async_discover_hubs  # noqa: F401
 
@@ -128,6 +137,10 @@ _CURATED = [
     "AckOutcome",
     "InputsBurstResult",
     "SendStepResult",
+    # live-edit sync planners
+    "SyncStep",
+    "build_activity_sync_plan",
+    "build_device_sync_plan",
     # asyncio facade
     "AsyncHubBrowser",
     "AsyncXProxy",

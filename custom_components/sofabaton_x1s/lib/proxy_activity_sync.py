@@ -34,7 +34,7 @@ from .device_create import (
     run_create_sequence,
     synthesize_command_code,
 )
-from .commands import split_play_blob_tail
+from .commands import build_descriptive_ir_blob_body, split_play_blob_tail
 from .devices import build_device_create_payload, parse_device_record
 from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from .macros import MacroKeyEntry, build_macro_save_payload
@@ -597,6 +597,157 @@ class ActivitySyncMixin:
             body, _tail = split_play_blob_tail(bytes.fromhex(blob_hex))
             return body or None
         return None
+
+    def _sync_step_command_add(self, payload: Mapping[str, Any]) -> bool:
+        """Create a brand-new command record on a device (family ``0x0E``).
+
+        Backs the live editor's add-command dialog: the row never existed on
+        the hub, so this persists a fresh record at the provisional command
+        id the frontend allocated (the persist path's allocator re-validates
+        it against live occupancy from the sync pre-flight's command-list
+        fetch). Byte resolution by payload shape:
+
+        * descriptive IR (``decoded.class == "ir"``) — synthesized from the
+          descriptor via :func:`build_descriptive_ir_blob_body` (whitespace
+          normalization, ``P:`` validation, DenonK canonicalization, writer
+          trailing nulls) and saved through :meth:`persist_ir_blob` — the
+          exact path the bench-validated ``persist_ir_blob`` service uses,
+          including the family-0x61 sort registration.
+        * other decoded classes — re-encoded and round-trip-verified via
+          :meth:`_edited_command_data_hex`; the record's opaque trailer was
+          cloned from a template command on the same device by the dialog.
+        * raw hex — ``data_hex`` verbatim.
+
+        Non-IR records need a ``library_type``: it is cloned from the cached
+        record metadata of an existing command on the same device (a device's
+        commands share one codec) — refuse rather than guess when absent. No
+        canonical ``button_code`` is asserted; the hub assigns one on accept,
+        and the sync epilogue's command-list refresh picks it up.
+        """
+        device_id = int(payload.get("device_id") or 0)
+        command_id = int(payload.get("command_id") or 0)
+        dev_lo = device_id & 0xFF
+        cmd_lo = command_id & 0xFF
+        if not dev_lo or not cmd_lo:
+            self._log.warning("[DEVICE_SYNC] command_add: missing device/command id")
+            return False
+
+        restore_data = payload.get("restore_data")
+        if not isinstance(restore_data, Mapping):
+            self._log.warning(
+                "[DEVICE_SYNC] command_add: no restore_data dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+        restore_data = dict(restore_data)
+        command_name = str(payload.get("command_name") or "").strip() or f"Command {cmd_lo}"
+
+        decoded = restore_data.get("decoded")
+        decoded_class = (
+            str(decoded.get("class") or "").strip().lower()
+            if isinstance(decoded, Mapping)
+            else ""
+        )
+
+        if decoded_class == "ir":
+            descriptor = str((decoded.get("fields") or {}).get("descriptor") or "")
+            try:
+                blob = build_descriptive_ir_blob_body(descriptor)
+            except ValueError:
+                self._log.exception(
+                    "[DEVICE_SYNC] command_add: invalid IR descriptor dev=0x%02X cmd=0x%02X",
+                    dev_lo, cmd_lo,
+                )
+                return False
+            try:
+                result = self.persist_ir_blob(
+                    device_id=dev_lo,
+                    command_name=command_name,
+                    blob=blob,
+                    command_id=cmd_lo,
+                )
+            except ValueError:
+                self._log.exception(
+                    "[DEVICE_SYNC] command_add: persist refused dev=0x%02X cmd=0x%02X",
+                    dev_lo, cmd_lo,
+                )
+                return False
+            if not isinstance(result, dict) or result.get("status") != "success":
+                self._log.warning(
+                    "[DEVICE_SYNC] command_add: hub rejected dev=0x%02X cmd=0x%02X",
+                    dev_lo, cmd_lo,
+                )
+                return False
+            return True
+
+        try:
+            edited_hex = self._edited_command_data_hex(restore_data, cmd_lo)
+        except ValueError:
+            self._log.exception(
+                "[DEVICE_SYNC] command_add: payload re-encode failed dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+        data_hex = edited_hex if edited_hex is not None else str(restore_data.get("data_hex") or "").strip()
+        if not data_hex:
+            self._log.warning(
+                "[DEVICE_SYNC] command_add: empty payload dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+        try:
+            library_data = bytes.fromhex(data_hex.replace("0x", "").replace(" ", "").strip())
+        except ValueError:
+            self._log.warning(
+                "[DEVICE_SYNC] command_add: payload is not valid hex dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+
+        library_type: int | None = None
+        for meta in (self.state.command_metadata.get(dev_lo) or {}).values():
+            if isinstance(meta, Mapping) and meta.get("library_type") is not None:
+                library_type = int(meta.get("library_type", 0)) & 0xFF
+                break
+        if library_type is None:
+            self._log.warning(
+                "[DEVICE_SYNC] command_add: no cached record metadata on dev=0x%02X "
+                "to clone a library_type from (device has no existing commands?)",
+                dev_lo,
+            )
+            return False
+
+        try:
+            result = self.persist_command_record(
+                device_id=dev_lo,
+                command_name=command_name,
+                library_type=library_type,
+                command_data=library_data,
+                command_code=0,
+                command_id=cmd_lo,
+            )
+        except ValueError:
+            self._log.exception(
+                "[DEVICE_SYNC] command_add: persist refused dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+        if not isinstance(result, dict) or result.get("status") != "success":
+            self._log.warning(
+                "[DEVICE_SYNC] command_add: hub rejected dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+        # persist_command_record (unlike persist_ir_blob) does not register
+        # the new command in the device's family-0x61 display-sort table;
+        # without a slot the command plays fine but stays off the remote's
+        # device-browse screen. Best-effort, same as the IR path.
+        self._register_command_in_device_sort(
+            dev_lo=dev_lo,
+            new_command_id=cmd_lo,
+            ack_timeout=5.0,
+        )
+        return True
 
     def _sync_step_command_payload(self, payload: Mapping[str, Any]) -> bool:
         """Overwrite one command's payload in place (family-0x0E record write).

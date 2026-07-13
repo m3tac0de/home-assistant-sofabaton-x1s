@@ -1481,6 +1481,49 @@ function updateBundleDeviceIdleBehavior(bundle2, deviceId, mode) {
     })
   };
 }
+function nextFreeDeviceCommandId(bundle2, deviceId) {
+  if (!bundle2) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle2.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device) return null;
+  const used = new Set(
+    (device.commands ?? []).map((command) => Number(command?.command_id || 0))
+  );
+  for (let candidate = 1; candidate <= 255; candidate += 1) {
+    if (!used.has(candidate)) return candidate;
+  }
+  return null;
+}
+function addBundleDeviceCommand(bundle2, deviceId, commandId, name, restoreData) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const trimmed = String(name ?? "").trim();
+  if (normalizedCommandId < 1 || normalizedCommandId > 255) return bundle2;
+  return {
+    ...bundle2,
+    devices: (bundle2.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      const commands = device.commands ?? [];
+      const taken = commands.some(
+        (command) => Number(command?.command_id || 0) === normalizedCommandId
+      );
+      if (taken) return device;
+      return {
+        ...device,
+        commands: [
+          ...commands,
+          {
+            command_id: normalizedCommandId,
+            name: trimmed || `Command ${normalizedCommandId}`,
+            restore_data: { ...restoreData, new: true }
+          }
+        ]
+      };
+    })
+  };
+}
 function reorderBundleActivityQuickAccess(bundle2, activityId, orderedItems) {
   const normalizedActivityId = Number(activityId);
   const activity = (bundle2.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === normalizedActivityId);
@@ -2963,6 +3006,41 @@ test("deleteBundleDeviceCommand also removes the deleted command's trailing dela
     bundleDeleteImpact(b3, { kind: "command", deviceId: 1, commandId: 10 }),
     { favorites: 0, macroSteps: 2, activities: 0, bindings: 0 }
   );
+});
+test("nextFreeDeviceCommandId picks the lowest unused id", () => {
+  const b3 = editableBundle();
+  assert.equal(nextFreeDeviceCommandId(b3, 1), 1);
+  const device1 = b3.devices.find((d3) => d3.device?.device_id === 1);
+  device1.commands = Array.from({ length: 9 }, (_2, i4) => ({ command_id: i4 + 1, name: `C${i4 + 1}` }));
+  assert.equal(nextFreeDeviceCommandId(b3, 1), 10);
+  assert.equal(nextFreeDeviceCommandId(b3, 99), null);
+});
+test("addBundleDeviceCommand appends a new-flagged row on the target device only", () => {
+  const next = addBundleDeviceCommand(editableBundle(), 1, 12, "Netflix", {
+    transport: "hub_code_record",
+    data_hex: "0a4f23"
+  });
+  const device1 = next.devices.find((d3) => d3.device?.device_id === 1);
+  assert.deepEqual(device1.commands?.map((c4) => c4.command_id), [10, 11, 12]);
+  const added = device1.commands.find((c4) => c4.command_id === 12);
+  assert.equal(added.name, "Netflix");
+  assert.deepEqual(added.restore_data, {
+    transport: "hub_code_record",
+    data_hex: "0a4f23",
+    new: true
+  });
+  const device2 = next.devices.find((d3) => d3.device?.device_id === 2);
+  assert.deepEqual(device2.commands?.map((c4) => c4.command_id), [20]);
+});
+test("addBundleDeviceCommand is a no-op on a taken id or missing device", () => {
+  const base = editableBundle();
+  const taken = addBundleDeviceCommand(base, 1, 10, "Dup", { data_hex: "0a" });
+  assert.deepEqual(
+    taken.devices.find((d3) => d3.device?.device_id === 1).commands?.map((c4) => c4.command_id),
+    [10, 11]
+  );
+  const missing = addBundleDeviceCommand(base, 99, 1, "Ghost", { data_hex: "0a" });
+  assert.deepEqual(missing.devices.map((d3) => d3.device?.device_id), base.devices.map((d3) => d3.device?.device_id));
 });
 test("deleteBundleActivityQuickAccess removes one row and preserves power macros", () => {
   const noFav = deleteBundleActivityQuickAccess(editableBundle(), 101, "favorite", 1);

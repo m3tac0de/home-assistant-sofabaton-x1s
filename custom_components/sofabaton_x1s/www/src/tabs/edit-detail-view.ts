@@ -37,6 +37,7 @@ import {
   addActivityMacroCommandStep,
   addActivityUserMacro,
   addBundleActivityFavorite,
+  addBundleDeviceCommand,
   addDeviceMacroCommandStep,
   applyBundleDelete,
   activityQuickAccessItems,
@@ -67,6 +68,7 @@ import {
   deviceMacroStepItems,
   deviceIpAddress,
   deviceIdleBehavior,
+  nextFreeDeviceCommandId,
   updateBundleDeviceIdleBehavior,
   IDLE_BEHAVIOR_AUTO_OFF,
   IDLE_BEHAVIOR_ALWAYS_ON,
@@ -187,6 +189,9 @@ export class SofabatonEditDetailView extends LitElement {
     _payloadFetchError: { state: true },
     _payloadDialogTestStatus: { state: true },
     _payloadDialogTestError: { state: true },
+    _payloadDialogAddMode: { state: true },
+    _payloadDialogNameDraft: { state: true },
+    _addCommandPreparing: { state: true },
     _confirmDeleteTarget: { state: true },
     _confirmDeleteLabel: { state: true },
     _addFavoriteOpen: { state: true },
@@ -365,6 +370,14 @@ export class SofabatonEditDetailView extends LitElement {
   private _payloadLiveFetched: FetchedCommandPayload | null = null;
   private _payloadDialogTestStatus: "idle" | "testing" | "success" | "error" = "idle";
   private _payloadDialogTestError = "";
+  // ── Add-command mode of the payload dialog (live mode only) ────────
+  // Same payload controls as command edit, plus a Name field. Decodable
+  // wifi classes seed their form (and the opaque record trailer) from an
+  // existing command fetched as a template; IR synthesizes from the
+  // descriptor alone on the backend, so it needs no template.
+  private _payloadDialogAddMode = false;
+  private _payloadDialogNameDraft = "";
+  private _addCommandPreparing = false;
   private _confirmDeleteTarget: BackupDeleteTarget | null = null;
   private _confirmDeleteLabel = "";
   private _addFavoriteOpen = false;
@@ -432,6 +445,7 @@ export class SofabatonEditDetailView extends LitElement {
     this._closeCommandPayloadDialog();
     this._payloadFetchingCommandId = null;
     this._payloadFetchError = "";
+    this._addCommandPreparing = false;
     this._closeDeleteConfirm();
     this._closeAddFavoriteDialog();
     this._closeBindingDialog();
@@ -962,12 +976,31 @@ export class SofabatonEditDetailView extends LitElement {
     return html`
       <div class="quick-access-section" data-edit-section="commands">
         <div class="quick-access-head">
-          <div class="quick-access-title">Commands</div>
-          <div class="quick-access-sub">
-            ${this.mode === "live"
-              ? "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup → Edit."
-              : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+          <div class="quick-access-head-main">
+            <div class="quick-access-title">Commands</div>
+            <div class="quick-access-sub">
+              ${this.mode === "live"
+                ? "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup → Edit."
+                : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+            </div>
           </div>
+          ${this.mode === "live"
+            ? html`
+                <div class="quick-access-head-actions">
+                  <button
+                    class="quick-access-add-btn"
+                    ?disabled=${this._addCommandPreparing}
+                    @click=${() => void this._openAddCommandDialog()}
+                  >
+                    <ha-icon
+                      icon=${this._addCommandPreparing ? "mdi:loading" : "mdi:plus"}
+                      class=${this._addCommandPreparing ? "sb-spin" : ""}
+                    ></ha-icon>
+                    <span>Add command</span>
+                  </button>
+                </div>
+              `
+            : nothing}
         </div>
         ${this._payloadFetchError
           ? html`
@@ -991,13 +1024,14 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   private _renderDeviceCommandRow(item: BackupDeviceCommandItem) {
+    const pendingAdd = this._commandIsPendingAdd(item.commandId);
     return html`
       <div class="quick-access-sortable-item" data-kind="command" data-command-id=${item.commandId}>
         <div class="quick-access-row quick-access-row--no-drag">
           <div class="quick-access-main">
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
-              <div class="quick-access-chip">command</div>
+              <div class="quick-access-chip">${pendingAdd ? "new command" : "command"}</div>
             </div>
             <div class="quick-access-meta">
               Command ID ${item.commandId}
@@ -1023,7 +1057,7 @@ export class SofabatonEditDetailView extends LitElement {
                   </button>
                 `
               : nothing}
-            ${this.mode === "live"
+            ${this.mode === "live" && !pendingAdd
               ? html`
                   <button
                     class="icon-btn"
@@ -1253,7 +1287,7 @@ export class SofabatonEditDetailView extends LitElement {
         <div class="dialog medium" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
             <div class="dialog-title-group">
-              <div class="dialog-title">Edit Payload</div>
+              <div class="dialog-title">${this._payloadDialogAddMode ? "Add Command" : "Edit Payload"}</div>
               ${deviceClass
                 ? html`<span class="payload-class-badge" title="Device class">${deviceClass}</span>`
                 : nothing}
@@ -1261,6 +1295,23 @@ export class SofabatonEditDetailView extends LitElement {
             <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
+            ${this._payloadDialogAddMode
+              ? html`
+                  <label class="decoded-field">
+                    <span class="decoded-field-label">Name</span>
+                    <input
+                      class="decoded-field-input"
+                      type="text"
+                      maxlength="20"
+                      spellcheck="false"
+                      .value=${this._payloadDialogNameDraft}
+                      @input=${this._handleAddCommandNameInput}
+                      @change=${this._handleAddCommandNameInput}
+                    />
+                    <span class="decoded-field-helper">Shown on the remote and in every command picker.</span>
+                  </label>
+                `
+              : nothing}
             ${decoded
               ? this._renderDecodedPayloadForm(decoded.className)
               : this._renderRawPayloadForm()}
@@ -1346,6 +1397,14 @@ export class SofabatonEditDetailView extends LitElement {
       </div>
     `;
   }
+
+  private _handleAddCommandNameInput = (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement;
+    const value = sanitizeBundleName(this.bundle, input.value);
+    input.value = value;
+    this._payloadDialogNameDraft = value;
+    this._payloadDialogError = "";
+  };
 
   private _handleRawPayloadInput = (event: Event) => {
     const input = event.currentTarget as HTMLTextAreaElement;
@@ -1546,6 +1605,22 @@ export class SofabatonEditDetailView extends LitElement {
     this._editRenameDialogOpen = true;
   }
 
+  /**
+   * True when the command is a not-yet-synced addition (live mode): its
+   * bundle row carries the `restore_data.new` marker and there is nothing
+   * on the hub to fetch for it yet.
+   */
+  private _commandIsPendingAdd(commandId: number): boolean {
+    if (this.entityId == null || !this.bundle) return false;
+    const device = (this.bundle.devices ?? []).find(
+      (entry) => Number(entry?.device?.device_id || 0) === Number(this.entityId),
+    );
+    const command = (device?.commands ?? []).find(
+      (row) => Number(row?.command_id || 0) === Number(commandId),
+    );
+    return Boolean((command?.restore_data as Record<string, unknown> | null | undefined)?.["new"]);
+  }
+
   /** True when the command carries anything the payload dialog can edit. */
   private _commandHasEditablePayload(commandId: number): boolean {
     if (this.entityId == null) return false;
@@ -1608,6 +1683,140 @@ export class SofabatonEditDetailView extends LitElement {
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
     this._payloadDialogOpen = true;
+  }
+
+  /**
+   * Open the payload dialog in add-command mode (live only). The controls
+   * mirror command edit for the device's class:
+   *
+   * * `ir` — blank descriptor form. The backend synthesizes the record
+   *   from the descriptor alone (`build_descriptive_ir_blob_body`), so no
+   *   template is needed and Test works before anything is saved.
+   * * decodable wifi classes — the structured form, seeded from an
+   *   existing command fetched as a template. The template supplies the
+   *   record's opaque trailer (a checksum region we cannot synthesize)
+   *   plus sensible defaults like host/port.
+   * * everything else — raw hex entry.
+   *
+   * Non-IR devices need at least one existing command: the template
+   * trailer and the codec (`library_type`) are both read from it.
+   */
+  private async _openAddCommandDialog() {
+    if (this.mode !== "live" || this.entityId == null || !this.bundle) return;
+    if (this._addCommandPreparing) return;
+    const deviceId = Number(this.entityId);
+    const deviceClass = String(bundleDeviceClass(this.bundle, deviceId) || "").trim().toLowerCase();
+    this._payloadFetchError = "";
+
+    if (deviceClass === "ir") {
+      this._openAddDialogWithSnapshot(deviceId, {
+        className: "ir",
+        fields: { descriptor: "" },
+        trailerHex: "",
+        edited: false,
+      });
+      return;
+    }
+
+    const existing = deviceCommandItems(this.bundle, deviceId);
+    if (!existing.length) {
+      this._payloadFetchError =
+        "This device has no commands to use as a template — add its first command with the Sofabaton app.";
+      return;
+    }
+
+    if (deviceClass in DECODED_CLASS_FORM_SPECS && this.fetchCommandPayload) {
+      this._addCommandPreparing = true;
+      try {
+        const fetched = await this.fetchCommandPayload(deviceId, existing[0].commandId);
+        const decoded = this._decodedSnapshotFromFetch(fetched?.decoded ?? null);
+        if (decoded) {
+          this._openAddDialogWithSnapshot(deviceId, decoded);
+          return;
+        }
+      } catch (error) {
+        this._payloadFetchError = error instanceof Error ? error.message : String(error);
+        return;
+      } finally {
+        this._addCommandPreparing = false;
+      }
+    }
+
+    // Non-decodable class (BT / RF / learned-IR style records) or the
+    // template did not decode: raw hex entry.
+    this._openAddDialogWithSnapshot(deviceId, null);
+  }
+
+  private _openAddDialogWithSnapshot(deviceId: number, decoded: BackupCommandDecodedBlock | null) {
+    this._payloadDialogTarget = { deviceId, commandId: 0 };
+    this._payloadDialogAddMode = true;
+    this._payloadDialogNameDraft = "";
+    this._payloadLiveFetched = null;
+    this._payloadDialogDecodedSnapshot = decoded;
+    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
+    this._payloadDialogRawSnapshot = "";
+    this._payloadDialogRawDraft = "";
+    this._payloadDialogError = "";
+    this._payloadDialogTestStatus = "idle";
+    this._payloadDialogTestError = "";
+    this._payloadDialogOpen = true;
+  }
+
+  /**
+   * Commit a new command from the add dialog: allocate the next free id on
+   * the device and append a row whose `restore_data` carries the
+   * `new: true` marker the device-sync planner turns into a `command_add`
+   * step. Decoded forms serialize every field (there is no pristine
+   * baseline to diff against); raw entry normalizes the hex.
+   */
+  private _applyAddCommandDialog(target: { deviceId: number; commandId: number }) {
+    if (!this.bundle) return;
+    const name = sanitizeBundleName(this.bundle, this._payloadDialogNameDraft).trim();
+    if (!name) {
+      this._payloadDialogError = "Enter a name for the new command.";
+      return;
+    }
+    let restoreData: Record<string, unknown>;
+    const snapshot = this._payloadDialogDecodedSnapshot;
+    if (snapshot) {
+      const spec = DECODED_CLASS_FORM_SPECS[snapshot.className];
+      const fields: Record<string, unknown> = {};
+      for (const field of spec.fields) {
+        fields[field.key] = this._draftToFieldValue(this._payloadDialogDecodedDrafts[field.key] ?? "", field);
+      }
+      if (snapshot.className === "ir") {
+        const descriptor = String(fields["descriptor"] ?? "").trim();
+        if (!descriptor.startsWith("P:")) {
+          this._payloadDialogError = "Enter a descriptive IR payload starting with P: (e.g. P:Sony12 R:40000 D:1 F:18).";
+          return;
+        }
+      }
+      restoreData = {
+        transport: "hub_code_record",
+        decoded: {
+          class: snapshot.className,
+          trailer_hex: snapshot.trailerHex,
+          fields,
+          edited: true,
+        },
+      };
+    } else {
+      const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
+      if (!normalized) {
+        this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+        return;
+      }
+      restoreData = { transport: "hub_code_record", data_hex: normalized };
+    }
+    const newId = nextFreeDeviceCommandId(this.bundle, target.deviceId);
+    if (newId == null) {
+      this._payloadDialogError = "This device has no free command slot left.";
+      return;
+    }
+    this._commitEditBundleEdit(
+      addBundleDeviceCommand(this.bundle, target.deviceId, newId, name, restoreData),
+    );
+    this._closeCommandPayloadDialog();
   }
 
   /** Convert a fetched decoded block into the editor's snapshot shape. */
@@ -1721,11 +1930,17 @@ export class SofabatonEditDetailView extends LitElement {
     this._payloadLiveFetched = null;
     this._payloadDialogTestStatus = "idle";
     this._payloadDialogTestError = "";
+    this._payloadDialogAddMode = false;
+    this._payloadDialogNameDraft = "";
   };
 
   private _applyCommandPayloadDialog = () => {
     const target = this._payloadDialogTarget;
     if (!target || !this.bundle) return;
+    if (this._payloadDialogAddMode) {
+      this._applyAddCommandDialog(target);
+      return;
+    }
     if (this.mode === "live") {
       this._applyLivePayloadDialog(target);
       return;

@@ -967,6 +967,75 @@ export function renameBundleDeviceCommand(
 }
 
 /**
+ * The next free command id on a Device (lowest unused id >= 1, capped at
+ * 0xFF like the hub's one-byte command-id space). Returns `null` when the
+ * device is absent or its id space is exhausted.
+ */
+export function nextFreeDeviceCommandId(
+  bundle: BackupBundlePayload | null,
+  deviceId: number,
+): number | null {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId,
+  );
+  if (!device) return null;
+  const used = new Set(
+    (device.commands ?? []).map((command) => Number(command?.command_id || 0)),
+  );
+  for (let candidate = 1; candidate <= 0xff; candidate += 1) {
+    if (!used.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+/**
+ * Append a brand-new command row to a Device.
+ *
+ * Live-editor path: the row carries a provisional `command_id` (allocated
+ * against the bundle via `nextFreeDeviceCommandId`) and a fully-built
+ * `restore_data` block whose `new: true` marker tells the device-sync
+ * planner to emit a `command_add` step (a fresh family-0x0E record write)
+ * instead of an in-place overwrite. No-op when the device is absent or the
+ * id is already taken (the caller allocated stale).
+ */
+export function addBundleDeviceCommand(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+  name: string,
+  restoreData: Record<string, unknown>,
+): BackupBundlePayload {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  const trimmed = String(name ?? "").trim();
+  if (normalizedCommandId < 1 || normalizedCommandId > 0xff) return bundle;
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      const commands = device.commands ?? [];
+      const taken = commands.some(
+        (command) => Number(command?.command_id || 0) === normalizedCommandId,
+      );
+      if (taken) return device;
+      return {
+        ...device,
+        commands: [
+          ...commands,
+          {
+            command_id: normalizedCommandId,
+            name: trimmed || `Command ${normalizedCommandId}`,
+            restore_data: { ...restoreData, new: true },
+          },
+        ],
+      };
+    }),
+  };
+}
+
+/**
  * Rewrite the per-record `sort` byte on every Activity in `orderedActivityIds`
  * to match the new ordering (1-based, ascending). Activities not in the list
  * keep their existing sort value, so we never silently renumber records the
