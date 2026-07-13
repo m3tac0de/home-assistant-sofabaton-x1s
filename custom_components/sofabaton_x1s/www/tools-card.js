@@ -1172,57 +1172,6 @@ var cardStyles = [secondaryTabStyles, i`
   .hub-row-value, .setting-title, .entity-name, .cache-state-title { color: var(--primary-text-color); }
   .hub-row-label { font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--primary-text-color) 88%, var(--secondary-text-color)); }
   .hub-row-value { font-size: 12px; font-weight: 700; text-align: right; word-break: break-word; }
-  .remote-battery-panel {
-    display: grid;
-    grid-template-columns: 32px minmax(0, 1fr) minmax(72px, 118px) auto;
-    align-items: center;
-    gap: 10px;
-    min-height: 48px;
-    padding: 9px 12px;
-    border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color));
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--card-background-color) 94%, var(--primary-color));
-  }
-  .remote-battery-icon {
-    width: 32px;
-    height: 32px;
-    display: grid;
-    place-items: center;
-    color: var(--primary-color);
-  }
-  .remote-battery-icon ha-icon { width: 22px; height: 22px; }
-  .remote-battery-copy { min-width: 0; display: grid; gap: 2px; }
-  .remote-battery-label {
-    font-size: 12px;
-    font-weight: 800;
-    color: var(--primary-text-color);
-  }
-  .remote-battery-status {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--secondary-text-color);
-    text-transform: capitalize;
-  }
-  .remote-battery-meter {
-    height: 8px;
-    border-radius: 999px;
-    overflow: hidden;
-    background: color-mix(in srgb, var(--secondary-text-color) 24%, transparent);
-  }
-  .remote-battery-meter > span {
-    display: block;
-    height: 100%;
-    min-width: 0;
-    border-radius: inherit;
-    background: color-mix(in srgb, var(--success-color, #43a047) 84%, var(--primary-color));
-  }
-  .remote-battery-value {
-    min-width: 38px;
-    font-size: 13px;
-    font-weight: 800;
-    text-align: right;
-    color: var(--primary-text-color);
-  }
   .hub-tab-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .hub-tab-layout > .tab-panel { flex: 1; }
   .panel-sticky-footer { flex-shrink: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }
@@ -1497,15 +1446,6 @@ var ControlPanelApi = class {
     return this.hass.callWS({
       type: "sofabaton_x1s/blobs/play",
       entry_id: entryId,
-      blob
-    });
-  }
-  persistIrBlob(entryId, deviceId, commandName, blob) {
-    return this.hass.callWS({
-      type: "sofabaton_x1s/blobs/persist",
-      entry_id: entryId,
-      device_id: deviceId,
-      command_name: commandName,
       blob
     });
   }
@@ -1933,8 +1873,8 @@ function resolveTabAvailability(snapshot, tabId) {
   }
   const hub = selectedHub(snapshot);
   if (hub && proxyClientConnected(snapshot.hass, hub)) {
-    const title = tabId === "wifi_commands" ? "Wifi Commands unavailable" : tabId === "backup" ? "Backup unavailable" : "Blobs unavailable";
-    const message = tabId === "wifi_commands" ? "Wifi Commands cannot be used while the Sofabaton app is connected to the hub through the proxy." : tabId === "backup" ? "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy." : "Blobs cannot be used while the Sofabaton app is connected to the hub through the proxy.";
+    const title = tabId === "wifi_commands" ? "Wifi Commands unavailable" : "Backup unavailable";
+    const message = tabId === "wifi_commands" ? "Wifi Commands cannot be used while the Sofabaton app is connected to the hub through the proxy." : "Backup cannot be used while the Sofabaton app is connected to the hub through the proxy.";
     return { kind: "blocked", title, message };
   }
   return { kind: "available" };
@@ -1992,11 +1932,10 @@ function hubIcon(kind, classes = "") {
 var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "backup", "cache", "logs"]);
 var REFRESH_ALL_KEY = "__refresh_all__";
 var VALID_CACHE_SECTIONS = /* @__PURE__ */ new Set(["activities", "devices"]);
 var VALID_BACKUP_SECTIONS = /* @__PURE__ */ new Set(["make", "edit", "restore"]);
-var VALID_BLOBS_SECTIONS = /* @__PURE__ */ new Set(["fetch", "test", "save"]);
 function viewStateStorage() {
   try {
     if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -2013,13 +1952,11 @@ function readPersistedViewState() {
     const selectedTab = VALID_TABS.has(parsed?.selectedTab) ? parsed.selectedTab : void 0;
     const selectedCacheSection = VALID_CACHE_SECTIONS.has(parsed?.selectedCacheSection) ? parsed.selectedCacheSection : VALID_CACHE_SECTIONS.has(parsed?.openSection) ? parsed.openSection : "activities";
     const selectedBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.selectedBackupSection) ? parsed.selectedBackupSection : VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection) ? parsed.openBackupSection : "make";
-    const selectedBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.selectedBlobsSection) ? parsed.selectedBlobsSection : VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection) ? parsed.openBlobsSection : "fetch";
     return {
       selectedHubEntryId,
       ...selectedTab ? { selectedTab } : {},
       selectedCacheSection,
-      selectedBackupSection,
-      selectedBlobsSection
+      selectedBackupSection
     };
   } catch (_error) {
     return {};
@@ -2047,7 +1984,6 @@ var INITIAL_SNAPSHOT = {
   selectedTab: "cache",
   selectedCacheSection: "activities",
   selectedBackupSection: "make",
-  selectedBlobsSection: "fetch",
   openEntity: null,
   staleData: false,
   refreshBusy: false,
@@ -2302,12 +2238,6 @@ var ControlPanelStore = class {
   setSelectedBackupSection(sectionId) {
     if (this._snapshot.selectedBackupSection === sectionId) return;
     this._snapshot = { ...this._snapshot, selectedBackupSection: sectionId };
-    this.persistViewState();
-    this.emit();
-  }
-  setSelectedBlobsSection(sectionId) {
-    if (this._snapshot.selectedBlobsSection === sectionId) return;
-    this._snapshot = { ...this._snapshot, selectedBlobsSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -2756,8 +2686,7 @@ var ControlPanelStore = class {
           selectedHubEntryId: this._snapshot.selectedHubEntryId,
           selectedTab: this._snapshot.selectedTab,
           selectedCacheSection: this._snapshot.selectedCacheSection,
-          selectedBackupSection: this._snapshot.selectedBackupSection,
-          selectedBlobsSection: this._snapshot.selectedBlobsSection
+          selectedBackupSection: this._snapshot.selectedBackupSection
         })
       );
     } catch (_error) {
@@ -2961,22 +2890,19 @@ function renderHubPicker(params) {
 var TOOLS_CARD_STRINGS = {
   docs: {
     wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
-    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md",
-    blobsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/blobs.md"
+    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md"
   },
   tabs: {
     cache: "Hub",
     wifiCommands: "Wifi Commands",
     wifiShort: "Wifi",
     backup: "Backup",
-    blobs: "Blobs",
     settings: "Settings",
     logs: "Logs"
   },
   tabDocs: {
     wifi_commands: "Wifi Commands documentation",
-    backup: "Backup documentation",
-    blobs: "Blobs documentation"
+    backup: "Backup documentation"
   },
   backend: {
     unavailableTitle: "Backend not available",
@@ -3017,7 +2943,7 @@ var TOOLS_CARD_STRINGS = {
     loading: "Loading...",
     noHubsFound: "No hubs found.",
     persistentCacheOffTitle: "Persistent cache is off",
-    persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup and Blobs workflows that depend on it.",
+    persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup workflows that depend on it.",
     enablingPersistentCache: "Enabling...",
     enablePersistentCache: "Enable persistent cache",
     devIdBadge: "DevID",
@@ -3061,37 +2987,6 @@ var TOOLS_CARD_STRINGS = {
     working: "Working...",
     backupTitle: "Creating backup",
     restoreTitle: "Restoring backup"
-  },
-  blobs: {
-    loading: "Loading...",
-    noHubsFound: "No hubs found.",
-    sections: {
-      fetch: "Fetch",
-      test: "Test",
-      save: "Save"
-    },
-    fetchCacheDisabled: "Enable persistent cache in the Hub tab before using Fetch.",
-    selectOne: "Select one",
-    device: "Device",
-    command: "Command",
-    fetchNoCommands: "This device has no cached commands yet. Refresh that device from the Hub tab first.",
-    fetchNoRecords: "The hub returned no blob records for this request.",
-    commandFallback: (commandId) => `Command ${commandId}`,
-    unknown: "unknown",
-    cmdBadge: (commandId) => `Cmd ${commandId}`,
-    blobViewMode: "Blob view mode",
-    descriptor: "Descriptor",
-    hex: "Hex",
-    rawBlob: "Raw Blob",
-    copied: "Copied",
-    copy: "Copy",
-    test: "Test",
-    testing: "Testing...",
-    noIrDevices: "No IR devices found in the cache. Refresh devices from the Hub tab first.",
-    irDevice: "IR device",
-    save: "Save",
-    saving: "Saving...",
-    commandName: "Command name"
   },
   activities: {
     loading: "Loading activities...",
@@ -3491,8 +3386,7 @@ function renderTabBar(params) {
   const tabs = [
     { id: "cache", label: TOOLS_CARD_STRINGS.tabs.cache, disabled: false },
     { id: "wifi_commands", label: TOOLS_CARD_STRINGS.tabs.wifiCommands, shortLabel: TOOLS_CARD_STRINGS.tabs.wifiShort, disabled: false },
-    { id: "backup", label: TOOLS_CARD_STRINGS.tabs.backup, disabled: false },
-    { id: "blobs", label: TOOLS_CARD_STRINGS.tabs.blobs, disabled: false }
+    { id: "backup", label: TOOLS_CARD_STRINGS.tabs.backup, disabled: false }
   ];
   const toolsMenuActive = params.selectedTab === "settings" || params.selectedTab === "logs";
   return b2`
@@ -3595,10 +3489,6 @@ function renderSettingsTab(params) {
   const hubVersion = String(hub.version ?? "").trim();
   const firmwareVersion = hub.firmware_version != null ? `FW: v${hub.firmware_version}` : "";
   const versionLine = [hubVersion ? `Sofabaton ${hubVersion}` : "", firmwareVersion].filter(Boolean).join(" / ");
-  const remoteBattery = hub.remote_battery;
-  const batteryLevel = remoteBattery?.supported && typeof remoteBattery.level === "number" ? Math.max(0, Math.min(100, Math.round(remoteBattery.level))) : null;
-  const batteryUpdated = String(remoteBattery?.last_updated ?? "").trim();
-  const batteryStatus = batteryLevel == null ? String(remoteBattery?.attributes?.last_poll_status ?? "Waiting") : batteryUpdated ? "Updated" : "Current";
   const busy = !!(params.pendingSettingKey || params.pendingActionKey || params.hubCommandBusy);
   const canAct = canRunHubActions(params.hass, params.hub) && !busy;
   const settingValue = (key) => !!params.hub?.settings?.[key];
@@ -3637,19 +3527,6 @@ function renderSettingsTab(params) {
             </div>
           </div>
         </div>
-        ${remoteBattery?.supported ? b2`
-              <div class="remote-battery-panel">
-                <div class="remote-battery-icon"><ha-icon icon="mdi:battery"></ha-icon></div>
-                <div class="remote-battery-copy">
-                  <span class="remote-battery-label">Remote battery</span>
-                  <span class="remote-battery-status">${batteryStatus}</span>
-                </div>
-                <div class="remote-battery-meter" aria-label="Remote battery ${batteryLevel ?? 0} percent">
-                  <span style=${`width: ${batteryLevel ?? 0}%`}></span>
-                </div>
-                <span class="remote-battery-value">${batteryLevel == null ? "--" : `${batteryLevel}%`}</span>
-              </div>
-            ` : A}
       </div>
       <div class="tab-panel scrollable">
         <div class="settings-content">
@@ -3913,1338 +3790,6 @@ function renderLogsTab(params) {
     loading: params.loading,
     error: params.error
   });
-}
-
-// custom_components/sofabaton_x1s/www/src/tabs/blobs-state.ts
-function blobDeviceOptions(hub) {
-  return [...hub?.devices_list ?? []].map((device) => ({
-    value: String(Number(device.id)),
-    label: String(device.name || `Device ${Number(device.id)}`),
-    deviceClass: String(device.device_class || ""),
-    commandCount: Number(device.command_count || 0)
-  })).sort((left, right) => left.label.localeCompare(right.label));
-}
-function blobCommandOptions(hub, deviceId) {
-  if (!hub || !Number.isInteger(deviceId)) return [];
-  const commands = hub.commands?.[String(deviceId)] ?? {};
-  return Object.entries(commands).map(([id, label]) => ({
-    value: String(Number(id)),
-    label: String(label || `Command ${id}`)
-  })).sort((left, right) => left.label.localeCompare(right.label));
-}
-function blobFetchBlockedReason(params) {
-  if (!params.persistentCacheEnabled) return "cache_disabled";
-  if (Number.isInteger(params.selectedDeviceId) && params.commandCount <= 0) return "no_commands";
-  return null;
-}
-
-// custom_components/sofabaton_x1s/www/src/tabs/blobs-tab.ts
-var BLOBS_SECTION_ITEMS = [
-  { id: "fetch", icon: "mdi:cloud-download-outline", label: TOOLS_CARD_STRINGS.blobs.sections.fetch },
-  { id: "test", icon: "mdi:flash-outline", label: TOOLS_CARD_STRINGS.blobs.sections.test },
-  { id: "save", icon: "mdi:content-save-outline", label: TOOLS_CARD_STRINGS.blobs.sections.save }
-];
-var SofabatonBlobsTab = class extends i4 {
-  constructor() {
-    super(...arguments);
-    this.hass = null;
-    this.hub = null;
-    this.cacheHub = null;
-    this.setHubCommandBusy = null;
-    this.refreshControlPanelState = null;
-    this.hubCommandBusy = false;
-    this.hubCommandBusyLabel = null;
-    this.loading = false;
-    this.error = null;
-    this.persistentCacheEnabled = false;
-    this.blockedTitle = null;
-    this.blockedMessage = null;
-    this._selectedDeviceId = null;
-    this._selectedCommandId = null;
-    this._fetchLoading = false;
-    this._fetchError = "";
-    this._fetchResponse = null;
-    this._testBlobInput = "";
-    this._testLoading = false;
-    this._testError = "";
-    this._testSuccess = "";
-    this._saveDeviceIdInput = "";
-    this._saveCommandName = "";
-    this._saveBlobInput = "";
-    this._saveLoading = false;
-    this._saveError = "";
-    this._saveSuccess = "";
-    this._loadedEntryId = "";
-    this.selectedSection = "fetch";
-    this.setSelectedSection = () => {
-    };
-    this._testFlash = false;
-    this._saveFlash = false;
-    this._copyFlashKey = null;
-    this._resultViewMode = {};
-    this._testFlashTimer = null;
-    this._saveFlashTimer = null;
-    this._copyFlashTimer = null;
-    this._runFetch = async () => {
-      const entryId = String(this.hub?.entry_id || "").trim();
-      if (!entryId || this._selectedDeviceId == null || this._selectedCommandId == null || this._busy()) return;
-      this._fetchLoading = true;
-      this._fetchError = "";
-      this._fetchResponse = null;
-      this._setSharedBusy(true, "Fetching blob\u2026");
-      try {
-        this._fetchResponse = await this._api().fetchBlob(entryId, this._selectedDeviceId, this._selectedCommandId);
-      } catch (error) {
-        this._fetchError = formatError(error);
-      } finally {
-        this._fetchLoading = false;
-        this._setSharedBusy(false);
-      }
-    };
-    this._runTest = async () => {
-      const entryId = String(this.hub?.entry_id || "").trim();
-      if (!entryId || this._busy() || proxyClientConnected(this.hass, this.hub)) return;
-      if (!String(this._testBlobInput || "").trim()) return;
-      this._testLoading = true;
-      this._testError = "";
-      this._testSuccess = "";
-      this._setSharedBusy(true, "Testing blob\u2026");
-      try {
-        await this._api().playIrBlob(entryId, this._testBlobInput);
-        this._testSuccess = "Blob sent to the hub for one-shot playback.";
-        this._scheduleSuccessRevert("test");
-      } catch (error) {
-        this._testError = formatError(error);
-      } finally {
-        this._testLoading = false;
-        this._setSharedBusy(false);
-      }
-    };
-    this._runSave = async () => {
-      const entryId = String(this.hub?.entry_id || "").trim();
-      const deviceId = Number.parseInt(String(this._saveDeviceIdInput || "").trim(), 10);
-      if (!entryId || this._busy() || proxyClientConnected(this.hass, this.hub)) return;
-      if (!Number.isInteger(deviceId) || deviceId < 1 || deviceId > 255) return;
-      if (!String(this._saveCommandName || "").trim() || !String(this._saveBlobInput || "").trim()) return;
-      this._saveLoading = true;
-      this._saveError = "";
-      this._saveSuccess = "";
-      this._setSharedBusy(true, "Saving blob\u2026");
-      try {
-        const result = await this._api().persistIrBlob(
-          entryId,
-          deviceId,
-          this._saveCommandName,
-          this._saveBlobInput
-        );
-        await this._refreshControlPanelState();
-        this._saveSuccess = `Saved command ${result.command_name} as id ${result.command_id} on device ${result.device_id}.`;
-        this._scheduleSuccessRevert("save");
-      } catch (error) {
-        this._saveError = formatError(error);
-      } finally {
-        this._saveLoading = false;
-        this._setSharedBusy(false);
-      }
-    };
-  }
-  disconnectedCallback() {
-    super.disconnectedCallback();
-    if (this._testFlashTimer) {
-      clearTimeout(this._testFlashTimer);
-      this._testFlashTimer = null;
-    }
-    if (this._saveFlashTimer) {
-      clearTimeout(this._saveFlashTimer);
-      this._saveFlashTimer = null;
-    }
-    if (this._copyFlashTimer) {
-      clearTimeout(this._copyFlashTimer);
-      this._copyFlashTimer = null;
-    }
-  }
-  _useLegacyTextField() {
-    return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
-  }
-  /** Uppercase hub model — mirrors wifi-commands-tab's _hubVersion(). */
-  _hubVersion() {
-    return String(remoteAttrsForHub(this.hass, this.hub)?.hub_version || this.hub?.version || "").toUpperCase();
-  }
-  /**
-   * Descriptor view applicability for the Test / Save subtitles.
-   *
-   * Two parser paths feed the Descriptor view:
-   *   1. X2-only descriptive IR strings (P:Sony12 R:... etc.), which
-   *      the hub parses out of the captured IR blob body.
-   *   2. The virtual device classes (wifi_ip, wifi_roku, wifi_hue,
-   *      wifi_sonos), whose blobs carry structural fields the
-   *      integration decodes on every hub version.
-   *
-   * Path (2) only matters in the Fetch view — the Test / Save inputs
-   * are IR-only, so the subtitles below still gate their descriptor
-   * sentence on hub version. The Fetch results render the toggle
-   * whenever the row carries a non-empty `parsed_blob`, so no
-   * version gate is needed there.
-   */
-  _supportsDescriptors() {
-    return this._hubVersion().includes("X2");
-  }
-  /** Unicode command names (and the extended punctuation set) are X1S/X2 only. */
-  _supportsUnicodeCommandNames() {
-    const v2 = this._hubVersion();
-    return v2.includes("X2") || v2.includes("X1S");
-  }
-  /**
-   * Sanitize a command name input. Pattern + length matches wifi-commands-tab's
-   * _sanitizeCommandName so the user gets the same character allow-list as the
-   * Wifi Commands tab uses for renaming command slots.
-   */
-  _sanitizeCommandName(value) {
-    const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu : /[^A-Za-z0-9 ]+/g;
-    return String(value ?? "").replace(pattern, "").slice(0, 20);
-  }
-  _blobInputPlaceholder() {
-    return this._supportsDescriptors() ? "Paste blob hex here, or enter a descriptor such as P:Sony12 R:40000 D:1 F:18 MUL:2" : "Paste blob hex here.";
-  }
-  /**
-   * Subtitle templates per drawer. Two-line layout: descriptive copy on top,
-   * an IR-only warning (with icon) below. The "descriptive protocol string"
-   * sentence is X2-only since descriptor parsing is unsupported on X1/X1S.
-   */
-  _renderSubtitleBlock(args) {
-    const descriptorSentence = args.descriptor && this._supportsDescriptors() ? " Blobs may be raw hex or a descriptive protocol string." : "";
-    return b2`
-      <div class="blob-section-subtitle">
-        <span>${args.lead}${descriptorSentence}</span>
-        <span class="subtitle-warning">
-          <ha-icon icon="mdi:alert-outline"></ha-icon>
-          <span>${args.warning}</span>
-        </span>
-      </div>
-    `;
-  }
-  _fetchSubtitle() {
-    return this._renderSubtitleBlock({
-      lead: "Retrieve and view a Blob from the hub. Ensure that the cache for your devices and their commands is up to date.",
-      warning: "Only Blobs from IR devices can be Tested and Saved."
-    });
-  }
-  _testSubtitle() {
-    return this._renderSubtitleBlock({
-      lead: "Play a Blob on the hub without saving it.",
-      descriptor: true,
-      warning: "Only Blobs from IR devices can be Tested."
-    });
-  }
-  _saveSubtitle() {
-    return this._renderSubtitleBlock({
-      lead: "Add a new command to an existing IR device by saving a Blob to the hub.",
-      descriptor: true,
-      warning: "Only Blobs from IR devices can be Saved."
-    });
-  }
-  _buttonState(args) {
-    if (args.busy) return "busy";
-    if (args.success) return "success";
-    if (args.error) return "error";
-    if (!args.canSubmit) return "disabled";
-    return "idle";
-  }
-  _renderActionButton(args) {
-    const { label, busyLabel, state, idleIcon, onClick } = args;
-    const interactive = state === "idle" || state === "success" || state === "error";
-    let leadingIcon = A;
-    if (state === "busy") {
-      leadingIcon = b2`<span class="blob-action-spinner" aria-hidden="true"></span>`;
-    } else if (state === "success") {
-      leadingIcon = b2`<ha-icon icon="mdi:check-circle-outline"></ha-icon>`;
-    } else if (state === "error") {
-      leadingIcon = b2`<ha-icon icon="mdi:alert-circle-outline"></ha-icon>`;
-    } else if ((state === "idle" || state === "disabled") && idleIcon) {
-      leadingIcon = b2`<ha-icon icon=${idleIcon}></ha-icon>`;
-    }
-    const text = state === "busy" ? busyLabel : label;
-    return b2`
-      <button
-        class="blob-action-btn"
-        data-state=${state}
-        aria-busy=${state === "busy" ? "true" : "false"}
-        ?disabled=${!interactive}
-        @click=${onClick}
-      >
-        ${leadingIcon}
-        <span>${text}</span>
-      </button>
-    `;
-  }
-  _scheduleSuccessRevert(which) {
-    if (which === "test") {
-      this._testFlash = true;
-      if (this._testFlashTimer) clearTimeout(this._testFlashTimer);
-      this._testFlashTimer = setTimeout(() => {
-        this._testFlash = false;
-        this._testFlashTimer = null;
-      }, 1800);
-    } else {
-      this._saveFlash = true;
-      if (this._saveFlashTimer) clearTimeout(this._saveFlashTimer);
-      this._saveFlashTimer = setTimeout(() => {
-        this._saveFlash = false;
-        this._saveSuccess = "";
-        this._saveFlashTimer = null;
-      }, 3e3);
-    }
-  }
-  updated(changed) {
-    if (changed.has("hub")) this._handleHubChanged();
-    if (changed.has("cacheHub")) this._normalizeSelections();
-  }
-  render() {
-    if (this.loading) return b2`<div class="state">Loading…</div>`;
-    if (this.error) return b2`<div class="state error">${this.error}</div>`;
-    if (!this.hub) return b2`<div class="state">${TOOLS_CARD_STRINGS.blobs.noHubsFound}</div>`;
-    if (this.blockedTitle && this.blockedMessage) {
-      return b2`
-        <div class="tab-panel">
-          <div class="blocked-state">
-            <div class="blocked-state-title">${this.blockedTitle}</div>
-            <div class="blocked-state-sub">${this.blockedMessage}</div>
-          </div>
-        </div>
-      `;
-    }
-    const selectedSection = this.selectedSection ?? "fetch";
-    return b2`
-      <div class="tab-panel">
-        ${renderSecondaryTabShell({
-      items: BLOBS_SECTION_ITEMS,
-      selectedId: selectedSection,
-      onSelect: (section) => this.setSelectedSection(section),
-      connected: true,
-      shellClassName: "blob-panel secondary-view-shell--edge",
-      content: selectedSection === "fetch" ? this._renderFetchSectionContent() : selectedSection === "test" ? this._renderTestSectionContent() : this._renderSaveSectionContent()
-    })}
-      </div>
-    `;
-  }
-  _renderFetchSectionContent() {
-    const deviceOptions = this._deviceOptions();
-    const commandOptions = this._commandOptions();
-    const fetchBlocked = blobFetchBlockedReason({
-      persistentCacheEnabled: this.persistentCacheEnabled,
-      selectedDeviceId: this._selectedDeviceId,
-      commandCount: commandOptions.length
-    });
-    const disabled = this._busy() || !this.persistentCacheEnabled;
-    return b2`
-      ${renderSecondaryTabContent({
-      connected: true,
-      content: b2`
-        <div class="blob-section-content">
-          ${this._fetchSubtitle()}
-          ${fetchBlocked === "cache_disabled" ? this._renderStatus(
-        "warning",
-        "mdi:database-off-outline",
-        TOOLS_CARD_STRINGS.blobs.fetchCacheDisabled
-      ) : A}
-          <div class="control-grid">
-            <ha-selector
-              .hass=${this.hass}
-              .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: TOOLS_CARD_STRINGS.blobs.selectOne }, ...deviceOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
-              .label=${TOOLS_CARD_STRINGS.blobs.device}
-              .value=${this._selectedDeviceId == null ? "__none__" : String(this._selectedDeviceId)}
-              .disabled=${disabled}
-              @value-changed=${(event) => this._handleDeviceChanged(event)}
-            ></ha-selector>
-            <ha-selector
-              .hass=${this.hass}
-              .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: TOOLS_CARD_STRINGS.blobs.selectOne }, ...commandOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
-              .label=${TOOLS_CARD_STRINGS.blobs.command}
-              .value=${this._selectedCommandId == null ? "__none__" : String(this._selectedCommandId)}
-              .disabled=${disabled || this._selectedDeviceId == null || fetchBlocked === "no_commands"}
-              @value-changed=${(event) => this._handleCommandChanged(event)}
-            ></ha-selector>
-          </div>
-          ${fetchBlocked === "no_commands" ? this._renderStatus(
-        "warning",
-        "mdi:refresh-circle",
-        TOOLS_CARD_STRINGS.blobs.fetchNoCommands
-      ) : A}
-          ${this._fetchError ? this._renderStatus("error", "mdi:alert-circle-outline", this._fetchError) : A}
-          ${this._fetchResponse ? this._renderFetchResults() : A}
-        </div>
-        `
-    })}
-    `;
-  }
-  _renderFetchResults() {
-    const commands = this._fetchResponse?.commands ?? [];
-    if (!commands.length) {
-      return this._renderStatus(
-        "warning",
-        "mdi:file-search-outline",
-        TOOLS_CARD_STRINGS.blobs.fetchNoRecords
-      );
-    }
-    return b2`
-      <div class="results-list">
-        ${commands.map((command) => {
-      const cmdKey = `cmd-${command.device_id ?? "?"}-${command.command_id ?? "?"}`;
-      const copied = this._copyFlashKey === cmdKey;
-      const descriptor = this._renderableDescriptor(command);
-      const rawBlob = String(command.command_blob ?? "");
-      const hasDescriptor = descriptor !== "";
-      const mode = hasDescriptor ? this._resultViewMode[cmdKey] ?? "descriptor" : "hex";
-      const shownText = mode === "descriptor" ? descriptor : rawBlob;
-      const copyTarget = mode === "descriptor" ? descriptor : rawBlob;
-      return b2`
-          <article class="result-card">
-            <div class="result-head">
-              <div class="result-title">${String(command.command_label || TOOLS_CARD_STRINGS.blobs.commandFallback(command.command_id ?? TOOLS_CARD_STRINGS.blobs.unknown))}</div>
-              <div class="result-badges">
-                <span class="result-badge">${this._deviceClassLabel(command.device_class)}</span>
-                <span class="result-badge">${TOOLS_CARD_STRINGS.blobs.cmdBadge(String(command.command_id ?? "?"))}</span>
-              </div>
-            </div>
-            <div class="result-block">
-              <div class="result-block-head">
-                ${hasDescriptor ? b2`
-                      <div
-                        class="view-toggle"
-                        role="tablist"
-                        aria-label=${TOOLS_CARD_STRINGS.blobs.blobViewMode}
-                      >
-                        <button
-                          class="view-toggle-btn${mode === "descriptor" ? " active" : ""}"
-                          role="tab"
-                          aria-selected=${mode === "descriptor" ? "true" : "false"}
-                          @click=${() => this._setResultViewMode(cmdKey, "descriptor")}
-                        >${TOOLS_CARD_STRINGS.blobs.descriptor}</button>
-                        <button
-                          class="view-toggle-btn${mode === "hex" ? " active" : ""}"
-                          role="tab"
-                          aria-selected=${mode === "hex" ? "true" : "false"}
-                          @click=${() => this._setResultViewMode(cmdKey, "hex")}
-                        >${TOOLS_CARD_STRINGS.blobs.hex}</button>
-                      </div>
-                    ` : b2`<div class="result-label">${TOOLS_CARD_STRINGS.blobs.rawBlob}</div>`}
-                <button
-                  class="copy-btn"
-                  data-state=${copied ? "success" : "idle"}
-                  aria-live="polite"
-                  @click=${() => void this._copyText(copyTarget, cmdKey)}
-                >
-                  <ha-icon icon=${copied ? "mdi:check" : "mdi:content-copy"}></ha-icon>
-                  <span>${copied ? TOOLS_CARD_STRINGS.blobs.copied : TOOLS_CARD_STRINGS.blobs.copy}</span>
-                </button>
-              </div>
-              <pre class="result-pre result-pre--scrollable">${shownText}</pre>
-            </div>
-          </article>
-        `;
-    })}
-      </div>
-    `;
-  }
-  _renderTestSectionContent() {
-    const proxyConnected = proxyClientConnected(this.hass, this.hub);
-    const busy = this._busy();
-    const canSubmit = !busy && !proxyConnected && String(this._testBlobInput || "").trim() !== "";
-    return b2`
-      ${renderSecondaryTabContent({
-      connected: true,
-      content: b2`
-        <div class="blob-section-content">
-          ${this._testSubtitle()}
-          ${this._renderBlobTextarea({
-        value: this._testBlobInput,
-        disabled: busy || proxyConnected,
-        placeholder: this._blobInputPlaceholder(),
-        onInput: (value) => {
-          this._testBlobInput = value;
-          this._testError = "";
-          this._testSuccess = "";
-          this._testFlash = false;
-        }
-      })}
-          <div class="action-row">
-            ${this._renderActionButton({
-        label: TOOLS_CARD_STRINGS.blobs.test,
-        busyLabel: TOOLS_CARD_STRINGS.blobs.testing,
-        idleIcon: "mdi:flash-outline",
-        state: this._buttonState({
-          busy: this._testLoading,
-          error: Boolean(this._testError),
-          success: this._testFlash && Boolean(this._testSuccess),
-          canSubmit
-        }),
-        onClick: () => void this._runTest()
-      })}
-          </div>
-          ${this._testError ? this._renderStatus("error", "mdi:alert-circle-outline", this._testError) : A}
-        </div>
-        `
-    })}
-    `;
-  }
-  _renderSaveSectionContent() {
-    const proxyConnected = proxyClientConnected(this.hass, this.hub);
-    const busy = this._busy();
-    const parsedDeviceId = Number.parseInt(String(this._saveDeviceIdInput || "").trim(), 10);
-    const deviceIdValid = Number.isInteger(parsedDeviceId) && parsedDeviceId >= 1 && parsedDeviceId <= 255;
-    const irDeviceOptions = this._deviceOptions().filter(
-      (option) => String(option.deviceClass || "").trim().toLowerCase() === "ir"
-    );
-    const canSubmit = !busy && !proxyConnected && deviceIdValid && String(this._saveCommandName || "").trim() !== "" && String(this._saveBlobInput || "").trim() !== "";
-    return b2`
-      ${renderSecondaryTabContent({
-      connected: true,
-      content: b2`
-        <div class="blob-section-content">
-          ${this._saveSubtitle()}
-          ${irDeviceOptions.length === 0 && !proxyConnected ? this._renderStatus(
-        "warning",
-        "mdi:refresh-circle",
-        TOOLS_CARD_STRINGS.blobs.noIrDevices
-      ) : A}
-          <div class="control-grid">
-            <div class="blob-input-host">
-              <ha-selector
-                .hass=${this.hass}
-                .selector=${{ select: { mode: "dropdown", options: [{ value: "__none__", label: TOOLS_CARD_STRINGS.blobs.selectOne }, ...irDeviceOptions.map((option) => ({ value: option.value, label: option.label }))] } }}
-                .label=${TOOLS_CARD_STRINGS.blobs.irDevice}
-                .value=${this._saveDeviceIdInput && this._saveDeviceIdInput !== "__none__" ? this._saveDeviceIdInput : "__none__"}
-                .disabled=${busy || proxyConnected || irDeviceOptions.length === 0}
-                @value-changed=${(event) => {
-        const raw = String(event.detail?.value ?? "");
-        this._saveDeviceIdInput = raw && raw !== "__none__" ? raw : "";
-        this._saveError = "";
-        this._saveSuccess = "";
-        this._saveFlash = false;
-      }}
-              ></ha-selector>
-            </div>
-            ${this._renderCommandNameInput(busy, proxyConnected)}
-          </div>
-          ${this._renderBlobTextarea({
-        value: this._saveBlobInput,
-        disabled: busy || proxyConnected,
-        placeholder: this._blobInputPlaceholder(),
-        onInput: (value) => {
-          this._saveBlobInput = value;
-          this._saveError = "";
-          this._saveSuccess = "";
-          this._saveFlash = false;
-        }
-      })}
-          <div class="action-row">
-            ${this._renderActionButton({
-        label: TOOLS_CARD_STRINGS.blobs.save,
-        busyLabel: TOOLS_CARD_STRINGS.blobs.saving,
-        idleIcon: "mdi:content-save-outline",
-        state: this._buttonState({
-          busy: this._saveLoading,
-          error: Boolean(this._saveError),
-          success: this._saveFlash && Boolean(this._saveSuccess),
-          canSubmit
-        }),
-        onClick: () => void this._runSave()
-      })}
-            ${this._saveSuccess ? b2`
-                  <div class="section-status success inline-status" role="status" aria-live="polite">
-                    <span class="status-icon"><ha-icon icon="mdi:check-circle-outline"></ha-icon></span>
-                    <span>${this._saveSuccess}</span>
-                  </div>
-                ` : A}
-          </div>
-          ${this._saveError ? this._renderStatus("error", "mdi:alert-circle-outline", this._saveError) : A}
-        </div>
-        `
-    })}
-    `;
-  }
-  _renderCommandNameInput(busy, proxyConnected) {
-    const onInputLive = (event) => {
-      const input = event.currentTarget;
-      const value = this._sanitizeCommandName(input.value);
-      if (input.value !== value) input.value = value;
-    };
-    const onCommit = (event) => {
-      const input = event.currentTarget;
-      const value = this._sanitizeCommandName(input.value);
-      input.value = value;
-      this._saveCommandName = value;
-      this._saveError = "";
-      this._saveSuccess = "";
-      this._saveFlash = false;
-    };
-    const disabled = busy || proxyConnected;
-    if (this._useLegacyTextField()) {
-      return b2`
-        <div class="blob-input-host">
-          <ha-textfield
-            .label=${TOOLS_CARD_STRINGS.blobs.commandName}
-            .maxLength=${20}
-            .value=${this._saveCommandName}
-            .disabled=${disabled}
-            @input=${onInputLive}
-            @change=${onCommit}
-          ></ha-textfield>
-        </div>
-      `;
-    }
-    if (customElements.get("ha-input")) {
-      return b2`
-        <div class="blob-input-host">
-          <ha-input
-            type="text"
-            .label=${"Command name"}
-            .maxlength=${20}
-            .value=${this._saveCommandName}
-            .disabled=${disabled}
-            @input=${onInputLive}
-            @change=${onCommit}
-          ></ha-input>
-        </div>
-      `;
-    }
-    return b2`
-      <input
-        class="text-input"
-        type="text"
-        maxlength="20"
-        .value=${this._saveCommandName}
-        .disabled=${disabled}
-        placeholder="Command name"
-        @input=${onInputLive}
-        @change=${onCommit}
-      />
-    `;
-  }
-  _renderSingleLineInput(args) {
-    const { kind, label, value, disabled, placeholder, min, max, onInput } = args;
-    const handleInputEvent = (event) => {
-      const target = event.currentTarget;
-      onInput(String(target?.value ?? ""));
-    };
-    if (this._useLegacyTextField()) {
-      return b2`
-        <div class="blob-input-host">
-          <ha-textfield
-            type=${kind}
-            .label=${label}
-            .value=${value}
-            .disabled=${disabled}
-            .placeholder=${placeholder}
-            min=${min ?? A}
-            max=${max ?? A}
-            @input=${handleInputEvent}
-            @change=${handleInputEvent}
-          ></ha-textfield>
-        </div>
-      `;
-    }
-    if (customElements.get("ha-input")) {
-      return b2`
-        <div class="blob-input-host">
-          <ha-input
-            type=${kind}
-            .label=${label}
-            .value=${value}
-            .disabled=${disabled}
-            .placeholder=${placeholder}
-            min=${min ?? A}
-            max=${max ?? A}
-            @input=${handleInputEvent}
-            @change=${handleInputEvent}
-          ></ha-input>
-        </div>
-      `;
-    }
-    return b2`
-      <input
-        class="text-input"
-        type=${kind}
-        .value=${value}
-        .disabled=${disabled}
-        placeholder=${placeholder}
-        min=${min ?? A}
-        max=${max ?? A}
-        @input=${handleInputEvent}
-      />
-    `;
-  }
-  /**
-   * Blob hex / descriptor textarea. Always rendered as a native textarea
-   * styled to look like the result console (.result-pre) — dark monospace
-   * surface, light text — since this is a code-editor field, not a form
-   * label field. Using ha-textarea here would fight HA's light-surface
-   * theming and break the console look.
-   */
-  _renderBlobTextarea(args) {
-    const { value, disabled, placeholder, onInput } = args;
-    const handleInputEvent = (event) => {
-      const target = event.currentTarget;
-      onInput(String(target?.value ?? ""));
-    };
-    return b2`
-      <textarea
-        class="test-textarea"
-        .value=${value}
-        .disabled=${disabled}
-        placeholder=${placeholder}
-        spellcheck="false"
-        autocapitalize="off"
-        autocorrect="off"
-        @input=${handleInputEvent}
-      ></textarea>
-    `;
-  }
-  _renderStatus(tone, icon, message) {
-    return b2`
-      <div class="section-status ${tone}">
-        <span class="status-icon"><ha-icon icon=${icon}></ha-icon></span>
-        <span>${message}</span>
-      </div>
-    `;
-  }
-  _handleHubChanged() {
-    const nextEntryId = String(this.hub?.entry_id || "").trim();
-    if (nextEntryId === this._loadedEntryId) return;
-    this._loadedEntryId = nextEntryId;
-    this._selectedDeviceId = null;
-    this._selectedCommandId = null;
-    this._fetchLoading = false;
-    this._fetchError = "";
-    this._fetchResponse = null;
-    this._testBlobInput = "";
-    this._testLoading = false;
-    this._testError = "";
-    this._testSuccess = "";
-    this._saveDeviceIdInput = "";
-    this._saveCommandName = "";
-    this._saveBlobInput = "";
-    this._saveLoading = false;
-    this._saveError = "";
-    this._saveSuccess = "";
-    this._testFlash = false;
-    this._saveFlash = false;
-    if (this._testFlashTimer) {
-      clearTimeout(this._testFlashTimer);
-      this._testFlashTimer = null;
-    }
-    if (this._saveFlashTimer) {
-      clearTimeout(this._saveFlashTimer);
-      this._saveFlashTimer = null;
-    }
-  }
-  _normalizeSelections() {
-    const deviceOptions = this._deviceOptions();
-    if (this._selectedDeviceId != null && !deviceOptions.some((option) => Number(option.value) === this._selectedDeviceId)) {
-      this._selectedDeviceId = null;
-      this._selectedCommandId = null;
-      this._fetchResponse = null;
-      this._fetchError = "";
-      return;
-    }
-    const commandOptions = this._commandOptions();
-    if (this._selectedCommandId != null && !commandOptions.some((option) => Number(option.value) === this._selectedCommandId)) {
-      this._selectedCommandId = null;
-      this._fetchResponse = null;
-      this._fetchError = "";
-    }
-  }
-  _handleDeviceChanged(event) {
-    const value = String(event.detail?.value ?? "");
-    this._selectedDeviceId = value && value !== "__none__" ? Number(value) : null;
-    this._selectedCommandId = null;
-    this._fetchResponse = null;
-    this._fetchError = "";
-  }
-  _handleCommandChanged(event) {
-    const value = String(event.detail?.value ?? "");
-    this._selectedCommandId = value && value !== "__none__" ? Number(value) : null;
-    this._fetchResponse = null;
-    this._fetchError = "";
-    if (this._selectedDeviceId != null && this._selectedCommandId != null) void this._runFetch();
-  }
-  _deviceOptions() {
-    return blobDeviceOptions(this.cacheHub);
-  }
-  _commandOptions() {
-    return blobCommandOptions(this.cacheHub, this._selectedDeviceId);
-  }
-  _selectedDevice() {
-    return this._deviceOptions().find((option) => Number(option.value) === this._selectedDeviceId) ?? null;
-  }
-  _deviceClassLabel(deviceClass) {
-    const normalized = String(deviceClass || "").trim();
-    return normalized || "Unknown class";
-  }
-  _setResultViewMode(cmdKey, mode) {
-    if (this._resultViewMode[cmdKey] === mode) return;
-    this._resultViewMode = { ...this._resultViewMode, [cmdKey]: mode };
-  }
-  /**
-   * Build the text shown in the Descriptor view (and used by Copy).
-   *
-   * For wifi_hue / wifi_sonos the hub's pre-formatted `parsed_blob`
-   * splits `body_block` across rendered newlines and indents each
-   * line. That looks tidy but obscures the wire reality: `body_block`
-   * is a single opaque string where every `\r` / `\n` byte is part of
-   * the device-side protocol (it carries its own Content-Length
-   * declaration, line separators, and body bytes). We rebuild the
-   * descriptor client-side so the body_block surfaces as one literal
-   * string with `\r` / `\n` shown as their two-char escape sequences,
-   * matching the editor's "raw wire string" rendering.
-   *
-   * Every other class (wifi_ip, wifi_roku, ir descriptive, and any
-   * non-decodable case) keeps the hub's `parsed_blob` as-is.
-   */
-  _renderableDescriptor(command) {
-    const className = String(command.decoded?.class ?? "").toLowerCase();
-    if (className === "wifi_hue" || className === "wifi_sonos") {
-      const fields = command.decoded?.fields ?? {};
-      const path = String(fields.path ?? "");
-      const bodyBlock = String(fields.body_block ?? "");
-      const lines = [`path: ${path}`];
-      if (bodyBlock) {
-        const escaped = bodyBlock.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
-        lines.push(`body_block: ${escaped}`);
-      }
-      return lines.join("\n");
-    }
-    return String(command.parsed_blob ?? "").trim();
-  }
-  async _copyText(value, flashKey) {
-    const text = String(value || "");
-    if (!text) return;
-    let copied = false;
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(text);
-        copied = true;
-      } catch {
-      }
-    }
-    if (!copied) {
-      try {
-        const textarea = document.createElement("textarea");
-        textarea.value = text;
-        textarea.setAttribute("readonly", "");
-        textarea.style.position = "absolute";
-        textarea.style.left = "-9999px";
-        document.body.appendChild(textarea);
-        textarea.select();
-        copied = document.execCommand("copy");
-        document.body.removeChild(textarea);
-      } catch {
-        copied = false;
-      }
-    }
-    if (!copied) return;
-    this._copyFlashKey = flashKey;
-    if (this._copyFlashTimer) clearTimeout(this._copyFlashTimer);
-    this._copyFlashTimer = setTimeout(() => {
-      this._copyFlashKey = null;
-      this._copyFlashTimer = null;
-    }, 1500);
-  }
-  _busy() {
-    return Boolean(this.hubCommandBusy || this._fetchLoading || this._testLoading || this._saveLoading);
-  }
-  _api() {
-    if (!this.hass) throw new Error("Home Assistant context is unavailable");
-    return new ControlPanelApi(this.hass);
-  }
-  _setSharedBusy(busy, label) {
-    this.setHubCommandBusy?.(busy, label ?? null);
-  }
-  async _refreshControlPanelState() {
-    await this.refreshControlPanelState?.();
-  }
-};
-SofabatonBlobsTab.properties = {
-  hass: { attribute: false },
-  hub: { attribute: false },
-  cacheHub: { attribute: false },
-  setHubCommandBusy: { attribute: false },
-  refreshControlPanelState: { attribute: false },
-  hubCommandBusy: { type: Boolean },
-  hubCommandBusyLabel: { type: String },
-  loading: { type: Boolean },
-  error: { type: String },
-  persistentCacheEnabled: { type: Boolean },
-  blockedTitle: { type: String },
-  blockedMessage: { type: String },
-  _selectedDeviceId: { state: true },
-  _selectedCommandId: { state: true },
-  _fetchLoading: { state: true },
-  _fetchError: { state: true },
-  _fetchResponse: { state: true },
-  _testBlobInput: { state: true },
-  _testLoading: { state: true },
-  _testError: { state: true },
-  _testSuccess: { state: true },
-  _saveDeviceIdInput: { state: true },
-  _saveCommandName: { state: true },
-  _saveBlobInput: { state: true },
-  _saveLoading: { state: true },
-  _saveError: { state: true },
-  _saveSuccess: { state: true },
-  _loadedEntryId: { state: true },
-  selectedSection: { attribute: false },
-  setSelectedSection: { attribute: false },
-  _testFlash: { state: true },
-  _saveFlash: { state: true },
-  _copyFlashKey: { state: true },
-  _resultViewMode: { state: true }
-};
-SofabatonBlobsTab.styles = [secondaryTabStyles, i`
-    :host { display: flex; flex: 1; min-height: 0; }
-    :host {
-      --blob-console-radius: 10px;
-      --blob-console-bg-top: #16202b;
-      --blob-console-bg-bottom: #0f151d;
-      --blob-console-border: rgba(143, 179, 217, 0.16);
-      --blob-console-text: #e6eef8;
-      --blob-console-muted: rgba(230, 238, 248, 0.5);
-    }
-    .tab-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; gap: 14px; overflow-y: auto; }
-    .state { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--secondary-text-color); }
-    .state.error { color: var(--error-color, #db4437); }
-    .blocked-state {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 24px 16px;
-      text-align: center;
-      color: var(--secondary-text-color);
-      line-height: 1.6;
-    }
-    .blocked-state-title {
-      color: var(--primary-text-color);
-      font-size: 16px;
-      font-weight: 700;
-    }
-    .blocked-state-sub {
-      max-width: 340px;
-      font-size: 13px;
-    }
-    .blob-panel {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
-      margin: -16px;
-      /* Container query target — control-grid collapses to single column
-         based on this element's width, not the viewport's. Lets a narrow
-         card on a wide dashboard collapse without dragging single-column
-         layout across wide cards. */
-      container-type: inline-size;
-      container-name: blob-panel;
-    }
-    .blob-section-content { display: flex; flex-direction: column; gap: 14px; padding-top: 0; min-width: 0; }
-    .blob-section-subtitle {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      font-size: 13px;
-      line-height: 1.5;
-      color: var(--secondary-text-color);
-    }
-    .subtitle-warning {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      color: color-mix(in srgb, var(--warning-color, #f59e0b) 70%, var(--primary-text-color));
-      font-weight: 600;
-    }
-    .subtitle-warning ha-icon {
-      --mdc-icon-size: 16px;
-      color: var(--warning-color, #f59e0b);
-      flex: 0 0 auto;
-    }
-    .section-status {
-      min-width: 0;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      border: 1px solid var(--divider-color);
-      border-radius: 12px;
-      font-size: 13px;
-      line-height: 1.45;
-      color: var(--secondary-text-color);
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 80%, transparent);
-    }
-    .section-status.error {
-      color: var(--error-color, #db4437);
-      border-color: color-mix(in srgb, var(--error-color, #db4437) 30%, var(--divider-color));
-      background: color-mix(in srgb, var(--error-color, #db4437) 5%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .section-status.success {
-      color: #2e7d32;
-      border-color: color-mix(in srgb, #2e7d32 30%, var(--divider-color));
-      background: color-mix(in srgb, #2e7d32 5%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .section-status.inline-status {
-      padding: 6px 12px;
-      font-size: 12px;
-      animation: blobInlineStatusIn 180ms ease-out;
-    }
-    @keyframes blobInlineStatusIn {
-      from { opacity: 0; transform: translateX(-6px); }
-      to   { opacity: 1; transform: translateX(0); }
-    }
-    .section-status.warning {
-      border-color: color-mix(in srgb, var(--warning-color, #f59e0b) 35%, var(--divider-color));
-      background: color-mix(in srgb, var(--warning-color, #f59e0b) 5%, var(--ha-card-background, var(--card-background-color)));
-    }
-    .status-icon { color: inherit; display: inline-flex; flex: 0 0 auto; }
-    .status-icon ha-icon { --mdc-icon-size: 18px; }
-    .control-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-      gap: 12px;
-      align-items: end;
-    }
-    .control-grid ha-selector {
-      width: 100%;
-      min-width: 0;
-    }
-    .copy-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      border: 1px solid var(--divider-color);
-      border-radius: var(--ha-card-border-radius, 10px);
-      background: transparent;
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 12px;
-      font-weight: 700;
-      padding: 6px 10px;
-      cursor: pointer;
-      transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
-    }
-    .copy-btn ha-icon {
-      --mdc-icon-size: 15px;
-      display: inline-flex;
-    }
-    .copy-btn:hover:not([data-state="success"]) {
-      border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color));
-      color: var(--primary-color);
-    }
-    .copy-btn:disabled {
-      opacity: 0.46;
-      cursor: default;
-      border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
-    }
-    .view-toggle {
-      display: inline-flex;
-      border: 1px solid var(--divider-color);
-      border-radius: 999px;
-      padding: 2px;
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 80%, transparent);
-    }
-    .view-toggle-btn {
-      border: none;
-      background: transparent;
-      color: var(--secondary-text-color);
-      font: inherit;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      padding: 4px 12px;
-      border-radius: 999px;
-      cursor: pointer;
-      transition: background 140ms ease, color 140ms ease;
-    }
-    .view-toggle-btn:hover:not(.active) {
-      color: var(--primary-text-color);
-    }
-    .view-toggle-btn.active {
-      background: var(--primary-color);
-      color: var(--text-primary-color, #fff);
-    }
-    .copy-btn[data-state="success"] {
-      background: #2e7d32;
-      border-color: #2e7d32;
-      color: #ffffff;
-    }
-    .action-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-    /* Primary action button. Visual base matches the Wifi Commands modal
-       Save/Cancel buttons:
-         .dialog-btn        — outlined neutral
-         .dialog-btn-primary — outlined primary (1px primary border + 18%
-                              primary-tinted fill + primary-text-color text)
-       wifi-commands-tab.ts:374–377. Each blob action keeps that base and
-       swaps the tint hue for busy/success/error states.
-
-       Border-radius adapts via --ha-card-border-radius for theme parity. */
-    .blob-action-btn {
-      position: relative;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      min-height: 38px;
-      padding: 8px 14px;
-      border-radius: var(--ha-card-border-radius, 10px);
-      border: 1px solid var(--primary-color);
-      background: color-mix(in srgb, var(--primary-color) 18%, transparent);
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: background 140ms ease, color 140ms ease, border-color 140ms ease, transform 80ms ease;
-    }
-    .blob-action-btn:hover:not([data-state="busy"]):not([data-state="disabled"]) {
-      border-color: color-mix(in srgb, var(--primary-color) 80%, var(--primary-text-color));
-      background: color-mix(in srgb, var(--primary-color) 26%, transparent);
-    }
-    .blob-action-btn:active:not([data-state="busy"]):not([data-state="disabled"]) {
-      transform: translateY(1px);
-    }
-    .blob-action-btn:focus-visible {
-      outline: 2px solid color-mix(in srgb, var(--primary-color) 60%, transparent);
-      outline-offset: 2px;
-    }
-    .blob-action-btn[data-state="busy"] {
-      cursor: progress;
-      border-color: color-mix(in srgb, var(--primary-color) 70%, var(--divider-color));
-      background: color-mix(in srgb, var(--primary-color) 12%, transparent);
-    }
-    .blob-action-btn[data-state="success"] {
-      border-color: #2e7d32;
-      background: color-mix(in srgb, #2e7d32 18%, transparent);
-      color: #2e7d32;
-    }
-    .blob-action-btn[data-state="error"] {
-      border-color: var(--error-color, #db4437);
-      background: color-mix(in srgb, var(--error-color, #db4437) 18%, transparent);
-      color: var(--error-color, #db4437);
-    }
-    .blob-action-btn[data-state="disabled"] {
-      cursor: default;
-      border-color: var(--divider-color);
-      background: transparent;
-      color: color-mix(in srgb, var(--primary-text-color) 45%, transparent);
-    }
-    .blob-action-btn ha-icon {
-      --mdc-icon-size: 16px;
-      display: inline-flex;
-    }
-    .blob-action-spinner {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      border: 2px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
-      border-top-color: var(--primary-color);
-      animation: blobActionSpin 720ms linear infinite;
-    }
-    @keyframes blobActionSpin {
-      to { transform: rotate(360deg); }
-    }
-    .blob-input-host {
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      width: 100%;
-      min-width: 0;
-    }
-    .blob-input-host ha-textfield,
-    .blob-input-host ha-input,
-    .blob-input-host ha-textarea,
-    .blob-input-host ha-selector {
-      display: block;
-      width: 100%;
-    }
-    /* ha-input ships with a built-in --ha-input-padding-bottom (default
-       var(--ha-space-2), ~8px) that pushes the field above its baseline.
-       ha-select has no equivalent, so the two controls otherwise sit at
-       different bottoms in the same row. Zero it out here so the row
-       bottom-aligns. */
-    .blob-input-host ha-input {
-      --ha-input-padding-bottom: 0px;
-      --ha-input-padding-top: 0px;
-    }
-    .blob-input-host ha-textarea {
-      --ha-textarea-resize: vertical;
-    }
-    .control-grid .blob-input-host {
-      /* Pin the actual input controls to the row's baseline so a select and a
-         textfield with different label heights still bottom-align. */
-      align-self: end;
-    }
-    .results-list {
-      display: grid;
-      gap: 12px;
-    }
-    .result-card {
-      border: 1px solid color-mix(in srgb, var(--primary-text-color) 10%, var(--divider-color));
-      border-radius: var(--ha-card-border-radius, 14px);
-      padding: 14px;
-      display: grid;
-      gap: 10px;
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 78%, transparent);
-    }
-    .result-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    .result-title {
-      font-size: 14px;
-      font-weight: 800;
-      color: var(--primary-text-color);
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .result-badges {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-    .result-badge {
-      border: 1px solid var(--divider-color);
-      border-radius: 999px;
-      padding: 3px 8px;
-      font-size: 11px;
-      font-weight: 700;
-      color: var(--secondary-text-color);
-      background: var(--ha-card-background, var(--card-background-color));
-    }
-    .result-block {
-      display: grid;
-      gap: 6px;
-    }
-    .result-block-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-    }
-    .result-label {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--secondary-text-color);
-    }
-    .result-pre {
-      margin: 0;
-      border: 1px solid var(--blob-console-border);
-      border-radius: var(--blob-console-radius);
-      background:
-        linear-gradient(180deg, color-mix(in srgb, var(--blob-console-bg-top) 96%, black), color-mix(in srgb, var(--blob-console-bg-bottom) 98%, black));
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.03),
-        inset 0 0 0 1px rgba(120, 150, 190, 0.04);
-      color: var(--blob-console-text);
-      font-family: "SF Mono", "Fira Code", Consolas, monospace;
-      font-size: 12px;
-      line-height: 1.55;
-      padding: 11px 13px;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      user-select: text;
-      -webkit-user-select: text;
-    }
-    .result-pre--scrollable {
-      height: calc((12px * 1.55 * 4) + 20px);
-      overflow: auto;
-    }
-    /* Console-styled blob input. Visual sibling of .result-pre so the user
-       sees the same dark monospace surface whether they're entering or viewing
-       a blob hex / descriptor string. */
-    .test-textarea {
-      display: block;
-      box-sizing: border-box;
-      width: 100%;
-      max-width: 100%;
-      min-height: 132px;
-      resize: vertical;
-      margin: 0;
-      border: 1px solid var(--blob-console-border);
-      border-radius: var(--blob-console-radius);
-      background:
-        linear-gradient(180deg, color-mix(in srgb, var(--blob-console-bg-top) 96%, black), color-mix(in srgb, var(--blob-console-bg-bottom) 98%, black));
-      box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.03),
-        inset 0 0 0 1px rgba(120, 150, 190, 0.04);
-      color: var(--blob-console-text);
-      caret-color: var(--blob-console-text);
-      font-family: "SF Mono", "Fira Code", Consolas, monospace;
-      font-size: 12px;
-      line-height: 1.55;
-      padding: 11px 13px;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-    }
-    .test-textarea::placeholder {
-      color: var(--blob-console-muted);
-    }
-    .test-textarea:focus {
-      outline: none;
-      border-color: color-mix(in srgb, var(--primary-color) 58%, var(--blob-console-border));
-      box-shadow:
-        0 0 0 1px color-mix(in srgb, var(--primary-color) 30%, transparent),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04),
-        inset 0 0 0 1px rgba(120, 150, 190, 0.05);
-    }
-    .test-textarea:disabled {
-      opacity: 0.55;
-      cursor: default;
-    }
-    .text-input {
-      box-sizing: border-box;
-      width: 100%;
-      border: 1px solid var(--divider-color);
-      border-radius: 14px;
-      background: var(--ha-card-background, var(--card-background-color));
-      color: var(--primary-text-color);
-      font: inherit;
-      font-size: 13px;
-      line-height: 1.4;
-      padding: 12px 14px;
-    }
-    .text-input:focus {
-      outline: none;
-      border-color: var(--primary-color);
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary-color) 35%, transparent);
-    }
-    .text-input:disabled {
-      opacity: 0.7;
-      cursor: default;
-      background: color-mix(in srgb, var(--secondary-background-color, var(--ha-card-background)) 80%, transparent);
-    }
-    @media (max-width: 760px) {
-      .chevron { display: none; }
-    }
-    @container blob-panel (max-width: 420px) {
-      .control-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-  `];
-if (!customElements.get("sofabaton-blobs-tab")) {
-  customElements.define("sofabaton-blobs-tab", SofabatonBlobsTab);
 }
 
 // custom_components/sofabaton_x1s/www/src/components/operation-progress.ts
@@ -6390,7 +4935,7 @@ var backupTabStyles = i`
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog.medium { width: min(640px, calc(100vw - 36px)); }
     /* Reminder banner inside the Edit Payload dialog nudging the user
-       toward Blobs → Test before overwriting a working command. */
+       toward Test before overwriting a working command. */
     .payload-test-note {
       display: flex;
       align-items: flex-start;
@@ -7159,7 +5704,7 @@ var DECODED_CLASS_FORM_SPECS = {
   },
   ir: {
     title: "Descriptive IR payload",
-    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR blobs are not editable here.",
+    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR payloads are not editable here.",
     fields: [
       {
         key: "descriptor",
@@ -10340,7 +8885,7 @@ var SofabatonEditDetailView = class extends i4 {
                   <div class="payload-test-note">
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
                     <span>
-                      ${this.mode === "live" ? b2`Verify a changed payload before saving: <strong>Test</strong> plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.` : b2`Verify a changed payload before trusting it: Blobs &rarr; Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
+                      ${this.mode === "live" ? b2`Verify a changed payload before saving: <strong>Test</strong> plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.` : b2`Verify a changed payload before trusting it: <strong>Test</strong> plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
                     </span>
                   </div>
                 ` : A}
@@ -10534,7 +9079,7 @@ var SofabatonEditDetailView = class extends i4 {
   /**
    * True for IR devices. Live payload *editing* is offered for all classes
    * (raw hex, or the structured form where a parser exists), but the Test
-   * button — Blobs `playIrBlob` — is IR-only, so it gates on this.
+   * button — `playIrBlob` — is IR-only, so it gates on this.
    */
   _liveDeviceIsIr() {
     if (this.entityId == null || !this.bundle) return false;
@@ -16426,10 +14971,6 @@ var DOC_LINKS = {
   backup: {
     href: TOOLS_CARD_STRINGS.docs.backupUrl,
     label: TOOLS_CARD_STRINGS.tabDocs.backup
-  },
-  blobs: {
-    href: TOOLS_CARD_STRINGS.docs.blobsUrl,
-    label: TOOLS_CARD_STRINGS.tabDocs.blobs
   }
 };
 function logOnce() {
@@ -16836,7 +15377,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       { icon: "mdi:database-outline", label: TOOLS_CARD_STRINGS.tabs.cache },
       { icon: "mdi:wifi", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
       { icon: "mdi:cloud-upload-outline", label: TOOLS_CARD_STRINGS.tabs.backup },
-      { icon: "mdi:file-code-outline", label: TOOLS_CARD_STRINGS.tabs.blobs },
       { icon: "mdi:cog-outline", label: TOOLS_CARD_STRINGS.tabs.settings },
       { icon: "mdi:text-box-outline", label: TOOLS_CARD_STRINGS.tabs.logs }
     ];
@@ -16919,26 +15459,6 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-wifi-commands-tab>
-      `;
-    } else if (this._snapshot.selectedTab === "blobs") {
-      const availability = resolveTabAvailability(this._snapshot, "blobs");
-      activeTab = b2`
-        <sofabaton-blobs-tab
-          .loading=${this._snapshot.loading}
-          .error=${this._snapshot.loadError}
-          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
-          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
-          .hub=${hub}
-          .cacheHub=${cacheHub}
-          .hass=${this._snapshot.hass}
-          .persistentCacheEnabled=${cacheEnabled}
-          .hubCommandBusy=${sharedHubCommandBusy}
-          .hubCommandBusyLabel=${sharedHubCommandLabel}
-          .selectedSection=${this._snapshot.selectedBlobsSection}
-          .setSelectedSection=${(section) => this._store.setSelectedBlobsSection(section)}
-          .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
-          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
-        ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {
       const availability = resolveTabAvailability(this._snapshot, "backup");

@@ -195,7 +195,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
     VIEW_STATE_STORAGE_KEY,
     JSON.stringify({
       selectedHubEntryId: "hub-2",
-      selectedTab: "blobs",
+      selectedTab: "backup",
     }),
   );
   const store = new ControlPanelStore(() => undefined, {
@@ -231,7 +231,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
   await store.loadState();
 
   assert.equal(store.snapshot.selectedHubEntryId, "hub-2");
-  assert.equal(store.snapshot.selectedTab, "blobs");
+  assert.equal(store.snapshot.selectedTab, "backup");
 });
 
 test("loadState falls back to the first available hub when the saved hub no longer exists", async () => {
@@ -296,10 +296,9 @@ test("selectHub and selectTab persist the updated view state", async () => {
       selectedTab: "wifi_commands",
       // Keys renamed from open* to selected* in the tools-card refactor; the
       // store now persists the active per-tab section under selectedCacheSection
-      // (cache panel), selectedBackupSection, selectedBlobsSection.
+      // (cache panel) and selectedBackupSection.
       selectedCacheSection: "activities",
       selectedBackupSection: "make",
-      selectedBlobsSection: "fetch",
     },
   );
 });

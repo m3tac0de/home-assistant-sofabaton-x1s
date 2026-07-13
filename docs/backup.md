@@ -14,8 +14,8 @@ To create a backup from the card, **persistent cache must be enabled**. The
 backup UI uses the cached hub catalog to show devices and activities and to
 build the bundle.
 
-Backup, restore, and blobs are also unavailable while the Sofabaton app is
-connected to the hub through the proxy.
+Backup, restore, and hub editing are also unavailable while the Sofabaton app
+is connected to the hub through the proxy.
 
 ## Which backup should you make?
 
@@ -63,7 +63,7 @@ provided. The UI also refuses to restore a backup onto an **older** hub model.
 For example, a backup created on an `X2` hub will not restore onto an `X1S`.
 
 Bundles also carry a `payload_profile` field: `full_backup` for real backups
-(command payloads included) and `structural` for the blob-free cache shape the
+(command payloads included) and `structural` for the payload-free cache shape the
 activity editor reads. Structural bundles cannot be restored or loaded into the
 backup editor — they carry no command payloads — and both the UI and the
 backend reject them. Files without the field are older full backups and keep
@@ -128,9 +128,9 @@ What you can do in the editor:
   reorder macros and favorites inside an activity. Drag handles are available
   where the browser supports them; move buttons are provided as a fallback.
 - **Edit the head IP address** of `wifi_hue`, `wifi_roku`, and `wifi_sonos`
-  devices. (For `wifi_ip` devices, the IP lives inside each command blob and
+  devices. (For `wifi_ip` devices, the IP lives inside each command payload and
   is edited per-command via the structured-payload form below.)
-- **Edit structured command payloads** ("Blobs" in the Control Panel card) for
+- **Edit structured command payloads** for
   command rows whose class has a decoder. The supported classes and fields are:
   - `wifi_ip`: `host`, `port`, `method`, `path`, extra `header` lines,
     `content_type`, `body`
@@ -138,14 +138,14 @@ What you can do in the editor:
   - `wifi_hue`: `path`, `body_block`
   - `wifi_sonos`: `path`, `body_block`
   - `ir`: `descriptor` (descriptive-protocol IR only — raw learned-IR
-    blobs are not editable)
+    payloads are not editable)
 
   When you save changes to a decoded payload, the editor marks that row as
   edited so restore re-encodes the payload from your fields instead of
   replaying the original `data_hex`.
 
 Rows that do not carry a supported `decoded` block remain raw-only. That
-includes Bluetooth, RF-style payloads, non-descriptive IR blobs, and any
+includes Bluetooth, RF-style payloads, non-descriptive IR payloads, and any
 other command row without a decoder.
 
 After editing, download the bundle from the card and restore it like any
@@ -158,7 +158,7 @@ the card editor does can also be done by hand. This is only needed when you
 want a workflow the card does not cover (scripted edits, bulk find/replace,
 etc.).
 
-Command payloads ("Blobs" in the Control Panel card) are stored in backups as raw
+Command payloads are stored in backups as raw
 `data_hex`. That raw payload is
 the authoritative restore source and is written back to the hub as-is during
 restore. For some command classes, the backup also includes a `decoded` block
@@ -223,5 +223,4 @@ failed edits should be visible, not partially ignored.
 ## Related docs
 
 - Service/API details: [actions.md](./actions.md)
-- Blob workflow overview: [blobs.md](./blobs.md)
 - Command payload reference: [command_payloads.md](./command_payloads.md)

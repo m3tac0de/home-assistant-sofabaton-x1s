@@ -271,57 +271,6 @@ export const cardStyles = [secondaryTabStyles, css`
   .hub-row-value, .setting-title, .entity-name, .cache-state-title { color: var(--primary-text-color); }
   .hub-row-label { font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--primary-text-color) 88%, var(--secondary-text-color)); }
   .hub-row-value { font-size: 12px; font-weight: 700; text-align: right; word-break: break-word; }
-  .remote-battery-panel {
-    display: grid;
-    grid-template-columns: 32px minmax(0, 1fr) minmax(72px, 118px) auto;
-    align-items: center;
-    gap: 10px;
-    min-height: 48px;
-    padding: 9px 12px;
-    border: 1px solid color-mix(in srgb, var(--primary-text-color) 14%, var(--divider-color));
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--card-background-color) 94%, var(--primary-color));
-  }
-  .remote-battery-icon {
-    width: 32px;
-    height: 32px;
-    display: grid;
-    place-items: center;
-    color: var(--primary-color);
-  }
-  .remote-battery-icon ha-icon { width: 22px; height: 22px; }
-  .remote-battery-copy { min-width: 0; display: grid; gap: 2px; }
-  .remote-battery-label {
-    font-size: 12px;
-    font-weight: 800;
-    color: var(--primary-text-color);
-  }
-  .remote-battery-status {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--secondary-text-color);
-    text-transform: capitalize;
-  }
-  .remote-battery-meter {
-    height: 8px;
-    border-radius: 999px;
-    overflow: hidden;
-    background: color-mix(in srgb, var(--secondary-text-color) 24%, transparent);
-  }
-  .remote-battery-meter > span {
-    display: block;
-    height: 100%;
-    min-width: 0;
-    border-radius: inherit;
-    background: color-mix(in srgb, var(--success-color, #43a047) 84%, var(--primary-color));
-  }
-  .remote-battery-value {
-    min-width: 38px;
-    font-size: 13px;
-    font-weight: 800;
-    text-align: right;
-    color: var(--primary-text-color);
-  }
   .hub-tab-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .hub-tab-layout > .tab-panel { flex: 1; }
   .panel-sticky-footer { flex-shrink: 0; border-top: 1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); }

@@ -1,10 +1,110 @@
 # Sofabaton Command Payloads
 
-This page explains the command payload data (shown as "Blobs" in the Control Panel
-card) you may see in fetched blobs and backup files.
+This page explains **command payloads**: the actual data the hub stores for
+each command, how to view, test, and save them, and the payload data you may
+see in backup files.
+
+> Terminology: command payloads used to be called **"Blobs"** in this
+> integration. The old name survives in the HA action names
+> (`fetch_blob`, `play_ir_blob`, `persist_ir_blob`) and their `blob`
+> request/response fields, but the documentation now says "command payload".
 
 It is written for users of the integration. It does not describe the internal
 decoder implementation.
+
+## What is a command payload?
+
+At the Sofabaton UI level, you normally think in terms of devices and commands:
+`Power`, `Volume Up`, `HDMI 1`, and so on.
+
+Under the hood, the hub stores a payload for each command. Think of it like
+this:
+
+- **Command name**: what you see in the UI
+- **Command id**: the hub's index for that command
+- **Command payload**: the real command data behind it
+
+That idea is not limited to IR. The hub stores command payloads for all device
+types (IR, RF, BT, Wifi etc). In this integration payloads for all device
+types can be viewed, but **only IR payloads should be Tested or Saved**.
+
+## Working with payloads in the Hub tab
+
+Open the **Hub** tab in the Control Panel card, select a device, and click
+**Edit device**. From the device editor you can:
+
+1. **View a command's stored payload** — open a command's payload editor to
+   fetch the payload from the hub on demand. Descriptive-protocol payloads are
+   shown decoded; raw payloads are shown as hex.
+2. **Test a payload** — for IR devices, the **Test** button plays the current
+   bytes on the hub once, without saving anything.
+3. **Save a payload** — save the edited payload; the change is written to the
+   hub through the device's next Sync.
+
+This makes payloads useful for both learning and real-world command creation.
+
+Examples:
+
+- You can fetch a known-good IR command from your own hub and keep it as a
+  backup.
+- You can share an IR command payload with another user.
+- You can take IR data from online databases, use IrScrutinizer to turn it
+  into a usable payload, then test and save it to the hub.
+
+## Important rule: IR only for Test and Save
+
+This is the most important rule on this page:
+
+**Only test and save payloads that belong to IR devices.**
+
+- It is fine to **view** payloads to learn how the hub stores commands.
+- Only **Test** and **Save** payloads on **IR devices**.
+- Do not treat Wifi, Bluetooth, Roku, Hue, IP, or MQTT payloads as if they
+  were interchangeable with IR commands.
+
+The integration in its current form cannot reliably block you from Testing or
+Saving a non-IR payload, so this is all you.
+
+## Two IR payload formats
+
+There are 2 main ways that a Sofabaton hub stores IR command payloads:
+
+- The **raw IR format** describes the signal by its actual transmitted timings: carrier frequency plus the sequence of mark/space durations. It is a low-level recording of what the hub should send. The **raw IR format** is supported on **all hubs**.
+- The **descriptive format** describes the same signal by its decoded protocol and parameter values, like `P:Sony12 R:40000 D:1 F:18 MUL:2`. It is a higher-level, human-readable representation of what the signal means. The **descriptive format** is supported on the **X2 hub only**.
+
+Users can build entirely new IR payloads from published IR protocol data
+instead of only reusing commands already stored on the hub.
+
+In practice, this means the Control Panel card can work with:
+
+- payloads fetched from an existing hub command
+- payloads shared by other users
+- payloads derived from online IR databases with [IrScrutinizer](../IrScrutinizer/README.md)
+
+## Sharing payloads with other users
+
+One of the most useful things about IR command payloads is that they are easy
+to share.
+
+When sharing a payload, it helps to include:
+
+- device brand and model
+- what the command does
+- whether it came from a learned command, an online database, or a generated
+  IrScrutinizer export
+
+## Using online IR databases and IrScrutinizer
+
+Payload editing is also useful when the command is not already on your hub.
+
+A possible workflow is:
+
+1. Find IR protocol data in an online database
+2. Use [IrScrutinizer](../IrScrutinizer/README.md) to turn that data into a payload-friendly IR representation
+3. Paste it into the payload editor and **Test** it
+4. If it works, **Save** it
+
+[More information is here](../IrScrutinizer/README.md)
 
 ## Raw and decoded forms
 
@@ -19,7 +119,7 @@ more readable representation for supported command classes.
 
 ## Where you will see this
 
-- In the **Blobs** tab when you fetch a command from the hub
+- In the **Hub** tab's device editor when you open a command's payload
 - In backup JSON files under a command row's `restore_data`
 
 Not every command has a readable decoded form. Many command types remain
@@ -36,7 +136,7 @@ The integration can expose decoded payloads for these classes:
 - `ir` for the descriptive IR variant only
 
 Other command classes, including Bluetooth, RF-style payloads, and
-non-descriptive IR blobs, should be treated as raw `data_hex` only.
+non-descriptive IR payloads, should be treated as raw `data_hex` only.
 
 ## The `decoded` block shape
 
@@ -135,8 +235,15 @@ If a row has no decoded block, treat it as raw-only.
   is editable.
 - `trailer_hex` is not intended as a user-facing setting.
 - Raw-only payloads should not be hand-converted into made-up decoded blocks.
+- Hub editing is unavailable while the Sofabaton app is connected to the hub
+  through the proxy.
+- The device editor relies on the Control Panel card cache, so enable
+  persistent cache and keep the cached device/command data current.
+- Not every valid payload will be human-readable.
+- A command id is not the payload itself; it is just the reference to that
+  stored payload.
+- Test first, then save.
 
 ## Related docs
 
 - Backup and restore: [backup.md](./backup.md)
-- Blob workflow: [blobs.md](./blobs.md)

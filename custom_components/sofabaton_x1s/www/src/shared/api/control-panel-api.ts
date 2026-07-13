@@ -7,7 +7,6 @@ import type {
   CacheContentsResponse,
   ControlPanelStateResponse,
   BlobFetchResponse,
-  BlobPersistResponse,
   BlobPlayResponse,
   HassLike,
   HubAction,
@@ -61,16 +60,6 @@ export class ControlPanelApi {
     return this.hass.callWS<BlobPlayResponse>({
       type: "sofabaton_x1s/blobs/play",
       entry_id: entryId,
-      blob,
-    });
-  }
-
-  persistIrBlob(entryId: string, deviceId: number, commandName: string, blob: string) {
-    return this.hass.callWS<BlobPersistResponse>({
-      type: "sofabaton_x1s/blobs/persist",
-      entry_id: entryId,
-      device_id: deviceId,
-      command_name: commandName,
       blob,
     });
   }

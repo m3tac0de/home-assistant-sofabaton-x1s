@@ -154,7 +154,7 @@ export const DECODED_CLASS_FORM_SPECS: Record<DecodableCommandClass, DecodedForm
   },
   ir: {
     title: "Descriptive IR payload",
-    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:… D:… F:…) are decodable; raw learned-IR blobs are not editable here.",
+    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:… D:… F:…) are decodable; raw learned-IR payloads are not editable here.",
     fields: [
       {
         key: "descriptor",

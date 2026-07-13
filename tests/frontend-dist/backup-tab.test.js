@@ -1485,15 +1485,6 @@ var ControlPanelApi = class {
       blob
     });
   }
-  persistIrBlob(entryId, deviceId, commandName, blob) {
-    return this.hass.callWS({
-      type: "sofabaton_x1s/blobs/persist",
-      entry_id: entryId,
-      device_id: deviceId,
-      command_name: commandName,
-      blob
-    });
-  }
   startBackupExport(entryId, deviceIds) {
     return this.hass.callWS({
       type: "sofabaton_x1s/backup/export",
@@ -1709,22 +1700,19 @@ function hubIcon(kind, classes = "") {
 var TOOLS_CARD_STRINGS = {
   docs: {
     wifiCommandsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
-    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md",
-    blobsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/blobs.md"
+    backupUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/backup.md"
   },
   tabs: {
     cache: "Hub",
     wifiCommands: "Wifi Commands",
     wifiShort: "Wifi",
     backup: "Backup",
-    blobs: "Blobs",
     settings: "Settings",
     logs: "Logs"
   },
   tabDocs: {
     wifi_commands: "Wifi Commands documentation",
-    backup: "Backup documentation",
-    blobs: "Blobs documentation"
+    backup: "Backup documentation"
   },
   backend: {
     unavailableTitle: "Backend not available",
@@ -1765,7 +1753,7 @@ var TOOLS_CARD_STRINGS = {
     loading: "Loading...",
     noHubsFound: "No hubs found.",
     persistentCacheOffTitle: "Persistent cache is off",
-    persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup and Blobs workflows that depend on it.",
+    persistentCacheOffCopy: "Turn it on to browse cached activities and devices, and to unlock Backup workflows that depend on it.",
     enablingPersistentCache: "Enabling...",
     enablePersistentCache: "Enable persistent cache",
     devIdBadge: "DevID",
@@ -1809,37 +1797,6 @@ var TOOLS_CARD_STRINGS = {
     working: "Working...",
     backupTitle: "Creating backup",
     restoreTitle: "Restoring backup"
-  },
-  blobs: {
-    loading: "Loading...",
-    noHubsFound: "No hubs found.",
-    sections: {
-      fetch: "Fetch",
-      test: "Test",
-      save: "Save"
-    },
-    fetchCacheDisabled: "Enable persistent cache in the Hub tab before using Fetch.",
-    selectOne: "Select one",
-    device: "Device",
-    command: "Command",
-    fetchNoCommands: "This device has no cached commands yet. Refresh that device from the Hub tab first.",
-    fetchNoRecords: "The hub returned no blob records for this request.",
-    commandFallback: (commandId) => `Command ${commandId}`,
-    unknown: "unknown",
-    cmdBadge: (commandId) => `Cmd ${commandId}`,
-    blobViewMode: "Blob view mode",
-    descriptor: "Descriptor",
-    hex: "Hex",
-    rawBlob: "Raw Blob",
-    copied: "Copied",
-    copy: "Copy",
-    test: "Test",
-    testing: "Testing...",
-    noIrDevices: "No IR devices found in the cache. Refresh devices from the Hub tab first.",
-    irDevice: "IR device",
-    save: "Save",
-    saving: "Saving...",
-    commandName: "Command name"
   },
   activities: {
     loading: "Loading activities...",
@@ -3377,7 +3334,7 @@ var backupTabStyles = i`
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog.medium { width: min(640px, calc(100vw - 36px)); }
     /* Reminder banner inside the Edit Payload dialog nudging the user
-       toward Blobs → Test before overwriting a working command. */
+       toward Test before overwriting a working command. */
     .payload-test-note {
       display: flex;
       align-items: flex-start;
@@ -4146,7 +4103,7 @@ var DECODED_CLASS_FORM_SPECS = {
   },
   ir: {
     title: "Descriptive IR payload",
-    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR blobs are not editable here.",
+    subtitle: "Edits replay through the hub's descriptive-IR writer. Only descriptive-protocol payloads (P:\u2026 D:\u2026 F:\u2026) are decodable; raw learned-IR payloads are not editable here.",
     fields: [
       {
         key: "descriptor",
@@ -7482,7 +7439,7 @@ var SofabatonEditDetailView = class extends i3 {
                   <div class="payload-test-note">
                     <ha-icon icon="mdi:flash-outline"></ha-icon>
                     <span>
-                      ${this.mode === "live" ? T`Verify a changed payload before saving: <strong>Test</strong> plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.` : T`Verify a changed payload before trusting it: Blobs &rarr; Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
+                      ${this.mode === "live" ? T`Verify a changed payload before saving: <strong>Test</strong> plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.` : T`Verify a changed payload before trusting it: <strong>Test</strong> plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
                     </span>
                   </div>
                 ` : A}
@@ -7676,7 +7633,7 @@ var SofabatonEditDetailView = class extends i3 {
   /**
    * True for IR devices. Live payload *editing* is offered for all classes
    * (raw hex, or the structured form where a parser exists), but the Test
-   * button — Blobs `playIrBlob` — is IR-only, so it gates on this.
+   * button — `playIrBlob` — is IR-only, so it gates on this.
    */
   _liveDeviceIsIr() {
     if (this.entityId == null || !this.bundle) return false;

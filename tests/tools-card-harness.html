@@ -488,7 +488,7 @@
     });
 
     // ── ha-textarea ──────────────────────────────────────────────────────────────
-    // Used by the blobs tab for the Test / Save blob bodies.
+    // Used by payload-editing dialogs for blob text bodies.
     customElements.define("ha-textarea", class extends HTMLElement {
       _value     = "";
       _label     = "";
@@ -1329,7 +1329,7 @@
     // ── postLoad helpers ──────────────────────────────────────────────────────────
 
     // Settings + Logs moved into a tools-menu dropdown in the c49f180 refactor;
-    // the main tab bar only carries Cache / Wifi Commands / Backup / Blobs now.
+    // the main tab bar only carries Cache / Wifi Commands / Backup now.
     // To click one of the menu items, we have to open the dropdown first.
     async function clickTab(card, label) {
       const top = [...card.shadowRoot.querySelectorAll(".tab-btn")]
@@ -2061,167 +2061,6 @@
         postLoad: card => clickTab(card, "Wifi Commands"),
       },
 
-      // ── E: Blobs ─────────────────────────────────────────────────────────────────
-
-      {
-        id: 30, group: "Blobs",
-        label: "30. Empty (no command picked)",
-        states: STATES_CONNECTED,
-        postLoad: card => clickTab(card, "Blobs"),
-      },
-      {
-        id: 31, group: "Blobs",
-        label: "31. Cache disabled",
-        states: STATES_CONNECTED,
-        state: { ...BASE_STATE, persistent_cache_enabled: false },
-        contents: { ...BASE_CONTENTS, enabled: false },
-        postLoad: card => clickTab(card, "Blobs"),
-      },
-      {
-        id: 32, group: "Blobs",
-        label: "32. Fetch result",
-        states: STATES_CONNECTED,
-        handlers: {
-          "sofabaton_x1s/blobs/fetch": (msg) => ({
-            device_id: Number(msg.device_id ?? 1),
-            requested_command_id: Number(msg.command_id ?? 10),
-            total_commands: 1,
-            received_command_count: 1,
-            complete: true,
-            commands: [{
-              command_label: "Power Toggle",
-              device_id: Number(msg.device_id ?? 1),
-              command_id: Number(msg.command_id ?? 10),
-              device_class: "IR",
-              blob_kind: "ir",
-              command_blob: "AAEC003F00FE00FE00FE0042EE",
-              parsed_blob: "P:Sony12 R:40000 D:1 F:18 MUL:2",
-              replay_tail_checksum: 0x1234,
-              command_checksum: 0xABCD,
-            }],
-          }),
-        },
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          await tab.updateComplete;
-          tab._selectedDeviceId = 1;
-          tab._selectedCommandId = 10;
-          tab.requestUpdate();
-          await tab.updateComplete;
-          await tab._runFetch();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 33, group: "Blobs",
-        label: "33. Test section open",
-        states: STATES_CONNECTED,
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "test";
-          tab._testBlobInput = "P:Sony12 R:40000 D:1 F:18 MUL:2";
-          tab.requestUpdate();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 34, group: "Blobs",
-        label: "34. Save section open",
-        states: STATES_CONNECTED,
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "save";
-          tab._saveDeviceIdInput = "1";
-          tab._saveCommandName = "Custom Power";
-          tab._saveBlobInput = "P:Sony12 R:40000 D:1 F:18 MUL:2";
-          tab.requestUpdate();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 35, group: "Blobs",
-        label: "35. Test error state",
-        states: STATES_CONNECTED,
-        handlers: {
-          "sofabaton_x1s/blobs/play": () => Promise.reject(new Error("invalid blob: bad protocol descriptor")),
-        },
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "test";
-          tab._testBlobInput = "garbage";
-          tab.requestUpdate();
-          await tab.updateComplete;
-          await tab._runTest();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 36, group: "Blobs",
-        label: "36. Save success flash",
-        states: STATES_CONNECTED,
-        handlers: {
-          "sofabaton_x1s/blobs/persist": (msg) => ({
-            status: "ok",
-            device_id: Number(msg.device_id ?? 1),
-            command_id: 99,
-            command_name: String(msg.command_name ?? "Custom"),
-            page_count: 1,
-          }),
-        },
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "save";
-          tab._saveDeviceIdInput = "1";
-          tab._saveCommandName = "Custom Power";
-          tab._saveBlobInput = "P:Sony12 R:40000 D:1 F:18 MUL:2";
-          tab.requestUpdate();
-          await tab.updateComplete;
-          await tab._runSave();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 38, group: "Blobs",
-        label: "38. X2 hub (descriptor hints)",
-        states: {
-          "remote.living_room": {
-            state: "on",
-            attributes: { ...STATES_CONNECTED["remote.living_room"].attributes, hub_version: "X2" },
-          },
-        },
-        state: { ...BASE_STATE, hubs: [{ ...HUB_1, version: "X2" }] },
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "test";
-          tab.requestUpdate();
-          await tab.updateComplete;
-        },
-      },
-      {
-        id: 37, group: "Blobs",
-        label: "37. Proxy connected (Test/Save blocked)",
-        states: STATES_PROXY,
-        postLoad: async (card) => {
-          await clickTab(card, "Blobs");
-          const tab = card.shadowRoot.querySelector("sofabaton-blobs-tab");
-          if (!tab) return;
-          tab._openSection = "test";
-          tab.requestUpdate();
-          await tab.updateComplete;
-        },
-      },
     ];
 
     // ── Build sidebar ─────────────────────────────────────────────────────────────

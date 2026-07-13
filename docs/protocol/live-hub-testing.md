@@ -13,11 +13,11 @@ the hub sees only the frame under test.
 import time
 
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
-from custom_components.sofabaton_x1s.const import HUB_VERSION_X2
+from custom_components.sofabaton_x1s.const import HUB_VERSION_X1S
 
 proxy = X1Proxy(
     "192.168.x.y",
-    hub_version=HUB_VERSION_X2,
+    hub_version=HUB_VERSION_X1S,
     proxy_enabled=False,
     diag_dump=True,
     diag_parse=True,
@@ -26,7 +26,7 @@ proxy = X1Proxy(
 proxy.start()
 try:
     time.sleep(2.0)
-    print(proxy.poll_x2_remote_battery(timeout=2.0))
+    print(proxy.get_devices(force_refresh=True))
 finally:
     proxy.stop()
 ```
@@ -76,15 +76,17 @@ proxy's own decode (opcode name + family). Detach the app before any
 proxy-issued read/write — `can_issue_commands()` is false while the app
 owns the session.
 
-## X2 Remote Battery
+## X2 Remote Status Row (battery)
 
 X2 hubs expose a remote status row through `OP_REQ_REMOTE_STATUS` with payload
-`00`. The current implementation polls that row only when the command scheduler
-is idle, then caches `decoded.battery` as the remote battery percentage.
+`00`; byte 9 of the reply is a battery percentage. A remote-battery sensor
+built on this was removed in 2026-07 because the hub does not reliably provide
+the data. The opcode constants and the `REMOTE_STATUS` reply decode remain in
+`protocol_const.py` / `opcode_handlers.py` as protocol knowledge.
 
-X1 and X1S hubs do not currently expose a confirmed live remote battery value
-through the same request path. Do not surface a battery sensor for those models
-unless a separate live network behavior is verified.
+X1 and X1S hubs do not expose a confirmed live remote battery value through
+the same request path. Do not surface a battery sensor for any model unless a
+separate live network behavior is verified.
 
 ## Logging Checklist
 

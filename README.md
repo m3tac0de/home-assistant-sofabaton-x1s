@@ -14,7 +14,7 @@ Bi-directional control of your Sofabaton **X1**, **X1S** and **X2** hub, from Ho
 - 🤖 **Send key presses to the hub**: `remote.send_command`, Sofabaton Virtual Remote, Sofabaton Control Panel, “recorded keypress”
 - ⚡ **Receive key presses from the hub**: "Wifi Commands" via the Control Panel card, see [`docs/wifi_commands.md`](docs/wifi_commands.md)
 - 🔄 **Fully local backup and restore**: "Backup" via the Control Panel card, see [`docs/backup.md`](docs/backup.md)
-- 💾 **Store, share and generate IR codes**: "Blobs" via the Control Panel card, see [`docs/blobs.md`](docs/blobs.md)
+- 💾 **Store, share and generate IR codes**: command payloads via the Hub tab's device editor, see [`docs/command_payloads.md`](docs/command_payloads.md)
 - 🌐 **Networking / VLANs / ports / iOS quirks**: see [`docs/networking.md`](docs/networking.md)
 - 🪵 **Useful logs & diagnostics**: see [`docs/logging.md`](docs/logging.md)
 
@@ -82,7 +82,7 @@ For full networking details, see → [`docs/networking.md`](docs/networking.md)
 - ⚙️ **Send key presses**: entity (`remote.<hub>_remote`) per hub for scripts/automations. Use the dashboard cards to retrieve the codes you need
 - 💎 **Receive key presses**: “Wifi Commands” configured via the Control Panel card, trigger Actions directly from key presses on the physical remote
 - 🔄 **Fully local backup and restore**: Backup and restore via the Control Panel card, restore a whole hub or add individual devices from a backup
-- 💾 **Capture the hub’s real IR command payloads for sharing, testing, and creating new commands**: “Blobs” retrieved, tested and saved via the Control Panel card
+- 💾 **Capture the hub’s real IR command payloads for sharing, testing, and creating new commands**: retrieved, tested and saved via the Hub tab’s device editor
 - 🔔 **Find Remote** diagnostic button (buzzer)
 - 🛰 **Manage the network**: decide which listeners to run and on which ports, enable/disable proxy functionality. Use detailed documentation to solve VLAN related issues.
 - 🪵 **Live Hub Logs** tab in the Control Panel card for real-time diagnostics
@@ -187,7 +187,7 @@ The Control Panel card is the central management UI for the integration. Its mai
 
 - **Wifi Commands** — Configure and deploy Wifi Devices and their commands (see below). Up to 5 Wifi Devices per hub.
 - **Backup** — Create fully local backups, restore onto the same or a newer hub version family (`X1` → `X1S`/`X2`, `X1S` → `X2`), restore a whole hub or just add individual devices from a backup. See [`docs/backup.md`](docs/backup.md)
-- **Blobs** — Generate, test, save, and share IR command blobs for your hub. See [`docs/blobs.md`](docs/blobs.md).
+- **Command payloads** — Generate, test, save, and share IR command payloads from the Hub tab's device editor. See [`docs/command_payloads.md`](docs/command_payloads.md).
 - **Persistent Cache** — Enable **persistent cache** in the **Settings** tab so data retrieved from the hub survives a restart. With persistent cache enabled, traffic between hub and integration becomes minimal, making the integration faster and more reliable.
 - **Navigate and update Cache** — With persistent cache enabled the Cache tab is available. Navigate your Activities and Devices for their IDs and update the cache whenever required.
 - **Logs** — live streaming of hub log output for real-time diagnostics.

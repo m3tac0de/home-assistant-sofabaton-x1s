@@ -48,15 +48,6 @@ var ControlPanelApi = class {
       blob
     });
   }
-  persistIrBlob(entryId, deviceId, commandName, blob) {
-    return this.hass.callWS({
-      type: "sofabaton_x1s/blobs/persist",
-      entry_id: entryId,
-      device_id: deviceId,
-      command_name: commandName,
-      blob
-    });
-  }
   startBackupExport(entryId, deviceIds) {
     return this.hass.callWS({
       type: "sofabaton_x1s/backup/export",
@@ -1489,11 +1480,10 @@ function connectionFingerprint(hass) {
 var BACKEND_RETRY_MIN_MS = 2e3;
 var BACKEND_RETRY_MAX_MS = 1e4;
 var VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+var VALID_TABS = /* @__PURE__ */ new Set(["settings", "wifi_commands", "backup", "cache", "logs"]);
 var REFRESH_ALL_KEY = "__refresh_all__";
 var VALID_CACHE_SECTIONS = /* @__PURE__ */ new Set(["activities", "devices"]);
 var VALID_BACKUP_SECTIONS = /* @__PURE__ */ new Set(["make", "edit", "restore"]);
-var VALID_BLOBS_SECTIONS = /* @__PURE__ */ new Set(["fetch", "test", "save"]);
 function viewStateStorage() {
   try {
     if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
@@ -1510,13 +1500,11 @@ function readPersistedViewState() {
     const selectedTab = VALID_TABS.has(parsed?.selectedTab) ? parsed.selectedTab : void 0;
     const selectedCacheSection = VALID_CACHE_SECTIONS.has(parsed?.selectedCacheSection) ? parsed.selectedCacheSection : VALID_CACHE_SECTIONS.has(parsed?.openSection) ? parsed.openSection : "activities";
     const selectedBackupSection = VALID_BACKUP_SECTIONS.has(parsed?.selectedBackupSection) ? parsed.selectedBackupSection : VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection) ? parsed.openBackupSection : "make";
-    const selectedBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.selectedBlobsSection) ? parsed.selectedBlobsSection : VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection) ? parsed.openBlobsSection : "fetch";
     return {
       selectedHubEntryId,
       ...selectedTab ? { selectedTab } : {},
       selectedCacheSection,
-      selectedBackupSection,
-      selectedBlobsSection
+      selectedBackupSection
     };
   } catch (_error) {
     return {};
@@ -1544,7 +1532,6 @@ var INITIAL_SNAPSHOT = {
   selectedTab: "cache",
   selectedCacheSection: "activities",
   selectedBackupSection: "make",
-  selectedBlobsSection: "fetch",
   openEntity: null,
   staleData: false,
   refreshBusy: false,
@@ -1799,12 +1786,6 @@ var ControlPanelStore = class {
   setSelectedBackupSection(sectionId) {
     if (this._snapshot.selectedBackupSection === sectionId) return;
     this._snapshot = { ...this._snapshot, selectedBackupSection: sectionId };
-    this.persistViewState();
-    this.emit();
-  }
-  setSelectedBlobsSection(sectionId) {
-    if (this._snapshot.selectedBlobsSection === sectionId) return;
-    this._snapshot = { ...this._snapshot, selectedBlobsSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -2253,8 +2234,7 @@ var ControlPanelStore = class {
           selectedHubEntryId: this._snapshot.selectedHubEntryId,
           selectedTab: this._snapshot.selectedTab,
           selectedCacheSection: this._snapshot.selectedCacheSection,
-          selectedBackupSection: this._snapshot.selectedBackupSection,
-          selectedBlobsSection: this._snapshot.selectedBlobsSection
+          selectedBackupSection: this._snapshot.selectedBackupSection
         })
       );
     } catch (_error) {
@@ -2548,7 +2528,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
     VIEW_STATE_STORAGE_KEY2,
     JSON.stringify({
       selectedHubEntryId: "hub-2",
-      selectedTab: "blobs"
+      selectedTab: "backup"
     })
   );
   const store = new ControlPanelStore(() => void 0, {
@@ -2582,7 +2562,7 @@ test("loadState restores the most recent hub and tab from local storage", async 
   );
   await store.loadState();
   assert.equal(store.snapshot.selectedHubEntryId, "hub-2");
-  assert.equal(store.snapshot.selectedTab, "blobs");
+  assert.equal(store.snapshot.selectedTab, "backup");
 });
 test("loadState falls back to the first available hub when the saved hub no longer exists", async () => {
   globalThis.localStorage?.setItem(
@@ -2641,10 +2621,9 @@ test("selectHub and selectTab persist the updated view state", async () => {
       selectedTab: "wifi_commands",
       // Keys renamed from open* to selected* in the tools-card refactor; the
       // store now persists the active per-tab section under selectedCacheSection
-      // (cache panel), selectedBackupSection, selectedBlobsSection.
+      // (cache panel) and selectedBackupSection.
       selectedCacheSection: "activities",
-      selectedBackupSection: "make",
-      selectedBlobsSection: "fetch"
+      selectedBackupSection: "make"
     }
   );
 });

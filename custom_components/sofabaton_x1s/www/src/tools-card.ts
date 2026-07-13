@@ -1,7 +1,7 @@
 import { LitElement, css, html, nothing } from "lit";
 import { keyed } from "lit/directives/keyed.js";
 import { cardStyles } from "./shared/styles/card-styles";
-import type { BackupSectionId, BlobsSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
+import type { BackupSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
 import { ControlPanelStore, REFRESH_ALL_KEY } from "./state/control-panel-store";
 import {
   hubConnected,
@@ -20,7 +20,6 @@ import { renderSettingsTab } from "./tabs/settings-tab";
 import { renderCacheTab } from "./tabs/cache-tab";
 import { renderLogsTab } from "./tabs/logs-tab";
 import { TOOLS_CARD_STRINGS } from "./strings";
-import "./tabs/blobs-tab";
 import "./tabs/backup-tab";
 import "./tabs/wifi-commands-tab";
 import "./tabs/activities-tab";
@@ -50,10 +49,6 @@ const DOC_LINKS: Partial<Record<TabId, { href: string; label: string }>> = {
   backup: {
     href: TOOLS_CARD_STRINGS.docs.backupUrl,
     label: TOOLS_CARD_STRINGS.tabDocs.backup,
-  },
-  blobs: {
-    href: TOOLS_CARD_STRINGS.docs.blobsUrl,
-    label: TOOLS_CARD_STRINGS.tabDocs.blobs,
   },
 };
 
@@ -544,7 +539,6 @@ class SofabatonControlPanelCard extends LitElement {
       { icon: "mdi:database-outline", label: TOOLS_CARD_STRINGS.tabs.cache },
       { icon: "mdi:wifi", label: TOOLS_CARD_STRINGS.tabs.wifiCommands },
       { icon: "mdi:cloud-upload-outline", label: TOOLS_CARD_STRINGS.tabs.backup },
-      { icon: "mdi:file-code-outline", label: TOOLS_CARD_STRINGS.tabs.blobs },
       { icon: "mdi:cog-outline", label: TOOLS_CARD_STRINGS.tabs.settings },
       { icon: "mdi:text-box-outline", label: TOOLS_CARD_STRINGS.tabs.logs },
     ];
@@ -635,26 +629,6 @@ class SofabatonControlPanelCard extends LitElement {
           .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
           .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-wifi-commands-tab>
-      `;
-    } else if (this._snapshot.selectedTab === "blobs") {
-      const availability = resolveTabAvailability(this._snapshot, "blobs");
-      activeTab = html`
-        <sofabaton-blobs-tab
-          .loading=${this._snapshot.loading}
-          .error=${this._snapshot.loadError}
-          .blockedTitle=${availability.kind === "blocked" ? availability.title : null}
-          .blockedMessage=${availability.kind === "blocked" ? availability.message : null}
-          .hub=${hub}
-          .cacheHub=${cacheHub}
-          .hass=${this._snapshot.hass}
-          .persistentCacheEnabled=${cacheEnabled}
-          .hubCommandBusy=${sharedHubCommandBusy}
-          .hubCommandBusyLabel=${sharedHubCommandLabel}
-          .selectedSection=${this._snapshot.selectedBlobsSection}
-          .setSelectedSection=${(section: BlobsSectionId) => this._store.setSelectedBlobsSection(section)}
-          .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
-          .refreshControlPanelState=${() => this._store.loadControlPanelState()}
-        ></sofabaton-blobs-tab>
       `;
     } else if (this._snapshot.selectedTab === "backup") {
       const availability = resolveTabAvailability(this._snapshot, "backup");

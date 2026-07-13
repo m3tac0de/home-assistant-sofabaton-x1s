@@ -28,7 +28,6 @@ from .const import (
     CONF_ROKU_SERVER_ENABLED,
     HUB_VERSION_X1,
     HUB_VERSION_X1S,
-    HUB_VERSION_X2,
     HVER_BY_HUB_VERSION,
     classify_hub_version,
     format_hub_entry_title,
@@ -43,7 +42,6 @@ from .const import (
     signal_hub,
     signal_macros,
     signal_command_sync,
-    signal_remote_battery,
 )
 from .diagnostics import async_disable_hex_logging_capture, async_enable_hex_logging_capture
 from .logging_utils import get_hub_logger
@@ -87,7 +85,6 @@ _LOGGER = logging.getLogger(__name__)
 _HARD_BUTTON_TO_CODE: dict[str, int] = {"up": ButtonName.UP, "down": ButtonName.DOWN, "left": ButtonName.LEFT, "right": ButtonName.RIGHT, "ok": ButtonName.OK, "back": ButtonName.BACK, "home": ButtonName.HOME, "menu": ButtonName.MENU, "volup": ButtonName.VOL_UP, "voldn": ButtonName.VOL_DOWN, "mute": ButtonName.MUTE, "chup": ButtonName.CH_UP, "chdn": ButtonName.CH_DOWN, "guide": ButtonName.GUIDE, "dvr": ButtonName.DVR, "play": ButtonName.PLAY, "exit": ButtonName.EXIT, "rew": ButtonName.REW, "pause": ButtonName.PAUSE, "fwd": ButtonName.FWD, "red": ButtonName.RED, "green": ButtonName.GREEN, "yellow": ButtonName.YELLOW, "blue": ButtonName.BLUE, "a": ButtonName.A, "b": ButtonName.B, "c": ButtonName.C}
 _WIFI_COMMAND_SLOT_COUNT = 10
 _WIFI_COMMAND_LONG_PRESS_OFFSET = 10
-REMOTE_BATTERY_POLL_INTERVAL_SECONDS = 15 * 60
 
 
 def _parse_managed_wifi_brand(brand: str) -> tuple[str | None, str | None]:
@@ -227,14 +224,6 @@ class SofabatonHub:
         self._button_waiters: dict[int, list] = {}
         self._command_sync_lock = asyncio.Lock()
         self._command_sync_progress: dict[str, dict[str, Any]] = {}
-        self.remote_battery_level: int | None = None
-        self._remote_battery_attrs: dict[str, Any] = {
-            "supported": self.version == HUB_VERSION_X2,
-            "poll_interval_seconds": REMOTE_BATTERY_POLL_INTERVAL_SECONDS,
-            "last_poll_status": "never_polled",
-        }
-        self._remote_battery_last_update: str | None = None
-        self._remote_battery_poll_lock = asyncio.Lock()
         self._log = get_hub_logger(_LOGGER, self.entry_id)
 
         self._log.debug(
@@ -1341,104 +1330,6 @@ class SofabatonHub:
             "complete": result.get("complete"),
             "commands": commands_out,
         }
-
-    @property
-    def supports_remote_battery(self) -> bool:
-        return self.version == HUB_VERSION_X2
-
-    def get_remote_battery_attributes(self) -> dict[str, Any]:
-        attrs = dict(self._remote_battery_attrs)
-        attrs["supported"] = self.supports_remote_battery
-        attrs["poll_interval_seconds"] = REMOTE_BATTERY_POLL_INTERVAL_SECONDS
-        attrs["last_updated"] = self._remote_battery_last_update
-        return attrs
-
-    def get_remote_battery_state(self) -> dict[str, Any]:
-        return {
-            "supported": self.supports_remote_battery,
-            "level": self.remote_battery_level,
-            "last_updated": self._remote_battery_last_update,
-            "attributes": self.get_remote_battery_attributes(),
-        }
-
-    async def async_poll_remote_battery(
-        self,
-        *,
-        wait_timeout: float = 2.0,
-    ) -> dict[str, Any]:
-        """Refresh the cached X2 remote battery value if the hub is idle."""
-
-        if not self.supports_remote_battery:
-            result = {
-                "ok": False,
-                "skipped": True,
-                "error": "unsupported_hub_version",
-                "message": "Remote battery polling is supported on X2 hubs only.",
-            }
-            self._record_remote_battery_poll(result)
-            return result
-
-        if self._remote_battery_poll_lock.locked():
-            result = {
-                "ok": False,
-                "skipped": True,
-                "error": "poll_in_progress",
-                "message": "A remote battery poll is already running.",
-            }
-            self._record_remote_battery_poll(result)
-            return result
-
-        async with self._remote_battery_poll_lock:
-            result = await self.hass.async_add_executor_job(
-                partial(self._proxy.poll_x2_remote_battery, timeout=wait_timeout)
-            )
-            self._record_remote_battery_poll(result)
-            return result
-
-    def _record_remote_battery_poll(self, result: dict[str, Any]) -> None:
-        now_iso = datetime.now(timezone.utc).isoformat()
-        raw_battery: Any = None
-        decoded = result.get("decoded")
-        if isinstance(decoded, dict):
-            raw_battery = decoded.get("battery")
-
-        poll_status = "success" if result.get("ok") else "skipped" if result.get("skipped") else "error"
-        if result.get("unconfirmed_zero"):
-            poll_status = "zero_ignored"
-
-        attrs: dict[str, Any] = {
-            "supported": self.supports_remote_battery,
-            "poll_interval_seconds": REMOTE_BATTERY_POLL_INTERVAL_SECONDS,
-            "last_poll_time": now_iso,
-            "last_poll_status": poll_status,
-            "last_poll_error": result.get("error"),
-            "last_poll_message": result.get("message"),
-            "last_raw_battery": raw_battery,
-        }
-
-        if result.get("ok") and isinstance(decoded, dict):
-            battery = decoded.get("battery")
-            if isinstance(battery, int) and 0 <= battery <= 100:
-                if not (battery == 0 and result.get("unconfirmed_zero")):
-                    self.remote_battery_level = battery
-                    self._remote_battery_last_update = now_iso
-            attrs.update(
-                {
-                    "remote_name": decoded.get("name"),
-                    "remote_id": decoded.get("remote_id"),
-                    "remote_id_hex": decoded.get("remote_id_hex"),
-                    "accessory_id": decoded.get("accessory_id"),
-                    "online": decoded.get("online"),
-                    "hardware_version": decoded.get("hardware_version"),
-                    "firmware_version": decoded.get("firmware_version"),
-                    "production_batch_hex": decoded.get("production_batch_hex"),
-                    "unconfirmed_zero": bool(result.get("unconfirmed_zero")),
-                    "confirmed_after_zero": bool(result.get("confirmed_after_zero")),
-                }
-            )
-
-        self._remote_battery_attrs = attrs
-        async_dispatcher_send(self.hass, signal_remote_battery(self.entry_id))
 
     async def async_backup_device(
         self,

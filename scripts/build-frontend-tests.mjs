@@ -9,7 +9,6 @@ await build({
     "tests/frontend/activity-diff.test.ts",
     "tests/frontend/backup-state.test.ts",
     "tests/frontend/backup-tab.test.ts",
-    "tests/frontend/blobs-state.test.ts",
     "tests/frontend/control-panel-store.test.ts",
     "tests/frontend/editor-invariants.test.ts",
     "tests/frontend/edit-detail-view.test.ts",

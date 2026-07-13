@@ -1020,7 +1020,7 @@ export const backupTabStyles = css`
     .dialog.small { width: min(500px, calc(100vw - 36px)); }
     .dialog.medium { width: min(640px, calc(100vw - 36px)); }
     /* Reminder banner inside the Edit Payload dialog nudging the user
-       toward Blobs → Test before overwriting a working command. */
+       toward Test before overwriting a working command. */
     .payload-test-note {
       display: flex;
       align-items: flex-start;

@@ -1271,7 +1271,7 @@ export class SofabatonEditDetailView extends LitElement {
                     <span>
                       ${this.mode === "live"
                         ? html`Verify a changed payload before saving: <strong>Test</strong> plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.`
-                        : html`Verify a changed payload before trusting it: Blobs &rarr; Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
+                        : html`Verify a changed payload before trusting it: <strong>Test</strong> plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
                     </span>
                   </div>
                 `
@@ -1559,7 +1559,7 @@ export class SofabatonEditDetailView extends LitElement {
   /**
    * True for IR devices. Live payload *editing* is offered for all classes
    * (raw hex, or the structured form where a parser exists), but the Test
-   * button — Blobs `playIrBlob` — is IR-only, so it gates on this.
+   * button — `playIrBlob` — is IR-only, so it gates on this.
    */
   private _liveDeviceIsIr(): boolean {
     if (this.entityId == null || !this.bundle) return false;

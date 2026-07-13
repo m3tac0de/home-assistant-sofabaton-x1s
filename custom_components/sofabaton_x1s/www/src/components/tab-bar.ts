@@ -12,7 +12,6 @@ export function renderTabBar(params: {
     { id: "cache", label: TOOLS_CARD_STRINGS.tabs.cache, disabled: false },
     { id: "wifi_commands", label: TOOLS_CARD_STRINGS.tabs.wifiCommands, shortLabel: TOOLS_CARD_STRINGS.tabs.wifiShort, disabled: false },
     { id: "backup", label: TOOLS_CARD_STRINGS.tabs.backup, disabled: false },
-    { id: "blobs", label: TOOLS_CARD_STRINGS.tabs.blobs, disabled: false },
   ];
   const toolsMenuActive = params.selectedTab === "settings" || params.selectedTab === "logs";
 

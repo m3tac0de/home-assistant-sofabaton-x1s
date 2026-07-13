@@ -1,7 +1,6 @@
-export type TabId = "settings" | "wifi_commands" | "blobs" | "backup" | "cache" | "logs";
+export type TabId = "settings" | "wifi_commands" | "backup" | "cache" | "logs";
 export type SectionId = "activities" | "devices";
 export type BackupSectionId = "make" | "edit" | "restore";
-export type BlobsSectionId = "fetch" | "test" | "save";
 export type SettingKey =
   | "persistent_cache"
   | "hex_logging_enabled"
@@ -63,20 +62,12 @@ export interface ControlPanelHubState {
   >;
   active_backup_operation?: BackupProgressEvent | null;
   runtime_state?: ControlPanelRuntimeState | null;
-  remote_battery?: ControlPanelRemoteBatteryState | null;
 }
 
 export interface ControlPanelStateResponse {
   persistent_cache_enabled: boolean;
   tools_frontend_version: string;
   hubs: ControlPanelHubState[];
-}
-
-export interface ControlPanelRemoteBatteryState {
-  supported: boolean;
-  level?: number | null;
-  last_updated?: string | null;
-  attributes?: Record<string, unknown>;
 }
 
 export interface ControlPanelRuntimeState {
@@ -176,14 +167,6 @@ export interface BlobFetchResponse {
 
 export interface BlobPlayResponse {
   ok: boolean;
-}
-
-export interface BlobPersistResponse {
-  status: string;
-  device_id: number;
-  command_id: number;
-  command_name: string;
-  page_count?: number | null;
 }
 
 export interface BackupBundleDeviceBlock {
@@ -388,7 +371,6 @@ export interface ControlPanelSnapshot {
   selectedTab: TabId;
   selectedCacheSection: SectionId;
   selectedBackupSection: BackupSectionId;
-  selectedBlobsSection: BlobsSectionId;
   openEntity: string | null;
   staleData: boolean;
   refreshBusy: boolean;

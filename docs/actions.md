@@ -4,6 +4,10 @@ This page documents the custom actions exposed by the integration.
 Find them in Home Assistant at **Settings -> Developer Tools -> Actions**, then
 filter by `sofabaton_x1s`.
 
+> Terminology: "blob" in the action names and fields below means a **command
+> payload** — the data the hub stores for a command. See
+> [command_payloads.md](./command_payloads.md).
+
 ---
 
 ## Quick reference

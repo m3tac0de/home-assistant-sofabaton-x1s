@@ -1,7 +1,6 @@
 import type {
   BackupProgressEvent,
   BackupSectionId,
-  BlobsSectionId,
   ControlPanelSnapshot,
   HassLike,
   HubAction,
@@ -32,23 +31,20 @@ const BACKEND_RETRY_MIN_MS = 2000;
 const BACKEND_RETRY_MAX_MS = 10000;
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
-const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "blobs", "backup", "cache", "logs"]);
+const VALID_TABS = new Set<TabId>(["settings", "wifi_commands", "backup", "cache", "logs"]);
 
 /** activeRefreshLabel sentinel for the whole-hub "Refresh all" operation. */
 export const REFRESH_ALL_KEY = "__refresh_all__";
 const VALID_CACHE_SECTIONS = new Set<SectionId>(["activities", "devices"]);
 const VALID_BACKUP_SECTIONS = new Set<BackupSectionId>(["make", "edit", "restore"]);
-const VALID_BLOBS_SECTIONS = new Set<BlobsSectionId>(["fetch", "test", "save"]);
 
 interface PersistedViewState {
   selectedHubEntryId?: string | null;
   selectedTab?: TabId;
   selectedCacheSection?: SectionId;
   selectedBackupSection?: BackupSectionId;
-  selectedBlobsSection?: BlobsSectionId;
   openSection?: SectionId | null;
   openBackupSection?: BackupSectionId;
-  openBlobsSection?: BlobsSectionId | null;
 }
 
 interface StorageLike {
@@ -82,17 +78,11 @@ function readPersistedViewState(): PersistedViewState {
       : VALID_BACKUP_SECTIONS.has(parsed?.openBackupSection as BackupSectionId)
         ? (parsed.openBackupSection as BackupSectionId)
         : "make";
-    const selectedBlobsSection = VALID_BLOBS_SECTIONS.has(parsed?.selectedBlobsSection as BlobsSectionId)
-      ? (parsed.selectedBlobsSection as BlobsSectionId)
-      : VALID_BLOBS_SECTIONS.has(parsed?.openBlobsSection as BlobsSectionId)
-        ? (parsed.openBlobsSection as BlobsSectionId)
-        : "fetch";
     return {
       selectedHubEntryId,
       ...(selectedTab ? { selectedTab } : {}),
       selectedCacheSection,
       selectedBackupSection,
-      selectedBlobsSection,
     };
   } catch (_error) {
     return {};
@@ -123,7 +113,6 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   selectedTab: "cache",
   selectedCacheSection: "activities",
   selectedBackupSection: "make",
-  selectedBlobsSection: "fetch",
   openEntity: null,
   staleData: false,
   refreshBusy: false,
@@ -421,13 +410,6 @@ export class ControlPanelStore {
   setSelectedBackupSection(sectionId: BackupSectionId) {
     if (this._snapshot.selectedBackupSection === sectionId) return;
     this._snapshot = { ...this._snapshot, selectedBackupSection: sectionId };
-    this.persistViewState();
-    this.emit();
-  }
-
-  setSelectedBlobsSection(sectionId: BlobsSectionId) {
-    if (this._snapshot.selectedBlobsSection === sectionId) return;
-    this._snapshot = { ...this._snapshot, selectedBlobsSection: sectionId };
     this.persistViewState();
     this.emit();
   }
@@ -928,7 +910,6 @@ export class ControlPanelStore {
           selectedTab: this._snapshot.selectedTab,
           selectedCacheSection: this._snapshot.selectedCacheSection,
           selectedBackupSection: this._snapshot.selectedBackupSection,
-          selectedBlobsSection: this._snapshot.selectedBlobsSection,
         } satisfies PersistedViewState),
       );
     } catch (_error) {

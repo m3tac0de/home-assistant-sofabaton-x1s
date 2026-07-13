@@ -807,7 +807,6 @@ async def _async_build_control_panel_hub_payload(
         },
         "active_backup_operation": active_backup_operation,
         "runtime_state": runtime_state,
-        "remote_battery": hub.get_remote_battery_state(),
     }
 
 
@@ -1505,56 +1504,6 @@ async def _ws_play_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any])
         return
 
     connection.send_result(msg["id"], {"ok": True})
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): f"{DOMAIN}/blobs/persist",
-        vol.Required("entry_id"): str,
-        vol.Required("device_id"): vol.All(int, vol.Range(min=1, max=255)),
-        vol.Required("command_name"): str,
-        vol.Required("blob"): str,
-    }
-)
-@websocket_api.async_response
-async def _ws_persist_ir_blob(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
-    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
-    if hub is None:
-        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
-        return
-
-    try:
-        _raise_if_hub_operation_locked(hass, hub, "_ws_persist_ir_blob")
-        blob_bytes = _parse_play_ir_blob_input(msg.get("blob"))
-        command_name = _validate_ir_command_name(msg.get("command_name"))
-        result = await hub.async_persist_ir_blob(
-            device_id=int(msg["device_id"]),
-            command_name=command_name,
-            blob=blob_bytes,
-        )
-    except HomeAssistantError as err:
-        connection.send_error(msg["id"], "unavailable", str(err))
-        return
-    except ValueError as err:
-        message = str(err)
-        if "device_id" in message:
-            error_code = "invalid_id"
-        elif "command_name" in message:
-            error_code = "invalid_name"
-        else:
-            error_code = "invalid_blob"
-        connection.send_error(msg["id"], error_code, message)
-        return
-
-    if result is None:
-        connection.send_error(
-            msg["id"],
-            "unavailable",
-            "Hub is not ready to persist IR blob (proxy client connected?)",
-        )
-        return
-
-    connection.send_result(msg["id"], result)
 
 
 @websocket_api.websocket_command(
@@ -2562,7 +2511,6 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_control_panel_run_action)
     websocket_api.async_register_command(hass, _ws_fetch_blob)
     websocket_api.async_register_command(hass, _ws_play_ir_blob)
-    websocket_api.async_register_command(hass, _ws_persist_ir_blob)
     websocket_api.async_register_command(hass, _ws_backup_export)
     websocket_api.async_register_command(hass, _ws_backup_restore)
     websocket_api.async_register_command(hass, _ws_backup_stash_edited)
