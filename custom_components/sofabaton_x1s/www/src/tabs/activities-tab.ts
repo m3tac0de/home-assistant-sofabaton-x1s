@@ -22,18 +22,12 @@ import type {
 import { ControlPanelApi } from "../shared/api/control-panel-api";
 import { formatError } from "../shared/utils/control-panel-selectors";
 import { TOOLS_CARD_STRINGS } from "../strings";
-import {
-  diffActivityForReview,
-  diffDeviceForReview,
-  type ActivityReviewGroup,
-  type DeviceReviewGroup,
-} from "./activity-diff";
 import "./edit-detail-view";
 import "../components/refresh-cache-button";
 
 // "list" is the idle stage: no capture running yet (waiting on guards) or the
 // session is winding down after an exit.
-type ActivitiesStage = "list" | "capturing" | "editing" | "syncing" | "sync_failed" | "needs_refresh";
+type ActivitiesStage = "list" | "capturing" | "editing" | "syncing" | "sync_failed" | "needs_refresh" | "deleting";
 
 const S = TOOLS_CARD_STRINGS.activities;
 
@@ -56,8 +50,7 @@ class SofabatonActivitiesTab extends LitElement {
     _captureProgress: { state: true },
     _captureError: { state: true },
     _dirty: { state: true },
-    _reviewOpen: { state: true },
-    _discardConfirmOpen: { state: true },
+    _deleteError: { state: true },
     _exitConfirmOpen: { state: true },
     _syncProgress: { state: true },
     _syncError: { state: true },
@@ -144,6 +137,9 @@ class SofabatonActivitiesTab extends LitElement {
     .sync-success-banner { background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color))); }
     .sync-success-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: #2e7d32; }
     .sync-success-banner ha-icon { --mdc-icon-size: 18px; }
+    .delete-error-banner { background: color-mix(in srgb, var(--error-color, #db4437) 12%, var(--ha-card-background, var(--card-background-color))); }
+    .delete-error-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: var(--error-color, #db4437); }
+    .delete-error-banner ha-icon { --mdc-icon-size: 18px; }
     .btn-danger { border-color: color-mix(in srgb, var(--error-color, #db4437) 55%, var(--divider-color)); color: var(--error-color, #db4437); }
     .btn-danger:hover { border-color: var(--error-color, #db4437); background: color-mix(in srgb, var(--error-color, #db4437) 12%, transparent); }
     /* Review / discard / sync dialogs (§4.4). */
@@ -206,8 +202,7 @@ class SofabatonActivitiesTab extends LitElement {
   private _captureProgress: BackupProgressEvent | null = null;
   private _captureError: string | null = null;
   private _dirty = false;
-  private _reviewOpen = false;
-  private _discardConfirmOpen = false;
+  private _deleteError: string | null = null;
   private _exitConfirmOpen = false;
   private _syncProgress: BackupProgressEvent | null = null;
   private _syncError: string | null = null;
@@ -295,6 +290,26 @@ class SofabatonActivitiesTab extends LitElement {
     return new ControlPanelApi(this.hass);
   }
 
+  // ── Live command-payload editing (host-provided I/O) ────────────────
+  // The detail view is hass-free, so it delegates the on-demand blob fetch
+  // and the Test playback to these callbacks. The fetch is per-command (not
+  // part of the structural cache), so payloads only leave the hub when the
+  // user actually opens the payload editor.
+  private _fetchCommandPayload = async (deviceId: number, commandId: number) => {
+    if (!this.hub) return null;
+    const response = await this.api().fetchBlob(this.hub.entry_id, deviceId, commandId);
+    const commands = response.commands ?? [];
+    const command = commands.find((c) => Number(c.command_id) === Number(commandId)) ?? commands[0];
+    const dataHex = String(command?.command_blob ?? "").trim();
+    if (!command || !dataHex) return null;
+    return { dataHex, decoded: command.decoded ?? null };
+  };
+
+  private _testCommandPayload = async (hex: string) => {
+    if (!this.hub) throw new Error("No hub is selected.");
+    await this.api().playIrBlob(this.hub.entry_id, hex);
+  };
+
   // ── Capture flow (§4.2) — sourced from the blob-free structural cache ──
   // Read the structural hub_bundle the backend assembles on demand from the
   // canonical persistent cache (per-entity refreshes and syncs update it in
@@ -358,30 +373,12 @@ class SofabatonActivitiesTab extends LitElement {
       && JSON.stringify(this._working) !== JSON.stringify(this._baseline);
   }
 
-  // ── Review / Sync / Discard (§4.4) ─────────────────────────────────
-
-  private _reviewGroups(): Array<ActivityReviewGroup | DeviceReviewGroup> {
-    if (this._entityId == null) return [];
-    if (this.kind === "device") {
-      return diffDeviceForReview(this._baseline, this._working, this._entityId);
-    }
-    return diffActivityForReview(this._baseline, this._working, this._entityId);
-  }
-
-  private _openReview = () => {
-    if (!this._dirty) return;
-    this._reviewOpen = true;
-  };
-
-  private _closeReview = () => {
-    this._reviewOpen = false;
-  };
+  // ── Sync / Delete (§4.4) ────────────────────────────────────────────
 
   // Start the real sync engine (§4.5): diff baseline vs working on the
   // backend and issue targeted in-place writes, streaming progress.
   private _requestSync = async () => {
     if (!this._dirty || this._entityId == null || !this.hub || !this._baseline || !this._working) return;
-    this._reviewOpen = false;
     this._exitConfirmOpen = false;
     this._syncError = null;
     this._syncFailedAt = null;
@@ -447,20 +444,29 @@ class SofabatonActivitiesTab extends LitElement {
     void this._requestSync();
   };
 
-  private _openDiscardConfirm = () => {
-    if (!this._dirty) return;
-    this._discardConfirmOpen = true;
-  };
-
-  private _closeDiscardConfirm = () => {
-    this._discardConfirmOpen = false;
-  };
-
-  private _discardChanges = () => {
-    if (this._baseline) this._working = structuredClone(this._baseline);
-    this._recomputeDirty();
-    this._reviewOpen = false;
-    this._discardConfirmOpen = false;
+  // ── Immediate delete (entity delete executes on the hub right away) ──
+  // The detail view gates the delete behind its are-you-sure dialog and then
+  // emits `delete-request`; we run the targeted hub delete and, on success,
+  // leave the editor (the entity no longer exists to edit).
+  private _handleDeleteRequest = async (event: CustomEvent<{ kind: "activity" | "device"; entityId: number }>) => {
+    if (!this.hub || !this.hass) return;
+    if (this._stage === "deleting" || this._stage === "syncing") return;
+    const entityId = Number(event.detail?.entityId);
+    if (!Number.isFinite(entityId)) return;
+    this._deleteError = null;
+    this._stage = "deleting";
+    try {
+      if (event.detail.kind === "device") {
+        await this.api().deleteDevice(this.hub.entry_id, entityId);
+      } else {
+        await this.api().deleteActivity(this.hub.entry_id, entityId);
+      }
+      await this.refreshControlPanelState?.();
+      this._resetToList();
+    } catch (error) {
+      this._deleteError = formatError(error);
+      this._stage = "editing";
+    }
   };
 
   private _closeEditor = () => {
@@ -500,8 +506,7 @@ class SofabatonActivitiesTab extends LitElement {
     this._captureError = null;
     this._captureOperationId = null;
     this._dirty = false;
-    this._reviewOpen = false;
-    this._discardConfirmOpen = false;
+    this._deleteError = null;
     this._exitConfirmOpen = false;
     this._syncProgress = null;
     this._syncError = null;
@@ -535,6 +540,9 @@ class SofabatonActivitiesTab extends LitElement {
     }
     if (this._stage === "syncing") {
       return this._renderSyncing();
+    }
+    if (this._stage === "deleting") {
+      return this._renderDeleting();
     }
     if (this._stage === "sync_failed") {
       return this._renderSyncFailed();
@@ -631,20 +639,20 @@ class SofabatonActivitiesTab extends LitElement {
     return html`
       <div class="editing-shell">
         ${this._syncSuccessNotice ? this._renderSyncSuccessBanner() : nothing}
+        ${this._deleteError ? this._renderDeleteErrorBanner() : nothing}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
           .kind=${this.kind}
           .entityId=${this._entityId}
           .dirty=${this._dirty}
           mode="live"
+          .fetchCommandPayload=${this._fetchCommandPayload}
+          .testCommandPayload=${this._testCommandPayload}
           @bundle-change=${this._handleBundleChange}
-          @review-request=${this._openReview}
           @sync-request=${this._requestSync}
-          @discard-request=${this._openDiscardConfirm}
+          @delete-request=${this._handleDeleteRequest}
           @close=${this._closeEditor}
         ></sofabaton-edit-detail-view>
-        ${this._reviewOpen ? this._renderReviewDialog() : nothing}
-        ${this._discardConfirmOpen ? this._renderDiscardDialog() : nothing}
         ${this._exitConfirmOpen ? this._renderExitConfirmDialog() : nothing}
       </div>
     `;
@@ -666,6 +674,24 @@ class SofabatonActivitiesTab extends LitElement {
     return html`
       <div class="tab-panel">
         ${renderOperationProgress({ mode: "restore", title: S.syncingTitle, message })}
+      </div>
+    `;
+  }
+
+  private _renderDeleting() {
+    const S = TOOLS_CARD_STRINGS.activities;
+    return html`
+      <div class="tab-panel">
+        ${renderOperationProgress({ mode: "restore", title: S.deletingTitle(this.kind), message: S.deletingMessage(this.kind) })}
+      </div>
+    `;
+  }
+
+  private _renderDeleteErrorBanner() {
+    return html`
+      <div class="notice-banner delete-error-banner">
+        <span class="notice-banner-text"><ha-icon icon="mdi:alert-circle-outline"></ha-icon> ${this._deleteError}</span>
+        <button class="notice-banner-btn" @click=${() => { this._deleteError = null; }}>${TOOLS_CARD_STRINGS.activities.discardConfirmCancel}</button>
       </div>
     `;
   }
@@ -700,91 +726,6 @@ class SofabatonActivitiesTab extends LitElement {
       </div>
     `;
   }
-
-  private _renderReviewDialog() {
-    const S = TOOLS_CARD_STRINGS.activities;
-    const groups = this._reviewGroups();
-    return html`
-      <div class="modal-backdrop" @click=${this._closeReview}>
-        <div class="dialog" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${S.reviewTitle}</div>
-            <button class="dialog-close" @click=${this._closeReview}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body">
-            ${groups.length
-              ? groups.map((group) => html`
-                  <div class="review-group">
-                    <div class="review-group-title">${this._reviewSectionTitle(group.section)}</div>
-                    <ul class="review-entry-list">
-                      ${group.entries.map((entry) => html`
-                        <li class="review-entry">
-                          ${entry.text}
-                          ${entry.global
-                            ? html`<span class="review-global-note">(${S.reviewAppliesEverywhere})</span>`
-                            : nothing}
-                        </li>
-                      `)}
-                    </ul>
-                  </div>
-                `)
-              : html`<div class="review-empty">${S.reviewEmpty}</div>`}
-          </div>
-          <div class="dialog-footer">
-            <button class="btn btn-danger" @click=${this._openDiscardConfirm}>${S.reviewDiscardAll}</button>
-            <div class="dialog-footer-actions">
-              <button class="btn" @click=${this._closeReview}>${S.reviewKeepEditing}</button>
-              <button class="btn btn-primary" @click=${this._requestSync}>${S.reviewSyncNow}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  private _reviewSectionTitle(section: ActivityReviewGroup["section"] | DeviceReviewGroup["section"]): string {
-    const R = TOOLS_CARD_STRINGS.activities.review;
-    const D = TOOLS_CARD_STRINGS.activities.deviceReview;
-    if (this.kind === "device") {
-      switch (section as DeviceReviewGroup["section"]) {
-        case "power": return D.sectionPower;
-        case "buttons": return D.sectionButtons;
-        case "macros": return D.sectionMacros;
-      }
-    }
-    switch (section as ActivityReviewGroup["section"]) {
-      case "devices": return R.sectionDevices;
-      case "start": return R.sectionStart;
-      case "buttons": return R.sectionButtons;
-      case "shortcuts": return R.sectionShortcuts;
-      case "end": return R.sectionEnd;
-      case "device_wide": return R.sectionDeviceWide;
-      default: return String(section);
-    }
-  }
-
-  private _renderDiscardDialog() {
-    const S = TOOLS_CARD_STRINGS.activities;
-    return html`
-      <div class="modal-backdrop" @click=${this._closeDiscardConfirm}>
-        <div class="dialog dialog--small" @click=${(event: Event) => event.stopPropagation()}>
-          <div class="dialog-header">
-            <div class="dialog-title">${S.discardConfirmTitle}</div>
-            <button class="dialog-close" @click=${this._closeDiscardConfirm}><ha-icon icon="mdi:close"></ha-icon></button>
-          </div>
-          <div class="dialog-body"><div class="dialog-text">${S.discardConfirmBody(this.kind)}</div></div>
-          <div class="dialog-footer">
-            <span></span>
-            <div class="dialog-footer-actions">
-              <button class="btn" @click=${this._closeDiscardConfirm}>${S.discardConfirmCancel}</button>
-              <button class="btn btn-danger" @click=${this._discardChanges}>${S.discardConfirmConfirm}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
 
   private _renderExitConfirmDialog() {
     const S = TOOLS_CARD_STRINGS.activities;

@@ -26,6 +26,10 @@ class FakeProxy(ActivitySyncMixin):
         self.can_issue = True
         self.hub_version = "X1S"
         self.macro_records: list[object] = []
+        # command_payload deps: metadata the executor reads button_code /
+        # library_type back from, plus the command label map.
+        self.state = SimpleNamespace(command_metadata={})
+        self.command_labels: dict[int, str] = {}
 
     # Environment
     def can_issue_commands(self) -> bool:
@@ -76,6 +80,30 @@ class FakeProxy(ActivitySyncMixin):
 
     def get_cached_macro_records(self, activity_id):
         return list(self.macro_records)
+
+    # command_payload executor deps.
+    def get_commands_for_entity(self, entity_id, *, fetch_if_missing=False):
+        return dict(self.command_labels), True
+
+    def overwrite_command_payload(self, **kwargs):
+        self.calls.append(("command_payload", (), kwargs))
+        return None if self._fail_kind == "command_payload" else {"status": "success"}
+
+    def _edited_command_data_hex(self, restore_data, command_id):
+        # Raw-edit path by default (returns None → executor uses data_hex);
+        # the decoded re-encode is covered by test_restore_edited_commands.
+        # Tests override this for the decoded case.
+        return None
+
+    # command_rename executor dep: single-command blob dump. Tests seed
+    # command_blobs[cmd] with the raw dump hex (payload + a 1-byte tail).
+    command_blobs: dict[int, str] = {}
+
+    def request_ir_command_dump(self, device_id, *, command_id=None, timeout=10.0):
+        blob = self.command_blobs.get(int(command_id))
+        if blob is None:
+            return {"commands": []}
+        return {"commands": [{"command_id": int(command_id), "ir_blob_hex": blob}]}
 
 
 class DeleteKeyProxy(ActivitySyncMixin):
@@ -369,7 +397,8 @@ def test_device_sync_stale_preflight_blocks_before_any_write():
 def test_device_sync_out_of_scope_plan_fails_before_writes():
     base = device_base_bundle()
     edited = copy.deepcopy(base)
-    _device_of(edited)["commands"][0]["name"] = "Power Toggle"
+    # Adding a command changes the command-id set — still out of scope.
+    _device_of(edited)["commands"].append({"command_id": 99, "name": "Ghost"})
     proxy = FakeProxy(fresh_activity=None)
     proxy._fresh_device = _device_of(base)
 
@@ -417,3 +446,118 @@ def test_progress_contract_matches_restore_shape():
     last = events[-1]
     assert last["completed_steps"] == last["total_steps"]
     assert "current_activity_id" in last
+
+
+# ── command_payload executor (live payload overwrite) ──────────────────
+
+
+def _edit_command_payload(bundle: dict, *, restore_data: dict, device_id: int = DEVICE_ID, command_id: int = 10) -> None:
+    command = next(
+        c for c in _device_of(bundle, device_id)["commands"] if c["command_id"] == command_id
+    )
+    command["restore_data"] = restore_data
+
+
+def test_command_payload_raw_edit_overwrites_preserving_code_and_type():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _edit_command_payload(edited, restore_data={
+        "library_type": 0x0D, "button_code": 999, "data_hex": "0a 4f 23", "edited": True,
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    # button_code / library_type are preserved from cached metadata, NOT from
+    # the (fetch-provided, code-less) restore_data.
+    proxy.state.command_metadata = {DEVICE_ID: {10: {"library_type": 0x0D, "button_code": 0x0102}}}
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    call = next(c for c in proxy.calls if c[0] == "command_payload")
+    kw = call[2]
+    assert kw["device_id"] == DEVICE_ID
+    assert kw["command_id"] == 10
+    assert kw["command_name"] == "Power"           # from the plan payload
+    assert kw["library_data"] == bytes.fromhex("0a4f23")
+    assert kw["button_code"] == 0x0102             # cached metadata, not restore_data's 999
+    assert kw["library_type"] == 0x0D
+
+
+def test_command_payload_decoded_edit_uses_reencoded_bytes():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _edit_command_payload(edited, restore_data={
+        "library_type": 0x0D, "button_code": 1, "data_hex": "0a 4f 22",
+        "decoded": {"class": "ir", "trailer_hex": "", "fields": {}, "edited": True},
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    proxy.state.command_metadata = {DEVICE_ID: {10: {"library_type": 0x0D, "button_code": 0x0102}}}
+    # Stand in for the real re-encode (its own tests live in
+    # test_restore_edited_commands); return distinct bytes so we can assert
+    # the executor prefers the re-encode over data_hex.
+    proxy._edited_command_data_hex = lambda restore_data, command_id: "aabbcc"
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    call = next(c for c in proxy.calls if c[0] == "command_payload")
+    assert call[2]["library_data"] == bytes.fromhex("aabbcc")
+
+
+def test_command_payload_refuses_when_metadata_missing():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _edit_command_payload(edited, restore_data={
+        "library_type": 0x0D, "button_code": 1, "data_hex": "0a 4f 23", "edited": True,
+    })
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    # No command_metadata for the target → executor refuses rather than write
+    # a wrong (zero) button_code.
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "failed"
+    assert result["failed_at"].startswith("command_payload")
+    assert not any(c[0] == "command_payload" for c in proxy.calls)
+
+
+# ── command_rename executor (live command rename) ─────────────────────
+
+
+def test_command_rename_fetches_current_payload_and_relabels():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _device_of(edited)["commands"][0]["name"] = "Power Toggle"
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    proxy.state.command_metadata = {DEVICE_ID: {10: {"library_type": 0x0D, "button_code": 0x0102}}}
+    # Raw dump = payload bytes + a 1-byte replay tail (0xff) the write drops.
+    proxy.command_blobs = {10: "0a 4f 22 ff"}
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "success"
+    call = next(c for c in proxy.calls if c[0] == "command_payload")  # overwrite primitive
+    kw = call[2]
+    assert kw["command_name"] == "Power Toggle"
+    assert kw["library_data"] == bytes.fromhex("0a4f22")  # tail stripped, payload preserved
+    assert kw["button_code"] == 0x0102
+    assert kw["library_type"] == 0x0D
+
+
+def test_command_rename_refuses_when_payload_unreadable():
+    base = device_base_bundle()
+    edited = copy.deepcopy(base)
+    _device_of(edited)["commands"][0]["name"] = "Power Toggle"
+    proxy = FakeProxy(fresh_activity=None)
+    proxy._fresh_device = _device_of(base)
+    proxy.state.command_metadata = {DEVICE_ID: {10: {"library_type": 0x0D, "button_code": 0x0102}}}
+    proxy.command_blobs = {}  # dump returns nothing
+
+    result = proxy.sync_device(baseline=base, edited=edited, device_id=DEVICE_ID)
+
+    assert result["status"] == "failed"
+    assert result["failed_at"].startswith("command_rename")
+    assert not any(c[0] == "command_payload" for c in proxy.calls)

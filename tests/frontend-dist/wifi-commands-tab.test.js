@@ -1663,20 +1663,13 @@ var TOOLS_CARD_STRINGS = {
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
     // Session restore banner (§4.6).
-    // Live-mode edit header (§4.3).
-    notSyncedChip: "Not synced",
-    notSyncedTooltip: "Changes are local until you press Sync.",
-    reviewChanges: "Review changes",
-    sync: "Sync",
-    discard: "Discard",
-    // Review dialog (§4.4).
-    reviewTitle: "Review changes",
-    reviewEmpty: "No changes to sync yet.",
-    reviewSyncNow: "Sync now",
-    reviewKeepEditing: "Keep editing",
-    reviewDiscardAll: "Discard all changes",
-    reviewAppliesEverywhere: "applies everywhere",
-    reviewAppliesEveryActivity: "applies to every activity",
+    // Live-mode edit header (§4.3). The header mirrors the Wifi command
+    // editor: a single stateful Sync button (no dirty chip, no review/discard).
+    syncToHub: "Sync to Hub",
+    syncUpToDate: "Up to date",
+    // Immediate entity delete (executed on the hub right away).
+    deletingTitle: (kind) => `Deleting ${kind}`,
+    deletingMessage: (kind) => `Removing this ${kind} from the hub\u2026`,
     // Sync flow (§4.5).
     syncingTitle: "Syncing to your hub",
     syncingMessage: "Writing your changes to the hub\u2026",
@@ -1693,11 +1686,8 @@ var TOOLS_CARD_STRINGS = {
     exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",
     exitWithoutSync: "Leave without syncing",
-    // Discard confirmation.
-    discardConfirmTitle: "Discard all changes?",
-    discardConfirmBody: (kind) => `This throws away every edit you've made to this ${kind} and returns to the captured state.`,
+    // Dismiss label reused by the sync-success / delete-error banners.
     discardConfirmCancel: "Keep editing",
-    discardConfirmConfirm: "Discard changes",
     // Review-list section titles + entry templates (activity-diff.ts).
     review: {
       sectionDevices: "Devices",
@@ -1798,6 +1788,11 @@ var TOOLS_CARD_STRINGS = {
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
     deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
+    // Live-edit variants: deletions here act on the hub, not a backup file.
+    deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
+    deleteSimpleBodyLive: "This removes it.",
+    deleteImmediateNote: "This is applied to the hub immediately.",
+    deleteSyncNote: "This change is written to the hub on the next Sync.",
     deleteCancel: "Cancel",
     deleteConfirm: "Delete",
     deleteActivityAria: "Delete activity",
@@ -1930,25 +1925,11 @@ var TOOLS_CARD_STRINGS = {
     addShortcutKindLabel: "Type",
     shortcutKindCommand: "Device command",
     shortcutKindAction: "Macro",
-    shortcutKindHa: "Home Assistant action",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
     macroTargetNoExisting: "No macros yet. Create one below.",
     addShortcutActionName: "Name",
-    addShortcutActionHelper: "You'll pick the steps next.",
-    // Home Assistant actions (Phase D).
-    haActionDialogTitle: "Add Home Assistant action",
-    haActionNameLabel: "Name",
-    haActionNameHelper: "Shown on the remote; Home Assistant receives it when the shortcut is pressed.",
-    haActionBindingNameHelper: "Shown on the remote; Home Assistant receives it when the button is pressed.",
-    haActionAddressLabel: "Home Assistant address",
-    haActionAddressHelper: "IPv4 address (and optional :port) where the hub can reach this Home Assistant on your network. The wifi-commands listener answers there.",
-    haActionNameRequired: "Enter a name.",
-    haActionInvalidAddress: "Enter the address as IPv4 or IPv4:port, e.g. 192.168.1.10:8060.",
-    haActionNoSlots: "No free slots \u2014 the shared device-id space is full.",
-    haActionAdd: "Add",
-    haActionCancel: "Cancel",
-    haActionChip: "HA action"
+    addShortcutActionHelper: "You'll pick the steps next."
   },
   wifiCommands: {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",

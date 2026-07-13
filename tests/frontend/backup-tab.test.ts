@@ -4,7 +4,6 @@ import "../../custom_components/sofabaton_x1s/www/src/tabs/backup-tab";
 import type { BackupOperationStateResponse, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 import {
   activityQuickAccessItems,
-  isHaActionDeviceId,
   reorderBundleActivityQuickAccess,
 } from "../../custom_components/sofabaton_x1s/www/src/tabs/backup-state";
 
@@ -409,7 +408,7 @@ test("backup activity quick-access items hide internal power macros", () => {
   assert.deepEqual(items.map((item) => item.buttonId), [1, 2]);
 });
 
-test("live edit hides command and favorite rename affordances", () => {
+test("live edit hides favorite rename but allows command rename", () => {
   const bundle = {
     kind: "hub_bundle",
     schema_version: 5,
@@ -443,15 +442,17 @@ test("live edit hides command and favorite rename affordances", () => {
   assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), true);
 
   element.mode = "live";
+  // Favorite rename stays backup-only in live mode…
   assert.equal(templateHasValue(element._renderActivityQuickAccessRow(favorite), "Rename shortcut"), false);
-  assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), false);
+  // …but command rename is now offered live (via a command_rename sync step).
+  assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), true);
 
   element._openQuickAccessRenameDialog("favorite", 1);
   assert.equal(element._editRenameDialogOpen, false);
   element.kind = "device";
   element.entityId = 7;
   element._openDeviceCommandRenameDialog(3);
-  assert.equal(element._editRenameDialogOpen, false);
+  assert.equal(element._editRenameDialogOpen, true);
 });
 
 test("activity edit detail removes the section nav and puts power first", () => {
@@ -528,7 +529,7 @@ test("activity add binding dialog offers shortcut target types and all devices",
 
   assert.equal(templateHasValue(result, "Device command"), true);
   assert.equal(templateHasValue(result, "Macro"), true);
-  assert.equal(templateHasValue(result, "Home Assistant action"), true);
+  assert.equal(templateHasValue(result, "Home Assistant action"), false);
   assert.equal(templateHasValue(result, "Streamer"), true);
 });
 
@@ -701,7 +702,7 @@ test("activity binding dialog gives long-press the same target types", () => {
   assert.equal(templateHasString(result, "sb-binding-lp-kind"), true);
   assert.equal(templateHasValue(result, "Device command"), true);
   assert.equal(templateHasValue(result, "Macro"), true);
-  assert.equal(templateHasValue(result, "Home Assistant action"), true);
+  assert.equal(templateHasValue(result, "Home Assistant action"), false);
 });
 
 test("activity long-press enable defaults command target to a real device", () => {
@@ -778,50 +779,6 @@ test("activity shortcut macro flow can reuse an existing activity macro", () => 
     buttonId: 5,
     name: "Scene Prep",
   });
-});
-
-test("activity button binding can create a Home Assistant action target", () => {
-  const bundle = {
-    kind: "hub_bundle",
-    schema_version: 5,
-    hub: { version: "X1S" },
-    devices: [
-      {
-        device: { device_id: 7, name: "Projector", device_class: "ir" },
-        commands: [{ command_id: 3, name: "HDMI 1" }],
-      },
-    ],
-    activities: [
-      {
-        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
-        favorite_slots: [],
-        button_bindings: [],
-        macros: [],
-      },
-    ],
-  } as any;
-  const element = new EditDetailViewElement() as HTMLElement & Record<string, any>;
-  element.bundle = bundle;
-  element.kind = "activity";
-  element.entityId = 101;
-
-  element._openAddBindingDialog("activity");
-  const buttonId = element._bindingButtonId;
-  element._bindingTargetKind = "ha";
-  element._haActionName = "Dim Lights";
-  element._haActionAddress = "192.168.1.10:8060";
-  element._applyBinding();
-
-  const activity = element.bundle.activities[0];
-  const binding = activity.button_bindings.find((entry: any) => Number(entry.button_id) === Number(buttonId));
-  assert.ok(binding, "expected the selected button to be bound");
-  const host = element.bundle.devices.find((entry: any) => Number(entry.device.device_id) === Number(binding.device_id));
-  assert.ok(host, "expected a hidden Home Assistant action host to be created");
-  const command = host.commands.find((entry: any) => Number(entry.command_id) === Number(binding.command_id));
-  assert.ok(command, "expected a Home Assistant action command to be created");
-
-  assert.equal(isHaActionDeviceId(element.bundle, binding.device_id), true);
-  assert.equal(command.name, "Dim Lights");
 });
 
 test("activity role picker offers editable devices that are not linked yet", () => {

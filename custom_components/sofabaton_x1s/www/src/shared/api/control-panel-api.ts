@@ -143,6 +143,25 @@ export class ControlPanelApi {
     });
   }
 
+  // Immediate live delete of a whole activity/device from the hub. Both wrap
+  // the id-generic hub delete primitive; separate types keep the id range and
+  // validation explicit per entity kind.
+  deleteActivity(entryId: string, activityId: number) {
+    return this.hass.callWS<{ status?: string }>({
+      type: "sofabaton_x1s/activity/delete",
+      entry_id: entryId,
+      activity_id: activityId,
+    });
+  }
+
+  deleteDevice(entryId: string, deviceId: number) {
+    return this.hass.callWS<{ status?: string }>({
+      type: "sofabaton_x1s/device/delete",
+      entry_id: entryId,
+      device_id: deviceId,
+    });
+  }
+
   startCacheRefresh(entryId: string) {
     return this.hass.callWS<BackupOperationStartResponse>({
       type: "sofabaton_x1s/cache/refresh_all",

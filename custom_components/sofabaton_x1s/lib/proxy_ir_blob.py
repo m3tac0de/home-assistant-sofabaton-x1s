@@ -448,6 +448,89 @@ class IrBlobMixin:
             "library_type": library_type & 0xFF,
         }
 
+    def overwrite_command_payload(
+        self,
+        *,
+        device_id: int,
+        command_id: int,
+        command_name: str,
+        library_type: int,
+        library_data: bytes,
+        button_code: int,
+        ack_timeout: float = 5.0,
+    ) -> dict[str, Any] | None:
+        """Overwrite an **existing** command's payload in place (family ``0x0E``).
+
+        Unlike :meth:`persist_ir_blob` / :meth:`persist_command_record`, this
+        targets a ``command_id`` that already exists on the device: the write
+        lands on the same slot with the same ``button_code`` / ``library_type``
+        / label / default key-slot, changing only ``library_data``. The hub
+        treats a ``0x0E`` record write to an already-occupied
+        ``(device_id, command_id)`` as an in-place overwrite -- so this
+        deliberately skips :meth:`_allocate_command_id` (which refuses an
+        existing id) and the sort-registration step (the slot already has a
+        display position).
+
+        The caller must supply the preserved ``button_code`` / ``library_type``
+        / ``command_name``; the live-sync executor reads them back from
+        ``state.command_metadata`` / the command label map so any bindings or
+        macros that reference the command's 48-bit code keep resolving.
+        """
+
+        if not self.can_issue_commands():
+            self._log.info("[OVERWRITE_CMD] ignored: proxy client is connected")
+            return None
+
+        if not isinstance(library_data, (bytes, bytearray)) or len(library_data) < 1:
+            self._log.warning(
+                "[OVERWRITE_CMD] library_data too short or wrong type: %r", type(library_data)
+            )
+            return None
+        if library_type < 0 or library_type > 0xFF:
+            raise ValueError(f"library_type {library_type} out of byte range")
+        if button_code < 0 or button_code > 0xFFFFFFFFFFFF:
+            raise ValueError(f"button_code {button_code} out of 48-bit range")
+
+        dev_lo = device_id & 0xFF
+        cmd_lo = command_id & 0xFF
+        device_commands = self.state.commands.get(dev_lo, {})
+        if not isinstance(device_commands, dict) or cmd_lo not in device_commands:
+            self._log.warning(
+                "[OVERWRITE_CMD] command 0x%02X not present on dev=0x%02X -- refusing "
+                "to write a new slot from the overwrite path",
+                cmd_lo,
+                dev_lo,
+            )
+            return None
+
+        outcome = self._run_persist_write(
+            log_prefix="OVERWRITE_CMD",
+            device_id=dev_lo,
+            command_id=cmd_lo,
+            command_name=command_name,
+            library_type=library_type,
+            library_data=bytes(library_data),
+            button_code=button_code,
+            ack_timeout=ack_timeout,
+        )
+        if outcome is None:
+            return None
+
+        # Keep the cached label coherent with the write (the payload edit does
+        # not change the name, but the write carries the label slot, so mirror
+        # whatever we just sent).
+        device_commands[cmd_lo] = (
+            str(command_name or "").strip() or device_commands.get(cmd_lo) or f"Command {cmd_lo}"
+        )
+        return {
+            "status": "success",
+            "device_id": dev_lo,
+            "command_id": cmd_lo,
+            "command_name": device_commands[cmd_lo],
+            "page_count": outcome["page_count"],
+            "library_type": library_type & 0xFF,
+        }
+
     def _play_ir_blob_body(
         self,
         body_buffer: bytes,

@@ -19,7 +19,14 @@ export function renderAccordionSection(params: {
         <span class="acc-title">${params.title}</span>
         <span class="badge">${params.count}</span>
         <span class="flex-spacer"></span>
-        <span class="refresh-list-label">Refresh list</span>
+        <span
+          class="refresh-list-label refresh-list-label--clickable"
+          role="button"
+          tabindex=${params.disabled ? -1 : 0}
+          aria-disabled=${String(params.disabled)}
+          @click=${params.disabled ? null : (event: Event) => { event.stopPropagation(); params.onRefresh(); }}
+          @keydown=${params.disabled ? null : (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); params.onRefresh(); } }}
+        >Refresh list</span>
         <button class="icon-btn${params.spinning ? " spinning" : ""}" ?disabled=${params.disabled} @click=${(event: Event) => { event.stopPropagation(); params.onRefresh(); }}>
           <ha-icon icon="mdi:refresh"></ha-icon>
         </button>

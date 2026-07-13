@@ -77,6 +77,7 @@ export function renderCacheTab(params: {
       <div class="entity-block${isOpen ? " open" : ""}" id=${`entity-${key}`}>
         <div class="entity-summary" @click=${() => params.onToggleEntity(key)}>
           <span class="entity-name">
+            <span class="entity-name-icon"><ha-icon icon="mdi:play-circle-outline"></ha-icon></span>
             <span class="entity-name-label">${activity.name || TOOLS_CARD_STRINGS.cache.activityFallback(id)}</span>
           </span>
           <span class="entity-meta">
@@ -156,13 +157,27 @@ export function renderCacheTab(params: {
           <div class="secondary-panel-header secondary-panel-header--plain cache-panel-header">
             <span class="flex-spacer"></span>
             <span class="refresh-action">
-              <span class="refresh-list-label">${TOOLS_CARD_STRINGS.cache.refreshAll}</span>
+              <span
+                class="refresh-list-label refresh-list-label--clickable"
+                role="button"
+                tabindex=${locked ? -1 : 0}
+                aria-disabled=${String(locked)}
+                @click=${locked ? null : params.onRefreshAll}
+                @keydown=${locked ? null : (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); params.onRefreshAll(); } }}
+              >${TOOLS_CARD_STRINGS.cache.refreshAll}</span>
               <button class="icon-btn${params.refreshAllSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${params.onRefreshAll}>
                 <ha-icon icon="mdi:refresh"></ha-icon>
               </button>
             </span>
             <span class="refresh-action">
-              <span class="refresh-list-label">${TOOLS_CARD_STRINGS.cache.refreshList}</span>
+              <span
+                class="refresh-list-label refresh-list-label--clickable"
+                role="button"
+                tabindex=${locked ? -1 : 0}
+                aria-disabled=${String(locked)}
+                @click=${locked ? null : () => params.onRefreshSection(selectedSection)}
+                @keydown=${locked ? null : (event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); params.onRefreshSection(selectedSection); } }}
+              >${TOOLS_CARD_STRINGS.cache.refreshList}</span>
               <button class="icon-btn${params.refreshBusy && !params.activeRefreshLabel ? " spinning" : ""}" ?disabled=${locked} @click=${() => params.onRefreshSection(selectedSection)}>
                 <ha-icon icon="mdi:refresh"></ha-icon>
               </button>

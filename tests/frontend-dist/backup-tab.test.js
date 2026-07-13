@@ -1537,6 +1537,23 @@ var ControlPanelApi = class {
       edited
     });
   }
+  // Immediate live delete of a whole activity/device from the hub. Both wrap
+  // the id-generic hub delete primitive; separate types keep the id range and
+  // validation explicit per entity kind.
+  deleteActivity(entryId, activityId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/delete",
+      entry_id: entryId,
+      activity_id: activityId
+    });
+  }
+  deleteDevice(entryId, deviceId) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/delete",
+      entry_id: entryId,
+      device_id: deviceId
+    });
+  }
   startCacheRefresh(entryId) {
     return this.hass.callWS({
       type: "sofabaton_x1s/cache/refresh_all",
@@ -1846,20 +1863,13 @@ var TOOLS_CARD_STRINGS = {
     needsRefreshTitle: "Refresh the hub cache to edit",
     needsRefreshBody: (kind) => `This ${kind} isn't in the local hub cache yet. Refresh the hub cache (a few seconds) to load it into the editor.`,
     // Session restore banner (§4.6).
-    // Live-mode edit header (§4.3).
-    notSyncedChip: "Not synced",
-    notSyncedTooltip: "Changes are local until you press Sync.",
-    reviewChanges: "Review changes",
-    sync: "Sync",
-    discard: "Discard",
-    // Review dialog (§4.4).
-    reviewTitle: "Review changes",
-    reviewEmpty: "No changes to sync yet.",
-    reviewSyncNow: "Sync now",
-    reviewKeepEditing: "Keep editing",
-    reviewDiscardAll: "Discard all changes",
-    reviewAppliesEverywhere: "applies everywhere",
-    reviewAppliesEveryActivity: "applies to every activity",
+    // Live-mode edit header (§4.3). The header mirrors the Wifi command
+    // editor: a single stateful Sync button (no dirty chip, no review/discard).
+    syncToHub: "Sync to Hub",
+    syncUpToDate: "Up to date",
+    // Immediate entity delete (executed on the hub right away).
+    deletingTitle: (kind) => `Deleting ${kind}`,
+    deletingMessage: (kind) => `Removing this ${kind} from the hub\u2026`,
     // Sync flow (§4.5).
     syncingTitle: "Syncing to your hub",
     syncingMessage: "Writing your changes to the hub\u2026",
@@ -1876,11 +1886,8 @@ var TOOLS_CARD_STRINGS = {
     exitUnsyncedBody: (kind) => `This ${kind} has changes that have not been synced to the hub. Sync them now, or leave without syncing and discard the local edit.`,
     exitSyncNow: "Sync now",
     exitWithoutSync: "Leave without syncing",
-    // Discard confirmation.
-    discardConfirmTitle: "Discard all changes?",
-    discardConfirmBody: (kind) => `This throws away every edit you've made to this ${kind} and returns to the captured state.`,
+    // Dismiss label reused by the sync-success / delete-error banners.
     discardConfirmCancel: "Keep editing",
-    discardConfirmConfirm: "Discard changes",
     // Review-list section titles + entry templates (activity-diff.ts).
     review: {
       sectionDevices: "Devices",
@@ -1981,6 +1988,11 @@ var TOOLS_CARD_STRINGS = {
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
     deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
+    // Live-edit variants: deletions here act on the hub, not a backup file.
+    deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
+    deleteSimpleBodyLive: "This removes it.",
+    deleteImmediateNote: "This is applied to the hub immediately.",
+    deleteSyncNote: "This change is written to the hub on the next Sync.",
     deleteCancel: "Cancel",
     deleteConfirm: "Delete",
     deleteActivityAria: "Delete activity",
@@ -2113,25 +2125,11 @@ var TOOLS_CARD_STRINGS = {
     addShortcutKindLabel: "Type",
     shortcutKindCommand: "Device command",
     shortcutKindAction: "Macro",
-    shortcutKindHa: "Home Assistant action",
     macroTargetLabel: "Macro",
     macroTargetCreateNew: "Create new macro",
     macroTargetNoExisting: "No macros yet. Create one below.",
     addShortcutActionName: "Name",
-    addShortcutActionHelper: "You'll pick the steps next.",
-    // Home Assistant actions (Phase D).
-    haActionDialogTitle: "Add Home Assistant action",
-    haActionNameLabel: "Name",
-    haActionNameHelper: "Shown on the remote; Home Assistant receives it when the shortcut is pressed.",
-    haActionBindingNameHelper: "Shown on the remote; Home Assistant receives it when the button is pressed.",
-    haActionAddressLabel: "Home Assistant address",
-    haActionAddressHelper: "IPv4 address (and optional :port) where the hub can reach this Home Assistant on your network. The wifi-commands listener answers there.",
-    haActionNameRequired: "Enter a name.",
-    haActionInvalidAddress: "Enter the address as IPv4 or IPv4:port, e.g. 192.168.1.10:8060.",
-    haActionNoSlots: "No free slots \u2014 the shared device-id space is full.",
-    haActionAdd: "Add",
-    haActionCancel: "Cancel",
-    haActionChip: "HA action"
+    addShortcutActionHelper: "You'll pick the steps next."
   },
   wifiCommands: {
     docsUrl: "https://github.com/m3tac0de/home-assistant-sofabaton-x1s/blob/main/docs/wifi_commands.md",
@@ -3479,7 +3477,10 @@ var backupTabStyles = i`
       font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
       resize: vertical;
       min-height: 60px;
-      white-space: pre;
+      /* Wrap long content (e.g. a raw hex payload) inside the textarea
+         instead of running off as one long line; newlines are preserved. */
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     /* Escaped wire-string fields are conceptually one long string with
        visible \\n escapes. Wrap on the textarea edge rather than
@@ -4268,6 +4269,23 @@ function updateCommandRawPayload(bundle, deviceId, commandId, dataHex) {
     })
   };
 }
+function setCommandRestoreData(bundle, deviceId, commandId, restoreData) {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          return { ...command, restore_data: restoreData };
+        })
+      };
+    })
+  };
+}
 var HUB_VERSION_RANK = {
   X1: 1,
   X1S: 2,
@@ -4479,7 +4497,7 @@ function updateDeviceCommandLabel(bundle, deviceId, commandId, name) {
       };
     })
   };
-  return refreshHaActionCallback(next, normalizedDeviceId, normalizedCommandId);
+  return next;
 }
 function commandLabelFor(bundle, deviceId, commandId) {
   const device = (bundle.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
@@ -5834,271 +5852,8 @@ function setActivityRoleDevice(bundle, activityId, group, deviceId) {
   });
   return reconcileActivityMembershipChange(bundle, next, aId);
 }
-var HA_ACTION_HOST_NAME = "Home Assistant";
-var HA_ACTION_HOST_BRAND = "m3tac0de";
-var HA_ACTION_MAX_SLOTS = 10;
-var HA_ACTION_LIBRARY_TYPE = 28;
-var HA_ACTION_DEFAULT_PORT = 8060;
-var MAX_DEVICE_ID = 99;
-var HA_IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-function isHaActionHostEntry(entry) {
-  return Boolean(entry?.ha_action_host);
-}
-function isHaActionDeviceId(bundle, deviceId) {
-  return (bundle?.devices ?? []).some(
-    (entry) => isHaActionHostEntry(entry) && Number(entry?.device?.device_id || 0) === Number(deviceId)
-  );
-}
-function parseHaActionAddress(value) {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const [hostPart, portPart, ...rest] = raw.split(":");
-  if (rest.length > 0) return null;
-  const host = hostPart.trim();
-  if (!HA_IPV4_PATTERN.test(host)) return null;
-  if (portPart === void 0 || portPart.trim() === "") {
-    return { host, port: HA_ACTION_DEFAULT_PORT };
-  }
-  const port = Number(portPart.trim());
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
-  return { host, port };
-}
-function bundleHaActionTarget(bundle) {
-  for (const entry of bundle?.devices ?? []) {
-    if (!isHaActionHostEntry(entry)) continue;
-    for (const row of entry.commands ?? []) {
-      const decoded = row?.restore_data?.decoded;
-      const host = String(decoded?.fields?.host || "");
-      const port = Number(decoded?.fields?.port || 0);
-      if (HA_IPV4_PATTERN.test(host) && port > 0) return { host, port };
-    }
-  }
-  return null;
-}
-function normalizeHaActionName(value) {
-  return String(value ?? "").trim().replace(/_/g, " ");
-}
-function haActionCallbackPath(deviceId, name) {
-  return `/launch/ha/${Number(deviceId)}/${encodeURIComponent(name)}/short`;
-}
-function asciiHexBytes(text) {
-  const out = [];
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    if (code > 127) throw new Error(`non-ASCII character in callback text: ${text[index]}`);
-    out.push(code);
-  }
-  return out;
-}
-function renderHaActionDataHex(target, path) {
-  const text = `POST ${path} HTTP/1.1\r
-Host:${target.host}:${target.port}\r
-Content-Type:application/x-www-form-urlencoded\r
-\r
-`;
-  const textBytes = asciiHexBytes(text);
-  const ipBytes = target.host.split(".").map((part) => Number(part) & 255);
-  const bytes = [
-    ...ipBytes,
-    target.port >> 8 & 255,
-    target.port & 255,
-    textBytes.length >> 8 & 255,
-    textBytes.length & 255,
-    ...textBytes
-  ];
-  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(" ");
-}
-function haActionCommandCodeHex(commandId) {
-  const code = 2e4 + (Number(commandId) & 255) & 281474976710655;
-  const hex = code.toString(16).padStart(12, "0");
-  return hex.replace(/(..)(?=.)/g, "$1 ");
-}
-function buildHaActionCommandRow(deviceId, commandId, name, target) {
-  const path = haActionCallbackPath(deviceId, name);
-  return {
-    command_id: commandId,
-    name,
-    restore_data: {
-      transport: "hub_code_record",
-      library_type: HA_ACTION_LIBRARY_TYPE,
-      command_code: haActionCommandCodeHex(commandId),
-      data_hex: renderHaActionDataHex(target, path),
-      decoded: {
-        class: "wifi_ip",
-        fields: {
-          host: target.host,
-          port: target.port,
-          method: "POST",
-          path,
-          header: "",
-          content_type: "application/x-www-form-urlencoded",
-          body: ""
-        },
-        trailer_hex: "",
-        edited: false
-      }
-    }
-  };
-}
-function refreshHaActionCallback(bundle, deviceId, commandId) {
-  if (!isHaActionDeviceId(bundle, deviceId)) return bundle;
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((entry) => {
-      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== Number(deviceId)) {
-        return entry;
-      }
-      return {
-        ...entry,
-        commands: (entry.commands ?? []).map((row) => {
-          if (Number(row?.command_id || 0) !== Number(commandId)) return row;
-          const decoded = row?.restore_data?.decoded;
-          const host = String(decoded?.fields?.host || "");
-          const port = Number(decoded?.fields?.port || 0);
-          if (!HA_IPV4_PATTERN.test(host) || port <= 0) return row;
-          const name = normalizeHaActionName(String(row?.name || ""));
-          return buildHaActionCommandRow(Number(deviceId), Number(commandId), name, { host, port });
-        })
-      };
-    })
-  };
-}
-function allocateHaHostDeviceId(bundle) {
-  const used = /* @__PURE__ */ new Set();
-  for (const entry of bundle.devices ?? []) used.add(Number(entry?.device?.device_id || 0));
-  for (const entry of bundle.activities ?? []) used.add(Number(entry?.device?.device_id || 0));
-  for (let id = 1; id <= MAX_DEVICE_ID; id += 1) {
-    if (!used.has(id)) return id;
-  }
-  return null;
-}
-function buildHaHostEntry(deviceId, name, sort) {
-  return {
-    ha_action_host: true,
-    device: {
-      device_id: deviceId,
-      name,
-      brand: HA_ACTION_HOST_BRAND,
-      device_class: "wifi_ip",
-      device_class_code: 28,
-      icon: 1,
-      sort,
-      code_type: 28,
-      device_type: 16,
-      code_id_hex: Array(16).fill("00").join(" "),
-      hide: 0,
-      input_flag: 0,
-      channel: 0,
-      power_state: 0,
-      poll_time: 0,
-      input_mode: 2,
-      power_mode: 0,
-      power_style: 0,
-      share_mode: 0,
-      tail_marker: 1
-    },
-    commands: []
-  };
-}
-function provisionHaAction(bundle, rawName, target) {
-  const name = normalizeHaActionName(rawName) || "HA action";
-  const hosts = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry));
-  let next = bundle;
-  let hostEntry = hosts.find((entry) => (entry.commands ?? []).length < HA_ACTION_MAX_SLOTS);
-  let deviceId;
-  if (hostEntry) {
-    deviceId = Number(hostEntry.device?.device_id || 0);
-    if (deviceId <= 0) return null;
-  } else {
-    const allocated = allocateHaHostDeviceId(bundle);
-    if (allocated == null) return null;
-    deviceId = allocated;
-    const hostName = hosts.length === 0 ? HA_ACTION_HOST_NAME : `${HA_ACTION_HOST_NAME} ${hosts.length + 1}`;
-    const maxSort = (bundle.devices ?? []).reduce(
-      (max, entry) => Math.max(max, Number(entry?.device?.sort || 0)),
-      0
-    );
-    hostEntry = buildHaHostEntry(deviceId, hostName, maxSort + 1);
-    next = { ...bundle, devices: [...bundle.devices ?? [], hostEntry] };
-  }
-  const usedSlots = new Set(
-    (hostEntry.commands ?? []).map((row2) => Number(row2?.command_id || 0))
-  );
-  let commandId = 0;
-  for (let slot = 1; slot <= HA_ACTION_MAX_SLOTS; slot += 1) {
-    if (!usedSlots.has(slot)) {
-      commandId = slot;
-      break;
-    }
-  }
-  if (commandId === 0) return null;
-  const row = buildHaActionCommandRow(deviceId, commandId, name, target);
-  next = {
-    ...next,
-    devices: (next.devices ?? []).map((entry) => {
-      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== deviceId) return entry;
-      return { ...entry, commands: [...entry.commands ?? [], row] };
-    })
-  };
-  return { bundle: next, deviceId, commandId, name };
-}
-function addActivityHaActionFavorite(bundle, activityId, rawName, target) {
-  const provision = provisionHaAction(bundle, rawName, target);
-  if (!provision) return null;
-  return addBundleActivityFavorite(
-    provision.bundle,
-    Number(activityId),
-    provision.deviceId,
-    provision.commandId,
-    provision.name
-  );
-}
-function haActionCommandReferenced(bundle, deviceId, commandId) {
-  for (const activity of bundle.activities ?? []) {
-    for (const slot of activity?.favorite_slots ?? []) {
-      if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) return true;
-    }
-    for (const binding of activity?.button_bindings ?? []) {
-      if (Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId) return true;
-      if (Number(binding?.long_press_device_id || 0) === deviceId && Number(binding?.long_press_command_id || 0) === commandId) return true;
-    }
-    for (const macro of activity?.macros ?? []) {
-      for (const step of macro?.steps ?? []) {
-        if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
-        if (Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId) return true;
-      }
-    }
-  }
-  return false;
-}
-function pruneHaActionHosts(bundle) {
-  let next = bundle;
-  const hostIds = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry)).map((entry) => Number(entry?.device?.device_id || 0)).filter((id) => id > 0);
-  for (const deviceId of hostIds) {
-    const entry = (next.devices ?? []).find(
-      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId
-    );
-    if (!entry) continue;
-    for (const row of [...entry.commands ?? []]) {
-      const commandId = Number(row?.command_id || 0);
-      if (commandId > 0 && !haActionCommandReferenced(next, deviceId, commandId)) {
-        next = deleteBundleDeviceCommand(next, deviceId, commandId);
-      }
-    }
-    const refreshed = (next.devices ?? []).find(
-      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId
-    );
-    if (refreshed && (refreshed.commands ?? []).length === 0) {
-      next = deleteBundleDevice(next, deviceId);
-    }
-  }
-  return next;
-}
 function bundleEditableDeviceOptions(bundle) {
-  const hidden = new Set(
-    (bundle?.devices ?? []).filter((entry) => isHaActionHostEntry(entry)).map((entry) => Number(entry?.device?.device_id || 0))
-  );
-  return bundleDeviceOptions(bundle).filter((option) => !hidden.has(option.id));
+  return bundleDeviceOptions(bundle);
 }
 function assertBackupBundleRestoreCompatible(bundle, destinationHubVersion) {
   const sourceVersion = normalizeHubVersion(bundle?.hub?.version);
@@ -6151,9 +5906,6 @@ var SofabatonEditDetailView = class extends i3 {
     this._roleConfirm = null;
     // Full sub-view for individual button bindings (never an accordion).
     this._bindingsView = false;
-    this._haActionName = "";
-    this._haActionAddress = "";
-    this._haActionError = "";
     this._addShortcutKind = "command";
     this._addShortcutActionName = "";
     this._addShortcutMacroMode = "new";
@@ -6174,6 +5926,17 @@ var SofabatonEditDetailView = class extends i3 {
     this._payloadDialogRawSnapshot = "";
     this._payloadDialogRawDraft = "";
     this._payloadDialogError = "";
+    // ── Live payload editing (host-provided I/O) ───────────────────────
+    // The detail view is hass-free; the live Activities host injects these
+    // to fetch a command's blob on demand and to Test it on the hub. Absent
+    // in backup mode (the payload already lives in the bundle there).
+    this.fetchCommandPayload = null;
+    this.testCommandPayload = null;
+    this._payloadFetchingCommandId = null;
+    this._payloadFetchError = "";
+    this._payloadLiveFetched = null;
+    this._payloadDialogTestStatus = "idle";
+    this._payloadDialogTestError = "";
     this._confirmDeleteTarget = null;
     this._confirmDeleteLabel = "";
     this._addFavoriteOpen = false;
@@ -6198,8 +5961,6 @@ var SofabatonEditDetailView = class extends i3 {
     this._bindingLpMacroMode = "new";
     this._bindingLpMacroId = null;
     this._bindingLpActionName = "";
-    this._bindingLpHaActionName = "";
-    this._bindingLpHaActionAddress = "";
     this._bindingError = "";
     this._detailScrollTop = 0;
     this._bindingsScrollTop = 0;
@@ -6217,12 +5978,12 @@ var SofabatonEditDetailView = class extends i3 {
       this.dispatchEvent(new CustomEvent("close"));
     };
     // ── Live-mode header (§4.3) ─────────────────────────────────────────
-    // In live mode the host owns Review / Sync / Discard; the element just
-    // signals intent. In backup mode these render nothing (the header shows
-    // rename/delete instead) and the chip reads "Unsaved".
-    this._requestReview = () => this.dispatchEvent(new CustomEvent("review-request"));
+    // The live header mirrors the Wifi command editor: Back (= discard, via the
+    // host's exit-confirm) on the left, rename/delete + a single stateful Sync
+    // button on the right. The element only signals sync intent; the host owns
+    // the write. In backup mode there is no Sync button and the chip reads
+    // "Unsaved".
     this._requestSync = () => this.dispatchEvent(new CustomEvent("sync-request"));
-    this._requestDiscard = () => this.dispatchEvent(new CustomEvent("discard-request"));
     this._handleEditDetailScroll = (event) => {
       const scrollEl = event.currentTarget;
       if (!scrollEl) return;
@@ -6328,10 +6089,17 @@ var SofabatonEditDetailView = class extends i3 {
       this._payloadDialogRawSnapshot = "";
       this._payloadDialogRawDraft = "";
       this._payloadDialogError = "";
+      this._payloadLiveFetched = null;
+      this._payloadDialogTestStatus = "idle";
+      this._payloadDialogTestError = "";
     };
     this._applyCommandPayloadDialog = () => {
       const target = this._payloadDialogTarget;
-      if (!target || !this.bundle || this.mode === "live") return;
+      if (!target || !this.bundle) return;
+      if (this.mode === "live") {
+        this._applyLivePayloadDialog(target);
+        return;
+      }
       const snapshot = this._payloadDialogDecodedSnapshot;
       if (snapshot) {
         const changedFields = this._collectChangedDecodedFields(snapshot);
@@ -6381,6 +6149,14 @@ var SofabatonEditDetailView = class extends i3 {
     this._confirmDelete = () => {
       const target = this._confirmDeleteTarget;
       if (!target || !this.bundle) return;
+      if (this.mode === "live" && (target.kind === "activity" || target.kind === "device")) {
+        const entityId = target.kind === "activity" ? target.activityId : target.deviceId;
+        this._closeDeleteConfirm();
+        this.dispatchEvent(new CustomEvent("delete-request", {
+          detail: { kind: target.kind, entityId }
+        }));
+        return;
+      }
       this._commitEditBundleEdit(applyBundleDelete(this.bundle, target));
       if (target.kind === "activity" || target.kind === "device") {
         this._requestClose();
@@ -6389,8 +6165,8 @@ var SofabatonEditDetailView = class extends i3 {
     };
     // ── Add favorite (device → command picker) ──────────────────────────
     // One entry point for everything that can land on the remote screen:
-    // a device command, a macro (existing or new), or a Home
-    // Assistant action. The kind selector swaps the dialog's fields.
+    // a device command or a macro (existing or new). The kind selector
+    // swaps the dialog's fields.
     this._openAddShortcutDialog = () => {
       if (this.entityId == null || !this.bundle) return;
       const devices = bundleEditableDeviceOptions(this.bundle);
@@ -6403,15 +6179,6 @@ var SofabatonEditDetailView = class extends i3 {
       this._addFavoriteError = "";
       this._addShortcutActionName = "";
       this._resetMacroTarget("shortcut");
-      const existing = bundleHaActionTarget(this.bundle);
-      let prefill = existing ? `${existing.host}:${existing.port}` : "";
-      if (!prefill && typeof window !== "undefined") {
-        const candidate = parseHaActionAddress(window.location.hostname);
-        if (candidate) prefill = `${candidate.host}:8060`;
-      }
-      this._haActionName = "";
-      this._haActionAddress = prefill;
-      this._haActionError = "";
       this._addFavoriteOpen = true;
     };
     this._closeAddFavoriteDialog = () => {
@@ -6424,7 +6191,6 @@ var SofabatonEditDetailView = class extends i3 {
       this._addShortcutActionName = "";
       this._addShortcutMacroMode = "new";
       this._addShortcutMacroId = null;
-      this._closeHaActionDialog();
     };
     this._handleAddFavoriteDeviceChange = (event) => {
       const value = Number(event.target.value);
@@ -6468,55 +6234,24 @@ var SofabatonEditDetailView = class extends i3 {
         this._applyAddFavorite();
         return;
       }
-      if (this._addShortcutKind === "action") {
-        const activityId = Number(this.entityId);
-        if (this._addShortcutMacroMode === "existing") {
-          const existing = activityUserMacroSummaries(this.bundle, activityId).find((macro) => macro.buttonId === Number(this._addShortcutMacroId));
-          if (!existing) {
-            this._addFavoriteError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-            return;
-          }
-          this._closeAddFavoriteDialog();
-          this._openMacroEditor("activity", activityId, existing.buttonId, existing.name);
+      const activityId = Number(this.entityId);
+      if (this._addShortcutMacroMode === "existing") {
+        const existing = activityUserMacroSummaries(this.bundle, activityId).find((macro) => macro.buttonId === Number(this._addShortcutMacroId));
+        if (!existing) {
+          this._addFavoriteError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
           return;
         }
-        const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
-        const next = addActivityUserMacro(this.bundle, activityId, name);
-        this._commitEditBundleEdit(next);
         this._closeAddFavoriteDialog();
-        const summaries = activityUserMacroSummaries(next, activityId);
-        const created = summaries[summaries.length - 1];
-        if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
+        this._openMacroEditor("activity", activityId, existing.buttonId, existing.name);
         return;
       }
-      this._applyHaAction();
-    };
-    // HA-action field reset — the fields live inside the unified
-    // add-shortcut dialog now; this also runs on detail close.
-    this._closeHaActionDialog = () => {
-      this._haActionName = "";
-      this._haActionAddress = "";
-      this._haActionError = "";
-    };
-    this._applyHaAction = () => {
-      if (!this.bundle || this.entityId == null) return;
-      const name = sanitizeBundleName(this.bundle, this._haActionName).trim();
-      if (!name) {
-        this._haActionError = TOOLS_CARD_STRINGS.backup.haActionNameRequired;
-        return;
-      }
-      const target = parseHaActionAddress(this._haActionAddress);
-      if (!target) {
-        this._haActionError = TOOLS_CARD_STRINGS.backup.haActionInvalidAddress;
-        return;
-      }
-      const next = addActivityHaActionFavorite(this.bundle, Number(this.entityId), name, target);
-      if (!next) {
-        this._haActionError = TOOLS_CARD_STRINGS.backup.haActionNoSlots;
-        return;
-      }
+      const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim() || TOOLS_CARD_STRINGS.backup.newMacroName;
+      const next = addActivityUserMacro(this.bundle, activityId, name);
       this._commitEditBundleEdit(next);
       this._closeAddFavoriteDialog();
+      const summaries = activityUserMacroSummaries(next, activityId);
+      const created = summaries[summaries.length - 1];
+      if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
     };
     this._applyEditRenameDialog = () => {
       const target = this._editRenameDialogTarget;
@@ -6557,10 +6292,6 @@ var SofabatonEditDetailView = class extends i3 {
         return;
       }
       if (target.kind === "command") {
-        if (this.mode === "live") {
-          this._closeEditRenameDialog();
-          return;
-        }
         this._commitEditBundleEdit(
           renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next)
         );
@@ -6611,11 +6342,6 @@ var SofabatonEditDetailView = class extends i3 {
       this._bindingLpMacroMode = "new";
       this._bindingLpMacroId = null;
       this._bindingLpActionName = "";
-      this._bindingLpHaActionName = "";
-      this._bindingLpHaActionAddress = "";
-      this._haActionName = "";
-      this._haActionAddress = "";
-      this._haActionError = "";
       this._bindingError = "";
     };
     this._handleBindingButtonChange = (event) => {
@@ -6635,7 +6361,6 @@ var SofabatonEditDetailView = class extends i3 {
       const kind = event.target.value;
       this._bindingTargetKind = kind;
       this._bindingError = "";
-      this._haActionError = "";
       if (kind === "command") {
         const devices = this._bindingCommandDeviceOptions();
         if (!devices.some((device) => device.value === this._bindingDeviceId)) {
@@ -6644,13 +6369,8 @@ var SofabatonEditDetailView = class extends i3 {
         this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
         return;
       }
-      if (kind === "action") {
-        this._resetMacroTarget("binding");
-        this._bindingActionName ||= this._macroName(this._bindingCommandId);
-        return;
-      }
-      this._haActionName ||= this._commandLabel(this._bindingDeviceId, this._bindingCommandId);
-      this._haActionAddress ||= this._prefillHaActionAddress();
+      this._resetMacroTarget("binding");
+      this._bindingActionName ||= this._macroName(this._bindingCommandId);
     };
     this._handleBindingActionNameInput = (event) => {
       this._bindingActionName = event.target.value;
@@ -6679,13 +6399,8 @@ var SofabatonEditDetailView = class extends i3 {
         this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
         return;
       }
-      if (kind === "action") {
-        this._resetMacroTarget("bindingLp");
-        this._bindingLpActionName ||= this._macroName(this._bindingLpCommandId);
-        return;
-      }
-      this._bindingLpHaActionName ||= this._commandLabel(this._bindingLpDeviceId, this._bindingLpCommandId);
-      this._bindingLpHaActionAddress ||= this._prefillHaActionAddress();
+      this._resetMacroTarget("bindingLp");
+      this._bindingLpActionName ||= this._macroName(this._bindingLpCommandId);
     };
     this._handleBindingLpActionNameInput = (event) => {
       this._bindingLpActionName = event.target.value;
@@ -6762,52 +6477,26 @@ var SofabatonEditDetailView = class extends i3 {
           if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
           return;
         }
-        if (this._bindingTargetKind === "action") {
-          const resolved = this._resolveMacroTarget(
-            next,
-            activityId,
-            this._bindingMacroMode,
-            this._bindingMacroId,
-            this._bindingActionName
-          );
-          if (!resolved) {
-            this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-            return;
-          }
-          next = upsertActivityButtonBinding(resolved.bundle, activityId, {
-            buttonId,
-            deviceId: activityId,
-            commandId: resolved.macroId,
-            longPress
-          });
-          this._commitEditBundleEdit(next);
-          this._closeBindingDialog();
-          if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
-          if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
+        const resolved = this._resolveMacroTarget(
+          next,
+          activityId,
+          this._bindingMacroMode,
+          this._bindingMacroId,
+          this._bindingActionName
+        );
+        if (!resolved) {
+          this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
           return;
         }
-        const name = sanitizeBundleName(next, this._haActionName).trim();
-        if (!name) {
-          this._bindingError = TOOLS_CARD_STRINGS.backup.haActionNameRequired;
-          return;
-        }
-        const target = parseHaActionAddress(this._haActionAddress);
-        if (!target) {
-          this._bindingError = TOOLS_CARD_STRINGS.backup.haActionInvalidAddress;
-          return;
-        }
-        const provision = provisionHaAction(next, name, target);
-        if (!provision) {
-          this._bindingError = TOOLS_CARD_STRINGS.backup.haActionNoSlots;
-          return;
-        }
-        this._commitEditBundleEdit(upsertActivityButtonBinding(provision.bundle, activityId, {
+        next = upsertActivityButtonBinding(resolved.bundle, activityId, {
           buttonId,
-          deviceId: provision.deviceId,
-          commandId: provision.commandId,
+          deviceId: activityId,
+          commandId: resolved.macroId,
           longPress
-        }));
+        });
+        this._commitEditBundleEdit(next);
         this._closeBindingDialog();
+        if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
         if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
       } else {
         const commandId = Number(this._bindingCommandId);
@@ -6961,6 +6650,12 @@ var SofabatonEditDetailView = class extends i3 {
       _payloadDialogDecodedSnapshot: { state: true },
       _payloadDialogRawDraft: { state: true },
       _payloadDialogError: { state: true },
+      fetchCommandPayload: { attribute: false },
+      testCommandPayload: { attribute: false },
+      _payloadFetchingCommandId: { state: true },
+      _payloadFetchError: { state: true },
+      _payloadDialogTestStatus: { state: true },
+      _payloadDialogTestError: { state: true },
       _confirmDeleteTarget: { state: true },
       _confirmDeleteLabel: { state: true },
       _addFavoriteOpen: { state: true },
@@ -6985,8 +6680,6 @@ var SofabatonEditDetailView = class extends i3 {
       _bindingLpMacroMode: { state: true },
       _bindingLpMacroId: { state: true },
       _bindingLpActionName: { state: true },
-      _bindingLpHaActionName: { state: true },
-      _bindingLpHaActionAddress: { state: true },
       _bindingError: { state: true },
       _macroEditor: { state: true },
       _stepDialogOpen: { state: true },
@@ -7001,9 +6694,6 @@ var SofabatonEditDetailView = class extends i3 {
       _roleMenuOpen: { state: true },
       _roleConfirm: { state: true },
       _bindingsView: { state: true },
-      _haActionName: { state: true },
-      _haActionAddress: { state: true },
-      _haActionError: { state: true },
       _addShortcutKind: { state: true },
       _addShortcutActionName: { state: true },
       _addShortcutMacroMode: { state: true },
@@ -7018,31 +6708,82 @@ var SofabatonEditDetailView = class extends i3 {
     :host {
       flex-direction: column;
     }
-    /* Live-mode header action cluster (Discard / Review / Sync). */
-    .live-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-    .live-btn {
+    /* Live-mode header Sync button — styled identically to the Wifi command
+       editor's .detail-sync-btn (primary when there are pending changes, a
+       green "up to date" disabled state when clean). */
+    .detail-sync-btn {
       border: 1px solid var(--divider-color);
-      border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+      border-radius: calc(var(--ha-card-border-radius, 12px) * 0.85);
       background: transparent;
       color: var(--primary-text-color);
       font: inherit;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 700;
-      padding: 6px 10px;
+      padding: 8px 12px;
       cursor: pointer;
       white-space: nowrap;
       transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
     }
-    .live-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .live-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-    .live-btn:disabled {
+    .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .detail-sync-btn.sync-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    .detail-sync-btn:disabled {
       cursor: default;
       opacity: 0.42;
       color: var(--disabled-text-color, var(--secondary-text-color));
       border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
-      background: transparent;
     }
-    .live-btn:disabled:hover { border-color: color-mix(in srgb, var(--divider-color) 88%, transparent); }
+    .detail-sync-btn:disabled:hover { border-color: color-mix(in srgb, var(--divider-color) 88%, transparent); }
+    .detail-sync-btn.detail-sync-btn--state-ok,
+    .detail-sync-btn.detail-sync-btn--state-ok:disabled {
+      border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
+      background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
+      color: #2e7d32;
+      opacity: 1;
+    }
+    /* Spinner used on the live "fetch payload" command-row button. */
+    @keyframes sb-spin { to { transform: rotate(360deg); } }
+    ha-icon.sb-spin { animation: sb-spin 720ms linear infinite; }
+    /* Inline status line (fetch error + in-dialog Test result). */
+    .section-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      padding: 8px 12px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--ha-card-border-radius, 10px);
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--secondary-text-color);
+    }
+    .section-status ha-icon { --mdc-icon-size: 18px; flex: 0 0 auto; }
+    .section-status.error {
+      color: var(--error-color, #db4437);
+      border-color: color-mix(in srgb, var(--error-color, #db4437) 30%, var(--divider-color));
+      background: color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .payload-test-status.success {
+      color: #2e7d32;
+      border-color: color-mix(in srgb, #2e7d32 30%, var(--divider-color));
+      background: color-mix(in srgb, #2e7d32 6%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .payload-test-btn { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; }
+    .payload-test-btn ha-icon { --mdc-icon-size: 16px; }
+    /* Device-class indicator in the payload dialog header. */
+    .dialog-title-group { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+    .dialog-title-group .dialog-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .payload-class-badge {
+      flex: 0 0 auto;
+      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      padding: 2px 9px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--primary-color) 40%, var(--divider-color));
+      color: var(--primary-text-color);
+      background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    }
   `];
   }
   connectedCallback() {
@@ -7068,9 +6809,11 @@ var SofabatonEditDetailView = class extends i3 {
     this._roleMenuAnchor = null;
     this._roleConfirm = null;
     this._bindingsView = false;
-    this._closeHaActionDialog();
     this._editDetailNameDraft = sanitizeBundleName(this.bundle, this._selectedEditTitle());
     this._closeEditRenameDialog();
+    this._closeCommandPayloadDialog();
+    this._payloadFetchingCommandId = null;
+    this._payloadFetchError = "";
     this._closeDeleteConfirm();
     this._closeAddFavoriteDialog();
     this._closeBindingDialog();
@@ -7078,30 +6821,43 @@ var SofabatonEditDetailView = class extends i3 {
     this._closeStepDialog();
   }
   /**
-   * Commit a mutated bundle from any edit handler. The element applies
-   * the HA-action plumbing sweep and updates its own prop synchronously
-   * (handlers read the fresh bundle in the same tick), then hands the
-   * result to the host, which owns dirty/persistence semantics.
+   * Commit a mutated bundle from any edit handler. The element updates its
+   * own prop synchronously (handlers read the fresh bundle in the same
+   * tick), then hands the result to the host, which owns dirty/persistence
+   * semantics.
    */
   _commitEditBundleEdit(next) {
-    this.bundle = pruneHaActionHosts(next);
+    this.bundle = next;
     this.dispatchEvent(new CustomEvent("bundle-change", { detail: { bundle: this.bundle } }));
   }
   _renderDirtyChip() {
-    if (!this.dirty) return A;
-    if (this.mode === "live") {
-      return T`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.activities.notSyncedTooltip}>${TOOLS_CARD_STRINGS.activities.notSyncedChip}</span>`;
-    }
+    if (this.mode === "live" || !this.dirty) return A;
     return T`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`;
   }
-  _renderLiveHeaderActions() {
+  _renderLiveSyncButton() {
     const S4 = TOOLS_CARD_STRINGS.activities;
+    const dirty = this.dirty;
+    const label = dirty ? S4.syncToHub : S4.syncUpToDate;
+    const classes = `detail-sync-btn${dirty ? " sync-btn-primary" : " detail-sync-btn--state-ok"}`;
+    return T`<button class=${classes} ?disabled=${!dirty} @click=${dirty ? this._requestSync : null}>${label}</button>`;
+  }
+  // Rename (pencil) + delete (trash) header buttons — shared by live and
+  // backup mode so both editors expose the identical affordance. In live
+  // mode rename rides the normal Sync (a bundle mutation → dirty → Sync);
+  // delete executes immediately on the hub through the host (see
+  // _confirmDelete).
+  _renderDetailRenameDeleteButtons(kind) {
     return T`
-      <div class="detail-title-actions live-actions">
-        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestDiscard}>${S4.discard}</button>
-        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestReview}>${S4.reviewChanges}</button>
-        <button class="live-btn live-btn--primary" ?disabled=${!this.dirty} @click=${this._requestSync}>${S4.sync}</button>
-      </div>
+      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${kind}`}>
+        <ha-icon icon="mdi:pencil"></ha-icon>
+      </button>
+      <button
+        class="icon-btn icon-btn--danger"
+        @click=${this._openDetailDeleteConfirm}
+        aria-label=${kind === "activity" ? TOOLS_CARD_STRINGS.backup.deleteActivityAria : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
+      >
+        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+      </button>
     `;
   }
   render() {
@@ -7136,20 +6892,10 @@ var SofabatonEditDetailView = class extends i3 {
                   <div class="detail-title">${params.title}</div>
                 </div>
                 ${this._renderDirtyChip()}
-                ${this.mode === "live" ? this._renderLiveHeaderActions() : T`
-                      <div class="detail-title-actions">
-                        <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
-                          <ha-icon icon="mdi:pencil"></ha-icon>
-                        </button>
-                        <button
-                          class="icon-btn icon-btn--danger"
-                          @click=${this._openDetailDeleteConfirm}
-                          aria-label=${params.kind === "activity" ? TOOLS_CARD_STRINGS.backup.deleteActivityAria : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
-                        >
-                          <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                        </button>
-                      </div>
-                    `}
+                <div class="detail-title-actions">
+                  ${this._renderDetailRenameDeleteButtons(params.kind)}
+                  ${this.mode === "live" ? this._renderLiveSyncButton() : A}
+                </div>
               </div>
             </div>
             ${this._renderEditDetailSectionNav(sectionItems)}
@@ -7463,9 +7209,15 @@ var SofabatonEditDetailView = class extends i3 {
         <div class="quick-access-head">
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
-            ${this.mode === "live" ? "Commands are read-only in live sync \u2014 rename, payload, and delete stay in Backup \u2192 Edit." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
+            ${this.mode === "live" ? "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup \u2192 Edit." : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
           </div>
         </div>
+        ${this._payloadFetchError ? T`
+              <div class="section-status error" role="alert">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>${this._payloadFetchError}</span>
+              </div>
+            ` : A}
         ${items.length ? T`
               <div class="quick-access-list">
                 <div class="quick-access-sortable-container">
@@ -7490,15 +7242,13 @@ var SofabatonEditDetailView = class extends i3 {
             </div>
           </div>
           <div class="quick-access-actions">
-            ${this.mode === "live" ? A : T`
-                  <button
-                    class="icon-btn"
-                    @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
-                    aria-label="Rename command"
-                  >
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
-                `}
+            <button
+              class="icon-btn"
+              @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
+              aria-label="Rename command"
+            >
+              <ha-icon icon="mdi:pencil"></ha-icon>
+            </button>
             ${this.mode !== "live" && this._commandHasEditablePayload(item.commandId) ? T`
                   <button
                     class="icon-btn"
@@ -7507,6 +7257,20 @@ var SofabatonEditDetailView = class extends i3 {
                     title="Edit payload"
                   >
                     <ha-icon icon="mdi:code-braces"></ha-icon>
+                  </button>
+                ` : A}
+            ${this.mode === "live" ? T`
+                  <button
+                    class="icon-btn"
+                    @click=${() => void this._liveFetchAndOpenPayload(item.commandId)}
+                    ?disabled=${this._payloadFetchingCommandId != null}
+                    aria-label="Edit payload"
+                    title="Fetch and edit this command's payload"
+                  >
+                    <ha-icon
+                      icon=${this._payloadFetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
+                      class=${this._payloadFetchingCommandId === item.commandId ? "sb-spin" : ""}
+                    ></ha-icon>
                   </button>
                 ` : A}
             ${this.mode === "live" ? A : T`
@@ -7583,7 +7347,7 @@ var SofabatonEditDetailView = class extends i3 {
             <div class="quick-access-label-row">
               <div class="quick-access-label">${item.label}</div>
               <div class="quick-access-chip">
-                ${item.kind === "macro" ? TOOLS_CARD_STRINGS.backup.shortcutChipAction : isHaActionDeviceId(this.bundle, Number(item.deviceId || 0)) ? TOOLS_CARD_STRINGS.backup.haActionChip : TOOLS_CARD_STRINGS.backup.shortcutChipCommand}
+                ${item.kind === "macro" ? TOOLS_CARD_STRINGS.backup.shortcutChipAction : TOOLS_CARD_STRINGS.backup.shortcutChipCommand}
               </div>
             </div>
             <div class="quick-access-meta">${this._quickAccessRowMeta(item)}</div>
@@ -7699,27 +7463,51 @@ var SofabatonEditDetailView = class extends i3 {
   _renderCommandPayloadDialog() {
     if (!this._payloadDialogOpen || !this._payloadDialogTarget) return A;
     const decoded = this._payloadDialogDecodedSnapshot;
+    const deviceClass = String(
+      bundleDeviceClass(this.bundle, this._payloadDialogTarget.deviceId) || ""
+    ).trim();
     return T`
       <div class="modal-backdrop" @click=${this._closeCommandPayloadDialog}>
         <div class="dialog medium" @click=${(event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">Edit Payload</div>
+            <div class="dialog-title-group">
+              <div class="dialog-title">Edit Payload</div>
+              ${deviceClass ? T`<span class="payload-class-badge" title="Device class">${deviceClass}</span>` : A}
+            </div>
             <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             ${decoded ? this._renderDecodedPayloadForm(decoded.className) : this._renderRawPayloadForm()}
-            <div class="payload-test-note">
-              <ha-icon icon="mdi:flash-outline"></ha-icon>
-              <span>
-                Verify a changed payload before trusting it: for IR payloads,
-                Blobs &rarr; Test plays the bytes on the hub without saving.
-                Save here only once the payload does what you expect.
-              </span>
-            </div>
+            ${this._liveDeviceIsIr() ? T`
+                  <div class="payload-test-note">
+                    <ha-icon icon="mdi:flash-outline"></ha-icon>
+                    <span>
+                      ${this.mode === "live" ? T`Verify a changed payload before saving: <strong>Test</strong> plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.` : T`Verify a changed payload before trusting it: Blobs &rarr; Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
+                    </span>
+                  </div>
+                ` : A}
+            ${this._payloadDialogTestStatus !== "idle" ? T`
+                  <div class="section-status payload-test-status ${this._payloadDialogTestStatus}" role="status" aria-live="polite">
+                    <ha-icon icon=${this._payloadDialogTestStatus === "success" ? "mdi:check-circle-outline" : this._payloadDialogTestStatus === "error" ? "mdi:alert-circle-outline" : "mdi:progress-clock"}></ha-icon>
+                    <span>
+                      ${this._payloadDialogTestStatus === "testing" ? "Sending to the hub\u2026" : this._payloadDialogTestStatus === "success" ? "Sent to the hub for one-shot playback." : this._payloadDialogTestError || "Test failed."}
+                    </span>
+                  </div>
+                ` : A}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._payloadDialogError}</div>
             <div class="dialog-footer-actions">
+              ${this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload ? T`
+                    <button
+                      class="dialog-btn payload-test-btn"
+                      ?disabled=${this._payloadDialogTestStatus === "testing"}
+                      @click=${() => void this._runLivePayloadTest()}
+                    >
+                      <ha-icon icon="mdi:flash-outline"></ha-icon>
+                      <span>Test</span>
+                    </button>
+                  ` : A}
               <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>Cancel</button>
               <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>Save</button>
             </div>
@@ -7866,7 +7654,6 @@ var SofabatonEditDetailView = class extends i3 {
     this._editRenameDialogOpen = true;
   }
   _openDeviceCommandRenameDialog(commandId) {
-    if (this.mode === "live") return;
     if (this.entityId == null) return;
     const deviceId = Number(this.entityId);
     const normalizedCommandId = Number(commandId);
@@ -7885,6 +7672,128 @@ var SofabatonEditDetailView = class extends i3 {
     return Boolean(
       commandDecodedBlock(this.bundle, deviceId, Number(commandId)) || commandRawPayloadHex(this.bundle, deviceId, Number(commandId))
     );
+  }
+  /**
+   * True for IR devices. Live payload *editing* is offered for all classes
+   * (raw hex, or the structured form where a parser exists), but the Test
+   * button — Blobs `playIrBlob` — is IR-only, so it gates on this.
+   */
+  _liveDeviceIsIr() {
+    if (this.entityId == null || !this.bundle) return false;
+    return String(bundleDeviceClass(this.bundle, Number(this.entityId)) || "").trim().toLowerCase() === "ir";
+  }
+  /**
+   * Live "edit payload": fetch this one command's blob from the hub on
+   * demand (the structural bundle is blob-free), then open the same payload
+   * dialog backup uses — populated from the fetch, not the bundle, so the
+   * fetch itself never marks the bundle dirty. The host supplies the fetch.
+   */
+  async _liveFetchAndOpenPayload(commandId) {
+    if (this.mode !== "live" || this.entityId == null || !this.fetchCommandPayload) return;
+    if (this._payloadFetchingCommandId != null) return;
+    const deviceId = Number(this.entityId);
+    const normalizedCommandId = Number(commandId);
+    this._payloadFetchingCommandId = normalizedCommandId;
+    this._payloadFetchError = "";
+    try {
+      const fetched = await this.fetchCommandPayload(deviceId, normalizedCommandId);
+      if (!fetched || !String(fetched.dataHex || "").trim()) {
+        this._payloadFetchError = "The hub returned no payload for this command.";
+        return;
+      }
+      this._openLivePayloadDialog(deviceId, normalizedCommandId, fetched);
+    } catch (error) {
+      this._payloadFetchError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this._payloadFetchingCommandId = null;
+    }
+  }
+  _openLivePayloadDialog(deviceId, commandId, fetched) {
+    const decoded = this._decodedSnapshotFromFetch(fetched.decoded);
+    const rawHex = decoded ? "" : normalizeCommandPayloadHex(fetched.dataHex) ?? fetched.dataHex;
+    this._payloadDialogTarget = { deviceId, commandId };
+    this._payloadLiveFetched = fetched;
+    this._payloadDialogDecodedSnapshot = decoded;
+    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
+    this._payloadDialogRawSnapshot = rawHex;
+    this._payloadDialogRawDraft = rawHex;
+    this._payloadDialogError = "";
+    this._payloadDialogTestStatus = "idle";
+    this._payloadDialogTestError = "";
+    this._payloadDialogOpen = true;
+  }
+  /** Convert a fetched decoded block into the editor's snapshot shape. */
+  _decodedSnapshotFromFetch(decoded) {
+    if (!decoded) return null;
+    const className = String(decoded.class ?? "").trim().toLowerCase();
+    if (!(className in DECODED_CLASS_FORM_SPECS)) return null;
+    return {
+      className,
+      fields: { ...decoded.fields ?? {} },
+      trailerHex: String(decoded.trailer_hex ?? ""),
+      edited: false
+    };
+  }
+  /**
+   * Commit a live payload edit. The working command has no restore_data yet
+   * (blob-free bundle), so build the whole block — carrying the `edited`
+   * marker the device-sync planner keys on — and set it via
+   * `setCommandRestoreData`. A pristine (unchanged) dialog commits nothing.
+   */
+  _applyLivePayloadDialog(target) {
+    if (!this.bundle) return;
+    const snapshot = this._payloadDialogDecodedSnapshot;
+    if (snapshot) {
+      const changedFields = this._collectChangedDecodedFields(snapshot);
+      if (!changedFields) {
+        this._closeCommandPayloadDialog();
+        return;
+      }
+      const restoreData2 = {
+        transport: "hub_code_record",
+        data_hex: this._payloadLiveFetched?.dataHex ?? "",
+        decoded: {
+          class: snapshot.className,
+          trailer_hex: snapshot.trailerHex,
+          fields: { ...snapshot.fields, ...changedFields },
+          edited: true
+        }
+      };
+      this._commitEditBundleEdit(setCommandRestoreData(this.bundle, target.deviceId, target.commandId, restoreData2));
+      this._closeCommandPayloadDialog();
+      return;
+    }
+    const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
+    if (!normalized) {
+      this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+      return;
+    }
+    if (normalized === normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
+      this._closeCommandPayloadDialog();
+      return;
+    }
+    const restoreData = { transport: "hub_code_record", data_hex: normalized, edited: true };
+    this._commitEditBundleEdit(setCommandRestoreData(this.bundle, target.deviceId, target.commandId, restoreData));
+    this._closeCommandPayloadDialog();
+  }
+  /** Test the current draft on the hub (IR only), via the host's callback. */
+  async _runLivePayloadTest() {
+    if (!this.testCommandPayload) return;
+    const value = this._payloadDialogDecodedSnapshot ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim() : String(this._payloadDialogRawDraft ?? "").trim();
+    if (!value) {
+      this._payloadDialogTestStatus = "error";
+      this._payloadDialogTestError = "Nothing to test yet.";
+      return;
+    }
+    this._payloadDialogTestStatus = "testing";
+    this._payloadDialogTestError = "";
+    try {
+      await this.testCommandPayload(value);
+      this._payloadDialogTestStatus = "success";
+    } catch (error) {
+      this._payloadDialogTestStatus = "error";
+      this._payloadDialogTestError = error instanceof Error ? error.message : String(error);
+    }
   }
   _openCommandPayloadDialog(commandId) {
     if (this.mode === "live") return;
@@ -7977,6 +7886,11 @@ var SofabatonEditDetailView = class extends i3 {
     if (!target || !this.bundle) return A;
     const impact = bundleDeleteImpact(this.bundle, target);
     const hasCascade = backupDeleteHasCascade(impact);
+    const S4 = TOOLS_CARD_STRINGS.backup;
+    const isLive = this.mode === "live";
+    const isImmediate = isLive && (target.kind === "activity" || target.kind === "device");
+    const intro = isLive ? hasCascade ? S4.deleteCascadeIntroLive : S4.deleteSimpleBodyLive : hasCascade ? S4.deleteCascadeIntro : S4.deleteSimpleBody;
+    const note = isLive ? isImmediate ? S4.deleteImmediateNote : S4.deleteSyncNote : S4.deleteReplaceNote;
     return T`
       <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
@@ -7986,7 +7900,7 @@ var SofabatonEditDetailView = class extends i3 {
           </div>
           <div class="dialog-body">
             <div class="backup-drawer-sub">
-              ${hasCascade ? TOOLS_CARD_STRINGS.backup.deleteCascadeIntro : TOOLS_CARD_STRINGS.backup.deleteSimpleBody}
+              ${intro}
             </div>
             ${hasCascade ? T`
                   <ul class="delete-impact-list">
@@ -7998,7 +7912,7 @@ var SofabatonEditDetailView = class extends i3 {
                 ` : A}
             <div class="delete-replace-note">
               <ha-icon icon="mdi:information-outline"></ha-icon>
-              <span>${TOOLS_CARD_STRINGS.backup.deleteReplaceNote}</span>
+              <span>${note}</span>
             </div>
           </div>
           <div class="dialog-footer">
@@ -8093,36 +8007,6 @@ var SofabatonEditDetailView = class extends i3 {
           ` : T`<div class="quick-access-empty">${S4.macroTargetNoExisting}</div>`}
       ${this._addShortcutMacroMode === "new" ? actionFields : A}
     `;
-    const haFields = T`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-ha-action-name">${S4.haActionNameLabel}</label>
-        <input
-          id="sb-ha-action-name"
-          class="decoded-field-input"
-          maxlength="20"
-          .value=${this._haActionName}
-          @input=${(event) => {
-      this._haActionName = event.target.value;
-      this._haActionError = "";
-    }}
-        />
-        <div class="decoded-field-helper">${S4.haActionNameHelper}</div>
-      </div>
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-ha-action-address">${S4.haActionAddressLabel}</label>
-        <input
-          id="sb-ha-action-address"
-          class="decoded-field-input"
-          placeholder="192.168.1.10:8060"
-          .value=${this._haActionAddress}
-          @input=${(event) => {
-      this._haActionAddress = event.target.value;
-      this._haActionError = "";
-    }}
-        />
-        <div class="decoded-field-helper">${S4.haActionAddressHelper}</div>
-      </div>
-    `;
     return T`
       <div class="modal-backdrop" @click=${this._closeAddFavoriteDialog}>
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
@@ -8140,18 +8024,16 @@ var SofabatonEditDetailView = class extends i3 {
       this._addShortcutKind = event.target.value;
       if (this._addShortcutKind === "action") this._resetMacroTarget("shortcut");
       this._addFavoriteError = "";
-      this._haActionError = "";
     }}
               >
                 <option value="command" ?selected=${kind === "command"}>${S4.shortcutKindCommand}</option>
                 <option value="action" ?selected=${kind === "action"}>${S4.shortcutKindAction}</option>
-                <option value="ha" ?selected=${kind === "ha"}>${S4.shortcutKindHa}</option>
               </select>
             </div>
-            ${kind === "command" ? commandFields : kind === "action" ? macroFields : haFields}
+            ${kind === "command" ? commandFields : macroFields}
           </div>
           <div class="dialog-footer">
-            <div class="dialog-footer-note">${kind === "ha" ? this._haActionError : this._addFavoriteError}</div>
+            <div class="dialog-footer-note">${this._addFavoriteError}</div>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" @click=${this._closeAddFavoriteDialog}>${S4.addFavoriteCancel}</button>
               <button class="dialog-btn dialog-btn-primary" @click=${this._applyAddShortcut} ?disabled=${!canAdd}>${S4.addFavoriteAdd}</button>
@@ -8220,26 +8102,11 @@ var SofabatonEditDetailView = class extends i3 {
     if (!this.bundle) return [];
     return bundleEditableDeviceOptions(this.bundle).map((device) => ({ value: device.id, label: device.label }));
   }
-  _prefillHaActionAddress() {
-    if (!this.bundle) return "";
-    const existing = bundleHaActionTarget(this.bundle);
-    if (existing) return `${existing.host}:${existing.port}`;
-    if (typeof window === "undefined") return "";
-    const candidate = parseHaActionAddress(window.location.hostname);
-    return candidate ? `${candidate.host}:8060` : "";
-  }
   _bindingTargetKindFor(deviceId) {
     if (!this.bundle || this.entityId == null) return "command";
     const dId = Number(deviceId || 0);
     if (dId === Number(this.entityId)) return "action";
-    if (dId > 0 && isHaActionDeviceId(this.bundle, dId)) return "ha";
     return "command";
-  }
-  _commandLabel(deviceId, commandId) {
-    const dId = Number(deviceId || 0);
-    const cId = Number(commandId || 0);
-    if (!this.bundle || dId <= 0 || cId <= 0) return "";
-    return deviceCommandItems(this.bundle, dId).find((command) => command.commandId === cId)?.label ?? "";
   }
   _macroName(buttonId) {
     if (!this.bundle || this.entityId == null) return "";
@@ -8323,11 +8190,6 @@ var SofabatonEditDetailView = class extends i3 {
     this._bindingLpDeviceId = this._bindingDeviceId;
     this._bindingLpCommandId = this._bindingCommandId;
     this._bindingError = "";
-    this._haActionName = "";
-    this._haActionAddress = this._prefillHaActionAddress();
-    this._haActionError = "";
-    this._bindingLpHaActionName = "";
-    this._bindingLpHaActionAddress = this._prefillHaActionAddress();
     this._bindingDialogOpen = true;
   }
   _openEditBindingDialog(kind, buttonId) {
@@ -8345,9 +8207,6 @@ var SofabatonEditDetailView = class extends i3 {
     this._bindingActionName = this._bindingTargetKind === "action" ? this._macroName(item.commandId) : "";
     this._bindingMacroMode = this._bindingTargetKind === "action" ? "existing" : "new";
     this._bindingMacroId = this._bindingTargetKind === "action" ? item.commandId : null;
-    this._haActionName = this._bindingTargetKind === "ha" ? this._commandLabel(item.deviceId, item.commandId) : "";
-    this._haActionAddress = this._prefillHaActionAddress();
-    this._haActionError = "";
     this._bindingLongPressEnabled = Boolean(item.longPress);
     this._bindingLpDeviceId = kind === "activity" ? item.longPress?.deviceId ?? item.deviceId ?? null : entityId;
     this._bindingLpCommandId = item.longPress?.commandId ?? null;
@@ -8355,8 +8214,6 @@ var SofabatonEditDetailView = class extends i3 {
     this._bindingLpActionName = this._bindingLpTargetKind === "action" ? this._macroName(this._bindingLpCommandId) : "";
     this._bindingLpMacroMode = this._bindingLpTargetKind === "action" ? "existing" : "new";
     this._bindingLpMacroId = this._bindingLpTargetKind === "action" ? this._bindingLpCommandId : null;
-    this._bindingLpHaActionName = this._bindingLpTargetKind === "ha" ? this._commandLabel(this._bindingLpDeviceId, this._bindingLpCommandId) : "";
-    this._bindingLpHaActionAddress = this._prefillHaActionAddress();
     this._bindingError = "";
     this._bindingDialogOpen = true;
   }
@@ -8389,43 +8246,21 @@ var SofabatonEditDetailView = class extends i3 {
         createdMacro: null
       };
     }
-    if (this._bindingLpTargetKind === "action") {
-      const resolved = this._resolveMacroTarget(
-        bundle,
-        activityId,
-        this._bindingLpMacroMode,
-        this._bindingLpMacroId,
-        this._bindingLpActionName
-      );
-      if (!resolved) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-        return null;
-      }
-      return {
-        bundle: resolved.bundle,
-        longPress: { deviceId: activityId, commandId: resolved.macroId },
-        createdMacro: resolved.created ? { buttonId: resolved.macroId, name: resolved.name } : null
-      };
-    }
-    const name = sanitizeBundleName(bundle, this._bindingLpHaActionName).trim();
-    if (!name) {
-      this._bindingError = TOOLS_CARD_STRINGS.backup.haActionNameRequired;
-      return null;
-    }
-    const target = parseHaActionAddress(this._bindingLpHaActionAddress);
-    if (!target) {
-      this._bindingError = TOOLS_CARD_STRINGS.backup.haActionInvalidAddress;
-      return null;
-    }
-    const provision = provisionHaAction(bundle, name, target);
-    if (!provision) {
-      this._bindingError = TOOLS_CARD_STRINGS.backup.haActionNoSlots;
+    const resolved = this._resolveMacroTarget(
+      bundle,
+      activityId,
+      this._bindingLpMacroMode,
+      this._bindingLpMacroId,
+      this._bindingLpActionName
+    );
+    if (!resolved) {
+      this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
       return null;
     }
     return {
-      bundle: provision.bundle,
-      longPress: { deviceId: provision.deviceId, commandId: provision.commandId },
-      createdMacro: null
+      bundle: resolved.bundle,
+      longPress: { deviceId: activityId, commandId: resolved.macroId },
+      createdMacro: resolved.created ? { buttonId: resolved.macroId, name: resolved.name } : null
     };
   }
   _renderBindingSelect(params) {
@@ -8491,7 +8326,7 @@ var SofabatonEditDetailView = class extends i3 {
     const commandOptions = this._bindingCommandOptions(commandDeviceId);
     const lpDeviceId = scope === "activity" && lpTargetKind === "command" ? this._bindingLpDeviceId : entityId;
     const lpCommandOptions = this._bindingCommandOptions(lpDeviceId);
-    const canSave = this._bindingButtonId != null && (scope === "device" ? this._bindingCommandId != null : targetKind === "command" ? this._bindingDeviceId != null && this._bindingCommandId != null : targetKind === "action" ? true : this._haActionName.trim().length > 0 && this._haActionAddress.trim().length > 0);
+    const canSave = this._bindingButtonId != null && (scope === "device" ? this._bindingCommandId != null : targetKind === "command" ? this._bindingDeviceId != null && this._bindingCommandId != null : true);
     const title = isEdit ? S4.bindingDialogEditTitle(buttonName(Number(this._bindingButtonId))) : S4.bindingDialogAddTitle;
     const commandFields = T`
       ${scope === "activity" ? this._renderBindingSelect({
@@ -8519,36 +8354,6 @@ var SofabatonEditDetailView = class extends i3 {
       onMacroChange: this._handleBindingMacroTargetChange,
       onNameInput: this._handleBindingActionNameInput
     });
-    const haFields = T`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-binding-ha-name">${S4.haActionNameLabel}</label>
-        <input
-          id="sb-binding-ha-name"
-          class="decoded-field-input"
-          maxlength="20"
-          .value=${this._haActionName}
-          @input=${(event) => {
-      this._haActionName = event.target.value;
-      this._bindingError = "";
-    }}
-        />
-        <div class="decoded-field-helper">${S4.haActionBindingNameHelper}</div>
-      </div>
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-binding-ha-address">${S4.haActionAddressLabel}</label>
-        <input
-          id="sb-binding-ha-address"
-          class="decoded-field-input"
-          placeholder="192.168.1.10:8060"
-          .value=${this._haActionAddress}
-          @input=${(event) => {
-      this._haActionAddress = event.target.value;
-      this._bindingError = "";
-    }}
-        />
-        <div class="decoded-field-helper">${S4.haActionAddressHelper}</div>
-      </div>
-    `;
     const lpCommandFields = T`
       ${scope === "activity" ? this._renderBindingSelect({
       id: "sb-binding-lp-device",
@@ -8575,36 +8380,6 @@ var SofabatonEditDetailView = class extends i3 {
       onMacroChange: this._handleBindingLpMacroTargetChange,
       onNameInput: this._handleBindingLpActionNameInput
     });
-    const lpHaFields = T`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-binding-lp-ha-name">${S4.haActionNameLabel}</label>
-        <input
-          id="sb-binding-lp-ha-name"
-          class="decoded-field-input"
-          maxlength="20"
-          .value=${this._bindingLpHaActionName}
-          @input=${(event) => {
-      this._bindingLpHaActionName = event.target.value;
-      this._bindingError = "";
-    }}
-        />
-        <div class="decoded-field-helper">${S4.haActionBindingNameHelper}</div>
-      </div>
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-binding-lp-ha-address">${S4.haActionAddressLabel}</label>
-        <input
-          id="sb-binding-lp-ha-address"
-          class="decoded-field-input"
-          placeholder="192.168.1.10:8060"
-          .value=${this._bindingLpHaActionAddress}
-          @input=${(event) => {
-      this._bindingLpHaActionAddress = event.target.value;
-      this._bindingError = "";
-    }}
-        />
-        <div class="decoded-field-helper">${S4.haActionAddressHelper}</div>
-      </div>
-    `;
     return T`
       <div class="modal-backdrop" @click=${this._closeBindingDialog}>
         <div class="dialog small" @click=${(event) => event.stopPropagation()}>
@@ -8636,11 +8411,10 @@ var SofabatonEditDetailView = class extends i3 {
                     >
                       <option value="command" ?selected=${targetKind === "command"}>${S4.shortcutKindCommand}</option>
                       <option value="action" ?selected=${targetKind === "action"}>${S4.shortcutKindAction}</option>
-                      <option value="ha" ?selected=${targetKind === "ha"}>${S4.shortcutKindHa}</option>
                     </select>
                   </div>
                 ` : A}
-            ${targetKind === "command" ? commandFields : targetKind === "action" ? actionFields : haFields}
+            ${targetKind === "command" ? commandFields : actionFields}
             <div class="binding-toggle-row">
               <span class="decoded-field-label">${S4.bindingEnableLongPress}</span>
               <ha-switch
@@ -8659,11 +8433,10 @@ var SofabatonEditDetailView = class extends i3 {
                           >
                             <option value="command" ?selected=${lpTargetKind === "command"}>${S4.shortcutKindCommand}</option>
                             <option value="action" ?selected=${lpTargetKind === "action"}>${S4.shortcutKindAction}</option>
-                            <option value="ha" ?selected=${lpTargetKind === "ha"}>${S4.shortcutKindHa}</option>
                           </select>
                         </div>
                       ` : A}
-                  ${lpTargetKind === "command" ? lpCommandFields : lpTargetKind === "action" ? lpActionFields : lpHaFields}
+                  ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
                 ` : A}
           </div>
           <div class="dialog-footer">
@@ -9740,7 +9513,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
    * `this._editBundle = ...` assignment to bypass the dirty flag.
    */
   _commitEditBundleEdit(next) {
-    this._editBundle = pruneHaActionHosts(next);
+    this._editBundle = next;
     this._editBundleDirty = true;
   }
   // Detail-view transient state (open menus/dialogs, sub-views) lives in
@@ -10693,7 +10466,7 @@ test("backup activity quick-access items hide internal power macros", () => {
   assert.deepEqual(items.map((item) => item.label), ["HDMI 1", "Lights Down"]);
   assert.deepEqual(items.map((item) => item.buttonId), [1, 2]);
 });
-test("live edit hides command and favorite rename affordances", () => {
+test("live edit hides favorite rename but allows command rename", () => {
   const bundle = {
     kind: "hub_bundle",
     schema_version: 5,
@@ -10726,13 +10499,13 @@ test("live edit hides command and favorite rename affordances", () => {
   assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), true);
   element.mode = "live";
   assert.equal(templateHasValue(element._renderActivityQuickAccessRow(favorite), "Rename shortcut"), false);
-  assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), false);
+  assert.equal(templateHasString(element._renderDeviceCommandRow({ deviceId: 7, commandId: 3, label: "HDMI 1" }), "Rename command"), true);
   element._openQuickAccessRenameDialog("favorite", 1);
   assert.equal(element._editRenameDialogOpen, false);
   element.kind = "device";
   element.entityId = 7;
   element._openDeviceCommandRenameDialog(3);
-  assert.equal(element._editRenameDialogOpen, false);
+  assert.equal(element._editRenameDialogOpen, true);
 });
 test("activity edit detail removes the section nav and puts power first", () => {
   const bundle = {
@@ -10802,7 +10575,7 @@ test("activity add binding dialog offers shortcut target types and all devices",
   const result = element._renderBindingDialog();
   assert.equal(templateHasValue(result, "Device command"), true);
   assert.equal(templateHasValue(result, "Macro"), true);
-  assert.equal(templateHasValue(result, "Home Assistant action"), true);
+  assert.equal(templateHasValue(result, "Home Assistant action"), false);
   assert.equal(templateHasValue(result, "Streamer"), true);
 });
 test("activity button binding can create a macro target", () => {
@@ -10960,7 +10733,7 @@ test("activity binding dialog gives long-press the same target types", () => {
   assert.equal(templateHasString(result, "sb-binding-lp-kind"), true);
   assert.equal(templateHasValue(result, "Device command"), true);
   assert.equal(templateHasValue(result, "Macro"), true);
-  assert.equal(templateHasValue(result, "Home Assistant action"), true);
+  assert.equal(templateHasValue(result, "Home Assistant action"), false);
 });
 test("activity long-press enable defaults command target to a real device", () => {
   const bundle = {
@@ -11030,46 +10803,6 @@ test("activity shortcut macro flow can reuse an existing activity macro", () => 
     buttonId: 5,
     name: "Scene Prep"
   });
-});
-test("activity button binding can create a Home Assistant action target", () => {
-  const bundle = {
-    kind: "hub_bundle",
-    schema_version: 5,
-    hub: { version: "X1S" },
-    devices: [
-      {
-        device: { device_id: 7, name: "Projector", device_class: "ir" },
-        commands: [{ command_id: 3, name: "HDMI 1" }]
-      }
-    ],
-    activities: [
-      {
-        device: { device_id: 101, name: "Movie Night", entity_type: "activity" },
-        favorite_slots: [],
-        button_bindings: [],
-        macros: []
-      }
-    ]
-  };
-  const element = new EditDetailViewElement();
-  element.bundle = bundle;
-  element.kind = "activity";
-  element.entityId = 101;
-  element._openAddBindingDialog("activity");
-  const buttonId = element._bindingButtonId;
-  element._bindingTargetKind = "ha";
-  element._haActionName = "Dim Lights";
-  element._haActionAddress = "192.168.1.10:8060";
-  element._applyBinding();
-  const activity = element.bundle.activities[0];
-  const binding = activity.button_bindings.find((entry) => Number(entry.button_id) === Number(buttonId));
-  assert.ok(binding, "expected the selected button to be bound");
-  const host = element.bundle.devices.find((entry) => Number(entry.device.device_id) === Number(binding.device_id));
-  assert.ok(host, "expected a hidden Home Assistant action host to be created");
-  const command = host.commands.find((entry) => Number(entry.command_id) === Number(binding.command_id));
-  assert.ok(command, "expected a Home Assistant action command to be created");
-  assert.equal(isHaActionDeviceId(element.bundle, binding.device_id), true);
-  assert.equal(command.name, "Dim Lights");
 });
 test("activity role picker offers editable devices that are not linked yet", () => {
   const bundle = {

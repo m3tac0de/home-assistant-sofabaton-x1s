@@ -19,17 +19,30 @@ emissions".
 from __future__ import annotations
 
 import json
+import time
+from dataclasses import replace
 from typing import Any, Callable, Mapping
 
 from .activity_sync import ACTIVITY_ID_BASE, SyncStep, build_activity_sync_plan, build_device_sync_plan
 from .device_create import (
+    ACK_OPCODE_STATUS,
+    ACK_STATUS_BYTE_OK,
+    CreateStep,
+    FAMILY_DEVICE_UPDATE,
     build_macro_step,
     build_macro_step_record,
     run_create_sequence,
     synthesize_command_code,
 )
+from .commands import split_play_blob_tail
+from .devices import build_device_create_payload, parse_device_record
+from .hub_versions import HUB_VERSION_X1S, HUB_VERSION_X2
 from .macros import MacroKeyEntry, build_macro_save_payload
-from .protocol_const import FAMILY_FAV_DELETE
+from .protocol_const import (
+    FAMILY_FAV_DELETE,
+    OP_ACTIVITY_ASSIGN_FINALIZE,
+    OP_ACTIVITY_CONFIRM,
+)
 
 _POWER_MACRO_BUTTON_IDS = frozenset({198, 199})
 _ACTIVITY_SYNC_DELETE_ACK_TIMEOUT = 12.0
@@ -517,16 +530,249 @@ class ActivitySyncMixin:
         return True
 
     def _sync_step_command_rename(self, payload: Mapping[str, Any]) -> bool:
-        # Command rename has no vendor-app affordance (V6) and is hidden in
-        # live mode; a plan should never contain it. Refuse rather than emit
-        # an unvalidated 0x0E rewrite.
-        self._log.warning("[ACTIVITY_SYNC] command_rename is not supported in live sync")
-        return False
+        """Rename a command in place via a full ``0x0E`` record rewrite.
+
+        The record carries the label slot next to the payload, so a rename is
+        the same in-place overwrite with a changed label and the command's
+        *current* payload preserved. The command-list fetch does not carry the
+        payload bytes, so fetch the single command's blob, strip its replay
+        tail (the write path recomputes the body checksum), and rewrite with
+        the new name and the code/type read from ``state.command_metadata``.
+        Bench-validated on X1 + X1S (see live-hub-testing.md "Command rename
+        rides the same record write").
+        """
+        device_id = int(payload.get("device_id") or 0)
+        command_id = int(payload.get("command_id") or 0)
+        dev_lo = device_id & 0xFF
+        cmd_lo = command_id & 0xFF
+        new_name = str(payload.get("name") or "").strip()
+        if not dev_lo or not cmd_lo or not new_name:
+            self._log.warning("[DEVICE_SYNC] command_rename: missing device/command id or name")
+            return False
+
+        meta = (self.state.command_metadata.get(dev_lo) or {}).get(cmd_lo)
+        if not isinstance(meta, Mapping):
+            self._log.warning(
+                "[DEVICE_SYNC] command_rename: no cached record metadata dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+
+        library_data = self._fetch_command_library_data(dev_lo, cmd_lo)
+        if not library_data:
+            self._log.warning(
+                "[DEVICE_SYNC] command_rename: could not read current payload dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+
+        result = self.overwrite_command_payload(
+            device_id=dev_lo,
+            command_id=cmd_lo,
+            command_name=new_name,
+            library_type=int(meta.get("library_type", 0x0D)) & 0xFF,
+            library_data=library_data,
+            button_code=int(meta.get("button_code", 0)) & 0xFFFFFFFFFFFF,
+        )
+        if not isinstance(result, dict) or result.get("status") != "success":
+            self._log.warning(
+                "[DEVICE_SYNC] command_rename: hub rejected dev=0x%02X cmd=0x%02X", dev_lo, cmd_lo,
+            )
+            return False
+        return True
+
+    def _fetch_command_library_data(self, dev_lo: int, cmd_lo: int) -> bytes | None:
+        """Read one command's stored payload bytes (replay tail stripped).
+
+        The tail is the replay checksum the dump appends; the record-write
+        path recomputes the body checksum, so it must not be written back.
+        """
+        dump = self.request_ir_command_dump(dev_lo, command_id=cmd_lo, timeout=10.0)
+        for command in (dump or {}).get("commands", []):
+            if int(command.get("command_id", -1)) & 0xFF != cmd_lo:
+                continue
+            blob_hex = str(command.get("ir_blob_hex") or "").strip()
+            if not blob_hex:
+                return None
+            body, _tail = split_play_blob_tail(bytes.fromhex(blob_hex))
+            return body or None
+        return None
+
+    def _sync_step_command_payload(self, payload: Mapping[str, Any]) -> bool:
+        """Overwrite one command's payload in place (family-0x0E record write).
+
+        Backs live command-payload editing: the user fetched a command's blob
+        on demand, edited it, and the device Sync folds the change in here. The
+        in-place overwrite is bench-validated on X1 + X1S (see
+        live-hub-testing.md "Validated: in-place command-payload overwrite").
+
+        Resolves the final bytes exactly like the restore path: a structured
+        edit (``decoded.edited``) is re-encoded and round-trip-verified via
+        :meth:`_edited_command_data_hex`; a raw-hex edit uses ``data_hex``. The
+        preserved ``button_code`` / ``library_type`` come from
+        ``state.command_metadata`` (populated by the command-list fetch the
+        sync pre-flight runs), so bindings / macros that reference the
+        command's 48-bit code keep resolving.
+        """
+        device_id = int(payload.get("device_id") or 0)
+        command_id = int(payload.get("command_id") or 0)
+        dev_lo = device_id & 0xFF
+        cmd_lo = command_id & 0xFF
+        if not dev_lo or not cmd_lo:
+            self._log.warning("[DEVICE_SYNC] command_payload: missing device/command id")
+            return False
+
+        restore_data = payload.get("restore_data")
+        if not isinstance(restore_data, Mapping):
+            self._log.warning(
+                "[DEVICE_SYNC] command_payload: no restore_data dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+        restore_data = dict(restore_data)
+
+        try:
+            edited_hex = self._edited_command_data_hex(restore_data, cmd_lo)
+        except ValueError:
+            self._log.exception(
+                "[DEVICE_SYNC] command_payload: edited payload re-encode failed "
+                "dev=0x%02X cmd=0x%02X", dev_lo, cmd_lo,
+            )
+            return False
+        data_hex = edited_hex if edited_hex is not None else str(restore_data.get("data_hex") or "").strip()
+        if not data_hex:
+            self._log.warning(
+                "[DEVICE_SYNC] command_payload: empty payload dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+        try:
+            library_data = bytes.fromhex(data_hex.replace("0x", "").strip())
+        except ValueError:
+            self._log.warning(
+                "[DEVICE_SYNC] command_payload: payload is not valid hex dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+
+        # Preserve the command's canonical code + codec so downstream bindings
+        # and macros keep resolving. These are populated by the command-list
+        # fetch the sync pre-flight already ran; refuse rather than guess a
+        # button_code if they are somehow missing.
+        meta = (self.state.command_metadata.get(dev_lo) or {}).get(cmd_lo)
+        if not isinstance(meta, Mapping):
+            self._log.warning(
+                "[DEVICE_SYNC] command_payload: no cached record metadata for "
+                "dev=0x%02X cmd=0x%02X (cannot preserve button_code)", dev_lo, cmd_lo,
+            )
+            return False
+        button_code = int(meta.get("button_code", 0)) & 0xFFFFFFFFFFFF
+        library_type = int(meta.get("library_type", 0x0D)) & 0xFF
+        command_name = str(payload.get("command_name") or "").strip()
+        if not command_name:
+            labels, _ = self.get_commands_for_entity(dev_lo, fetch_if_missing=False)
+            command_name = str(dict(labels).get(cmd_lo) or "").strip()
+
+        result = self.overwrite_command_payload(
+            device_id=dev_lo,
+            command_id=cmd_lo,
+            command_name=command_name,
+            library_type=library_type,
+            library_data=library_data,
+            button_code=button_code,
+        )
+        if not isinstance(result, dict) or result.get("status") != "success":
+            self._log.warning(
+                "[DEVICE_SYNC] command_payload: hub rejected dev=0x%02X cmd=0x%02X",
+                dev_lo, cmd_lo,
+            )
+            return False
+        return True
 
     def _sync_step_activity_rename(self, payload: Mapping[str, Any]) -> bool:
-        # Activity rename (V5) is hidden in live mode v1; refuse defensively.
-        self._log.warning("[ACTIVITY_SYNC] activity_rename is not supported in live sync yet")
-        return False
+        """Rename an activity in place via a full activity-row rewrite.
+
+        Read-modify-write of the row the confirm/finalize opcode carries: the
+        name field sits at a fixed offset (ASCII on X1, UTF-16BE on X1S/X2)
+        and every other byte of the row is preserved, so only the label
+        changes. Mirrors the confirm send the device-delete flow already uses.
+        """
+        activity_id = int(payload.get("activity_id") or 0)
+        act_lo = activity_id & 0xFF
+        new_name = str(payload.get("name") or "")
+        if not act_lo:
+            return False
+
+        # Reflect the new name in cached state first so the X1 builder (which
+        # re-encodes from state) and any subsequent read see it. The X1S/X2
+        # builder patches the raw row directly.
+        activity = self.state.entities("activity").get(act_lo)
+        if isinstance(activity, dict):
+            activity["name"] = new_name
+
+        confirm_payload = self._build_activity_confirm_payload(act_lo, name=new_name)
+        if confirm_payload is None:
+            self._log.warning("[ACTIVITY_SYNC] activity_rename: no row for act=0x%02X", act_lo)
+            return False
+
+        confirm_opcode = (
+            OP_ACTIVITY_ASSIGN_FINALIZE
+            if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2)
+            else OP_ACTIVITY_CONFIRM
+        )
+        self.reset_ack_queues()
+        send_ts = time.monotonic()
+        self._send_cmd_frame(confirm_opcode, confirm_payload)
+        if self.wait_for_ack_any([(0x0103, None)], timeout=5.0, not_before=send_ts) is None:
+            self._log.warning("[ACTIVITY_SYNC] activity_rename: missing ACK act=0x%02X", act_lo)
+            return False
+        return True
+
+    def _sync_step_device_rename(self, payload: Mapping[str, Any]) -> bool:
+        """Rename a device in place via a device-record update write.
+
+        The device's cached record body is decoded to a full DeviceConfig,
+        the name is swapped, and the canonical write body is rebuilt and
+        committed with FAMILY_DEVICE_UPDATE for the device's own id — the same
+        record write the create flow ends with. Rebuilding through the
+        parser/builder pair (rather than patching bytes) keeps every other
+        field, the header framing, and the body checksum correct.
+        """
+        device_id = int(payload.get("device_id") or 0)
+        dev_lo = device_id & 0xFF
+        new_name = str(payload.get("name") or "")
+        if not dev_lo:
+            return False
+
+        device = self.state.entities("device").get(dev_lo)
+        raw = device.get("raw_body") if isinstance(device, dict) else None
+        if not isinstance(raw, (bytes, bytearray)):
+            self._log.warning("[DEVICE_SYNC] device_rename: no record body for dev=0x%02X", dev_lo)
+            return False
+
+        try:
+            config = parse_device_record(bytes(raw), hub_version=self.hub_version, entity_kind="device")
+            renamed = replace(config, name=new_name, device_id=dev_lo)
+            body = build_device_create_payload(renamed, hub_version=self.hub_version)
+        except (ValueError, TypeError):
+            self._log.exception("[DEVICE_SYNC] device_rename: could not rebuild record dev=0x%02X", dev_lo)
+            return False
+
+        step = CreateStep(
+            label=f"device-rename[dev=0x{dev_lo:02X}]",
+            family=FAMILY_DEVICE_UPDATE,
+            payload=body,
+            ack_opcode=ACK_OPCODE_STATUS,
+            ack_first_byte=ACK_STATUS_BYTE_OK,
+        )
+        self.reset_ack_queues()
+        result = run_create_sequence(self, [step])
+        if not result.success:
+            self._log.warning("[DEVICE_SYNC] device_rename: hub rejected dev=0x%02X", dev_lo)
+            return False
+        if isinstance(device, dict):
+            device["name"] = new_name
+        return True
 
     # ── Low-level primitives ────────────────────────────────────────────
 

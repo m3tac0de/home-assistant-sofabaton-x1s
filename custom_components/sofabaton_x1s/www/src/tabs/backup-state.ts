@@ -351,6 +351,39 @@ export function updateCommandRawPayload(
   };
 }
 
+/**
+ * Set (replace) a command's entire `restore_data` block.
+ *
+ * Used by the *live* device editor: the structural cache bundle carries no
+ * command payloads, so editing one fetches the blob on demand and writes a
+ * fully-built `restore_data` here in one shot — including the `edited`
+ * marker the device-sync planner keys on. (Backup mode instead mutates an
+ * already-present block via `updateCommandRawPayload` /
+ * `updateCommandDecodedFields`.) No-op when the device or command is absent.
+ */
+export function setCommandRestoreData(
+  bundle: BackupBundlePayload,
+  deviceId: number,
+  commandId: number,
+  restoreData: Record<string, unknown>,
+): BackupBundlePayload {
+  const normalizedDeviceId = Number(deviceId);
+  const normalizedCommandId = Number(commandId);
+  return {
+    ...bundle,
+    devices: (bundle.devices ?? []).map((device) => {
+      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
+      return {
+        ...device,
+        commands: (device.commands ?? []).map((command) => {
+          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
+          return { ...command, restore_data: restoreData };
+        }),
+      };
+    }),
+  };
+}
+
 const HUB_VERSION_RANK: Record<string, number> = {
   X1: 1,
   X1S: 2,
@@ -670,10 +703,7 @@ function updateDeviceCommandLabel(
       };
     }),
   };
-  // HA-action callbacks carry the command name inside the callback URL;
-  // a rename must re-render the stored request or the hub keeps firing
-  // the old name.
-  return refreshHaActionCallback(next, normalizedDeviceId, normalizedCommandId);
+  return next;
 }
 
 function commandLabelFor(bundle: BackupBundlePayload, deviceId: number, commandId: number) {
@@ -1802,10 +1832,7 @@ export function activityMemberViews(
 ): BackupActivityMemberView[] {
   const activity = findBundleActivity(bundle, activityId);
   if (!bundle || !activity) return [];
-  // Hidden HA-action hosts stay members data-wise (power-ref invariant,
-  // restore id-mapping) but are plumbing, not devices the user manages.
-  const members = activityMemberDeviceIds(activity)
-    .filter((id) => !isHaActionDeviceId(bundle, id));
+  const members = activityMemberDeviceIds(activity);
   const memberSet = new Set(members);
   const macroFor = (buttonId: number) =>
     (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
@@ -1860,7 +1887,7 @@ export function activityAddableDevices(
   if (!bundle || !activity) return [];
   const members = new Set(activityMemberDeviceIds(activity));
   return bundleDeviceOptions(bundle).filter(
-    (option) => !members.has(option.id) && !isHaActionDeviceId(bundle, option.id),
+    (option) => !members.has(option.id),
   );
 }
 
@@ -3137,399 +3164,10 @@ export function setActivityRoleDevice(
   return reconcileActivityMembershipChange(bundle, next, aId);
 }
 
-// ── Home Assistant actions ───────────────────────────────────────────
-//
-// An "HA action" is a wifi_ip command slot on a hidden, editor-managed
-// "Home Assistant" device whose HTTP callback targets this HA instance's
-// wifi-commands listener. The callback uses the listener's NAME-based
-// path form (`/launch/{token}/{device}/{name}/{press}`), so the action
-// keeps firing correctly even after a restore reassigns device ids.
-// The command's `restore_data` mirrors a real capture (hub_code_record
-// + data_hex + decoded block) so the ordinary restore pipeline writes
-// it with zero special-casing. The blob's 1-byte inner-record trailer
-// is deliberately omitted: replay is length-prefixed so the trailer is
-// inert for sending; live-hub validation is tracked in
-// docs/protocol/live-hub-testing.md.
-//
-// Lifecycle is sweep-based: `pruneHaActionHosts` (run on every editor
-// commit) drops slots nothing references anymore and dissolves empty
-// host devices. Membership-wise the host is a normal member (power-ref
-// invariant, restore id-mapping), but it is hidden from the
-// member-facing UI via `isHaActionDeviceId` filters.
 
-export const HA_ACTION_HOST_NAME = "Home Assistant";
-const HA_ACTION_HOST_BRAND = "m3tac0de";
-const HA_ACTION_MAX_SLOTS = 10;
-// wifi_ip device-class / library code (0x1C) — see docs/protocol.
-const HA_ACTION_LIBRARY_TYPE = 0x1C;
-const HA_ACTION_DEFAULT_PORT = 8060;
-const MAX_DEVICE_ID = 0x63;
-const HA_IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-
-export interface HaActionCallbackTarget {
-  host: string;
-  port: number;
-}
-
-export function isHaActionHostEntry(entry: BackupBundleDevicePayload | null | undefined): boolean {
-  return Boolean(entry?.ha_action_host);
-}
-
-/** True when `deviceId` is one of the bundle's hidden HA-action hosts. */
-export function isHaActionDeviceId(bundle: BackupBundlePayload | null, deviceId: number): boolean {
-  return (bundle?.devices ?? []).some(
-    (entry) => isHaActionHostEntry(entry) && Number(entry?.device?.device_id || 0) === Number(deviceId),
-  );
-}
-
-/** Parse "ip[:port]" into a callback target; null when not a usable IPv4. */
-export function parseHaActionAddress(value: string): HaActionCallbackTarget | null {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const [hostPart, portPart, ...rest] = raw.split(":");
-  if (rest.length > 0) return null;
-  const host = hostPart.trim();
-  if (!HA_IPV4_PATTERN.test(host)) return null;
-  if (portPart === undefined || portPart.trim() === "") {
-    return { host, port: HA_ACTION_DEFAULT_PORT };
-  }
-  const port = Number(portPart.trim());
-  if (!Number.isInteger(port) || port <= 0 || port > 0xFFFF) return null;
-  return { host, port };
-}
-
-/**
- * The callback target already in use by this bundle's HA-action slots,
- * so later additions (and the dialog prefill) reuse it.
- */
-export function bundleHaActionTarget(bundle: BackupBundlePayload | null): HaActionCallbackTarget | null {
-  for (const entry of bundle?.devices ?? []) {
-    if (!isHaActionHostEntry(entry)) continue;
-    for (const row of entry.commands ?? []) {
-      const decoded = (row?.restore_data as Record<string, unknown> | undefined)?.decoded as
-        | { fields?: Record<string, unknown> }
-        | undefined;
-      const host = String(decoded?.fields?.host || "");
-      const port = Number(decoded?.fields?.port || 0);
-      if (HA_IPV4_PATTERN.test(host) && port > 0) return { host, port };
-    }
-  }
-  return null;
-}
-
-// The listener's old-format parser runs unquote() and then replaces "_"
-// with " ", so underscores can never round-trip. Normalize at creation
-// so the name the user sees is exactly the label HA receives.
-function normalizeHaActionName(value: string): string {
-  return String(value ?? "").trim().replace(/_/g, " ");
-}
-
-function haActionCallbackPath(deviceId: number, name: string): string {
-  return `/launch/ha/${Number(deviceId)}/${encodeURIComponent(name)}/short`;
-}
-
-function asciiHexBytes(text: string): number[] {
-  const out: number[] = [];
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    if (code > 0x7F) throw new Error(`non-ASCII character in callback text: ${text[index]}`);
-    out.push(code);
-  }
-  return out;
-}
-
-/**
- * Render the wifi_ip command blob for an HA-action callback. Mirrors
- * `render_wifi_ip_http_text` in lib/blob_decoders.py for the fixed
- * shape this flow uses (POST, x-www-form-urlencoded, no extra headers,
- * no body) — guarded by the Python parity test
- * tests/test_ha_action_writer_parity.py.
- */
-function renderHaActionDataHex(target: HaActionCallbackTarget, path: string): string {
-  const text =
-    `POST ${path} HTTP/1.1\r\n` +
-    `Host:${target.host}:${target.port}\r\n` +
-    "Content-Type:application/x-www-form-urlencoded\r\n" +
-    "\r\n";
-  const textBytes = asciiHexBytes(text);
-  const ipBytes = target.host.split(".").map((part) => Number(part) & 0xFF);
-  const bytes = [
-    ...ipBytes,
-    (target.port >> 8) & 0xFF,
-    target.port & 0xFF,
-    (textBytes.length >> 8) & 0xFF,
-    textBytes.length & 0xFF,
-    ...textBytes,
-  ];
-  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(" ");
-}
-
-function haActionCommandCodeHex(commandId: number): string {
-  const code = (0x4E20 + (Number(commandId) & 0xFF)) & 0xFFFFFFFFFFFF;
-  const hex = code.toString(16).padStart(12, "0");
-  return hex.replace(/(..)(?=.)/g, "$1 ");
-}
-
-function buildHaActionCommandRow(
-  deviceId: number,
-  commandId: number,
-  name: string,
-  target: HaActionCallbackTarget,
-): BackupBundleCommandRow {
-  const path = haActionCallbackPath(deviceId, name);
-  return {
-    command_id: commandId,
-    name,
-    restore_data: {
-      transport: "hub_code_record",
-      library_type: HA_ACTION_LIBRARY_TYPE,
-      command_code: haActionCommandCodeHex(commandId),
-      data_hex: renderHaActionDataHex(target, path),
-      decoded: {
-        class: "wifi_ip",
-        fields: {
-          host: target.host,
-          port: target.port,
-          method: "POST",
-          path,
-          header: "",
-          content_type: "application/x-www-form-urlencoded",
-          body: "",
-        },
-        trailer_hex: "",
-        edited: false,
-      },
-    },
-  };
-}
-
-/**
- * Re-render an HA-action command's callback from its current name and
- * stored target. No-op for anything that isn't an HA-action slot.
- */
-function refreshHaActionCallback(
-  bundle: BackupBundlePayload,
-  deviceId: number,
-  commandId: number,
-): BackupBundlePayload {
-  if (!isHaActionDeviceId(bundle, deviceId)) return bundle;
-  return {
-    ...bundle,
-    devices: (bundle.devices ?? []).map((entry) => {
-      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== Number(deviceId)) {
-        return entry;
-      }
-      return {
-        ...entry,
-        commands: (entry.commands ?? []).map((row) => {
-          if (Number(row?.command_id || 0) !== Number(commandId)) return row;
-          const decoded = (row?.restore_data as Record<string, unknown> | undefined)?.decoded as
-            | { fields?: Record<string, unknown> }
-            | undefined;
-          const host = String(decoded?.fields?.host || "");
-          const port = Number(decoded?.fields?.port || 0);
-          if (!HA_IPV4_PATTERN.test(host) || port <= 0) return row;
-          const name = normalizeHaActionName(String(row?.name || ""));
-          return buildHaActionCommandRow(Number(deviceId), Number(commandId), name, { host, port });
-        }),
-      };
-    }),
-  };
-}
-
-/** Lowest unused id in the shared 8-bit device space (1..0x63). */
-function allocateHaHostDeviceId(bundle: BackupBundlePayload): number | null {
-  const used = new Set<number>();
-  for (const entry of bundle.devices ?? []) used.add(Number(entry?.device?.device_id || 0));
-  for (const entry of bundle.activities ?? []) used.add(Number(entry?.device?.device_id || 0));
-  for (let id = 1; id <= MAX_DEVICE_ID; id += 1) {
-    if (!used.has(id)) return id;
-  }
-  return null;
-}
-
-// Device head mirroring the live wifi-create flow's DeviceConfig for an
-// IP-generic device (proxy_wifi_device._build_wifi_device_payload with
-// ip_device=True, committed state).
-function buildHaHostEntry(deviceId: number, name: string, sort: number): BackupBundleDevicePayload {
-  return {
-    ha_action_host: true,
-    device: {
-      device_id: deviceId,
-      name,
-      brand: HA_ACTION_HOST_BRAND,
-      device_class: "wifi_ip",
-      device_class_code: 0x1C,
-      icon: 1,
-      sort,
-      code_type: 0x1C,
-      device_type: 0x10,
-      code_id_hex: Array(16).fill("00").join(" "),
-      hide: 0,
-      input_flag: 0,
-      channel: 0,
-      power_state: 0,
-      poll_time: 0,
-      input_mode: 2,
-      power_mode: 0,
-      power_style: 0,
-      share_mode: 0,
-      tail_marker: 1,
-    } as BackupBundleDeviceBlock,
-    commands: [],
-  };
-}
-
-export interface HaActionProvision {
-  bundle: BackupBundlePayload;
-  deviceId: number;
-  commandId: number;
-  name: string;
-}
-
-/**
- * Provision a new HA-action slot: reuse a host device with a free slot
- * or create the next hidden host, then append the callback command.
- * Returns null when the device id space is exhausted.
- */
-export function provisionHaAction(
-  bundle: BackupBundlePayload,
-  rawName: string,
-  target: HaActionCallbackTarget,
-): HaActionProvision | null {
-  const name = normalizeHaActionName(rawName) || "HA action";
-  const hosts = (bundle.devices ?? []).filter((entry) => isHaActionHostEntry(entry));
-  let next = bundle;
-  let hostEntry = hosts.find((entry) => (entry.commands ?? []).length < HA_ACTION_MAX_SLOTS);
-  let deviceId: number;
-  if (hostEntry) {
-    deviceId = Number(hostEntry.device?.device_id || 0);
-    if (deviceId <= 0) return null;
-  } else {
-    const allocated = allocateHaHostDeviceId(bundle);
-    if (allocated == null) return null;
-    deviceId = allocated;
-    const hostName = hosts.length === 0
-      ? HA_ACTION_HOST_NAME
-      : `${HA_ACTION_HOST_NAME} ${hosts.length + 1}`;
-    const maxSort = (bundle.devices ?? []).reduce(
-      (max, entry) => Math.max(max, Number((entry?.device as { sort?: number } | null)?.sort || 0)),
-      0,
-    );
-    hostEntry = buildHaHostEntry(deviceId, hostName, maxSort + 1);
-    next = { ...bundle, devices: [...(bundle.devices ?? []), hostEntry] };
-  }
-  const usedSlots = new Set(
-    (hostEntry.commands ?? []).map((row) => Number(row?.command_id || 0)),
-  );
-  let commandId = 0;
-  for (let slot = 1; slot <= HA_ACTION_MAX_SLOTS; slot += 1) {
-    if (!usedSlots.has(slot)) {
-      commandId = slot;
-      break;
-    }
-  }
-  if (commandId === 0) return null;
-  const row = buildHaActionCommandRow(deviceId, commandId, name, target);
-  next = {
-    ...next,
-    devices: (next.devices ?? []).map((entry) => {
-      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== deviceId) return entry;
-      return { ...entry, commands: [...(entry.commands ?? []), row] };
-    }),
-  };
-  return { bundle: next, deviceId, commandId, name };
-}
-
-/**
- * Provision an HA action and put it on the Activity's screen shortcuts.
- * Returns null when provisioning fails (id space / slots exhausted).
- */
-export function addActivityHaActionFavorite(
-  bundle: BackupBundlePayload,
-  activityId: number,
-  rawName: string,
-  target: HaActionCallbackTarget,
-): BackupBundlePayload | null {
-  const provision = provisionHaAction(bundle, rawName, target);
-  if (!provision) return null;
-  return addBundleActivityFavorite(
-    provision.bundle,
-    Number(activityId),
-    provision.deviceId,
-    provision.commandId,
-    provision.name,
-  );
-}
-
-/** A user-visible reference to an HA-action slot (power-ref plumbing excluded). */
-function haActionCommandReferenced(
-  bundle: BackupBundlePayload,
-  deviceId: number,
-  commandId: number,
-): boolean {
-  for (const activity of bundle.activities ?? []) {
-    for (const slot of activity?.favorite_slots ?? []) {
-      if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) return true;
-    }
-    for (const binding of activity?.button_bindings ?? []) {
-      if (Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId) return true;
-      if (
-        Number(binding?.long_press_device_id || 0) === deviceId
-        && Number(binding?.long_press_command_id || 0) === commandId
-      ) return true;
-    }
-    for (const macro of activity?.macros ?? []) {
-      for (const step of macro?.steps ?? []) {
-        if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
-        if (Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId) return true;
-      }
-    }
-  }
-  return false;
-}
-
-/**
- * Sweep the bundle's HA-action hosts: drop slots nothing references,
- * dissolve hosts with no slots left (incl. their membership plumbing,
- * via the ordinary device-delete cascade). Idempotent; run after every
- * editor commit.
- */
-export function pruneHaActionHosts(bundle: BackupBundlePayload): BackupBundlePayload {
-  let next = bundle;
-  const hostIds = (bundle.devices ?? [])
-    .filter((entry) => isHaActionHostEntry(entry))
-    .map((entry) => Number(entry?.device?.device_id || 0))
-    .filter((id) => id > 0);
-  for (const deviceId of hostIds) {
-    const entry = (next.devices ?? []).find(
-      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId,
-    );
-    if (!entry) continue;
-    for (const row of [...(entry.commands ?? [])]) {
-      const commandId = Number(row?.command_id || 0);
-      if (commandId > 0 && !haActionCommandReferenced(next, deviceId, commandId)) {
-        next = deleteBundleDeviceCommand(next, deviceId, commandId);
-      }
-    }
-    const refreshed = (next.devices ?? []).find(
-      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId,
-    );
-    if (refreshed && (refreshed.commands ?? []).length === 0) {
-      next = deleteBundleDevice(next, deviceId);
-    }
-  }
-  return next;
-}
-
-/** Device options for the edit overview — hidden HA hosts excluded. */
+/** Device options for the edit overview. */
 export function bundleEditableDeviceOptions(bundle: BackupBundlePayload | null): BackupSelectionOption[] {
-  const hidden = new Set(
-    (bundle?.devices ?? [])
-      .filter((entry) => isHaActionHostEntry(entry))
-      .map((entry) => Number(entry?.device?.device_id || 0)),
-  );
-  return bundleDeviceOptions(bundle).filter((option) => !hidden.has(option.id));
+  return bundleDeviceOptions(bundle);
 }
 
 export function assertBackupBundleRestoreCompatible(bundle: BackupBundlePayload, destinationHubVersion: unknown) {

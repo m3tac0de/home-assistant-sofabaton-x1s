@@ -386,52 +386,162 @@ test("binding Save blocks incomplete input and links a valid command target", ()
   assert.equal(element._bindingDialogOpen, false);
 });
 
-test("HA-action Save rejects blank names and malformed addresses before provisioning", () => {
-  const element = createEditor();
-  const changes = collectBundleChanges(element);
-  element._addFavoriteOpen = true;
-  element._haActionName = "";
-  element._haActionAddress = "192.0.2.20:8060";
+// Start a live device editor with a blob-free command 10 (the structural
+// cache carries no payloads), like the real Activities-tab bundle.
+function createLiveDeviceEditor(): EditorElement {
+  const element = createEditor("X1S", "device");
+  element.entityId = 1;
+  element.mode = "live";
+  element.bundle.devices[0].commands[0] = { command_id: 10, name: "Power" };
+  return element;
+}
 
-  element._applyHaAction();
-  assert.equal(changes.length, 0);
-  assert.match(element._haActionError, /name/i);
-
-  element._haActionName = "Movie mode";
-  element._haActionAddress = "192.0.2.999:8060";
-  element._applyHaAction();
-  assert.equal(changes.length, 0);
-  assert.match(element._haActionError, /IPv4/i);
-
-  element._haActionAddress = "192.0.2.20:8060";
-  element._applyHaAction();
-  assert.equal(changes.length, 1);
-  const activity = changes[0].activities[0];
-  assert.equal(activity.favorite_slots?.some((slot) => slot.name === "Movie mode"), true);
-  assert.equal(changes[0].devices.some((device) => device.ha_action_host === true), true);
-  assert.equal(element._addFavoriteOpen, false);
+test("the Test button gates on IR; editing is offered for all classes", () => {
+  const element = createEditor("X1S", "device");
+  element.mode = "live";
+  element.entityId = 1;
+  assert.equal(element._liveDeviceIsIr(), true); // IR → Test available
+  element.entityId = 2; // wifi_roku → no Test, but editing still works (below)
+  assert.equal(element._liveDeviceIsIr(), false);
 });
 
-test("live mode guards command rename and payload mutations", () => {
-  const element = createEditor("X1S", "device");
-  const original = structuredClone(element.bundle);
+test("live command rename commits a name change", () => {
+  const element = createLiveDeviceEditor();
   const changes = collectBundleChanges(element);
-  element.mode = "live";
-  element._editRenameDialogOpen = true;
-  element._editRenameDialogTarget = { kind: "command", deviceId: 1, commandId: 10 };
-  element._editRenameDialogDraft = "Changed";
-
+  element._openDeviceCommandRenameDialog(10);
+  assert.equal(element._editRenameDialogOpen, true);
+  element._editRenameDialogDraft = "Power Toggle";
   element._applyEditRenameDialog();
-  assert.equal(changes.length, 0);
-  assert.deepEqual(element.bundle, original);
-  assert.equal(element._editRenameDialogOpen, false);
 
+  assert.equal(changes.length, 1);
+  assert.equal((changes[0] as any).devices[0].commands[0].name, "Power Toggle");
+  assert.equal(element._editRenameDialogOpen, false);
+});
+
+test("live payload editing works for a non-IR device via the structured form", async () => {
+  const element = createEditor("X1S", "device");
+  element.entityId = 2; // wifi_roku, command 20
+  element.mode = "live";
+  const changes = collectBundleChanges(element);
+  element.fetchCommandPayload = async () => ({
+    dataHex: "1e 6c 61 75 6e 63 68",
+    decoded: { class: "wifi_roku", trailer_hex: "", fields: { path: "launch/1234" } },
+  });
+
+  await element._liveFetchAndOpenPayload(20);
+  assert.equal(element._payloadDialogOpen, true);
+  assert.equal(element._payloadDialogDecodedSnapshot.className, "wifi_roku");
+
+  element._payloadDialogDecodedDrafts = { ...element._payloadDialogDecodedDrafts, path: "launch/9999" };
+  element._applyCommandPayloadDialog();
+
+  assert.equal(changes.length, 1);
+  const command = (changes[0] as any).devices[1].commands[0];
+  assert.equal(command.restore_data.decoded.edited, true);
+  assert.equal(command.restore_data.decoded.fields.path, "launch/9999");
+});
+
+test("live payload edit fetches on demand, edits, and commits the edited marker", async () => {
+  const element = createLiveDeviceEditor();
+  const changes = collectBundleChanges(element);
+  let fetchArgs: { deviceId: number; commandId: number } | null = null;
+  element.fetchCommandPayload = async (deviceId: number, commandId: number) => {
+    fetchArgs = { deviceId, commandId };
+    return { dataHex: "0a 4f 22", decoded: null };
+  };
+
+  await element._liveFetchAndOpenPayload(10);
+  assert.deepEqual(fetchArgs, { deviceId: 1, commandId: 10 });
+  assert.equal(element._payloadDialogOpen, true);
+  assert.equal(element._payloadDialogRawDraft, "0a 4f 22");
+  // Merely fetching must not mark the bundle dirty.
+  assert.equal(changes.length, 0);
+
+  element._payloadDialogRawDraft = "de ad be ef";
+  element._applyCommandPayloadDialog();
+  assert.equal(changes.length, 1);
+  const command = (changes[0] as any).devices[0].commands[0];
+  assert.equal(command.restore_data.data_hex, "de ad be ef");
+  assert.equal(command.restore_data.edited, true);
+  assert.equal(element._payloadDialogOpen, false);
+});
+
+test("live payload edit with no change commits nothing", async () => {
+  const element = createLiveDeviceEditor();
+  const changes = collectBundleChanges(element);
+  element.fetchCommandPayload = async () => ({ dataHex: "0a 4f 22", decoded: null });
+
+  await element._liveFetchAndOpenPayload(10);
+  element._applyCommandPayloadDialog(); // draft === snapshot
+  assert.equal(changes.length, 0);
+  assert.equal(element._payloadDialogOpen, false);
+});
+
+test("live payload Test plays the current draft via the host callback", async () => {
+  const element = createLiveDeviceEditor();
+  let played: string | null = null;
+  element.testCommandPayload = async (hex: string) => { played = hex; };
+  element.fetchCommandPayload = async () => ({ dataHex: "0a 4f 22", decoded: null });
+
+  await element._liveFetchAndOpenPayload(10);
+  element._payloadDialogRawDraft = "de ad be ef";
+  await element._runLivePayloadTest();
+
+  assert.equal(played, "de ad be ef");
+  assert.equal(element._payloadDialogTestStatus, "success");
+});
+
+test("live payload fetch failure surfaces an error and opens nothing", async () => {
+  const element = createLiveDeviceEditor();
+  element.fetchCommandPayload = async () => { throw new Error("hub busy"); };
+
+  await element._liveFetchAndOpenPayload(10);
+  assert.equal(element._payloadDialogOpen, false);
+  assert.equal(element._payloadFetchError, "hub busy");
+  assert.equal(element._payloadFetchingCommandId, null);
+});
+
+test("delete confirm copy matches the mode and delete kind", () => {
+  const element = createEditor("X1S", "device");
+  element.entityId = 1;
+  element._confirmDeleteLabel = "Television";
+  element._confirmDeleteTarget = { kind: "device", deviceId: 1 };
+
+  // Backup mode: reaches the hub only via Replace restore.
+  element.mode = "backup";
+  let text = templateText(element._renderDeleteConfirmDialog());
+  assert.ok(text.includes("Replace restore"));
+
+  // Live mode, device delete: hits the hub immediately, no "backup" wording.
+  element.mode = "live";
+  text = templateText(element._renderDeleteConfirmDialog());
+  assert.ok(text.includes("applied to the hub immediately"));
+  assert.ok(!text.includes("Replace restore"));
+  assert.ok(!text.includes("loaded backup"));
+  assert.ok(!text.includes("in the backup"));
+
+  // Live mode, row-level (macro) delete: rides the next Sync.
+  element.kind = "activity";
+  element.entityId = 101;
+  element._confirmDeleteTarget = { kind: "macro", activityId: 101, buttonId: 3 };
+  element._confirmDeleteLabel = "Volume Combo";
+  text = templateText(element._renderDeleteConfirmDialog());
+  assert.ok(text.includes("next Sync"));
+  assert.ok(!text.includes("Replace restore"));
+});
+
+test("payload test hint shows only when editing an IR command", () => {
+  const element = createLiveDeviceEditor(); // device 1 = ir
   element._payloadDialogOpen = true;
   element._payloadDialogTarget = { deviceId: 1, commandId: 10 };
   element._payloadDialogDecodedSnapshot = null;
-  element._payloadDialogRawSnapshot = "aa bb cc";
-  element._payloadDialogRawDraft = "de ad be ef";
-  element._applyCommandPayloadDialog();
-  assert.equal(changes.length, 0);
-  assert.deepEqual(element.bundle, original);
+  element._payloadDialogRawDraft = "0a 4f 22";
+  let text = templateText(element._renderCommandPayloadDialog());
+  assert.ok(text.includes("Verify a changed payload"));
+
+  // Non-IR device (2 = wifi_roku): no Test, so the test hint is hidden.
+  element.entityId = 2;
+  element._payloadDialogTarget = { deviceId: 2, commandId: 20 };
+  text = templateText(element._renderCommandPayloadDialog());
+  assert.ok(!text.includes("Verify a changed payload"));
 });

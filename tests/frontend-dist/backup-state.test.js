@@ -1448,45 +1448,10 @@ function updateActivity(bundle2, activityId, updater) {
     })
   };
 }
-function updateDeviceCommandLabel(bundle2, deviceId, commandId, name) {
-  const normalizedDeviceId = Number(deviceId);
-  const normalizedCommandId = Number(commandId);
-  const trimmed = String(name ?? "").trim();
-  const next = {
-    ...bundle2,
-    devices: (bundle2.devices ?? []).map((device) => {
-      if (Number(device?.device?.device_id || 0) !== normalizedDeviceId) return device;
-      return {
-        ...device,
-        commands: (device.commands ?? []).map((command) => {
-          if (Number(command?.command_id || 0) !== normalizedCommandId) return command;
-          return { ...command, name: trimmed };
-        })
-      };
-    })
-  };
-  return refreshHaActionCallback(next, normalizedDeviceId, normalizedCommandId);
-}
 function commandLabelFor(bundle2, deviceId, commandId) {
   const device = (bundle2.devices ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(deviceId));
   const command = (device?.commands ?? []).find((entry) => Number(entry?.command_id || 0) === Number(commandId));
   return String(command?.name || "").trim();
-}
-function renameBundleActivityFavorite(bundle2, activityId, buttonId, name) {
-  const normalizedButtonId = Number(buttonId);
-  const trimmed = String(name ?? "").trim();
-  const activity = (bundle2.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
-  const row = (activity?.favorite_slots ?? []).find((entry) => Number(entry?.button_id || 0) === normalizedButtonId);
-  const deviceId = Number(row?.device_id || 0);
-  const commandId = Number(row?.command_id || 0);
-  let nextBundle = bundle2;
-  if (deviceId > 0 && commandId > 0) {
-    nextBundle = updateDeviceCommandLabel(nextBundle, deviceId, commandId, trimmed);
-  }
-  return updateActivity(nextBundle, activityId, (current) => ({
-    ...current,
-    favorite_slots: (current.favorite_slots ?? []).map((entry) => Number(entry?.button_id || 0) === normalizedButtonId ? { ...entry, name: trimmed } : entry)
-  }));
 }
 var IDLE_BEHAVIOR_DISABLED = 4;
 function deviceIdleBehavior(bundle2, deviceId) {
@@ -2003,7 +1968,7 @@ function findBundleActivity(bundle2, activityId) {
 function activityMemberViews(bundle2, activityId) {
   const activity = findBundleActivity(bundle2, activityId);
   if (!bundle2 || !activity) return [];
-  const members = activityMemberDeviceIds(activity).filter((id) => !isHaActionDeviceId(bundle2, id));
+  const members = activityMemberDeviceIds(activity);
   const memberSet = new Set(members);
   const macroFor = (buttonId) => (activity.macros ?? []).find((macro) => Number(macro?.button_id || 0) === buttonId);
   const powerOn = macroFor(POWER_ON_MACRO_BUTTON_ID);
@@ -2051,7 +2016,7 @@ function activityAddableDevices(bundle2, activityId) {
   if (!bundle2 || !activity) return [];
   const members = new Set(activityMemberDeviceIds(activity));
   return bundleDeviceOptions(bundle2).filter(
-    (option) => !members.has(option.id) && !isHaActionDeviceId(bundle2, option.id)
+    (option) => !members.has(option.id)
   );
 }
 function addActivityMemberDevice(bundle2, activityId, deviceId) {
@@ -2764,272 +2729,6 @@ function setActivityRoleDevice(bundle2, activityId, group, deviceId) {
     return { ...activity, button_bindings: rows };
   });
   return reconcileActivityMembershipChange(bundle2, next, aId);
-}
-var HA_ACTION_HOST_NAME = "Home Assistant";
-var HA_ACTION_HOST_BRAND = "m3tac0de";
-var HA_ACTION_MAX_SLOTS = 10;
-var HA_ACTION_LIBRARY_TYPE = 28;
-var HA_ACTION_DEFAULT_PORT = 8060;
-var MAX_DEVICE_ID = 99;
-var HA_IPV4_PATTERN = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
-function isHaActionHostEntry(entry) {
-  return Boolean(entry?.ha_action_host);
-}
-function isHaActionDeviceId(bundle2, deviceId) {
-  return (bundle2?.devices ?? []).some(
-    (entry) => isHaActionHostEntry(entry) && Number(entry?.device?.device_id || 0) === Number(deviceId)
-  );
-}
-function parseHaActionAddress(value) {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const [hostPart, portPart, ...rest] = raw.split(":");
-  if (rest.length > 0) return null;
-  const host = hostPart.trim();
-  if (!HA_IPV4_PATTERN.test(host)) return null;
-  if (portPart === void 0 || portPart.trim() === "") {
-    return { host, port: HA_ACTION_DEFAULT_PORT };
-  }
-  const port = Number(portPart.trim());
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
-  return { host, port };
-}
-function bundleHaActionTarget(bundle2) {
-  for (const entry of bundle2?.devices ?? []) {
-    if (!isHaActionHostEntry(entry)) continue;
-    for (const row of entry.commands ?? []) {
-      const decoded = row?.restore_data?.decoded;
-      const host = String(decoded?.fields?.host || "");
-      const port = Number(decoded?.fields?.port || 0);
-      if (HA_IPV4_PATTERN.test(host) && port > 0) return { host, port };
-    }
-  }
-  return null;
-}
-function normalizeHaActionName(value) {
-  return String(value ?? "").trim().replace(/_/g, " ");
-}
-function haActionCallbackPath(deviceId, name) {
-  return `/launch/ha/${Number(deviceId)}/${encodeURIComponent(name)}/short`;
-}
-function asciiHexBytes(text) {
-  const out = [];
-  for (let index = 0; index < text.length; index += 1) {
-    const code = text.charCodeAt(index);
-    if (code > 127) throw new Error(`non-ASCII character in callback text: ${text[index]}`);
-    out.push(code);
-  }
-  return out;
-}
-function renderHaActionDataHex(target, path) {
-  const text = `POST ${path} HTTP/1.1\r
-Host:${target.host}:${target.port}\r
-Content-Type:application/x-www-form-urlencoded\r
-\r
-`;
-  const textBytes = asciiHexBytes(text);
-  const ipBytes = target.host.split(".").map((part) => Number(part) & 255);
-  const bytes = [
-    ...ipBytes,
-    target.port >> 8 & 255,
-    target.port & 255,
-    textBytes.length >> 8 & 255,
-    textBytes.length & 255,
-    ...textBytes
-  ];
-  return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join(" ");
-}
-function haActionCommandCodeHex(commandId) {
-  const code = 2e4 + (Number(commandId) & 255) & 281474976710655;
-  const hex = code.toString(16).padStart(12, "0");
-  return hex.replace(/(..)(?=.)/g, "$1 ");
-}
-function buildHaActionCommandRow(deviceId, commandId, name, target) {
-  const path = haActionCallbackPath(deviceId, name);
-  return {
-    command_id: commandId,
-    name,
-    restore_data: {
-      transport: "hub_code_record",
-      library_type: HA_ACTION_LIBRARY_TYPE,
-      command_code: haActionCommandCodeHex(commandId),
-      data_hex: renderHaActionDataHex(target, path),
-      decoded: {
-        class: "wifi_ip",
-        fields: {
-          host: target.host,
-          port: target.port,
-          method: "POST",
-          path,
-          header: "",
-          content_type: "application/x-www-form-urlencoded",
-          body: ""
-        },
-        trailer_hex: "",
-        edited: false
-      }
-    }
-  };
-}
-function refreshHaActionCallback(bundle2, deviceId, commandId) {
-  if (!isHaActionDeviceId(bundle2, deviceId)) return bundle2;
-  return {
-    ...bundle2,
-    devices: (bundle2.devices ?? []).map((entry) => {
-      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== Number(deviceId)) {
-        return entry;
-      }
-      return {
-        ...entry,
-        commands: (entry.commands ?? []).map((row) => {
-          if (Number(row?.command_id || 0) !== Number(commandId)) return row;
-          const decoded = row?.restore_data?.decoded;
-          const host = String(decoded?.fields?.host || "");
-          const port = Number(decoded?.fields?.port || 0);
-          if (!HA_IPV4_PATTERN.test(host) || port <= 0) return row;
-          const name = normalizeHaActionName(String(row?.name || ""));
-          return buildHaActionCommandRow(Number(deviceId), Number(commandId), name, { host, port });
-        })
-      };
-    })
-  };
-}
-function allocateHaHostDeviceId(bundle2) {
-  const used = /* @__PURE__ */ new Set();
-  for (const entry of bundle2.devices ?? []) used.add(Number(entry?.device?.device_id || 0));
-  for (const entry of bundle2.activities ?? []) used.add(Number(entry?.device?.device_id || 0));
-  for (let id = 1; id <= MAX_DEVICE_ID; id += 1) {
-    if (!used.has(id)) return id;
-  }
-  return null;
-}
-function buildHaHostEntry(deviceId, name, sort) {
-  return {
-    ha_action_host: true,
-    device: {
-      device_id: deviceId,
-      name,
-      brand: HA_ACTION_HOST_BRAND,
-      device_class: "wifi_ip",
-      device_class_code: 28,
-      icon: 1,
-      sort,
-      code_type: 28,
-      device_type: 16,
-      code_id_hex: Array(16).fill("00").join(" "),
-      hide: 0,
-      input_flag: 0,
-      channel: 0,
-      power_state: 0,
-      poll_time: 0,
-      input_mode: 2,
-      power_mode: 0,
-      power_style: 0,
-      share_mode: 0,
-      tail_marker: 1
-    },
-    commands: []
-  };
-}
-function provisionHaAction(bundle2, rawName, target) {
-  const name = normalizeHaActionName(rawName) || "HA action";
-  const hosts = (bundle2.devices ?? []).filter((entry) => isHaActionHostEntry(entry));
-  let next = bundle2;
-  let hostEntry = hosts.find((entry) => (entry.commands ?? []).length < HA_ACTION_MAX_SLOTS);
-  let deviceId;
-  if (hostEntry) {
-    deviceId = Number(hostEntry.device?.device_id || 0);
-    if (deviceId <= 0) return null;
-  } else {
-    const allocated = allocateHaHostDeviceId(bundle2);
-    if (allocated == null) return null;
-    deviceId = allocated;
-    const hostName = hosts.length === 0 ? HA_ACTION_HOST_NAME : `${HA_ACTION_HOST_NAME} ${hosts.length + 1}`;
-    const maxSort = (bundle2.devices ?? []).reduce(
-      (max, entry) => Math.max(max, Number(entry?.device?.sort || 0)),
-      0
-    );
-    hostEntry = buildHaHostEntry(deviceId, hostName, maxSort + 1);
-    next = { ...bundle2, devices: [...bundle2.devices ?? [], hostEntry] };
-  }
-  const usedSlots = new Set(
-    (hostEntry.commands ?? []).map((row2) => Number(row2?.command_id || 0))
-  );
-  let commandId = 0;
-  for (let slot = 1; slot <= HA_ACTION_MAX_SLOTS; slot += 1) {
-    if (!usedSlots.has(slot)) {
-      commandId = slot;
-      break;
-    }
-  }
-  if (commandId === 0) return null;
-  const row = buildHaActionCommandRow(deviceId, commandId, name, target);
-  next = {
-    ...next,
-    devices: (next.devices ?? []).map((entry) => {
-      if (!isHaActionHostEntry(entry) || Number(entry?.device?.device_id || 0) !== deviceId) return entry;
-      return { ...entry, commands: [...entry.commands ?? [], row] };
-    })
-  };
-  return { bundle: next, deviceId, commandId, name };
-}
-function addActivityHaActionFavorite(bundle2, activityId, rawName, target) {
-  const provision = provisionHaAction(bundle2, rawName, target);
-  if (!provision) return null;
-  return addBundleActivityFavorite(
-    provision.bundle,
-    Number(activityId),
-    provision.deviceId,
-    provision.commandId,
-    provision.name
-  );
-}
-function haActionCommandReferenced(bundle2, deviceId, commandId) {
-  for (const activity of bundle2.activities ?? []) {
-    for (const slot of activity?.favorite_slots ?? []) {
-      if (Number(slot?.device_id || 0) === deviceId && Number(slot?.command_id || 0) === commandId) return true;
-    }
-    for (const binding of activity?.button_bindings ?? []) {
-      if (Number(binding?.device_id || 0) === deviceId && Number(binding?.command_id || 0) === commandId) return true;
-      if (Number(binding?.long_press_device_id || 0) === deviceId && Number(binding?.long_press_command_id || 0) === commandId) return true;
-    }
-    for (const macro of activity?.macros ?? []) {
-      for (const step of macro?.steps ?? []) {
-        if (isMacroDelayStep(step) || isPowerRefStep(step)) continue;
-        if (Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId) return true;
-      }
-    }
-  }
-  return false;
-}
-function pruneHaActionHosts(bundle2) {
-  let next = bundle2;
-  const hostIds = (bundle2.devices ?? []).filter((entry) => isHaActionHostEntry(entry)).map((entry) => Number(entry?.device?.device_id || 0)).filter((id) => id > 0);
-  for (const deviceId of hostIds) {
-    const entry = (next.devices ?? []).find(
-      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId
-    );
-    if (!entry) continue;
-    for (const row of [...entry.commands ?? []]) {
-      const commandId = Number(row?.command_id || 0);
-      if (commandId > 0 && !haActionCommandReferenced(next, deviceId, commandId)) {
-        next = deleteBundleDeviceCommand(next, deviceId, commandId);
-      }
-    }
-    const refreshed = (next.devices ?? []).find(
-      (candidate) => isHaActionHostEntry(candidate) && Number(candidate?.device?.device_id || 0) === deviceId
-    );
-    if (refreshed && (refreshed.commands ?? []).length === 0) {
-      next = deleteBundleDevice(next, deviceId);
-    }
-  }
-  return next;
-}
-function bundleEditableDeviceOptions(bundle2) {
-  const hidden = new Set(
-    (bundle2?.devices ?? []).filter((entry) => isHaActionHostEntry(entry)).map((entry) => Number(entry?.device?.device_id || 0))
-  );
-  return bundleDeviceOptions(bundle2).filter((option) => !hidden.has(option.id));
 }
 function assertBackupBundleRestoreCompatible(bundle2, destinationHubVersion) {
   const sourceVersion = normalizeHubVersion(bundle2?.hub?.version);
@@ -4023,62 +3722,6 @@ test("setActivityRoleDevice(null) clears only that group", () => {
   assert.equal(roleFor(cleared, "volume").state, "unused");
   assert.deepEqual([roleFor(cleared, "navigation").state, roleFor(cleared, "navigation").boundCount], ["device", 3]);
 });
-var HA_ACTION_EXPECTED_DATA_HEX = "c0 a8 01 0a 1f 7c 00 7f 50 4f 53 54 20 2f 6c 61 75 6e 63 68 2f 68 61 2f 34 2f 44 69 6d 25 32 30 74 68 65 25 32 30 6c 69 67 68 74 73 2f 73 68 6f 72 74 20 48 54 54 50 2f 31 2e 31 0d 0a 48 6f 73 74 3a 31 39 32 2e 31 36 38 2e 31 2e 31 30 3a 38 30 36 30 0d 0a 43 6f 6e 74 65 6e 74 2d 54 79 70 65 3a 61 70 70 6c 69 63 61 74 69 6f 6e 2f 78 2d 77 77 77 2d 66 6f 72 6d 2d 75 72 6c 65 6e 63 6f 64 65 64 0d 0a 0d 0a";
-var HA_TARGET = { host: "192.168.1.10", port: 8060 };
-test("addActivityHaActionFavorite provisions a hidden host and the callback slot", () => {
-  const next = addActivityHaActionFavorite(membershipBundle(), 101, "Dim the lights", HA_TARGET);
-  assert.ok(next);
-  const host = next.devices.find((d3) => d3.ha_action_host);
-  assert.equal(host.device?.device_id, 4);
-  assert.equal(host.device?.name, "Home Assistant");
-  assert.equal(host.device?.device_class, "wifi_ip");
-  const row = host.commands[0];
-  assert.equal(row.command_id, 1);
-  assert.equal(row.name, "Dim the lights");
-  const restore = row.restore_data;
-  assert.equal(restore.transport, "hub_code_record");
-  assert.equal(restore.library_type, 28);
-  assert.equal(restore.command_code, "00 00 00 00 4e 21");
-  assert.equal(restore.data_hex, HA_ACTION_EXPECTED_DATA_HEX);
-  assert.equal(restore.decoded.class, "wifi_ip");
-  assert.equal(restore.decoded.fields.path, "/launch/ha/4/Dim%20the%20lights/short");
-  assert.equal(restore.decoded.trailer_hex, "");
-  const slot = next.activities[0].favorite_slots.find((s4) => s4.device_id === 4);
-  assert.deepEqual([slot.command_id, slot.name], [1, "Dim the lights"]);
-  assert.equal(activityMemberViews(next, 101).some((v2) => v2.deviceId === 4), false);
-  assert.equal(activityAddableDevices(next, 101).some((o5) => o5.id === 4), false);
-  assert.equal(bundleEditableDeviceOptions(next).some((o5) => o5.id === 4), false);
-  assert.equal(isHaActionDeviceId(next, 4), true);
-  assert.deepEqual(bundleHaActionTarget(next), HA_TARGET);
-  assert.equal(next.activities[0].referenced_source_device_ids.includes(4), true);
-});
-test("HA actions reuse the host, allocate slots, and normalize underscores", () => {
-  const first = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET);
-  const second = addActivityHaActionFavorite(first, 101, "Movie_night", HA_TARGET);
-  const hosts = second.devices.filter((d3) => d3.ha_action_host);
-  assert.equal(hosts.length, 1);
-  assert.deepEqual(hosts[0].commands.map((r4) => r4.command_id), [1, 2]);
-  assert.equal(hosts[0].commands[1].name, "Movie night");
-});
-test("pruneHaActionHosts drops unreferenced slots and dissolves empty hosts", () => {
-  const withAction = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET);
-  const swept = pruneHaActionHosts(withAction);
-  assert.equal(swept.devices.some((d3) => d3.ha_action_host), true);
-  const deleted = deleteBundleActivityQuickAccess(withAction, 101, "favorite", 4);
-  const pruned = pruneHaActionHosts(deleted);
-  assert.equal(pruned.devices.some((d3) => d3.ha_action_host), false);
-  assert.equal(pruned.activities[0].referenced_source_device_ids.includes(4), false);
-});
-test("renaming an HA-action shortcut re-renders the callback path", () => {
-  const withAction = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET);
-  const renamed = renameBundleActivityFavorite(withAction, 101, 4, "Movie mode");
-  const host = renamed.devices.find((d3) => d3.ha_action_host);
-  const restore = host.commands[0].restore_data;
-  assert.equal(restore.decoded.fields.path, "/launch/ha/4/Movie%20mode/short");
-  assert.ok(String(restore.data_hex).length > 0);
-  const ascii = String(restore.data_hex).split(" ").map((h3) => parseInt(h3, 16)).map((b3) => String.fromCharCode(b3)).join("");
-  assert.ok(ascii.includes("/launch/ha/4/Movie%20mode/short"));
-});
 function rawPayloadBundle() {
   return {
     kind: "hub_bundle",
@@ -4140,14 +3783,6 @@ test("updateCommandRawPayload replaces data_hex and drops a stale decoded block"
   assert.equal(commandRawPayloadHex(next, 9, 1), "aa bb cc");
   const untouched = updateCommandRawPayload(bundle2, 9, 2, "de ad");
   assert.equal(commandRawPayloadHex(untouched, 9, 2), null);
-});
-test("parseHaActionAddress accepts IPv4 with optional port", () => {
-  assert.deepEqual(parseHaActionAddress("192.168.1.10:8060"), HA_TARGET);
-  assert.deepEqual(parseHaActionAddress("10.0.0.2"), { host: "10.0.0.2", port: 8060 });
-  assert.equal(parseHaActionAddress("homeassistant.local:8060"), null);
-  assert.equal(parseHaActionAddress("192.168.1.10:0"), null);
-  assert.equal(parseHaActionAddress("192.168.1.10:70000"), null);
-  assert.equal(parseHaActionAddress(""), null);
 });
 test("reconcile repairs missing power refs in interleaved macros", () => {
   const partial = {

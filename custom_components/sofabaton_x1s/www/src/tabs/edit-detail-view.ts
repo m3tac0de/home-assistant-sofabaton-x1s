@@ -25,19 +25,13 @@ import {
   renderActivityRolesBlock,
 } from "./activity-editor";
 import { backupTabStyles } from "./backup-tab-styles";
-import type { BackupBundlePayload } from "../shared/ha-context";
+import type { BackupBundlePayload, BlobFetchDecodedBlock } from "../shared/ha-context";
 import {
   activityButtonBindingItems,
   activityMacroStepItems,
   activityRoleAssignments,
   type ActivityRoleGroupId,
   activityUserMacroSummaries,
-  addActivityHaActionFavorite,
-  isHaActionDeviceId,
-  bundleHaActionTarget,
-  parseHaActionAddress,
-  pruneHaActionHosts,
-  provisionHaAction,
   roleMappableButtonCount,
   setActivityRoleDevice,
   addActivityMacroCommandStep,
@@ -65,6 +59,7 @@ import {
   commandDecodedBlock,
   commandRawPayloadHex,
   normalizeCommandPayloadHex,
+  setCommandRestoreData,
   updateCommandRawPayload,
   DECODED_CLASS_FORM_SPECS,
   deviceButtonBindingItems,
@@ -102,6 +97,17 @@ import {
 } from "./backup-state";
 
 export type BackupEditTargetKind = "activity" | "device";
+
+/**
+ * A command payload fetched on demand from the hub (live mode). `dataHex` is
+ * the raw stored blob; `decoded` is the structured block when the class /
+ * hub supports it (raw IR on X1/X1S has none). Supplied by the host's
+ * `fetchCommandPayload` callback — the detail view stays hass-free.
+ */
+export interface FetchedCommandPayload {
+  dataHex: string;
+  decoded: BlobFetchDecodedBlock | null;
+}
 // POWER_ON / POWER_OFF macro slots. These carry fixed semantic names
 // ("Power On"/"Power Off") and a binding refers to them by slot, so they
 // are not renameable — unlike user macros bound to activity buttons.
@@ -113,7 +119,7 @@ type BackupEditDetailSectionId =
   | "commands"
   | "bindings";
 type BackupQuickAccessKind = "macro" | "favorite";
-type ActivityBindingTargetKind = "command" | "action" | "ha";
+type ActivityBindingTargetKind = "command" | "action";
 type MacroTargetMode = "existing" | "new";
 // Step-dialog modes. "input" edits an activity power-macro input ref;
 // "power" refs never open the dialog so aren't included here. Waits are no
@@ -175,6 +181,12 @@ export class SofabatonEditDetailView extends LitElement {
     _payloadDialogDecodedSnapshot: { state: true },
     _payloadDialogRawDraft: { state: true },
     _payloadDialogError: { state: true },
+    fetchCommandPayload: { attribute: false },
+    testCommandPayload: { attribute: false },
+    _payloadFetchingCommandId: { state: true },
+    _payloadFetchError: { state: true },
+    _payloadDialogTestStatus: { state: true },
+    _payloadDialogTestError: { state: true },
     _confirmDeleteTarget: { state: true },
     _confirmDeleteLabel: { state: true },
     _addFavoriteOpen: { state: true },
@@ -199,8 +211,6 @@ export class SofabatonEditDetailView extends LitElement {
     _bindingLpMacroMode: { state: true },
     _bindingLpMacroId: { state: true },
     _bindingLpActionName: { state: true },
-    _bindingLpHaActionName: { state: true },
-    _bindingLpHaActionAddress: { state: true },
     _bindingError: { state: true },
     _macroEditor: { state: true },
     _stepDialogOpen: { state: true },
@@ -215,9 +225,6 @@ export class SofabatonEditDetailView extends LitElement {
     _roleMenuOpen: { state: true },
     _roleConfirm: { state: true },
     _bindingsView: { state: true },
-    _haActionName: { state: true },
-    _haActionAddress: { state: true },
-    _haActionError: { state: true },
     _addShortcutKind: { state: true },
     _addShortcutActionName: { state: true },
     _addShortcutMacroMode: { state: true },
@@ -231,31 +238,82 @@ export class SofabatonEditDetailView extends LitElement {
     :host {
       flex-direction: column;
     }
-    /* Live-mode header action cluster (Discard / Review / Sync). */
-    .live-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-    .live-btn {
+    /* Live-mode header Sync button — styled identically to the Wifi command
+       editor's .detail-sync-btn (primary when there are pending changes, a
+       green "up to date" disabled state when clean). */
+    .detail-sync-btn {
       border: 1px solid var(--divider-color);
-      border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+      border-radius: calc(var(--ha-card-border-radius, 12px) * 0.85);
       background: transparent;
       color: var(--primary-text-color);
       font: inherit;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 700;
-      padding: 6px 10px;
+      padding: 8px 12px;
       cursor: pointer;
       white-space: nowrap;
       transition: border-color 120ms ease, background-color 120ms ease, opacity 120ms ease;
     }
-    .live-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-    .live-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
-    .live-btn:disabled {
+    .detail-sync-btn:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+    .detail-sync-btn.sync-btn-primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+    .detail-sync-btn:disabled {
       cursor: default;
       opacity: 0.42;
       color: var(--disabled-text-color, var(--secondary-text-color));
       border-color: color-mix(in srgb, var(--divider-color) 88%, transparent);
-      background: transparent;
     }
-    .live-btn:disabled:hover { border-color: color-mix(in srgb, var(--divider-color) 88%, transparent); }
+    .detail-sync-btn:disabled:hover { border-color: color-mix(in srgb, var(--divider-color) 88%, transparent); }
+    .detail-sync-btn.detail-sync-btn--state-ok,
+    .detail-sync-btn.detail-sync-btn--state-ok:disabled {
+      border-color: color-mix(in srgb, #48b851 45%, var(--divider-color));
+      background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color)));
+      color: #2e7d32;
+      opacity: 1;
+    }
+    /* Spinner used on the live "fetch payload" command-row button. */
+    @keyframes sb-spin { to { transform: rotate(360deg); } }
+    ha-icon.sb-spin { animation: sb-spin 720ms linear infinite; }
+    /* Inline status line (fetch error + in-dialog Test result). */
+    .section-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      padding: 8px 12px;
+      border: 1px solid var(--divider-color);
+      border-radius: var(--ha-card-border-radius, 10px);
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--secondary-text-color);
+    }
+    .section-status ha-icon { --mdc-icon-size: 18px; flex: 0 0 auto; }
+    .section-status.error {
+      color: var(--error-color, #db4437);
+      border-color: color-mix(in srgb, var(--error-color, #db4437) 30%, var(--divider-color));
+      background: color-mix(in srgb, var(--error-color, #db4437) 6%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .payload-test-status.success {
+      color: #2e7d32;
+      border-color: color-mix(in srgb, #2e7d32 30%, var(--divider-color));
+      background: color-mix(in srgb, #2e7d32 6%, var(--ha-card-background, var(--card-background-color)));
+    }
+    .payload-test-btn { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; }
+    .payload-test-btn ha-icon { --mdc-icon-size: 16px; }
+    /* Device-class indicator in the payload dialog header. */
+    .dialog-title-group { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+    .dialog-title-group .dialog-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .payload-class-badge {
+      flex: 0 0 auto;
+      font-family: var(--code-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      padding: 2px 9px;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--primary-color) 40%, var(--divider-color));
+      color: var(--primary-text-color);
+      background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+    }
   `];
 
   // ── Host-owned props ───────────────────────────────────────────────
@@ -276,10 +334,7 @@ export class SofabatonEditDetailView extends LitElement {
   private _roleConfirm: { group: ActivityRoleGroupId; deviceId: number | null } | null = null;
   // Full sub-view for individual button bindings (never an accordion).
   private _bindingsView = false;
-  private _haActionName = "";
-  private _haActionAddress = "";
-  private _haActionError = "";
-  private _addShortcutKind: "command" | "action" | "ha" = "command";
+  private _addShortcutKind: "command" | "action" = "command";
   private _addShortcutActionName = "";
   private _addShortcutMacroMode: MacroTargetMode = "new";
   private _addShortcutMacroId: number | null = null;
@@ -299,6 +354,17 @@ export class SofabatonEditDetailView extends LitElement {
   private _payloadDialogRawSnapshot = "";
   private _payloadDialogRawDraft = "";
   private _payloadDialogError = "";
+  // ── Live payload editing (host-provided I/O) ───────────────────────
+  // The detail view is hass-free; the live Activities host injects these
+  // to fetch a command's blob on demand and to Test it on the hub. Absent
+  // in backup mode (the payload already lives in the bundle there).
+  fetchCommandPayload: ((deviceId: number, commandId: number) => Promise<FetchedCommandPayload | null>) | null = null;
+  testCommandPayload: ((hex: string) => Promise<void>) | null = null;
+  private _payloadFetchingCommandId: number | null = null;
+  private _payloadFetchError = "";
+  private _payloadLiveFetched: FetchedCommandPayload | null = null;
+  private _payloadDialogTestStatus: "idle" | "testing" | "success" | "error" = "idle";
+  private _payloadDialogTestError = "";
   private _confirmDeleteTarget: BackupDeleteTarget | null = null;
   private _confirmDeleteLabel = "";
   private _addFavoriteOpen = false;
@@ -323,8 +389,6 @@ export class SofabatonEditDetailView extends LitElement {
   private _bindingLpMacroMode: MacroTargetMode = "new";
   private _bindingLpMacroId: number | null = null;
   private _bindingLpActionName = "";
-  private _bindingLpHaActionName = "";
-  private _bindingLpHaActionAddress = "";
   private _bindingError = "";
   private _detailScrollTop = 0;
   private _bindingsScrollTop = 0;
@@ -363,9 +427,11 @@ export class SofabatonEditDetailView extends LitElement {
     this._roleMenuAnchor = null;
     this._roleConfirm = null;
     this._bindingsView = false;
-    this._closeHaActionDialog();
     this._editDetailNameDraft = sanitizeBundleName(this.bundle, this._selectedEditTitle());
     this._closeEditRenameDialog();
+    this._closeCommandPayloadDialog();
+    this._payloadFetchingCommandId = null;
+    this._payloadFetchError = "";
     this._closeDeleteConfirm();
     this._closeAddFavoriteDialog();
     this._closeBindingDialog();
@@ -374,13 +440,13 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   /**
-   * Commit a mutated bundle from any edit handler. The element applies
-   * the HA-action plumbing sweep and updates its own prop synchronously
-   * (handlers read the fresh bundle in the same tick), then hands the
-   * result to the host, which owns dirty/persistence semantics.
+   * Commit a mutated bundle from any edit handler. The element updates its
+   * own prop synchronously (handlers read the fresh bundle in the same
+   * tick), then hands the result to the host, which owns dirty/persistence
+   * semantics.
    */
   private _commitEditBundleEdit(next: BackupBundlePayload) {
-    this.bundle = pruneHaActionHosts(next);
+    this.bundle = next;
     this.dispatchEvent(new CustomEvent("bundle-change", { detail: { bundle: this.bundle } }));
   }
 
@@ -390,29 +456,47 @@ export class SofabatonEditDetailView extends LitElement {
   };
 
   // ── Live-mode header (§4.3) ─────────────────────────────────────────
-  // In live mode the host owns Review / Sync / Discard; the element just
-  // signals intent. In backup mode these render nothing (the header shows
-  // rename/delete instead) and the chip reads "Unsaved".
-  private _requestReview = () => this.dispatchEvent(new CustomEvent("review-request"));
+  // The live header mirrors the Wifi command editor: Back (= discard, via the
+  // host's exit-confirm) on the left, rename/delete + a single stateful Sync
+  // button on the right. The element only signals sync intent; the host owns
+  // the write. In backup mode there is no Sync button and the chip reads
+  // "Unsaved".
   private _requestSync = () => this.dispatchEvent(new CustomEvent("sync-request"));
-  private _requestDiscard = () => this.dispatchEvent(new CustomEvent("discard-request"));
 
   private _renderDirtyChip() {
-    if (!this.dirty) return nothing;
-    if (this.mode === "live") {
-      return html`<span class="edit-unsaved-chip" title=${TOOLS_CARD_STRINGS.activities.notSyncedTooltip}>${TOOLS_CARD_STRINGS.activities.notSyncedChip}</span>`;
-    }
+    // Live mode has no dirty chip — the Sync button's state carries that
+    // signal (matching the Wifi command editor). Backup mode keeps "Unsaved".
+    if (this.mode === "live" || !this.dirty) return nothing;
     return html`<span class="edit-unsaved-chip" title="You have unsaved changes. Download the backup to save them.">Unsaved</span>`;
   }
 
-  private _renderLiveHeaderActions() {
+  private _renderLiveSyncButton() {
     const S = TOOLS_CARD_STRINGS.activities;
+    const dirty = this.dirty;
+    const label = dirty ? S.syncToHub : S.syncUpToDate;
+    const classes = `detail-sync-btn${dirty ? " sync-btn-primary" : " detail-sync-btn--state-ok"}`;
+    return html`<button class=${classes} ?disabled=${!dirty} @click=${dirty ? this._requestSync : null}>${label}</button>`;
+  }
+
+  // Rename (pencil) + delete (trash) header buttons — shared by live and
+  // backup mode so both editors expose the identical affordance. In live
+  // mode rename rides the normal Sync (a bundle mutation → dirty → Sync);
+  // delete executes immediately on the hub through the host (see
+  // _confirmDelete).
+  private _renderDetailRenameDeleteButtons(kind: BackupEditTargetKind) {
     return html`
-      <div class="detail-title-actions live-actions">
-        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestDiscard}>${S.discard}</button>
-        <button class="live-btn" ?disabled=${!this.dirty} @click=${this._requestReview}>${S.reviewChanges}</button>
-        <button class="live-btn live-btn--primary" ?disabled=${!this.dirty} @click=${this._requestSync}>${S.sync}</button>
-      </div>
+      <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${kind}`}>
+        <ha-icon icon="mdi:pencil"></ha-icon>
+      </button>
+      <button
+        class="icon-btn icon-btn--danger"
+        @click=${this._openDetailDeleteConfirm}
+        aria-label=${kind === "activity"
+          ? TOOLS_CARD_STRINGS.backup.deleteActivityAria
+          : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
+      >
+        <ha-icon icon="mdi:trash-can-outline"></ha-icon>
+      </button>
     `;
   }
 
@@ -456,24 +540,10 @@ export class SofabatonEditDetailView extends LitElement {
                   <div class="detail-title">${params.title}</div>
                 </div>
                 ${this._renderDirtyChip()}
-                ${this.mode === "live"
-                  ? this._renderLiveHeaderActions()
-                  : html`
-                      <div class="detail-title-actions">
-                        <button class="icon-btn" @click=${this._openDetailRenameDialog} aria-label=${`Rename ${params.kind}`}>
-                          <ha-icon icon="mdi:pencil"></ha-icon>
-                        </button>
-                        <button
-                          class="icon-btn icon-btn--danger"
-                          @click=${this._openDetailDeleteConfirm}
-                          aria-label=${params.kind === "activity"
-                            ? TOOLS_CARD_STRINGS.backup.deleteActivityAria
-                            : TOOLS_CARD_STRINGS.backup.deleteDeviceAria}
-                        >
-                          <ha-icon icon="mdi:trash-can-outline"></ha-icon>
-                        </button>
-                      </div>
-                    `}
+                <div class="detail-title-actions">
+                  ${this._renderDetailRenameDeleteButtons(params.kind)}
+                  ${this.mode === "live" ? this._renderLiveSyncButton() : nothing}
+                </div>
               </div>
             </div>
             ${this._renderEditDetailSectionNav(sectionItems)}
@@ -895,10 +965,18 @@ export class SofabatonEditDetailView extends LitElement {
           <div class="quick-access-title">Commands</div>
           <div class="quick-access-sub">
             ${this.mode === "live"
-              ? "Commands are read-only in live sync — rename, payload, and delete stay in Backup → Edit."
+              ? "Use the pencil to rename a command and the braces to fetch its payload from the hub and edit it. Deleting commands stays in Backup → Edit."
               : "Use the pencil to rename a command (names update everywhere it is referenced) and the braces to edit its payload."}
           </div>
         </div>
+        ${this._payloadFetchError
+          ? html`
+              <div class="section-status error" role="alert">
+                <ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+                <span>${this._payloadFetchError}</span>
+              </div>
+            `
+          : nothing}
         ${items.length
           ? html`
               <div class="quick-access-list">
@@ -926,17 +1004,13 @@ export class SofabatonEditDetailView extends LitElement {
             </div>
           </div>
           <div class="quick-access-actions">
-            ${this.mode === "live"
-              ? nothing
-              : html`
-                  <button
-                    class="icon-btn"
-                    @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
-                    aria-label="Rename command"
-                  >
-                    <ha-icon icon="mdi:pencil"></ha-icon>
-                  </button>
-                `}
+            <button
+              class="icon-btn"
+              @click=${() => this._openDeviceCommandRenameDialog(item.commandId)}
+              aria-label="Rename command"
+            >
+              <ha-icon icon="mdi:pencil"></ha-icon>
+            </button>
             ${this.mode !== "live" && this._commandHasEditablePayload(item.commandId)
               ? html`
                   <button
@@ -946,6 +1020,22 @@ export class SofabatonEditDetailView extends LitElement {
                     title="Edit payload"
                   >
                     <ha-icon icon="mdi:code-braces"></ha-icon>
+                  </button>
+                `
+              : nothing}
+            ${this.mode === "live"
+              ? html`
+                  <button
+                    class="icon-btn"
+                    @click=${() => void this._liveFetchAndOpenPayload(item.commandId)}
+                    ?disabled=${this._payloadFetchingCommandId != null}
+                    aria-label="Edit payload"
+                    title="Fetch and edit this command's payload"
+                  >
+                    <ha-icon
+                      icon=${this._payloadFetchingCommandId === item.commandId ? "mdi:loading" : "mdi:code-braces"}
+                      class=${this._payloadFetchingCommandId === item.commandId ? "sb-spin" : ""}
+                    ></ha-icon>
                   </button>
                 `
               : nothing}
@@ -1040,9 +1130,7 @@ export class SofabatonEditDetailView extends LitElement {
               <div class="quick-access-chip">
                 ${item.kind === "macro"
                   ? TOOLS_CARD_STRINGS.backup.shortcutChipAction
-                  : isHaActionDeviceId(this.bundle, Number(item.deviceId || 0))
-                    ? TOOLS_CARD_STRINGS.backup.haActionChip
-                    : TOOLS_CARD_STRINGS.backup.shortcutChipCommand}
+                  : TOOLS_CARD_STRINGS.backup.shortcutChipCommand}
               </div>
             </div>
             <div class="quick-access-meta">${this._quickAccessRowMeta(item)}</div>
@@ -1157,29 +1245,71 @@ export class SofabatonEditDetailView extends LitElement {
   private _renderCommandPayloadDialog() {
     if (!this._payloadDialogOpen || !this._payloadDialogTarget) return nothing;
     const decoded = this._payloadDialogDecodedSnapshot;
+    const deviceClass = String(
+      bundleDeviceClass(this.bundle, this._payloadDialogTarget.deviceId) || "",
+    ).trim();
     return html`
       <div class="modal-backdrop" @click=${this._closeCommandPayloadDialog}>
         <div class="dialog medium" @click=${(event: Event) => event.stopPropagation()}>
           <div class="dialog-header">
-            <div class="dialog-title">Edit Payload</div>
+            <div class="dialog-title-group">
+              <div class="dialog-title">Edit Payload</div>
+              ${deviceClass
+                ? html`<span class="payload-class-badge" title="Device class">${deviceClass}</span>`
+                : nothing}
+            </div>
             <button class="dialog-close" @click=${this._closeCommandPayloadDialog}><ha-icon icon="mdi:close"></ha-icon></button>
           </div>
           <div class="dialog-body">
             ${decoded
               ? this._renderDecodedPayloadForm(decoded.className)
               : this._renderRawPayloadForm()}
-            <div class="payload-test-note">
-              <ha-icon icon="mdi:flash-outline"></ha-icon>
-              <span>
-                Verify a changed payload before trusting it: for IR payloads,
-                Blobs &rarr; Test plays the bytes on the hub without saving.
-                Save here only once the payload does what you expect.
-              </span>
-            </div>
+            ${this._liveDeviceIsIr()
+              ? html`
+                  <div class="payload-test-note">
+                    <ha-icon icon="mdi:flash-outline"></ha-icon>
+                    <span>
+                      ${this.mode === "live"
+                        ? html`Verify a changed payload before saving: <strong>Test</strong> plays the current bytes on the hub without saving. Save folds the payload into the device's next Sync.`
+                        : html`Verify a changed payload before trusting it: Blobs &rarr; Test plays the bytes on the hub without saving. Save here only once the payload does what you expect.`}
+                    </span>
+                  </div>
+                `
+              : nothing}
+            ${this._payloadDialogTestStatus !== "idle"
+              ? html`
+                  <div class="section-status payload-test-status ${this._payloadDialogTestStatus}" role="status" aria-live="polite">
+                    <ha-icon icon=${this._payloadDialogTestStatus === "success"
+                      ? "mdi:check-circle-outline"
+                      : this._payloadDialogTestStatus === "error"
+                        ? "mdi:alert-circle-outline"
+                        : "mdi:progress-clock"}></ha-icon>
+                    <span>
+                      ${this._payloadDialogTestStatus === "testing"
+                        ? "Sending to the hub…"
+                        : this._payloadDialogTestStatus === "success"
+                          ? "Sent to the hub for one-shot playback."
+                          : this._payloadDialogTestError || "Test failed."}
+                    </span>
+                  </div>
+                `
+              : nothing}
           </div>
           <div class="dialog-footer">
             <div class="dialog-footer-note">${this._payloadDialogError}</div>
             <div class="dialog-footer-actions">
+              ${this.mode === "live" && this._liveDeviceIsIr() && this.testCommandPayload
+                ? html`
+                    <button
+                      class="dialog-btn payload-test-btn"
+                      ?disabled=${this._payloadDialogTestStatus === "testing"}
+                      @click=${() => void this._runLivePayloadTest()}
+                    >
+                      <ha-icon icon="mdi:flash-outline"></ha-icon>
+                      <span>Test</span>
+                    </button>
+                  `
+                : nothing}
               <button class="dialog-btn" @click=${this._closeCommandPayloadDialog}>Cancel</button>
               <button class="dialog-btn dialog-btn-primary" @click=${this._applyCommandPayloadDialog}>Save</button>
             </div>
@@ -1404,7 +1534,6 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   private _openDeviceCommandRenameDialog(commandId: number) {
-    if (this.mode === "live") return;
     if (this.entityId == null) return;
     const deviceId = Number(this.entityId);
     const normalizedCommandId = Number(commandId);
@@ -1425,6 +1554,138 @@ export class SofabatonEditDetailView extends LitElement {
       commandDecodedBlock(this.bundle, deviceId, Number(commandId))
       || commandRawPayloadHex(this.bundle, deviceId, Number(commandId)),
     );
+  }
+
+  /**
+   * True for IR devices. Live payload *editing* is offered for all classes
+   * (raw hex, or the structured form where a parser exists), but the Test
+   * button — Blobs `playIrBlob` — is IR-only, so it gates on this.
+   */
+  private _liveDeviceIsIr(): boolean {
+    if (this.entityId == null || !this.bundle) return false;
+    return String(bundleDeviceClass(this.bundle, Number(this.entityId)) || "")
+      .trim()
+      .toLowerCase() === "ir";
+  }
+
+  /**
+   * Live "edit payload": fetch this one command's blob from the hub on
+   * demand (the structural bundle is blob-free), then open the same payload
+   * dialog backup uses — populated from the fetch, not the bundle, so the
+   * fetch itself never marks the bundle dirty. The host supplies the fetch.
+   */
+  private async _liveFetchAndOpenPayload(commandId: number) {
+    if (this.mode !== "live" || this.entityId == null || !this.fetchCommandPayload) return;
+    if (this._payloadFetchingCommandId != null) return;
+    const deviceId = Number(this.entityId);
+    const normalizedCommandId = Number(commandId);
+    this._payloadFetchingCommandId = normalizedCommandId;
+    this._payloadFetchError = "";
+    try {
+      const fetched = await this.fetchCommandPayload(deviceId, normalizedCommandId);
+      if (!fetched || !String(fetched.dataHex || "").trim()) {
+        this._payloadFetchError = "The hub returned no payload for this command.";
+        return;
+      }
+      this._openLivePayloadDialog(deviceId, normalizedCommandId, fetched);
+    } catch (error) {
+      this._payloadFetchError = error instanceof Error ? error.message : String(error);
+    } finally {
+      this._payloadFetchingCommandId = null;
+    }
+  }
+
+  private _openLivePayloadDialog(deviceId: number, commandId: number, fetched: FetchedCommandPayload) {
+    const decoded = this._decodedSnapshotFromFetch(fetched.decoded);
+    const rawHex = decoded ? "" : (normalizeCommandPayloadHex(fetched.dataHex) ?? fetched.dataHex);
+    this._payloadDialogTarget = { deviceId, commandId };
+    this._payloadLiveFetched = fetched;
+    this._payloadDialogDecodedSnapshot = decoded;
+    this._payloadDialogDecodedDrafts = decoded ? this._initialDecodedDrafts(decoded) : {};
+    this._payloadDialogRawSnapshot = rawHex;
+    this._payloadDialogRawDraft = rawHex;
+    this._payloadDialogError = "";
+    this._payloadDialogTestStatus = "idle";
+    this._payloadDialogTestError = "";
+    this._payloadDialogOpen = true;
+  }
+
+  /** Convert a fetched decoded block into the editor's snapshot shape. */
+  private _decodedSnapshotFromFetch(decoded: BlobFetchDecodedBlock | null): BackupCommandDecodedBlock | null {
+    if (!decoded) return null;
+    const className = String(decoded.class ?? "").trim().toLowerCase();
+    if (!(className in DECODED_CLASS_FORM_SPECS)) return null;
+    return {
+      className: className as DecodableCommandClass,
+      fields: { ...(decoded.fields ?? {}) },
+      trailerHex: String(decoded.trailer_hex ?? ""),
+      edited: false,
+    };
+  }
+
+  /**
+   * Commit a live payload edit. The working command has no restore_data yet
+   * (blob-free bundle), so build the whole block — carrying the `edited`
+   * marker the device-sync planner keys on — and set it via
+   * `setCommandRestoreData`. A pristine (unchanged) dialog commits nothing.
+   */
+  private _applyLivePayloadDialog(target: { deviceId: number; commandId: number }) {
+    if (!this.bundle) return;
+    const snapshot = this._payloadDialogDecodedSnapshot;
+    if (snapshot) {
+      const changedFields = this._collectChangedDecodedFields(snapshot);
+      if (!changedFields) {
+        this._closeCommandPayloadDialog();
+        return;
+      }
+      const restoreData = {
+        transport: "hub_code_record",
+        data_hex: this._payloadLiveFetched?.dataHex ?? "",
+        decoded: {
+          class: snapshot.className,
+          trailer_hex: snapshot.trailerHex,
+          fields: { ...snapshot.fields, ...changedFields },
+          edited: true,
+        },
+      };
+      this._commitEditBundleEdit(setCommandRestoreData(this.bundle, target.deviceId, target.commandId, restoreData));
+      this._closeCommandPayloadDialog();
+      return;
+    }
+    const normalized = normalizeCommandPayloadHex(this._payloadDialogRawDraft);
+    if (!normalized) {
+      this._payloadDialogError = "Enter the payload as hex bytes (an even number of hex digits; spaces are fine).";
+      return;
+    }
+    if (normalized === normalizeCommandPayloadHex(this._payloadDialogRawSnapshot)) {
+      this._closeCommandPayloadDialog();
+      return;
+    }
+    const restoreData = { transport: "hub_code_record", data_hex: normalized, edited: true };
+    this._commitEditBundleEdit(setCommandRestoreData(this.bundle, target.deviceId, target.commandId, restoreData));
+    this._closeCommandPayloadDialog();
+  }
+
+  /** Test the current draft on the hub (IR only), via the host's callback. */
+  private async _runLivePayloadTest() {
+    if (!this.testCommandPayload) return;
+    const value = this._payloadDialogDecodedSnapshot
+      ? String(this._payloadDialogDecodedDrafts["descriptor"] ?? "").trim()
+      : String(this._payloadDialogRawDraft ?? "").trim();
+    if (!value) {
+      this._payloadDialogTestStatus = "error";
+      this._payloadDialogTestError = "Nothing to test yet.";
+      return;
+    }
+    this._payloadDialogTestStatus = "testing";
+    this._payloadDialogTestError = "";
+    try {
+      await this.testCommandPayload(value);
+      this._payloadDialogTestStatus = "success";
+    } catch (error) {
+      this._payloadDialogTestStatus = "error";
+      this._payloadDialogTestError = error instanceof Error ? error.message : String(error);
+    }
   }
 
   private _openCommandPayloadDialog(commandId: number) {
@@ -1457,11 +1718,18 @@ export class SofabatonEditDetailView extends LitElement {
     this._payloadDialogRawSnapshot = "";
     this._payloadDialogRawDraft = "";
     this._payloadDialogError = "";
+    this._payloadLiveFetched = null;
+    this._payloadDialogTestStatus = "idle";
+    this._payloadDialogTestError = "";
   };
 
   private _applyCommandPayloadDialog = () => {
     const target = this._payloadDialogTarget;
-    if (!target || !this.bundle || this.mode === "live") return;
+    if (!target || !this.bundle) return;
+    if (this.mode === "live") {
+      this._applyLivePayloadDialog(target);
+      return;
+    }
     const snapshot = this._payloadDialogDecodedSnapshot;
     if (snapshot) {
       // Structured form: diff against the open-dialog snapshot and only
@@ -1577,6 +1845,19 @@ export class SofabatonEditDetailView extends LitElement {
   private _confirmDelete = () => {
     const target = this._confirmDeleteTarget;
     if (!target || !this.bundle) return;
+    // Live mode: deleting the whole activity/device executes immediately on
+    // the hub. The confirm dialog already gated it; hand the intent to the
+    // host, which owns the hub write and the return-to-list. Row-level
+    // deletes (command / favorite / macro / binding) stay pure bundle edits
+    // and ride the normal Sync, in both modes.
+    if (this.mode === "live" && (target.kind === "activity" || target.kind === "device")) {
+      const entityId = target.kind === "activity" ? target.activityId : target.deviceId;
+      this._closeDeleteConfirm();
+      this.dispatchEvent(new CustomEvent("delete-request", {
+        detail: { kind: target.kind, entityId },
+      }));
+      return;
+    }
     this._commitEditBundleEdit(applyBundleDelete(this.bundle, target));
     // Deleting the entity we're inside removes its detail page — fall back
     // to the overview. Row-level deletes (command / favorite / macro) keep
@@ -1622,6 +1903,18 @@ export class SofabatonEditDetailView extends LitElement {
     if (!target || !this.bundle) return nothing;
     const impact = bundleDeleteImpact(this.bundle, target);
     const hasCascade = backupDeleteHasCascade(impact);
+    const S = TOOLS_CARD_STRINGS.backup;
+    const isLive = this.mode === "live";
+    // Live activity/device deletes hit the hub immediately; row-level deletes
+    // (command/favorite/macro/binding/member) ride the next Sync. Backup-mode
+    // deletes only reach the hub via a Replace restore.
+    const isImmediate = isLive && (target.kind === "activity" || target.kind === "device");
+    const intro = isLive
+      ? (hasCascade ? S.deleteCascadeIntroLive : S.deleteSimpleBodyLive)
+      : (hasCascade ? S.deleteCascadeIntro : S.deleteSimpleBody);
+    const note = isLive
+      ? (isImmediate ? S.deleteImmediateNote : S.deleteSyncNote)
+      : S.deleteReplaceNote;
     return html`
       <div class="modal-backdrop" @click=${this._closeDeleteConfirm}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
@@ -1631,7 +1924,7 @@ export class SofabatonEditDetailView extends LitElement {
           </div>
           <div class="dialog-body">
             <div class="backup-drawer-sub">
-              ${hasCascade ? TOOLS_CARD_STRINGS.backup.deleteCascadeIntro : TOOLS_CARD_STRINGS.backup.deleteSimpleBody}
+              ${intro}
             </div>
             ${hasCascade
               ? html`
@@ -1653,7 +1946,7 @@ export class SofabatonEditDetailView extends LitElement {
               : nothing}
             <div class="delete-replace-note">
               <ha-icon icon="mdi:information-outline"></ha-icon>
-              <span>${TOOLS_CARD_STRINGS.backup.deleteReplaceNote}</span>
+              <span>${note}</span>
             </div>
           </div>
           <div class="dialog-footer">
@@ -1670,8 +1963,8 @@ export class SofabatonEditDetailView extends LitElement {
 
   // ── Add favorite (device → command picker) ──────────────────────────
   // One entry point for everything that can land on the remote screen:
-  // a device command, a macro (existing or new), or a Home
-  // Assistant action. The kind selector swaps the dialog's fields.
+  // a device command or a macro (existing or new). The kind selector
+  // swaps the dialog's fields.
   private _openAddShortcutDialog = () => {
     if (this.entityId == null || !this.bundle) return;
     const devices = bundleEditableDeviceOptions(this.bundle);
@@ -1684,15 +1977,6 @@ export class SofabatonEditDetailView extends LitElement {
     this._addFavoriteError = "";
     this._addShortcutActionName = "";
     this._resetMacroTarget("shortcut");
-    const existing = bundleHaActionTarget(this.bundle);
-    let prefill = existing ? `${existing.host}:${existing.port}` : "";
-    if (!prefill && typeof window !== "undefined") {
-      const candidate = parseHaActionAddress(window.location.hostname);
-      if (candidate) prefill = `${candidate.host}:8060`;
-    }
-    this._haActionName = "";
-    this._haActionAddress = prefill;
-    this._haActionError = "";
     this._addFavoriteOpen = true;
   };
 
@@ -1706,7 +1990,6 @@ export class SofabatonEditDetailView extends LitElement {
     this._addShortcutActionName = "";
     this._addShortcutMacroMode = "new";
     this._addShortcutMacroId = null;
-    this._closeHaActionDialog();
   };
 
   private _handleAddFavoriteDeviceChange = (event: Event) => {
@@ -1758,30 +2041,27 @@ export class SofabatonEditDetailView extends LitElement {
       this._applyAddFavorite();
       return;
     }
-    if (this._addShortcutKind === "action") {
-      const activityId = Number(this.entityId);
-      if (this._addShortcutMacroMode === "existing") {
-        const existing = activityUserMacroSummaries(this.bundle, activityId)
-          .find((macro) => macro.buttonId === Number(this._addShortcutMacroId));
-        if (!existing) {
-          this._addFavoriteError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-          return;
-        }
-        this._closeAddFavoriteDialog();
-        this._openMacroEditor("activity", activityId, existing.buttonId, existing.name);
+    // "action" (custom macro).
+    const activityId = Number(this.entityId);
+    if (this._addShortcutMacroMode === "existing") {
+      const existing = activityUserMacroSummaries(this.bundle, activityId)
+        .find((macro) => macro.buttonId === Number(this._addShortcutMacroId));
+      if (!existing) {
+        this._addFavoriteError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
         return;
       }
-      const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim()
-        || TOOLS_CARD_STRINGS.backup.newMacroName;
-      const next = addActivityUserMacro(this.bundle, activityId, name);
-      this._commitEditBundleEdit(next);
       this._closeAddFavoriteDialog();
-      const summaries = activityUserMacroSummaries(next, activityId);
-      const created = summaries[summaries.length - 1];
-      if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
+      this._openMacroEditor("activity", activityId, existing.buttonId, existing.name);
       return;
     }
-    this._applyHaAction();
+    const name = sanitizeBundleName(this.bundle, this._addShortcutActionName).trim()
+      || TOOLS_CARD_STRINGS.backup.newMacroName;
+    const next = addActivityUserMacro(this.bundle, activityId, name);
+    this._commitEditBundleEdit(next);
+    this._closeAddFavoriteDialog();
+    const summaries = activityUserMacroSummaries(next, activityId);
+    const created = summaries[summaries.length - 1];
+    if (created) this._openMacroEditor("activity", activityId, created.buttonId, created.name);
   };
 
   private _renderAddFavoriteDialog() {
@@ -1874,36 +2154,6 @@ export class SofabatonEditDetailView extends LitElement {
         : html`<div class="quick-access-empty">${S.macroTargetNoExisting}</div>`}
       ${this._addShortcutMacroMode === "new" ? actionFields : nothing}
     `;
-    const haFields = html`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-ha-action-name">${S.haActionNameLabel}</label>
-        <input
-          id="sb-ha-action-name"
-          class="decoded-field-input"
-          maxlength="20"
-          .value=${this._haActionName}
-          @input=${(event: Event) => {
-            this._haActionName = (event.target as HTMLInputElement).value;
-            this._haActionError = "";
-          }}
-        />
-        <div class="decoded-field-helper">${S.haActionNameHelper}</div>
-      </div>
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-ha-action-address">${S.haActionAddressLabel}</label>
-        <input
-          id="sb-ha-action-address"
-          class="decoded-field-input"
-          placeholder="192.168.1.10:8060"
-          .value=${this._haActionAddress}
-          @input=${(event: Event) => {
-            this._haActionAddress = (event.target as HTMLInputElement).value;
-            this._haActionError = "";
-          }}
-        />
-        <div class="decoded-field-helper">${S.haActionAddressHelper}</div>
-      </div>
-    `;
     return html`
       <div class="modal-backdrop" @click=${this._closeAddFavoriteDialog}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
@@ -1919,21 +2169,19 @@ export class SofabatonEditDetailView extends LitElement {
                 class="decoded-field-input"
                 @change=${(event: Event) => {
                   this._addShortcutKind = (event.target as HTMLSelectElement).value as
-                    | "command" | "action" | "ha";
+                    | "command" | "action";
                   if (this._addShortcutKind === "action") this._resetMacroTarget("shortcut");
                   this._addFavoriteError = "";
-                  this._haActionError = "";
                 }}
               >
                 <option value="command" ?selected=${kind === "command"}>${S.shortcutKindCommand}</option>
                 <option value="action" ?selected=${kind === "action"}>${S.shortcutKindAction}</option>
-                <option value="ha" ?selected=${kind === "ha"}>${S.shortcutKindHa}</option>
               </select>
             </div>
-            ${kind === "command" ? commandFields : kind === "action" ? macroFields : haFields}
+            ${kind === "command" ? commandFields : macroFields}
           </div>
           <div class="dialog-footer">
-            <div class="dialog-footer-note">${kind === "ha" ? this._haActionError : this._addFavoriteError}</div>
+            <div class="dialog-footer-note">${this._addFavoriteError}</div>
             <div class="dialog-footer-actions">
               <button class="dialog-btn" @click=${this._closeAddFavoriteDialog}>${S.addFavoriteCancel}</button>
               <button class="dialog-btn dialog-btn-primary" @click=${this._applyAddShortcut} ?disabled=${!canAdd}>${S.addFavoriteAdd}</button>
@@ -1943,35 +2191,6 @@ export class SofabatonEditDetailView extends LitElement {
       </div>
     `;
   }
-
-  // HA-action field reset — the fields live inside the unified
-  // add-shortcut dialog now; this also runs on detail close.
-  private _closeHaActionDialog = () => {
-    this._haActionName = "";
-    this._haActionAddress = "";
-    this._haActionError = "";
-  };
-
-  private _applyHaAction = () => {
-    if (!this.bundle || this.entityId == null) return;
-    const name = sanitizeBundleName(this.bundle, this._haActionName).trim();
-    if (!name) {
-      this._haActionError = TOOLS_CARD_STRINGS.backup.haActionNameRequired;
-      return;
-    }
-    const target = parseHaActionAddress(this._haActionAddress);
-    if (!target) {
-      this._haActionError = TOOLS_CARD_STRINGS.backup.haActionInvalidAddress;
-      return;
-    }
-    const next = addActivityHaActionFavorite(this.bundle, Number(this.entityId), name, target);
-    if (!next) {
-      this._haActionError = TOOLS_CARD_STRINGS.backup.haActionNoSlots;
-      return;
-    }
-    this._commitEditBundleEdit(next);
-    this._closeAddFavoriteDialog();
-  };
 
   private _applyActivityRename(activityId: number, name: string) {
     if (!this.bundle) return;
@@ -2062,11 +2281,8 @@ export class SofabatonEditDetailView extends LitElement {
       return;
     }
     if (target.kind === "command") {
-      if (this.mode === "live") {
-        this._closeEditRenameDialog();
-        return;
-      }
-      // Name only: payload edits live in the dedicated payload dialog.
+      // Name only (both modes): payload edits live in the dedicated payload
+      // dialog. In live mode this flows through a command_rename sync step.
       this._commitEditBundleEdit(
         renameBundleDeviceCommand(this.bundle, target.deviceId, target.commandId, next),
       );
@@ -2132,31 +2348,13 @@ export class SofabatonEditDetailView extends LitElement {
       .map((device) => ({ value: device.id, label: device.label }));
   }
 
-  private _prefillHaActionAddress(): string {
-    if (!this.bundle) return "";
-    const existing = bundleHaActionTarget(this.bundle);
-    if (existing) return `${existing.host}:${existing.port}`;
-    if (typeof window === "undefined") return "";
-    const candidate = parseHaActionAddress(window.location.hostname);
-    return candidate ? `${candidate.host}:8060` : "";
-  }
-
   private _bindingTargetKindFor(
     deviceId: number | null | undefined,
   ): ActivityBindingTargetKind {
     if (!this.bundle || this.entityId == null) return "command";
     const dId = Number(deviceId || 0);
     if (dId === Number(this.entityId)) return "action";
-    if (dId > 0 && isHaActionDeviceId(this.bundle, dId)) return "ha";
     return "command";
-  }
-
-  private _commandLabel(deviceId: number | null | undefined, commandId: number | null | undefined): string {
-    const dId = Number(deviceId || 0);
-    const cId = Number(commandId || 0);
-    if (!this.bundle || dId <= 0 || cId <= 0) return "";
-    return deviceCommandItems(this.bundle, dId)
-      .find((command) => command.commandId === cId)?.label ?? "";
   }
 
   private _macroName(buttonId: number | null | undefined): string {
@@ -2253,11 +2451,6 @@ export class SofabatonEditDetailView extends LitElement {
     this._bindingLpDeviceId = this._bindingDeviceId;
     this._bindingLpCommandId = this._bindingCommandId;
     this._bindingError = "";
-    this._haActionName = "";
-    this._haActionAddress = this._prefillHaActionAddress();
-    this._haActionError = "";
-    this._bindingLpHaActionName = "";
-    this._bindingLpHaActionAddress = this._prefillHaActionAddress();
     this._bindingDialogOpen = true;
   }
 
@@ -2282,11 +2475,6 @@ export class SofabatonEditDetailView extends LitElement {
       : "";
     this._bindingMacroMode = this._bindingTargetKind === "action" ? "existing" : "new";
     this._bindingMacroId = this._bindingTargetKind === "action" ? item.commandId : null;
-    this._haActionName = this._bindingTargetKind === "ha"
-      ? this._commandLabel(item.deviceId, item.commandId)
-      : "";
-    this._haActionAddress = this._prefillHaActionAddress();
-    this._haActionError = "";
     this._bindingLongPressEnabled = Boolean(item.longPress);
     this._bindingLpDeviceId = kind === "activity"
       ? (item.longPress?.deviceId ?? item.deviceId ?? null)
@@ -2300,10 +2488,6 @@ export class SofabatonEditDetailView extends LitElement {
       : "";
     this._bindingLpMacroMode = this._bindingLpTargetKind === "action" ? "existing" : "new";
     this._bindingLpMacroId = this._bindingLpTargetKind === "action" ? this._bindingLpCommandId : null;
-    this._bindingLpHaActionName = this._bindingLpTargetKind === "ha"
-      ? this._commandLabel(this._bindingLpDeviceId, this._bindingLpCommandId)
-      : "";
-    this._bindingLpHaActionAddress = this._prefillHaActionAddress();
     this._bindingError = "";
     this._bindingDialogOpen = true;
   }
@@ -2325,11 +2509,6 @@ export class SofabatonEditDetailView extends LitElement {
     this._bindingLpMacroMode = "new";
     this._bindingLpMacroId = null;
     this._bindingLpActionName = "";
-    this._bindingLpHaActionName = "";
-    this._bindingLpHaActionAddress = "";
-    this._haActionName = "";
-    this._haActionAddress = "";
-    this._haActionError = "";
     this._bindingError = "";
   };
 
@@ -2353,7 +2532,6 @@ export class SofabatonEditDetailView extends LitElement {
     const kind = (event.target as HTMLSelectElement).value as ActivityBindingTargetKind;
     this._bindingTargetKind = kind;
     this._bindingError = "";
-    this._haActionError = "";
     if (kind === "command") {
       const devices = this._bindingCommandDeviceOptions();
       if (!devices.some((device) => device.value === this._bindingDeviceId)) {
@@ -2362,13 +2540,9 @@ export class SofabatonEditDetailView extends LitElement {
       this._bindingCommandId = this._bindingCommandOptions(this._bindingDeviceId)[0]?.value ?? null;
       return;
     }
-    if (kind === "action") {
-      this._resetMacroTarget("binding");
-      this._bindingActionName ||= this._macroName(this._bindingCommandId);
-      return;
-    }
-    this._haActionName ||= this._commandLabel(this._bindingDeviceId, this._bindingCommandId);
-    this._haActionAddress ||= this._prefillHaActionAddress();
+    // "action"
+    this._resetMacroTarget("binding");
+    this._bindingActionName ||= this._macroName(this._bindingCommandId);
   };
 
   private _handleBindingActionNameInput = (event: Event) => {
@@ -2400,13 +2574,9 @@ export class SofabatonEditDetailView extends LitElement {
       this._bindingLpCommandId = this._bindingCommandOptions(this._bindingLpDeviceId)[0]?.value ?? null;
       return;
     }
-    if (kind === "action") {
-      this._resetMacroTarget("bindingLp");
-      this._bindingLpActionName ||= this._macroName(this._bindingLpCommandId);
-      return;
-    }
-    this._bindingLpHaActionName ||= this._commandLabel(this._bindingLpDeviceId, this._bindingLpCommandId);
-    this._bindingLpHaActionAddress ||= this._prefillHaActionAddress();
+    // "action"
+    this._resetMacroTarget("bindingLp");
+    this._bindingLpActionName ||= this._macroName(this._bindingLpCommandId);
   };
 
   private _handleBindingLpActionNameInput = (event: Event) => {
@@ -2505,43 +2675,22 @@ export class SofabatonEditDetailView extends LitElement {
         createdMacro: null,
       };
     }
-    if (this._bindingLpTargetKind === "action") {
-      const resolved = this._resolveMacroTarget(
-        bundle,
-        activityId,
-        this._bindingLpMacroMode,
-        this._bindingLpMacroId,
-        this._bindingLpActionName,
-      );
-      if (!resolved) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-        return null;
-      }
-      return {
-        bundle: resolved.bundle,
-        longPress: { deviceId: activityId, commandId: resolved.macroId },
-        createdMacro: resolved.created ? { buttonId: resolved.macroId, name: resolved.name } : null,
-      };
-    }
-    const name = sanitizeBundleName(bundle, this._bindingLpHaActionName).trim();
-    if (!name) {
-      this._bindingError = TOOLS_CARD_STRINGS.backup.haActionNameRequired;
-      return null;
-    }
-    const target = parseHaActionAddress(this._bindingLpHaActionAddress);
-    if (!target) {
-      this._bindingError = TOOLS_CARD_STRINGS.backup.haActionInvalidAddress;
-      return null;
-    }
-    const provision = provisionHaAction(bundle, name, target);
-    if (!provision) {
-      this._bindingError = TOOLS_CARD_STRINGS.backup.haActionNoSlots;
+    // "action"
+    const resolved = this._resolveMacroTarget(
+      bundle,
+      activityId,
+      this._bindingLpMacroMode,
+      this._bindingLpMacroId,
+      this._bindingLpActionName,
+    );
+    if (!resolved) {
+      this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
       return null;
     }
     return {
-      bundle: provision.bundle,
-      longPress: { deviceId: provision.deviceId, commandId: provision.commandId },
-      createdMacro: null,
+      bundle: resolved.bundle,
+      longPress: { deviceId: activityId, commandId: resolved.macroId },
+      createdMacro: resolved.created ? { buttonId: resolved.macroId, name: resolved.name } : null,
     };
   }
 
@@ -2578,52 +2727,27 @@ export class SofabatonEditDetailView extends LitElement {
         if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
         return;
       }
-      if (this._bindingTargetKind === "action") {
-        const resolved = this._resolveMacroTarget(
-          next,
-          activityId,
-          this._bindingMacroMode,
-          this._bindingMacroId,
-          this._bindingActionName,
-        );
-        if (!resolved) {
-          this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
-          return;
-        }
-        next = upsertActivityButtonBinding(resolved.bundle, activityId, {
-          buttonId,
-          deviceId: activityId,
-          commandId: resolved.macroId,
-          longPress,
-        });
-        this._commitEditBundleEdit(next);
-        this._closeBindingDialog();
-        if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
-        if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
+      // "action"
+      const resolved = this._resolveMacroTarget(
+        next,
+        activityId,
+        this._bindingMacroMode,
+        this._bindingMacroId,
+        this._bindingActionName,
+      );
+      if (!resolved) {
+        this._bindingError = TOOLS_CARD_STRINGS.backup.bindingIncomplete;
         return;
       }
-      const name = sanitizeBundleName(next, this._haActionName).trim();
-      if (!name) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.haActionNameRequired;
-        return;
-      }
-      const target = parseHaActionAddress(this._haActionAddress);
-      if (!target) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.haActionInvalidAddress;
-        return;
-      }
-      const provision = provisionHaAction(next, name, target);
-      if (!provision) {
-        this._bindingError = TOOLS_CARD_STRINGS.backup.haActionNoSlots;
-        return;
-      }
-      this._commitEditBundleEdit(upsertActivityButtonBinding(provision.bundle, activityId, {
+      next = upsertActivityButtonBinding(resolved.bundle, activityId, {
         buttonId,
-        deviceId: provision.deviceId,
-        commandId: provision.commandId,
+        deviceId: activityId,
+        commandId: resolved.macroId,
         longPress,
-      }));
+      });
+      this._commitEditBundleEdit(next);
       this._closeBindingDialog();
+      if (resolved.created) macroToOpen = { buttonId: resolved.macroId, name: resolved.name };
       if (macroToOpen) this._openMacroEditor("activity", activityId, macroToOpen.buttonId, macroToOpen.name);
     } else {
       const commandId = Number(this._bindingCommandId);
@@ -2735,9 +2859,7 @@ export class SofabatonEditDetailView extends LitElement {
         ? this._bindingCommandId != null
         : targetKind === "command"
           ? this._bindingDeviceId != null && this._bindingCommandId != null
-          : targetKind === "action"
-            ? true
-            : this._haActionName.trim().length > 0 && this._haActionAddress.trim().length > 0
+          : true
     );
     const title = isEdit
       ? S.bindingDialogEditTitle(buttonName(Number(this._bindingButtonId)))
@@ -2770,36 +2892,6 @@ export class SofabatonEditDetailView extends LitElement {
       onMacroChange: this._handleBindingMacroTargetChange,
       onNameInput: this._handleBindingActionNameInput,
     });
-    const haFields = html`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-binding-ha-name">${S.haActionNameLabel}</label>
-        <input
-          id="sb-binding-ha-name"
-          class="decoded-field-input"
-          maxlength="20"
-          .value=${this._haActionName}
-          @input=${(event: Event) => {
-            this._haActionName = (event.target as HTMLInputElement).value;
-            this._bindingError = "";
-          }}
-        />
-        <div class="decoded-field-helper">${S.haActionBindingNameHelper}</div>
-      </div>
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-binding-ha-address">${S.haActionAddressLabel}</label>
-        <input
-          id="sb-binding-ha-address"
-          class="decoded-field-input"
-          placeholder="192.168.1.10:8060"
-          .value=${this._haActionAddress}
-          @input=${(event: Event) => {
-            this._haActionAddress = (event.target as HTMLInputElement).value;
-            this._bindingError = "";
-          }}
-        />
-        <div class="decoded-field-helper">${S.haActionAddressHelper}</div>
-      </div>
-    `;
     const lpCommandFields = html`
       ${scope === "activity"
         ? this._renderBindingSelect({
@@ -2828,36 +2920,6 @@ export class SofabatonEditDetailView extends LitElement {
       onMacroChange: this._handleBindingLpMacroTargetChange,
       onNameInput: this._handleBindingLpActionNameInput,
     });
-    const lpHaFields = html`
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-binding-lp-ha-name">${S.haActionNameLabel}</label>
-        <input
-          id="sb-binding-lp-ha-name"
-          class="decoded-field-input"
-          maxlength="20"
-          .value=${this._bindingLpHaActionName}
-          @input=${(event: Event) => {
-            this._bindingLpHaActionName = (event.target as HTMLInputElement).value;
-            this._bindingError = "";
-          }}
-        />
-        <div class="decoded-field-helper">${S.haActionBindingNameHelper}</div>
-      </div>
-      <div class="decoded-field">
-        <label class="decoded-field-label" for="sb-binding-lp-ha-address">${S.haActionAddressLabel}</label>
-        <input
-          id="sb-binding-lp-ha-address"
-          class="decoded-field-input"
-          placeholder="192.168.1.10:8060"
-          .value=${this._bindingLpHaActionAddress}
-          @input=${(event: Event) => {
-            this._bindingLpHaActionAddress = (event.target as HTMLInputElement).value;
-            this._bindingError = "";
-          }}
-        />
-        <div class="decoded-field-helper">${S.haActionAddressHelper}</div>
-      </div>
-    `;
     return html`
       <div class="modal-backdrop" @click=${this._closeBindingDialog}>
         <div class="dialog small" @click=${(event: Event) => event.stopPropagation()}>
@@ -2892,12 +2954,11 @@ export class SofabatonEditDetailView extends LitElement {
                     >
                       <option value="command" ?selected=${targetKind === "command"}>${S.shortcutKindCommand}</option>
                       <option value="action" ?selected=${targetKind === "action"}>${S.shortcutKindAction}</option>
-                      <option value="ha" ?selected=${targetKind === "ha"}>${S.shortcutKindHa}</option>
                     </select>
                   </div>
                 `
               : nothing}
-            ${targetKind === "command" ? commandFields : targetKind === "action" ? actionFields : haFields}
+            ${targetKind === "command" ? commandFields : actionFields}
             <div class="binding-toggle-row">
               <span class="decoded-field-label">${S.bindingEnableLongPress}</span>
               <ha-switch
@@ -2918,12 +2979,11 @@ export class SofabatonEditDetailView extends LitElement {
                           >
                             <option value="command" ?selected=${lpTargetKind === "command"}>${S.shortcutKindCommand}</option>
                             <option value="action" ?selected=${lpTargetKind === "action"}>${S.shortcutKindAction}</option>
-                            <option value="ha" ?selected=${lpTargetKind === "ha"}>${S.shortcutKindHa}</option>
                           </select>
                         </div>
                       `
                     : nothing}
-                  ${lpTargetKind === "command" ? lpCommandFields : lpTargetKind === "action" ? lpActionFields : lpHaFields}
+                  ${lpTargetKind === "command" ? lpCommandFields : lpActionFields}
                 `
               : nothing}
           </div>

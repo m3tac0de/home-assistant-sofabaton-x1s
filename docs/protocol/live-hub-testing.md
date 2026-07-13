@@ -524,3 +524,121 @@ Engine bug the program caught (fixed, regression-tested):
    another thread died with `BufferError: Existing exports of data:
    object cannot be re-sized`. Now sends from a snapshot copy
    (`transport_bridge._flush_buffer`).
+
+## Validated: live-editor rename executors (X1 + X1S, 2026-07-13)
+
+The Activities-tab live editor grew in-place rename of an activity or
+device (deployed through the normal Sync) and immediate delete of either
+(a device-delete family-0x09 write by id — activities live in the same
+id table, so the one primitive covers both). Delete reused the existing
+`delete_device`; the two rename executors were built and bench-validated
+here against the sacrificial `Bench Test` activity and `test` device on
+both hubs (rename → re-read → assert only the name changed, every sibling
+and every other record field byte-identical → restore).
+
+### Activity rename — `_sync_step_activity_rename`
+
+Read-modify-write of the activity row the confirm/finalize opcode carries.
+The name field sits at **offset 32** in the row payload — ASCII on X1
+(60-byte field), UTF-16BE on X1S/X2 (the zero-padded region up to the tail
+token block at offset 152). Patch the name in place, clear the X1S
+needs-confirm flag, send via `OP_ACTIVITY_CONFIRM 0x7B38` (X1) /
+`OP_ACTIVITY_ASSIGN_FINALIZE 0xD538` (X1S/X2), ACK `0x0103`. (Item V5,
+now implemented.)
+
+### Device rename — `_sync_step_device_rename`
+
+Device rename is a device-record update via `FAMILY_DEVICE_UPDATE`
+(`0x7B08` — the same commit the create flow ends with). The catalog
+read-row body (120 B X1 / 210 B X1S) is **not** a drop-in write body: the
+canonical write body is 123 B (X1), so the opcode-hi (= payload length)
+only lands on `0x7B` when the full body is rebuilt. The reliable path is
+therefore `parse_device_record` → swap the name → `build_device_create_payload`
+(which reseals the trailing body checksum), then send for the device's own
+id. Name at offset 29, ASCII on X1 / UTF-16BE on X1S. ACK `0x0103`. A raw
+byte-patch of the read-row body is rejected (wrong length → wrong opcode);
+the parser/builder round-trip is the fix. (Resolves the open device-rename
+opcode item.)
+
+## Validated: in-place command-payload overwrite (X1 + X1S, 2026-07-13)
+
+Re-issuing a family-`0x0E` command-record write to an **already-occupied**
+`(device_id, command_id)` **overwrites that command's payload in place** — it
+does not allocate a new slot or duplicate the command. This is the write that
+backs live command-payload editing (Hub tab → Devices → Edit → Commands → edit
+payload, folded into device Sync). It settles item **V6**: while the app has no
+command *rename* affordance to trace, the in-place `0x0E` *payload* update is now
+directly proven, so the earlier "no way to derive an in-place `0x0E` update"
+caveat no longer blocks a payload overwrite.
+
+Bench-validated via the production primitive `IrBlobMixin.overwrite_command_payload`
+(`bench_93_command_payload_overwrite.py`) on the X1 `Xbox` device (`0x06`) and the
+X1S `Sonytst` device (`0x09`):
+
+- **Idempotent overwrite** — writing a command's own bytes back leaves the whole
+  device byte-identical (every command's `data_hex`, `button_code`,
+  `library_type`, name) and creates no new slot.
+- **Content overwrite** — writing a *different* real IR blob (sourced from another
+  command on the same device) into the slot changes **only** the target's
+  `data_hex`; its `button_code`, `library_type`, name, the command-id set, and
+  every other command stay identical. Preserving the 48-bit `button_code` is what
+  keeps bindings/macros that reference the command resolving.
+- **Restore** — writing the original bytes back returns the device to baseline.
+
+Preservation mechanics: the write reuses `build_command_write_steps` with
+`button_id = command_id` (the device-command convention) and the command's
+existing `button_code` / `library_type` read from `state.command_metadata`
+(populated by the command-list fetch), with the label from the command label
+map. `overwrite_command_payload` deliberately skips `_allocate_command_id` (which
+refuses an existing id) and the sort-registration step (the slot already has a
+display position). Observed `button_code` values are small ids (e.g. `0x01` for
+`Power`), not the `0x4E20 + id` synthetic codes; both hubs preserved them
+exactly.
+
+The full device-Sync chain was also validated end-to-end
+(`bench_94_command_payload_sync.py`, X1 + X1S): a blob-free structural baseline
+plus an edited bundle carrying a `restore_data.edited` marker, run through the
+production `sync_device` (`build_device_sync_plan` →
+`_device_immutable_signature` scope guard → stale pre-flight →
+`_sync_step_command_payload`). One `command_payload` step is planned and
+dispatched, the target payload lands, everything else is preserved, and a
+fetched-but-unedited payload (no marker) produces an empty plan — confirming the
+planner keys on the edit marker, not a baseline-vs-edited byte diff.
+
+**Non-IR classes overwrite the same way (X1 + X1S, 2026-07-13).** The full sync
+chain was re-run on the sacrificial **wifi** devices (X1S `0x0A` wifi_ip, X1
+`0x09` wifi_roku) and lands identically: overwriting by `command_id` hits the
+right slot and changes `data_hex`, everything else preserved. This refutes the
+earlier worry that X1's wifi records (stored at hub keys `0x18..` but re-exposed
+as command ids `1..20`) would need special addressing — both the read and the
+`0x0E` write go through the `1..20` command-table space, so they stay
+consistent. Live payload editing is therefore offered for **all** device classes
+(raw hex, or the structured form where a parser exists); only the *Test* button
+stays IR-only (it uses `play_ir_blob`). One shape note: the wifi restore_data
+export does not carry `button_code`, so the executor reads it (and
+`library_type`) from `state.command_metadata`, not from the bundle row.
+
+### Command rename rides the same record write (X1 + X1S, 2026-07-13)
+
+The `0x0E` record carries the command's **label** slot alongside the payload
+(30-byte ASCII on X1, 60-byte UTF-16BE on X1S/X2), so a rename is the identical
+in-place rewrite with a *changed label and unchanged payload*.
+`bench_95_command_rename_probe.py` rewrote one command's record with a new name
+and its original bytes on both hubs: the hub **re-exposes the new label** (round-
+trips through UTF-16BE on X1S) while the payload, `button_code`, `library_type`,
+the command-id set, and every other command stay intact. Restore returns the
+original name. Because bindings/macros reference the 48-bit `button_code`, not
+the label, a rename cannot break references — it is reference-safe.
+
+This settles item **V6** (command rename). Live command rename now ships:
+`_sync_step_command_rename` fetches the command's current blob
+(`request_ir_command_dump` + `split_play_blob_tail` — the record rewrite needs
+the existing `library_data`, which the command-list fetch does not carry), reads
+`button_code`/`library_type` from `state.command_metadata`, and rewrites the
+record with the new label via `overwrite_command_payload`. The full Sync chain
+(`sync_device` → `command_rename` step → fetch → relabel) is validated on both
+hubs (`bench_96_command_rename_sync.py`, X1 `Xbox`/`0x06` + X1S `Sonytst`/`0x09`):
+one `command_rename` step lands, the hub re-exposes the new name, and the
+payload / code / type / id-set / other commands are untouched. A command with
+*both* a rename and a payload edit is written once — the `command_payload` step
+carries the new label — so no double write.

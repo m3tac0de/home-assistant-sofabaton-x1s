@@ -234,22 +234,31 @@ test("activities tab tracks dirty on bundle-change and clears it when reverted",
   assert.equal(element._dirty, false);
 });
 
-test("activities tab discard restores the working bundle to the baseline and clears dirty", () => {
+test("activities tab delete-request runs the hub delete and returns to the list", async () => {
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
-  const base = sampleBundle();
-  element._baseline = base;
-  const mutated = structuredClone(base);
-  mutated.activities[0].device!.name = "Changed";
-  element._working = mutated;
+  const calls: string[] = [];
+  element.hass = {
+    states: {},
+    async callWS<T>(message: Record<string, unknown>) {
+      const type = String(message.type ?? "");
+      calls.push(type);
+      if (type === "sofabaton_x1s/activity/delete") return { status: "success" } as T;
+      throw new Error(`Unexpected WS call: ${type}`);
+    },
+  };
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.refreshControlPanelState = () => undefined;
+  element._stage = "editing";
+  element._baseline = sampleBundle();
+  element._working = structuredClone(element._baseline);
   element._entityId = 101;
-  element._recomputeDirty();
-  element._discardConfirmOpen = true;
-  assert.equal(element._dirty, true);
 
-  element._discardChanges();
-  assert.equal(element._dirty, false);
-  assert.equal(element._working.activities[0].device.name, "Watch TV");
-  assert.equal(element._discardConfirmOpen, false);
+  await element._handleDeleteRequest({ detail: { kind: "activity", entityId: 101 } });
+
+  assert.equal(calls.includes("sofabaton_x1s/activity/delete"), true);
+  assert.equal(element._stage, "list");
+  assert.equal(element._entityId, null);
+  assert.equal(element._deleteError, null);
 });
 
 test("activities tab back prompts before leaving a dirty edit", () => {
@@ -293,20 +302,6 @@ test("activities tab leaving without sync discards the active edit", () => {
   assert.equal(element._exitConfirmOpen, false);
 });
 
-test("activities tab opens the review dialog only when dirty", () => {
-  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
-  element._baseline = sampleBundle();
-  element._working = structuredClone(element._baseline);
-  element._entityId = 101;
-  element._dirty = false;
-  element._openReview();
-  assert.equal(element._reviewOpen, false);
-
-  element._dirty = true;
-  element._openReview();
-  assert.equal(element._reviewOpen, true);
-});
-
 function createSyncHass() {
   let progressCb: ((payload: unknown) => void) | undefined;
   const calls: string[] = [];
@@ -342,10 +337,8 @@ test("activities tab sync starts the engine and enters the syncing stage", async
   element._working = structuredClone(element._baseline);
   element._entityId = 101;
   element._dirty = true;
-  element._reviewOpen = true;
 
   await element._requestSync();
-  assert.equal(element._reviewOpen, false);
   assert.equal(element._stage, "syncing");
   assert.equal(hass.__calls.includes("sofabaton_x1s/activity/sync"), true);
 });

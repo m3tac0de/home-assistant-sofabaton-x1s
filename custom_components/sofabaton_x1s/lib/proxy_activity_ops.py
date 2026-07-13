@@ -41,6 +41,13 @@ _FAV_DELETE_ACK_TIMEOUT = 12.0
 _ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD = 152
 _ACTIVITY_ROW_TAIL_LEN = 60
 
+# The activity name field starts at a fixed offset inside the row payload on
+# every model. X1 stores it as a 60-byte ASCII field; X1S/X2 store it UTF-16BE
+# in the zero-padded region that runs up to the tail token block at offset 152
+# (confirmed by dumping live activity rows on both hubs).
+_ACTIVITY_ROW_NAME_OFFSET = 32
+_ACTIVITY_ROW_NAME_ASCII_LEN = 60
+
 
 class ActivityOpsMixin:
     """Mixin providing activity-edit orchestration."""
@@ -88,7 +95,14 @@ class ActivityOpsMixin:
             mutable[marker_indexes[-1] + 3] = 0x00
         return bytes(mutable)
 
-    def _build_activity_confirm_payload(self, activity_id: int) -> bytes | None:
+    def _build_activity_confirm_payload(
+        self, activity_id: int, *, name: str | None = None
+    ) -> bytes | None:
+        """Build the full activity-row write used by the confirm/finalize
+        opcodes. When ``name`` is given the row is rewritten with that name in
+        place (an in-place activity rename), otherwise the row's current name
+        is preserved."""
+
         act_lo = activity_id & 0xFF
         activity = self.state.entities("activity").get(act_lo)
         if not isinstance(activity, dict):
@@ -97,10 +111,20 @@ class ActivityOpsMixin:
         if self.hub_version in (HUB_VERSION_X1S, HUB_VERSION_X2):
             row_payload = self._activity_row_payloads.get(act_lo)
             if isinstance(row_payload, (bytes, bytearray)) and len(row_payload) >= 120:
-                return self._clear_x1s_confirm_flag(bytes(row_payload))
+                row = bytearray(row_payload)
+                if name is not None:
+                    # Overwrite the UTF-16BE name field, zero-padded up to the
+                    # tail token block, preserving every other byte of the row.
+                    start = _ACTIVITY_ROW_NAME_OFFSET
+                    end = min(len(row), _ACTIVITY_ROW_TAIL_OFFSET_IN_PAYLOAD)
+                    encoded = name.encode("utf-16-be")[: end - start]
+                    row[start:end] = encoded.ljust(end - start, b"\x00")
+                return self._clear_x1s_confirm_flag(bytes(row))
 
-        name = str(activity.get("name", ""))
-        encoded_name = name.encode("ascii", errors="ignore")[:60].ljust(60, b"\x00")
+        row_name = str(activity.get("name", "")) if name is None else str(name)
+        encoded_name = row_name.encode("ascii", errors="ignore")[
+            :_ACTIVITY_ROW_NAME_ASCII_LEN
+        ].ljust(_ACTIVITY_ROW_NAME_ASCII_LEN, b"\x00")
         active_flag = 0x01 if bool(activity.get("active", False)) else 0x02
 
         return (

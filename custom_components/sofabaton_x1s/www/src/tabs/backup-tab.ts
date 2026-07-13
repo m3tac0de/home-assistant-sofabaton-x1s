@@ -26,7 +26,6 @@ import {
   bundleDeviceOptions,
   bundleEditableDeviceOptions,
   pruneBackupBundle,
-  pruneHaActionHosts,
   reconcileRestoreSelection,
   renameBundleHub,
   reorderBundleActivities,
@@ -697,9 +696,7 @@ class SofabatonBackupTab extends LitElement {
    * `this._editBundle = ...` assignment to bypass the dirty flag.
    */
   private _commitEditBundleEdit(next: BackupBundlePayload) {
-    // Sweep HA-action plumbing on every commit: slots nothing references
-    // anymore are dropped, empty hidden host devices dissolve.
-    this._editBundle = pruneHaActionHosts(next);
+    this._editBundle = next;
     this._editBundleDirty = true;
   }
 

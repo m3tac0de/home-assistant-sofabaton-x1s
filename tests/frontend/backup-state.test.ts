@@ -5,13 +5,7 @@ import {
   activityButtonBindingItems,
   activityChainDependencyIds,
   activityRoleAssignments,
-  addActivityHaActionFavorite,
   bundleEditableDeviceOptions,
-  bundleHaActionTarget,
-  isHaActionDeviceId,
-  parseHaActionAddress,
-  pruneHaActionHosts,
-  renameBundleActivityFavorite,
   roleMappableButtonCount,
   setActivityRoleDevice,
   activityMacroStepItems,
@@ -1191,89 +1185,6 @@ test("setActivityRoleDevice(null) clears only that group", () => {
   assert.deepEqual([roleFor(cleared, "navigation").state, roleFor(cleared, "navigation").boundCount], ["device", 3]);
 });
 
-// ── Home Assistant actions ───────────────────────────────────────────
-
-// Canonical callback blob for host 192.168.1.10:8060, device id 4, name
-// "Dim the lights". The SAME constant lives in the Python parity test
-// (tests/test_ha_action_writer_parity.py), which proves the TS writer
-// here and lib/blob_decoders.py agree byte-for-byte.
-const HA_ACTION_EXPECTED_DATA_HEX =
-  "c0 a8 01 0a 1f 7c 00 7f 50 4f 53 54 20 2f 6c 61 75 6e 63 68 2f 68 61 2f 34 2f 44 69 6d 25 32 30 74"
-  + " 68 65 25 32 30 6c 69 67 68 74 73 2f 73 68 6f 72 74 20 48 54 54 50 2f 31 2e 31 0d 0a 48 6f 73 74"
-  + " 3a 31 39 32 2e 31 36 38 2e 31 2e 31 30 3a 38 30 36 30 0d 0a 43 6f 6e 74 65 6e 74 2d 54 79 70 65"
-  + " 3a 61 70 70 6c 69 63 61 74 69 6f 6e 2f 78 2d 77 77 77 2d 66 6f 72 6d 2d 75 72 6c 65 6e 63 6f 64"
-  + " 65 64 0d 0a 0d 0a";
-
-const HA_TARGET = { host: "192.168.1.10", port: 8060 };
-
-test("addActivityHaActionFavorite provisions a hidden host and the callback slot", () => {
-  const next = addActivityHaActionFavorite(membershipBundle(), 101, "Dim the lights", HA_TARGET)!;
-  assert.ok(next);
-  const host = next.devices.find((d) => d.ha_action_host)!;
-  assert.equal(host.device?.device_id, 4); // lowest free id after 1/2/3
-  assert.equal(host.device?.name, "Home Assistant");
-  assert.equal(host.device?.device_class, "wifi_ip");
-  const row = host.commands![0]!;
-  assert.equal(row.command_id, 1);
-  assert.equal(row.name, "Dim the lights");
-  const restore = row.restore_data as Record<string, any>;
-  assert.equal(restore.transport, "hub_code_record");
-  assert.equal(restore.library_type, 0x1C);
-  assert.equal(restore.command_code, "00 00 00 00 4e 21");
-  assert.equal(restore.data_hex, HA_ACTION_EXPECTED_DATA_HEX);
-  assert.equal(restore.decoded.class, "wifi_ip");
-  assert.equal(restore.decoded.fields.path, "/launch/ha/4/Dim%20the%20lights/short");
-  assert.equal(restore.decoded.trailer_hex, "");
-  // The shortcut references the slot.
-  const slot = next.activities[0].favorite_slots!.find((s) => s.device_id === 4)!;
-  assert.deepEqual([slot.command_id, slot.name], [1, "Dim the lights"]);
-  // Hidden from member-facing views, present for restore-facing options.
-  assert.equal(activityMemberViews(next, 101).some((v) => v.deviceId === 4), false);
-  assert.equal(activityAddableDevices(next, 101).some((o) => o.id === 4), false);
-  assert.equal(bundleEditableDeviceOptions(next).some((o) => o.id === 4), false);
-  assert.equal(isHaActionDeviceId(next, 4), true);
-  assert.deepEqual(bundleHaActionTarget(next), HA_TARGET);
-  // Membership plumbing (power refs) still exists for restore integrity.
-  assert.equal(next.activities[0].referenced_source_device_ids!.includes(4), true);
-});
-
-test("HA actions reuse the host, allocate slots, and normalize underscores", () => {
-  const first = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET)!;
-  const second = addActivityHaActionFavorite(first, 101, "Movie_night", HA_TARGET)!;
-  const hosts = second.devices.filter((d) => d.ha_action_host);
-  assert.equal(hosts.length, 1);
-  assert.deepEqual(hosts[0].commands!.map((r) => r.command_id), [1, 2]);
-  // The listener converts "_" to " " on receipt; normalize at creation so
-  // the label the user sees is the label HA fires.
-  assert.equal(hosts[0].commands![1].name, "Movie night");
-});
-
-test("pruneHaActionHosts drops unreferenced slots and dissolves empty hosts", () => {
-  const withAction = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET)!;
-  // Referenced → sweep keeps everything.
-  const swept = pruneHaActionHosts(withAction);
-  assert.equal(swept.devices.some((d) => d.ha_action_host), true);
-  // Delete the shortcut (slot button_id 4: favorites 1, combo macro 3 → next is 4).
-  const deleted = deleteBundleActivityQuickAccess(withAction, 101, "favorite", 4);
-  const pruned = pruneHaActionHosts(deleted);
-  assert.equal(pruned.devices.some((d) => d.ha_action_host), false);
-  // The membership plumbing went with it.
-  assert.equal(pruned.activities[0].referenced_source_device_ids!.includes(4), false);
-});
-
-test("renaming an HA-action shortcut re-renders the callback path", () => {
-  const withAction = addActivityHaActionFavorite(membershipBundle(), 101, "One", HA_TARGET)!;
-  const renamed = renameBundleActivityFavorite(withAction, 101, 4, "Movie mode");
-  const host = renamed.devices.find((d) => d.ha_action_host)!;
-  const restore = host.commands![0].restore_data as Record<string, any>;
-  assert.equal(restore.decoded.fields.path, "/launch/ha/4/Movie%20mode/short");
-  assert.ok(String(restore.data_hex).length > 0);
-  // data_hex actually carries the new path bytes (spot-check "Movie").
-  const ascii = String(restore.data_hex).split(" ").map((h) => parseInt(h, 16))
-    .map((b) => String.fromCharCode(b)).join("");
-  assert.ok(ascii.includes("/launch/ha/4/Movie%20mode/short"));
-});
-
 // ── Raw payload editing ──────────────────────────────────────────────
 
 function rawPayloadBundle() {
@@ -1344,15 +1255,6 @@ test("updateCommandRawPayload replaces data_hex and drops a stale decoded block"
   // Commands without restore_data are a no-op.
   const untouched = updateCommandRawPayload(bundle, 9, 2, "de ad");
   assert.equal(commandRawPayloadHex(untouched, 9, 2), null);
-});
-
-test("parseHaActionAddress accepts IPv4 with optional port", () => {
-  assert.deepEqual(parseHaActionAddress("192.168.1.10:8060"), HA_TARGET);
-  assert.deepEqual(parseHaActionAddress("10.0.0.2"), { host: "10.0.0.2", port: 8060 });
-  assert.equal(parseHaActionAddress("homeassistant.local:8060"), null);
-  assert.equal(parseHaActionAddress("192.168.1.10:0"), null);
-  assert.equal(parseHaActionAddress("192.168.1.10:70000"), null);
-  assert.equal(parseHaActionAddress(""), null);
 });
 
 test("reconcile repairs missing power refs in interleaved macros", () => {

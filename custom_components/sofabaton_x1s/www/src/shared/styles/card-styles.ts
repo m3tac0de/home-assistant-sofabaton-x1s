@@ -456,6 +456,10 @@ export const cardStyles = [secondaryTabStyles, css`
     gap: 18px;
   }
   .cache-panel-header .refresh-action { display: inline-flex; align-items: center; gap: 8px; }
+  .refresh-list-label--clickable { cursor: pointer; -webkit-user-select: none; user-select: none; }
+  .refresh-list-label--clickable:hover { color: var(--primary-text-color); }
+  .refresh-list-label--clickable[aria-disabled="true"] { cursor: default; }
+  .refresh-list-label--clickable[aria-disabled="true"]:hover { color: var(--secondary-text-color); }
   .cache-panel-body,
   .secondary-tab-panel--connected .cache-panel-body {
     padding-top: 0;

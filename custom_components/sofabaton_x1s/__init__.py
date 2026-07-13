@@ -2030,6 +2030,72 @@ async def _ws_device_sync(hass: HomeAssistant, connection, msg: dict[str, Any]) 
     await _handle_entity_sync_ws(hass, connection, msg, entity_kind="device")
 
 
+async def _handle_entity_delete_ws(
+    hass: HomeAssistant,
+    connection,
+    msg: dict[str, Any],
+    *,
+    entity_kind: str,
+) -> None:
+    # Immediate live delete of a whole activity/device. The hub's delete
+    # primitive keys purely by id (device and activity id ranges share one
+    # table), so both kinds go through async_delete_device with the target id.
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    registry = _backup_operation_registry(hass)
+    if registry.has_running_for_entry(hub.entry_id):
+        connection.send_error(
+            msg["id"],
+            "busy",
+            "Another backup, restore, or sync operation is already running for this hub",
+        )
+        return
+
+    try:
+        _raise_if_hub_operation_locked(hass, hub, f"_ws_{entity_kind}_delete")
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return
+
+    entity_id = int(msg["activity_id" if entity_kind == "activity" else "device_id"])
+    result = await hub.async_delete_device(device_id=entity_id)
+    if not result or str(result.get("status")) != "success":
+        connection.send_error(
+            msg["id"],
+            "delete_failed",
+            f"The hub did not confirm deletion of {entity_kind} {entity_id}",
+        )
+        return
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/activity/delete",
+        vol.Required("entry_id"): str,
+        vol.Required("activity_id"): vol.All(int, vol.Range(min=1, max=255)),
+    }
+)
+@websocket_api.async_response
+async def _ws_activity_delete(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    await _handle_entity_delete_ws(hass, connection, msg, entity_kind="activity")
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/device/delete",
+        vol.Required("entry_id"): str,
+        vol.Required("device_id"): vol.All(int, vol.Range(min=1, max=255)),
+    }
+)
+@websocket_api.async_response
+async def _ws_device_delete(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    await _handle_entity_delete_ws(hass, connection, msg, entity_kind="device")
+
+
 async def _handle_entity_sync_plan_ws(
     hass: HomeAssistant,
     connection,
@@ -2507,6 +2573,8 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_activity_sync_plan)
     websocket_api.async_register_command(hass, _ws_device_sync)
     websocket_api.async_register_command(hass, _ws_device_sync_plan)
+    websocket_api.async_register_command(hass, _ws_activity_delete)
+    websocket_api.async_register_command(hass, _ws_device_delete)
     websocket_api.async_register_command(hass, _ws_refresh_all_cache)
     websocket_api.async_register_command(hass, _ws_get_structural_bundle)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)

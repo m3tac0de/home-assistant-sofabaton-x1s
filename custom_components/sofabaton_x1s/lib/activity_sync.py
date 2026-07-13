@@ -171,16 +171,28 @@ def _command_names(device: Mapping[str, Any]) -> dict[int, str]:
     }
 
 
+def _command_payload_edited(command: Mapping[str, Any]) -> bool:
+    """True when the user hand-edited this command's payload in the live
+    editor. The signal is an explicit marker, not a baseline-vs-edited byte
+    diff: the live bundle is blob-free, so a fetched-but-unedited payload
+    must not look like a change. A structured edit sets
+    ``restore_data.decoded.edited`` (the existing restore convention, which
+    the executor re-encodes); a raw-hex edit sets ``restore_data.edited``."""
+    restore_data = command.get("restore_data")
+    if not isinstance(restore_data, Mapping):
+        return False
+    if bool(restore_data.get("edited")):
+        return True
+    decoded = restore_data.get("decoded")
+    return isinstance(decoded, Mapping) and bool(decoded.get("edited"))
+
+
 def _idle_mode(device: Mapping[str, Any]) -> int | None:
     block = device.get("device") or {}
     raw = block.get("idle_behavior")
     if raw is None:
         raw = block.get("power_mode")
     return None if raw is None else _int(raw) & 0xFF
-
-
-def _is_ha_action_host(device: Mapping[str, Any]) -> bool:
-    return bool(device.get("ha_action_host"))
 
 
 def _input_entries(device: Mapping[str, Any]) -> Any:
@@ -261,6 +273,12 @@ def build_device_sync_plan(
     macros: list[SyncStep] = []
     bindings: list[SyncStep] = []
     idle: list[SyncStep] = []
+    rename: list[SyncStep] = []
+
+    # Command-record rewrites first — payloads and renames precede the key
+    # rows (bindings / macros) that reference them.
+    _plan_device_payloads(base_dev, edit_dev, device_id, prereq)
+    _plan_device_command_renames(base_dev, edit_dev, device_id, prereq)
 
     base_inputs = _input_entries(base_dev)
     edit_inputs = _input_entries(edit_dev)
@@ -289,7 +307,19 @@ def build_device_sync_plan(
             )
         )
 
-    return [*prereq, *macros, *bindings, *idle]
+    base_name = str((base_dev.get("device") or {}).get("name") or "")
+    edit_name = str((edit_dev.get("device") or {}).get("name") or "")
+    if base_name != edit_name:
+        rename.append(
+            SyncStep(
+                kind="device_rename",
+                label="Renaming the device…",
+                target_device_id=device_id,
+                payload={"device_id": device_id, "name": edit_name},
+            )
+        )
+
+    return [*prereq, *macros, *bindings, *idle, *rename]
 
 
 # ── Scope guard ────────────────────────────────────────────────────────
@@ -313,8 +343,7 @@ def _assert_in_scope(baseline: Mapping[str, Any], edited: Mapping[str, Any], act
     for dev_id in removed:
         raise ValueError(f"edited bundle removed device 0x{dev_id:02X} (out-of-scope changes)")
     for dev_id in added:
-        if not _is_ha_action_host(edit_devs[dev_id]):
-            raise ValueError(f"edited bundle added non-HA device 0x{dev_id:02X} (out-of-scope changes)")
+        raise ValueError(f"edited bundle added device 0x{dev_id:02X} (out-of-scope changes)")
     for dev_id in set(base_devs) & set(edit_devs):
         if _device_core_signature(base_devs[dev_id]) != _device_core_signature(edit_devs[dev_id]):
             raise ValueError(f"edited bundle changed device 0x{dev_id:02X} outside allowed fields (out-of-scope changes)")
@@ -337,7 +366,19 @@ def _device_immutable_signature(device: Mapping[str, Any]) -> str:
     block = dict(trimmed.get("device") or {})
     block.pop("idle_behavior", None)
     block.pop("power_mode", None)
+    # The name is a live-editable field (device_rename step); exclude it from
+    # the signature so a name-only device edit stays in scope.
+    block.pop("name", None)
     trimmed["device"] = block
+    # A command's *payload* (command_payload step) and *name* (command_rename
+    # step) are both live-editable, so normalize each command to its id alone
+    # — dropping restore_data and name — before signing. A payload overwrite or
+    # a rename stays in scope while a command add/delete (id-set change) still
+    # trips the guard. The blob-free baseline and the fetched-payload edited
+    # bundle both collapse to the same id list here.
+    commands = trimmed.get("commands")
+    if commands is not None:
+        trimmed["commands"] = sorted(_int(cmd.get("command_id")) for cmd in commands)
     return _canonical(trimmed)
 
 
@@ -421,6 +462,78 @@ def _plan_device_side(
                     payload={"device_id": dev_id, "mode": edit_idle},
                 )
             )
+
+
+def _plan_device_payloads(
+    base_dev: Mapping[str, Any],
+    edit_dev: Mapping[str, Any],
+    device_id: int,
+    out: list[SyncStep],
+) -> None:
+    """Emit an in-place ``command_payload`` overwrite for each command whose
+    payload the user edited (see :func:`_command_payload_edited`).
+
+    Only commands that already exist on the baseline device are eligible —
+    the overwrite lands on an existing slot; adding a command is out of scope
+    for the live editor. The full edited ``restore_data`` rides the step; the
+    executor resolves the final bytes (re-encoding a structured edit, or using
+    ``data_hex`` for a raw edit) and preserves the command's ``button_code`` /
+    ``library_type`` / label from cached hub state.
+    """
+    base_ids = {_int(cmd.get("command_id")) for cmd in base_dev.get("commands") or []}
+    for command in edit_dev.get("commands") or []:
+        command_id = _int(command.get("command_id"))
+        if command_id not in base_ids:
+            continue
+        if not _command_payload_edited(command):
+            continue
+        out.append(
+            SyncStep(
+                kind="command_payload",
+                label=f"Updating command payload on device {device_id}…",
+                target_device_id=device_id,
+                payload={
+                    "device_id": device_id,
+                    "command_id": command_id,
+                    "command_name": str(command.get("name") or ""),
+                    "restore_data": dict(command.get("restore_data") or {}),
+                },
+            )
+        )
+
+
+def _plan_device_command_renames(
+    base_dev: Mapping[str, Any],
+    edit_dev: Mapping[str, Any],
+    device_id: int,
+    out: list[SyncStep],
+) -> None:
+    """Emit a ``command_rename`` for each command whose name changed.
+
+    A rename is the same in-place ``0x0E`` record rewrite as a payload edit,
+    with a changed label and the command's *current* payload preserved (the
+    executor fetches those bytes). A command that *also* has a payload edit is
+    skipped here — its ``command_payload`` step already carries the new label,
+    so it is written once, not twice.
+    """
+    base_names = _command_names(base_dev)
+    for command in edit_dev.get("commands") or []:
+        command_id = _int(command.get("command_id"))
+        if command_id not in base_names:
+            continue
+        if _command_payload_edited(command):
+            continue
+        new_name = str(command.get("name") or "")
+        if new_name == base_names.get(command_id, new_name):
+            continue
+        out.append(
+            SyncStep(
+                kind="command_rename",
+                label=f"Renaming a command on device {device_id}…",
+                target_device_id=device_id,
+                payload={"device_id": device_id, "command_id": command_id, "name": new_name},
+            )
+        )
 
 
 def _plan_membership(

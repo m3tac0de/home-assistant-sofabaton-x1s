@@ -226,11 +226,6 @@ export interface BackupBundleDevicePayload {
   // The device's input list (TV inputs etc.). Activity power-on macros
   // reference these by 1-based ordinal (input_index) via a 0xC5 step.
   input_record?: BackupBundleInputRecord | null;
-  // Editor-managed marker: this is a hidden "Home Assistant" wifi_ip
-  // device whose command slots are HA-action callbacks provisioned by
-  // the activity editor. Hidden from device-facing UI; lifecycle owned
-  // by the prune sweep. Restore treats it as an ordinary wifi_ip device.
-  ha_action_host?: boolean | null;
 }
 
 export interface BackupBundleInputEntry {

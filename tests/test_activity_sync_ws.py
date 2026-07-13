@@ -335,3 +335,80 @@ def test_ws_device_sync_plan_returns_step_summary(monkeypatch):
     assert conn.error is None
     kinds = [s["kind"] for s in conn.result[1]["steps"]]
     assert kinds == ["binding_write"]
+
+
+# ── Immediate entity delete (activity / device) ─────────────────────────
+
+
+class _DeletingHub(_Hub):
+    def __init__(self, result):
+        self._result = result
+        self.deleted = None
+
+    async def async_delete_device(self, device_id):
+        self.deleted = device_id
+        return self._result
+
+
+def test_ws_activity_delete_runs_hub_delete(monkeypatch):
+    conn = _Conn()
+    hub = _DeletingHub({"device_id": 104, "status": "success"})
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_activity_delete(hass, conn, {
+        "id": 40, "entry_id": "entry-1", "activity_id": 104,
+    }))
+    assert conn.error is None
+    assert hub.deleted == 104
+    assert conn.result[1]["status"] == "success"
+
+
+def test_ws_device_delete_runs_hub_delete(monkeypatch):
+    conn = _Conn()
+    hub = _DeletingHub({"device_id": 3, "status": "success"})
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_device_delete(hass, conn, {
+        "id": 41, "entry_id": "entry-1", "device_id": 3,
+    }))
+    assert conn.error is None
+    assert hub.deleted == 3
+    assert conn.result[1]["status"] == "success"
+
+
+def test_ws_entity_delete_reports_failure_when_hub_declines(monkeypatch):
+    conn = _Conn()
+    hub = _DeletingHub(None)
+    _patch(monkeypatch, hub=hub)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_activity_delete(hass, conn, {
+        "id": 42, "entry_id": "entry-1", "activity_id": 104,
+    }))
+    assert conn.result is None
+    assert conn.error[1] == "delete_failed"
+
+
+def test_ws_entity_delete_busy(monkeypatch):
+    conn = _Conn()
+    hub = _DeletingHub({"status": "success"})
+    _patch(monkeypatch, hub=hub)
+    registry = integration._BackupOperationRegistry(SimpleNamespace(loop=asyncio.new_event_loop()))
+    registry.create(kind="activity_sync", entry_id="entry-1", initial_state={"status": "running"})
+    hass = SimpleNamespace(data={integration.DOMAIN: {integration._BACKUP_OPERATIONS_KEY: registry}})
+    _run(integration._ws_device_delete(hass, conn, {
+        "id": 43, "entry_id": "entry-1", "device_id": 3,
+    }))
+    assert conn.error[1] == "busy"
+    assert hub.deleted is None
+
+
+def test_ws_entity_delete_blocked_when_locked(monkeypatch):
+    conn = _Conn()
+    hub = _DeletingHub({"status": "success"})
+    _patch(monkeypatch, hub=hub, locked=True)
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    _run(integration._ws_activity_delete(hass, conn, {
+        "id": 44, "entry_id": "entry-1", "activity_id": 104,
+    }))
+    assert conn.error[1] == "unavailable"
+    assert hub.deleted is None
