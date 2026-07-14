@@ -1231,7 +1231,19 @@ var TOOLS_CARD_STRINGS = {
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
     editActivity: "Edit activity",
-    editDevice: "Edit device"
+    editDevice: "Edit device",
+    changeOrder: "Change order",
+    addActivity: "Add Activity",
+    reorderSync: "Sync to hub",
+    reorderCancel: "Cancel",
+    reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderSyncing: "Writing the new order to the hub\u2026",
+    addActivityTitle: "Add Activity",
+    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
+    addActivityPlaceholder: "Activity name",
+    addActivityCancel: "Cancel",
+    addActivityConfirm: "Create",
+    addActivityCreating: "Creating\u2026"
   },
   logs: {
     loading: "Loading log stream...",
@@ -1339,6 +1351,7 @@ var TOOLS_CARD_STRINGS = {
     // editor (activity-diff.ts, diffDeviceForReview).
     deviceReview: {
       sectionPower: "Power",
+      sectionNetwork: "Network",
       sectionButtons: "Buttons",
       sectionMacros: "Macros",
       powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
@@ -1349,7 +1362,9 @@ var TOOLS_CARD_STRINGS = {
       macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
       macroChanged: (name) => `Edited macro "${name}".`,
       bindingBound: (button, command) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button) => `"${button}" no longer bound.`
+      bindingCleared: (button) => `"${button}" no longer bound.`,
+      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
+      ipCleared: "IP address cleared."
     }
   },
   backup: {
@@ -1398,6 +1413,7 @@ var TOOLS_CARD_STRINGS = {
     deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
     deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
@@ -3906,6 +3922,9 @@ function stepMatchesDevice(step, deviceId) {
 function stepMatchesCommand(step, deviceId, commandId) {
   return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
 }
+function deviceMacroStepMatchesCommand(step, commandId) {
+  return !isMacroDelayStep(step) && Number(step?.command_id || 0) === commandId;
+}
 var MACRO_DELAY_SENTINEL = 255;
 function isMacroDelayStep(step) {
   return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
@@ -3968,7 +3987,7 @@ function countAffectedBindings(bindings, transform) {
   return count;
 }
 function bundleDeleteImpact(bundle, target) {
-  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   if (!bundle) return empty;
   if (target.kind === "device") {
     const deviceId = Number(target.deviceId);
@@ -3991,7 +4010,7 @@ function bundleDeleteImpact(bundle, target) {
         (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
       );
     }
-    return { favorites, macroSteps, activities, bindings };
+    return { favorites, macroSteps, powerSteps: 0, activities, bindings };
   }
   if (target.kind === "command") {
     const deviceId = Number(target.deviceId);
@@ -4018,7 +4037,13 @@ function bundleDeleteImpact(bundle, target) {
       device?.button_bindings,
       (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true)
     );
-    return { favorites, macroSteps, activities: 0, bindings };
+    let powerSteps = 0;
+    for (const macro of device?.macros ?? []) {
+      const removed = countRemovedMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, commandId));
+      if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) powerSteps += removed;
+      else macroSteps += removed;
+    }
+    return { favorites, macroSteps, powerSteps, activities: 0, bindings };
   }
   if (target.kind === "activity_member") {
     return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
@@ -4026,7 +4051,7 @@ function bundleDeleteImpact(bundle, target) {
   return empty;
 }
 function backupDeleteHasCascade(impact) {
-  return impact.favorites > 0 || impact.macroSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0 || impact.activities > 0 || impact.bindings > 0;
 }
 function deleteBundleActivity(bundle, activityId) {
   const id = Number(activityId);
@@ -4074,7 +4099,14 @@ function deleteBundleDeviceCommand(bundle, deviceId, commandId) {
         button_bindings: applyBindingCascade(
           device.button_bindings,
           (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true)
-        )
+        ),
+        // The device's own macros (power on/off sequences and user macros)
+        // reference commands by id — prune those steps too, or the bundle
+        // keeps dangling references sync validation rejects.
+        macros: (device.macros ?? []).map((macro) => ({
+          ...macro,
+          steps: filterMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, cId))
+        }))
       };
     }),
     activities: (bundle.activities ?? []).map((activity) => ({
@@ -4359,7 +4391,7 @@ function removeActivityMemberDevice(bundle, activityId, deviceId) {
   return reconcileActivityPowerMacros(next, aId);
 }
 function activityMemberRemovalImpact(bundle, activityId, deviceId) {
-  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   const activity = findBundleActivity(bundle, activityId);
   if (!activity) return empty;
   const dId = Number(deviceId);
@@ -4383,7 +4415,7 @@ function activityMemberRemovalImpact(bundle, activityId, deviceId) {
     activity.button_bindings,
     (binding) => cascadeBindingForDeletedDevice(binding, dId)
   );
-  return { favorites, macroSteps, activities: 0, bindings };
+  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings };
 }
 var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
 function synthesizeCommandCode(commandId) {
@@ -5044,8 +5076,8 @@ function bundleSupportsUnicodeNames(bundle) {
   return version.includes("X2") || version.includes("X1S");
 }
 function sanitizeBundleName(bundle, value) {
-  const pattern = bundleSupportsUnicodeNames(bundle) ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, 20);
+  const pattern = bundleSupportsUnicodeNames(bundle) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
+  return String(value ?? "").replace(pattern, "").slice(0, 30);
 }
 function useLegacyTextField() {
   return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
@@ -6374,15 +6406,13 @@ var SofabatonEditDetailView = class extends i3 {
                   <div class="quick-access-meta">IPv4 dotted-decimal address</div>
                 </div>
                 <div class="quick-access-actions">
-                  ${this.mode === "live" ? A : T`
-                        <button
-                          class="icon-btn"
-                          @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                          aria-label="Edit IP address"
-                        >
-                          <ha-icon icon="mdi:pencil"></ha-icon>
-                        </button>
-                      `}
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
+                    aria-label="Edit IP address"
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
                 </div>
               </div>
             </div>
@@ -6825,7 +6855,7 @@ var SofabatonEditDetailView = class extends i3 {
     return this._editRenameDialogTarget?.kind === "device_ip" ? "IP address" : "Name";
   }
   _editRenameFieldMaxLength() {
-    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 20;
+    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 30;
   }
   /**
    * Diff each spec field against the open-dialog snapshot. Returns a
@@ -7268,6 +7298,7 @@ var SofabatonEditDetailView = class extends i3 {
                     ${impact.activities > 0 ? T`<li><ha-icon icon="mdi:link-variant"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactActivities(impact.activities)}</span></li>` : A}
                     ${impact.favorites > 0 ? T`<li><ha-icon icon="mdi:star-outline"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
                     ${impact.macroSteps > 0 ? T`<li><ha-icon icon="mdi:format-list-numbered"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+                    ${impact.powerSteps > 0 ? T`<li><ha-icon icon="mdi:power"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
                     ${impact.bindings > 0 ? T`<li><ha-icon icon="mdi:gesture-tap-button"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactBindings(impact.bindings)}</span></li>` : A}
                   </ul>
                 ` : A}
@@ -8295,8 +8326,9 @@ function templateText(template) {
 test("name input applies the model-specific sanitizer and 20-character cap", () => {
   const cases = [
     { model: "X1", raw: "TV+ Room_\xE9!42", expected: "TV Room42" },
-    { model: "X1S", raw: "TV+ Room_\xE9!42", expected: "TV+ Room_\xE942" },
-    { model: "X2", raw: "TV+ Room_\xE9!42", expected: "TV+ Room_\xE942" }
+    { model: "X1S", raw: "TV+ Room_\xE9!42", expected: "TV+ Room_\xE9!42" },
+    { model: "X2", raw: "TV+ Room_\xE9!42", expected: "TV+ Room_\xE9!42" },
+    { model: "X1S", raw: "Ok/Select \u{1F600}", expected: "Ok/Select " }
   ];
   for (const { model, raw, expected } of cases) {
     const element = createEditor(model);
@@ -8305,7 +8337,7 @@ test("name input applies the model-specific sanitizer and 20-character cap", () 
     element._handleEditRenameDialogInput(event);
     assert.equal(control.value, expected);
     assert.equal(element._editRenameDialogDraft, expected);
-    assert.equal(sanitizeBundleName(element.bundle, "A".repeat(25)), "A".repeat(20));
+    assert.equal(sanitizeBundleName(element.bundle, "A".repeat(35)), "A".repeat(30));
   }
 });
 test("rename Save emits the exact sanitized bundle while invalid input emits nothing", () => {
@@ -8371,6 +8403,16 @@ test("device IP Save rejects malformed IPv4 and commits a trimmed valid address"
   assert.equal(changes.length, 1);
   assert.equal(changes[0].devices[1].device?.ip_address, "198.51.100.7");
   assert.equal(element._editRenameDialogOpen, false);
+});
+test("the Network section offers the IP pencil in live mode too", () => {
+  for (const mode of ["backup", "live"]) {
+    const element = createEditor("X1S", "device");
+    element.entityId = 2;
+    element.mode = mode;
+    const text = templateText(element._renderDeviceNetworkSection());
+    assert.match(text, /192\.0\.2\.10/);
+    assert.match(text, /Edit IP address/);
+  }
 });
 test("clearing the device IP is a valid committed edit", () => {
   const element = createEditor("X1S", "device");
@@ -8496,12 +8538,12 @@ test("favorite Save blocks an incomplete selection and sanitizes the committed l
   assert.equal(element._addFavoriteOpen, true);
   element._handleAddFavoriteDeviceChange(controlEvent("3"));
   element._handleAddFavoriteCommandChange(controlEvent("30"));
-  element._handleAddFavoriteNameInput(controlEvent("Sound+bar! " + "X".repeat(20)));
+  element._handleAddFavoriteNameInput(controlEvent("Sound+bar! " + "X".repeat(30)));
   element._applyAddFavorite();
   assert.equal(changes.length, 1);
   const activity = changes[0].activities[0];
   const added = activity.favorite_slots?.find((slot) => slot.device_id === 3);
-  assert.equal(added?.name, "Sound+bar XXXXXXXXXX");
+  assert.equal(added?.name, "Sound+bar! " + "X".repeat(19));
   assert.deepEqual(activity.referenced_source_device_ids, [1, 3]);
   assert.equal(element._addFavoriteOpen, false);
 });

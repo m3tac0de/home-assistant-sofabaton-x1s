@@ -83,7 +83,19 @@ var TOOLS_CARD_STRINGS = {
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
     editActivity: "Edit activity",
-    editDevice: "Edit device"
+    editDevice: "Edit device",
+    changeOrder: "Change order",
+    addActivity: "Add Activity",
+    reorderSync: "Sync to hub",
+    reorderCancel: "Cancel",
+    reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderSyncing: "Writing the new order to the hub\u2026",
+    addActivityTitle: "Add Activity",
+    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
+    addActivityPlaceholder: "Activity name",
+    addActivityCancel: "Cancel",
+    addActivityConfirm: "Create",
+    addActivityCreating: "Creating\u2026"
   },
   logs: {
     loading: "Loading log stream...",
@@ -191,6 +203,7 @@ var TOOLS_CARD_STRINGS = {
     // editor (activity-diff.ts, diffDeviceForReview).
     deviceReview: {
       sectionPower: "Power",
+      sectionNetwork: "Network",
       sectionButtons: "Buttons",
       sectionMacros: "Macros",
       powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
@@ -201,7 +214,9 @@ var TOOLS_CARD_STRINGS = {
       macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
       macroChanged: (name) => `Edited macro "${name}".`,
       bindingBound: (button, command) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button) => `"${button}" no longer bound.`
+      bindingCleared: (button) => `"${button}" no longer bound.`,
+      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
+      ipCleared: "IP address cleared."
     }
   },
   backup: {
@@ -250,6 +265,7 @@ var TOOLS_CARD_STRINGS = {
     deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
     deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
@@ -1780,6 +1796,16 @@ function deviceCommandItems(bundle, deviceId) {
   }
   return items.sort((left, right) => left.commandId - right.commandId);
 }
+function deviceIpAddress(bundle, deviceId) {
+  if (!bundle) return null;
+  const normalizedId = Number(deviceId);
+  const device = (bundle.devices ?? []).find(
+    (entry) => Number(entry?.device?.device_id || 0) === normalizedId
+  );
+  if (!device?.device) return null;
+  const raw = String(device.device.ip_address ?? "").trim();
+  return raw || null;
+}
 var IDLE_BEHAVIOR_AUTO_OFF = 1;
 function deviceIdleBehavior(bundle, deviceId) {
   if (!bundle) return null;
@@ -2373,7 +2399,7 @@ function diffActivityForReview(baseline, edited, activityId) {
   diffDeviceWide(buckets, baseline, edited, editMembers);
   return SECTION_ORDER.map((section) => ({ section, entries: buckets[section] })).filter((group) => group.entries.length > 0);
 }
-var DEVICE_SECTION_ORDER = ["power", "buttons", "macros"];
+var DEVICE_SECTION_ORDER = ["power", "network", "buttons", "macros"];
 function rawDeviceMacros(bundle, deviceId) {
   const device = (bundle.devices ?? []).find(
     (entry) => Number(entry?.device?.device_id || 0) === Number(deviceId)
@@ -2392,10 +2418,18 @@ function diffDeviceForReview(baseline, edited, deviceId) {
   const D = TOOLS_CARD_STRINGS.activities.deviceReview;
   const buckets = {
     power: [],
+    network: [],
     buttons: [],
     macros: []
   };
   if (!baseline || !edited) return [];
+  const ipBefore = deviceIpAddress(baseline, deviceId);
+  const ipAfter = deviceIpAddress(edited, deviceId);
+  if (ipBefore !== ipAfter) {
+    buckets.network.push({
+      text: ipAfter ? D.ipChanged(ipAfter) : D.ipCleared
+    });
+  }
   const idleBefore = deviceIdleBehavior(baseline, deviceId);
   const idleAfter = deviceIdleBehavior(edited, deviceId);
   if (idleBefore !== idleAfter) {
@@ -2703,6 +2737,19 @@ test("diffDeviceForReview reports cleared bindings under Buttons", () => {
   edited.devices[0].button_bindings = [];
   const groups = diffDeviceForReview(base, edited, 1);
   assert.match(deviceAllText(groups), /"OK" no longer bound/);
+});
+test("diffDeviceForReview reports an IP address change under Network", () => {
+  const base = structuredClone(baseBundle());
+  base.devices[0].device.device_class = "wifi_roku";
+  base.devices[0].device.ip_address = "192.168.1.40";
+  const edited = structuredClone(base);
+  edited.devices[0].device.ip_address = "192.168.1.42";
+  const groups = diffDeviceForReview(base, edited, 1);
+  assert.deepEqual(groups.map((group) => group.section), ["network"]);
+  assert.match(deviceAllText(groups), /IP address → 192\.168\.1\.42/);
+  const cleared = structuredClone(base);
+  cleared.devices[0].device.ip_address = null;
+  assert.match(deviceAllText(diffDeviceForReview(base, cleared, 1)), /IP address cleared/);
 });
 test("diffDeviceForReview reports power sequence and macro edits", () => {
   const base = structuredClone(baseBundle());

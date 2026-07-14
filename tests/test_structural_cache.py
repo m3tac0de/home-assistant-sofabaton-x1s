@@ -61,7 +61,7 @@ def _populate(proxy: X1Proxy) -> None:
         {"button_id": 1, "device_id": 7, "command_id": 2, "source": "cache"}
     ]
     proxy._macros_complete.update({7, 101})
-    proxy._macro_payload_events[(101, 0xC6)] = MacroRecord(
+    proxy.cache_macro_record(MacroRecord(
         activity_id=101,
         key_id=0xC6,
         label="POWER_ON",
@@ -69,7 +69,7 @@ def _populate(proxy: X1Proxy) -> None:
             MacroKeyEntry(device_id=7, key_id=1, fid=0x123456, duration=1, delay=5),
         ),
         raw_label_slot=b"\x37\x37\x00\x00\x35\x35",
-    )
+    ))
     proxy.state.detail_fetched_at["activity"][101] = FETCHED_ACTIVITY
 
 
@@ -109,6 +109,29 @@ def test_export_import_round_trips_structural_fields() -> None:
     assert record.key_sequence[0].fid == 0x123456
     # Imported macro records mark the entity's macros as complete.
     assert 101 in target._macros_complete
+
+
+def test_reset_ack_queues_preserves_persistent_macro_cache() -> None:
+    """Write-transaction resets must not wipe the bundle-facing macro cache.
+
+    Regression: every write flow calls reset_ack_queues(); when the macro
+    cache doubled as the ack-wait map, one create/assign wiped every
+    activity's cached power macros and bundles assembled with
+    referenced_source_device_ids inconsistent with empty macros.
+    """
+
+    proxy = _proxy()
+    _populate(proxy)
+    assert len(proxy.get_cached_macro_records(101)) == 1
+
+    proxy.reset_ack_queues()
+    assert len(proxy.get_cached_macro_records(101)) == 1
+    # The transient wait map IS cleared: a live wait must not be satisfied
+    # by records cached before the reset.
+    assert proxy.wait_for_macro_record(101, 0xC6, timeout=0.05) is None
+
+    proxy.clear_entity_cache(101, clear_macros=True)
+    assert proxy.get_cached_macro_records(101) == []
 
 
 def test_assemble_hub_bundle_from_state_is_pure_projection(monkeypatch) -> None:

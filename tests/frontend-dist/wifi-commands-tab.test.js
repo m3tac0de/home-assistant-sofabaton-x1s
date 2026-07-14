@@ -1586,7 +1586,19 @@ var TOOLS_CARD_STRINGS = {
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
     editActivity: "Edit activity",
-    editDevice: "Edit device"
+    editDevice: "Edit device",
+    changeOrder: "Change order",
+    addActivity: "Add Activity",
+    reorderSync: "Sync to hub",
+    reorderCancel: "Cancel",
+    reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderSyncing: "Writing the new order to the hub\u2026",
+    addActivityTitle: "Add Activity",
+    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
+    addActivityPlaceholder: "Activity name",
+    addActivityCancel: "Cancel",
+    addActivityConfirm: "Create",
+    addActivityCreating: "Creating\u2026"
   },
   logs: {
     loading: "Loading log stream...",
@@ -1694,6 +1706,7 @@ var TOOLS_CARD_STRINGS = {
     // editor (activity-diff.ts, diffDeviceForReview).
     deviceReview: {
       sectionPower: "Power",
+      sectionNetwork: "Network",
       sectionButtons: "Buttons",
       sectionMacros: "Macros",
       powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
@@ -1704,7 +1717,9 @@ var TOOLS_CARD_STRINGS = {
       macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
       macroChanged: (name) => `Edited macro "${name}".`,
       bindingBound: (button, command) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button) => `"${button}" no longer bound.`
+      bindingCleared: (button) => `"${button}" no longer bound.`,
+      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
+      ipCleared: "IP address cleared."
     }
   },
   backup: {
@@ -1753,6 +1768,7 @@ var TOOLS_CARD_STRINGS = {
     deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
     deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
@@ -3627,7 +3643,7 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
     return version.includes("X2") || version.includes("X1S");
   }
   _sanitizeCommandName(value) {
-    const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu : /[^A-Za-z0-9 ]+/g;
+    const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
     return String(value ?? "").replace(pattern, "").slice(0, 20);
   }
   _sanitizeWifiDeviceName(value) {

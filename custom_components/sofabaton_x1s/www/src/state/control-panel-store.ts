@@ -589,11 +589,15 @@ export class ControlPanelStore {
    * Starts the backend cache_refresh operation and follows its progress;
    * running state and phase messages surface through the bottom dock
    * (hub.runtime_state), so the button itself only spins.
+   *
+   * Resolves with `null` on success or a failure message — the same one shown
+   * in the dock — so embedded starters (the Activities tab's refresh button)
+   * can react to the outcome.
    */
-  async refreshAllForHub() {
-    if (this._isHubCommandBusy()) return;
+  async refreshAllForHub(): Promise<string | null> {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
     const hub = selectedHub(this._snapshot);
-    if (!hub) return;
+    if (!hub) return "No hub selected.";
     this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: REFRESH_ALL_KEY };
     this.emit();
     let unsubscribe: (() => void) | null = null;
@@ -618,8 +622,11 @@ export class ControlPanelStore {
           : { tone: "success", label: "Hub cache refreshed." },
       );
       await this.loadState({ silent: true });
+      return failure;
     } catch (error) {
-      this.showRuntimeCompletion({ tone: "error", label: formatError(error) });
+      const failure = formatError(error);
+      this.showRuntimeCompletion({ tone: "error", label: failure });
+      return failure;
     } finally {
       if (unsubscribe) {
         try { (unsubscribe as () => void)(); } catch { /* ignore */ }
@@ -632,6 +639,55 @@ export class ControlPanelStore {
       };
       this.emit();
     }
+  }
+
+  /**
+   * Immediate live write of the hub's stored activity display order.
+   * ``orderedIds`` is the full activity id list in the desired order.
+   * Resolves with `null` on success or a failure message for the caller's UI.
+   */
+  async reorderActivities(orderedIds: number[]): Promise<string | null> {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this.setExternalHubCommandBusy(true, "Reordering activities…");
+    try {
+      await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this.setExternalHubCommandBusy(false);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+
+  /**
+   * Create a fresh, empty activity on the hub, then pull its cache entry so
+   * the live editor can capture it right away. Resolves with the assigned
+   * activity id or an error message.
+   */
+  async createActivity(name: string): Promise<{ activityId: number } | { error: string }> {
+    if (this._isHubCommandBusy()) return { error: "Another hub operation is already running." };
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return { error: "No hub selected." };
+    this.setExternalHubCommandBusy(true, "Creating activity…");
+    let activityId = 0;
+    try {
+      const result = await this.api().createActivity(hub.entry_id, name);
+      activityId = Number(result?.activity_id || 0);
+      if (!activityId) return { error: "The hub did not return the new activity id." };
+    } catch (error) {
+      return { error: formatError(error) };
+    } finally {
+      this.setExternalHubCommandBusy(false);
+    }
+    // Per-entity cache refresh: makes the new activity part of the
+    // persistent/structural cache (and the visible list) before the caller
+    // opens the editor on it. The editor's needs-refresh guard covers the
+    // case where this refresh fails.
+    await this.refreshForHub("activity", activityId, `act-${activityId}`);
+    return { activityId };
   }
 
   async refreshForHub(kind: RefreshKind, targetId: number, key: string) {

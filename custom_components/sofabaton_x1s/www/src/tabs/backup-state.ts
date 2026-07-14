@@ -1156,6 +1156,8 @@ export interface BackupDeleteImpact {
   favorites: number;
   /** macro steps that will be removed as a side effect. */
   macroSteps: number;
+  /** steps removed from the owning device's power on/off sequences. */
+  powerSteps: number;
   /** activities whose referenced_source_device_ids point at the device. */
   activities: number;
   /** button bindings removed, or whose long-press is cleared, as a side effect. */
@@ -1168,6 +1170,13 @@ function stepMatchesDevice(step: BackupBundleMacroStep, deviceId: number): boole
 
 function stepMatchesCommand(step: BackupBundleMacroStep, deviceId: number, commandId: number): boolean {
   return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
+}
+
+// A DEVICE macro step carries no device_id (the owning device is implicit),
+// so command-delete matching goes by command_id alone — guarded against the
+// 0xFF delay sentinel, which shares that slot.
+function deviceMacroStepMatchesCommand(step: BackupBundleMacroStep, commandId: number): boolean {
+  return !isMacroDelayStep(step) && Number(step?.command_id || 0) === commandId;
 }
 
 // A pure wait/delay macro step uses 0xFF (255) as a sentinel in its
@@ -1313,7 +1322,7 @@ export function bundleDeleteImpact(
   bundle: BackupBundlePayload | null,
   target: BackupDeleteTarget,
 ): BackupDeleteImpact {
-  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   if (!bundle) return empty;
   if (target.kind === "device") {
     const deviceId = Number(target.deviceId);
@@ -1336,7 +1345,7 @@ export function bundleDeleteImpact(
         (binding) => cascadeBindingForDeletedDevice(binding, deviceId),
       );
     }
-    return { favorites, macroSteps, activities, bindings };
+    return { favorites, macroSteps, powerSteps: 0, activities, bindings };
   }
   if (target.kind === "command") {
     const deviceId = Number(target.deviceId);
@@ -1364,7 +1373,16 @@ export function bundleDeleteImpact(
       device?.button_bindings,
       (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true),
     );
-    return { favorites, macroSteps, activities: 0, bindings };
+    // Steps in the owning device's own macros that play this command. The
+    // power on/off sequences (198/199) get their own count so the dialog
+    // can name them; device user macros fold into the generic step count.
+    let powerSteps = 0;
+    for (const macro of device?.macros ?? []) {
+      const removed = countRemovedMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, commandId));
+      if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) powerSteps += removed;
+      else macroSteps += removed;
+    }
+    return { favorites, macroSteps, powerSteps, activities: 0, bindings };
   }
   if (target.kind === "activity_member") {
     return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
@@ -1374,7 +1392,8 @@ export function bundleDeleteImpact(
 
 /** True when at least one reference will be cleared as a side effect. */
 export function backupDeleteHasCascade(impact: BackupDeleteImpact): boolean {
-  return impact.favorites > 0 || impact.macroSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0
+    || impact.activities > 0 || impact.bindings > 0;
 }
 
 /** Remove a top-level Activity. Activities are referenced by nothing else. */
@@ -1447,6 +1466,13 @@ export function deleteBundleDeviceCommand(
           device.button_bindings,
           (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true),
         ),
+        // The device's own macros (power on/off sequences and user macros)
+        // reference commands by id — prune those steps too, or the bundle
+        // keeps dangling references sync validation rejects.
+        macros: (device.macros ?? []).map((macro) => ({
+          ...macro,
+          steps: filterMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, cId)),
+        })),
       };
     }),
     activities: (bundle.activities ?? []).map((activity) => ({
@@ -2009,7 +2035,7 @@ export function activityMemberRemovalImpact(
   activityId: number,
   deviceId: number,
 ): BackupDeleteImpact {
-  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty: BackupDeleteImpact = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   const activity = findBundleActivity(bundle, activityId);
   if (!activity) return empty;
   const dId = Number(deviceId);
@@ -2033,7 +2059,7 @@ export function activityMemberRemovalImpact(
     activity.button_bindings,
     (binding) => cascadeBindingForDeletedDevice(binding, dId),
   );
-  return { favorites, macroSteps, activities: 0, bindings };
+  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings };
 }
 
 // ── Macro editing ───────────────────────────────────────────────────

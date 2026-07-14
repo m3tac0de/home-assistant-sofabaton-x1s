@@ -1315,6 +1315,61 @@ var cardStyles = [secondaryTabStyles, i`
     padding-top: 0;
   }
   .entity-chevron { font-size: 8px; color: var(--secondary-text-color); transition: transform 150ms; flex-shrink: 0; }
+  /* Activity re-order mode: rows swap the play icon for a drag handle,
+     take an alternate background, and become draggable as a whole. */
+  .entity-block--reorder {
+    background: color-mix(in srgb, var(--primary-color) 9%, var(--secondary-background-color, var(--ha-card-background)));
+    border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color));
+    cursor: grab;
+  }
+  .entity-block--reorder:active { cursor: grabbing; }
+  .entity-block--reorder .entity-summary { cursor: inherit; }
+  .entity-block--reorder .entity-summary:hover { background: transparent; }
+  .entity-block--reorder .entity-name-icon { color: var(--primary-color); }
+  .cache-reorder-list { display: grid; gap: 6px; align-content: start; }
+  .cache-reorder-sortable { display: block; }
+  .sortable-ghost.entity-block--reorder { opacity: 0.45; }
+  .cache-list-footer { display: flex; flex-direction: column; gap: 8px; padding: 12px 0 4px; }
+  .cache-reorder-hint { font-size: 11.5px; color: var(--secondary-text-color); }
+  .cache-footer-error { font-size: 12px; color: var(--error-color, #db4437); }
+  .cache-footer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cache-footer-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--divider-color);
+    border-radius: calc(var(--ha-card-border-radius, 12px) * 0.85);
+    background: transparent;
+    color: var(--primary-text-color);
+    font: inherit; font-size: 12.5px; font-weight: 700;
+    padding: 7px 12px; cursor: pointer;
+  }
+  .cache-footer-btn ha-icon { --mdc-icon-size: 16px; }
+  .cache-footer-btn:hover:not([disabled]) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+  .cache-footer-btn[disabled] { opacity: 0.5; cursor: default; }
+  .cache-footer-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+  /* Add Activity dialog. */
+  .cache-modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+  .cache-dialog {
+    width: min(420px, calc(100vw - 36px));
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 16px;
+    border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
+    border: 1px solid var(--divider-color);
+    background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+    box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
+  }
+  .cache-dialog-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
+  .cache-dialog-text { font-size: 13px; line-height: 1.55; color: var(--secondary-text-color); }
+  .cache-dialog-input {
+    width: 100%; box-sizing: border-box;
+    padding: 9px 10px;
+    border: 1px solid var(--divider-color);
+    border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+    background: var(--card-background-color, var(--primary-background-color));
+    color: var(--primary-text-color);
+    font: inherit; font-size: 13.5px;
+  }
+  .cache-dialog-input:focus { outline: none; border-color: var(--primary-color); }
+  .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }
@@ -1509,6 +1564,24 @@ var ControlPanelApi = class {
       device_id: deviceId
     });
   }
+  // Immediate live write of the hub's stored activity display order.
+  // ordered_ids is the full activity id list in the desired order.
+  reorderActivities(entryId, orderedIds) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/reorder",
+      entry_id: entryId,
+      ordered_ids: orderedIds
+    });
+  }
+  // Create a fresh, empty activity on the hub; resolves with the
+  // hub-assigned activity id so the caller can open the live editor on it.
+  createActivity(entryId, name) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/create",
+      entry_id: entryId,
+      name
+    });
+  }
   startCacheRefresh(entryId) {
     return this.hass.callWS({
       type: "sofabaton_x1s/cache/refresh_all",
@@ -1668,7 +1741,10 @@ function sortById(items = []) {
   );
 }
 function hubActivities(hub) {
-  return sortById(hub?.activities ?? []);
+  const bySort = (value) => Number(value ?? 0) > 0 ? Number(value) : Number.POSITIVE_INFINITY;
+  return [...hub?.activities ?? []].sort(
+    (left, right) => bySort(left?.sort) - bySort(right?.sort) || Number(left?.id ?? 0) - Number(right?.id ?? 0)
+  );
 }
 function hubDevices(hub) {
   return sortByName(hub?.devices_list ?? []);
@@ -2402,11 +2478,15 @@ var ControlPanelStore = class {
    * Starts the backend cache_refresh operation and follows its progress;
    * running state and phase messages surface through the bottom dock
    * (hub.runtime_state), so the button itself only spins.
+   *
+   * Resolves with `null` on success or a failure message — the same one shown
+   * in the dock — so embedded starters (the Activities tab's refresh button)
+   * can react to the outcome.
    */
   async refreshAllForHub() {
-    if (this._isHubCommandBusy()) return;
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
     const hub = selectedHub(this._snapshot);
-    if (!hub) return;
+    if (!hub) return "No hub selected.";
     this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: REFRESH_ALL_KEY };
     this.emit();
     let unsubscribe = null;
@@ -2427,8 +2507,11 @@ var ControlPanelStore = class {
         failure ? { tone: "error", label: failure } : { tone: "success", label: "Hub cache refreshed." }
       );
       await this.loadState({ silent: true });
+      return failure;
     } catch (error) {
-      this.showRuntimeCompletion({ tone: "error", label: formatError(error) });
+      const failure = formatError(error);
+      this.showRuntimeCompletion({ tone: "error", label: failure });
+      return failure;
     } finally {
       if (unsubscribe) {
         try {
@@ -2444,6 +2527,49 @@ var ControlPanelStore = class {
       };
       this.emit();
     }
+  }
+  /**
+   * Immediate live write of the hub's stored activity display order.
+   * ``orderedIds`` is the full activity id list in the desired order.
+   * Resolves with `null` on success or a failure message for the caller's UI.
+   */
+  async reorderActivities(orderedIds) {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this.setExternalHubCommandBusy(true, "Reordering activities\u2026");
+    try {
+      await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this.setExternalHubCommandBusy(false);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+  /**
+   * Create a fresh, empty activity on the hub, then pull its cache entry so
+   * the live editor can capture it right away. Resolves with the assigned
+   * activity id or an error message.
+   */
+  async createActivity(name) {
+    if (this._isHubCommandBusy()) return { error: "Another hub operation is already running." };
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return { error: "No hub selected." };
+    this.setExternalHubCommandBusy(true, "Creating activity\u2026");
+    let activityId = 0;
+    try {
+      const result = await this.api().createActivity(hub.entry_id, name);
+      activityId = Number(result?.activity_id || 0);
+      if (!activityId) return { error: "The hub did not return the new activity id." };
+    } catch (error) {
+      return { error: formatError(error) };
+    } finally {
+      this.setExternalHubCommandBusy(false);
+    }
+    await this.refreshForHub("activity", activityId, `act-${activityId}`);
+    return { activityId };
   }
   async refreshForHub(kind, targetId, key) {
     if (this._isHubCommandBusy()) return;
@@ -2967,7 +3093,19 @@ var TOOLS_CARD_STRINGS = {
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
     editActivity: "Edit activity",
-    editDevice: "Edit device"
+    editDevice: "Edit device",
+    changeOrder: "Change order",
+    addActivity: "Add Activity",
+    reorderSync: "Sync to hub",
+    reorderCancel: "Cancel",
+    reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderSyncing: "Writing the new order to the hub\u2026",
+    addActivityTitle: "Add Activity",
+    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
+    addActivityPlaceholder: "Activity name",
+    addActivityCancel: "Cancel",
+    addActivityConfirm: "Create",
+    addActivityCreating: "Creating\u2026"
   },
   logs: {
     loading: "Loading log stream...",
@@ -3075,6 +3213,7 @@ var TOOLS_CARD_STRINGS = {
     // editor (activity-diff.ts, diffDeviceForReview).
     deviceReview: {
       sectionPower: "Power",
+      sectionNetwork: "Network",
       sectionButtons: "Buttons",
       sectionMacros: "Macros",
       powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
@@ -3085,7 +3224,9 @@ var TOOLS_CARD_STRINGS = {
       macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
       macroChanged: (name) => `Edited macro "${name}".`,
       bindingBound: (button, command) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button) => `"${button}" no longer bound.`
+      bindingCleared: (button) => `"${button}" no longer bound.`,
+      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
+      ipCleared: "IP address cleared."
     }
   },
   backup: {
@@ -3134,6 +3275,7 @@ var TOOLS_CARD_STRINGS = {
     deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
     deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
@@ -3621,17 +3763,20 @@ function renderCacheTab(params) {
   const renderActivity = (activity) => {
     const id = Number(activity.id);
     const key = `act-${id}`;
-    const isOpen = params.openEntity === key;
-    const locked2 = params.hubCommandBusy || params.selectedHubProxyConnected;
+    const reorder = params.reorderMode;
+    const isOpen = !reorder && params.openEntity === key;
+    const locked2 = params.hubCommandBusy || params.selectedHubProxyConnected || reorder;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
     const favorites = activityFavorites(params.hub, id);
     const macros = activityMacros(params.hub, id);
     const buttons = activityButtons(params.hub, id);
     return b2`
-      <div class="entity-block${isOpen ? " open" : ""}" id=${`entity-${key}`}>
-        <div class="entity-summary" @click=${() => params.onToggleEntity(key)}>
+      <div class="entity-block${isOpen ? " open" : ""}${reorder ? " entity-block--reorder" : ""}" id=${`entity-${key}`} data-activity-id=${id}>
+        <div class="entity-summary" @click=${reorder ? null : () => params.onToggleEntity(key)}>
           <span class="entity-name">
-            <span class="entity-name-icon"><ha-icon icon="mdi:play-circle-outline"></ha-icon></span>
+            <span class="entity-name-icon">
+              <ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : "mdi:play-circle-outline"}></ha-icon>
+            </span>
             <span class="entity-name-label">${activity.name || TOOLS_CARD_STRINGS.cache.activityFallback(id)}</span>
           </span>
           <span class="entity-meta">
@@ -3645,7 +3790,7 @@ function renderCacheTab(params) {
       event.stopPropagation();
       params.onRefreshEntry("activity", id, key);
     }}><ha-icon icon="mdi:refresh"></ha-icon></button>
-            <span class="entity-chevron">▼</span>
+            ${reorder ? null : b2`<span class="entity-chevron">▼</span>`}
           </span>
         </div>
         ${isOpen ? b2`<div class="entity-body">
@@ -3693,8 +3838,121 @@ function renderCacheTab(params) {
   const activities = hubActivities(params.hub);
   const devices = hubDevices(params.hub);
   const selectedSection = params.selectedSection;
-  const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
-  const activeBody = selectedSection === "activities" ? activities.map(renderActivity) : devices.map(renderDevice);
+  const locked = params.hubCommandBusy || params.selectedHubProxyConnected || params.reorderMode;
+  const S5 = TOOLS_CARD_STRINGS.cache;
+  const orderedActivities = params.reorderMode ? [
+    ...params.reorderIds.map((id) => activities.find((activity) => Number(activity.id) === Number(id))).filter((activity) => !!activity),
+    ...activities.filter((activity) => !params.reorderIds.includes(Number(activity.id)))
+  ] : activities;
+  const containSortableEvent = (event) => {
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+  const handleSortableMove = (event) => {
+    containSortableEvent(event);
+    const detail = event.detail;
+    const oldIndex = Number(detail?.oldIndex);
+    const newIndex = Number(detail?.newIndex);
+    if (!Number.isInteger(oldIndex) || !Number.isInteger(newIndex) || oldIndex === newIndex) return;
+    params.onReorderMove(oldIndex, newIndex);
+  };
+  const activityRows = orderedActivities.map(renderActivity);
+  const activitiesList = params.reorderMode ? b2`
+        <ha-sortable
+          class="cache-reorder-sortable"
+          draggable-selector=".entity-block"
+          animation="180"
+          @item-moved=${handleSortableMove}
+          @item-added=${containSortableEvent}
+          @item-removed=${containSortableEvent}
+          @drag-start=${containSortableEvent}
+          @drag-end=${containSortableEvent}
+        >
+          <div class="cache-reorder-list">${activityRows}</div>
+        </ha-sortable>
+      ` : activityRows;
+  const activitiesFooter = b2`
+    <div class="cache-list-footer">
+      ${params.reorderMode ? b2`
+            <div class="cache-reorder-hint">${S5.reorderHint}</div>
+            ${params.reorderError ? b2`<div class="cache-footer-error">${params.reorderError}</div>` : null}
+            <div class="cache-footer-actions">
+              <button
+                class="cache-footer-btn cache-footer-btn--primary"
+                ?disabled=${params.reorderSyncing}
+                @click=${params.onSyncReorder}
+              >
+                <ha-icon icon="mdi:upload-outline"></ha-icon>
+                <span>${params.reorderSyncing ? S5.reorderSyncing : S5.reorderSync}</span>
+              </button>
+              <button
+                class="cache-footer-btn"
+                ?disabled=${params.reorderSyncing}
+                @click=${params.onCancelReorder}
+              >${S5.reorderCancel}</button>
+            </div>
+          ` : b2`
+            <div class="cache-footer-actions">
+              <button
+                class="cache-footer-btn"
+                ?disabled=${locked || activities.length < 2}
+                @click=${params.onStartReorder}
+              >
+                <ha-icon icon="mdi:swap-vertical"></ha-icon>
+                <span>${S5.changeOrder}</span>
+              </button>
+              <button
+                class="cache-footer-btn"
+                ?disabled=${locked}
+                @click=${params.onOpenAddActivity}
+              >
+                <ha-icon icon="mdi:plus"></ha-icon>
+                <span>${S5.addActivity}</span>
+              </button>
+            </div>
+          `}
+    </div>
+  `;
+  const activeBody = selectedSection === "activities" ? b2`${activitiesList}${activitiesFooter}` : devices.map(renderDevice);
+  const confirmAddActivity = (event) => {
+    const dialog = event.currentTarget.closest(".cache-dialog");
+    const input = dialog?.querySelector(".cache-dialog-input");
+    const name = String(input?.value || "").trim();
+    if (name) params.onConfirmAddActivity(name);
+  };
+  const addActivityDialog = params.addActivityOpen ? b2`
+        <div class="cache-modal-backdrop" @click=${params.addActivityBusy ? null : params.onCloseAddActivity}>
+          <div class="cache-dialog" @click=${(event) => event.stopPropagation()}>
+            <div class="cache-dialog-title">${S5.addActivityTitle}</div>
+            <div class="cache-dialog-text">${S5.addActivityBody}</div>
+            ${params.addActivityError ? b2`<div class="cache-footer-error">${params.addActivityError}</div>` : null}
+            <input
+              class="cache-dialog-input"
+              type="text"
+              maxlength="30"
+              placeholder=${S5.addActivityPlaceholder}
+              ?disabled=${params.addActivityBusy}
+              @keydown=${(event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    confirmAddActivity(event);
+  }}
+            />
+            <div class="cache-dialog-actions">
+              <button
+                class="cache-footer-btn"
+                ?disabled=${params.addActivityBusy}
+                @click=${params.onCloseAddActivity}
+              >${S5.addActivityCancel}</button>
+              <button
+                class="cache-footer-btn cache-footer-btn--primary"
+                ?disabled=${params.addActivityBusy}
+                @click=${confirmAddActivity}
+              >${params.addActivityBusy ? S5.addActivityCreating : S5.addActivityConfirm}</button>
+            </div>
+          </div>
+        </div>
+      ` : null;
   return b2`
     <div class="tab-panel">
       ${params.staleData ? b2`<div class="stale-banner"><span class="stale-banner-text">${TOOLS_CARD_STRINGS.cache.staleBanner}</span><button class="stale-banner-btn" @click=${params.onRefreshStale}>${TOOLS_CARD_STRINGS.cache.refresh}</button></div>` : null}
@@ -3754,6 +4012,7 @@ function renderCacheTab(params) {
       body: activeBody
     })
   })}
+      ${addActivityDialog}
     </div>
   `;
 }
@@ -6328,6 +6587,9 @@ function stepMatchesDevice(step, deviceId) {
 function stepMatchesCommand(step, deviceId, commandId) {
   return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
 }
+function deviceMacroStepMatchesCommand(step, commandId) {
+  return !isMacroDelayStep(step) && Number(step?.command_id || 0) === commandId;
+}
 var MACRO_DELAY_SENTINEL = 255;
 function isMacroDelayStep(step) {
   return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
@@ -6390,7 +6652,7 @@ function countAffectedBindings(bindings, transform) {
   return count;
 }
 function bundleDeleteImpact(bundle, target) {
-  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   if (!bundle) return empty;
   if (target.kind === "device") {
     const deviceId = Number(target.deviceId);
@@ -6413,7 +6675,7 @@ function bundleDeleteImpact(bundle, target) {
         (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
       );
     }
-    return { favorites, macroSteps, activities, bindings };
+    return { favorites, macroSteps, powerSteps: 0, activities, bindings };
   }
   if (target.kind === "command") {
     const deviceId = Number(target.deviceId);
@@ -6440,7 +6702,13 @@ function bundleDeleteImpact(bundle, target) {
       device?.button_bindings,
       (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true)
     );
-    return { favorites, macroSteps, activities: 0, bindings };
+    let powerSteps = 0;
+    for (const macro of device?.macros ?? []) {
+      const removed = countRemovedMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, commandId));
+      if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) powerSteps += removed;
+      else macroSteps += removed;
+    }
+    return { favorites, macroSteps, powerSteps, activities: 0, bindings };
   }
   if (target.kind === "activity_member") {
     return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
@@ -6448,7 +6716,7 @@ function bundleDeleteImpact(bundle, target) {
   return empty;
 }
 function backupDeleteHasCascade(impact) {
-  return impact.favorites > 0 || impact.macroSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0 || impact.activities > 0 || impact.bindings > 0;
 }
 function deleteBundleActivity(bundle, activityId) {
   const id = Number(activityId);
@@ -6496,7 +6764,14 @@ function deleteBundleDeviceCommand(bundle, deviceId, commandId) {
         button_bindings: applyBindingCascade(
           device.button_bindings,
           (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true)
-        )
+        ),
+        // The device's own macros (power on/off sequences and user macros)
+        // reference commands by id — prune those steps too, or the bundle
+        // keeps dangling references sync validation rejects.
+        macros: (device.macros ?? []).map((macro) => ({
+          ...macro,
+          steps: filterMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, cId))
+        }))
       };
     }),
     activities: (bundle.activities ?? []).map((activity) => ({
@@ -6781,7 +7056,7 @@ function removeActivityMemberDevice(bundle, activityId, deviceId) {
   return reconcileActivityPowerMacros(next, aId);
 }
 function activityMemberRemovalImpact(bundle, activityId, deviceId) {
-  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   const activity = findBundleActivity(bundle, activityId);
   if (!activity) return empty;
   const dId = Number(deviceId);
@@ -6805,7 +7080,7 @@ function activityMemberRemovalImpact(bundle, activityId, deviceId) {
     activity.button_bindings,
     (binding) => cascadeBindingForDeletedDevice(binding, dId)
   );
-  return { favorites, macroSteps, activities: 0, bindings };
+  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings };
 }
 var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
 function synthesizeCommandCode(commandId) {
@@ -7481,8 +7756,8 @@ function bundleSupportsUnicodeNames(bundle) {
   return version.includes("X2") || version.includes("X1S");
 }
 function sanitizeBundleName(bundle, value) {
-  const pattern = bundleSupportsUnicodeNames(bundle) ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, 20);
+  const pattern = bundleSupportsUnicodeNames(bundle) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
+  return String(value ?? "").replace(pattern, "").slice(0, 30);
 }
 function useLegacyTextField() {
   return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
@@ -8653,15 +8928,13 @@ var SofabatonEditDetailView = class extends i4 {
                   <div class="quick-access-meta">IPv4 dotted-decimal address</div>
                 </div>
                 <div class="quick-access-actions">
-                  ${this.mode === "live" ? A : b2`
-                        <button
-                          class="icon-btn"
-                          @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                          aria-label="Edit IP address"
-                        >
-                          <ha-icon icon="mdi:pencil"></ha-icon>
-                        </button>
-                      `}
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
+                    aria-label="Edit IP address"
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
                 </div>
               </div>
             </div>
@@ -9104,7 +9377,7 @@ var SofabatonEditDetailView = class extends i4 {
     return this._editRenameDialogTarget?.kind === "device_ip" ? "IP address" : "Name";
   }
   _editRenameFieldMaxLength() {
-    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 20;
+    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 30;
   }
   /**
    * Diff each spec field against the open-dialog snapshot. Returns a
@@ -9547,6 +9820,7 @@ var SofabatonEditDetailView = class extends i4 {
                     ${impact.activities > 0 ? b2`<li><ha-icon icon="mdi:link-variant"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactActivities(impact.activities)}</span></li>` : A}
                     ${impact.favorites > 0 ? b2`<li><ha-icon icon="mdi:star-outline"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
                     ${impact.macroSteps > 0 ? b2`<li><ha-icon icon="mdi:format-list-numbered"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+                    ${impact.powerSteps > 0 ? b2`<li><ha-icon icon="mdi:power"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
                     ${impact.bindings > 0 ? b2`<li><ha-icon icon="mdi:gesture-tap-button"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactBindings(impact.bindings)}</span></li>` : A}
                   </ul>
                 ` : A}
@@ -12942,7 +13216,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
     return version.includes("X2") || version.includes("X1S");
   }
   _sanitizeCommandName(value) {
-    const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu : /[^A-Za-z0-9 ]+/g;
+    const pattern = this._supportsUnicodeCommandNames() ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
     return String(value ?? "").replace(pattern, "").slice(0, 20);
   }
   _sanitizeWifiDeviceName(value) {
@@ -14395,6 +14669,8 @@ var SofabatonRefreshCacheButton = class extends i4 {
     this.entryId = "";
     this.label = "";
     this.disabled = false;
+    /** Store-routed refresh (refreshAllForHub); resolves null on success or a failure message. */
+    this.runRefresh = null;
     this._running = false;
     this._message = "";
     this._error = null;
@@ -14404,6 +14680,23 @@ var SofabatonRefreshCacheButton = class extends i4 {
       this._running = true;
       this._error = null;
       this._message = TOOLS_CARD_STRINGS.cacheRefresh.starting;
+      if (this.runRefresh) {
+        try {
+          const failure = await this.runRefresh();
+          this._running = false;
+          this._message = "";
+          if (failure) {
+            this._error = failure;
+            return;
+          }
+          this.dispatchEvent(new CustomEvent("refreshed", { bubbles: true, composed: true }));
+        } catch (error) {
+          this._running = false;
+          this._error = formatError(error);
+          this._message = "";
+        }
+        return;
+      }
       try {
         const start = await this._api().startCacheRefresh(this.entryId);
         await this._subscribe(start.operation_id);
@@ -14472,6 +14765,7 @@ SofabatonRefreshCacheButton.properties = {
   entryId: { type: String },
   label: { type: String },
   disabled: { type: Boolean },
+  runRefresh: { attribute: false },
   _running: { state: true },
   _message: { state: true },
   _error: { state: true }
@@ -14773,8 +15067,6 @@ var SofabatonActivitiesTab = class extends i4 {
     this._progressUnsub = unsub;
   }
   async _onSyncSuccess(operationId) {
-    if (this._working) this._baseline = structuredClone(this._working);
-    this._recomputeDirty();
     this._syncProgress = null;
     this._syncOperationId = null;
     const exitAfterSync = this._exitAfterSync;
@@ -14792,6 +15084,24 @@ var SofabatonActivitiesTab = class extends i4 {
       this._resetToList();
       return;
     }
+    let rebased = null;
+    try {
+      const res = this.hub ? await this.api().getStructuralBundle(this.hub.entry_id) : null;
+      const bundle = res?.bundle ?? null;
+      const entries = (this.kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
+      const hasEntity = !!bundle && entries.some(
+        (candidate) => Number(candidate.device?.device_id) === this._entityId
+      );
+      if (bundle && hasEntity) rebased = bundle;
+    } catch {
+    }
+    if (rebased) {
+      this._baseline = rebased;
+      this._working = structuredClone(rebased);
+    } else if (this._working) {
+      this._baseline = structuredClone(this._working);
+    }
+    this._recomputeDirty();
     this._stage = "editing";
   }
   _resetToList() {
@@ -14917,6 +15227,7 @@ var SofabatonActivitiesTab = class extends i4 {
             <sofabaton-refresh-cache-button
               .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
+              .runRefresh=${this.startRefreshAll ?? null}
               @refreshed=${() => {
       if (this._entityId != null) void this._startCapture(this._entityId);
     }}
@@ -15003,6 +15314,7 @@ var SofabatonActivitiesTab = class extends i4 {
             <sofabaton-refresh-cache-button
               .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
+              .runRefresh=${this.startRefreshAll ?? null}
               .label=${S5.syncReload}
               @refreshed=${() => {
       if (this._entityId != null) void this._startCapture(this._entityId);
@@ -15044,6 +15356,7 @@ SofabatonActivitiesTab.properties = {
   hass: { attribute: false },
   hub: { attribute: false },
   refreshControlPanelState: { attribute: false },
+  startRefreshAll: { attribute: false },
   kind: { type: String },
   entityId: { type: Number },
   loading: { type: Boolean },
@@ -15301,6 +15614,15 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     // Entity currently open in the live editor (wrench buttons in the Hub
     // tab); while set, the Hub tab renders the editor instead of the cache.
     this._editingEntity = null;
+    // Activity re-order mode ("Change order" under the Activities list).
+    this._reorderMode = false;
+    this._reorderIds = [];
+    this._reorderSyncing = false;
+    this._reorderError = null;
+    // "Add Activity" dialog state.
+    this._addActivityOpen = false;
+    this._addActivityBusy = false;
+    this._addActivityError = null;
     this._irFlashClearTimer = null;
     this._irFlashClearForReceivedAt = null;
     this._pendingCacheScrollSnapshot = null;
@@ -15428,8 +15750,89 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
   }
   handleTabSelect(tabId) {
     this._toolsMenuOpen = false;
-    if (tabId !== "cache") this._editingEntity = null;
+    if (tabId !== "cache") {
+      this._editingEntity = null;
+      this.resetActivityListInteractions();
+    }
     this._store.selectTab(tabId);
+  }
+  // Drops re-order mode and the Add Activity dialog (tab switch, hub switch).
+  resetActivityListInteractions() {
+    this._reorderMode = false;
+    this._reorderIds = [];
+    this._reorderSyncing = false;
+    this._reorderError = null;
+    this._addActivityOpen = false;
+    this._addActivityBusy = false;
+    this._addActivityError = null;
+  }
+  // ── Activity re-order mode ─────────────────────────────────────────
+  startReorder() {
+    if (this._reorderMode) return;
+    const openEntity = this._snapshot.openEntity;
+    if (openEntity) this._store.toggleEntity(openEntity);
+    const cacheHub = selectedHubCache(this._snapshot);
+    this._reorderIds = hubActivities(cacheHub).map((activity) => Number(activity.id));
+    this._reorderMode = true;
+    this._reorderSyncing = false;
+    this._reorderError = null;
+    this.requestUpdate();
+  }
+  cancelReorder() {
+    if (this._reorderSyncing) return;
+    this.resetActivityListInteractions();
+    this.requestUpdate();
+  }
+  moveReorderItem(oldIndex, newIndex) {
+    const ids = [...this._reorderIds];
+    if (oldIndex < 0 || oldIndex >= ids.length || newIndex < 0 || newIndex >= ids.length) return;
+    const [moved] = ids.splice(oldIndex, 1);
+    ids.splice(newIndex, 0, moved);
+    this._reorderIds = ids;
+    this.requestUpdate();
+  }
+  async syncReorder() {
+    if (!this._reorderMode || this._reorderSyncing) return;
+    this._reorderSyncing = true;
+    this._reorderError = null;
+    this.requestUpdate();
+    const failure = await this._store.reorderActivities(this._reorderIds);
+    this._reorderSyncing = false;
+    if (failure) {
+      this._reorderError = failure;
+    } else {
+      this.resetActivityListInteractions();
+    }
+    this.requestUpdate();
+  }
+  // ── Add Activity flow (name prompt → live editor) ──────────────────
+  openAddActivity() {
+    this._addActivityOpen = true;
+    this._addActivityBusy = false;
+    this._addActivityError = null;
+    this.requestUpdate();
+  }
+  closeAddActivity() {
+    if (this._addActivityBusy) return;
+    this._addActivityOpen = false;
+    this._addActivityError = null;
+    this.requestUpdate();
+  }
+  async confirmAddActivity(name) {
+    if (this._addActivityBusy) return;
+    this._addActivityBusy = true;
+    this._addActivityError = null;
+    this.requestUpdate();
+    const result = await this._store.createActivity(name);
+    this._addActivityBusy = false;
+    if ("error" in result) {
+      this._addActivityError = result.error;
+      this.requestUpdate();
+      return;
+    }
+    this._addActivityOpen = false;
+    this._editingEntity = { kind: "activity", id: result.activityId };
+    this.requestUpdate();
   }
   handleSettingToggle(setting, enabled) {
     void this._store.setSetting(setting, enabled);
@@ -15733,6 +16136,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
             .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+            .startRefreshAll=${() => this._store.refreshAllForHub()}
             @editor-exit=${() => {
           this._editingEntity = null;
           this.requestUpdate();
@@ -15768,7 +16172,21 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           onEditDevice: (deviceId) => {
             this._editingEntity = { kind: "device", id: deviceId };
             this.requestUpdate();
-          }
+          },
+          reorderMode: this._reorderMode,
+          reorderIds: this._reorderIds,
+          reorderSyncing: this._reorderSyncing,
+          reorderError: this._reorderError,
+          onStartReorder: () => this.startReorder(),
+          onCancelReorder: () => this.cancelReorder(),
+          onReorderMove: (oldIndex, newIndex) => this.moveReorderItem(oldIndex, newIndex),
+          onSyncReorder: () => void this.syncReorder(),
+          addActivityOpen: this._addActivityOpen,
+          addActivityBusy: this._addActivityBusy,
+          addActivityError: this._addActivityError,
+          onOpenAddActivity: () => this.openAddActivity(),
+          onCloseAddActivity: () => this.closeAddActivity(),
+          onConfirmAddActivity: (name) => void this.confirmAddActivity(name)
         });
       }
     }
@@ -15787,6 +16205,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       onToggle: () => this.toggleHubPicker(),
       onSelect: (entryId) => {
         this._hubPickerOpen = false;
+        this.resetActivityListInteractions();
         this._store.selectHub(entryId);
       }
     }) : null}

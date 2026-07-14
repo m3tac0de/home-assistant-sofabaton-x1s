@@ -1429,7 +1429,7 @@ class SofabatonWifiCommandsTab extends LitElement {
 
   private _sanitizeCommandName(value: unknown) {
     const pattern = this._supportsUnicodeCommandNames()
-      ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu
+      ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu
       : /[^A-Za-z0-9 ]+/g;
     return String(value ?? "").replace(pattern, "").slice(0, 20);
   }

@@ -137,6 +137,8 @@ class AsyncXProxy:
             "command_to_favorite",
             "command_to_button",
             "add_device_to_activity",
+            "reorder_activities",
+            "create_activity",
             "play_ir_blob",
             "persist_ir_blob",
             "erase_configuration",

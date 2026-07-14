@@ -42,6 +42,24 @@ export function renderCacheTab(params: {
   // Opens the live editor for one activity or device (wrench buttons).
   onEditActivity: (activityId: number) => void;
   onEditDevice: (deviceId: number) => void;
+  // Activity re-order mode ("Change order" under the Activities list).
+  // While active, rows render in reorderIds order, become draggable via
+  // ha-sortable, and the drawers / per-row actions are locked out.
+  reorderMode: boolean;
+  reorderIds: number[];
+  reorderSyncing: boolean;
+  reorderError: string | null;
+  onStartReorder: () => void;
+  onCancelReorder: () => void;
+  onReorderMove: (oldIndex: number, newIndex: number) => void;
+  onSyncReorder: () => void;
+  // "Add Activity" dialog (name prompt → live editor).
+  addActivityOpen: boolean;
+  addActivityBusy: boolean;
+  addActivityError: string | null;
+  onOpenAddActivity: () => void;
+  onCloseAddActivity: () => void;
+  onConfirmAddActivity: (name: string) => void;
 }) {
   if (params.loading) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.cache.loading}</div>`;
   if (params.error) return html`<div class="cache-state error">${params.error}</div>`;
@@ -64,20 +82,23 @@ export function renderCacheTab(params: {
   }
   if (!params.hub) return html`<div class="cache-state">${TOOLS_CARD_STRINGS.cache.noHubsFound}</div>`;
 
-  const renderActivity = (activity: { id: number; name?: string; favorite_count?: number; macro_count?: number }) => {
+  const renderActivity = (activity: { id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }) => {
     const id = Number(activity.id);
     const key = `act-${id}`;
-    const isOpen = params.openEntity === key;
-    const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
+    const reorder = params.reorderMode;
+    const isOpen = !reorder && params.openEntity === key;
+    const locked = params.hubCommandBusy || params.selectedHubProxyConnected || reorder;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
     const favorites = activityFavorites(params.hub, id);
     const macros = activityMacros(params.hub, id);
     const buttons = activityButtons(params.hub, id);
     return html`
-      <div class="entity-block${isOpen ? " open" : ""}" id=${`entity-${key}`}>
-        <div class="entity-summary" @click=${() => params.onToggleEntity(key)}>
+      <div class="entity-block${isOpen ? " open" : ""}${reorder ? " entity-block--reorder" : ""}" id=${`entity-${key}`} data-activity-id=${id}>
+        <div class="entity-summary" @click=${reorder ? null : () => params.onToggleEntity(key)}>
           <span class="entity-name">
-            <span class="entity-name-icon"><ha-icon icon="mdi:play-circle-outline"></ha-icon></span>
+            <span class="entity-name-icon">
+              <ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : "mdi:play-circle-outline"}></ha-icon>
+            </span>
             <span class="entity-name-label">${activity.name || TOOLS_CARD_STRINGS.cache.activityFallback(id)}</span>
           </span>
           <span class="entity-meta">
@@ -85,7 +106,7 @@ export function renderCacheTab(params: {
             <span class="entity-count entity-count--activity">${TOOLS_CARD_STRINGS.cache.activityCounts(favorites.length, macros.length, buttons.length)}</span>
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editActivity} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditActivity(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("activity", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
-            <span class="entity-chevron">▼</span>
+            ${reorder ? null : html`<span class="entity-chevron">▼</span>`}
           </span>
         </div>
         ${isOpen ? html`<div class="entity-body">
@@ -134,10 +155,155 @@ export function renderCacheTab(params: {
   const activities = hubActivities(params.hub);
   const devices = hubDevices(params.hub);
   const selectedSection: SectionId = params.selectedSection;
-  const locked = params.hubCommandBusy || params.selectedHubProxyConnected;
+  // Reorder mode also locks the header refresh actions.
+  const locked = params.hubCommandBusy || params.selectedHubProxyConnected || params.reorderMode;
+  const S = TOOLS_CARD_STRINGS.cache;
+
+  // In reorder mode the rows follow the working order; ids that vanished
+  // from the list (external refresh) are dropped, new ones appended.
+  const orderedActivities = params.reorderMode
+    ? [
+        ...params.reorderIds
+          .map((id) => activities.find((activity) => Number(activity.id) === Number(id)))
+          .filter((activity): activity is (typeof activities)[number] => !!activity),
+        ...activities.filter((activity) => !params.reorderIds.includes(Number(activity.id))),
+      ]
+    : activities;
+
+  // ha-sortable fires its events bubbling AND composed, and this card sits
+  // inside the dashboard section's own <ha-sortable> grid. Anything we let
+  // escape the card is interpreted by the section as a card re-order /
+  // insert (observed live: dragging an activity made HA add a null card to
+  // the section grid), so every sortable event must be swallowed here.
+  const containSortableEvent = (event: Event) => {
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+  };
+
+  const handleSortableMove = (event: Event) => {
+    containSortableEvent(event);
+    const detail = (event as CustomEvent<{ oldIndex?: number; newIndex?: number }>).detail;
+    const oldIndex = Number(detail?.oldIndex);
+    const newIndex = Number(detail?.newIndex);
+    if (!Number.isInteger(oldIndex) || !Number.isInteger(newIndex) || oldIndex === newIndex) return;
+    params.onReorderMove(oldIndex, newIndex);
+  };
+
+  const activityRows = orderedActivities.map(renderActivity);
+  const activitiesList = params.reorderMode
+    ? html`
+        <ha-sortable
+          class="cache-reorder-sortable"
+          draggable-selector=".entity-block"
+          animation="180"
+          @item-moved=${handleSortableMove}
+          @item-added=${containSortableEvent}
+          @item-removed=${containSortableEvent}
+          @drag-start=${containSortableEvent}
+          @drag-end=${containSortableEvent}
+        >
+          <div class="cache-reorder-list">${activityRows}</div>
+        </ha-sortable>
+      `
+    : activityRows;
+
+  // Footer under the Activities list: Change order / Add Activity, replaced
+  // by Sync to hub / Cancel while re-order mode is active.
+  const activitiesFooter = html`
+    <div class="cache-list-footer">
+      ${params.reorderMode
+        ? html`
+            <div class="cache-reorder-hint">${S.reorderHint}</div>
+            ${params.reorderError
+              ? html`<div class="cache-footer-error">${params.reorderError}</div>`
+              : null}
+            <div class="cache-footer-actions">
+              <button
+                class="cache-footer-btn cache-footer-btn--primary"
+                ?disabled=${params.reorderSyncing}
+                @click=${params.onSyncReorder}
+              >
+                <ha-icon icon="mdi:upload-outline"></ha-icon>
+                <span>${params.reorderSyncing ? S.reorderSyncing : S.reorderSync}</span>
+              </button>
+              <button
+                class="cache-footer-btn"
+                ?disabled=${params.reorderSyncing}
+                @click=${params.onCancelReorder}
+              >${S.reorderCancel}</button>
+            </div>
+          `
+        : html`
+            <div class="cache-footer-actions">
+              <button
+                class="cache-footer-btn"
+                ?disabled=${locked || activities.length < 2}
+                @click=${params.onStartReorder}
+              >
+                <ha-icon icon="mdi:swap-vertical"></ha-icon>
+                <span>${S.changeOrder}</span>
+              </button>
+              <button
+                class="cache-footer-btn"
+                ?disabled=${locked}
+                @click=${params.onOpenAddActivity}
+              >
+                <ha-icon icon="mdi:plus"></ha-icon>
+                <span>${S.addActivity}</span>
+              </button>
+            </div>
+          `}
+    </div>
+  `;
+
   const activeBody = selectedSection === "activities"
-    ? activities.map(renderActivity)
+    ? html`${activitiesList}${activitiesFooter}`
     : devices.map(renderDevice);
+
+  const confirmAddActivity = (event: Event) => {
+    const dialog = (event.currentTarget as HTMLElement).closest(".cache-dialog");
+    const input = dialog?.querySelector<HTMLInputElement>(".cache-dialog-input");
+    const name = String(input?.value || "").trim();
+    if (name) params.onConfirmAddActivity(name);
+  };
+
+  const addActivityDialog = params.addActivityOpen
+    ? html`
+        <div class="cache-modal-backdrop" @click=${params.addActivityBusy ? null : params.onCloseAddActivity}>
+          <div class="cache-dialog" @click=${(event: Event) => event.stopPropagation()}>
+            <div class="cache-dialog-title">${S.addActivityTitle}</div>
+            <div class="cache-dialog-text">${S.addActivityBody}</div>
+            ${params.addActivityError
+              ? html`<div class="cache-footer-error">${params.addActivityError}</div>`
+              : null}
+            <input
+              class="cache-dialog-input"
+              type="text"
+              maxlength="30"
+              placeholder=${S.addActivityPlaceholder}
+              ?disabled=${params.addActivityBusy}
+              @keydown=${(event: KeyboardEvent) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                confirmAddActivity(event);
+              }}
+            />
+            <div class="cache-dialog-actions">
+              <button
+                class="cache-footer-btn"
+                ?disabled=${params.addActivityBusy}
+                @click=${params.onCloseAddActivity}
+              >${S.addActivityCancel}</button>
+              <button
+                class="cache-footer-btn cache-footer-btn--primary"
+                ?disabled=${params.addActivityBusy}
+                @click=${confirmAddActivity}
+              >${params.addActivityBusy ? S.addActivityCreating : S.addActivityConfirm}</button>
+            </div>
+          </div>
+        </div>
+      `
+    : null;
 
   return html`
     <div class="tab-panel">
@@ -188,6 +354,7 @@ export function renderCacheTab(params: {
           body: activeBody,
         }),
       })}
+      ${addActivityDialog}
     </div>
   `;
 }

@@ -67,7 +67,17 @@ export function sortById<T extends { id?: number; button_id?: number }>(items: T
 }
 
 export function hubActivities(hub: CacheHubState | null) {
-  return sortById(hub?.activities ?? []);
+  // Follow the hub's stored display order (the record's sort byte) when
+  // present. A sort of 0 means "never ordered" — those rows keep the legacy
+  // id order and land after explicitly ordered rows (so a freshly created
+  // activity appears at the end of an ordered list).
+  const bySort = (value?: number) =>
+    Number(value ?? 0) > 0 ? Number(value) : Number.POSITIVE_INFINITY;
+  return [...(hub?.activities ?? [])].sort(
+    (left, right) =>
+      bySort(left?.sort) - bySort(right?.sort)
+      || Number(left?.id ?? 0) - Number(right?.id ?? 0),
+  );
 }
 
 export function hubDevices(hub: CacheHubState | null) {

@@ -209,6 +209,53 @@ def test_device_rename_emits_a_rename_step() -> None:
     assert plan[0].payload == {"device_id": DEVICE_ID, "name": "TV"}
 
 
+def test_device_ip_change_emits_a_device_ip_step() -> None:
+    base = base_bundle()
+    _device(base)["device"]["ip_address"] = "192.168.1.40"
+    edited = copy.deepcopy(base)
+    _device(edited)["device"]["ip_address"] = "192.168.1.42"
+    plan = build_device_sync_plan(base, edited, DEVICE_ID)
+    assert _kinds(plan) == ["device_ip"]
+    assert plan[0].target_device_id == DEVICE_ID
+    assert plan[0].payload == {"device_id": DEVICE_ID, "ip_address": "192.168.1.42"}
+
+
+def test_device_ip_clear_emits_an_empty_ip_payload() -> None:
+    base = base_bundle()
+    _device(base)["device"]["ip_address"] = "192.168.1.40"
+    edited = copy.deepcopy(base)
+    _device(edited)["device"]["ip_address"] = None
+    plan = build_device_sync_plan(base, edited, DEVICE_ID)
+    assert _kinds(plan) == ["device_ip"]
+    assert plan[0].payload == {"device_id": DEVICE_ID, "ip_address": ""}
+
+
+def test_device_ip_set_from_unset_emits_a_device_ip_step() -> None:
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _device(edited)["device"]["ip_address"] = "10.0.0.5"
+    plan = build_device_sync_plan(base, edited, DEVICE_ID)
+    assert _kinds(plan) == ["device_ip"]
+    assert plan[0].payload == {"device_id": DEVICE_ID, "ip_address": "10.0.0.5"}
+
+
+def test_malformed_device_ip_raises() -> None:
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _device(edited)["device"]["ip_address"] = "192.168.1.256"
+    with pytest.raises(ValueError, match="IPv4"):
+        build_device_sync_plan(base, edited, DEVICE_ID)
+
+
+def test_rename_and_ip_change_plan_rename_before_ip() -> None:
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _device(edited)["device"]["name"] = "TV"
+    _device(edited)["device"]["ip_address"] = "10.0.0.5"
+    plan = build_device_sync_plan(base, edited, DEVICE_ID)
+    assert _kinds(plan) == ["device_rename", "device_ip"]
+
+
 def test_device_add_or_remove_is_out_of_scope() -> None:
     base = base_bundle()
     edited = copy.deepcopy(base)

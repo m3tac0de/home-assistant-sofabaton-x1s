@@ -414,6 +414,61 @@ export const cardStyles = [secondaryTabStyles, css`
     padding-top: 0;
   }
   .entity-chevron { font-size: 8px; color: var(--secondary-text-color); transition: transform 150ms; flex-shrink: 0; }
+  /* Activity re-order mode: rows swap the play icon for a drag handle,
+     take an alternate background, and become draggable as a whole. */
+  .entity-block--reorder {
+    background: color-mix(in srgb, var(--primary-color) 9%, var(--secondary-background-color, var(--ha-card-background)));
+    border-color: color-mix(in srgb, var(--primary-color) 35%, var(--divider-color));
+    cursor: grab;
+  }
+  .entity-block--reorder:active { cursor: grabbing; }
+  .entity-block--reorder .entity-summary { cursor: inherit; }
+  .entity-block--reorder .entity-summary:hover { background: transparent; }
+  .entity-block--reorder .entity-name-icon { color: var(--primary-color); }
+  .cache-reorder-list { display: grid; gap: 6px; align-content: start; }
+  .cache-reorder-sortable { display: block; }
+  .sortable-ghost.entity-block--reorder { opacity: 0.45; }
+  .cache-list-footer { display: flex; flex-direction: column; gap: 8px; padding: 12px 0 4px; }
+  .cache-reorder-hint { font-size: 11.5px; color: var(--secondary-text-color); }
+  .cache-footer-error { font-size: 12px; color: var(--error-color, #db4437); }
+  .cache-footer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .cache-footer-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--divider-color);
+    border-radius: calc(var(--ha-card-border-radius, 12px) * 0.85);
+    background: transparent;
+    color: var(--primary-text-color);
+    font: inherit; font-size: 12.5px; font-weight: 700;
+    padding: 7px 12px; cursor: pointer;
+  }
+  .cache-footer-btn ha-icon { --mdc-icon-size: 16px; }
+  .cache-footer-btn:hover:not([disabled]) { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
+  .cache-footer-btn[disabled] { opacity: 0.5; cursor: default; }
+  .cache-footer-btn--primary { border-color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 18%, transparent); }
+  /* Add Activity dialog. */
+  .cache-modal-backdrop { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 18px; background: rgba(0, 0, 0, 0.52); }
+  .cache-dialog {
+    width: min(420px, calc(100vw - 36px));
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 16px;
+    border-radius: calc(var(--ha-card-border-radius, 12px) * 1.33);
+    border: 1px solid var(--divider-color);
+    background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color)));
+    box-shadow: var(--ha-card-box-shadow, 0 8px 28px rgba(0,0,0,0.28));
+  }
+  .cache-dialog-title { font-size: 16px; font-weight: 700; color: var(--primary-text-color); }
+  .cache-dialog-text { font-size: 13px; line-height: 1.55; color: var(--secondary-text-color); }
+  .cache-dialog-input {
+    width: 100%; box-sizing: border-box;
+    padding: 9px 10px;
+    border: 1px solid var(--divider-color);
+    border-radius: calc(var(--ha-card-border-radius, 12px) * 0.7);
+    background: var(--card-background-color, var(--primary-background-color));
+    color: var(--primary-text-color);
+    font: inherit; font-size: 13.5px;
+  }
+  .cache-dialog-input:focus { outline: none; border-color: var(--primary-color); }
+  .cache-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
   .inner-section-label { padding: 5px 12px 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--secondary-text-color); background: var(--primary-background-color, rgba(0,0,0,0.04)); border-top: 1px solid var(--divider-color); margin-top: 2px; }
   .inner-section-label:first-child { border-top: none; margin-top: 0; }
   .inner-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; }

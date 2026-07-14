@@ -3867,6 +3867,56 @@ def test_add_device_to_activity_uses_activity_members_from_map(monkeypatch) -> N
         (0x024F, bytes([0x05, 0x00])),
     ]
 
+def test_add_device_to_activity_builds_power_macros_from_scratch_on_empty_reply(monkeypatch) -> None:
+    """A brand-new activity answers the macro fetch with STATUS_ACK 0x07.
+
+    The assignment must synthesize an empty source record and proceed
+    instead of timing out waiting for a macro burst that never comes.
+    """
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+
+    def _request_activity_mapping(act_id: int) -> bool:
+        proxy._activity_map_complete.add(act_id & 0xFF)
+        return True
+
+    monkeypatch.setattr(proxy, "request_activity_mapping", _request_activity_mapping)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_cmd_frame", lambda opcode, payload: sent.append((opcode, payload)))
+    monkeypatch.setattr(proxy, "wait_for_activity_inputs_burst", lambda timeout=5.0: InputsBurstResult(outcome=AckOutcome.acked))
+    monkeypatch.setattr(proxy, "wait_for_macro_record", lambda _act, _button, timeout=5.0: None)
+    monkeypatch.setattr(
+        proxy,
+        "_wait_for_ack_any_impl",
+        lambda candidates, *, timeout=5.0, not_before=None, log_timeout=True: (0x0103, b"\x07"),
+    )
+
+    source_records: list[MacroRecord] = []
+
+    def _build(source_record, *, device_id, button_id, allowed_device_ids=None, input_index=0):
+        source_records.append(source_record)
+        return b"\x00\x00\x00"
+
+    monkeypatch.setattr(proxy, "_build_macro_save_payload", _build)
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, timeout=5.0, not_before=None: (candidates[0][0], bytes([candidates[0][1] if candidates[0][1] is not None else 0x00])),
+    )
+
+    result = proxy.add_device_to_activity(104, 1)
+
+    assert result is not None
+    assert result["members_confirmed"] == [1]
+    assert [record.key_id for record in source_records] == [ButtonName.POWER_ON, ButtonName.POWER_OFF]
+    assert all(record.key_sequence == () for record in source_records)
+    assert all(record.activity_id == 104 for record in source_records)
+
+
 def test_add_device_to_activity_requires_ack(monkeypatch) -> None:
     proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
 

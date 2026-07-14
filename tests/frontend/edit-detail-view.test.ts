@@ -113,8 +113,9 @@ function templateText(template: unknown): string {
 test("name input applies the model-specific sanitizer and 20-character cap", () => {
   const cases = [
     { model: "X1" as const, raw: "TV+ Room_é!42", expected: "TV Room42" },
-    { model: "X1S" as const, raw: "TV+ Room_é!42", expected: "TV+ Room_é42" },
-    { model: "X2" as const, raw: "TV+ Room_é!42", expected: "TV+ Room_é42" },
+    { model: "X1S" as const, raw: "TV+ Room_é!42", expected: "TV+ Room_é!42" },
+    { model: "X2" as const, raw: "TV+ Room_é!42", expected: "TV+ Room_é!42" },
+    { model: "X1S" as const, raw: "Ok/Select 😀", expected: "Ok/Select " },
   ];
 
   for (const { model, raw, expected } of cases) {
@@ -126,7 +127,7 @@ test("name input applies the model-specific sanitizer and 20-character cap", () 
 
     assert.equal(control.value, expected);
     assert.equal(element._editRenameDialogDraft, expected);
-    assert.equal(sanitizeBundleName(element.bundle, "A".repeat(25)), "A".repeat(20));
+    assert.equal(sanitizeBundleName(element.bundle, "A".repeat(35)), "A".repeat(30));
   }
 });
 
@@ -203,6 +204,17 @@ test("device IP Save rejects malformed IPv4 and commits a trimmed valid address"
   assert.equal(changes.length, 1);
   assert.equal(changes[0].devices[1].device?.ip_address, "198.51.100.7");
   assert.equal(element._editRenameDialogOpen, false);
+});
+
+test("the Network section offers the IP pencil in live mode too", () => {
+  for (const mode of ["backup", "live"] as const) {
+    const element = createEditor("X1S", "device");
+    element.entityId = 2;
+    element.mode = mode;
+    const text = templateText(element._renderDeviceNetworkSection());
+    assert.match(text, /192\.0\.2\.10/);
+    assert.match(text, /Edit IP address/);
+  }
 });
 
 test("clearing the device IP is a valid committed edit", () => {
@@ -348,13 +360,13 @@ test("favorite Save blocks an incomplete selection and sanitizes the committed l
 
   element._handleAddFavoriteDeviceChange(controlEvent("3"));
   element._handleAddFavoriteCommandChange(controlEvent("30"));
-  element._handleAddFavoriteNameInput(controlEvent("Sound+bar! " + "X".repeat(20)));
+  element._handleAddFavoriteNameInput(controlEvent("Sound+bar! " + "X".repeat(30)));
   element._applyAddFavorite();
 
   assert.equal(changes.length, 1);
   const activity = changes[0].activities[0];
   const added = activity.favorite_slots?.find((slot) => slot.device_id === 3);
-  assert.equal(added?.name, "Sound+bar XXXXXXXXXX");
+  assert.equal(added?.name, "Sound+bar! " + "X".repeat(19));
   assert.deepEqual(activity.referenced_source_device_ids, [1, 3]);
   assert.equal(element._addFavoriteOpen, false);
 });

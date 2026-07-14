@@ -108,6 +108,24 @@ var ControlPanelApi = class {
       device_id: deviceId
     });
   }
+  // Immediate live write of the hub's stored activity display order.
+  // ordered_ids is the full activity id list in the desired order.
+  reorderActivities(entryId, orderedIds) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/reorder",
+      entry_id: entryId,
+      ordered_ids: orderedIds
+    });
+  }
+  // Create a fresh, empty activity on the hub; resolves with the
+  // hub-assigned activity id so the caller can open the live editor on it.
+  createActivity(entryId, name) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/create",
+      entry_id: entryId,
+      name
+    });
+  }
   startCacheRefresh(entryId) {
     return this.hass.callWS({
       type: "sofabaton_x1s/cache/refresh_all",
@@ -1950,11 +1968,15 @@ var ControlPanelStore = class {
    * Starts the backend cache_refresh operation and follows its progress;
    * running state and phase messages surface through the bottom dock
    * (hub.runtime_state), so the button itself only spins.
+   *
+   * Resolves with `null` on success or a failure message — the same one shown
+   * in the dock — so embedded starters (the Activities tab's refresh button)
+   * can react to the outcome.
    */
   async refreshAllForHub() {
-    if (this._isHubCommandBusy()) return;
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
     const hub = selectedHub(this._snapshot);
-    if (!hub) return;
+    if (!hub) return "No hub selected.";
     this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: REFRESH_ALL_KEY };
     this.emit();
     let unsubscribe = null;
@@ -1975,8 +1997,11 @@ var ControlPanelStore = class {
         failure ? { tone: "error", label: failure } : { tone: "success", label: "Hub cache refreshed." }
       );
       await this.loadState({ silent: true });
+      return failure;
     } catch (error) {
-      this.showRuntimeCompletion({ tone: "error", label: formatError(error) });
+      const failure = formatError(error);
+      this.showRuntimeCompletion({ tone: "error", label: failure });
+      return failure;
     } finally {
       if (unsubscribe) {
         try {
@@ -1992,6 +2017,49 @@ var ControlPanelStore = class {
       };
       this.emit();
     }
+  }
+  /**
+   * Immediate live write of the hub's stored activity display order.
+   * ``orderedIds`` is the full activity id list in the desired order.
+   * Resolves with `null` on success or a failure message for the caller's UI.
+   */
+  async reorderActivities(orderedIds) {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this.setExternalHubCommandBusy(true, "Reordering activities\u2026");
+    try {
+      await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this.setExternalHubCommandBusy(false);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+  /**
+   * Create a fresh, empty activity on the hub, then pull its cache entry so
+   * the live editor can capture it right away. Resolves with the assigned
+   * activity id or an error message.
+   */
+  async createActivity(name) {
+    if (this._isHubCommandBusy()) return { error: "Another hub operation is already running." };
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return { error: "No hub selected." };
+    this.setExternalHubCommandBusy(true, "Creating activity\u2026");
+    let activityId = 0;
+    try {
+      const result = await this.api().createActivity(hub.entry_id, name);
+      activityId = Number(result?.activity_id || 0);
+      if (!activityId) return { error: "The hub did not return the new activity id." };
+    } catch (error) {
+      return { error: formatError(error) };
+    } finally {
+      this.setExternalHubCommandBusy(false);
+    }
+    await this.refreshForHub("activity", activityId, `act-${activityId}`);
+    return { activityId };
   }
   async refreshForHub(kind, targetId, key) {
     if (this._isHubCommandBusy()) return;

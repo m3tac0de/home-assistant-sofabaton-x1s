@@ -80,21 +80,112 @@ def _binding_signature(row: Mapping[str, Any]) -> dict[str, int | None]:
     }
 
 
-def _macro_signature(row: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        "button_id": _int(row.get("button_id")) & 0xFF,
-        "steps": [
+# ── Role-page tolerance ─────────────────────────────────────────────────
+#
+# The hub derives "role page" keymap slots for a role-assigned device from
+# that device's own device-mode keymap page, and it recomputes them
+# asynchronously over long windows (observed live on X1S, 2026-07-14, BUG
+# #4 of the UI bench: an activity's FWD slot flipped (dev,0) → (dev,21) →
+# (dev,0) minutes after the writes that triggered each recompute, tied to
+# remote-sync processing of BT-profile pages). A binding row that mirrors
+# the target device's device-mode mapping is therefore hub-managed state:
+# its presence cannot distinguish "someone edited the hub" from "the hub
+# materialized (or dropped) the slot on its own schedule". Such rows are
+# excluded from the staleness comparison on BOTH sides; every other row —
+# and favorites/macros in full — still compares byte-for-byte, so real
+# foreign edits (a binding pointed at a different device or command, added
+# favorites, changed macros) are still caught.
+
+RolePageRef = dict[tuple[int, int], set[tuple[int, int | None]]]
+
+
+def _role_page_reference(
+    baseline: Mapping[str, Any] | None,
+    live_button_details: Mapping[int, Mapping[int, Mapping[str, Any]]] | None,
+) -> RolePageRef:
+    """Map ``(device_id, button_id)`` → the ``(command_id, long_press_command_id)``
+    pairs that device's own device-mode keymap carries, merged from the
+    baseline bundle's device blocks and the live proxy state (the hub can
+    flip a BT device's page between the two captures, so either source
+    legitimizes a role slot)."""
+
+    ref: RolePageRef = {}
+
+    def _add(device_id: int, button_id: int, command_id: int, lp_command: Any) -> None:
+        command_id &= 0xFF
+        if not command_id:
+            # An unmaterialized device-page placeholder carries command 0;
+            # exported activity rows never do, so it can't legitimize any
+            # row — skip it.
+            return
+        ref.setdefault((device_id & 0xFF, button_id & 0xFF), set()).add(
+            (command_id, _optional_int(lp_command))
+        )
+
+    for device in (baseline or {}).get("devices") or []:
+        if not isinstance(device, Mapping):
+            continue
+        device_id = _int((device.get("device") or {}).get("device_id"))
+        if not device_id:
+            continue
+        for row in device.get("button_bindings") or []:
+            if isinstance(row, Mapping):
+                _add(device_id, _int(row.get("button_id")),
+                     _int(row.get("command_id")), row.get("long_press_command_id"))
+
+    for device_id, details in (live_button_details or {}).items():
+        if _int(device_id) >= ACTIVITY_ID_BASE or not isinstance(details, Mapping):
+            continue
+        for button_id, row in details.items():
+            if isinstance(row, Mapping):
+                _add(_int(device_id), _int(button_id),
+                     _int(row.get("command_id")), row.get("long_press_command_id"))
+
+    return ref
+
+
+def _is_role_page_row(row: Mapping[str, Any], role_page_ref: RolePageRef) -> bool:
+    device_id = _int(row.get("device_id")) & 0xFF
+    button_id = _int(row.get("button_id")) & 0xFF
+    lp_device = _optional_int(row.get("long_press_device_id"))
+    if lp_device is not None and lp_device != device_id:
+        return False
+    pairs = role_page_ref.get((device_id, button_id))
+    if not pairs:
+        return False
+    return (
+        _int(row.get("command_id")) & 0xFF,
+        _optional_int(row.get("long_press_command_id")),
+    ) in pairs
+
+
+def _macro_signature(row: Mapping[str, Any], *, normalize_power_durations: bool = False) -> dict[str, Any]:
+    button_id = _int(row.get("button_id")) & 0xFF
+    is_power_macro = button_id in (0xC6, 0xC7)
+    steps: list[dict[str, Any]] = []
+    for step in row.get("steps") or []:
+        if not isinstance(step, Mapping):
+            continue
+        command_id = _int(step.get("command_id")) & 0xFF
+        duration = _int(step.get("duration")) & 0xFF
+        # The hub rewrites the duration byte on 0xC6/0xC7 power-ref rows on
+        # its own schedule (it lands with the closing remote-sync, AFTER the
+        # sync operation's post-write re-read), so a signature containing it
+        # cannot tell "someone edited the hub" from "the hub canonicalized
+        # our own write". 0xC5 keeps its duration: it carries the input
+        # ordinal the user chose.
+        if normalize_power_durations and is_power_macro and command_id in (0xC6, 0xC7):
+            duration = 0
+        steps.append(
             {
                 "device_id": _int(step.get("device_id")) & 0xFF,
-                "command_id": _int(step.get("command_id")) & 0xFF,
+                "command_id": command_id,
                 "button_code": _int(step.get("button_code")) & 0xFFFFFFFFFFFF,
-                "duration": _int(step.get("duration")) & 0xFF,
+                "duration": duration,
                 "delay": _int(step.get("delay")) & 0xFF,
             }
-            for step in row.get("steps") or []
-            if isinstance(step, Mapping)
-        ],
-    }
+        )
+    return {"button_id": button_id, "steps": steps}
 
 
 def _rows_signature(
@@ -130,16 +221,29 @@ def _device_block_signature(device: Mapping[str, Any] | None) -> str:
     )
 
 
-def _activity_block_signature(activity: Mapping[str, Any] | None) -> str:
+def _activity_block_signature(
+    activity: Mapping[str, Any] | None,
+    *,
+    role_page_ref: RolePageRef | None = None,
+) -> str:
     """Stable signature of the mutable parts of an activity block.
 
     The live editor opens from the persisted structural cache, while this
     pre-flight re-exports the activity. Compare only stable wire targets so
     cache/export representation drift does not masquerade as a hub edit;
-    macro step order remains significant.
+    macro step order remains significant. When ``role_page_ref`` is given,
+    binding rows that mirror the target device's own device-mode keymap are
+    excluded: those "role page" slots are hub-managed and appear/disappear
+    on the hub's own schedule (see the role-page tolerance note above).
     """
     if not activity:
         return ""
+    bindings = activity.get("button_bindings")
+    if role_page_ref:
+        bindings = [
+            row for row in bindings or []
+            if not (isinstance(row, Mapping) and _is_role_page_row(row, role_page_ref))
+        ]
     return _canonical(
         {
             "favorite_slots": _rows_signature(
@@ -149,11 +253,11 @@ def _activity_block_signature(activity: Mapping[str, Any] | None) -> str:
             ),
             "macros": _rows_signature(
                 activity.get("macros"),
-                _macro_signature,
+                lambda row: _macro_signature(row, normalize_power_durations=True),
                 lambda item: _int(item.get("button_id")),
             ),
             "button_bindings": _rows_signature(
-                activity.get("button_bindings"),
+                bindings,
                 _binding_signature,
                 lambda item: _int(item.get("button_id")),
             ),
@@ -161,8 +265,100 @@ def _activity_block_signature(activity: Mapping[str, Any] | None) -> str:
     )
 
 
+# Highest editable quick-access id (198/199 are the reserved power macros).
+_MAX_QUICK_ACCESS_BUTTON_ID = min(_POWER_MACRO_BUTTON_IDS) - 1
+
+
 class ActivitySyncMixin:
     """`sync_activity` + per-step dispatch. Mixed into X1Proxy."""
+
+    # ── Per-run allocation state (BUG #5) ──────────────────────────────
+    #
+    # On the hub, favorites and macro shortcuts share ONE fav-id/key-id
+    # namespace per activity, but the editor renumbers quick-access
+    # button_ids 1..N positionally, so bundle ids are proposals — not hub
+    # identities. Each sync run tracks:
+    #   * the live favorite fav-id map (read once, per activity), used to
+    #     allocate new macro ids and to re-resolve stale delete targets;
+    #   * ids handed out to new macros this run (later allocations and the
+    #     live re-read can't see them yet);
+    #   * proposed→allocated macro id remaps, which later binding writes
+    #     must follow (a macro-target binding stores command_id = the
+    #     macro's button_id).
+
+    def _activity_sync_reset_run_state(self) -> None:
+        self._activity_sync_macro_id_remap: dict[int, int] = {}
+        self._activity_sync_session_key_ids: set[int] = set()
+        self._activity_sync_live_fav_cache: dict[int, dict[tuple[int, int], int]] = {}
+
+    def _activity_sync_live_favorite_fav_ids(self, activity_id: int) -> dict[tuple[int, int], int]:
+        """Per-run cached live favorite map (content → hub fav_id).
+
+        The uncached read costs a keymap round-trip; within one sync run the
+        favorite namespace only changes through this run's own steps, so one
+        read per activity is valid for macro allocation (runs before the
+        favorite deletes) and for delete-target resolution.
+        """
+        act_lo = int(activity_id) & 0xFF
+        cache = getattr(self, "_activity_sync_live_fav_cache", None)
+        if cache is None:
+            cache = self._activity_sync_live_fav_cache = {}
+        if act_lo not in cache:
+            cache[act_lo] = dict(self._activity_sync_current_favorite_fav_ids(act_lo))
+        return cache[act_lo]
+
+    def _activity_sync_allocate_macro_button_id(self, activity_id: int, proposed: int) -> int | None:
+        """Resolve the real button_id for a NEW macro shortcut against live
+        hub occupancy of the shared quick-access namespace.
+
+        Occupied = live favorite fav_ids (fresh keymap read) ∪ the 0x63
+        favorites-order table (names every quick-access id, macro shortcuts
+        included) ∪ cached macro record key ids ∪ ids already handed out this
+        run ∪ the reserved power ids. The client's proposal wins when free;
+        otherwise allocate one past the highest editable id in use (mirrors
+        the editor's allocator, and avoids re-using ids the hub may hand to
+        favorites added later in the same plan). Returns ``None`` when the
+        namespace is exhausted.
+        """
+        act_lo = int(activity_id) & 0xFF
+        proposed = int(proposed) & 0xFF
+        occupied: set[int] = set(_POWER_MACRO_BUTTON_IDS)
+        occupied |= set(getattr(self, "_activity_sync_session_key_ids", ()))
+        # No try/except: if the live favorite read fails, the step must fail —
+        # writing a new macro blind is exactly the favorite-overwrite bug.
+        occupied |= {
+            _int(fav_id) & 0xFF
+            for fav_id in self._activity_sync_live_favorite_fav_ids(act_lo).values()
+        }
+        order_getter = getattr(self, "request_favorites_order", None)
+        if callable(order_getter):
+            for fav_id, _slot in order_getter(act_lo) or []:
+                occupied.add(_int(fav_id) & 0xFF)
+        records_getter = getattr(self, "get_cached_macro_records", None)
+        if callable(records_getter):
+            for record in records_getter(act_lo) or []:
+                occupied.add(_int(getattr(record, "key_id", 0)) & 0xFF)
+        state = getattr(self, "state", None)
+        macros_getter = getattr(state, "get_activity_macros", None)
+        if callable(macros_getter):
+            for macro in macros_getter(act_lo) or []:
+                if isinstance(macro, Mapping):
+                    occupied.add(_int(macro.get("command_id")) & 0xFF)
+        occupied.discard(0)
+        if proposed and proposed not in occupied:
+            return proposed
+        editable = {value for value in occupied if 0 < value <= _MAX_QUICK_ACCESS_BUTTON_ID}
+        candidate = max(editable, default=0) + 1
+        if candidate > _MAX_QUICK_ACCESS_BUTTON_ID:
+            candidate = next(
+                (
+                    value
+                    for value in range(1, _MAX_QUICK_ACCESS_BUTTON_ID + 1)
+                    if value not in occupied
+                ),
+                None,
+            )
+        return candidate
 
     def sync_activity(
         self,
@@ -191,6 +387,8 @@ class ActivitySyncMixin:
         if not plan:
             return {"status": "success", "completed_steps": 0, "total_steps": 0, "counters": {}}
 
+        self._activity_sync_reset_run_state()
+
         # Stale pre-flight (§4.5): re-read the activity block and compare with
         # the baseline the session captured. A mismatch means the hub changed
         # (e.g. a vendor-app edit through the proxy) — fail fast, don't write.
@@ -216,7 +414,44 @@ class ActivitySyncMixin:
                   total_steps=total, current_activity_id=activity_id)
         # Refresh internal mapping so the cache/remote reflect the new state.
         self.request_activity_mapping(activity_id)
+        # Settle on user-editable rows only: role-page slots can keep
+        # flipping for minutes after the remote sync (BUG #4) and are
+        # excluded from the stale preflight anyway.
+        settle_ref = _role_page_reference(None, getattr(self.state, "button_details", None))
+        self._settle_post_sync_reread(
+            lambda: _activity_block_signature(
+                self.backup_activity(activity_id), role_page_ref=settle_ref
+            ),
+            log_tag="ACTIVITY_SYNC",
+        )
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
+
+    def _settle_post_sync_reread(self, read_signature: Callable[[], str], *, log_tag: str) -> None:
+        """Re-read an entity after a sync until consecutive captures agree.
+
+        The hub materializes derived keymap/macro state on its own schedule
+        after the terminal remote-sync (observed live: power-row duration
+        bytes and role-page placeholder rows settle seconds after the write
+        acks). The refreshed cache — and any editor baseline recaptured from
+        it — must reflect settled hub truth, not an intermediate read, or
+        the next sync's stale preflight false-positives.
+        """
+
+        try:
+            previous = read_signature()
+            for attempt in range(3):
+                # A live re-read costs wire round-trips, so consecutive reads
+                # are naturally separated; sleep only between retries.
+                current = read_signature()
+                if current == previous:
+                    return
+                previous = current
+                time.sleep(1.0 * (attempt + 1))
+            self._log.warning(
+                "[%s] post-sync re-read did not settle; the cache may lag the hub", log_tag
+            )
+        except Exception:  # pragma: no cover - refresh is best-effort
+            self._log.exception("[%s] post-sync re-read failed", log_tag)
 
     def sync_device(
         self,
@@ -250,6 +485,8 @@ class ActivitySyncMixin:
         if not plan:
             return {"status": "success", "completed_steps": 0, "total_steps": 0, "counters": {}}
 
+        self._activity_sync_reset_run_state()
+
         _progress(phase="stale_check", message="Checking the device hasn't changed…",
                   completed_steps=0, total_steps=len(plan), current_device_id=device_id)
         if self._device_sync_is_stale(baseline, device_id):
@@ -271,68 +508,96 @@ class ActivitySyncMixin:
         _progress(phase="completed", message="Synced to hub.", completed_steps=total,
                   total_steps=total, current_device_id=device_id)
         # Re-ingest the device's structural detail so proxy state (and the
-        # bundles assembled from it) reflect what was just written.
-        try:
-            self.backup_device(device_id, include_blobs=False)
-        except Exception:  # pragma: no cover - refresh is best-effort
-            self._log.exception("[DEVICE_SYNC] post-sync device re-read failed")
+        # bundles assembled from it) reflect what was just written; settle
+        # against the hub's asynchronous canonicalization (see helper).
+        self._settle_post_sync_reread(
+            lambda: _device_block_signature(self.backup_device(device_id, include_blobs=False)),
+            log_tag="DEVICE_SYNC",
+        )
         return {"status": "success", "completed_steps": total, "total_steps": total, "counters": counters}
 
     # ── Stale pre-flight ────────────────────────────────────────────────
+    #
+    # A single hub re-read can transiently disagree with reality (observed
+    # live: a favorites fetch missing a slot the hub demonstrably has, and
+    # the hub materializing derived keymap state on its own schedule), so a
+    # mismatch is only trusted after consecutive re-reads keep disagreeing.
+    _STALE_PREFLIGHT_ATTEMPTS = 3
+
+    def _preflight_is_stale(
+        self,
+        *,
+        read_fresh: Callable[[], Any],
+        signature: Callable[[Any], str],
+        baseline_entity: Mapping[str, Any] | None,
+        log_tag: str,
+        entity_label: str,
+    ) -> bool:
+        baseline_signature = signature(baseline_entity)
+        fresh_signature = None
+        for attempt in range(self._STALE_PREFLIGHT_ATTEMPTS):
+            if attempt:
+                time.sleep(1.0)
+            fresh = read_fresh()
+            if not isinstance(fresh, Mapping):
+                self._log.warning(
+                    "[%s] stale preflight skipped: %s could not be re-read", log_tag, entity_label
+                )
+                return False
+            if fresh.get("complete") is False:
+                self._log.warning(
+                    "[%s] stale preflight skipped: %s re-read was incomplete", log_tag, entity_label
+                )
+                return False
+            fresh_signature = signature(fresh)
+            if fresh_signature == baseline_signature:
+                if attempt:
+                    self._log.info(
+                        "[%s] stale preflight matched on re-read %d for %s (transient hub read)",
+                        log_tag, attempt + 1, entity_label,
+                    )
+                return False
+        self._log.warning(
+            "[%s] stale preflight mismatch %s baseline=%s fresh=%s",
+            log_tag, entity_label, baseline_signature, fresh_signature,
+        )
+        return True
 
     def _device_sync_is_stale(self, baseline: Mapping[str, Any], device_id: int) -> bool:
-        fresh = self.backup_device(device_id, include_blobs=False)
-        if not isinstance(fresh, Mapping):
-            self._log.warning("[DEVICE_SYNC] stale preflight skipped: device 0x%02X could not be re-read",
-                              device_id & 0xFF)
-            return False
-        if fresh.get("complete") is False:
-            self._log.warning("[DEVICE_SYNC] stale preflight skipped: device 0x%02X re-read was incomplete",
-                              device_id & 0xFF)
-            return False
         baseline_device = None
         for device in baseline.get("devices") or []:
             if int((device.get("device") or {}).get("device_id") or 0) == device_id:
                 baseline_device = device
                 break
-        fresh_signature = _device_block_signature(fresh)
-        baseline_signature = _device_block_signature(baseline_device)
-        stale = fresh_signature != baseline_signature
-        if stale:
-            self._log.warning(
-                "[DEVICE_SYNC] stale preflight mismatch device=0x%02X baseline=%s fresh=%s",
-                device_id & 0xFF,
-                baseline_signature,
-                fresh_signature,
-            )
-        return stale
+        return self._preflight_is_stale(
+            read_fresh=lambda: self.backup_device(device_id, include_blobs=False),
+            signature=_device_block_signature,
+            baseline_entity=baseline_device,
+            log_tag="DEVICE_SYNC",
+            entity_label=f"device=0x{device_id & 0xFF:02X}",
+        )
 
     def _activity_sync_is_stale(self, baseline: Mapping[str, Any], activity_id: int) -> bool:
-        fresh = self.backup_activity(activity_id)
-        if not isinstance(fresh, Mapping):
-            self._log.warning("[ACTIVITY_SYNC] stale preflight skipped: activity 0x%02X could not be re-read",
-                              activity_id & 0xFF)
-            return False
-        if fresh.get("complete") is False:
-            self._log.warning("[ACTIVITY_SYNC] stale preflight skipped: activity 0x%02X re-read was incomplete",
-                              activity_id & 0xFF)
-            return False
         baseline_activity = None
         for activity in baseline.get("activities") or []:
             if int((activity.get("device") or {}).get("device_id") or 0) == activity_id:
                 baseline_activity = activity
                 break
-        fresh_signature = _activity_block_signature(fresh)
-        baseline_signature = _activity_block_signature(baseline_activity)
-        stale = fresh_signature != baseline_signature
-        if stale:
-            self._log.warning(
-                "[ACTIVITY_SYNC] stale preflight mismatch activity=0x%02X baseline=%s fresh=%s",
-                activity_id & 0xFF,
-                baseline_signature,
-                fresh_signature,
-            )
-        return stale
+        # Device pages from the session baseline and the live cache both
+        # legitimize role-page slots — the hub can flip a BT device's page
+        # between the two captures.
+        role_page_ref = _role_page_reference(
+            baseline, getattr(self.state, "button_details", None)
+        )
+        return self._preflight_is_stale(
+            read_fresh=lambda: self.backup_activity(activity_id),
+            signature=lambda entity: _activity_block_signature(
+                entity, role_page_ref=role_page_ref
+            ),
+            baseline_entity=baseline_activity,
+            log_tag="ACTIVITY_SYNC",
+            entity_label=f"activity=0x{activity_id & 0xFF:02X}",
+        )
 
     # ── Step dispatch ───────────────────────────────────────────────────
 
@@ -352,13 +617,25 @@ class ActivitySyncMixin:
     # the vendor-app-derived activity ops).
 
     def _sync_step_binding_write(self, payload: Mapping[str, Any]) -> bool:
+        activity_id = int(payload["activity_id"])
+        device_id = int(payload["device_id"])
+        command_id = int(payload["command_id"])
         lp_dev = int(payload.get("long_press_device_id") or 0) or None
         lp_cmd = int(payload.get("long_press_command_id") or 0) or None
+        # A macro-target binding stores device_id = the activity's own id and
+        # command_id = the macro's button_id; follow any id the new-macro
+        # allocator moved earlier in this run.
+        remap = getattr(self, "_activity_sync_macro_id_remap", None) or {}
+        if remap:
+            if device_id == activity_id and (command_id & 0xFF) in remap:
+                command_id = remap[command_id & 0xFF]
+            if lp_dev == activity_id and lp_cmd is not None and (lp_cmd & 0xFF) in remap:
+                lp_cmd = remap[lp_cmd & 0xFF]
         return self.command_to_button(
-            int(payload["activity_id"]),
+            activity_id,
             int(payload["button_id"]),
-            int(payload["device_id"]),
-            int(payload["command_id"]),
+            device_id,
+            command_id,
             long_press_device_id=lp_dev,
             long_press_command_id=lp_cmd,
             refresh_after_write=False,
@@ -374,8 +651,39 @@ class ActivitySyncMixin:
         ) is not None
 
     def _sync_step_favorite_delete(self, payload: Mapping[str, Any]) -> bool:
+        activity_id = int(payload["activity_id"])
+        button_id = int(payload["button_id"]) & 0xFF
+        content = (_int(payload.get("device_id")) & 0xFF, _int(payload.get("command_id")) & 0xFF)
+        if content[0] and content[1]:
+            # When the baseline fav_id is demonstrably stale (absent from the
+            # hub's live favorite ids), re-resolve the target by content so
+            # the delete cannot land on a different favorite. Best-effort:
+            # if the live read fails, fall back to the baseline id (the
+            # pre-existing behavior).
+            try:
+                live = self._activity_sync_live_favorite_fav_ids(activity_id)
+            except Exception:
+                self._log.exception(
+                    "[ACTIVITY_SYNC] favorite_delete: live fav-id read failed; using baseline id"
+                )
+                live = None
+            if live is not None and button_id not in set(live.values()):
+                resolved = live.get(content)
+                if resolved is None:
+                    self._log.info(
+                        "[ACTIVITY_SYNC] favorite_delete: favorite (dev=0x%02X cmd=0x%02X) "
+                        "already absent on the hub; nothing to delete",
+                        content[0], content[1],
+                    )
+                    return True
+                self._log.info(
+                    "[ACTIVITY_SYNC] favorite_delete: baseline fav_id 0x%02X is stale; "
+                    "resolved (dev=0x%02X cmd=0x%02X) to live fav_id 0x%02X",
+                    button_id, content[0], content[1], resolved,
+                )
+                button_id = resolved & 0xFF
         return self.delete_favorite(
-            int(payload["activity_id"]), int(payload["button_id"]), refresh_after_write=False
+            activity_id, button_id, refresh_after_write=False
         ) is not None
 
     def _sync_step_favorite_order(self, payload: Mapping[str, Any]) -> bool:
@@ -423,8 +731,14 @@ class ActivitySyncMixin:
         return mapping
 
     def _sync_step_member_replay(self, payload: Mapping[str, Any]) -> bool:
+        # BUG #8: the plan carries the editor's "Set input" choice as the
+        # input's command id; without it add_device_to_activity writes the
+        # from-scratch 0xC5 power-on row with duration 0 (no input).
+        raw_input_cmd = payload.get("input_cmd_id")
         return self.add_device_to_activity(
-            int(payload["activity_id"]), int(payload["device_id"])
+            int(payload["activity_id"]),
+            int(payload["device_id"]),
+            input_cmd_id=None if raw_input_cmd is None else int(raw_input_cmd),
         ) is not None
 
     def _sync_step_idle_behavior(self, payload: Mapping[str, Any]) -> bool:
@@ -444,15 +758,60 @@ class ActivitySyncMixin:
         )
 
     def _sync_step_macro_delete(self, payload: Mapping[str, Any]) -> bool:
-        return self._activity_sync_delete_key(
-            int(payload["activity_id"]), int(payload["button_id"])
-        )
+        activity_id = int(payload["activity_id"])
+        button_id = int(payload["button_id"]) & 0xFF
+        if activity_id >= ACTIVITY_ID_BASE:
+            # Shared namespace guard: if this id currently names a live
+            # FAVORITE, the bundle's macro id was stale and the 0x0210 delete
+            # would destroy that favorite. Skip instead — a leftover macro
+            # row is recoverable; a deleted favorite is not. Best-effort: a
+            # failed live read falls through to the delete (pre-existing
+            # behavior).
+            try:
+                live = self._activity_sync_live_favorite_fav_ids(activity_id)
+            except Exception:
+                live = None
+            if live and button_id in set(live.values()):
+                self._log.warning(
+                    "[ACTIVITY_SYNC] macro_delete: id 0x%02X is a live favorite on "
+                    "act=0x%02X; skipping the delete to protect it",
+                    button_id, activity_id & 0xFF,
+                )
+                return True
+        return self._activity_sync_delete_key(activity_id, button_id)
 
     def _sync_step_macro_write(self, payload: Mapping[str, Any]) -> bool:
         entity_id = int(payload["activity_id"])
         button_id = int(payload["button_id"])
         if entity_id < ACTIVITY_ID_BASE:
             return self._device_sync_macro_write(entity_id, button_id, payload)
+        if payload.get("new"):
+            # BUG #5: the proposed id came from the editor's renumbered client
+            # view; favorites and macro shortcuts share one fav-id namespace on
+            # the hub, so writing at an occupied id silently overwrites a
+            # favorite. Allocate against live hub occupancy instead.
+            allocated = self._activity_sync_allocate_macro_button_id(entity_id, button_id)
+            if allocated is None:
+                self._log.warning(
+                    "[ACTIVITY_SYNC] macro_write: no free quick-access id on act=0x%02X",
+                    entity_id & 0xFF,
+                )
+                return False
+            if allocated != (button_id & 0xFF):
+                self._log.info(
+                    "[ACTIVITY_SYNC] macro_write: proposed id 0x%02X is occupied on the "
+                    "hub; allocated 0x%02X instead",
+                    button_id & 0xFF, allocated,
+                )
+                remap = getattr(self, "_activity_sync_macro_id_remap", None)
+                if remap is None:
+                    remap = self._activity_sync_macro_id_remap = {}
+                remap[button_id & 0xFF] = allocated
+                button_id = allocated
+            session_ids = getattr(self, "_activity_sync_session_key_ids", None)
+            if session_ids is None:
+                session_ids = self._activity_sync_session_key_ids = set()
+            session_ids.add(button_id & 0xFF)
         key_sequence = self._macro_key_sequence_from_steps(payload.get("steps") or [])
         label_slot = self._activity_sync_macro_label_slot(entity_id, button_id)
         wire = build_macro_save_payload(
@@ -923,6 +1282,53 @@ class ActivitySyncMixin:
             return False
         if isinstance(device, dict):
             device["name"] = new_name
+            # A later head-record step in the same plan (device_ip) rebuilds
+            # from this cached body; keep it current so the writes compose.
+            device["raw_body"] = body[3:]
+        return True
+
+    def _sync_step_device_ip(self, payload: Mapping[str, Any]) -> bool:
+        """Update a device's head IP address via a device-record update write.
+
+        Same record-rewrite primitive as :meth:`_sync_step_device_rename`:
+        decode the cached record body, swap ``ip_address`` (empty clears the
+        tail IP marker), rebuild the canonical write body, and commit it with
+        FAMILY_DEVICE_UPDATE for the device's own id.
+        """
+        device_id = int(payload.get("device_id") or 0)
+        dev_lo = device_id & 0xFF
+        new_ip = str(payload.get("ip_address") or "") or None
+        if not dev_lo:
+            return False
+
+        device = self.state.entities("device").get(dev_lo)
+        raw = device.get("raw_body") if isinstance(device, dict) else None
+        if not isinstance(raw, (bytes, bytearray)):
+            self._log.warning("[DEVICE_SYNC] device_ip: no record body for dev=0x%02X", dev_lo)
+            return False
+
+        try:
+            config = parse_device_record(bytes(raw), hub_version=self.hub_version, entity_kind="device")
+            updated = replace(config, ip_address=new_ip, device_id=dev_lo)
+            body = build_device_create_payload(updated, hub_version=self.hub_version)
+        except (ValueError, TypeError):
+            self._log.exception("[DEVICE_SYNC] device_ip: could not rebuild record dev=0x%02X", dev_lo)
+            return False
+
+        step = CreateStep(
+            label=f"device-ip[dev=0x{dev_lo:02X}]",
+            family=FAMILY_DEVICE_UPDATE,
+            payload=body,
+            ack_opcode=ACK_OPCODE_STATUS,
+            ack_first_byte=ACK_STATUS_BYTE_OK,
+        )
+        self.reset_ack_queues()
+        result = run_create_sequence(self, [step])
+        if not result.success:
+            self._log.warning("[DEVICE_SYNC] device_ip: hub rejected dev=0x%02X", dev_lo)
+            return False
+        if isinstance(device, dict):
+            device["raw_body"] = body[3:]
         return True
 
     # ── Low-level primitives ────────────────────────────────────────────

@@ -2,10 +2,15 @@
  * Reusable "Refresh entire hub cache" button.
  *
  * Starts the blob-free whole-hub structural refresh
- * (`sofabaton_x1s/cache/refresh_all`), subscribes to its progress via the
- * shared backup progress registry, and shows a spinner + phase message while
- * it runs. Emits a `refreshed` event on success so the host can reload state.
+ * (`sofabaton_x1s/cache/refresh_all`) and shows a spinner while it runs.
+ * Emits a `refreshed` event on success so the host can reload state.
  * Placed in the Cache tab and anywhere fresh cache matters (Activities tab).
+ *
+ * When the host provides `runRefresh` (the store's `refreshAllForHub`), the
+ * refresh is routed through the control-panel store so the bottom dock shows
+ * live progress and the green completion state, and hub state (command/macro
+ * counts) reloads afterwards. Without it, the button falls back to starting
+ * the operation itself and following progress inline.
  */
 import { LitElement, css, html, nothing } from "lit";
 import type { BackupProgressEvent, HassLike } from "../shared/ha-context";
@@ -19,6 +24,7 @@ class SofabatonRefreshCacheButton extends LitElement {
     entryId: { type: String },
     label: { type: String },
     disabled: { type: Boolean },
+    runRefresh: { attribute: false },
     _running: { state: true },
     _message: { state: true },
     _error: { state: true },
@@ -58,6 +64,8 @@ class SofabatonRefreshCacheButton extends LitElement {
   entryId = "";
   label = "";
   disabled = false;
+  /** Store-routed refresh (refreshAllForHub); resolves null on success or a failure message. */
+  runRefresh: (() => Promise<string | null>) | null = null;
 
   private _running = false;
   private _message = "";
@@ -87,6 +95,23 @@ class SofabatonRefreshCacheButton extends LitElement {
     this._running = true;
     this._error = null;
     this._message = TOOLS_CARD_STRINGS.cacheRefresh.starting;
+    if (this.runRefresh) {
+      try {
+        const failure = await this.runRefresh();
+        this._running = false;
+        this._message = "";
+        if (failure) {
+          this._error = failure;
+          return;
+        }
+        this.dispatchEvent(new CustomEvent("refreshed", { bubbles: true, composed: true }));
+      } catch (error) {
+        this._running = false;
+        this._error = formatError(error);
+        this._message = "";
+      }
+      return;
+    }
     try {
       const start = await this._api().startCacheRefresh(this.entryId);
       await this._subscribe(start.operation_id);

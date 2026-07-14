@@ -169,9 +169,14 @@ def test_activity_button_rows_collect_referenced_devices() -> None:
     button_details = {
         0x58: {"device_id": 11, "command_id": 3, "long_press_device_id": 12, "long_press_command_id": 4},
         0x59: {"device_id": 0, "command_id": 0},  # unbound -> skipped
+        # Keymap page placeholder: role-assigned device without a command
+        # (e.g. a playback-role device with no FWD mapping). Live-hub P2
+        # bench: exporting these produced command_id=0 bindings that
+        # bundle validation rejects.
+        0xBD: {"device_id": 4, "command_id": 0},
     }
     rows, referenced = bx.build_activity_button_rows(
-        button_codes=[0x58, 0x59], button_details=button_details
+        button_codes=[0x58, 0x59, 0xBD], button_details=button_details
     )
     assert len(rows) == 1
     assert rows[0]["device_id"] == 11

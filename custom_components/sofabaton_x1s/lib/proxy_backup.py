@@ -58,7 +58,7 @@ class CacheBackupMixin:
 
         macro_records: dict[str, list[dict[str, Any]]] = {}
         with self._macro_payload_lock:
-            cached_macro_items = list(self._macro_payload_events.items())
+            cached_macro_items = list(self._macro_records_cache.items())
         for (ent_id, _button_id), record in cached_macro_items:
             macro_records.setdefault(str(ent_id & 0xFF), []).append(
                 {
@@ -302,8 +302,12 @@ class CacheBackupMixin:
                     )
                     imported_macro_records[(ent_lo, record.key_id)] = record
         with self._macro_payload_lock:
+            # Seed only the persistent cache: imported records are catalog
+            # data, not fetch arrivals, so they must never satisfy a live
+            # wait_for_macro_record.
             self._macro_payload_events.clear()
-            self._macro_payload_events.update(imported_macro_records)
+            self._macro_records_cache.clear()
+            self._macro_records_cache.update(imported_macro_records)
 
         self.state.detail_fetched_at = {"device": {}, "activity": {}}
         detail_fetched_at = data.get("detail_fetched_at", {})
@@ -502,6 +506,7 @@ class CacheBackupMixin:
             self.state.activity_command_refs.pop(ent_lo, None)
             self.state.detail_fetched_at["activity"].pop(ent_lo, None)
             self._macros_complete.discard(ent_lo)
+            self.drop_cached_macro_records(ent_lo)
 
     def get_known_device_ids(self) -> set[int]:
         """Return the set of device IDs currently known from the catalog."""

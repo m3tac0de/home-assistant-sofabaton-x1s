@@ -308,7 +308,46 @@ test("deleteBundleDeviceCommand also removes the deleted command's trailing dela
   // Impact reflects both removed rows (command + its trailing delay).
   assert.deepEqual(
     bundleDeleteImpact(b, { kind: "command", deviceId: 1, commandId: 10 }),
-    { favorites: 0, macroSteps: 2, activities: 0, bindings: 0 },
+    { favorites: 0, macroSteps: 2, powerSteps: 0, activities: 0, bindings: 0 },
+  );
+});
+
+test("deleteBundleDeviceCommand prunes the device's own power-macro steps", () => {
+  // Live repro (BUG #7): device "Samsungtst"-style bundle where the device's
+  // POWER_OFF sequence (button 199) plays the command being deleted. Device
+  // macro steps carry no device_id — only command_id — and a trailing delay
+  // row (command_id 0xFF) belongs to the step before it.
+  const b = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [{
+      device: { device_id: 1, name: "TV", device_class: "ir" },
+      commands: [{ command_id: 2, name: "Power off" }, { command_id: 3, name: "Power on" }],
+      macros: [
+        { button_id: 198, name: "POWER_ON", steps: [{ command_id: 3, duration: 0 }] },
+        { button_id: 199, name: "POWER_OFF", steps: [
+          { command_id: 2, duration: 0 },
+          { command_id: 255, duration: 255, delay: 4 },
+          { command_id: 3, duration: 0 },
+        ] },
+        { button_id: 5, name: "User seq", steps: [{ command_id: 2, duration: 0 }] },
+      ],
+    }],
+    activities: [],
+  };
+  const next = deleteBundleDeviceCommand(b, 1, 2);
+  const macros = next.devices[0].macros!;
+  // POWER_OFF lost the command-2 step AND its trailing delay; POWER_ON intact.
+  assert.deepEqual(macros.find((m) => m.button_id === 199)!.steps, [{ command_id: 3, duration: 0 }]);
+  assert.deepEqual(macros.find((m) => m.button_id === 198)!.steps, [{ command_id: 3, duration: 0 }]);
+  // The device user macro is pruned too.
+  assert.deepEqual(macros.find((m) => m.button_id === 5)!.steps, []);
+  // Impact: 2 power-macro rows (step + consumed delay) named separately from
+  // the 1 user-macro step.
+  assert.deepEqual(
+    bundleDeleteImpact(b, { kind: "command", deviceId: 1, commandId: 2 }),
+    { favorites: 0, macroSteps: 1, powerSteps: 2, activities: 0, bindings: 0 },
   );
 });
 
@@ -378,9 +417,9 @@ test("addBundleActivityFavorite appends at the next editable slot", () => {
 test("bundleDeleteImpact counts cascade references", () => {
   const b = editableBundle();
   // device 1 is used by a Combo step (cmd 11) and the POWER_ON macro step (cmd 10) → 2 steps.
-  assert.deepEqual(bundleDeleteImpact(b, { kind: "device", deviceId: 1 }), { favorites: 1, macroSteps: 2, activities: 1, bindings: 0 });
-  assert.deepEqual(bundleDeleteImpact(b, { kind: "command", deviceId: 2, commandId: 20 }), { favorites: 1, macroSteps: 1, activities: 0, bindings: 0 });
-  assert.deepEqual(bundleDeleteImpact(b, { kind: "activity", activityId: 101 }), { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b, { kind: "device", deviceId: 1 }), { favorites: 1, macroSteps: 2, powerSteps: 0, activities: 1, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b, { kind: "command", deviceId: 2, commandId: 20 }), { favorites: 1, macroSteps: 1, powerSteps: 0, activities: 0, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b, { kind: "activity", activityId: 101 }), { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 });
 });
 
 test("reorderBundleActivityQuickAccess preserves internal power macros", () => {
@@ -1069,13 +1108,13 @@ test("activityMemberRemovalImpact counts scoped user-visible references only", (
   // Device 2: volume binding dropped + OK long-press cleared + one Combo step.
   assert.deepEqual(
     activityMemberRemovalImpact(b, 101, 2),
-    { favorites: 0, macroSteps: 1, activities: 0, bindings: 2 },
+    { favorites: 0, macroSteps: 1, powerSteps: 0, activities: 0, bindings: 2 },
   );
   // Device 1: favorite + OK short-press binding + Combo step (with its wait
   // row consumed) — power-ref rows are managed detail and never counted.
   assert.deepEqual(
     activityMemberRemovalImpact(b, 101, 1),
-    { favorites: 1, macroSteps: 2, activities: 0, bindings: 1 },
+    { favorites: 1, macroSteps: 2, powerSteps: 0, activities: 0, bindings: 1 },
   );
 });
 

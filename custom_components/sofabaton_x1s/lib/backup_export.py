@@ -400,8 +400,12 @@ def build_activity_button_rows(
         details = button_details.get(button_id, {})
         target_device_id = int(details.get("device_id", 0)) & 0xFF
         command_id = int(details.get("command_id", 0)) & 0xFF
-        if target_device_id == 0:
-            # Slot exists but isn't bound to a target device; skip.
+        if target_device_id == 0 or command_id == 0:
+            # Slot exists but isn't bound: no target device, or a keymap
+            # page placeholder carrying a role-assigned device with no
+            # command (command byte 0) — e.g. a playback-role device that
+            # has no mapping for this button. Neither is an actionable
+            # binding, and bundle validation rejects command_id 0.
             continue
         referenced.add(target_device_id)
         rows.append(

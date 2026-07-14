@@ -1018,11 +1018,23 @@ class SofabatonHub:
             act_key = str(act_id)
             macros = macros_by_activity.get(act_key, [])
             activity = self.activities.get(act_id) or getattr(self._proxy.state, "activities", {}).get(act_id, {})
+            # The hub stores a display order in the record's sort byte
+            # (body[6] of the shared device-record schema). Expose it so the
+            # frontend list can follow the hub's stored order; rows without a
+            # cached record body (or with sort still 0) fall back to id order.
+            # raw_body is stripped from the hub-level activity views, so read
+            # it straight from proxy state.
+            sort_value = 0
+            state_activity = getattr(self._proxy.state, "activities", {}).get(act_id)
+            raw_body = state_activity.get("raw_body") if isinstance(state_activity, dict) else None
+            if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 6:
+                sort_value = int(raw_body[6])
             activities.append(
                 {
                     "id": act_id,
                     "name": self._get_cached_activity_name(act_id) or f"Activity {act_id}",
                     "is_active": bool(activity.get("active", False)) if isinstance(activity, dict) else False,
+                    "sort": sort_value,
                     "favorite_count": len(favorites.get(act_key, [])),
                     "keybinding_count": 0,
                     "macro_count": len(macros) if isinstance(macros, list) else 0,
@@ -1911,6 +1923,22 @@ class SofabatonHub:
         return await self.hass.async_add_executor_job(
             self._proxy.delete_device,
             device_id,
+        )
+
+    async def async_reorder_activities(self, ordered_ids: list[int]) -> dict[str, Any] | None:
+        """Rewrite the hub's stored activity display order to *ordered_ids*."""
+
+        return await self.hass.async_add_executor_job(
+            self._proxy.reorder_activities,
+            list(ordered_ids),
+        )
+
+    async def async_create_activity(self, name: str) -> dict[str, Any] | None:
+        """Create a fresh, empty activity named *name* on the selected hub."""
+
+        return await self.hass.async_add_executor_job(
+            self._proxy.create_activity,
+            name,
         )
 
     async def async_command_to_favorite(

@@ -22,6 +22,7 @@ import {
   deviceButtonBindingItems,
   deviceCommandItems,
   deviceIdleBehavior,
+  deviceIpAddress,
   bundleDeviceOptions,
   type BackupActivityMemberView,
   type BackupActivityQuickAccessItem,
@@ -95,14 +96,14 @@ export function diffActivityForReview(
 
 // ── Device review (live device editor) ────────────────────────────────
 
-export type DeviceReviewSection = "power" | "buttons" | "macros";
+export type DeviceReviewSection = "power" | "network" | "buttons" | "macros";
 
 export interface DeviceReviewGroup {
   section: DeviceReviewSection;
   entries: ActivityReviewEntry[];
 }
 
-const DEVICE_SECTION_ORDER: DeviceReviewSection[] = ["power", "buttons", "macros"];
+const DEVICE_SECTION_ORDER: DeviceReviewSection[] = ["power", "network", "buttons", "macros"];
 
 interface RawMacroRow {
   button_id?: number;
@@ -134,10 +135,20 @@ export function diffDeviceForReview(
   const D = TOOLS_CARD_STRINGS.activities.deviceReview;
   const buckets: Record<DeviceReviewSection, ActivityReviewEntry[]> = {
     power: [],
+    network: [],
     buttons: [],
     macros: [],
   };
   if (!baseline || !edited) return [];
+
+  // Network: the device-head IP address (hue / roku / sonos).
+  const ipBefore = deviceIpAddress(baseline, deviceId);
+  const ipAfter = deviceIpAddress(edited, deviceId);
+  if (ipBefore !== ipAfter) {
+    buckets.network.push({
+      text: ipAfter ? D.ipChanged(ipAfter) : D.ipCleared,
+    });
+  }
 
   // Power: automatic power control byte + the two power sequences.
   const idleBefore = deviceIdleBehavior(baseline, deviceId);

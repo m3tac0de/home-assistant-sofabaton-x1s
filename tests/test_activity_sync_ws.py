@@ -209,6 +209,59 @@ def test_ws_activity_sync_rejects_nested_invalid_payload_before_operation(monkey
     assert registry.latest_for_entry("entry-1", kind="activity_sync") is None
 
 
+def _broken_bystander_activity():
+    # Stale-cache shape: linked devices without any power macros. Must be
+    # rejected only when this activity is part of the edit.
+    return {
+        "device": {"device_id": 102, "name": "Stale", "entity_type": "activity"},
+        "referenced_source_device_ids": [1],
+        "favorite_slots": [],
+        "macros": [],
+        "button_bindings": [],
+    }
+
+
+def test_ws_activity_sync_ignores_invariants_on_unchanged_bystander(monkeypatch):
+    conn = _Conn()
+    started = {}
+    _patch(monkeypatch)
+    hass = SimpleNamespace(
+        async_create_task=lambda coro: started.setdefault("coro", coro) or SimpleNamespace(),
+        data={integration.DOMAIN: {}},
+    )
+    baseline = _bundle([])
+    baseline["activities"].append(_broken_bystander_activity())
+    edited = _bundle([{"button_id": 9, "device_id": 1, "command_id": 10, "name": "Fav"}])
+    edited["activities"].append(_broken_bystander_activity())
+
+    _run(integration._ws_activity_sync(hass, conn, {
+        "id": 40, "entry_id": "entry-1", "activity_id": 101,
+        "baseline": baseline, "edited": edited,
+    }))
+
+    assert conn.error is None
+    assert "operation_id" in conn.result[1]
+    started["coro"].close()
+
+
+def test_ws_activity_sync_enforces_invariants_on_changed_bystander(monkeypatch):
+    conn = _Conn()
+    _patch(monkeypatch)
+    hass = SimpleNamespace(async_create_task=lambda c: SimpleNamespace(), data={integration.DOMAIN: {}})
+    baseline = _bundle([])
+    edited = _bundle([{"button_id": 9, "device_id": 1, "command_id": 10, "name": "Fav"}])
+    # Present only in edited -> differs from baseline -> strict.
+    edited["activities"].append(_broken_bystander_activity())
+
+    _run(integration._ws_activity_sync(hass, conn, {
+        "id": 41, "entry_id": "entry-1", "activity_id": 101,
+        "baseline": baseline, "edited": edited,
+    }))
+
+    assert conn.result is None
+    assert conn.error[1] == "invalid_payload"
+
+
 def test_ws_activity_sync_plan_rejects_nested_invalid_payload(monkeypatch):
     conn = _Conn()
     _patch(monkeypatch)

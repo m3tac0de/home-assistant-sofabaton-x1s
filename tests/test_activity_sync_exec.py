@@ -36,6 +36,11 @@ class FakeProxy(ActivitySyncMixin):
         return self.can_issue
 
     def backup_activity(self, activity_id, **_kw):
+        if isinstance(self._fresh_activity, list):
+            # A queue of reads: pop until one remains, then repeat the last.
+            if len(self._fresh_activity) > 1:
+                return self._fresh_activity.pop(0)
+            return self._fresh_activity[0]
         return self._fresh_activity
 
     def backup_device(self, device_id, **kw):
@@ -168,6 +173,33 @@ def test_full_edit_dispatches_in_plan_order_and_reports_counters():
     assert result["counters"]["favorite_add"] == 1
 
 
+def test_member_replay_threads_input_cmd_id_to_add_device():
+    """BUG #8: the plan's member_replay carries the editor's "Set input"
+    choice as ``input_cmd_id``; the executor must hand it through to
+    ``add_device_to_activity`` so the from-scratch 0xC5 power-on row is
+    written with the chosen input instead of duration 0."""
+    base = base_bundle()
+    _device(base, 3)["input_record"] = {
+        "entries": [{"command_id": 54, "input_index": 4, "name": "Input blu-ray"}]
+    }
+    edited = copy.deepcopy(base)
+    macro = next(m for m in _activity(edited)["macros"] if m["button_id"] == 198)
+    macro["steps"].extend(
+        [
+            {"device_id": 3, "command_id": 0xC6, "button_code": 0, "duration": 1, "delay": 255},
+            {"device_id": 3, "command_id": 0xC5, "button_code": 0, "duration": 4, "delay": 255},
+        ]
+    )
+    proxy = FakeProxy(fresh_activity=_activity(base))
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    replay = next(call for call in proxy.calls if call[0] == "member_replay")
+    assert replay[1] == (ACTIVITY_ID, 3)
+    assert replay[2] == {"input_cmd_id": 54}
+
+
 def test_favorite_reorder_resolves_content_to_current_fav_ids():
     base = base_bundle()
     edited = copy.deepcopy(base)
@@ -279,6 +311,167 @@ def test_stale_preflight_ignores_capture_noise_and_row_order():
     for macro in fresh["macros"]:
         macro["name"] = f"ignored label {macro['button_id']}"
     proxy = FakeProxy(fresh_activity=fresh)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    assert "favorite_add" in _kinds(proxy.calls)
+
+
+def test_stale_preflight_ignores_hub_canonicalized_power_durations():
+    """The hub rewrites the duration byte on 0xC6/0xC7 power rows after the
+    sync's own post-write re-read (it lands with the closing remote-sync), so
+    a second sync in the same editor session must not read that as a foreign
+    hub edit. The 0xC5 input-ordinal duration stays significant."""
+
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+    fresh = copy.deepcopy(_activity(base))
+    for macro in fresh["macros"]:
+        for step in macro["steps"]:
+            if step["command_id"] in (0xC6, 0xC7):
+                step["duration"] = 1 - int(step["duration"])  # flip every power-row duration
+    proxy = FakeProxy(fresh_activity=fresh)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    assert "favorite_add" in _kinds(proxy.calls)
+
+
+def test_stale_preflight_still_flags_changed_input_ordinal():
+    base = base_bundle()
+    _activity(base)["macros"][0]["steps"].append(
+        {"device_id": 1, "command_id": 0xC5, "button_code": 0, "duration": 1, "delay": 255}
+    )
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+    fresh = copy.deepcopy(_activity(base))
+    fresh["macros"][0]["steps"][-1]["duration"] = 2  # someone changed the input choice
+    proxy = FakeProxy(fresh_activity=fresh)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "failed"
+    assert result["failed_at"] == "stale_check"
+
+
+def test_stale_preflight_tolerates_hub_materialized_role_page_slot():
+    """The hub derives role-page keymap slots from the target device's own
+    device-mode page and materializes them minutes after a sync (BUG #4,
+    X1S 2026-07-14): a binding row that mirrors the device page appearing
+    on the hub is not a foreign edit."""
+
+    base = base_bundle()
+    _device(base, 3)["button_bindings"] = [{"button_id": 0xBD, "command_id": 31}]
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+    fresh = copy.deepcopy(_activity(base))
+    fresh["button_bindings"].append({"button_id": 0xBD, "device_id": 3, "command_id": 31})
+    proxy = FakeProxy(fresh_activity=fresh)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    assert "favorite_add" in _kinds(proxy.calls)
+
+
+def test_stale_preflight_tolerates_hub_dematerialized_role_page_slot():
+    """The reverse flip: a device-page-mirroring row captured in the session
+    baseline disappearing from the hub is the hub dropping its own derived
+    slot, not a foreign delete."""
+
+    base = base_bundle()
+    _device(base, 3)["button_bindings"] = [{"button_id": 0xBD, "command_id": 31}]
+    _activity(base)["button_bindings"].append(
+        {"button_id": 0xBD, "device_id": 3, "command_id": 31}
+    )
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+    fresh = copy.deepcopy(_activity(base))
+    fresh["button_bindings"] = [
+        row for row in fresh["button_bindings"] if int(row["button_id"]) != 0xBD
+    ]
+    proxy = FakeProxy(fresh_activity=fresh)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    assert "favorite_add" in _kinds(proxy.calls)
+
+
+def test_stale_preflight_role_tolerance_accepts_live_state_device_page():
+    """The device page can flip between the session capture and the
+    preflight; the live proxy cache is an equally valid reference."""
+
+    base = base_bundle()  # no device button_bindings in the bundle
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+    fresh = copy.deepcopy(_activity(base))
+    fresh["button_bindings"].append({"button_id": 0xBD, "device_id": 3, "command_id": 31})
+    proxy = FakeProxy(fresh_activity=fresh)
+    proxy.state.button_details = {3: {0xBD: {"device_id": 3, "command_id": 31}}}
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    assert "favorite_add" in _kinds(proxy.calls)
+
+
+def test_stale_preflight_still_flags_binding_that_diverges_from_device_page():
+    """A binding whose command (or long-press) does NOT mirror the device's
+    device-mode page cannot be a hub-derived role slot — that is a real
+    foreign edit and must stay stale."""
+
+    base = base_bundle()
+    _device(base, 3)["button_bindings"] = [{"button_id": 0xBD, "command_id": 31}]
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+
+    for foreign_row in (
+        {"button_id": 0xBD, "device_id": 3, "command_id": 30},  # different command
+        {"button_id": 0xBD, "device_id": 1, "command_id": 31},  # different device
+        {"button_id": 0xBD, "device_id": 3, "command_id": 31,   # long press not on page
+         "long_press_device_id": 3, "long_press_command_id": 30},
+    ):
+        fresh = copy.deepcopy(_activity(base))
+        fresh["button_bindings"].append(dict(foreign_row))
+        proxy = FakeProxy(fresh_activity=fresh)
+
+        result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+        assert result["status"] == "failed", foreign_row
+        assert result["failed_at"] == "stale_check", foreign_row
+        assert proxy.calls == [], foreign_row
+
+
+def test_stale_preflight_retries_through_transient_partial_reads():
+    """One flaky hub re-read (observed live: a favorites fetch missing a slot
+    the hub actually has) must not fail the sync — only a persistent
+    mismatch across consecutive re-reads is stale."""
+
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"].append(
+        {"button_id": 9, "device_id": 3, "command_id": 31, "name": "Netflix"}
+    )
+    partial = copy.deepcopy(_activity(base))
+    partial["favorite_slots"] = partial["favorite_slots"][:1]  # transiently missing a slot
+    good = copy.deepcopy(_activity(base))
+    proxy = FakeProxy(fresh_activity=[partial, good])
 
     result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
 
@@ -405,7 +598,8 @@ def test_device_sync_stale_preflight_blocks_before_any_write():
 
     assert result["status"] == "failed"
     assert result["failed_at"] == "stale_check"
-    assert _kinds(proxy.calls) == ["backup_device"]  # preflight read only
+    # Preflight reads only (retried while mismatched), never a write.
+    assert set(_kinds(proxy.calls)) == {"backup_device"}
 
 
 def test_device_sync_out_of_scope_plan_fails_before_writes():
@@ -699,3 +893,189 @@ def test_command_rename_refuses_when_payload_unreadable():
     assert result["status"] == "failed"
     assert result["failed_at"].startswith("command_rename")
     assert not any(c[0] == "command_payload" for c in proxy.calls)
+
+
+# ── BUG #5: shared favorite/macro fav-id namespace (hub-side allocation) ──
+#
+# On the hub, activity favorites and macro shortcuts share ONE fav-id/key-id
+# namespace, but the editor renumbers quick-access button_ids 1..N
+# positionally — bundle ids are proposals, not hub identities. Bench repro
+# (P3 chunk 1, 2026-07-14): favorites reordered+deleted kept their original
+# hub fav_ids (Exit stayed fav_id 5 at display slot 3) while the card's
+# bundle showed 1..4; the next macro shortcut was proposed at "free" id 5
+# and the hub overwrote favorite 5 with it.
+
+
+def _bug5_baseline():
+    """Client-renumbered view: four favorites at positional ids 1..4."""
+    base = base_bundle()
+    _activity(base)["favorite_slots"] = [
+        {"button_id": 1, "device_id": 1, "command_id": 10, "name": "TV Power"},
+        {"button_id": 2, "device_id": 1, "command_id": 11, "name": "TV Vol+"},
+        {"button_id": 3, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+        {"button_id": 4, "device_id": 2, "command_id": 21, "name": "Exit"},
+    ]
+    return base
+
+
+# The hub's live truth: "Exit" kept its original fav_id 5 after an earlier
+# reorder+delete sync, so id 5 is occupied even though the bundle ends at 4.
+_BUG5_LIVE_FAV_IDS = {(1, 10): 1, (1, 11): 2, (2, 20): 3, (2, 21): 5}
+
+
+def test_new_macro_id_is_allocated_against_live_hub_fav_ids():
+    base = _bug5_baseline()
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"].append(
+        {"button_id": 5, "name": "Bench macro", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]}
+    )
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    proxy.macro_records = [SimpleNamespace(key_id=198), SimpleNamespace(key_id=199)]
+    proxy._activity_sync_current_favorite_fav_ids = lambda _act: dict(_BUG5_LIVE_FAV_IDS)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    macro_call = next(c for c in proxy.calls if c[0] == "macro_write")
+    # Proposed id 5 collides with the live favorite "Exit" -> allocated 6.
+    assert macro_call[1][0] == 6
+    # The favorite itself was never touched.
+    assert not any(c[0] in ("favorite_delete", "delete_key") for c in proxy.calls)
+
+
+def test_new_macro_keeps_proposed_id_when_hub_side_free():
+    base = _bug5_baseline()
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"].append(
+        {"button_id": 6, "name": "Bench macro", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]}
+    )
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    proxy.macro_records = [SimpleNamespace(key_id=198), SimpleNamespace(key_id=199)]
+    proxy._activity_sync_current_favorite_fav_ids = lambda _act: dict(_BUG5_LIVE_FAV_IDS)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    macro_call = next(c for c in proxy.calls if c[0] == "macro_write")
+    assert macro_call[1][0] == 6
+
+
+def test_binding_to_new_macro_follows_the_allocated_id():
+    base = _bug5_baseline()
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"].append(
+        {"button_id": 5, "name": "Bench macro", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]}
+    )
+    # A macro-target binding: device_id = the activity itself, command_id =
+    # the macro's (proposed) button_id.
+    _activity(edited)["button_bindings"].append(
+        {"button_id": 0xB1, "device_id": ACTIVITY_ID, "command_id": 5}
+    )
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    proxy.macro_records = [SimpleNamespace(key_id=198), SimpleNamespace(key_id=199)]
+    proxy._activity_sync_current_favorite_fav_ids = lambda _act: dict(_BUG5_LIVE_FAV_IDS)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    binding_call = next(c for c in proxy.calls if c[0] == "binding_write")
+    # command_to_button(activity_id, button_id, device_id, command_id, ...)
+    assert binding_call[1] == (ACTIVITY_ID, 0xB1, ACTIVITY_ID, 6)
+
+
+def test_favorite_delete_resolves_stale_baseline_id_by_content():
+    base = _bug5_baseline()
+    edited = copy.deepcopy(base)
+    # Remove "Exit" (dev 2, cmd 21). The baseline claims fav_id 4, but the
+    # hub still holds it at its original fav_id 5.
+    _activity(edited)["favorite_slots"] = _activity(edited)["favorite_slots"][:3]
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    proxy._activity_sync_current_favorite_fav_ids = lambda _act: dict(_BUG5_LIVE_FAV_IDS)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    delete_call = next(c for c in proxy.calls if c[0] == "favorite_delete")
+    assert delete_call[1] == (ACTIVITY_ID, 5)
+
+
+def test_favorite_delete_trusts_baseline_id_when_it_is_live():
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"] = [_activity(edited)["favorite_slots"][0]]
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    # Baseline is hub-true: fav_id 2 exists live.
+    proxy._activity_sync_current_favorite_fav_ids = lambda _act: {(1, 10): 1, (2, 20): 2}
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    delete_call = next(c for c in proxy.calls if c[0] == "favorite_delete")
+    assert delete_call[1] == (ACTIVITY_ID, 2)
+
+
+def test_favorite_delete_skips_when_content_already_gone():
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["favorite_slots"] = [_activity(edited)["favorite_slots"][0]]
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    # The hub no longer has (2, 20) at all - nothing to delete.
+    proxy._activity_sync_current_favorite_fav_ids = lambda _act: {(1, 10): 7}
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    assert not any(c[0] == "favorite_delete" for c in proxy.calls)
+
+
+def test_macro_delete_refuses_to_delete_a_live_favorite_id():
+    base = _bug5_baseline()
+    # Baseline carries a (stale) user macro at id 5 - the id the hub actually
+    # uses for the favorite "Exit".
+    _activity(base)["macros"].append(
+        {"button_id": 5, "name": "Stale macro", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]}
+    )
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"] = [
+        m for m in _activity(edited)["macros"] if m["button_id"] != 5
+    ]
+    proxy = FakeProxy(fresh_activity=_activity(base))
+    proxy._activity_sync_current_favorite_fav_ids = lambda _act: dict(_BUG5_LIVE_FAV_IDS)
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "success"
+    # The 0x0210 delete never fired - it would have destroyed the favorite.
+    assert not any(c[0] == "delete_key" for c in proxy.calls)
+
+
+def test_new_macro_write_fails_when_live_favorites_unreadable():
+    """Writing a NEW macro blind is the favorite-overwrite bug itself, so a
+    failed live favorite read must fail the step (no silent fallback)."""
+    base = _bug5_baseline()
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"].append(
+        {"button_id": 5, "name": "Bench macro", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]}
+    )
+    proxy = FakeProxy(fresh_activity=_activity(base))
+
+    def _boom(_act):
+        raise RuntimeError("keymap read failed")
+
+    proxy._activity_sync_current_favorite_fav_ids = _boom
+
+    result = proxy.sync_activity(baseline=base, edited=edited, activity_id=ACTIVITY_ID)
+
+    assert result["status"] == "failed"
+    assert result["failed_at"].startswith("macro_write")
+    assert not any(c[0] == "macro_write" for c in proxy.calls)

@@ -691,3 +691,113 @@ wifi_roku clone + X1S `Lights`/`0x0A` wifi_ip clone; 50/50 checks OK):
   `restore_data.new` flag fails the plan
   ("outside the live-editable fields"), on the hub, before any write.
   Command deletes still trip the guard (deleting stays in Backup → Edit).
+
+## Validated: device head IP edit via device Sync (X1 + X1S, 2026-07-14)
+
+The live device editor's Network-section IP edit is validated end-to-end
+through the production `sync_device` chain (`build_device_sync_plan` →
+scope guard → stale pre-flight → `_sync_step_device_ip`) with
+`bench_100_device_ip_sync.py` — X1 `test`/`0x09` (wifi_roku) and X1S
+`Philips hue 2`/`0x02` (wifi_hue, restored byte-identically). On both hubs:
+
+- **Head IP rewrite** — the same `parse_device_record` → swap
+  `ip_address` → `build_device_create_payload` → `FAMILY_DEVICE_UPDATE`
+  record rewrite as device rename. The re-read record body differs from
+  the original **only** in the tail IP marker window (6 bytes at
+  `29 + 2*slot`: `FC 55` + 4 IP bytes) plus the trailing checksum; name,
+  commands, and every other device are byte-identical.
+- **No-op plan** — an identical baseline/edited pair plans zero steps.
+- **Rename + IP compose** — one plan carrying `device_rename` *then*
+  `device_ip` lands both head writes: each executor writes its rebuilt
+  body back to the cached `raw_body`, so the second record rewrite builds
+  on the first instead of a stale snapshot.
+- **Round-trip restore** — syncing the original IP (and name) back leaves
+  the record body byte-identical to the pre-bench baseline.
+
+## Validated: activity display-order write — family 0x51 (X1 + X1S, 2026-07-14)
+
+The activity list re-order (tools-card "Change order") is validated
+end-to-end with `bench_101_reorder_capture.py` (app capture through the
+proxy) and `bench_102_reorder_write.py` (our own write + read-back):
+
+- **App capture (X1S)** — the official app's re-order sends ONE frame,
+  opcode `0x1051` (family `0x51`, `FAMILY_ACTIVITY_SORT`), not
+  per-activity row rewrites: 3-byte outer wrapper `01 00 01`, body header
+  `01 00 01`, one `(0x00, activity_id, sort_position)` row per activity in
+  display order, trailing body checksum (`sum(body[:-1]) & 0xFF`). Hub
+  answers `STATUS_ACK 0x00`; the app follows with `REMOTE_SYNC (0x0064)`.
+  Captured example (order 0x67→1, 0x66→2, 0x65→3):
+  `a5 5a 10 51 01 00 01 01 00 01 00 67 01 00 66 02 00 65 03 3a d6`.
+- **Sort byte read-back** — after the write, `CATALOG_ROW_ACTIVITY` rows
+  report the new positions in the record's sort byte (body[6], i.e.
+  payload[9]); the persistent cache and the frontend list order follow it.
+- **Our writer (X1S + X1)** — `X1Proxy.reorder_activities` reproduces the
+  frame byte-identically (golden-tested against the capture). Live: X1S
+  write + read-back MATCH (and restored the pre-bench order); X1 reverse →
+  MATCH, restore → MATCH. Same opcode works on both firmware generations;
+  X1 rows carry the same sort byte.
+- **Guards** — partial orders (not covering every catalog activity) and
+  unknown ids are refused before any write; live-confirmed on X1.
+
+**Blank activity create (X1S)** — `X1Proxy.create_activity` (the
+tools-card "Add Activity" flow; `restore_activity` with an empty
+synthetic payload) validated live: hub assigned the next id, the catalog
+re-reported the new name, and the hub itself stamped the next sort
+position (existing 1..3 → new row sort=4), so a fresh activity lands at
+the end of the display order. Cleaned up via the standard delete. The
+underlying family-0x37 create pipeline was already validated on X1 in
+the backup/restore program; the zero-member variant has only been
+exercised on X1S.
+
+## Role-page keymap slots are hub-derived and bistable (X1S, 2026-07-14)
+
+Investigation of UI-bench BUG #4 (activity 107, FWD `0xBD`, FireTV dev 4:
+slot flipped `(4,0)` → `(4,21)` → `(4,0)` over minutes, false-positiving
+the activity stale preflight). Benches `bench_103_roleslot_recon.py`,
+`bench_104_roleslot_probe.py`, `bench_105_roleslot_fwd_write.py`,
+`bench_106_roleslot_member_add.py` on the sacrificial X1S.
+
+**What the slots are.** An activity keymap "role page" slot is a row the
+hub maintains for a role-assigned device: it mirrors that device's own
+device-mode keymap page for the same button. The BUG #4 flip values
+bracket exactly dev 4's device page (`0xBD → cmd 21`, present in the P0
+recovery bundle and in every capture today): `(4,0)` is the unmaterialized
+placeholder (dropped from bundle exports since the BUG #3 fix), `(4,21)`
+the materialized mirror. Device-page rows carry real BT button codes in
+bytes [7..8] of the 18-byte record; rows written by our 0x3E writer carry
+synthetic `0x4E xx` codes.
+
+**What does NOT trigger the recompute** (all probed live, 10–25 min
+observation windows, 15 s keymap polls):
+
+- bare `0x3E` binding writes (with and without a follow-up
+  `REMOTE_SYNC`) — rows store immediately and exactly as written,
+  including an explicit `0xBD → (4,21)` that matched the device page
+  (never demoted to `(4,0)`);
+- key-row deletes (`0x0210` + `0x65` commit) of sibling role-group rows;
+- an unrelated channel-group binding add + remove (the exact BUG #4
+  perturbation) — the FireTV playback rows never moved;
+- `add_device_to_activity` member replay + `REMOTE_SYNC`;
+- keymap reads themselves. The FireTV device-mode page also stayed
+  byte-stable throughout.
+
+**Conclusion.** The recompute is not reachable from the TCP client. The
+remaining trigger — consistent with every BUG #4 observation happening
+while the physical remote was actively syncing after editor writes, and
+with nothing flipping during today's harness-only session — is the
+remote's BLE sync processing BT-profile keymap pages: the hub
+re-derives role-page slots from the role device's page when the remote
+syncs, on the remote's own schedule (minutes, or never while the remote
+is idle). The settled state therefore cannot be modeled or awaited by
+the integration.
+
+**Fix.** The activity stale preflight and the post-sync settle loop
+(`lib/proxy_activity_sync.py`) now exclude binding rows that mirror the
+target device's own device-mode page (same button → same command,
+long-press consistent, reference built from the baseline bundle's device
+blocks merged with live proxy state) from the staleness comparison, on
+both sides. Favorites, macros, and any binding that does not mirror a
+device page still compare byte-for-byte, so real foreign edits stay
+caught; a vendor-app edit that exactly reproduces a device-page mapping
+is indistinguishable from the hub's own derivation by construction and
+is deliberately tolerated.

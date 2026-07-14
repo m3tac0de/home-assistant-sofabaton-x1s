@@ -1568,6 +1568,9 @@ function stepMatchesDevice(step, deviceId) {
 function stepMatchesCommand(step, deviceId, commandId) {
   return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
 }
+function deviceMacroStepMatchesCommand(step, commandId) {
+  return !isMacroDelayStep(step) && Number(step?.command_id || 0) === commandId;
+}
 var MACRO_DELAY_SENTINEL = 255;
 function isMacroDelayStep(step) {
   return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
@@ -1630,7 +1633,7 @@ function countAffectedBindings(bindings, transform) {
   return count;
 }
 function bundleDeleteImpact(bundle2, target) {
-  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   if (!bundle2) return empty;
   if (target.kind === "device") {
     const deviceId = Number(target.deviceId);
@@ -1653,7 +1656,7 @@ function bundleDeleteImpact(bundle2, target) {
         (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
       );
     }
-    return { favorites, macroSteps, activities, bindings };
+    return { favorites, macroSteps, powerSteps: 0, activities, bindings };
   }
   if (target.kind === "command") {
     const deviceId = Number(target.deviceId);
@@ -1680,7 +1683,13 @@ function bundleDeleteImpact(bundle2, target) {
       device?.button_bindings,
       (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true)
     );
-    return { favorites, macroSteps, activities: 0, bindings };
+    let powerSteps = 0;
+    for (const macro of device?.macros ?? []) {
+      const removed = countRemovedMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, commandId));
+      if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) powerSteps += removed;
+      else macroSteps += removed;
+    }
+    return { favorites, macroSteps, powerSteps, activities: 0, bindings };
   }
   if (target.kind === "activity_member") {
     return activityMemberRemovalImpact(bundle2, target.activityId, target.deviceId);
@@ -1733,7 +1742,14 @@ function deleteBundleDeviceCommand(bundle2, deviceId, commandId) {
         button_bindings: applyBindingCascade(
           device.button_bindings,
           (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true)
-        )
+        ),
+        // The device's own macros (power on/off sequences and user macros)
+        // reference commands by id — prune those steps too, or the bundle
+        // keeps dangling references sync validation rejects.
+        macros: (device.macros ?? []).map((macro) => ({
+          ...macro,
+          steps: filterMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, cId))
+        }))
       };
     }),
     activities: (bundle2.activities ?? []).map((activity) => ({
@@ -2081,7 +2097,7 @@ function removeActivityMemberDevice(bundle2, activityId, deviceId) {
   return reconcileActivityPowerMacros(next, aId);
 }
 function activityMemberRemovalImpact(bundle2, activityId, deviceId) {
-  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   const activity = findBundleActivity(bundle2, activityId);
   if (!activity) return empty;
   const dId = Number(deviceId);
@@ -2105,7 +2121,7 @@ function activityMemberRemovalImpact(bundle2, activityId, deviceId) {
     activity.button_bindings,
     (binding) => cascadeBindingForDeletedDevice(binding, dId)
   );
-  return { favorites, macroSteps, activities: 0, bindings };
+  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings };
 }
 var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
 function synthesizeCommandCode(commandId) {
@@ -3004,7 +3020,37 @@ test("deleteBundleDeviceCommand also removes the deleted command's trailing dela
   ]);
   assert.deepEqual(
     bundleDeleteImpact(b3, { kind: "command", deviceId: 1, commandId: 10 }),
-    { favorites: 0, macroSteps: 2, activities: 0, bindings: 0 }
+    { favorites: 0, macroSteps: 2, powerSteps: 0, activities: 0, bindings: 0 }
+  );
+});
+test("deleteBundleDeviceCommand prunes the device's own power-macro steps", () => {
+  const b3 = {
+    kind: "hub_bundle",
+    schema_version: 5,
+    hub: { version: "X1S" },
+    devices: [{
+      device: { device_id: 1, name: "TV", device_class: "ir" },
+      commands: [{ command_id: 2, name: "Power off" }, { command_id: 3, name: "Power on" }],
+      macros: [
+        { button_id: 198, name: "POWER_ON", steps: [{ command_id: 3, duration: 0 }] },
+        { button_id: 199, name: "POWER_OFF", steps: [
+          { command_id: 2, duration: 0 },
+          { command_id: 255, duration: 255, delay: 4 },
+          { command_id: 3, duration: 0 }
+        ] },
+        { button_id: 5, name: "User seq", steps: [{ command_id: 2, duration: 0 }] }
+      ]
+    }],
+    activities: []
+  };
+  const next = deleteBundleDeviceCommand(b3, 1, 2);
+  const macros = next.devices[0].macros;
+  assert.deepEqual(macros.find((m3) => m3.button_id === 199).steps, [{ command_id: 3, duration: 0 }]);
+  assert.deepEqual(macros.find((m3) => m3.button_id === 198).steps, [{ command_id: 3, duration: 0 }]);
+  assert.deepEqual(macros.find((m3) => m3.button_id === 5).steps, []);
+  assert.deepEqual(
+    bundleDeleteImpact(b3, { kind: "command", deviceId: 1, commandId: 2 }),
+    { favorites: 0, macroSteps: 1, powerSteps: 2, activities: 0, bindings: 0 }
   );
 });
 test("nextFreeDeviceCommandId picks the lowest unused id", () => {
@@ -3059,9 +3105,9 @@ test("addBundleActivityFavorite appends at the next editable slot", () => {
 });
 test("bundleDeleteImpact counts cascade references", () => {
   const b3 = editableBundle();
-  assert.deepEqual(bundleDeleteImpact(b3, { kind: "device", deviceId: 1 }), { favorites: 1, macroSteps: 2, activities: 1, bindings: 0 });
-  assert.deepEqual(bundleDeleteImpact(b3, { kind: "command", deviceId: 2, commandId: 20 }), { favorites: 1, macroSteps: 1, activities: 0, bindings: 0 });
-  assert.deepEqual(bundleDeleteImpact(b3, { kind: "activity", activityId: 101 }), { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b3, { kind: "device", deviceId: 1 }), { favorites: 1, macroSteps: 2, powerSteps: 0, activities: 1, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b3, { kind: "command", deviceId: 2, commandId: 20 }), { favorites: 1, macroSteps: 1, powerSteps: 0, activities: 0, bindings: 0 });
+  assert.deepEqual(bundleDeleteImpact(b3, { kind: "activity", activityId: 101 }), { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 });
 });
 test("reorderBundleActivityQuickAccess preserves internal power macros", () => {
   const next = reorderBundleActivityQuickAccess(editableBundle(), 101, [
@@ -3661,11 +3707,11 @@ test("activityMemberRemovalImpact counts scoped user-visible references only", (
   const b3 = membershipBundle();
   assert.deepEqual(
     activityMemberRemovalImpact(b3, 101, 2),
-    { favorites: 0, macroSteps: 1, activities: 0, bindings: 2 }
+    { favorites: 0, macroSteps: 1, powerSteps: 0, activities: 0, bindings: 2 }
   );
   assert.deepEqual(
     activityMemberRemovalImpact(b3, 101, 1),
-    { favorites: 1, macroSteps: 2, activities: 0, bindings: 1 }
+    { favorites: 1, macroSteps: 2, powerSteps: 0, activities: 0, bindings: 1 }
   );
 });
 test("reconcile restores missing mandatory power refs for a member", () => {

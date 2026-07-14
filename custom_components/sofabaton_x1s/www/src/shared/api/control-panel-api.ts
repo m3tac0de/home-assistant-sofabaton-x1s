@@ -151,6 +151,26 @@ export class ControlPanelApi {
     });
   }
 
+  // Immediate live write of the hub's stored activity display order.
+  // ordered_ids is the full activity id list in the desired order.
+  reorderActivities(entryId: string, orderedIds: number[]) {
+    return this.hass.callWS<{ status?: string; ordered_ids?: number[] }>({
+      type: "sofabaton_x1s/activity/reorder",
+      entry_id: entryId,
+      ordered_ids: orderedIds,
+    });
+  }
+
+  // Create a fresh, empty activity on the hub; resolves with the
+  // hub-assigned activity id so the caller can open the live editor on it.
+  createActivity(entryId: string, name: string) {
+    return this.hass.callWS<{ status?: string; activity_id?: number }>({
+      type: "sofabaton_x1s/activity/create",
+      entry_id: entryId,
+      name,
+    });
+  }
+
   startCacheRefresh(entryId: string) {
     return this.hass.callWS<BackupOperationStartResponse>({
       type: "sofabaton_x1s/cache/refresh_all",

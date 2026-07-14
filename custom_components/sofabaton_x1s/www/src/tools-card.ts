@@ -4,6 +4,7 @@ import { cardStyles } from "./shared/styles/card-styles";
 import type { BackupSectionId, HassLike, HubAction, SettingKey, TabId } from "./shared/ha-context";
 import { ControlPanelStore, REFRESH_ALL_KEY } from "./state/control-panel-store";
 import {
+  hubActivities,
   hubConnected,
   hubIcon,
   persistentCacheEnabled,
@@ -160,6 +161,15 @@ class SofabatonControlPanelCard extends LitElement {
   // Entity currently open in the live editor (wrench buttons in the Hub
   // tab); while set, the Hub tab renders the editor instead of the cache.
   private _editingEntity: { kind: "activity" | "device"; id: number } | null = null;
+  // Activity re-order mode ("Change order" under the Activities list).
+  private _reorderMode = false;
+  private _reorderIds: number[] = [];
+  private _reorderSyncing = false;
+  private _reorderError: string | null = null;
+  // "Add Activity" dialog state.
+  private _addActivityOpen = false;
+  private _addActivityBusy = false;
+  private _addActivityError: string | null = null;
   private _irFlashClearTimer: ReturnType<typeof setTimeout> | null = null;
   private _irFlashClearForReceivedAt: number | null = null;
   private _pendingCacheScrollSnapshot: {
@@ -315,9 +325,105 @@ class SofabatonControlPanelCard extends LitElement {
   private handleTabSelect(tabId: TabId) {
     this._toolsMenuOpen = false;
     // Leaving the Hub tab abandons an open edit session (same behavior the
-    // standalone Activities tab had when switching away).
-    if (tabId !== "cache") this._editingEntity = null;
+    // standalone Activities tab had when switching away) and any pending
+    // re-order / add-activity interaction.
+    if (tabId !== "cache") {
+      this._editingEntity = null;
+      this.resetActivityListInteractions();
+    }
     this._store.selectTab(tabId);
+  }
+
+  // Drops re-order mode and the Add Activity dialog (tab switch, hub switch).
+  private resetActivityListInteractions() {
+    this._reorderMode = false;
+    this._reorderIds = [];
+    this._reorderSyncing = false;
+    this._reorderError = null;
+    this._addActivityOpen = false;
+    this._addActivityBusy = false;
+    this._addActivityError = null;
+  }
+
+  // ── Activity re-order mode ─────────────────────────────────────────
+
+  private startReorder() {
+    if (this._reorderMode) return;
+    // Close any open drawer first, then snapshot the current display order
+    // as the working order.
+    const openEntity = this._snapshot.openEntity;
+    if (openEntity) this._store.toggleEntity(openEntity);
+    const cacheHub = selectedHubCache(this._snapshot);
+    this._reorderIds = hubActivities(cacheHub).map((activity) => Number(activity.id));
+    this._reorderMode = true;
+    this._reorderSyncing = false;
+    this._reorderError = null;
+    this.requestUpdate();
+  }
+
+  private cancelReorder() {
+    if (this._reorderSyncing) return;
+    this.resetActivityListInteractions();
+    this.requestUpdate();
+  }
+
+  private moveReorderItem(oldIndex: number, newIndex: number) {
+    const ids = [...this._reorderIds];
+    if (oldIndex < 0 || oldIndex >= ids.length || newIndex < 0 || newIndex >= ids.length) return;
+    const [moved] = ids.splice(oldIndex, 1);
+    ids.splice(newIndex, 0, moved);
+    this._reorderIds = ids;
+    this.requestUpdate();
+  }
+
+  private async syncReorder() {
+    if (!this._reorderMode || this._reorderSyncing) return;
+    this._reorderSyncing = true;
+    this._reorderError = null;
+    this.requestUpdate();
+    const failure = await this._store.reorderActivities(this._reorderIds);
+    this._reorderSyncing = false;
+    if (failure) {
+      this._reorderError = failure;
+    } else {
+      this.resetActivityListInteractions();
+    }
+    this.requestUpdate();
+  }
+
+  // ── Add Activity flow (name prompt → live editor) ──────────────────
+
+  private openAddActivity() {
+    this._addActivityOpen = true;
+    this._addActivityBusy = false;
+    this._addActivityError = null;
+    this.requestUpdate();
+  }
+
+  private closeAddActivity() {
+    if (this._addActivityBusy) return;
+    this._addActivityOpen = false;
+    this._addActivityError = null;
+    this.requestUpdate();
+  }
+
+  private async confirmAddActivity(name: string) {
+    if (this._addActivityBusy) return;
+    this._addActivityBusy = true;
+    this._addActivityError = null;
+    this.requestUpdate();
+    const result = await this._store.createActivity(name);
+    this._addActivityBusy = false;
+    if ("error" in result) {
+      this._addActivityError = result.error;
+      this.requestUpdate();
+      return;
+    }
+    // Open the live editor on the freshly assigned id; from here the flow
+    // mirrors the Edit (wrench) behavior exactly.
+    this._addActivityOpen = false;
+    this._editingEntity = { kind: "activity", id: result.activityId };
+    this.requestUpdate();
   }
 
   private handleSettingToggle(setting: SettingKey, enabled: boolean) {
@@ -663,6 +769,7 @@ class SofabatonControlPanelCard extends LitElement {
             .entityId=${this._editingEntity.id}
             .selectedHubProxyConnected=${proxyClientConnected(this._snapshot.hass, hub)}
             .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
+            .startRefreshAll=${() => this._store.refreshAllForHub()}
             @editor-exit=${() => {
               this._editingEntity = null;
               this.requestUpdate();
@@ -700,6 +807,20 @@ class SofabatonControlPanelCard extends LitElement {
             this._editingEntity = { kind: "device", id: deviceId };
             this.requestUpdate();
           },
+          reorderMode: this._reorderMode,
+          reorderIds: this._reorderIds,
+          reorderSyncing: this._reorderSyncing,
+          reorderError: this._reorderError,
+          onStartReorder: () => this.startReorder(),
+          onCancelReorder: () => this.cancelReorder(),
+          onReorderMove: (oldIndex, newIndex) => this.moveReorderItem(oldIndex, newIndex),
+          onSyncReorder: () => void this.syncReorder(),
+          addActivityOpen: this._addActivityOpen,
+          addActivityBusy: this._addActivityBusy,
+          addActivityError: this._addActivityError,
+          onOpenAddActivity: () => this.openAddActivity(),
+          onCloseAddActivity: () => this.closeAddActivity(),
+          onConfirmAddActivity: (name) => void this.confirmAddActivity(name),
         });
       }
     }
@@ -720,6 +841,7 @@ class SofabatonControlPanelCard extends LitElement {
                   onToggle: () => this.toggleHubPicker(),
                   onSelect: (entryId) => {
                     this._hubPickerOpen = false;
+                    this.resetActivityListInteractions();
                     this._store.selectHub(entryId);
                   },
                 })

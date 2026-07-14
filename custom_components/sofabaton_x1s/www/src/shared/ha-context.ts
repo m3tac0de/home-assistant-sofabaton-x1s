@@ -42,7 +42,7 @@ export interface ControlPanelHubState {
   device_count?: number;
   proxy_client_connected?: boolean;
   settings?: Partial<Record<Exclude<SettingKey, "persistent_cache">, boolean>>;
-  activities?: Array<{ id: number; name?: string; favorite_count?: number; macro_count?: number }>;
+  activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
     id: number;
     name?: string;
@@ -84,7 +84,7 @@ export interface ControlPanelRuntimeState {
 export interface CacheHubState {
   entry_id: string;
   name?: string;
-  activities?: Array<{ id: number; name?: string; favorite_count?: number; macro_count?: number }>;
+  activities?: Array<{ id: number; name?: string; sort?: number; favorite_count?: number; macro_count?: number }>;
   devices_list?: Array<{
     id: number;
     name?: string;

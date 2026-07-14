@@ -1608,6 +1608,7 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
             "id": act_id,
             "name": "Movies",
             "is_active": True,
+            "sort": 0,
             "favorite_count": 1,
             "keybinding_count": 0,
             "macro_count": 1,

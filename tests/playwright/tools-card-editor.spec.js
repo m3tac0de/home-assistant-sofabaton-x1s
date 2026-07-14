@@ -77,8 +77,8 @@ test.describe("tools-card activity editor harness", () => {
     await page.locator("#sb-add-fav-name").fill("Streamer Home");
     await page.locator(".dialog-footer .dialog-btn-primary").click();
 
-    await expect(page.getByRole("button", { name: "Sync", exact: true })).toBeEnabled();
-    await page.getByRole("button", { name: "Sync", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Sync to Hub", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Sync to Hub", exact: true }).click();
 
     await expect.poll(async () => {
       const calls = await page.evaluate(() => window.__toolsCardHarness.getCalls());

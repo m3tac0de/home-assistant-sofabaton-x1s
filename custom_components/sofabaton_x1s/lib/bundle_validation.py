@@ -8,7 +8,7 @@ before a sync plan is built or an operation is registered.
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Collection, Mapping
 import re
 import unicodedata
 from typing import Any
@@ -54,7 +54,10 @@ _SHARED_BUTTONS = {
     and value not in _POWER_MACRO_IDS
 }
 _HEX_BYTES = re.compile(r"^(?:[0-9a-fA-F]{2})(?:[ ,\r\n\t]+[0-9a-fA-F]{2})*$")
-_NAME_PUNCTUATION = set(" +&.'()_-")
+# Cloud- and app-provisioned names on unicode-capable hubs may contain any
+# printable ASCII punctuation (e.g. the stock "Ok/Select" command), so the
+# whole set must round-trip through the editor.
+_NAME_PUNCTUATION = set(" !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
 
 
 def _error(path: str, message: str) -> ValueError:
@@ -93,8 +96,10 @@ def _validate_name(value: Any, path: str, model: str, *, allow_empty: bool = Fal
         if allow_empty:
             return
         raise _error(path, "must not be empty")
-    if len(value) > 20:
-        raise _error(path, "must be at most 20 characters")
+    # Name slots hold 30 bytes of ASCII (X1) or 60 bytes of UTF-16BE
+    # (X1S/X2), so the cap is 30 UTF-16 code units, not code points.
+    if len(value.encode("utf-16-be")) > 60:
+        raise _error(path, "must be at most 30 characters")
     if model == HUB_VERSION_X1:
         if any(not (char.isascii() and (char.isalnum() or char == " ")) for char in value):
             raise _error(path, "contains characters unsupported by X1")
@@ -126,7 +131,7 @@ def _index_bundle(
     *,
     path: str,
     model: str,
-    strict: bool,
+    strict_for: Callable[[int], bool],
 ) -> tuple[dict[int, Mapping[str, Any]], dict[int, Mapping[str, Any]], dict[int, set[int]]]:
     devices: dict[int, Mapping[str, Any]] = {}
     commands: dict[int, set[int]] = {}
@@ -140,6 +145,7 @@ def _index_bundle(
         if device_id in devices:
             raise _error(f"{item_path}.device.device_id", f"duplicates device {device_id}")
         devices[device_id] = device
+        strict = strict_for(device_id)
         if strict:
             _validate_name(block.get("name"), f"{item_path}.device.name", model)
             idle = block.get("idle_behavior", block.get("power_mode"))
@@ -176,7 +182,7 @@ def _index_bundle(
         if activity_id in activities:
             raise _error(f"{item_path}.device.device_id", f"duplicates activity {activity_id}")
         activities[activity_id] = activity
-        if strict:
+        if strict_for(activity_id):
             _validate_name(block.get("name"), f"{item_path}.device.name", model)
 
     return devices, activities, commands
@@ -476,13 +482,34 @@ def validate_hub_bundle_for_model(
     hub_version: str | None,
     payload_name: str = "bundle",
     enforce_editor_invariants: bool = True,
+    strict_entity_ids: Collection[int] | None = None,
 ) -> str:
     """Validate one sync bundle and return its normalized hub model.
 
     ``enforce_editor_invariants=False`` is used for the captured baseline: its
     structure and references must be safe to diff, but the edited bundle may
     legitimately be repairing missing generated rows from that baseline.
+
+    ``strict_entity_ids`` limits the editor invariants (name rules, idle
+    values, power-macro linkage) to the given device/activity ids. Entity-
+    scoped syncs pass the set of entities that differ from the baseline:
+    those are the only entities a plan can write, while unchanged entities
+    are hub truth passing through — a stale or hub-quirky cached entry
+    elsewhere in the bundle must not block the sync. Structural checks
+    (shape, duplicates, reference integrity) always cover the whole bundle.
+    ``None`` applies the invariants to every entity.
     """
+
+    strict_ids = (
+        None
+        if strict_entity_ids is None
+        else {int(entity) & 0xFF for entity in strict_entity_ids}
+    )
+
+    def _strict_for(entity_id: int) -> bool:
+        if not enforce_editor_invariants:
+            return False
+        return strict_ids is None or entity_id in strict_ids
 
     root = _mapping(bundle, payload_name)
     if root.get("kind") != "hub_bundle":
@@ -506,7 +533,7 @@ def validate_hub_bundle_for_model(
         root,
         path=payload_name,
         model=model,
-        strict=enforce_editor_invariants,
+        strict_for=_strict_for,
     )
     for device_id, device in devices.items():
         path = f"{payload_name}.devices[{device_id}]"
@@ -516,7 +543,7 @@ def validate_hub_bundle_for_model(
             owner_kind="device",
             path=path,
             model=model,
-            strict=enforce_editor_invariants,
+            strict=_strict_for(device_id),
             devices=devices,
             activities=activities,
             commands=commands,
@@ -532,7 +559,7 @@ def validate_hub_bundle_for_model(
             activities=activities,
             commands=commands,
         )
-        if enforce_editor_invariants:
+        if _strict_for(device_id):
             record = device.get("input_record")
             if record is not None:
                 entries = _list(_mapping(record, f"{path}.input_record").get("entries"), f"{path}.input_record.entries")
@@ -552,7 +579,7 @@ def validate_hub_bundle_for_model(
             owner_kind="activity",
             path=path,
             model=model,
-            strict=enforce_editor_invariants,
+            strict=_strict_for(activity_id),
             devices=devices,
             activities=activities,
             commands=commands,
@@ -573,7 +600,7 @@ def validate_hub_bundle_for_model(
             activity_id=activity_id,
             path=path,
             model=model,
-            strict=enforce_editor_invariants,
+            strict=_strict_for(activity_id),
             macros=macros,
             devices=devices,
             activities=activities,

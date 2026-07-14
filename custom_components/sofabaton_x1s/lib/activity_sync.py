@@ -60,6 +60,16 @@ def _int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _valid_ipv4(value: str) -> bool:
+    parts = value.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        return all(0 <= int(part) <= 255 for part in parts)
+    except ValueError:
+        return False
+
+
 def _activity_id_of(activity: Mapping[str, Any]) -> int:
     return _int((activity.get("device") or {}).get("device_id"))
 
@@ -240,7 +250,7 @@ def build_activity_sync_plan(
     rename: list[SyncStep] = []
 
     _plan_device_side(baseline, edited, activity_id, prereq, idle)
-    _plan_membership(base_activity, edit_activity, members)
+    _plan_membership(base_activity, edit_activity, _devices_by_id(edited), members)
     _plan_macros(base_activity, edit_activity, activity_id, macros)
     _plan_bindings(base_activity, edit_activity, activity_id, bindings)
     _plan_favorites(base_activity, edit_activity, activity_id, favorites)
@@ -261,10 +271,11 @@ def build_device_sync_plan(
 
     The live *device* editor may change a device's key rows (macros —
     including the power-on/off sequences — and button bindings), its
-    idle/power byte, its input records, and its command records (payload
-    overwrites, renames, and additions flagged ``restore_data.new``).
-    Everything else (name, network/head config, other devices, every
-    activity) must be byte-identical between the two bundles.
+    idle/power byte, its input records, its command records (payload
+    overwrites, renames, and additions flagged ``restore_data.new``),
+    its name, and its head ``ip_address``. Everything else (other head
+    config, other devices, every activity) must be byte-identical
+    between the two bundles.
 
     Key-row steps reuse the activity planners verbatim: the ``activity_id``
     payload field is the *keymap entity id* the 0x3E / 0x0210 / macro-save
@@ -331,6 +342,23 @@ def build_device_sync_plan(
             )
         )
 
+    base_ip = str((base_dev.get("device") or {}).get("ip_address") or "")
+    edit_ip = str((edit_dev.get("device") or {}).get("ip_address") or "")
+    if base_ip != edit_ip:
+        # An empty string clears the IP (the tail marker is emitted zeroed);
+        # anything else must be a well-formed dotted-quad so the record
+        # builder never silently drops a malformed value on the wire.
+        if edit_ip and not _valid_ipv4(edit_ip):
+            raise ValueError(f"ip_address {edit_ip!r} is not a dotted-decimal IPv4 address")
+        rename.append(
+            SyncStep(
+                kind="device_ip",
+                label="Updating the IP address…",
+                target_device_id=device_id,
+                payload={"device_id": device_id, "ip_address": edit_ip},
+            )
+        )
+
     return [*prereq, *macros, *bindings, *idle, *rename]
 
 
@@ -378,9 +406,11 @@ def _device_immutable_signature(device: Mapping[str, Any]) -> str:
     block = dict(trimmed.get("device") or {})
     block.pop("idle_behavior", None)
     block.pop("power_mode", None)
-    # The name is a live-editable field (device_rename step); exclude it from
-    # the signature so a name-only device edit stays in scope.
+    # The name (device_rename step) and head IP (device_ip step) are
+    # live-editable fields; exclude them from the signature so an edit to
+    # either stays in scope.
     block.pop("name", None)
+    block.pop("ip_address", None)
     trimmed["device"] = block
     # A command's *payload* (command_payload step) and *name* (command_rename
     # step) are both live-editable, so normalize each command to its id alone
@@ -591,20 +621,61 @@ def _plan_device_command_renames(
         )
 
 
+def _member_input_cmd_id(
+    edit_activity: Mapping[str, Any],
+    device: Mapping[str, Any] | None,
+) -> int | None:
+    """Resolve the input the editor chose for a *new* member (BUG #8).
+
+    The "Set input" dialog stores the choice as the ``duration`` byte of the
+    member's ``(device, 0xC5)`` step in the power-on macro — a 1-based ordinal
+    into the device's ``input_record``. The ``member_replay`` executor
+    (``add_device_to_activity``) rebuilds that 0xC5 row from scratch, so the
+    ordinal must ride the step as the input's *command id* (the executor
+    re-resolves it against the live hub) or the choice is silently written
+    as "no input" (duration 0).
+    """
+    device_id = _device_id_of(device) if device is not None else 0
+    ordinal = 0
+    for macro in edit_activity.get("macros") or []:
+        if _int(macro.get("button_id")) != POWER_ON_MACRO_BUTTON_ID:
+            continue
+        for step in macro.get("steps") or []:
+            if (
+                _int(step.get("device_id")) == device_id
+                and _int(step.get("command_id")) == DEVICE_INPUT_REF_COMMAND
+            ):
+                ordinal = _int(step.get("duration"))
+                break
+        break
+    if ordinal <= 0:
+        return None
+    for entry in _input_entries(device) or []:
+        if isinstance(entry, Mapping) and _int(entry.get("input_index")) == ordinal:
+            command_id = _int(entry.get("command_id"))
+            return command_id if command_id > 0 else None
+    return None
+
+
 def _plan_membership(
     base_activity: Mapping[str, Any],
     edit_activity: Mapping[str, Any],
+    devices_by_id: Mapping[int, Mapping[str, Any]],
     out: list[SyncStep],
 ) -> None:
     activity_id = _activity_id_of(edit_activity)
     added = _member_device_ids(edit_activity) - _member_device_ids(base_activity)
     for dev_id in sorted(added):
+        payload: dict[str, Any] = {"activity_id": activity_id, "device_id": dev_id}
+        input_cmd_id = _member_input_cmd_id(edit_activity, devices_by_id.get(dev_id))
+        if input_cmd_id is not None:
+            payload["input_cmd_id"] = input_cmd_id
         out.append(
             SyncStep(
                 kind="member_replay",
                 label="Adding a device to the activity…",
                 target_device_id=dev_id,
-                payload={"activity_id": activity_id, "device_id": dev_id},
+                payload=payload,
             )
         )
 
@@ -628,18 +699,26 @@ def _plan_macros(
             if not steps_changed and not name_changed:
                 continue
         label = _macro_label(button_id)
-        out.append(
-            SyncStep(
-                kind="macro_write",
-                label=label,
-                payload={
-                    "activity_id": activity_id,
-                    "button_id": button_id,
-                    "name": str(macro.get("name") or ""),
-                    "steps": list(macro.get("steps") or []),
-                },
-            )
-        )
+        payload: dict[str, Any] = {
+            "activity_id": activity_id,
+            "button_id": button_id,
+            "name": str(macro.get("name") or ""),
+            "steps": list(macro.get("steps") or []),
+        }
+        if base_macro is None and button_id not in _POWER_MACRO_BUTTON_IDS:
+            # A macro the baseline never had. Its button_id is a *proposal*
+            # from the editor's renumbered client view; on the hub, favorites
+            # and macro shortcuts share one fav-id namespace, so the executor
+            # must allocate the real id against live hub occupancy (BUG #5:
+            # a proposed id landing on a surviving favorite's fav_id silently
+            # overwrites that favorite). Power macros are exempt: 198/199 are
+            # fixed wire ids outside the fav-id namespace, and a fresh
+            # activity's baseline legitimately lacks them — flagging them new
+            # would divert the write to an allocated quick-access id (BUG #8
+            # repro: the from-scratch member_replay rows survived because the
+            # power-on overwrite never landed at 198).
+            payload["new"] = True
+        out.append(SyncStep(kind="macro_write", label=label, payload=payload))
     for button_id in sorted(set(base_macros) - set(edit_macros)):
         # Power macros are mandatory and never removed; a removed user macro
         # is a key-row delete (0x0210), same primitive as favorite delete.
@@ -749,13 +828,24 @@ def _plan_favorites(
     edit_content_set = set(edit_contents)
 
     # Deletes first (frees the ordering): baseline content no longer present.
+    # The payload carries the favorite's content next to the baseline fav_id
+    # so the executor can re-resolve the target against the hub's *live*
+    # fav ids when the baseline id turns out stale (the editor renumbers
+    # button_ids positionally, and a rebase fallback can promote that
+    # renumbered view to baseline — deleting by a stale id would remove the
+    # wrong favorite).
     for fav_id, content, _row in base:
         if content not in edit_content_set:
             out.append(
                 SyncStep(
                     kind="favorite_delete",
                     label="Removing a shortcut…",
-                    payload={"activity_id": activity_id, "button_id": fav_id},
+                    payload={
+                        "activity_id": activity_id,
+                        "button_id": fav_id,
+                        "device_id": content[0],
+                        "command_id": content[1],
+                    },
                 )
             )
     # Adds: edited content with no baseline counterpart (the hub assigns the

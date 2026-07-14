@@ -475,7 +475,13 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
         self._x2_remote_sync_id: bytes | None = None
         self._x2_remote_sync_id_event = threading.Event()
         self._macro_payload_lock = threading.Lock()
+        # Transient fetch-arrival signals: popped by wait_for_macro_record,
+        # cleared by reset_ack_queues before every write transaction.
         self._macro_payload_events: dict[tuple[int, int], MacroRecord] = {}
+        # Persistent macro cache read by structural bundles / exports. Only
+        # per-entity invalidation (clear_entity_cache) or a cache import may
+        # drop entries — never the ack-queue reset.
+        self._macro_records_cache: dict[tuple[int, int], MacroRecord] = {}
         self._macro_payload_event = threading.Event()
         self._activity_inputs_lock = threading.Lock()
         self._activity_inputs_seen = 0

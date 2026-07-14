@@ -85,6 +85,35 @@ def _idle_behavior_mode(device_block: dict[str, Any]) -> int:
         return 0
 
 
+def _key_sort_table_has_positions(msg_hex: str) -> bool:
+    """Return whether a captured key-sort table assigns any real position.
+
+    The table is a flat stream of ``(command_id, sort_position)`` pairs.
+    Hubs report commands that were never given a device-browse slot with
+    the ``0xFF`` "unpositioned" sentinel in the position byte (and ``0x00``
+    also means unpositioned -- positions are 1-based; the command-add sort
+    registration mirrors that by treating ``sort_id == 0`` as unset), and
+    answer KEY_SORT *reads* with STATUS_ACK status=0x07 when no table
+    exists at all -- but they reject a *write* whose pairs carry no real
+    position (STATUS_ACK status=0x06, X1S bench 2026-07-14, observed for
+    both an all-0xFF table and one whose only non-0xFF byte was 0x00).
+    Such a table orders nothing, so restore treats it the same as "no
+    key-sort data" and skips the write; tables with at least one real
+    1-based position are replayed verbatim, sentinel pairs included (the
+    hub accepts those).
+    """
+
+    try:
+        msg_bytes = bytes.fromhex(msg_hex)
+    except ValueError:
+        # Leave malformed hex to build_key_sort_steps' own validation.
+        return True
+    return any(
+        msg_bytes[index] not in (0x00, 0xFF)
+        for index in range(1, len(msg_bytes), 2)
+    )
+
+
 def _input_create_step_factory():
     # Imported lazily to avoid a circular import at module load: the
     # helper lives in ``x1_proxy`` because it sits next to the other
@@ -707,6 +736,45 @@ class RestoreMixin:
         )
         return payload, restored_inputs
 
+    def _rollback_restored_device(self, device_id: int, failed_step: str) -> bool:
+        """Best-effort deletion of a partially-restored device.
+
+        The restore flows create the new device before replaying its
+        content, so a finalize-phase failure leaves a partial device on
+        the hub (create-before-delete ordering is deliberate: the source
+        device must never be touched until the copy is complete). Delete
+        the orphan through the full :meth:`delete_device` flow so
+        dependent-activity confirms and local cache cleanup run too.
+        Returns whether the orphan was removed; when it wasn't, the
+        partial device remains on the hub for manual cleanup.
+        """
+
+        dev_lo = device_id & 0xFF
+        self._log.warning(
+            "[RESTORE] rolling back partially-restored device 0x%02X "
+            "after finalize failure at step %s",
+            dev_lo,
+            failed_step,
+        )
+        try:
+            outcome = self.delete_device(dev_lo)
+        except Exception:
+            self._log.exception(
+                "[RESTORE] rollback delete raised for dev=0x%02X; "
+                "a partial device remains on the hub",
+                dev_lo,
+            )
+            return False
+        if not isinstance(outcome, dict) or outcome.get("status") != "success":
+            self._log.warning(
+                "[RESTORE] rollback could not delete dev=0x%02X; "
+                "a partial device remains on the hub",
+                dev_lo,
+            )
+            return False
+        self._log.info("[RESTORE] rolled back partial device 0x%02X", dev_lo)
+        return True
+
     def _finalize_restore_device_result(
         self,
         *,
@@ -1050,12 +1118,18 @@ class RestoreMixin:
         post_steps.extend(command_steps)
         if isinstance(request.key_sort, dict):
             key_sort_msg_hex = str(request.key_sort.get("msg_hex") or "").strip()
-            if key_sort_msg_hex:
+            if key_sort_msg_hex and _key_sort_table_has_positions(key_sort_msg_hex):
                 post_steps.extend(
                     build_key_sort_steps(
                         device_id=new_device_id,
                         msg_hex=key_sort_msg_hex,
                     )
+                )
+            elif key_sort_msg_hex:
+                self._log.info(
+                    "[RESTORE] skipping key-sort write for dev=0x%02X: "
+                    "captured table has no positioned commands",
+                    new_device_id,
                 )
 
         restored_inputs = 0
@@ -1171,9 +1245,10 @@ class RestoreMixin:
                 else "post-create"
             )
             self._log.warning("[RESTORE] finalize phase failed at step %s", failed)
+            rolled_back = self._rollback_restored_device(new_device_id, failed)
             return DeviceCreateResult(
                 success=False,
-                device_id=new_device_id,
+                device_id=None if rolled_back else new_device_id,
                 failed_step_label=failed,
             )
 
@@ -1406,9 +1481,10 @@ class RestoreMixin:
                 else "post-create"
             )
             self._log.warning("[RESTORE] X1 import finalize phase failed at step %s", failed)
+            rolled_back = self._rollback_restored_device(new_device_id, failed)
             return DeviceCreateResult(
                 success=False,
-                device_id=new_device_id,
+                device_id=None if rolled_back else new_device_id,
                 failed_step_label=failed,
             )
 

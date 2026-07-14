@@ -128,6 +128,31 @@ def test_favorite_delete() -> None:
     assert "favorite_delete" in _kinds(plan)
     delete = next(s for s in plan if s.kind == "favorite_delete")
     assert delete.payload["button_id"] == 2
+    # Content rides along so the executor can re-resolve a stale baseline
+    # fav_id against the hub's live favorites (BUG #5 family).
+    assert delete.payload["device_id"] == 2
+    assert delete.payload["command_id"] == 20
+
+
+def test_new_macro_is_flagged_for_hub_side_id_allocation() -> None:
+    """BUG #5: a macro absent from the baseline carries ``new: True`` so the
+    executor allocates its real button_id against the hub's live fav-id
+    namespace instead of trusting the editor's renumbered proposal. An edit
+    to an existing macro keeps addressing its baseline id (no flag)."""
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"].append(
+        {"button_id": 3, "name": "Bench macro", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+        ]}
+    )
+    _activity(edited)["macros"][0]["steps"].append(
+        {"device_id": 1, "command_id": 0xC6, "button_code": 0, "duration": 1, "delay": 255}
+    )
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    writes = {s.payload["button_id"]: s.payload for s in plan if s.kind == "macro_write"}
+    assert writes[3].get("new") is True
+    assert "new" not in writes[198]
 
 
 def test_favorite_reorder_emits_content_order_despite_positional_button_ids() -> None:
@@ -282,3 +307,99 @@ def test_cross_activity_chain_step_passthrough() -> None:
     assert "macro_write" in kinds
     # The activity-range ref (0x66) must NOT be treated as an added member.
     assert "member_replay" not in kinds
+
+
+# ── BUG #8: "Set input" choice for a NEW member ─────────────────────────
+
+
+def _add_member_power_steps(activity: dict, device_id: int, input_ordinal: int) -> None:
+    """Mirror the editor's member add: append the new device's power-on
+    rows (0xC6 power ref + 0xC5 input ref with the chosen ordinal)."""
+    macro = next(m for m in activity["macros"] if m["button_id"] == 198)
+    macro["steps"].extend(
+        [
+            {"device_id": device_id, "command_id": 0xC6, "button_code": 0, "duration": 1, "delay": 255},
+            {"device_id": device_id, "command_id": 0xC5, "button_code": 0, "duration": input_ordinal, "delay": 255},
+        ]
+    )
+
+
+def test_member_add_carries_input_choice() -> None:
+    """BUG #8: a new member's "Set input" choice (the 0xC5 power-on step's
+    duration = input ordinal) must ride the member_replay payload as the
+    input's command id — add_device_to_activity otherwise rebuilds the 0xC5
+    row from scratch with duration 0 and the choice is silently lost."""
+    base = base_bundle()
+    _device(base, 3)["input_record"] = {
+        "entries": [
+            {"command_id": 53, "input_index": 1, "name": "Input TV"},
+            {"command_id": 54, "input_index": 4, "name": "Input blu-ray"},
+        ]
+    }
+    edited = copy.deepcopy(base)
+    _add_member_power_steps(_activity(edited), 3, input_ordinal=4)
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    replay = next(s for s in plan if s.kind == "member_replay")
+    assert replay.payload == {"activity_id": ACTIVITY_ID, "device_id": 3, "input_cmd_id": 54}
+
+
+def test_member_add_without_input_choice_omits_input_cmd_id() -> None:
+    base = base_bundle()
+    _device(base, 3)["input_record"] = {
+        "entries": [{"command_id": 53, "input_index": 1, "name": "Input TV"}]
+    }
+    edited = copy.deepcopy(base)
+    _add_member_power_steps(_activity(edited), 3, input_ordinal=0)
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    replay = next(s for s in plan if s.kind == "member_replay")
+    assert "input_cmd_id" not in replay.payload
+
+
+def test_member_add_with_unresolvable_ordinal_omits_input_cmd_id() -> None:
+    # Device 3 carries no input_record in the fixture: an ordinal that
+    # cannot be mapped to a command id must be dropped, not guessed.
+    base = base_bundle()
+    edited = copy.deepcopy(base)
+    _add_member_power_steps(_activity(edited), 3, input_ordinal=4)
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    replay = next(s for s in plan if s.kind == "member_replay")
+    assert "input_cmd_id" not in replay.payload
+
+
+def test_existing_member_input_change_rides_macro_write() -> None:
+    """The adjacent case to BUG #8: changing the input of an EXISTING member
+    edits only the power-on macro's 0xC5 duration — the plan must carry it
+    as a macro_write (no member_replay) with the new ordinal intact."""
+    base = base_bundle()
+    _activity(base)["macros"][0]["steps"].append(
+        {"device_id": 1, "command_id": 0xC5, "button_code": 0, "duration": 1, "delay": 255}
+    )
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"][0]["steps"][-1]["duration"] = 2
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    kinds = _kinds(plan)
+    assert "member_replay" not in kinds
+    write = next(s for s in plan if s.kind == "macro_write")
+    assert write.payload["button_id"] == 198
+    steps = write.payload["steps"]
+    assert steps[-1]["command_id"] == 0xC5
+    assert steps[-1]["duration"] == 2
+
+
+def test_power_macro_absent_from_baseline_is_not_flagged_new() -> None:
+    """BUG #8 repro tail: a fresh activity's baseline has no 198/199 rows,
+    but power macros live at fixed wire ids outside the fav-id namespace —
+    flagging them ``new`` would send the write through the BUG #5 id
+    allocator and the power-on overwrite would never land at 198."""
+    base = base_bundle()
+    _activity(base)["macros"] = []
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"] = [
+        {"button_id": 198, "name": "POWER_ON", "steps": [
+            {"device_id": 1, "command_id": 0xC6, "button_code": 0, "duration": 1, "delay": 255},
+        ]},
+    ]
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    write = next(s for s in plan if s.kind == "macro_write")
+    assert write.payload["button_id"] == 198
+    assert "new" not in write.payload

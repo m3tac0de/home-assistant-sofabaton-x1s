@@ -193,6 +193,21 @@ test("diffDeviceForReview reports cleared bindings under Buttons", () => {
   assert.match(deviceAllText(groups), /"OK" no longer bound/);
 });
 
+test("diffDeviceForReview reports an IP address change under Network", () => {
+  const base = structuredClone(baseBundle()) as any;
+  base.devices[0].device.device_class = "wifi_roku";
+  base.devices[0].device.ip_address = "192.168.1.40";
+  const edited = structuredClone(base) as any;
+  edited.devices[0].device.ip_address = "192.168.1.42";
+  const groups = diffDeviceForReview(base, edited, 1);
+  assert.deepEqual(groups.map((group) => group.section), ["network"]);
+  assert.match(deviceAllText(groups), /IP address → 192\.168\.1\.42/);
+
+  const cleared = structuredClone(base) as any;
+  cleared.devices[0].device.ip_address = null;
+  assert.match(deviceAllText(diffDeviceForReview(base, cleared, 1)), /IP address cleared/);
+});
+
 test("diffDeviceForReview reports power sequence and macro edits", () => {
   const base = structuredClone(baseBundle()) as any;
   base.devices[0].macros = [

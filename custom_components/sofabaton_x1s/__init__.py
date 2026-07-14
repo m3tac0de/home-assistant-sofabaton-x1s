@@ -69,7 +69,7 @@ from .lib.hub_versions import HUB_BUNDLE_SCHEMA_VERSION
 from .roku_listener import async_get_roku_listener
 
 _LOGGER = logging.getLogger(__name__)
-_WIFI_NAME_RE = re.compile(r"^(?:[^\W_]|[ +&.'()_-])+$", re.UNICODE)
+_WIFI_NAME_RE = re.compile(r"^(?:[^\W_]|[ !-/:-@\[-`{-~])+$", re.UNICODE)
 _WIFI_NAME_ASCII_RE = re.compile(r"^[A-Za-z0-9 ]+$")
 _FRONTEND_URL_BASE = f"/{DOMAIN}/www"
 _TOOLS_CARD_FILENAME = "tools-card.js"
@@ -391,7 +391,7 @@ def _validate_wifi_name_for_hub(hub: SofabatonHub, value: Any, *, field_name: st
     if not text:
         if _hub_supports_unicode_wifi_names(hub):
             raise ValueError(
-                f"{field_name} must contain only letters (including accented/umlaut), numbers, spaces, and common symbols like +"
+                f"{field_name} must contain only letters (including accented/umlaut), numbers, spaces, and punctuation"
             )
         raise ValueError(f"{field_name} must contain only letters, numbers, and spaces")
     return text
@@ -1782,6 +1782,25 @@ def _validate_entity_sync_inputs(
 
     if not _has_entity(baseline) or not _has_entity(edited):
         raise ValueError(f"{id_key} is missing from one of the bundles")
+
+    # Editor invariants apply to the sync target plus every entity that
+    # differs from the baseline — the entities a plan can actually write.
+    # Entities passing through unchanged are hub truth; a stale cache entry
+    # or hub quirk elsewhere in the bundle must not block this sync.
+    def _entities_by_id(bundle: dict, key: str) -> dict[int, Any]:
+        return {
+            int((entry.get("device") or {}).get("device_id") or 0): entry
+            for entry in bundle.get(key) or []
+            if isinstance(entry, dict)
+        }
+
+    strict_entity_ids = {entity_id}
+    for key in ("devices", "activities"):
+        baseline_entries = _entities_by_id(baseline, key)
+        for ent_id, entry in _entities_by_id(edited, key).items():
+            if baseline_entries.get(ent_id) != entry:
+                strict_entity_ids.add(ent_id)
+
     baseline_model = validate_hub_bundle_for_model(
         baseline,
         hub_version=hub_version,
@@ -1793,6 +1812,7 @@ def _validate_entity_sync_inputs(
         hub_version=hub_version,
         payload_name="edited",
         enforce_editor_invariants=True,
+        strict_entity_ids=strict_entity_ids,
     )
     if baseline_model != edited_model:
         raise ValueError("baseline and edited bundles declare different hub models")
@@ -2043,6 +2063,99 @@ async def _ws_activity_delete(hass: HomeAssistant, connection, msg: dict[str, An
 @websocket_api.async_response
 async def _ws_device_delete(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     await _handle_entity_delete_ws(hass, connection, msg, entity_kind="device")
+
+
+async def _resolve_hub_for_activity_write(
+    hass: HomeAssistant, connection, msg: dict[str, Any], *, op_name: str
+):
+    """Shared guard chain for the immediate activity-list writes
+    (reorder / create): resolve the hub, refuse while a backup-registry
+    operation is running, and honor the hub operation lock."""
+
+    hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return None
+
+    registry = _backup_operation_registry(hass)
+    if registry.has_running_for_entry(hub.entry_id):
+        connection.send_error(
+            msg["id"],
+            "busy",
+            "Another backup, restore, or sync operation is already running for this hub",
+        )
+        return None
+
+    try:
+        _raise_if_hub_operation_locked(hass, hub, op_name)
+    except HomeAssistantError as err:
+        connection.send_error(msg["id"], "unavailable", str(err))
+        return None
+    return hub
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/activity/reorder",
+        vol.Required("entry_id"): str,
+        vol.Required("ordered_ids"): [vol.All(int, vol.Range(min=1, max=255))],
+    }
+)
+@websocket_api.async_response
+async def _ws_activity_reorder(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # Immediate live write of the hub's stored activity display order.
+    hub = await _resolve_hub_for_activity_write(
+        hass, connection, msg, op_name="_ws_activity_reorder"
+    )
+    if hub is None:
+        return
+
+    result = await hub.async_reorder_activities(list(msg["ordered_ids"]))
+    if not result or str(result.get("status")) != "success":
+        connection.send_error(
+            msg["id"],
+            "reorder_failed",
+            "The hub did not confirm the new activity order",
+        )
+        return
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/activity/create",
+        vol.Required("entry_id"): str,
+        vol.Required("name"): str,
+    }
+)
+@websocket_api.async_response
+async def _ws_activity_create(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # Create a fresh, empty activity; the frontend then opens the live
+    # editor on the assigned id.
+    name = str(msg["name"]).strip()
+    if not name or len(name) > 30:
+        connection.send_error(
+            msg["id"],
+            "invalid_name",
+            "Activity name must be 1-30 characters",
+        )
+        return
+
+    hub = await _resolve_hub_for_activity_write(
+        hass, connection, msg, op_name="_ws_activity_create"
+    )
+    if hub is None:
+        return
+
+    result = await hub.async_create_activity(name)
+    if not result or str(result.get("status")) != "success":
+        connection.send_error(
+            msg["id"],
+            "create_failed",
+            "The hub did not confirm creation of the new activity",
+        )
+        return
+    connection.send_result(msg["id"], result)
 
 
 async def _handle_entity_sync_plan_ws(
@@ -2523,6 +2636,8 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_device_sync_plan)
     websocket_api.async_register_command(hass, _ws_activity_delete)
     websocket_api.async_register_command(hass, _ws_device_delete)
+    websocket_api.async_register_command(hass, _ws_activity_reorder)
+    websocket_api.async_register_command(hass, _ws_activity_create)
     websocket_api.async_register_command(hass, _ws_refresh_all_cache)
     websocket_api.async_register_command(hass, _ws_get_structural_bundle)
     websocket_api.async_register_command(hass, _ws_get_hub_logs)
@@ -3168,7 +3283,9 @@ async def _async_handle_create_wifi_device(call: ServiceCall):
             raise ValueError("commands entries must not be empty")
         if not _sanitize_wifi_name_for_hub(hub, command_name) or _sanitize_wifi_name_for_hub(hub, command_name) != command_name[:20].strip():
             if _hub_supports_unicode_wifi_names(hub):
-                raise ValueError("commands entries must contain only letters (including accented/umlaut), numbers, and spaces")
+                raise ValueError(
+                    "commands entries must contain only letters (including accented/umlaut), numbers, spaces, and punctuation"
+                )
             raise ValueError("commands entries must contain only letters, numbers, and spaces")
         commands.append(command_name)
 

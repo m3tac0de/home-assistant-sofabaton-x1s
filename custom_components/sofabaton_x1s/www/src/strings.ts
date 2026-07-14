@@ -84,6 +84,18 @@ export const TOOLS_CARD_STRINGS = {
     refreshAll: "Refresh all",
     editActivity: "Edit activity",
     editDevice: "Edit device",
+    changeOrder: "Change order",
+    addActivity: "Add Activity",
+    reorderSync: "Sync to hub",
+    reorderCancel: "Cancel",
+    reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderSyncing: "Writing the new order to the hub…",
+    addActivityTitle: "Add Activity",
+    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
+    addActivityPlaceholder: "Activity name",
+    addActivityCancel: "Cancel",
+    addActivityConfirm: "Create",
+    addActivityCreating: "Creating…",
   },
   logs: {
     loading: "Loading log stream...",
@@ -196,6 +208,7 @@ export const TOOLS_CARD_STRINGS = {
     // editor (activity-diff.ts, diffDeviceForReview).
     deviceReview: {
       sectionPower: "Power",
+      sectionNetwork: "Network",
       sectionButtons: "Buttons",
       sectionMacros: "Macros",
       powerControlChanged: (label: string) => `Automatic power control → ${label}.`,
@@ -207,6 +220,8 @@ export const TOOLS_CARD_STRINGS = {
       macroChanged: (name: string) => `Edited macro "${name}".`,
       bindingBound: (button: string, command: string) => `"${button}" now sends "${command}".`,
       bindingCleared: (button: string) => `"${button}" no longer bound.`,
+      ipChanged: (ip: string) => `IP address → ${ip}.`,
+      ipCleared: "IP address cleared.",
     },
   },
   backup: {
@@ -258,6 +273,8 @@ export const TOOLS_CARD_STRINGS = {
       `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count: number) =>
       `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactPowerSteps: (count: number) =>
+      `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
     deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",

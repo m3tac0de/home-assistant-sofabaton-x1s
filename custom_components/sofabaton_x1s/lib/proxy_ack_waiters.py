@@ -266,12 +266,26 @@ class AckWaitersMixin:
             self._ack_event.wait(min(remaining, poll_interval))
 
     def cache_macro_record(self, record: MacroRecord) -> None:
-        """Store a fully-assembled :class:`MacroRecord` keyed by ``(activity_id, key_id)``."""
+        """Store a fully-assembled :class:`MacroRecord` keyed by ``(activity_id, key_id)``.
+
+        Written to both stores: the transient event map that unblocks
+        ``wait_for_macro_record``, and the persistent record cache that
+        structural bundles and exports read (``get_cached_macro_records``).
+        """
 
         key = (record.activity_id & 0xFF, record.key_id & 0xFF)
         with self._macro_payload_lock:
             self._macro_payload_events[key] = record
+            self._macro_records_cache[key] = record
             self._macro_payload_event.set()
+
+    def drop_cached_macro_records(self, activity_id: int) -> None:
+        """Invalidate the persistent macro cache for one activity."""
+
+        act_lo = activity_id & 0xFF
+        with self._macro_payload_lock:
+            for key in [k for k in self._macro_records_cache if (k[0] & 0xFF) == act_lo]:
+                del self._macro_records_cache[key]
 
     def wait_for_macro_record(
         self, activity_id: int, button_id: int, *, timeout: float = 5.0
@@ -301,7 +315,7 @@ class AckWaitersMixin:
         with self._macro_payload_lock:
             records = [
                 record
-                for (cached_act_id, _button_id), record in self._macro_payload_events.items()
+                for (cached_act_id, _button_id), record in self._macro_records_cache.items()
                 if (cached_act_id & 0xFF) == act_lo
             ]
         records.sort(key=lambda record: record.key_id & 0xFF)

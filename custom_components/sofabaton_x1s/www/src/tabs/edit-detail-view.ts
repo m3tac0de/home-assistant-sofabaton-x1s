@@ -155,9 +155,11 @@ export function bundleSupportsUnicodeNames(bundle: BackupBundlePayload | null): 
 
 export function sanitizeBundleName(bundle: BackupBundlePayload | null, value: unknown): string {
   const pattern = bundleSupportsUnicodeNames(bundle)
-    ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu
+    ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu
     : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, 20);
+  // 30 UTF-16 code units = the 30-byte ASCII (X1) / 60-byte UTF-16BE
+  // (X1S/X2) name slot on the wire.
+  return String(value ?? "").replace(pattern, "").slice(0, 30);
 }
 
 export function useLegacyTextField(): boolean {
@@ -951,17 +953,13 @@ export class SofabatonEditDetailView extends LitElement {
                   <div class="quick-access-meta">IPv4 dotted-decimal address</div>
                 </div>
                 <div class="quick-access-actions">
-                  ${this.mode === "live"
-                    ? nothing
-                    : html`
-                        <button
-                          class="icon-btn"
-                          @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                          aria-label="Edit IP address"
-                        >
-                          <ha-icon icon="mdi:pencil"></ha-icon>
-                        </button>
-                      `}
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
+                    aria-label="Edit IP address"
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1480,9 +1478,9 @@ export class SofabatonEditDetailView extends LitElement {
   }
 
   private _editRenameFieldMaxLength(): number {
-    // "255.255.255.255" is 15 chars; everything else uses the
-    // historical hub-name cap of 20.
-    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 20;
+    // "255.255.255.255" is 15 chars; everything else uses the 30-char
+    // wire name slot.
+    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 30;
   }
 
   /**
@@ -2152,6 +2150,9 @@ export class SofabatonEditDetailView extends LitElement {
                       : nothing}
                     ${impact.macroSteps > 0
                       ? html`<li><ha-icon icon="mdi:format-list-numbered"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactMacroSteps(impact.macroSteps)}</span></li>`
+                      : nothing}
+                    ${impact.powerSteps > 0
+                      ? html`<li><ha-icon icon="mdi:power"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactPowerSteps(impact.powerSteps)}</span></li>`
                       : nothing}
                     ${impact.bindings > 0
                       ? html`<li><ha-icon icon="mdi:gesture-tap-button"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactBindings(impact.bindings)}</span></li>`

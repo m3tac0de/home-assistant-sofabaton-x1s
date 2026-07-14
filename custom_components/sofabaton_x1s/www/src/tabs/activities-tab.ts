@@ -36,6 +36,7 @@ class SofabatonActivitiesTab extends LitElement {
     hass: { attribute: false },
     hub: { attribute: false },
     refreshControlPanelState: { attribute: false },
+    startRefreshAll: { attribute: false },
     kind: { type: String },
     entityId: { type: Number },
     loading: { type: Boolean },
@@ -186,6 +187,12 @@ class SofabatonActivitiesTab extends LitElement {
   hass: HassLike | null = null;
   hub: ControlPanelHubState | null = null;
   refreshControlPanelState?: (() => Promise<unknown> | void) | null;
+  /**
+   * Store-routed whole-hub cache refresh (refreshAllForHub). Forwarded to the
+   * embedded refresh buttons so the bottom dock shows progress/completion and
+   * hub state reloads when the refresh finishes.
+   */
+  startRefreshAll?: (() => Promise<string | null>) | null;
   /** What is being edited; the host sets both before mounting. */
   kind: "activity" | "device" = "activity";
   entityId: number | null = null;
@@ -423,9 +430,6 @@ class SofabatonActivitiesTab extends LitElement {
   }
 
   private async _onSyncSuccess(operationId: string) {
-    // Promote working → baseline so the editor's baseline advances and dirty clears.
-    if (this._working) this._baseline = structuredClone(this._working);
-    this._recomputeDirty();
     this._syncProgress = null;
     this._syncOperationId = null;
     const exitAfterSync = this._exitAfterSync;
@@ -437,6 +441,31 @@ class SofabatonActivitiesTab extends LitElement {
       this._resetToList();
       return;
     }
+    // Rebase the editor on the backend's post-sync capture rather than
+    // promoting the local working copy: the hub canonicalizes bytes the
+    // editor doesn't model (e.g. the per-device duration byte on power-ref
+    // macro rows), and the sync operation's closing refresh has already
+    // folded that truth into the structural bundle. Promoting local state
+    // would fail the next sync's stale preflight against the hub.
+    let rebased: BackupBundlePayload | null = null;
+    try {
+      const res = this.hub ? await this.api().getStructuralBundle(this.hub.entry_id) : null;
+      const bundle = res?.bundle ?? null;
+      const entries = (this.kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
+      const hasEntity = !!bundle && entries.some(
+        (candidate) => Number(candidate.device?.device_id) === this._entityId,
+      );
+      if (bundle && hasEntity) rebased = bundle;
+    } catch {
+      /* fall back to local promotion below */
+    }
+    if (rebased) {
+      this._baseline = rebased;
+      this._working = structuredClone(rebased);
+    } else if (this._working) {
+      this._baseline = structuredClone(this._working);
+    }
+    this._recomputeDirty();
     this._stage = "editing";
   }
 
@@ -626,6 +655,7 @@ class SofabatonActivitiesTab extends LitElement {
             <sofabaton-refresh-cache-button
               .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
+              .runRefresh=${this.startRefreshAll ?? null}
               @refreshed=${() => { if (this._entityId != null) void this._startCapture(this._entityId); }}
             ></sofabaton-refresh-cache-button>
             <button class="btn" @click=${() => this._resetToList()}>${S.back}</button>
@@ -717,6 +747,7 @@ class SofabatonActivitiesTab extends LitElement {
             <sofabaton-refresh-cache-button
               .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
+              .runRefresh=${this.startRefreshAll ?? null}
               .label=${S.syncReload}
               @refreshed=${() => { if (this._entityId != null) void this._startCapture(this._entityId); }}
             ></sofabaton-refresh-cache-button>

@@ -302,7 +302,7 @@ test("activities tab leaving without sync discards the active edit", () => {
   assert.equal(element._exitConfirmOpen, false);
 });
 
-function createSyncHass() {
+function createSyncHass(structuralBundle?: () => unknown) {
   let progressCb: ((payload: unknown) => void) | undefined;
   const calls: string[] = [];
   const hass = {
@@ -313,6 +313,9 @@ function createSyncHass() {
       if (type === "sofabaton_x1s/activity/sync") return { operation_id: "sync-1" } as T;
       if (type === "sofabaton_x1s/device/sync") return { operation_id: "sync-1" } as T;
       if (type === "sofabaton_x1s/backup/clear_result") return { ok: true } as T;
+      if (type === "sofabaton_x1s/cache/structural_bundle" && structuralBundle) {
+        return { bundle: structuralBundle(), generation: 1 } as T;
+      }
       throw new Error(`Unexpected WS call: ${type}`);
     },
     connection: {
@@ -343,9 +346,37 @@ test("activities tab sync starts the engine and enters the syncing stage", async
   assert.equal(hass.__calls.includes("sofabaton_x1s/activity/sync"), true);
 });
 
-test("activities tab sync success promotes working to baseline and clears dirty", async () => {
+test("activities tab sync success rebases the baseline from the backend capture", async () => {
+  // The hub canonicalizes bytes the editor does not model (e.g. power-row
+  // duration), so a successful sync must adopt the backend's post-sync
+  // capture — not the local working copy — or the next sync's stale
+  // preflight false-positives.
   const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
-  const hass = createSyncHass();
+  const canonical = sampleBundle();
+  canonical.activities[0].device!.name = "Canonical";
+  const hass = createSyncHass(() => structuredClone(canonical));
+  element.hass = hass;
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.refreshControlPanelState = () => undefined;
+  element._baseline = sampleBundle();
+  const edited = structuredClone(element._baseline);
+  edited.activities[0].device!.name = "Edited";
+  element._working = edited;
+  element._entityId = 101;
+  element._recomputeDirty();
+
+  await element._requestSync();
+  await hass.__emit({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "success", total_steps: 2 });
+
+  assert.equal(element._stage, "editing");
+  assert.equal(element._dirty, false);
+  assert.equal(element._baseline.activities[0].device.name, "Canonical");
+  assert.equal(element._working.activities[0].device.name, "Canonical");
+});
+
+test("activities tab sync success falls back to local promotion when recapture is unavailable", async () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  const hass = createSyncHass(); // no structural_bundle handler -> recapture throws
   element.hass = hass;
   element.hub = { entry_id: "hub-1", activities: [] };
   element.refreshControlPanelState = () => undefined;
@@ -459,6 +490,58 @@ test("device editor sync goes through device/sync", async () => {
   await hass.__emit({ operation_id: "sync-1", kind: "device_sync", entry_id: "hub-1", status: "success", total_steps: 1 });
   assert.equal(element._stage, "editing");
   assert.equal(element._dirty, false);
+});
+
+const RefreshCacheButtonElement = customElements.get("sofabaton-refresh-cache-button") as {
+  new (): HTMLElement;
+};
+
+test("refresh cache button routes through runRefresh and emits refreshed on success", async () => {
+  const element = new RefreshCacheButtonElement() as HTMLElement & Record<string, any>;
+  element.entryId = "hub-1";
+  element.hass = {
+    states: {},
+    async callWS() { throw new Error("must not start the refresh itself when runRefresh is set"); },
+    connection: null,
+  } as HassLike;
+  let runs = 0;
+  element.runRefresh = async () => { runs += 1; return null; };
+  let refreshed = 0;
+  element.addEventListener("refreshed", () => { refreshed += 1; });
+
+  await element._start();
+
+  assert.equal(runs, 1);
+  assert.equal(refreshed, 1);
+  assert.equal(element._running, false);
+  assert.equal(element._error, null);
+});
+
+test("refresh cache button surfaces the failure message from runRefresh", async () => {
+  const element = new RefreshCacheButtonElement() as HTMLElement & Record<string, any>;
+  element.entryId = "hub-1";
+  element.hass = { states: {}, async callWS() { return {}; }, connection: null } as HassLike;
+  element.runRefresh = async () => "Cache refresh failed.";
+  let refreshed = 0;
+  element.addEventListener("refreshed", () => { refreshed += 1; });
+
+  await element._start();
+
+  assert.equal(refreshed, 0);
+  assert.equal(element._running, false);
+  assert.equal(element._error, "Cache refresh failed.");
+});
+
+test("needs-refresh and sync-failed views forward startRefreshAll to the refresh button", () => {
+  const element = new ActivitiesTabElement() as HTMLElement & Record<string, any>;
+  element.hub = { entry_id: "hub-1", activities: [] };
+  const runner = async () => null;
+  element.startRefreshAll = runner;
+
+  const needsRefresh = element._renderNeedsRefresh();
+  assert.equal((needsRefresh.values as unknown[]).includes(runner), true);
+  const syncFailed = element._renderSyncFailed();
+  assert.equal((syncFailed.values as unknown[]).includes(runner), true);
 });
 
 test("activities tab sync failure surfaces the failed step, stale maps to reload", async () => {

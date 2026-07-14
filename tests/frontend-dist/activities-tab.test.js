@@ -1269,7 +1269,19 @@ var TOOLS_CARD_STRINGS = {
     refreshList: "Refresh list",
     refreshAll: "Refresh all",
     editActivity: "Edit activity",
-    editDevice: "Edit device"
+    editDevice: "Edit device",
+    changeOrder: "Change order",
+    addActivity: "Add Activity",
+    reorderSync: "Sync to hub",
+    reorderCancel: "Cancel",
+    reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderSyncing: "Writing the new order to the hub\u2026",
+    addActivityTitle: "Add Activity",
+    addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
+    addActivityPlaceholder: "Activity name",
+    addActivityCancel: "Cancel",
+    addActivityConfirm: "Create",
+    addActivityCreating: "Creating\u2026"
   },
   logs: {
     loading: "Loading log stream...",
@@ -1377,6 +1389,7 @@ var TOOLS_CARD_STRINGS = {
     // editor (activity-diff.ts, diffDeviceForReview).
     deviceReview: {
       sectionPower: "Power",
+      sectionNetwork: "Network",
       sectionButtons: "Buttons",
       sectionMacros: "Macros",
       powerControlChanged: (label) => `Automatic power control \u2192 ${label}.`,
@@ -1387,7 +1400,9 @@ var TOOLS_CARD_STRINGS = {
       macroRenamed: (oldName, newName) => `Renamed macro "${oldName}" \u2192 "${newName}".`,
       macroChanged: (name) => `Edited macro "${name}".`,
       bindingBound: (button, command) => `"${button}" now sends "${command}".`,
-      bindingCleared: (button) => `"${button}" no longer bound.`
+      bindingCleared: (button) => `"${button}" no longer bound.`,
+      ipChanged: (ip) => `IP address \u2192 ${ip}.`,
+      ipCleared: "IP address cleared."
     }
   },
   backup: {
@@ -1436,6 +1451,7 @@ var TOOLS_CARD_STRINGS = {
     deleteImpactActivities: (count) => `${count} ${count === 1 ? "activity references" : "activities reference"} it`,
     deleteImpactFavorites: (count) => `${count} shortcut${count === 1 ? "" : "s"} will be removed`,
     deleteImpactMacroSteps: (count) => `${count} sequence step${count === 1 ? "" : "s"} will be removed`,
+    deleteImpactPowerSteps: (count) => `${count} power sequence step${count === 1 ? "" : "s"} will be cleared`,
     deleteReplaceNote: "Deletions reach the hub only with a Replace restore.",
     // Live-edit variants: deletions here act on the hub, not a backup file.
     deleteCascadeIntroLive: "Deleting this also removes its references on the hub:",
@@ -1913,6 +1929,24 @@ var ControlPanelApi = class {
       type: "sofabaton_x1s/device/delete",
       entry_id: entryId,
       device_id: deviceId
+    });
+  }
+  // Immediate live write of the hub's stored activity display order.
+  // ordered_ids is the full activity id list in the desired order.
+  reorderActivities(entryId, orderedIds) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/reorder",
+      entry_id: entryId,
+      ordered_ids: orderedIds
+    });
+  }
+  // Create a fresh, empty activity on the hub; resolves with the
+  // hub-assigned activity id so the caller can open the live editor on it.
+  createActivity(entryId, name) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/activity/create",
+      entry_id: entryId,
+      name
     });
   }
   startCacheRefresh(entryId) {
@@ -4281,6 +4315,9 @@ function stepMatchesDevice(step, deviceId) {
 function stepMatchesCommand(step, deviceId, commandId) {
   return Number(step?.device_id || 0) === deviceId && Number(step?.command_id || 0) === commandId;
 }
+function deviceMacroStepMatchesCommand(step, commandId) {
+  return !isMacroDelayStep(step) && Number(step?.command_id || 0) === commandId;
+}
 var MACRO_DELAY_SENTINEL = 255;
 function isMacroDelayStep(step) {
   return Number(step?.device_id || 0) === MACRO_DELAY_SENTINEL || Number(step?.command_id || 0) === MACRO_DELAY_SENTINEL;
@@ -4343,7 +4380,7 @@ function countAffectedBindings(bindings, transform) {
   return count;
 }
 function bundleDeleteImpact(bundle, target) {
-  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   if (!bundle) return empty;
   if (target.kind === "device") {
     const deviceId = Number(target.deviceId);
@@ -4366,7 +4403,7 @@ function bundleDeleteImpact(bundle, target) {
         (binding) => cascadeBindingForDeletedDevice(binding, deviceId)
       );
     }
-    return { favorites, macroSteps, activities, bindings };
+    return { favorites, macroSteps, powerSteps: 0, activities, bindings };
   }
   if (target.kind === "command") {
     const deviceId = Number(target.deviceId);
@@ -4393,7 +4430,13 @@ function bundleDeleteImpact(bundle, target) {
       device?.button_bindings,
       (binding) => cascadeBindingForDeletedCommand(binding, deviceId, commandId, true)
     );
-    return { favorites, macroSteps, activities: 0, bindings };
+    let powerSteps = 0;
+    for (const macro of device?.macros ?? []) {
+      const removed = countRemovedMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, commandId));
+      if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(Number(macro?.button_id || 0))) powerSteps += removed;
+      else macroSteps += removed;
+    }
+    return { favorites, macroSteps, powerSteps, activities: 0, bindings };
   }
   if (target.kind === "activity_member") {
     return activityMemberRemovalImpact(bundle, target.activityId, target.deviceId);
@@ -4401,7 +4444,7 @@ function bundleDeleteImpact(bundle, target) {
   return empty;
 }
 function backupDeleteHasCascade(impact) {
-  return impact.favorites > 0 || impact.macroSteps > 0 || impact.activities > 0 || impact.bindings > 0;
+  return impact.favorites > 0 || impact.macroSteps > 0 || impact.powerSteps > 0 || impact.activities > 0 || impact.bindings > 0;
 }
 function deleteBundleActivity(bundle, activityId) {
   const id = Number(activityId);
@@ -4449,7 +4492,14 @@ function deleteBundleDeviceCommand(bundle, deviceId, commandId) {
         button_bindings: applyBindingCascade(
           device.button_bindings,
           (binding) => cascadeBindingForDeletedCommand(binding, dId, cId, true)
-        )
+        ),
+        // The device's own macros (power on/off sequences and user macros)
+        // reference commands by id — prune those steps too, or the bundle
+        // keeps dangling references sync validation rejects.
+        macros: (device.macros ?? []).map((macro) => ({
+          ...macro,
+          steps: filterMacroSteps(macro?.steps, (step) => deviceMacroStepMatchesCommand(step, cId))
+        }))
       };
     }),
     activities: (bundle.activities ?? []).map((activity) => ({
@@ -4734,7 +4784,7 @@ function removeActivityMemberDevice(bundle, activityId, deviceId) {
   return reconcileActivityPowerMacros(next, aId);
 }
 function activityMemberRemovalImpact(bundle, activityId, deviceId) {
-  const empty = { favorites: 0, macroSteps: 0, activities: 0, bindings: 0 };
+  const empty = { favorites: 0, macroSteps: 0, powerSteps: 0, activities: 0, bindings: 0 };
   const activity = findBundleActivity(bundle, activityId);
   if (!activity) return empty;
   const dId = Number(deviceId);
@@ -4758,7 +4808,7 @@ function activityMemberRemovalImpact(bundle, activityId, deviceId) {
     activity.button_bindings,
     (binding) => cascadeBindingForDeletedDevice(binding, dId)
   );
-  return { favorites, macroSteps, activities: 0, bindings };
+  return { favorites, macroSteps, powerSteps: 0, activities: 0, bindings };
 }
 var SYNTHETIC_COMMAND_CODE_BASE = 2e4;
 function synthesizeCommandCode(commandId) {
@@ -5419,8 +5469,8 @@ function bundleSupportsUnicodeNames(bundle) {
   return version.includes("X2") || version.includes("X1S");
 }
 function sanitizeBundleName(bundle, value) {
-  const pattern = bundleSupportsUnicodeNames(bundle) ? /[^\p{L}\p{N}\p{M} +&.'()_-]+/gu : /[^A-Za-z0-9 ]+/g;
-  return String(value ?? "").replace(pattern, "").slice(0, 20);
+  const pattern = bundleSupportsUnicodeNames(bundle) ? /[^\p{L}\p{N}\p{M} !-\/:-@\[-`{-~]+/gu : /[^A-Za-z0-9 ]+/g;
+  return String(value ?? "").replace(pattern, "").slice(0, 30);
 }
 function useLegacyTextField() {
   return Boolean(customElements.get("ha-textfield")) && !customElements.get("ha-input");
@@ -6749,15 +6799,13 @@ var SofabatonEditDetailView = class extends i3 {
                   <div class="quick-access-meta">IPv4 dotted-decimal address</div>
                 </div>
                 <div class="quick-access-actions">
-                  ${this.mode === "live" ? A : T`
-                        <button
-                          class="icon-btn"
-                          @click=${() => this._openDeviceIpRenameDialog(deviceId)}
-                          aria-label="Edit IP address"
-                        >
-                          <ha-icon icon="mdi:pencil"></ha-icon>
-                        </button>
-                      `}
+                  <button
+                    class="icon-btn"
+                    @click=${() => this._openDeviceIpRenameDialog(deviceId)}
+                    aria-label="Edit IP address"
+                  >
+                    <ha-icon icon="mdi:pencil"></ha-icon>
+                  </button>
                 </div>
               </div>
             </div>
@@ -7200,7 +7248,7 @@ var SofabatonEditDetailView = class extends i3 {
     return this._editRenameDialogTarget?.kind === "device_ip" ? "IP address" : "Name";
   }
   _editRenameFieldMaxLength() {
-    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 20;
+    return this._editRenameDialogTarget?.kind === "device_ip" ? 15 : 30;
   }
   /**
    * Diff each spec field against the open-dialog snapshot. Returns a
@@ -7643,6 +7691,7 @@ var SofabatonEditDetailView = class extends i3 {
                     ${impact.activities > 0 ? T`<li><ha-icon icon="mdi:link-variant"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactActivities(impact.activities)}</span></li>` : A}
                     ${impact.favorites > 0 ? T`<li><ha-icon icon="mdi:star-outline"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactFavorites(impact.favorites)}</span></li>` : A}
                     ${impact.macroSteps > 0 ? T`<li><ha-icon icon="mdi:format-list-numbered"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactMacroSteps(impact.macroSteps)}</span></li>` : A}
+                    ${impact.powerSteps > 0 ? T`<li><ha-icon icon="mdi:power"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactPowerSteps(impact.powerSteps)}</span></li>` : A}
                     ${impact.bindings > 0 ? T`<li><ha-icon icon="mdi:gesture-tap-button"></ha-icon><span>${TOOLS_CARD_STRINGS.backup.deleteImpactBindings(impact.bindings)}</span></li>` : A}
                   </ul>
                 ` : A}
@@ -8585,6 +8634,8 @@ var SofabatonRefreshCacheButton = class extends i3 {
     this.entryId = "";
     this.label = "";
     this.disabled = false;
+    /** Store-routed refresh (refreshAllForHub); resolves null on success or a failure message. */
+    this.runRefresh = null;
     this._running = false;
     this._message = "";
     this._error = null;
@@ -8594,6 +8645,23 @@ var SofabatonRefreshCacheButton = class extends i3 {
       this._running = true;
       this._error = null;
       this._message = TOOLS_CARD_STRINGS.cacheRefresh.starting;
+      if (this.runRefresh) {
+        try {
+          const failure = await this.runRefresh();
+          this._running = false;
+          this._message = "";
+          if (failure) {
+            this._error = failure;
+            return;
+          }
+          this.dispatchEvent(new CustomEvent("refreshed", { bubbles: true, composed: true }));
+        } catch (error) {
+          this._running = false;
+          this._error = formatError(error);
+          this._message = "";
+        }
+        return;
+      }
       try {
         const start = await this._api().startCacheRefresh(this.entryId);
         await this._subscribe(start.operation_id);
@@ -8610,6 +8678,7 @@ var SofabatonRefreshCacheButton = class extends i3 {
       entryId: { type: String },
       label: { type: String },
       disabled: { type: Boolean },
+      runRefresh: { attribute: false },
       _running: { state: true },
       _message: { state: true },
       _error: { state: true }
@@ -8879,6 +8948,7 @@ var SofabatonActivitiesTab = class extends i3 {
       hass: { attribute: false },
       hub: { attribute: false },
       refreshControlPanelState: { attribute: false },
+      startRefreshAll: { attribute: false },
       kind: { type: String },
       entityId: { type: Number },
       loading: { type: Boolean },
@@ -9120,8 +9190,6 @@ var SofabatonActivitiesTab = class extends i3 {
     this._progressUnsub = unsub;
   }
   async _onSyncSuccess(operationId) {
-    if (this._working) this._baseline = structuredClone(this._working);
-    this._recomputeDirty();
     this._syncProgress = null;
     this._syncOperationId = null;
     const exitAfterSync = this._exitAfterSync;
@@ -9139,6 +9207,24 @@ var SofabatonActivitiesTab = class extends i3 {
       this._resetToList();
       return;
     }
+    let rebased = null;
+    try {
+      const res = this.hub ? await this.api().getStructuralBundle(this.hub.entry_id) : null;
+      const bundle = res?.bundle ?? null;
+      const entries = (this.kind === "device" ? bundle?.devices : bundle?.activities) ?? [];
+      const hasEntity = !!bundle && entries.some(
+        (candidate) => Number(candidate.device?.device_id) === this._entityId
+      );
+      if (bundle && hasEntity) rebased = bundle;
+    } catch {
+    }
+    if (rebased) {
+      this._baseline = rebased;
+      this._working = structuredClone(rebased);
+    } else if (this._working) {
+      this._baseline = structuredClone(this._working);
+    }
+    this._recomputeDirty();
     this._stage = "editing";
   }
   _resetToList() {
@@ -9264,6 +9350,7 @@ var SofabatonActivitiesTab = class extends i3 {
             <sofabaton-refresh-cache-button
               .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
+              .runRefresh=${this.startRefreshAll ?? null}
               @refreshed=${() => {
       if (this._entityId != null) void this._startCapture(this._entityId);
     }}
@@ -9350,6 +9437,7 @@ var SofabatonActivitiesTab = class extends i3 {
             <sofabaton-refresh-cache-button
               .hass=${this.hass}
               .entryId=${this.hub?.entry_id ?? ""}
+              .runRefresh=${this.startRefreshAll ?? null}
               .label=${S6.syncReload}
               @refreshed=${() => {
       if (this._entityId != null) void this._startCapture(this._entityId);
@@ -9640,7 +9728,7 @@ test("activities tab leaving without sync discards the active edit", () => {
   assert.equal(element._dirty, false);
   assert.equal(element._exitConfirmOpen, false);
 });
-function createSyncHass() {
+function createSyncHass(structuralBundle) {
   let progressCb;
   const calls = [];
   const hass = {
@@ -9651,6 +9739,9 @@ function createSyncHass() {
       if (type === "sofabaton_x1s/activity/sync") return { operation_id: "sync-1" };
       if (type === "sofabaton_x1s/device/sync") return { operation_id: "sync-1" };
       if (type === "sofabaton_x1s/backup/clear_result") return { ok: true };
+      if (type === "sofabaton_x1s/cache/structural_bundle" && structuralBundle) {
+        return { bundle: structuralBundle(), generation: 1 };
+      }
       throw new Error(`Unexpected WS call: ${type}`);
     },
     connection: {
@@ -9679,7 +9770,28 @@ test("activities tab sync starts the engine and enters the syncing stage", async
   assert.equal(element._stage, "syncing");
   assert.equal(hass.__calls.includes("sofabaton_x1s/activity/sync"), true);
 });
-test("activities tab sync success promotes working to baseline and clears dirty", async () => {
+test("activities tab sync success rebases the baseline from the backend capture", async () => {
+  const element = new ActivitiesTabElement();
+  const canonical = sampleBundle();
+  canonical.activities[0].device.name = "Canonical";
+  const hass = createSyncHass(() => structuredClone(canonical));
+  element.hass = hass;
+  element.hub = { entry_id: "hub-1", activities: [] };
+  element.refreshControlPanelState = () => void 0;
+  element._baseline = sampleBundle();
+  const edited = structuredClone(element._baseline);
+  edited.activities[0].device.name = "Edited";
+  element._working = edited;
+  element._entityId = 101;
+  element._recomputeDirty();
+  await element._requestSync();
+  await hass.__emit({ operation_id: "sync-1", kind: "activity_sync", entry_id: "hub-1", status: "success", total_steps: 2 });
+  assert.equal(element._stage, "editing");
+  assert.equal(element._dirty, false);
+  assert.equal(element._baseline.activities[0].device.name, "Canonical");
+  assert.equal(element._working.activities[0].device.name, "Canonical");
+});
+test("activities tab sync success falls back to local promotion when recapture is unavailable", async () => {
   const element = new ActivitiesTabElement();
   const hass = createSyncHass();
   element.hass = hass;
@@ -9778,6 +9890,58 @@ test("device editor sync goes through device/sync", async () => {
   await hass.__emit({ operation_id: "sync-1", kind: "device_sync", entry_id: "hub-1", status: "success", total_steps: 1 });
   assert.equal(element._stage, "editing");
   assert.equal(element._dirty, false);
+});
+var RefreshCacheButtonElement = customElements.get("sofabaton-refresh-cache-button");
+test("refresh cache button routes through runRefresh and emits refreshed on success", async () => {
+  const element = new RefreshCacheButtonElement();
+  element.entryId = "hub-1";
+  element.hass = {
+    states: {},
+    async callWS() {
+      throw new Error("must not start the refresh itself when runRefresh is set");
+    },
+    connection: null
+  };
+  let runs = 0;
+  element.runRefresh = async () => {
+    runs += 1;
+    return null;
+  };
+  let refreshed = 0;
+  element.addEventListener("refreshed", () => {
+    refreshed += 1;
+  });
+  await element._start();
+  assert.equal(runs, 1);
+  assert.equal(refreshed, 1);
+  assert.equal(element._running, false);
+  assert.equal(element._error, null);
+});
+test("refresh cache button surfaces the failure message from runRefresh", async () => {
+  const element = new RefreshCacheButtonElement();
+  element.entryId = "hub-1";
+  element.hass = { states: {}, async callWS() {
+    return {};
+  }, connection: null };
+  element.runRefresh = async () => "Cache refresh failed.";
+  let refreshed = 0;
+  element.addEventListener("refreshed", () => {
+    refreshed += 1;
+  });
+  await element._start();
+  assert.equal(refreshed, 0);
+  assert.equal(element._running, false);
+  assert.equal(element._error, "Cache refresh failed.");
+});
+test("needs-refresh and sync-failed views forward startRefreshAll to the refresh button", () => {
+  const element = new ActivitiesTabElement();
+  element.hub = { entry_id: "hub-1", activities: [] };
+  const runner = async () => null;
+  element.startRefreshAll = runner;
+  const needsRefresh = element._renderNeedsRefresh();
+  assert.equal(needsRefresh.values.includes(runner), true);
+  const syncFailed = element._renderSyncFailed();
+  assert.equal(syncFailed.values.includes(runner), true);
 });
 test("activities tab sync failure surfaces the failed step, stale maps to reload", async () => {
   const element = new ActivitiesTabElement();

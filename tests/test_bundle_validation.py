@@ -116,11 +116,39 @@ def test_x1_rejects_unicode_and_punctuation_while_wide_models_accept_supported_n
 
     x1s = valid_bundle("X1S")
     x1s["activities"][0]["device"]["name"] = "Cinéma +"
+    x1s["devices"][0]["commands"][0]["name"] = "Ok/Select"
+    x1s["devices"][0]["commands"][1]["name"] = "Vol: +10%, [max]!"
+    x1s["devices"][0]["device"]["name"] = "Philips Hue 2 (192.168.2.162)"
     validate_hub_bundle_for_model(x1s, hub_version="X1S")
+
+    too_long = valid_bundle("X1S")
+    too_long["devices"][0]["device"]["name"] = "A" * 31
+    with pytest.raises(ValueError, match="at most 30 characters"):
+        validate_hub_bundle_for_model(too_long, hub_version="X1S")
 
     x2 = valid_bundle("X2")
     x2["activities"][0]["device"]["name"] = "Cinéma +"
     validate_hub_bundle_for_model(x2, hub_version="X2")
+
+
+def test_strict_entity_ids_scope_editor_invariants():
+    bundle = valid_bundle("X1S")
+    # Break the power-macro linkage on activity 101 (stale-cache shape).
+    bundle["activities"][0]["macros"] = [bundle["activities"][0]["macros"][0]]
+
+    with pytest.raises(ValueError, match="represented in the power macros"):
+        validate_hub_bundle_for_model(bundle, hub_version="X1S")
+    with pytest.raises(ValueError, match="represented in the power macros"):
+        validate_hub_bundle_for_model(bundle, hub_version="X1S", strict_entity_ids={101})
+
+    # Scoped to the device only: the broken bystander activity passes through,
+    # while structural checks still cover the whole bundle.
+    validate_hub_bundle_for_model(bundle, hub_version="X1S", strict_entity_ids={1})
+
+    dangling = valid_bundle("X1S")
+    dangling["activities"][0]["favorite_slots"][0]["device_id"] = 9
+    with pytest.raises(ValueError, match="unknown device 9"):
+        validate_hub_bundle_for_model(dangling, hub_version="X1S", strict_entity_ids={1})
 
 
 def test_model_mismatch_is_rejected():

@@ -929,6 +929,7 @@ class CatalogMixin:
             self.state.activity_macros.pop(ent_lo, None)
             self._macros_complete.discard(ent_lo)
             self._pending_macro_requests.discard(ent_lo)
+            self.drop_cached_macro_records(ent_lo)
 
     def _clear_favorite_label_requests_for_activity(self, act_lo: int) -> None:
         to_delete: list[tuple[int, int]] = []
