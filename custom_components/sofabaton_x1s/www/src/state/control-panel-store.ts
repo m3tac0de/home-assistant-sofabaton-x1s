@@ -115,11 +115,9 @@ const INITIAL_SNAPSHOT: ControlPanelSnapshot = {
   selectedBackupSection: "make",
   openEntity: null,
   staleData: false,
-  refreshBusy: false,
-  activeRefreshLabel: null,
-  externalHubCommandBusy: false,
-  externalHubCommandLabel: null,
-  runtimeCompletionNotice: null,
+  refreshBusyByHub: {},
+  externalHubCommandByHub: {},
+  runtimeCompletionNoticeByHub: {},
   pendingSettingKey: null,
   pendingActionKey: null,
   logsLines: [],
@@ -156,7 +154,7 @@ export class ControlPanelStore {
   private _backupOpEntryId: string | null = null;
   private _backupOpId: string | null = null;
   private _runtimeStatePollTimer: ReturnType<typeof setTimeout> | null = null;
-  private _runtimeCompletionTimer: ReturnType<typeof setTimeout> | null = null;
+  private _runtimeCompletionTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private _wifiPressUnsub: (() => void) | null = null;
   private _wifiPressSubscribeSeq = 0;
   // Hub to pre-select when the card was created from a hub-specific entity (via
@@ -201,13 +199,12 @@ export class ControlPanelStore {
     this._isConnected = false;
     this._snapshot = {
       ...this._snapshot,
-      externalHubCommandBusy: false,
-      externalHubCommandLabel: null,
-      runtimeCompletionNotice: null,
+      externalHubCommandByHub: {},
+      runtimeCompletionNoticeByHub: {},
       lastWifiPress: null,
     };
     this._clearRuntimeStatePoll();
-    this._clearRuntimeCompletionTimer();
+    this._clearRuntimeCompletionTimers();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this._teardownWifiPressFeed();
@@ -222,11 +219,15 @@ export class ControlPanelStore {
     this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
   }
 
-  private _clearRuntimeCompletionTimer() {
-    if (this._runtimeCompletionTimer) {
-      clearTimeout(this._runtimeCompletionTimer);
-      this._runtimeCompletionTimer = null;
+  private _clearRuntimeCompletionTimers(entryId?: string) {
+    if (entryId !== undefined) {
+      const timer = this._runtimeCompletionTimers.get(entryId);
+      if (timer) clearTimeout(timer);
+      this._runtimeCompletionTimers.delete(entryId);
+      return;
     }
+    for (const timer of this._runtimeCompletionTimers.values()) clearTimeout(timer);
+    this._runtimeCompletionTimers.clear();
   }
 
   private _clearRuntimeStatePoll() {
@@ -308,7 +309,7 @@ export class ControlPanelStore {
       const connectionChanged = nextConnectionFingerprint !== this._lastConnectionFingerprint;
       if (
         this._isConnected &&
-        !this._isHubCommandBusy() &&
+        !this._isAnyHubCommandBusy() &&
         !this._snapshot.loading &&
         Date.now() > this._refreshGraceUntil &&
         didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)
@@ -347,12 +348,8 @@ export class ControlPanelStore {
       logsError: null,
       logsStickToBottom: true,
       logsScrollBehavior: "auto",
-      externalHubCommandBusy: false,
-      externalHubCommandLabel: null,
-      runtimeCompletionNotice: null,
       lastWifiPress: null,
     };
-    this._clearRuntimeCompletionTimer();
     this.persistViewState();
     this.emit();
     void (async () => {
@@ -429,32 +426,50 @@ export class ControlPanelStore {
     this._snapshot = { ...this._snapshot, pendingScrollEntityKey: null };
   }
 
-  setExternalHubCommandBusy(busy: boolean, label: string | null = null) {
+  /**
+   * Busy state is stored per hub: callers whose operation may outlive the
+   * current hub selection (tab subscriptions, async finallys) pass the
+   * entry_id captured when the operation started so a late clear/set can
+   * never touch another hub's state. Without an entry_id the currently
+   * selected hub is used.
+   */
+  setExternalHubCommandBusy(busy: boolean, label: string | null = null, entryId?: string | null) {
+    const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
+    if (!key) return;
+    const byHub = { ...this._snapshot.externalHubCommandByHub };
+    if (busy) byHub[key] = String(label || "").trim() || "Hub command in progress…";
+    else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
-      externalHubCommandBusy: busy,
-      externalHubCommandLabel: busy ? String(label || "").trim() || "Hub command in progress…" : null,
+      externalHubCommandByHub: byHub,
     };
     this.emit();
   }
 
-  showRuntimeCompletion(notice: RuntimeCompletionNotice | null, ttlMs = 6000) {
-    this._clearRuntimeCompletionTimer();
+  showRuntimeCompletion(notice: RuntimeCompletionNotice | null, entryId?: string | null, ttlMs = 6000) {
+    const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
+    if (!key) return;
+    this._clearRuntimeCompletionTimers(key);
+    const byHub = { ...this._snapshot.runtimeCompletionNoticeByHub };
+    if (notice) byHub[key] = notice;
+    else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
-      runtimeCompletionNotice: notice,
+      runtimeCompletionNoticeByHub: byHub,
     };
     this.emit();
     if (!notice) return;
-    this._runtimeCompletionTimer = setTimeout(() => {
-      this._runtimeCompletionTimer = null;
-      if (!this._snapshot.runtimeCompletionNotice) return;
+    this._runtimeCompletionTimers.set(key, setTimeout(() => {
+      this._runtimeCompletionTimers.delete(key);
+      if (!(key in this._snapshot.runtimeCompletionNoticeByHub)) return;
+      const next = { ...this._snapshot.runtimeCompletionNoticeByHub };
+      delete next[key];
       this._snapshot = {
         ...this._snapshot,
-        runtimeCompletionNotice: null,
+        runtimeCompletionNoticeByHub: next,
       };
       this.emit();
-    }, ttlMs);
+    }, ttlMs));
   }
 
   async loadState(options: { silent?: boolean } = {}) {
@@ -564,23 +579,31 @@ export class ControlPanelStore {
     await this.loadState();
   }
 
+  private _setRefreshBusy(entryId: string, label: string | null) {
+    this._snapshot = {
+      ...this._snapshot,
+      refreshBusyByHub: { ...this._snapshot.refreshBusyByHub, [entryId]: label },
+    };
+    this.emit();
+  }
+
+  private _clearRefreshBusy(entryId: string) {
+    const byHub = { ...this._snapshot.refreshBusyByHub };
+    delete byHub[entryId];
+    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub, staleData: false };
+    this.emit();
+  }
+
   async refreshSection(sectionId: SectionId) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: null };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, null);
     try {
       await this.api().refreshCatalog(hub.entry_id, sectionId);
       await this.loadState({ silent: true });
     } finally {
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false,
-      };
-      this.emit();
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
 
@@ -598,8 +621,7 @@ export class ControlPanelStore {
     if (this._isHubCommandBusy()) return "Another hub operation is already running.";
     const hub = selectedHub(this._snapshot);
     if (!hub) return "No hub selected.";
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: REFRESH_ALL_KEY };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, REFRESH_ALL_KEY);
     let unsubscribe: (() => void) | null = null;
     try {
       const start = await this.api().startCacheRefresh(hub.entry_id);
@@ -620,24 +642,19 @@ export class ControlPanelStore {
         failure
           ? { tone: "error", label: failure }
           : { tone: "success", label: "Hub cache refreshed." },
+        hub.entry_id,
       );
       await this.loadState({ silent: true });
       return failure;
     } catch (error) {
       const failure = formatError(error);
-      this.showRuntimeCompletion({ tone: "error", label: failure });
+      this.showRuntimeCompletion({ tone: "error", label: failure }, hub.entry_id);
       return failure;
     } finally {
       if (unsubscribe) {
         try { (unsubscribe as () => void)(); } catch { /* ignore */ }
       }
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false,
-      };
-      this.emit();
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
 
@@ -650,13 +667,13 @@ export class ControlPanelStore {
     if (this._isHubCommandBusy()) return "Another hub operation is already running.";
     const hub = selectedHub(this._snapshot);
     if (!hub) return "No hub selected.";
-    this.setExternalHubCommandBusy(true, "Reordering activities…");
+    this.setExternalHubCommandBusy(true, "Reordering activities…", hub.entry_id);
     try {
       await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
     } catch (error) {
       return formatError(error);
     } finally {
-      this.setExternalHubCommandBusy(false);
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }
     await this.loadState({ silent: true });
     return null;
@@ -671,7 +688,7 @@ export class ControlPanelStore {
     if (this._isHubCommandBusy()) return { error: "Another hub operation is already running." };
     const hub = selectedHub(this._snapshot);
     if (!hub) return { error: "No hub selected." };
-    this.setExternalHubCommandBusy(true, "Creating activity…");
+    this.setExternalHubCommandBusy(true, "Creating activity…", hub.entry_id);
     let activityId = 0;
     try {
       const result = await this.api().createActivity(hub.entry_id, name);
@@ -680,7 +697,7 @@ export class ControlPanelStore {
     } catch (error) {
       return { error: formatError(error) };
     } finally {
-      this.setExternalHubCommandBusy(false);
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }
     // Per-entity cache refresh: makes the new activity part of the
     // persistent/structural cache (and the visible list) before the caller
@@ -694,8 +711,7 @@ export class ControlPanelStore {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: key };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, key);
     try {
       await this.api().refreshCacheEntry({
         hubEntryId: hub.entry_id,
@@ -705,14 +721,12 @@ export class ControlPanelStore {
       });
       await this.loadState({ silent: true });
     } finally {
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false,
-        pendingScrollEntityKey: key,
-      };
-      this.emit();
+      // Scroll-to-entry only makes sense if the user is still on the hub
+      // whose entry was refreshed.
+      if (this._snapshot.selectedHubEntryId === hub.entry_id) {
+        this._snapshot = { ...this._snapshot, pendingScrollEntityKey: key };
+      }
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
 
@@ -879,10 +893,13 @@ export class ControlPanelStore {
           : operation === "entity_sync"
             ? "Synced to hub."
             : "Wifi Device deployed successfully.";
-      this.showRuntimeCompletion({
-        tone: "success",
-        label: successLabel,
-      });
+      this.showRuntimeCompletion(
+        {
+          tone: "success",
+          label: successLabel,
+        },
+        nextHub?.entry_id ?? previousHub?.entry_id ?? null,
+      );
     }
     this._scheduleRuntimeStatePoll();
   }
@@ -975,13 +992,29 @@ export class ControlPanelStore {
 
   private _isHubCommandBusy() {
     const hub = selectedHub(this._snapshot);
+    const entryId = hub?.entry_id ?? null;
     const activeBackupOperation = hub?.active_backup_operation;
     const backupBusy =
       !!activeBackupOperation &&
       ["pending", "running"].includes(String(activeBackupOperation.status || ""));
     return Boolean(
-      this._snapshot.refreshBusy ||
-      this._snapshot.externalHubCommandBusy ||
+      (entryId && entryId in this._snapshot.refreshBusyByHub) ||
+      (entryId && entryId in this._snapshot.externalHubCommandByHub) ||
+      this._snapshot.pendingActionKey ||
+      backupBusy,
+    );
+  }
+
+  /** Busy on ANY hub — used to suppress the stale-data banner while one of
+   * our own operations is bumping cache generations in the background. */
+  private _isAnyHubCommandBusy() {
+    const backupBusy = (this._snapshot.state?.hubs ?? []).some((hub) =>
+      !!hub.active_backup_operation &&
+      ["pending", "running"].includes(String(hub.active_backup_operation.status || "")),
+    );
+    return Boolean(
+      Object.keys(this._snapshot.refreshBusyByHub).length ||
+      Object.keys(this._snapshot.externalHubCommandByHub).length ||
       this._snapshot.pendingActionKey ||
       backupBusy,
     );

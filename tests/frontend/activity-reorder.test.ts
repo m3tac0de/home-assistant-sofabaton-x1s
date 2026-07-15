@@ -150,7 +150,7 @@ test("reorderActivities sends the full ordered id list and reloads state", async
   assert.equal(calls.length, 1);
   assert.equal(calls[0].entry_id, "hub-1");
   assert.deepEqual(calls[0].ordered_ids, [103, 101, 102]);
-  assert.equal(store.snapshot.externalHubCommandBusy, false);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 
 test("reorderActivities surfaces the backend failure message", async () => {
@@ -167,7 +167,7 @@ test("reorderActivities surfaces the backend failure message", async () => {
   const failure = await store.reorderActivities([103, 101, 102]);
 
   assert.match(String(failure), /did not confirm the new activity order/);
-  assert.equal(store.snapshot.externalHubCommandBusy, false);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 
 test("createActivity resolves the assigned id and refreshes its cache entry", async () => {
@@ -193,7 +193,7 @@ test("createActivity resolves the assigned id and refreshes its cache entry", as
   assert.equal(refreshCalls.length, 1);
   assert.equal(refreshCalls[0].kind, "activity");
   assert.equal(refreshCalls[0].target_id, 105);
-  assert.equal(store.snapshot.externalHubCommandBusy, false);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 
 test("createActivity reports the backend error without opening the editor id", async () => {
@@ -211,5 +211,5 @@ test("createActivity reports the backend error without opening the editor id", a
 
   assert.ok("error" in result);
   assert.match(String((result as { error: string }).error), /did not confirm creation/);
-  assert.equal(store.snapshot.externalHubCommandBusy, false);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });

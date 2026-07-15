@@ -2409,7 +2409,8 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       if (this._hubCommandLocked()) return;
       this._closeDeleteDeviceModal();
       this._deletingDeviceKey = deviceKey;
-      this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.deleteDeviceBusy);
+      const busyEntryId = String(this.hub?.entry_id || "").trim();
+      this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.deleteDeviceBusy, busyEntryId);
       try {
         await this.hass.callWS({
           type: "sofabaton_x1s/command_device/delete",
@@ -2424,7 +2425,7 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
         this._deleteDeviceKey = deviceKey;
       } finally {
         this._deletingDeviceKey = null;
-        this._setSharedHubCommandBusy(false);
+        this._setSharedHubCommandBusy(false, null, busyEntryId);
       }
     };
     this._confirmSyncWarning = async () => {
@@ -3649,10 +3650,14 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
   _sanitizeWifiDeviceName(value) {
     return this._sanitizeCommandName(value);
   }
-  _setSharedHubCommandBusy(busy, label = null) {
-    this.setHubCommandBusy?.(busy, label);
+  // entryId is captured by callers when their operation starts so busy
+  // set/clear pairs stay scoped to that hub even if the hub picker moves on
+  // before the operation's finally runs.
+  _setSharedHubCommandBusy(busy, label = null, entryId) {
+    const key = (entryId ?? String(this.hub?.entry_id || "")).trim() || void 0;
+    this.setHubCommandBusy?.(busy, label, key);
     this.dispatchEvent(new CustomEvent("sofabaton-hub-command-busy-changed", {
-      detail: { busy, label },
+      detail: { busy, label, entryId: key ?? null },
       bubbles: true,
       composed: true
     }));
@@ -4443,7 +4448,8 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       return;
     }
     this._creatingDevice = true;
-    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.createDeviceBusy);
+    const busyEntryId = String(this.hub?.entry_id || "").trim();
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.createDeviceBusy, busyEntryId);
     try {
       const payload = await this.hass.callWS({
         type: "sofabaton_x1s/command_device/create",
@@ -4457,7 +4463,7 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       this._deviceMutationError = String(error?.message || TOOLS_CARD_STRINGS.wifiCommands.createDeviceFailed);
     } finally {
       this._creatingDevice = false;
-      this._setSharedHubCommandBusy(false);
+      this._setSharedHubCommandBusy(false, null, busyEntryId);
     }
   }
   _promptDeleteDevice(deviceKey, event) {
@@ -4505,7 +4511,8 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
         status: "running"
       } : device
     );
-    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback);
+    const busyEntryId = String(this.hub?.entry_id || "").trim();
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, busyEntryId);
     try {
       await this.hass.callService("sofabaton_x1s", "sync_command_config", { entity_id: entityId, device_key: deviceKey });
       await this._refreshControlPanelState();
@@ -4527,7 +4534,7 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       await this._loadWifiDevices(true);
       await this._loadCommandSyncProgress(true);
       await this._refreshControlPanelState();
-      this._setSharedHubCommandBusy(false);
+      this._setSharedHubCommandBusy(false, null, busyEntryId);
     }
   }
   _scheduleSyncPoll() {

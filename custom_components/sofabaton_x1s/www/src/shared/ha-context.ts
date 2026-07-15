@@ -373,11 +373,13 @@ export interface ControlPanelSnapshot {
   selectedBackupSection: BackupSectionId;
   openEntity: string | null;
   staleData: boolean;
-  refreshBusy: boolean;
-  activeRefreshLabel: string | null;
-  externalHubCommandBusy: boolean;
-  externalHubCommandLabel: string | null;
-  runtimeCompletionNotice: RuntimeCompletionNotice | null;
+  // Long-running/busy UI state is keyed by hub entry_id so an operation on
+  // one hub never surfaces in the dock (or locks the UI) while another hub
+  // is selected. Key presence = busy; the value is the display label
+  // (refresh entries use null for a label-less section refresh).
+  refreshBusyByHub: Record<string, string | null>;
+  externalHubCommandByHub: Record<string, string>;
+  runtimeCompletionNoticeByHub: Record<string, RuntimeCompletionNotice>;
   pendingSettingKey: SettingKey | null;
   pendingActionKey: HubAction | null;
   logsLines: ControlPanelLogLine[];

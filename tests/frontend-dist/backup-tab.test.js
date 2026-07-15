@@ -10104,14 +10104,15 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._backupProgress = null;
     this._discardEditSession();
     const deviceIds = this._backupScope === "whole_hub" ? null : this._backupDeviceIds;
-    this.setHubCommandBusy?.(true, "Starting backup\u2026");
+    const entryId = this.hub.entry_id;
+    this.setHubCommandBusy?.(true, "Starting backup\u2026", entryId);
     try {
-      const start = await this.api().startBackupExport(this.hub.entry_id, deviceIds);
+      const start = await this.api().startBackupExport(entryId, deviceIds);
       await this.refreshControlPanelState?.();
-      await this._subscribeToOperation(start.operation_id, "backup");
+      await this._subscribeToOperation(start.operation_id, "backup", entryId);
     } catch (error) {
       this._backupError = formatError(error);
-      this.setHubCommandBusy?.(false, null);
+      this.setHubCommandBusy?.(false, null, entryId);
     }
   }
   async _runRestore() {
@@ -10131,60 +10132,64 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._restoreSuccess = null;
     this._restoreProgress = null;
     this._discardEditSession();
-    this.setHubCommandBusy?.(true, "Starting restore\u2026");
+    const entryId = this.hub.entry_id;
+    this.setHubCommandBusy?.(true, "Starting restore\u2026", entryId);
     try {
-      const start = await this.api().startBackupRestore(this.hub.entry_id, filtered, this._restoreMode);
+      const start = await this.api().startBackupRestore(entryId, filtered, this._restoreMode);
       await this.refreshControlPanelState?.();
-      await this._subscribeToOperation(start.operation_id, "restore");
+      await this._subscribeToOperation(start.operation_id, "restore", entryId);
     } catch (error) {
       this._restoreError = formatError(error);
-      this.setHubCommandBusy?.(false, null);
+      this.setHubCommandBusy?.(false, null, entryId);
     }
   }
-  async _subscribeToOperation(operationId, kind) {
+  async _subscribeToOperation(operationId, kind, entryId) {
     this._teardownProgressSubscription();
     const unsubscribe = await this.api().subscribeBackupProgress(operationId, async (payload) => {
+      const staleHub = String(this.hub?.entry_id || "").trim() !== entryId;
       const transient = Boolean(payload?.transient);
       if (transient && payload.status === "failed") {
         const opId = String(payload.operation_id || operationId || "").trim();
         if (opId) this._acknowledgedOpIds.add(opId);
-        if (kind === "backup") {
-          this._backupError = String(payload.error || payload.message || "Backup failed.");
-        } else {
-          this._restoreError = String(payload.error || payload.message || "Restore failed.");
+        if (!staleHub) {
+          if (kind === "backup") {
+            this._backupError = String(payload.error || payload.message || "Backup failed.");
+          } else {
+            this._restoreError = String(payload.error || payload.message || "Restore failed.");
+          }
         }
-        this.setHubCommandBusy?.(false, null);
+        this.setHubCommandBusy?.(false, null, entryId);
         this._teardownProgressSubscription();
         return;
       }
       if (kind === "backup") {
-        this._backupProgress = payload;
+        if (!staleHub) this._backupProgress = payload;
         if (payload.status === "success") {
-          this.setHubCommandBusy?.(false, null);
+          this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
           } catch {
           }
         } else if (payload.status === "failed") {
-          this._backupError = String(payload.error || payload.message || "Backup failed.");
-          this.setHubCommandBusy?.(false, null);
+          if (!staleHub) this._backupError = String(payload.error || payload.message || "Backup failed.");
+          this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
           } catch {
           }
         }
       } else {
-        this._restoreProgress = payload;
+        if (!staleHub) this._restoreProgress = payload;
         if (payload.status === "success") {
-          this._restoreSuccess = "Restore completed.";
-          this.setHubCommandBusy?.(false, null);
+          if (!staleHub) this._restoreSuccess = "Restore completed.";
+          this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
           } catch {
           }
         } else if (payload.status === "failed") {
-          this._restoreError = String(payload.error || payload.message || "Restore failed.");
-          this.setHubCommandBusy?.(false, null);
+          if (!staleHub) this._restoreError = String(payload.error || payload.message || "Restore failed.");
+          this.setHubCommandBusy?.(false, null, entryId);
         }
       }
       if (!this._isProgressRunning(payload)) {
@@ -10328,6 +10333,7 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
     this._teardownProgressSubscription();
     try {
       const state = await this.api().getBackupState(entryId);
+      if (String(this.hub?.entry_id || "").trim() !== entryId) return;
       const rawBackup = state?.backup_export || null;
       const rawRestore = state?.backup_restore || null;
       const backupId = String(rawBackup?.operation_id || "").trim();
@@ -10347,13 +10353,13 @@ var SofabatonBackupTab = class _SofabatonBackupTab extends i3 {
       this._restoreSuccess = String(this._restoreProgress?.status || "") === "success" ? "Restore completed." : null;
       const active = state?.active_operation || null;
       if (active && String(active.kind || "") === "backup_export" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || "Backup in progress\u2026"));
-        await this._subscribeToOperation(active.operation_id, "backup");
+        this.setHubCommandBusy?.(true, String(active.message || "Backup in progress\u2026"), entryId);
+        await this._subscribeToOperation(active.operation_id, "backup", entryId);
       } else if (active && String(active.kind || "") === "backup_restore" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || "Restore in progress\u2026"));
-        await this._subscribeToOperation(active.operation_id, "restore");
+        this.setHubCommandBusy?.(true, String(active.message || "Restore in progress\u2026"), entryId);
+        await this._subscribeToOperation(active.operation_id, "restore", entryId);
       } else {
-        this.setHubCommandBusy?.(false, null);
+        this.setHubCommandBusy?.(false, null, entryId);
       }
     } catch {
     } finally {

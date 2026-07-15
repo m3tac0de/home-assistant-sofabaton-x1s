@@ -284,13 +284,30 @@ export function resolveCardGateState(snapshot: ControlPanelSnapshot): CardGateSt
   return { kind: "pass" };
 }
 
+/** True when a catalog/cache refresh is running for the given hub. */
+export function hubRefreshBusy(snapshot: ControlPanelSnapshot, entryId: string | null | undefined): boolean {
+  return !!entryId && entryId in snapshot.refreshBusyByHub;
+}
+
+/** Active refresh label for the given hub (null while a label-less section refresh runs or when idle). */
+export function hubActiveRefreshLabel(snapshot: ControlPanelSnapshot, entryId: string | null | undefined): string | null {
+  return entryId ? snapshot.refreshBusyByHub[entryId] ?? null : null;
+}
+
+/** Busy label of an externally-driven hub command (backup, wifi deploy, ...) for the given hub. */
+export function hubExternalCommandLabel(snapshot: ControlPanelSnapshot, entryId: string | null | undefined): string | null {
+  return entryId ? snapshot.externalHubCommandByHub[entryId] ?? null : null;
+}
+
 export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeState | null {
   const hub = selectedHub(snapshot);
-  if (snapshot.runtimeCompletionNotice) {
+  const entryId = hub?.entry_id ?? null;
+  const completionNotice = entryId ? snapshot.runtimeCompletionNoticeByHub[entryId] : undefined;
+  if (completionNotice) {
     return {
       kind: "completion",
-      tone: snapshot.runtimeCompletionNotice.tone,
-      label: snapshot.runtimeCompletionNotice.label,
+      tone: completionNotice.tone,
+      label: completionNotice.label,
       detail: null,
     };
   }
@@ -339,15 +356,16 @@ export function resolveRuntimeState(snapshot: ControlPanelSnapshot): RuntimeStat
     };
   }
 
-  if (snapshot.externalHubCommandBusy) {
+  const externalLabel = hubExternalCommandLabel(snapshot, entryId);
+  if (externalLabel !== null) {
     return {
       kind: "notice",
-      label: String(snapshot.externalHubCommandLabel || "Hub command in progress..."),
+      label: externalLabel || "Hub command in progress...",
       detail: null,
     };
   }
 
-  if (snapshot.refreshBusy) {
+  if (hubRefreshBusy(snapshot, entryId)) {
     return {
       kind: "notice",
       label: "Refreshing cache...",

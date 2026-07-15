@@ -1882,13 +1882,24 @@ function resolveCardGateState(snapshot) {
   if (hub && !hubConnected(snapshot.hass, hub)) return { kind: "hub_unavailable" };
   return { kind: "pass" };
 }
+function hubRefreshBusy(snapshot, entryId) {
+  return !!entryId && entryId in snapshot.refreshBusyByHub;
+}
+function hubActiveRefreshLabel(snapshot, entryId) {
+  return entryId ? snapshot.refreshBusyByHub[entryId] ?? null : null;
+}
+function hubExternalCommandLabel(snapshot, entryId) {
+  return entryId ? snapshot.externalHubCommandByHub[entryId] ?? null : null;
+}
 function resolveRuntimeState(snapshot) {
   const hub = selectedHub(snapshot);
-  if (snapshot.runtimeCompletionNotice) {
+  const entryId = hub?.entry_id ?? null;
+  const completionNotice = entryId ? snapshot.runtimeCompletionNoticeByHub[entryId] : void 0;
+  if (completionNotice) {
     return {
       kind: "completion",
-      tone: snapshot.runtimeCompletionNotice.tone,
-      label: snapshot.runtimeCompletionNotice.label,
+      tone: completionNotice.tone,
+      label: completionNotice.label,
       detail: null
     };
   }
@@ -1924,14 +1935,15 @@ function resolveRuntimeState(snapshot) {
       detail: null
     };
   }
-  if (snapshot.externalHubCommandBusy) {
+  const externalLabel = hubExternalCommandLabel(snapshot, entryId);
+  if (externalLabel !== null) {
     return {
       kind: "notice",
-      label: String(snapshot.externalHubCommandLabel || "Hub command in progress..."),
+      label: externalLabel || "Hub command in progress...",
       detail: null
     };
   }
-  if (snapshot.refreshBusy) {
+  if (hubRefreshBusy(snapshot, entryId)) {
     return {
       kind: "notice",
       label: "Refreshing cache...",
@@ -2067,11 +2079,9 @@ var INITIAL_SNAPSHOT = {
   selectedBackupSection: "make",
   openEntity: null,
   staleData: false,
-  refreshBusy: false,
-  activeRefreshLabel: null,
-  externalHubCommandBusy: false,
-  externalHubCommandLabel: null,
-  runtimeCompletionNotice: null,
+  refreshBusyByHub: {},
+  externalHubCommandByHub: {},
+  runtimeCompletionNoticeByHub: {},
   pendingSettingKey: null,
   pendingActionKey: null,
   logsLines: [],
@@ -2105,7 +2115,7 @@ var ControlPanelStore = class {
     this._backupOpEntryId = null;
     this._backupOpId = null;
     this._runtimeStatePollTimer = null;
-    this._runtimeCompletionTimer = null;
+    this._runtimeCompletionTimers = /* @__PURE__ */ new Map();
     this._wifiPressUnsub = null;
     this._wifiPressSubscribeSeq = 0;
     // Hub to pre-select when the card was created from a hub-specific entity (via
@@ -2141,13 +2151,12 @@ var ControlPanelStore = class {
     this._isConnected = false;
     this._snapshot = {
       ...this._snapshot,
-      externalHubCommandBusy: false,
-      externalHubCommandLabel: null,
-      runtimeCompletionNotice: null,
+      externalHubCommandByHub: {},
+      runtimeCompletionNoticeByHub: {},
       lastWifiPress: null
     };
     this._clearRuntimeStatePoll();
-    this._clearRuntimeCompletionTimer();
+    this._clearRuntimeCompletionTimers();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this._teardownWifiPressFeed();
@@ -2160,11 +2169,15 @@ var ControlPanelStore = class {
     }
     this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
   }
-  _clearRuntimeCompletionTimer() {
-    if (this._runtimeCompletionTimer) {
-      clearTimeout(this._runtimeCompletionTimer);
-      this._runtimeCompletionTimer = null;
+  _clearRuntimeCompletionTimers(entryId) {
+    if (entryId !== void 0) {
+      const timer = this._runtimeCompletionTimers.get(entryId);
+      if (timer) clearTimeout(timer);
+      this._runtimeCompletionTimers.delete(entryId);
+      return;
     }
+    for (const timer of this._runtimeCompletionTimers.values()) clearTimeout(timer);
+    this._runtimeCompletionTimers.clear();
   }
   _clearRuntimeStatePoll() {
     if (this._runtimeStatePollTimer) {
@@ -2235,7 +2248,7 @@ var ControlPanelStore = class {
     }
     if (fingerprint !== this._lastHassFingerprint) {
       const connectionChanged = nextConnectionFingerprint !== this._lastConnectionFingerprint;
-      if (this._isConnected && !this._isHubCommandBusy() && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
+      if (this._isConnected && !this._isAnyHubCommandBusy() && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
         this._snapshot = { ...this._snapshot, staleData: true };
       }
       this._lastObservedGenerations = generationSnapshot;
@@ -2260,12 +2273,8 @@ var ControlPanelStore = class {
       logsError: null,
       logsStickToBottom: true,
       logsScrollBehavior: "auto",
-      externalHubCommandBusy: false,
-      externalHubCommandLabel: null,
-      runtimeCompletionNotice: null,
       lastWifiPress: null
     };
-    this._clearRuntimeCompletionTimer();
     this.persistViewState();
     this.emit();
     void (async () => {
@@ -2335,31 +2344,49 @@ var ControlPanelStore = class {
     if (!this._snapshot.pendingScrollEntityKey) return;
     this._snapshot = { ...this._snapshot, pendingScrollEntityKey: null };
   }
-  setExternalHubCommandBusy(busy, label = null) {
+  /**
+   * Busy state is stored per hub: callers whose operation may outlive the
+   * current hub selection (tab subscriptions, async finallys) pass the
+   * entry_id captured when the operation started so a late clear/set can
+   * never touch another hub's state. Without an entry_id the currently
+   * selected hub is used.
+   */
+  setExternalHubCommandBusy(busy, label = null, entryId) {
+    const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
+    if (!key) return;
+    const byHub = { ...this._snapshot.externalHubCommandByHub };
+    if (busy) byHub[key] = String(label || "").trim() || "Hub command in progress\u2026";
+    else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
-      externalHubCommandBusy: busy,
-      externalHubCommandLabel: busy ? String(label || "").trim() || "Hub command in progress\u2026" : null
+      externalHubCommandByHub: byHub
     };
     this.emit();
   }
-  showRuntimeCompletion(notice, ttlMs = 6e3) {
-    this._clearRuntimeCompletionTimer();
+  showRuntimeCompletion(notice, entryId, ttlMs = 6e3) {
+    const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
+    if (!key) return;
+    this._clearRuntimeCompletionTimers(key);
+    const byHub = { ...this._snapshot.runtimeCompletionNoticeByHub };
+    if (notice) byHub[key] = notice;
+    else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
-      runtimeCompletionNotice: notice
+      runtimeCompletionNoticeByHub: byHub
     };
     this.emit();
     if (!notice) return;
-    this._runtimeCompletionTimer = setTimeout(() => {
-      this._runtimeCompletionTimer = null;
-      if (!this._snapshot.runtimeCompletionNotice) return;
+    this._runtimeCompletionTimers.set(key, setTimeout(() => {
+      this._runtimeCompletionTimers.delete(key);
+      if (!(key in this._snapshot.runtimeCompletionNoticeByHub)) return;
+      const next = { ...this._snapshot.runtimeCompletionNoticeByHub };
+      delete next[key];
       this._snapshot = {
         ...this._snapshot,
-        runtimeCompletionNotice: null
+        runtimeCompletionNoticeByHub: next
       };
       this.emit();
-    }, ttlMs);
+    }, ttlMs));
   }
   async loadState(options = {}) {
     if (this._loadingStatePromise) return this._loadingStatePromise;
@@ -2459,23 +2486,29 @@ var ControlPanelStore = class {
     this.emit();
     await this.loadState();
   }
+  _setRefreshBusy(entryId, label) {
+    this._snapshot = {
+      ...this._snapshot,
+      refreshBusyByHub: { ...this._snapshot.refreshBusyByHub, [entryId]: label }
+    };
+    this.emit();
+  }
+  _clearRefreshBusy(entryId) {
+    const byHub = { ...this._snapshot.refreshBusyByHub };
+    delete byHub[entryId];
+    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub, staleData: false };
+    this.emit();
+  }
   async refreshSection(sectionId) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: null };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, null);
     try {
       await this.api().refreshCatalog(hub.entry_id, sectionId);
       await this.loadState({ silent: true });
     } finally {
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false
-      };
-      this.emit();
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
   /**
@@ -2492,8 +2525,7 @@ var ControlPanelStore = class {
     if (this._isHubCommandBusy()) return "Another hub operation is already running.";
     const hub = selectedHub(this._snapshot);
     if (!hub) return "No hub selected.";
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: REFRESH_ALL_KEY };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, REFRESH_ALL_KEY);
     let unsubscribe = null;
     try {
       const start = await this.api().startCacheRefresh(hub.entry_id);
@@ -2509,13 +2541,14 @@ var ControlPanelStore = class {
         }).catch((error) => resolve(formatError(error)));
       });
       this.showRuntimeCompletion(
-        failure ? { tone: "error", label: failure } : { tone: "success", label: "Hub cache refreshed." }
+        failure ? { tone: "error", label: failure } : { tone: "success", label: "Hub cache refreshed." },
+        hub.entry_id
       );
       await this.loadState({ silent: true });
       return failure;
     } catch (error) {
       const failure = formatError(error);
-      this.showRuntimeCompletion({ tone: "error", label: failure });
+      this.showRuntimeCompletion({ tone: "error", label: failure }, hub.entry_id);
       return failure;
     } finally {
       if (unsubscribe) {
@@ -2524,13 +2557,7 @@ var ControlPanelStore = class {
         } catch {
         }
       }
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false
-      };
-      this.emit();
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
   /**
@@ -2542,13 +2569,13 @@ var ControlPanelStore = class {
     if (this._isHubCommandBusy()) return "Another hub operation is already running.";
     const hub = selectedHub(this._snapshot);
     if (!hub) return "No hub selected.";
-    this.setExternalHubCommandBusy(true, "Reordering activities\u2026");
+    this.setExternalHubCommandBusy(true, "Reordering activities\u2026", hub.entry_id);
     try {
       await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
     } catch (error) {
       return formatError(error);
     } finally {
-      this.setExternalHubCommandBusy(false);
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }
     await this.loadState({ silent: true });
     return null;
@@ -2562,7 +2589,7 @@ var ControlPanelStore = class {
     if (this._isHubCommandBusy()) return { error: "Another hub operation is already running." };
     const hub = selectedHub(this._snapshot);
     if (!hub) return { error: "No hub selected." };
-    this.setExternalHubCommandBusy(true, "Creating activity\u2026");
+    this.setExternalHubCommandBusy(true, "Creating activity\u2026", hub.entry_id);
     let activityId = 0;
     try {
       const result = await this.api().createActivity(hub.entry_id, name);
@@ -2571,7 +2598,7 @@ var ControlPanelStore = class {
     } catch (error) {
       return { error: formatError(error) };
     } finally {
-      this.setExternalHubCommandBusy(false);
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }
     await this.refreshForHub("activity", activityId, `act-${activityId}`);
     return { activityId };
@@ -2580,8 +2607,7 @@ var ControlPanelStore = class {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: key };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, key);
     try {
       await this.api().refreshCacheEntry({
         hubEntryId: hub.entry_id,
@@ -2591,14 +2617,10 @@ var ControlPanelStore = class {
       });
       await this.loadState({ silent: true });
     } finally {
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false,
-        pendingScrollEntityKey: key
-      };
-      this.emit();
+      if (this._snapshot.selectedHubEntryId === hub.entry_id) {
+        this._snapshot = { ...this._snapshot, pendingScrollEntityKey: key };
+      }
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
   async syncLogsFeed() {
@@ -2743,10 +2765,13 @@ var ControlPanelStore = class {
     if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
       const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : operation === "entity_sync" ? "Synced to hub." : "Wifi Device deployed successfully.";
-      this.showRuntimeCompletion({
-        tone: "success",
-        label: successLabel
-      });
+      this.showRuntimeCompletion(
+        {
+          tone: "success",
+          label: successLabel
+        },
+        nextHub?.entry_id ?? previousHub?.entry_id ?? null
+      );
     }
     this._scheduleRuntimeStatePoll();
   }
@@ -2825,10 +2850,21 @@ var ControlPanelStore = class {
   }
   _isHubCommandBusy() {
     const hub = selectedHub(this._snapshot);
+    const entryId = hub?.entry_id ?? null;
     const activeBackupOperation = hub?.active_backup_operation;
     const backupBusy = !!activeBackupOperation && ["pending", "running"].includes(String(activeBackupOperation.status || ""));
     return Boolean(
-      this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey || backupBusy
+      entryId && entryId in this._snapshot.refreshBusyByHub || entryId && entryId in this._snapshot.externalHubCommandByHub || this._snapshot.pendingActionKey || backupBusy
+    );
+  }
+  /** Busy on ANY hub — used to suppress the stale-data banner while one of
+   * our own operations is bumping cache generations in the background. */
+  _isAnyHubCommandBusy() {
+    const backupBusy = (this._snapshot.state?.hubs ?? []).some(
+      (hub) => !!hub.active_backup_operation && ["pending", "running"].includes(String(hub.active_backup_operation.status || ""))
+    );
+    return Boolean(
+      Object.keys(this._snapshot.refreshBusyByHub).length || Object.keys(this._snapshot.externalHubCommandByHub).length || this._snapshot.pendingActionKey || backupBusy
     );
   }
   async _syncBackupOperationFeed() {
@@ -11883,14 +11919,15 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     this._backupProgress = null;
     this._discardEditSession();
     const deviceIds = this._backupScope === "whole_hub" ? null : this._backupDeviceIds;
-    this.setHubCommandBusy?.(true, "Starting backup\u2026");
+    const entryId = this.hub.entry_id;
+    this.setHubCommandBusy?.(true, "Starting backup\u2026", entryId);
     try {
-      const start = await this.api().startBackupExport(this.hub.entry_id, deviceIds);
+      const start = await this.api().startBackupExport(entryId, deviceIds);
       await this.refreshControlPanelState?.();
-      await this._subscribeToOperation(start.operation_id, "backup");
+      await this._subscribeToOperation(start.operation_id, "backup", entryId);
     } catch (error) {
       this._backupError = formatError(error);
-      this.setHubCommandBusy?.(false, null);
+      this.setHubCommandBusy?.(false, null, entryId);
     }
   }
   async _runRestore() {
@@ -11910,60 +11947,64 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     this._restoreSuccess = null;
     this._restoreProgress = null;
     this._discardEditSession();
-    this.setHubCommandBusy?.(true, "Starting restore\u2026");
+    const entryId = this.hub.entry_id;
+    this.setHubCommandBusy?.(true, "Starting restore\u2026", entryId);
     try {
-      const start = await this.api().startBackupRestore(this.hub.entry_id, filtered, this._restoreMode);
+      const start = await this.api().startBackupRestore(entryId, filtered, this._restoreMode);
       await this.refreshControlPanelState?.();
-      await this._subscribeToOperation(start.operation_id, "restore");
+      await this._subscribeToOperation(start.operation_id, "restore", entryId);
     } catch (error) {
       this._restoreError = formatError(error);
-      this.setHubCommandBusy?.(false, null);
+      this.setHubCommandBusy?.(false, null, entryId);
     }
   }
-  async _subscribeToOperation(operationId, kind) {
+  async _subscribeToOperation(operationId, kind, entryId) {
     this._teardownProgressSubscription();
     const unsubscribe = await this.api().subscribeBackupProgress(operationId, async (payload) => {
+      const staleHub = String(this.hub?.entry_id || "").trim() !== entryId;
       const transient = Boolean(payload?.transient);
       if (transient && payload.status === "failed") {
         const opId = String(payload.operation_id || operationId || "").trim();
         if (opId) this._acknowledgedOpIds.add(opId);
-        if (kind === "backup") {
-          this._backupError = String(payload.error || payload.message || "Backup failed.");
-        } else {
-          this._restoreError = String(payload.error || payload.message || "Restore failed.");
+        if (!staleHub) {
+          if (kind === "backup") {
+            this._backupError = String(payload.error || payload.message || "Backup failed.");
+          } else {
+            this._restoreError = String(payload.error || payload.message || "Restore failed.");
+          }
         }
-        this.setHubCommandBusy?.(false, null);
+        this.setHubCommandBusy?.(false, null, entryId);
         this._teardownProgressSubscription();
         return;
       }
       if (kind === "backup") {
-        this._backupProgress = payload;
+        if (!staleHub) this._backupProgress = payload;
         if (payload.status === "success") {
-          this.setHubCommandBusy?.(false, null);
+          this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
           } catch {
           }
         } else if (payload.status === "failed") {
-          this._backupError = String(payload.error || payload.message || "Backup failed.");
-          this.setHubCommandBusy?.(false, null);
+          if (!staleHub) this._backupError = String(payload.error || payload.message || "Backup failed.");
+          this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
           } catch {
           }
         }
       } else {
-        this._restoreProgress = payload;
+        if (!staleHub) this._restoreProgress = payload;
         if (payload.status === "success") {
-          this._restoreSuccess = "Restore completed.";
-          this.setHubCommandBusy?.(false, null);
+          if (!staleHub) this._restoreSuccess = "Restore completed.";
+          this.setHubCommandBusy?.(false, null, entryId);
           try {
             await this.refreshControlPanelState?.();
           } catch {
           }
         } else if (payload.status === "failed") {
-          this._restoreError = String(payload.error || payload.message || "Restore failed.");
-          this.setHubCommandBusy?.(false, null);
+          if (!staleHub) this._restoreError = String(payload.error || payload.message || "Restore failed.");
+          this.setHubCommandBusy?.(false, null, entryId);
         }
       }
       if (!this._isProgressRunning(payload)) {
@@ -12107,6 +12148,7 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
     this._teardownProgressSubscription();
     try {
       const state = await this.api().getBackupState(entryId);
+      if (String(this.hub?.entry_id || "").trim() !== entryId) return;
       const rawBackup = state?.backup_export || null;
       const rawRestore = state?.backup_restore || null;
       const backupId = String(rawBackup?.operation_id || "").trim();
@@ -12126,13 +12168,13 @@ var _SofabatonBackupTab = class _SofabatonBackupTab extends i4 {
       this._restoreSuccess = String(this._restoreProgress?.status || "") === "success" ? "Restore completed." : null;
       const active = state?.active_operation || null;
       if (active && String(active.kind || "") === "backup_export" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || "Backup in progress\u2026"));
-        await this._subscribeToOperation(active.operation_id, "backup");
+        this.setHubCommandBusy?.(true, String(active.message || "Backup in progress\u2026"), entryId);
+        await this._subscribeToOperation(active.operation_id, "backup", entryId);
       } else if (active && String(active.kind || "") === "backup_restore" && active.operation_id) {
-        this.setHubCommandBusy?.(true, String(active.message || "Restore in progress\u2026"));
-        await this._subscribeToOperation(active.operation_id, "restore");
+        this.setHubCommandBusy?.(true, String(active.message || "Restore in progress\u2026"), entryId);
+        await this._subscribeToOperation(active.operation_id, "restore", entryId);
       } else {
-        this.setHubCommandBusy?.(false, null);
+        this.setHubCommandBusy?.(false, null, entryId);
       }
     } catch {
     } finally {
@@ -12455,7 +12497,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       if (this._hubCommandLocked()) return;
       this._closeDeleteDeviceModal();
       this._deletingDeviceKey = deviceKey;
-      this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.deleteDeviceBusy);
+      const busyEntryId = String(this.hub?.entry_id || "").trim();
+      this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.deleteDeviceBusy, busyEntryId);
       try {
         await this.hass.callWS({
           type: "sofabaton_x1s/command_device/delete",
@@ -12470,7 +12513,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         this._deleteDeviceKey = deviceKey;
       } finally {
         this._deletingDeviceKey = null;
-        this._setSharedHubCommandBusy(false);
+        this._setSharedHubCommandBusy(false, null, busyEntryId);
       }
     };
     this._confirmSyncWarning = async () => {
@@ -13231,10 +13274,14 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
   _sanitizeWifiDeviceName(value) {
     return this._sanitizeCommandName(value);
   }
-  _setSharedHubCommandBusy(busy, label = null) {
-    this.setHubCommandBusy?.(busy, label);
+  // entryId is captured by callers when their operation starts so busy
+  // set/clear pairs stay scoped to that hub even if the hub picker moves on
+  // before the operation's finally runs.
+  _setSharedHubCommandBusy(busy, label = null, entryId) {
+    const key = (entryId ?? String(this.hub?.entry_id || "")).trim() || void 0;
+    this.setHubCommandBusy?.(busy, label, key);
     this.dispatchEvent(new CustomEvent("sofabaton-hub-command-busy-changed", {
-      detail: { busy, label },
+      detail: { busy, label, entryId: key ?? null },
       bubbles: true,
       composed: true
     }));
@@ -14025,7 +14072,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       return;
     }
     this._creatingDevice = true;
-    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.createDeviceBusy);
+    const busyEntryId = String(this.hub?.entry_id || "").trim();
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.createDeviceBusy, busyEntryId);
     try {
       const payload = await this.hass.callWS({
         type: "sofabaton_x1s/command_device/create",
@@ -14039,7 +14087,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       this._deviceMutationError = String(error?.message || TOOLS_CARD_STRINGS.wifiCommands.createDeviceFailed);
     } finally {
       this._creatingDevice = false;
-      this._setSharedHubCommandBusy(false);
+      this._setSharedHubCommandBusy(false, null, busyEntryId);
     }
   }
   _promptDeleteDevice(deviceKey, event) {
@@ -14087,7 +14135,8 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
         status: "running"
       } : device
     );
-    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback);
+    const busyEntryId = String(this.hub?.entry_id || "").trim();
+    this._setSharedHubCommandBusy(true, TOOLS_CARD_STRINGS.wifiCommands.syncingDeviceFallback, busyEntryId);
     try {
       await this.hass.callService("sofabaton_x1s", "sync_command_config", { entity_id: entityId, device_key: deviceKey });
       await this._refreshControlPanelState();
@@ -14109,7 +14158,7 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       await this._loadWifiDevices(true);
       await this._loadCommandSyncProgress(true);
       await this._refreshControlPanelState();
-      this._setSharedHubCommandBusy(false);
+      this._setSharedHubCommandBusy(false, null, busyEntryId);
     }
   }
   _scheduleSyncPoll() {
@@ -16054,10 +16103,13 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     const activeBackupOperation = hub?.active_backup_operation;
     const runtimeState = resolveRuntimeState(this._snapshot);
     const runtimeOperationBusy = runtimeState?.kind === "operation_running";
+    const hubEntryId = hub?.entry_id ?? null;
+    const hubRefreshing = hubRefreshBusy(this._snapshot, hubEntryId);
+    const hubExternalLabel = hubExternalCommandLabel(this._snapshot, hubEntryId);
     const sharedHubCommandBusy = Boolean(
-      runtimeOperationBusy || this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey
+      runtimeOperationBusy || hubRefreshing || hubExternalLabel !== null || this._snapshot.pendingActionKey
     );
-    const sharedHubCommandLabel = (runtimeOperationBusy ? runtimeState.detail || runtimeState.label : null) || this._snapshot.externalHubCommandLabel || (this._snapshot.refreshBusy ? "Refreshing cache\u2026" : null) || (this._snapshot.pendingActionKey ? "Hub command in progress\u2026" : null);
+    const sharedHubCommandLabel = (runtimeOperationBusy ? runtimeState.detail || runtimeState.label : null) || hubExternalLabel || (hubRefreshing ? "Refreshing cache\u2026" : null) || (this._snapshot.pendingActionKey ? "Hub command in progress\u2026" : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
       error: this._snapshot.loadError,
@@ -16089,7 +16141,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .lastWifiPress=${this._snapshot.lastWifiPress}
-          .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
+          .setHubCommandBusy=${(busy, label, entryId) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-wifi-commands-tab>
       `;
@@ -16110,7 +16162,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .selectedSection=${this._snapshot.selectedBackupSection}
           .setSelectedSection=${(section) => this._store.setSelectedBackupSection(section)}
-          .setHubCommandBusy=${(busy, label) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
+          .setHubCommandBusy=${(busy, label, entryId) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-backup-tab>
       `;
@@ -16140,9 +16192,9 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           hub: cacheHub,
           persistentCacheEnabled: cacheEnabled,
           staleData: this._snapshot.staleData,
-          refreshBusy: this._snapshot.refreshBusy,
+          refreshBusy: hubRefreshing,
           hubCommandBusy: sharedHubCommandBusy,
-          activeRefreshLabel: this._snapshot.activeRefreshLabel,
+          activeRefreshLabel: hubActiveRefreshLabel(this._snapshot, hubEntryId),
           selectedSection: this._snapshot.selectedCacheSection,
           openEntity: this._snapshot.openEntity,
           selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
@@ -16153,7 +16205,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           onToggleEntity: (key) => this._store.toggleEntity(key),
           onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
           onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
-          refreshAllSpinning: this._snapshot.refreshBusy && this._snapshot.activeRefreshLabel === REFRESH_ALL_KEY,
+          refreshAllSpinning: hubActiveRefreshLabel(this._snapshot, hubEntryId) === REFRESH_ALL_KEY,
           onRefreshAll: () => void this._store.refreshAllForHub(),
           onEditActivity: (activityId) => {
             this._editingEntity = { kind: "activity", id: activityId };

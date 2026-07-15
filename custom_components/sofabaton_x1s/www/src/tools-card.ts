@@ -8,6 +8,9 @@ import {
   hubConnected,
   hubIcon,
   persistentCacheEnabled,
+  hubActiveRefreshLabel,
+  hubExternalCommandLabel,
+  hubRefreshBusy,
   proxyClientConnected,
   resolveCardGateState,
   resolveRuntimeState,
@@ -690,15 +693,18 @@ class SofabatonControlPanelCard extends LitElement {
     const activeBackupOperation = hub?.active_backup_operation;
     const runtimeState = resolveRuntimeState(this._snapshot);
     const runtimeOperationBusy = runtimeState?.kind === "operation_running";
+    const hubEntryId = hub?.entry_id ?? null;
+    const hubRefreshing = hubRefreshBusy(this._snapshot, hubEntryId);
+    const hubExternalLabel = hubExternalCommandLabel(this._snapshot, hubEntryId);
     const sharedHubCommandBusy = Boolean(
       runtimeOperationBusy ||
-      this._snapshot.refreshBusy ||
-      this._snapshot.externalHubCommandBusy ||
+      hubRefreshing ||
+      hubExternalLabel !== null ||
       this._snapshot.pendingActionKey,
     );
     const sharedHubCommandLabel = (runtimeOperationBusy ? (runtimeState!.detail || runtimeState!.label) : null)
-      || this._snapshot.externalHubCommandLabel
-      || (this._snapshot.refreshBusy ? "Refreshing cache…" : null)
+      || hubExternalLabel
+      || (hubRefreshing ? "Refreshing cache…" : null)
       || (this._snapshot.pendingActionKey ? "Hub command in progress…" : null);
     let activeTab = renderSettingsTab({
       loading: this._snapshot.loading,
@@ -732,7 +738,7 @@ class SofabatonControlPanelCard extends LitElement {
           .hubCommandBusy=${sharedHubCommandBusy}
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .lastWifiPress=${this._snapshot.lastWifiPress}
-          .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
+          .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadControlPanelState()}
         ></sofabaton-wifi-commands-tab>
       `;
@@ -753,7 +759,7 @@ class SofabatonControlPanelCard extends LitElement {
           .hubCommandBusyLabel=${sharedHubCommandLabel}
           .selectedSection=${this._snapshot.selectedBackupSection}
           .setSelectedSection=${(section: BackupSectionId) => this._store.setSelectedBackupSection(section)}
-          .setHubCommandBusy=${(busy: boolean, label?: string | null) => this._store.setExternalHubCommandBusy(busy, label ?? null)}
+          .setHubCommandBusy=${(busy: boolean, label?: string | null, entryId?: string) => this._store.setExternalHubCommandBusy(busy, label ?? null, entryId ?? null)}
           .refreshControlPanelState=${() => this._store.loadState({ silent: true })}
         ></sofabaton-backup-tab>
       `;
@@ -783,9 +789,9 @@ class SofabatonControlPanelCard extends LitElement {
           hub: cacheHub,
           persistentCacheEnabled: cacheEnabled,
           staleData: this._snapshot.staleData,
-          refreshBusy: this._snapshot.refreshBusy,
+          refreshBusy: hubRefreshing,
           hubCommandBusy: sharedHubCommandBusy,
-          activeRefreshLabel: this._snapshot.activeRefreshLabel,
+          activeRefreshLabel: hubActiveRefreshLabel(this._snapshot, hubEntryId),
           selectedSection: this._snapshot.selectedCacheSection,
           openEntity: this._snapshot.openEntity,
           selectedHubProxyConnected: proxyClientConnected(this._snapshot.hass, hub),
@@ -797,7 +803,7 @@ class SofabatonControlPanelCard extends LitElement {
           onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
           onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
           refreshAllSpinning:
-            this._snapshot.refreshBusy && this._snapshot.activeRefreshLabel === REFRESH_ALL_KEY,
+            hubActiveRefreshLabel(this._snapshot, hubEntryId) === REFRESH_ALL_KEY,
           onRefreshAll: () => void this._store.refreshAllForHub(),
           onEditActivity: (activityId) => {
             this._editingEntity = { kind: "activity", id: activityId };

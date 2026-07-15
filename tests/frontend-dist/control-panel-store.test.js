@@ -1462,6 +1462,82 @@ function entityForHub(hass, hub) {
   if (!hub) return null;
   return remoteEntities(hass).find((id) => hass?.states?.[id]?.attributes?.entry_id === hub.entry_id) ?? null;
 }
+function remoteAttrsForHub(hass, hub) {
+  const entityId = entityForHub(hass, hub);
+  return (entityId ? hass?.states?.[entityId]?.attributes : void 0) ?? {};
+}
+function proxyClientConnected(hass, hub) {
+  const attrs = remoteAttrsForHub(hass, hub);
+  if (typeof attrs.proxy_client_connected === "boolean") return attrs.proxy_client_connected;
+  return !!hub?.proxy_client_connected;
+}
+function hubRefreshBusy(snapshot, entryId) {
+  return !!entryId && entryId in snapshot.refreshBusyByHub;
+}
+function hubExternalCommandLabel(snapshot, entryId) {
+  return entryId ? snapshot.externalHubCommandByHub[entryId] ?? null : null;
+}
+function resolveRuntimeState(snapshot) {
+  const hub = selectedHub(snapshot);
+  const entryId = hub?.entry_id ?? null;
+  const completionNotice = entryId ? snapshot.runtimeCompletionNoticeByHub[entryId] : void 0;
+  if (completionNotice) {
+    return {
+      kind: "completion",
+      tone: completionNotice.tone,
+      label: completionNotice.label,
+      detail: null
+    };
+  }
+  const hubRuntime = hub?.runtime_state;
+  if (hubRuntime?.kind === "operation_running") {
+    const total = Number(hubRuntime.total_steps || 0);
+    const current = Number(hubRuntime.current_step || 0);
+    const percent = total > 0 ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
+    return {
+      kind: "operation_running",
+      operation: hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : "wifi_deploy",
+      label: String(hubRuntime.label || "Operation running"),
+      detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
+      progress: {
+        current: Number.isFinite(current) ? current : null,
+        total: Number.isFinite(total) && total > 0 ? total : null,
+        percent,
+        indeterminate: !total || total <= 0
+      }
+    };
+  }
+  if (hubRuntime?.kind === "app_connected") {
+    return {
+      kind: "app_connected",
+      label: String(hubRuntime.label || "Only Logs is available while the Sofabaton app is connected."),
+      detail: String(hubRuntime.detail || "")
+    };
+  }
+  if (hub && proxyClientConnected(snapshot.hass, hub)) {
+    return {
+      kind: "app_connected",
+      label: "Only Logs is available while the Sofabaton app is connected.",
+      detail: null
+    };
+  }
+  const externalLabel = hubExternalCommandLabel(snapshot, entryId);
+  if (externalLabel !== null) {
+    return {
+      kind: "notice",
+      label: externalLabel || "Hub command in progress...",
+      detail: null
+    };
+  }
+  if (hubRefreshBusy(snapshot, entryId)) {
+    return {
+      kind: "notice",
+      label: "Refreshing cache...",
+      detail: null
+    };
+  }
+  return null;
+}
 function cacheGenerationSnapshot(hass) {
   const snapshot = {};
   for (const id of remoteEntities(hass)) {
@@ -1552,11 +1628,9 @@ var INITIAL_SNAPSHOT = {
   selectedBackupSection: "make",
   openEntity: null,
   staleData: false,
-  refreshBusy: false,
-  activeRefreshLabel: null,
-  externalHubCommandBusy: false,
-  externalHubCommandLabel: null,
-  runtimeCompletionNotice: null,
+  refreshBusyByHub: {},
+  externalHubCommandByHub: {},
+  runtimeCompletionNoticeByHub: {},
   pendingSettingKey: null,
   pendingActionKey: null,
   logsLines: [],
@@ -1590,7 +1664,7 @@ var ControlPanelStore = class {
     this._backupOpEntryId = null;
     this._backupOpId = null;
     this._runtimeStatePollTimer = null;
-    this._runtimeCompletionTimer = null;
+    this._runtimeCompletionTimers = /* @__PURE__ */ new Map();
     this._wifiPressUnsub = null;
     this._wifiPressSubscribeSeq = 0;
     // Hub to pre-select when the card was created from a hub-specific entity (via
@@ -1626,13 +1700,12 @@ var ControlPanelStore = class {
     this._isConnected = false;
     this._snapshot = {
       ...this._snapshot,
-      externalHubCommandBusy: false,
-      externalHubCommandLabel: null,
-      runtimeCompletionNotice: null,
+      externalHubCommandByHub: {},
+      runtimeCompletionNoticeByHub: {},
       lastWifiPress: null
     };
     this._clearRuntimeStatePoll();
-    this._clearRuntimeCompletionTimer();
+    this._clearRuntimeCompletionTimers();
     this._clearBackendRetry();
     void this._teardownBackupOperationFeed();
     void this._teardownWifiPressFeed();
@@ -1645,11 +1718,15 @@ var ControlPanelStore = class {
     }
     this._backendRetryDelay = BACKEND_RETRY_MIN_MS;
   }
-  _clearRuntimeCompletionTimer() {
-    if (this._runtimeCompletionTimer) {
-      clearTimeout(this._runtimeCompletionTimer);
-      this._runtimeCompletionTimer = null;
+  _clearRuntimeCompletionTimers(entryId) {
+    if (entryId !== void 0) {
+      const timer = this._runtimeCompletionTimers.get(entryId);
+      if (timer) clearTimeout(timer);
+      this._runtimeCompletionTimers.delete(entryId);
+      return;
     }
+    for (const timer of this._runtimeCompletionTimers.values()) clearTimeout(timer);
+    this._runtimeCompletionTimers.clear();
   }
   _clearRuntimeStatePoll() {
     if (this._runtimeStatePollTimer) {
@@ -1720,7 +1797,7 @@ var ControlPanelStore = class {
     }
     if (fingerprint !== this._lastHassFingerprint) {
       const connectionChanged = nextConnectionFingerprint !== this._lastConnectionFingerprint;
-      if (this._isConnected && !this._isHubCommandBusy() && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
+      if (this._isConnected && !this._isAnyHubCommandBusy() && !this._snapshot.loading && Date.now() > this._refreshGraceUntil && didHubGenerationChange(this._lastObservedGenerations, generationSnapshot)) {
         this._snapshot = { ...this._snapshot, staleData: true };
       }
       this._lastObservedGenerations = generationSnapshot;
@@ -1745,12 +1822,8 @@ var ControlPanelStore = class {
       logsError: null,
       logsStickToBottom: true,
       logsScrollBehavior: "auto",
-      externalHubCommandBusy: false,
-      externalHubCommandLabel: null,
-      runtimeCompletionNotice: null,
       lastWifiPress: null
     };
-    this._clearRuntimeCompletionTimer();
     this.persistViewState();
     this.emit();
     void (async () => {
@@ -1820,31 +1893,49 @@ var ControlPanelStore = class {
     if (!this._snapshot.pendingScrollEntityKey) return;
     this._snapshot = { ...this._snapshot, pendingScrollEntityKey: null };
   }
-  setExternalHubCommandBusy(busy, label = null) {
+  /**
+   * Busy state is stored per hub: callers whose operation may outlive the
+   * current hub selection (tab subscriptions, async finallys) pass the
+   * entry_id captured when the operation started so a late clear/set can
+   * never touch another hub's state. Without an entry_id the currently
+   * selected hub is used.
+   */
+  setExternalHubCommandBusy(busy, label = null, entryId) {
+    const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
+    if (!key) return;
+    const byHub = { ...this._snapshot.externalHubCommandByHub };
+    if (busy) byHub[key] = String(label || "").trim() || "Hub command in progress\u2026";
+    else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
-      externalHubCommandBusy: busy,
-      externalHubCommandLabel: busy ? String(label || "").trim() || "Hub command in progress\u2026" : null
+      externalHubCommandByHub: byHub
     };
     this.emit();
   }
-  showRuntimeCompletion(notice, ttlMs = 6e3) {
-    this._clearRuntimeCompletionTimer();
+  showRuntimeCompletion(notice, entryId, ttlMs = 6e3) {
+    const key = String(entryId ?? selectedHub(this._snapshot)?.entry_id ?? "").trim();
+    if (!key) return;
+    this._clearRuntimeCompletionTimers(key);
+    const byHub = { ...this._snapshot.runtimeCompletionNoticeByHub };
+    if (notice) byHub[key] = notice;
+    else delete byHub[key];
     this._snapshot = {
       ...this._snapshot,
-      runtimeCompletionNotice: notice
+      runtimeCompletionNoticeByHub: byHub
     };
     this.emit();
     if (!notice) return;
-    this._runtimeCompletionTimer = setTimeout(() => {
-      this._runtimeCompletionTimer = null;
-      if (!this._snapshot.runtimeCompletionNotice) return;
+    this._runtimeCompletionTimers.set(key, setTimeout(() => {
+      this._runtimeCompletionTimers.delete(key);
+      if (!(key in this._snapshot.runtimeCompletionNoticeByHub)) return;
+      const next = { ...this._snapshot.runtimeCompletionNoticeByHub };
+      delete next[key];
       this._snapshot = {
         ...this._snapshot,
-        runtimeCompletionNotice: null
+        runtimeCompletionNoticeByHub: next
       };
       this.emit();
-    }, ttlMs);
+    }, ttlMs));
   }
   async loadState(options = {}) {
     if (this._loadingStatePromise) return this._loadingStatePromise;
@@ -1944,23 +2035,29 @@ var ControlPanelStore = class {
     this.emit();
     await this.loadState();
   }
+  _setRefreshBusy(entryId, label) {
+    this._snapshot = {
+      ...this._snapshot,
+      refreshBusyByHub: { ...this._snapshot.refreshBusyByHub, [entryId]: label }
+    };
+    this.emit();
+  }
+  _clearRefreshBusy(entryId) {
+    const byHub = { ...this._snapshot.refreshBusyByHub };
+    delete byHub[entryId];
+    this._snapshot = { ...this._snapshot, refreshBusyByHub: byHub, staleData: false };
+    this.emit();
+  }
   async refreshSection(sectionId) {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: null };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, null);
     try {
       await this.api().refreshCatalog(hub.entry_id, sectionId);
       await this.loadState({ silent: true });
     } finally {
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false
-      };
-      this.emit();
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
   /**
@@ -1977,8 +2074,7 @@ var ControlPanelStore = class {
     if (this._isHubCommandBusy()) return "Another hub operation is already running.";
     const hub = selectedHub(this._snapshot);
     if (!hub) return "No hub selected.";
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: REFRESH_ALL_KEY };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, REFRESH_ALL_KEY);
     let unsubscribe = null;
     try {
       const start = await this.api().startCacheRefresh(hub.entry_id);
@@ -1994,13 +2090,14 @@ var ControlPanelStore = class {
         }).catch((error) => resolve(formatError(error)));
       });
       this.showRuntimeCompletion(
-        failure ? { tone: "error", label: failure } : { tone: "success", label: "Hub cache refreshed." }
+        failure ? { tone: "error", label: failure } : { tone: "success", label: "Hub cache refreshed." },
+        hub.entry_id
       );
       await this.loadState({ silent: true });
       return failure;
     } catch (error) {
       const failure = formatError(error);
-      this.showRuntimeCompletion({ tone: "error", label: failure });
+      this.showRuntimeCompletion({ tone: "error", label: failure }, hub.entry_id);
       return failure;
     } finally {
       if (unsubscribe) {
@@ -2009,13 +2106,7 @@ var ControlPanelStore = class {
         } catch {
         }
       }
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false
-      };
-      this.emit();
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
   /**
@@ -2027,13 +2118,13 @@ var ControlPanelStore = class {
     if (this._isHubCommandBusy()) return "Another hub operation is already running.";
     const hub = selectedHub(this._snapshot);
     if (!hub) return "No hub selected.";
-    this.setExternalHubCommandBusy(true, "Reordering activities\u2026");
+    this.setExternalHubCommandBusy(true, "Reordering activities\u2026", hub.entry_id);
     try {
       await this.api().reorderActivities(hub.entry_id, orderedIds.map((id) => Number(id)));
     } catch (error) {
       return formatError(error);
     } finally {
-      this.setExternalHubCommandBusy(false);
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }
     await this.loadState({ silent: true });
     return null;
@@ -2047,7 +2138,7 @@ var ControlPanelStore = class {
     if (this._isHubCommandBusy()) return { error: "Another hub operation is already running." };
     const hub = selectedHub(this._snapshot);
     if (!hub) return { error: "No hub selected." };
-    this.setExternalHubCommandBusy(true, "Creating activity\u2026");
+    this.setExternalHubCommandBusy(true, "Creating activity\u2026", hub.entry_id);
     let activityId = 0;
     try {
       const result = await this.api().createActivity(hub.entry_id, name);
@@ -2056,7 +2147,7 @@ var ControlPanelStore = class {
     } catch (error) {
       return { error: formatError(error) };
     } finally {
-      this.setExternalHubCommandBusy(false);
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
     }
     await this.refreshForHub("activity", activityId, `act-${activityId}`);
     return { activityId };
@@ -2065,8 +2156,7 @@ var ControlPanelStore = class {
     if (this._isHubCommandBusy()) return;
     const hub = selectedHub(this._snapshot);
     if (!hub) return;
-    this._snapshot = { ...this._snapshot, refreshBusy: true, activeRefreshLabel: key };
-    this.emit();
+    this._setRefreshBusy(hub.entry_id, key);
     try {
       await this.api().refreshCacheEntry({
         hubEntryId: hub.entry_id,
@@ -2076,14 +2166,10 @@ var ControlPanelStore = class {
       });
       await this.loadState({ silent: true });
     } finally {
-      this._snapshot = {
-        ...this._snapshot,
-        refreshBusy: false,
-        activeRefreshLabel: null,
-        staleData: false,
-        pendingScrollEntityKey: key
-      };
-      this.emit();
+      if (this._snapshot.selectedHubEntryId === hub.entry_id) {
+        this._snapshot = { ...this._snapshot, pendingScrollEntityKey: key };
+      }
+      this._clearRefreshBusy(hub.entry_id);
     }
   }
   async syncLogsFeed() {
@@ -2228,10 +2314,13 @@ var ControlPanelStore = class {
     if (previousRuntime?.kind === "operation_running" && nextRuntime?.kind !== "operation_running" && previousRuntime.operation !== "cache_refresh") {
       const operation = previousRuntime.operation;
       const successLabel = operation === "backup_restore" ? "Restore completed successfully." : operation === "backup_export" ? "Backup completed successfully." : operation === "entity_sync" ? "Synced to hub." : "Wifi Device deployed successfully.";
-      this.showRuntimeCompletion({
-        tone: "success",
-        label: successLabel
-      });
+      this.showRuntimeCompletion(
+        {
+          tone: "success",
+          label: successLabel
+        },
+        nextHub?.entry_id ?? previousHub?.entry_id ?? null
+      );
     }
     this._scheduleRuntimeStatePoll();
   }
@@ -2310,10 +2399,21 @@ var ControlPanelStore = class {
   }
   _isHubCommandBusy() {
     const hub = selectedHub(this._snapshot);
+    const entryId = hub?.entry_id ?? null;
     const activeBackupOperation = hub?.active_backup_operation;
     const backupBusy = !!activeBackupOperation && ["pending", "running"].includes(String(activeBackupOperation.status || ""));
     return Boolean(
-      this._snapshot.refreshBusy || this._snapshot.externalHubCommandBusy || this._snapshot.pendingActionKey || backupBusy
+      entryId && entryId in this._snapshot.refreshBusyByHub || entryId && entryId in this._snapshot.externalHubCommandByHub || this._snapshot.pendingActionKey || backupBusy
+    );
+  }
+  /** Busy on ANY hub — used to suppress the stale-data banner while one of
+   * our own operations is bumping cache generations in the background. */
+  _isAnyHubCommandBusy() {
+    const backupBusy = (this._snapshot.state?.hubs ?? []).some(
+      (hub) => !!hub.active_backup_operation && ["pending", "running"].includes(String(hub.active_backup_operation.status || ""))
+    );
+    return Boolean(
+      Object.keys(this._snapshot.refreshBusyByHub).length || Object.keys(this._snapshot.externalHubCommandByHub).length || this._snapshot.pendingActionKey || backupBusy
     );
   }
   async _syncBackupOperationFeed() {
@@ -2843,6 +2943,50 @@ test("refreshForHub uses entity_id when a matching remote entity exists", async 
   assert.equal(messages.length, 1);
   assert.equal(messages[0].entity_id, "remote.living_room");
   assert.equal(messages[0].entry_id, void 0);
+});
+test("busy state and completion notices stay scoped to the hub they ran on", async () => {
+  const { store } = createStore();
+  const twoHubState = {
+    ...baseState,
+    hubs: [
+      baseState.hubs[0],
+      { ...baseState.hubs[0], entry_id: "hub-2", name: "Bedroom" }
+    ]
+  };
+  let progressCallback = null;
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => twoHubState,
+        "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "op-1" })
+      },
+      subscribe: async (callback, message) => {
+        if (String(message.type) === "sofabaton_x1s/backup/progress_subscribe") {
+          progressCallback = callback;
+        }
+        return () => {
+        };
+      }
+    })
+  );
+  await store.loadState();
+  assert.equal(store.snapshot.selectedHubEntryId, "hub-1");
+  const refreshPromise = store.refreshAllForHub();
+  await flush();
+  await flush();
+  assert.ok("hub-1" in store.snapshot.refreshBusyByHub);
+  assert.equal(resolveRuntimeState(store.snapshot)?.kind, "notice");
+  store.selectHub("hub-2");
+  await flush();
+  assert.equal(resolveRuntimeState(store.snapshot), null);
+  progressCallback?.({ status: "success" });
+  await refreshPromise;
+  assert.deepEqual(store.snapshot.refreshBusyByHub, {});
+  assert.ok(store.snapshot.runtimeCompletionNoticeByHub["hub-1"]);
+  assert.equal(resolveRuntimeState(store.snapshot), null);
+  store.selectHub("hub-1");
+  assert.equal(resolveRuntimeState(store.snapshot)?.kind, "completion");
 });
 test("deviceClassIcon maps known cache device classes to the expected icons", () => {
   assert.equal(deviceClassIcon("ir"), "mdi:remote");

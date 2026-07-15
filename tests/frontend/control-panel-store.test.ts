@@ -12,7 +12,7 @@ import { setMaxListeners } from "node:events";
 // noisy fake failure) go away.
 setMaxListeners(0);
 import { ControlPanelStore } from "../../custom_components/sofabaton_x1s/www/src/state/control-panel-store";
-import { deviceClassIcon } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
+import { deviceClassIcon, resolveRuntimeState } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import type { HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 
 const VIEW_STATE_STORAGE_KEY = "sofabaton_x1s:tools_card:view_state:v1";
@@ -472,6 +472,60 @@ test("refreshForHub uses entity_id when a matching remote entity exists", async 
   assert.equal(messages.length, 1);
   assert.equal(messages[0].entity_id, "remote.living_room");
   assert.equal(messages[0].entry_id, undefined);
+});
+
+test("busy state and completion notices stay scoped to the hub they ran on", async () => {
+  const { store } = createStore();
+  const twoHubState = {
+    ...baseState,
+    hubs: [
+      baseState.hubs[0],
+      { ...baseState.hubs[0], entry_id: "hub-2", name: "Bedroom" },
+    ],
+  };
+  let progressCallback: ((payload: unknown) => void) | null = null;
+  store.connected();
+  store.setHass(
+    createHass({
+      handlers: {
+        "sofabaton_x1s/control_panel/state": () => twoHubState,
+        "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "op-1" }),
+      },
+      subscribe: async (callback, message) => {
+        if (String(message.type) === "sofabaton_x1s/backup/progress_subscribe") {
+          progressCallback = callback;
+        }
+        return () => {};
+      },
+    }),
+  );
+  await store.loadState();
+  assert.equal(store.snapshot.selectedHubEntryId, "hub-1");
+
+  const refreshPromise = store.refreshAllForHub();
+  await flush();
+  await flush();
+
+  // Hub 1 selected: the running refresh surfaces in the dock.
+  assert.ok("hub-1" in store.snapshot.refreshBusyByHub);
+  assert.equal(resolveRuntimeState(store.snapshot)?.kind, "notice");
+
+  // Hub 2 selected: hub 1's refresh must not leak into the dock.
+  store.selectHub("hub-2");
+  await flush();
+  assert.equal(resolveRuntimeState(store.snapshot), null);
+
+  progressCallback?.({ status: "success" });
+  await refreshPromise;
+
+  // The completion toast belongs to hub 1 and stays invisible on hub 2...
+  assert.deepEqual(store.snapshot.refreshBusyByHub, {});
+  assert.ok(store.snapshot.runtimeCompletionNoticeByHub["hub-1"]);
+  assert.equal(resolveRuntimeState(store.snapshot), null);
+
+  // ...but is shown when switching back to hub 1.
+  store.selectHub("hub-1");
+  assert.equal(resolveRuntimeState(store.snapshot)?.kind, "completion");
 });
 
 test("deviceClassIcon maps known cache device classes to the expected icons", () => {
