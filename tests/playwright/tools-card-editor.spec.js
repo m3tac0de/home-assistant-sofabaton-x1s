@@ -207,3 +207,106 @@ test.describe("tools-card activity editor harness", () => {
     assertActivityMembershipInvariant(bundle, 101);
   });
 });
+
+test.describe("tools-card Hub list layout", () => {
+  test("keeps narrow device rows compact with ellipsized names and visible counts", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(async () => {
+      await window.__toolsCardHarness.loadScenario("8");
+      document.body.style.padding = "0";
+      document.querySelector(".controls")?.remove();
+      document.querySelector(".status-bar")?.remove();
+      const layout = document.querySelector(".harness-layout");
+      if (layout) layout.style.display = "block";
+
+      const root = document.querySelector("sofabaton-control-panel")?.shadowRoot;
+      const label = root?.querySelector(".entity-name-label");
+      if (label) label.textContent = "Philips Hue 2 (192.168.2.162) Living Room Entertainment";
+    });
+
+    const metrics = await page.evaluate(() => {
+      const card = document.querySelector("sofabaton-control-panel");
+      const root = card?.shadowRoot;
+      const body = root?.querySelector(".cache-panel-body");
+      const row = root?.querySelector(".entity-summary");
+      const label = root?.querySelector(".entity-name-label");
+      const copy = root?.querySelector(".entity-name-copy");
+      const count = root?.querySelector(".entity-count");
+      const icon = root?.querySelector(".entity-name-icon");
+      const meta = root?.querySelector(".entity-meta");
+      if (!card || !body || !row || !label || !copy || !count || !icon || !meta) return null;
+
+      const rowRect = row.getBoundingClientRect();
+      const labelRect = label.getBoundingClientRect();
+      const copyRect = copy.getBoundingClientRect();
+      const countRect = count.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      const metaRect = meta.getBoundingClientRect();
+      return {
+        cardWidth: card.clientWidth,
+        bodyWidth: body.clientWidth,
+        bodyScrollWidth: body.scrollWidth,
+        rowWidth: row.clientWidth,
+        rowScrollWidth: row.scrollWidth,
+        rowHeight: row.clientHeight,
+        labelWidth: label.clientWidth,
+        labelScrollWidth: label.scrollWidth,
+        textOverflow: getComputedStyle(label).textOverflow,
+        countText: count.textContent?.trim(),
+        countDisplay: getComputedStyle(count).display,
+        countBelowLabel: countRect.top >= labelRect.bottom - 0.5,
+        iconCenterDelta: Math.abs(
+          (iconRect.top + iconRect.height / 2) - (copyRect.top + copyRect.height / 2),
+        ),
+        metaInsideRow: metaRect.right <= rowRect.right + 0.5,
+      };
+    });
+
+    expect(metrics).not.toBeNull();
+    expect(metrics.cardWidth).toBeLessThanOrEqual(320);
+    expect(metrics.bodyScrollWidth).toBeLessThanOrEqual(metrics.bodyWidth);
+    expect(metrics.rowScrollWidth).toBeLessThanOrEqual(metrics.rowWidth);
+    expect(metrics.labelScrollWidth).toBeGreaterThan(metrics.labelWidth);
+    expect(metrics.textOverflow).toBe("ellipsis");
+    expect(metrics.countText).toMatch(/favs/);
+    expect(metrics.countDisplay).toBe("block");
+    expect(metrics.countBelowLabel).toBe(true);
+    expect(metrics.iconCenterDelta).toBeLessThanOrEqual(0.5);
+    expect(metrics.metaInsideRow).toBe(true);
+    expect(metrics.rowHeight).toBeLessThanOrEqual(50);
+
+    await page.getByText("Devices", { exact: true }).click();
+    const deviceMetrics = await page.evaluate(() => {
+      const root = document.querySelector("sofabaton-control-panel")?.shadowRoot;
+      const row = root?.querySelector(".entity-summary");
+      const copy = root?.querySelector(".entity-name-copy");
+      const label = root?.querySelector(".entity-name-label");
+      const count = root?.querySelector(".entity-count");
+      const icon = root?.querySelector(".entity-name-icon");
+      if (!row || !copy || !label || !count || !icon) return null;
+      label.textContent = "Philips Hue 2 (192.168.2.162) Living Room Entertainment";
+      const copyRect = copy.getBoundingClientRect();
+      const iconRect = icon.getBoundingClientRect();
+      return {
+        rowHeight: row.clientHeight,
+        labelWidth: label.clientWidth,
+        labelScrollWidth: label.scrollWidth,
+        textOverflow: getComputedStyle(label).textOverflow,
+        countText: count.textContent?.trim(),
+        countDisplay: getComputedStyle(count).display,
+        iconCenterDelta: Math.abs(
+          (iconRect.top + iconRect.height / 2) - (copyRect.top + copyRect.height / 2),
+        ),
+      };
+    });
+
+    expect(deviceMetrics).not.toBeNull();
+    expect(deviceMetrics.labelScrollWidth).toBeGreaterThan(deviceMetrics.labelWidth);
+    expect(deviceMetrics.textOverflow).toBe("ellipsis");
+    expect(deviceMetrics.countText).toMatch(/cmd/);
+    expect(deviceMetrics.countDisplay).toBe("block");
+    expect(deviceMetrics.iconCenterDelta).toBeLessThanOrEqual(0.5);
+    expect(deviceMetrics.rowHeight).toBeLessThanOrEqual(50);
+  });
+});

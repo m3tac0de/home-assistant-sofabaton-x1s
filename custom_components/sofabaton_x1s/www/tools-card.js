@@ -1262,7 +1262,9 @@ var cardStyles = [secondaryTabStyles, i`
   .setting-global-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--primary-color) 82%, #08131c), color-mix(in srgb, var(--primary-color) 58%, #14324b)); color: white; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.18); flex-shrink: 0; }
   .setting-description { font-size: 12px; line-height: 1.35; color: var(--secondary-text-color); }
   .setting-icon { color: var(--secondary-text-color); display: inline-flex; }
-  .cache-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .cache-panel { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .cache-panel .secondary-view-shell,
+  .cache-panel .secondary-tab-panel { min-width: 0; }
   .accordion-section { display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--divider-color); }
   .accordion-section:first-child { border-top: none; }
   .accordion-section.open { flex: 1; }
@@ -1284,22 +1286,23 @@ var cardStyles = [secondaryTabStyles, i`
   .chevron, .entity-chevron { font-size: 9px; color: var(--secondary-text-color); transition: transform 150ms; }
   .accordion-section.open .chevron, .entity-block.open .entity-chevron { transform: rotate(180deg); }
   .acc-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 16px 12px; display: grid; gap: 6px; align-content: start; }
-  .entity-block { border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--secondary-background-color, var(--ha-card-background)); overflow-x: clip; transition: border-color 120ms ease; }
+  .entity-block { width: 100%; min-width: 0; max-width: 100%; border: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px); background: var(--secondary-background-color, var(--ha-card-background)); overflow-x: clip; transition: border-color 120ms ease; }
   .entity-block:hover { border-color: color-mix(in srgb, var(--primary-color) 55%, var(--divider-color)); }
-  .entity-summary { display: flex; align-items: center; gap: 8px; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: var(--ha-card-border-radius, 12px); transition: background-color 120ms ease; }
+  .entity-summary { width: 100%; min-width: 0; display: flex; align-items: center; gap: 8px; overflow: hidden; padding: 9px 10px 9px 12px; cursor: pointer; user-select: none; border-radius: var(--ha-card-border-radius, 12px); transition: background-color 120ms ease; }
   .entity-summary:hover { background: color-mix(in srgb, var(--primary-color) 5%, var(--secondary-background-color, var(--ha-card-background))); }
-  .entity-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-  .entity-name { font-size: 13px; font-weight: 700; flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 8px; }
+  .entity-meta { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .entity-name { font-size: 13px; font-weight: 700; flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; }
   .entity-name-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--state-icon-color, var(--secondary-text-color)); flex-shrink: 0; }
   .entity-name-icon ha-icon { --mdc-icon-size: 16px; }
-  .entity-name-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .entity-name-copy { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 0; overflow: hidden; }
+  .entity-name-label { display: block; min-width: 0; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .entity-body { display: none; }
   .entity-block.open .entity-body { display: block; }
   .entity-block.open > .entity-summary { position: sticky; top: 0; z-index: 2; background: var(--secondary-background-color, var(--ha-card-background)); border-bottom: 1px solid var(--divider-color); border-radius: var(--ha-card-border-radius, 12px) var(--ha-card-border-radius, 12px) 0 0; }
   .id-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; font-weight: 600; font-family: "SF Mono", "Fira Code", Consolas, monospace; background: var(--ha-card-background, var(--card-background-color, var(--primary-background-color))); border-radius: calc(var(--ha-card-border-radius, 12px) * 0.4); padding: 2px 5px; flex-shrink: 0; white-space: nowrap; min-width: 68px; justify-content: space-between; }
   .id-badge span:first-child { color: var(--secondary-text-color); opacity: 0.75; }
   .id-badge span:last-child { color: var(--primary-text-color); text-align: right; }
-  .entity-count { font-size: 10px; color: var(--secondary-text-color); flex-shrink: 0; white-space: nowrap; }
+  .entity-count { display: block; min-width: 0; font-size: 10px; font-weight: 400; line-height: 1.05; color: var(--secondary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cache-panel-header {
     margin-top: 6px;
     margin-bottom: 8px;
@@ -1312,6 +1315,9 @@ var cardStyles = [secondaryTabStyles, i`
   .refresh-list-label--clickable[aria-disabled="true"]:hover { color: var(--secondary-text-color); }
   .cache-panel-body,
   .secondary-tab-panel--connected .cache-panel-body {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+    overflow-x: hidden;
     padding-top: 0;
   }
   .entity-chevron { font-size: 8px; color: var(--secondary-text-color); transition: transform 150ms; flex-shrink: 0; }
@@ -1326,8 +1332,8 @@ var cardStyles = [secondaryTabStyles, i`
   .entity-block--reorder .entity-summary { cursor: inherit; }
   .entity-block--reorder .entity-summary:hover { background: transparent; }
   .entity-block--reorder .entity-name-icon { color: var(--primary-color); }
-  .cache-reorder-list { display: grid; gap: 6px; align-content: start; }
-  .cache-reorder-sortable { display: block; }
+  .cache-reorder-list { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; align-content: start; }
+  .cache-reorder-sortable { display: block; min-width: 0; }
   .sortable-ghost.entity-block--reorder { opacity: 0.45; }
   .cache-list-footer { display: flex; flex-direction: column; gap: 8px; padding: 12px 0 4px; }
   .cache-reorder-hint { font-size: 11.5px; color: var(--secondary-text-color); }
@@ -1445,7 +1451,6 @@ var cardStyles = [secondaryTabStyles, i`
     .hub-ident-name { font-size: 15px; }
     .hub-compact-stats { display: none; }
     .entity-chevron { display: none; }
-    .entity-count { display: none; }
     .card-topbar { padding: 4px 8px; gap: 6px; }
     .card-bottom-dock { padding: 5px 8px; }
     .card-bottom-dock-center { font-size: 10px; }
@@ -3777,11 +3782,13 @@ function renderCacheTab(params) {
             <span class="entity-name-icon">
               <ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : "mdi:play-circle-outline"}></ha-icon>
             </span>
-            <span class="entity-name-label">${activity.name || TOOLS_CARD_STRINGS.cache.activityFallback(id)}</span>
+            <span class="entity-name-copy">
+              <span class="entity-name-label">${activity.name || TOOLS_CARD_STRINGS.cache.activityFallback(id)}</span>
+              <span class="entity-count entity-count--activity">${TOOLS_CARD_STRINGS.cache.activityCounts(favorites.length, macros.length, buttons.length)}</span>
+            </span>
           </span>
           <span class="entity-meta">
             ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
-            <span class="entity-count entity-count--activity">${TOOLS_CARD_STRINGS.cache.activityCounts(favorites.length, macros.length, buttons.length)}</span>
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editActivity} ?disabled=${locked2} @click=${(event) => {
       event.stopPropagation();
       params.onEditActivity(id);
@@ -3815,11 +3822,13 @@ function renderCacheTab(params) {
         <div class="entity-summary" @click=${() => params.onToggleEntity(key)}>
           <span class="entity-name">
             <span class="entity-name-icon"><ha-icon icon=${icon}></ha-icon></span>
-            <span class="entity-name-label">${device.name || TOOLS_CARD_STRINGS.cache.deviceFallback(id)}</span>
+            <span class="entity-name-copy">
+              <span class="entity-name-label">${device.name || TOOLS_CARD_STRINGS.cache.deviceFallback(id)}</span>
+              <span class="entity-count">${TOOLS_CARD_STRINGS.cache.deviceCommandCount(Number(device.command_count || 0))}</span>
+            </span>
           </span>
           <span class="entity-meta">
             ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
-            <span class="entity-count">${TOOLS_CARD_STRINGS.cache.deviceCommandCount(Number(device.command_count || 0))}</span>
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editDevice} ?disabled=${locked2} @click=${(event) => {
       event.stopPropagation();
       params.onEditDevice(id);
@@ -14830,7 +14839,6 @@ var SofabatonActivitiesTab = class extends i4 {
     this._syncProgress = null;
     this._syncError = null;
     this._syncFailedAt = null;
-    this._syncSuccessNotice = false;
     this._captureOperationId = null;
     this._syncOperationId = null;
     this._progressUnsub = null;
@@ -14910,7 +14918,6 @@ var SofabatonActivitiesTab = class extends i4 {
       this._syncError = null;
       this._syncFailedAt = null;
       this._syncProgress = null;
-      this._syncSuccessNotice = false;
       this._stage = "syncing";
       try {
         const start = this.kind === "device" ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working) : await this.api().startActivitySync(this.hub.entry_id, this._entityId, this._baseline, this._working);
@@ -15071,7 +15078,6 @@ var SofabatonActivitiesTab = class extends i4 {
     this._syncOperationId = null;
     const exitAfterSync = this._exitAfterSync;
     this._exitAfterSync = false;
-    this._syncSuccessNotice = true;
     try {
       await this.api().clearBackupResult(operationId);
     } catch {
@@ -15120,7 +15126,6 @@ var SofabatonActivitiesTab = class extends i4 {
     this._syncError = null;
     this._syncFailedAt = null;
     this._syncOperationId = null;
-    this._syncSuccessNotice = false;
     this._exitAfterSync = false;
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
@@ -15241,7 +15246,6 @@ var SofabatonActivitiesTab = class extends i4 {
   _renderEditing() {
     return b2`
       <div class="editing-shell">
-        ${this._syncSuccessNotice ? this._renderSyncSuccessBanner() : A}
         ${this._deleteError ? this._renderDeleteErrorBanner() : A}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
@@ -15257,16 +15261,6 @@ var SofabatonActivitiesTab = class extends i4 {
           @close=${this._closeEditor}
         ></sofabaton-edit-detail-view>
         ${this._exitConfirmOpen ? this._renderExitConfirmDialog() : A}
-      </div>
-    `;
-  }
-  _renderSyncSuccessBanner() {
-    return b2`
-      <div class="notice-banner sync-success-banner">
-        <span class="notice-banner-text"><ha-icon icon="mdi:check-circle-outline"></ha-icon> ${TOOLS_CARD_STRINGS.activities.syncSuccess}</span>
-        <button class="notice-banner-btn" @click=${() => {
-      this._syncSuccessNotice = false;
-    }}>${TOOLS_CARD_STRINGS.activities.discardConfirmCancel}</button>
       </div>
     `;
   }
@@ -15375,8 +15369,7 @@ SofabatonActivitiesTab.properties = {
   _exitConfirmOpen: { state: true },
   _syncProgress: { state: true },
   _syncError: { state: true },
-  _syncFailedAt: { state: true },
-  _syncSuccessNotice: { state: true }
+  _syncFailedAt: { state: true }
 };
 SofabatonActivitiesTab.styles = [operationProgressStyles, i`
     :host {
@@ -15454,9 +15447,6 @@ SofabatonActivitiesTab.styles = [operationProgressStyles, i`
       cursor: pointer;
     }
     .notice-banner-btn:hover { border-color: var(--primary-color); }
-    .sync-success-banner { background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color))); }
-    .sync-success-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: #2e7d32; }
-    .sync-success-banner ha-icon { --mdc-icon-size: 18px; }
     .delete-error-banner { background: color-mix(in srgb, var(--error-color, #db4437) 12%, var(--ha-card-background, var(--card-background-color))); }
     .delete-error-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: var(--error-color, #db4437); }
     .delete-error-banner ha-icon { --mdc-icon-size: 18px; }

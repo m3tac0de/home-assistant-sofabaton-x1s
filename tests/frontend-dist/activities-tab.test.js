@@ -8799,7 +8799,6 @@ var SofabatonActivitiesTab = class extends i3 {
     this._syncProgress = null;
     this._syncError = null;
     this._syncFailedAt = null;
-    this._syncSuccessNotice = false;
     this._captureOperationId = null;
     this._syncOperationId = null;
     this._progressUnsub = null;
@@ -8879,7 +8878,6 @@ var SofabatonActivitiesTab = class extends i3 {
       this._syncError = null;
       this._syncFailedAt = null;
       this._syncProgress = null;
-      this._syncSuccessNotice = false;
       this._stage = "syncing";
       try {
         const start = this.kind === "device" ? await this.api().startDeviceSync(this.hub.entry_id, this._entityId, this._baseline, this._working) : await this.api().startActivitySync(this.hub.entry_id, this._entityId, this._baseline, this._working);
@@ -8967,8 +8965,7 @@ var SofabatonActivitiesTab = class extends i3 {
       _exitConfirmOpen: { state: true },
       _syncProgress: { state: true },
       _syncError: { state: true },
-      _syncFailedAt: { state: true },
-      _syncSuccessNotice: { state: true }
+      _syncFailedAt: { state: true }
     };
   }
   static {
@@ -9048,9 +9045,6 @@ var SofabatonActivitiesTab = class extends i3 {
       cursor: pointer;
     }
     .notice-banner-btn:hover { border-color: var(--primary-color); }
-    .sync-success-banner { background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color))); }
-    .sync-success-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: #2e7d32; }
-    .sync-success-banner ha-icon { --mdc-icon-size: 18px; }
     .delete-error-banner { background: color-mix(in srgb, var(--error-color, #db4437) 12%, var(--ha-card-background, var(--card-background-color))); }
     .delete-error-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: var(--error-color, #db4437); }
     .delete-error-banner ha-icon { --mdc-icon-size: 18px; }
@@ -9194,7 +9188,6 @@ var SofabatonActivitiesTab = class extends i3 {
     this._syncOperationId = null;
     const exitAfterSync = this._exitAfterSync;
     this._exitAfterSync = false;
-    this._syncSuccessNotice = true;
     try {
       await this.api().clearBackupResult(operationId);
     } catch {
@@ -9243,7 +9236,6 @@ var SofabatonActivitiesTab = class extends i3 {
     this._syncError = null;
     this._syncFailedAt = null;
     this._syncOperationId = null;
-    this._syncSuccessNotice = false;
     this._exitAfterSync = false;
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
@@ -9364,7 +9356,6 @@ var SofabatonActivitiesTab = class extends i3 {
   _renderEditing() {
     return T`
       <div class="editing-shell">
-        ${this._syncSuccessNotice ? this._renderSyncSuccessBanner() : A}
         ${this._deleteError ? this._renderDeleteErrorBanner() : A}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
@@ -9380,16 +9371,6 @@ var SofabatonActivitiesTab = class extends i3 {
           @close=${this._closeEditor}
         ></sofabaton-edit-detail-view>
         ${this._exitConfirmOpen ? this._renderExitConfirmDialog() : A}
-      </div>
-    `;
-  }
-  _renderSyncSuccessBanner() {
-    return T`
-      <div class="notice-banner sync-success-banner">
-        <span class="notice-banner-text"><ha-icon icon="mdi:check-circle-outline"></ha-icon> ${TOOLS_CARD_STRINGS.activities.syncSuccess}</span>
-        <button class="notice-banner-btn" @click=${() => {
-      this._syncSuccessNotice = false;
-    }}>${TOOLS_CARD_STRINGS.activities.discardConfirmCancel}</button>
       </div>
     `;
   }
@@ -9809,7 +9790,7 @@ test("activities tab sync success falls back to local promotion when recapture i
   assert.equal(element._stage, "editing");
   assert.equal(element._dirty, false);
   assert.equal(element._baseline.activities[0].device.name, "Edited");
-  assert.equal(element._syncSuccessNotice, true);
+  assert.equal("_syncSuccessNotice" in element, false);
 });
 test("activities tab sync-and-leave exits after a successful sync", async () => {
   const element = new ActivitiesTabElement();

@@ -801,3 +801,89 @@ device page still compare byte-for-byte, so real foreign edits stay
 caught; a vendor-app edit that exactly reproduces a device-page mapping
 is indistinguishable from the hub's own derivation by construction and
 is deliberately tolerated.
+
+## Validated: UI end-to-end bench (X1S, 2026-07-14/15) — programs P0–P6
+
+Browser-driven end-to-end bench against a live HA instance and the
+sacrificial X1S: every flow exercised through the tools card exactly as
+a user would, verified against the wire log and hub read-backs. Plan and
+per-chunk log: `docs/internal/ui-bench-plan.md` (gitignored). Programs:
+P0 bootstrap/baseline, P1 cache & capture surfaces, P2 activity
+lifecycle, P3 activity content editing, P4 device editing, P5 backup &
+restore UI (+ editor-correctness extension), P6 Wifi Commands deploy.
+P7 (remote surfaces smoke) deliberately skipped — proven in the field,
+may be revisited. X1 was baselined in P0 and verified untouched at
+close-out (fresh export identical to the P0 bundle modulo capture
+timestamps); the X1S closed each program restored, and closed P6
+bit-exact at its recovery baseline (same modulo).
+
+**Bug ledger** (all eight fixed and re-verified live on the X1S):
+
+1. `reset_ack_queues()` wiped the shared macro cache hub-wide on every
+   write flow (root cause of bystander-validation failures on fresh
+   activities). Fix: transient wait-map split from persistent
+   `_macro_records_cache`.
+2. Post-sync stale false-positives: local baseline promotion missed the
+   hub's async power-duration canonicalization. Fix: backend rebase from
+   a settled post-sync capture + duration-normalized signatures.
+3. Export emitted keymap placeholder rows (`command_id == 0`). Fix:
+   skipped in `build_activity_button_rows`.
+4. Role-page keymap slots are hub-derived and bistable (see the
+   dedicated section above). Fix: preflight/settle tolerance for
+   device-page-mirroring rows.
+5. Favorites and macro shortcuts share one fav-id namespace per activity
+   on the hub, but the card renumbers client-side → a new macro shortcut
+   silently overwrote a favorite. Fix: executor-side allocation against
+   live hub occupancy, plus content-checked favorite/macro deletes.
+6. Device restore failed on a degenerate key-sort table (all
+   `0xFF`/`0x00` "unpositioned" sentinels rejected by the hub with
+   status 0x06) and left a partial device. Fix: skip the key-sort
+   finalize write for position-free tables (positions are 1-based;
+   `0x00` = unset) + rollback of the created device on finalize failure.
+7. Backup-editor command delete cascaded bindings but not the owning
+   device's own power/user macros (dangling steps, no impact warning).
+   Fix: device-macro pruning + "power sequence step" impact count.
+8. New-member sync dropped the chosen input: `member_replay` carried no
+   `input_cmd_id`, and fresh-activity power macros were mis-flagged as
+   new. Fix: input ordinal resolved from the edited bundle and threaded
+   through `add_device_to_activity`; power macros (198/199) exempt from
+   quick-access id allocation.
+
+**Wifi Commands deploy through the UI (P6, X1S).** Full pipeline
+validated: device + command creation in the card, deploy (8 steps,
+hub device created with 10 short + 10 long-press command records),
+callback delivery (`REQ_ACTIVATE` → hub HTTP POST to the listener →
+sensor pulse → 200), three re-syncs, UI delete, hub restored bit-exact.
+Findings:
+
+- **Device-delete GC semantics sharpened** (three data points, plus one
+  from P5): the hub sweeps only activities left with **zero devices**
+  after a delete. An activity whose sole member was the deleted wifi
+  device is removed; unrelated single-member activities survive.
+  `docs/wifi_commands.md` corrected accordingly (its earlier wording —
+  any single-device activity dies — was overbroad).
+- **Overwritten-binding drop confirmed exactly as documented**: deploying
+  a wifi command onto a bound button overwrites the binding; unassigning
+  and re-syncing leaves the button unbound — the original binding is not
+  restored.
+- Immediately after a deploy's closing remote-resync, an activity's
+  role-page rows can read back empty until the remote's BLE sync
+  rematerializes them (the bug-#4 bistability window); the shipped
+  tolerance covers it.
+- A stale/unknown activity id in the command config is defended:
+  `sync_command_config` drops it with an info log and deploys cleanly,
+  so a mid-deploy activity-add failure is not reachable via that vector
+  (failure rollback remains covered by the 2026-07-12 lib-level
+  program).
+- Minor, tracked as tasks: a leftover `[WIFI_ACTION_DEBUG]` warning logs
+  on every callback (`hub.py`), and the editor's hard-button conflict
+  hint checks other wifi slots but not existing hub bindings in the
+  target activities.
+
+**Hub facts collected along the way** (details in the plan's chunk log):
+hub reuses freed device/activity ids; activity catalog rows stay in
+creation order with display order carried by the per-row sort token
+(family 0x51); key-sort positions are 1-based with `0x00` and `0xFF`
+both meaning "unpositioned"; non-erase device restore is additive
+(erase mode is the replace path); the wifi-commands sensor pulse resets
+after 0.3 s by design.

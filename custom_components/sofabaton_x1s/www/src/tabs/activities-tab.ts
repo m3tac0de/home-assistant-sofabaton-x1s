@@ -56,7 +56,6 @@ class SofabatonActivitiesTab extends LitElement {
     _syncProgress: { state: true },
     _syncError: { state: true },
     _syncFailedAt: { state: true },
-    _syncSuccessNotice: { state: true },
   };
 
   static styles = [operationProgressStyles, css`
@@ -135,9 +134,6 @@ class SofabatonActivitiesTab extends LitElement {
       cursor: pointer;
     }
     .notice-banner-btn:hover { border-color: var(--primary-color); }
-    .sync-success-banner { background: color-mix(in srgb, #48b851 14%, var(--ha-card-background, var(--card-background-color))); }
-    .sync-success-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: #2e7d32; }
-    .sync-success-banner ha-icon { --mdc-icon-size: 18px; }
     .delete-error-banner { background: color-mix(in srgb, var(--error-color, #db4437) 12%, var(--ha-card-background, var(--card-background-color))); }
     .delete-error-banner .notice-banner-text { display: inline-flex; align-items: center; gap: 6px; color: var(--error-color, #db4437); }
     .delete-error-banner ha-icon { --mdc-icon-size: 18px; }
@@ -214,7 +210,6 @@ class SofabatonActivitiesTab extends LitElement {
   private _syncProgress: BackupProgressEvent | null = null;
   private _syncError: string | null = null;
   private _syncFailedAt: string | null = null;
-  private _syncSuccessNotice = false;
 
   private _captureOperationId: string | null = null;
   private _syncOperationId: string | null = null;
@@ -390,7 +385,6 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncError = null;
     this._syncFailedAt = null;
     this._syncProgress = null;
-    this._syncSuccessNotice = false;
     this._stage = "syncing";
     try {
       const start = this.kind === "device"
@@ -434,7 +428,6 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncOperationId = null;
     const exitAfterSync = this._exitAfterSync;
     this._exitAfterSync = false;
-    this._syncSuccessNotice = true;
     try { await this.api().clearBackupResult(operationId); } catch { /* ignore */ }
     try { await this.refreshControlPanelState?.(); } catch { /* ignore */ }
     if (exitAfterSync) {
@@ -541,7 +534,6 @@ class SofabatonActivitiesTab extends LitElement {
     this._syncError = null;
     this._syncFailedAt = null;
     this._syncOperationId = null;
-    this._syncSuccessNotice = false;
     this._exitAfterSync = false;
     if (wasActive) {
       this.dispatchEvent(new CustomEvent("editor-exit", { bubbles: true, composed: true }));
@@ -668,7 +660,6 @@ class SofabatonActivitiesTab extends LitElement {
   private _renderEditing() {
     return html`
       <div class="editing-shell">
-        ${this._syncSuccessNotice ? this._renderSyncSuccessBanner() : nothing}
         ${this._deleteError ? this._renderDeleteErrorBanner() : nothing}
         <sofabaton-edit-detail-view
           .bundle=${this._working}
@@ -684,15 +675,6 @@ class SofabatonActivitiesTab extends LitElement {
           @close=${this._closeEditor}
         ></sofabaton-edit-detail-view>
         ${this._exitConfirmOpen ? this._renderExitConfirmDialog() : nothing}
-      </div>
-    `;
-  }
-
-  private _renderSyncSuccessBanner() {
-    return html`
-      <div class="notice-banner sync-success-banner">
-        <span class="notice-banner-text"><ha-icon icon="mdi:check-circle-outline"></ha-icon> ${TOOLS_CARD_STRINGS.activities.syncSuccess}</span>
-        <button class="notice-banner-btn" @click=${() => { this._syncSuccessNotice = false; }}>${TOOLS_CARD_STRINGS.activities.discardConfirmCancel}</button>
       </div>
     `;
   }

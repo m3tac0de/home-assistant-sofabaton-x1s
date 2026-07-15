@@ -99,11 +99,13 @@ export function renderCacheTab(params: {
             <span class="entity-name-icon">
               <ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : "mdi:play-circle-outline"}></ha-icon>
             </span>
-            <span class="entity-name-label">${activity.name || TOOLS_CARD_STRINGS.cache.activityFallback(id)}</span>
+            <span class="entity-name-copy">
+              <span class="entity-name-label">${activity.name || TOOLS_CARD_STRINGS.cache.activityFallback(id)}</span>
+              <span class="entity-count entity-count--activity">${TOOLS_CARD_STRINGS.cache.activityCounts(favorites.length, macros.length, buttons.length)}</span>
+            </span>
           </span>
           <span class="entity-meta">
             ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
-            <span class="entity-count entity-count--activity">${TOOLS_CARD_STRINGS.cache.activityCounts(favorites.length, macros.length, buttons.length)}</span>
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editActivity} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditActivity(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("activity", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
             ${reorder ? null : html`<span class="entity-chevron">▼</span>`}
@@ -137,11 +139,13 @@ export function renderCacheTab(params: {
         <div class="entity-summary" @click=${() => params.onToggleEntity(key)}>
           <span class="entity-name">
             <span class="entity-name-icon"><ha-icon icon=${icon}></ha-icon></span>
-            <span class="entity-name-label">${device.name || TOOLS_CARD_STRINGS.cache.deviceFallback(id)}</span>
+            <span class="entity-name-copy">
+              <span class="entity-name-label">${device.name || TOOLS_CARD_STRINGS.cache.deviceFallback(id)}</span>
+              <span class="entity-count">${TOOLS_CARD_STRINGS.cache.deviceCommandCount(Number(device.command_count || 0))}</span>
+            </span>
           </span>
           <span class="entity-meta">
             ${badge(TOOLS_CARD_STRINGS.cache.devIdBadge, id)}
-            <span class="entity-count">${TOOLS_CARD_STRINGS.cache.deviceCommandCount(Number(device.command_count || 0))}</span>
             <button class="icon-btn" title=${TOOLS_CARD_STRINGS.cache.editDevice} ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onEditDevice(id); }}><ha-icon icon="mdi:wrench"></ha-icon></button>
             <button class="icon-btn${isSpinning ? " spinning" : ""}" ?disabled=${locked} @click=${(event: Event) => { event.stopPropagation(); params.onRefreshEntry("device", id, key); }}><ha-icon icon="mdi:refresh"></ha-icon></button>
             <span class="entity-chevron">▼</span>

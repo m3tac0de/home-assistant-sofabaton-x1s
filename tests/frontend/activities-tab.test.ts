@@ -394,7 +394,7 @@ test("activities tab sync success falls back to local promotion when recapture i
   assert.equal(element._stage, "editing");
   assert.equal(element._dirty, false);
   assert.equal(element._baseline.activities[0].device.name, "Edited");
-  assert.equal(element._syncSuccessNotice, true);
+  assert.equal("_syncSuccessNotice" in element, false);
 });
 
 test("activities tab sync-and-leave exits after a successful sync", async () => {
