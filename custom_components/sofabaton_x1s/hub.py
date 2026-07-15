@@ -3045,6 +3045,91 @@ class SofabatonHub:
                             f"port {request_port} may already be in use"
                         )
 
+                referenced_activity_ids: set[int] = set()
+                for slot in commands[:_WIFI_COMMAND_SLOT_COUNT]:
+                    if not isinstance(slot, dict):
+                        continue
+                    # A slot's activities list only means something for
+                    # favorites and hard-button bindings. The command editor
+                    # auto-selects a default activity and hides (without
+                    # clearing) the selection when both toggles are off, so an
+                    # orphaned list must not pull the device into activities
+                    # the user never sees referenced (issue #258).
+                    slot_activities_active = bool(slot.get("add_as_favorite")) or bool(
+                        str(slot.get("hard_button") or "").strip()
+                    )
+                    raw_activities = slot.get("activities")
+                    if slot_activities_active and isinstance(raw_activities, list):
+                        for act in raw_activities:
+                            try:
+                                referenced_activity_ids.add(int(act))
+                            except (TypeError, ValueError):
+                                continue
+                    raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
+                    if raw_input_activity_id:
+                        try:
+                            referenced_activity_ids.add(int(raw_input_activity_id))
+                        except (TypeError, ValueError):
+                            pass
+
+                # Validate the configured activities against a fresh hub read
+                # BEFORE the destructive delete/recreate below. The hub reuses
+                # freed activity ids, so an id picked earlier can silently come
+                # to mean a different activity after the user deletes/recreates
+                # activities in the Sofabaton app (issue #258). The label
+                # snapshot taken at configuration time lets us tell "renamed or
+                # reused" apart from "unchanged"; on any mismatch we abort with
+                # an actionable message instead of deploying into the wrong
+                # activity. Skipped when the proxy cannot issue commands (hub
+                # link down or the Sofabaton app attached): the deploy cannot
+                # proceed there anyway and fails on its first write.
+                if (
+                    configured_slots > 0
+                    and referenced_activity_ids
+                    and self._proxy.can_issue_commands()
+                ):
+                    self._set_command_sync_progress(
+                        device_key=normalized_device_key,
+                        message="Validating Activities against the hub",
+                    )
+                    previous_activities_generation = self._activities_generation
+                    await self.async_request_catalog("activities")
+                    if self._activities_generation == previous_activities_generation:
+                        raise HomeAssistantError(
+                            "Failed to refresh the Activity list from the hub; "
+                            "sync aborted rather than deploying against a stale catalog"
+                        )
+                    stored_activity_labels = command_payload.get("activity_labels")
+                    if isinstance(stored_activity_labels, dict):
+                        label_mismatches: list[str] = []
+                        for act_id in sorted(referenced_activity_ids):
+                            stored_label = str(
+                                stored_activity_labels.get(str(act_id)) or ""
+                            ).strip()
+                            if not stored_label:
+                                continue
+                            entry = self.activities.get(act_id)
+                            if entry is None:
+                                # Deleted activities are dropped from the
+                                # deploy further down, matching the existing
+                                # recover-from-missing-target behavior.
+                                continue
+                            hub_label = str(entry.get("name") or "").strip()
+                            if hub_label and hub_label != stored_label:
+                                label_mismatches.append(
+                                    f'Activity {act_id} was "{stored_label}" when this '
+                                    f'Wifi Device was configured but is now "{hub_label}"'
+                                )
+                        if label_mismatches:
+                            raise HomeAssistantError(
+                                "Failed Activity validation: "
+                                + "; ".join(label_mismatches)
+                                + ". Activities on the hub changed since this Wifi Device "
+                                "was configured (deleting and recreating an Activity reuses "
+                                "its id). Re-select the Activities in the Wifi Command "
+                                "configuration, save, and sync again."
+                            )
+
                 device_snapshot = await self._async_refresh_devices_snapshot()
                 managed_devices = self._managed_wifi_devices(device_snapshot)
                 stored_devices = await store.async_list_hub_devices(self.entry_id) if store is not None else None
@@ -3191,19 +3276,8 @@ class SofabatonHub:
                 self._bump_cache_generation()
                 async_dispatcher_send(self.hass, signal_devices(self.entry_id))
 
-                activity_ids: set[int] = set()
-                for slot in commands:
-                    for act in slot.get("activities", []):
-                        try:
-                            activity_ids.add(int(act))
-                        except (TypeError, ValueError):
-                            continue
-                    raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
-                    if raw_input_activity_id:
-                        try:
-                            activity_ids.add(int(raw_input_activity_id))
-                        except (TypeError, ValueError):
-                            pass
+                # Validated against a fresh hub catalog in the preflight above.
+                activity_ids: set[int] = set(referenced_activity_ids)
 
                 # Drop activity ids that no longer exist on this hub (e.g. the
                 # user deleted an activity that a previous deploy linked to).

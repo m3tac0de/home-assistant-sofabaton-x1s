@@ -1113,7 +1113,6 @@ var cardStyles = [secondaryTabStyles, i`
   .tab-btn-menu-caret { --mdc-icon-size: 18px; margin-right: -2px; }
   .tab-btn.active { color: var(--primary-color); box-shadow: inset 0 -3px 0 var(--primary-color); }
   .tab-btn.tab-disabled { color: var(--disabled-text-color, var(--secondary-text-color)); opacity: 0.45; cursor: default; }
-  .tab-btn-label-short { display: none; }
   .tab-menu { position: relative; display: flex; }
   .tab-menu--push-right { margin-left: auto; }
   .tab-menu-dropdown { position: absolute; top: calc(100% + 1px); right: 0; z-index: 15; display: flex; flex-direction: column; min-width: 150px; padding: 4px 0; border: 1px solid var(--divider-color); border-radius: calc(var(--ha-card-border-radius, 12px) - 2px); background: var(--card-background-color, var(--ha-card-background, white)); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18); overflow: hidden; }
@@ -1443,8 +1442,6 @@ var cardStyles = [secondaryTabStyles, i`
   @media (max-width: 640px) {
     .tabs-scroll { overflow-x: auto; scrollbar-width: none; }
     .tabs-scroll::-webkit-scrollbar { display: none; }
-    .tab-btn-label-short { display: inline; }
-    .tab-btn--has-short-label .tab-btn-label { display: none; }
     .hub-connection-strip { grid-template-columns: auto minmax(14px, 1fr) auto minmax(14px, 1fr) auto; gap: 6px; padding: 8px 10px; }
     .hub-connection-node { width: 42px; height: 42px; border-radius: 14px; }
     .hub-hero-icon { width: 25px; height: 25px; }
@@ -3062,7 +3059,6 @@ var TOOLS_CARD_STRINGS = {
   tabs: {
     cache: "Hub",
     wifiCommands: "Wifi Commands",
-    wifiShort: "Wifi",
     backup: "Backup",
     settings: "Settings",
     logs: "Logs"
@@ -3568,7 +3564,7 @@ var TOOLS_CARD_STRINGS = {
 function renderTabBar(params) {
   const tabs = [
     { id: "cache", label: TOOLS_CARD_STRINGS.tabs.cache, disabled: false },
-    { id: "wifi_commands", label: TOOLS_CARD_STRINGS.tabs.wifiCommands, shortLabel: TOOLS_CARD_STRINGS.tabs.wifiShort, disabled: false },
+    { id: "wifi_commands", label: TOOLS_CARD_STRINGS.tabs.wifiCommands, disabled: false },
     { id: "backup", label: TOOLS_CARD_STRINGS.tabs.backup, disabled: false }
   ];
   const toolsMenuActive = params.selectedTab === "settings" || params.selectedTab === "logs";
@@ -3578,13 +3574,12 @@ function renderTabBar(params) {
         ${tabs.map(
     (tab) => b2`
             <button
-              class="tab-btn${tab.shortLabel ? " tab-btn--has-short-label" : ""}${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
+              class="tab-btn${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
               type="button"
               ?disabled=${tab.disabled}
               @click=${() => params.onSelect(tab.id)}
             >
               <span class="tab-btn-label">${tab.label}</span>
-              ${tab.shortLabel ? b2`<span class="tab-btn-label-short">${tab.shortLabel}</span>` : null}
             </button>
           `
   )}
@@ -4228,7 +4223,10 @@ var backupTabStyles = i`
     :host {
       display: flex;
       flex: 1;
+      min-width: 0;
       min-height: 0;
+      max-width: 100%;
+      overflow: hidden;
       --backup-radius-sm: calc(var(--ha-card-border-radius, 12px) * 0.85);
       --backup-radius-md: var(--ha-card-border-radius, 12px);
       --backup-radius-lg: calc(var(--ha-card-border-radius, 12px) * 1.33);
@@ -4648,8 +4646,9 @@ var backupTabStyles = i`
       line-height: 1.45;
       padding: 8px 14px 0;
     }
-    .tab-panel--detail { padding: 0; }
+    .tab-panel--detail { min-width: 0; padding: 0; }
     .detail-view {
+      min-width: 0;
       min-height: 0;
       display: flex;
       flex-direction: column;
@@ -4659,6 +4658,7 @@ var backupTabStyles = i`
     .sticky-header {
       position: sticky;
       z-index: 2;
+      min-width: 0;
       background: var(--ha-card-background, var(--card-background-color));
     }
     .sticky-header { top: 0; }
@@ -4686,12 +4686,14 @@ var backupTabStyles = i`
       gap: 10px;
       min-width: 0;
       flex: 1;
+      overflow: hidden;
     }
     .detail-title-stack {
       display: flex;
       flex-direction: column;
       min-width: 0;
-      flex: 1 1 auto;
+      flex: 1 1 0;
+      overflow: hidden;
     }
     .detail-crumbs {
       display: flex;
@@ -4737,6 +4739,9 @@ var backupTabStyles = i`
       flex: 0 0 auto;
     }
     .detail-title {
+      display: block;
+      width: 100%;
+      max-width: 100%;
       font-size: 18px;
       font-weight: 700;
       line-height: 1.15;
@@ -4797,6 +4802,10 @@ var backupTabStyles = i`
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
+    }
+    @media (max-width: 640px) {
+      .detail-section-nav-btn { gap: 0; }
+      .detail-section-nav-btn ha-icon { display: none; }
     }
     /* Match the Wifi Commands tab's detail-view back button so the
        affordance is identical across the card: padded pill with a
@@ -13388,13 +13397,16 @@ var _SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i4 {
       const record = item && typeof item === "object" ? item : {};
       const rawInputActivityId = String(record.input_activity_id ?? "");
       const inputActivityId = validActivityIds && rawInputActivityId && !validActivityIds.has(rawInputActivityId) ? "" : rawInputActivityId;
-      const rawActivities = Array.isArray(record.activities) ? record.activities.map((id) => String(id)).filter((id) => id !== "") : [];
+      const addAsFavorite = record.add_as_favorite === void 0 ? this._commandSlotDefault(idx).add_as_favorite : Boolean(record.add_as_favorite);
+      const hardButton = String(record.hard_button ?? "");
+      const activitiesActive = addAsFavorite || Boolean(hardButton.trim());
+      const rawActivities = activitiesActive && Array.isArray(record.activities) ? record.activities.map((id) => String(id)).filter((id) => id !== "") : [];
       const activities = validActivityIds ? rawActivities.filter((id) => validActivityIds.has(id)) : rawActivities;
       return {
         ...this._commandSlotDefault(idx),
         name: this._sanitizeCommandName(record.name ?? `Command ${idx + 1}`),
-        add_as_favorite: record.add_as_favorite === void 0 ? this._commandSlotDefault(idx).add_as_favorite : Boolean(record.add_as_favorite),
-        hard_button: String(record.hard_button ?? ""),
+        add_as_favorite: addAsFavorite,
+        hard_button: hardButton,
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),
         is_power_on: normalizedPowerOnId === idx + 1,
         is_power_off: normalizedPowerOffId === idx + 1,
@@ -16247,6 +16259,9 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
       onToggle: () => this.toggleHubPicker(),
       onSelect: (entryId) => {
         this._hubPickerOpen = false;
+        if (entryId !== this._snapshot.selectedHubEntryId) {
+          this._editingEntity = null;
+        }
         this.resetActivityListInteractions();
         this._store.selectHub(entryId);
       }

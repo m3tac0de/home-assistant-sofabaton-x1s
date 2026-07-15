@@ -8,7 +8,6 @@ export const TOOLS_CARD_STRINGS = {
   tabs: {
     cache: "Hub",
     wifiCommands: "Wifi Commands",
-    wifiShort: "Wifi",
     backup: "Backup",
     settings: "Settings",
     logs: "Logs",

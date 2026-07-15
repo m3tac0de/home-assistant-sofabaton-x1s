@@ -499,7 +499,19 @@ Hub behaviors discovered:
   device's power-on + input callbacks on idle→active and the power-off
   callback on active→idle — one each. A `REQ_ACTIVATE` that does not
   change state (already-active activity) is a no-op and emits nothing.
-- **A routine re-sync destroys a user's single-member activity.**
+- **The activity input fires on a direct A→B switch of a shared
+  device** (`bench_107_input_switch`, X1S 2026-07-15). With one wifi
+  device a member of both activities (input cmd 3 on A, cmd 4 on B):
+  idle→A delivers power-on + input-3; **A→B delivers only input-4 —
+  no power rows**, the shared device is not power-cycled across the
+  switch; B→idle delivers power-off. Per-activity inputs therefore
+  cover the "always-on device, per-activity source" use case
+  (issue #258) at the hub level. Reproduction note: the realtime
+  current-activity emit (`proxy.state.current_activity`) is the only
+  reliable activation signal for TCP-driven transitions — the catalog
+  rows' `state` field reads empty on X1S, and an unverified first
+  activation can silently no-op, turning an intended A→B probe into
+  idle→B.
   Every re-sync begins by deleting the managed device, and any device
   delete GC's every one-device activity (backup/restore finding,
   re-confirmed here on both hubs). See the user-facing caveat in

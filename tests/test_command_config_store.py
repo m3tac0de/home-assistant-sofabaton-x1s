@@ -453,3 +453,85 @@ def test_async_reconcile_deployed_wifi_devices_assigns_one_owner_and_clears_conf
     assert other_payload["deployed_device_id"] == 3
     assert other_payload["deployed_commands_hash"] == "8b0425839ab9dda"
     assert store.get_deployed_wifi_commands("hub-1", device_key="default") == []
+
+
+def test_command_store_persists_activity_label_snapshot() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    default_payload = _run(store.async_get_hub_config("hub-1"))
+    assert default_payload["activity_labels"] == {}
+
+    updated = _run(
+        store.async_set_hub_commands(
+            "hub-1",
+            [
+                {
+                    "name": "Launch Netflix",
+                    "input_activity_id": "101",
+                    "activities": ["101", "102"],
+                    "action": {"action": "perform-action"},
+                }
+            ],
+            activity_labels={"101": "TV", "102": "Cinema", " ": "ignored", "103": "  "},
+        )
+    )
+    assert updated["activity_labels"] == {"101": "TV", "102": "Cinema"}
+
+    loaded = _run(store.async_get_hub_config("hub-1"))
+    assert loaded["activity_labels"] == {"101": "TV", "102": "Cinema"}
+
+    # Omitting the snapshot keeps the stored one; passing a new dict replaces it.
+    kept = _run(
+        store.async_set_hub_commands(
+            "hub-1",
+            [{"name": "Launch Netflix", "activities": ["101"]}],
+        )
+    )
+    assert kept["activity_labels"] == {"101": "TV", "102": "Cinema"}
+
+    replaced = _run(
+        store.async_set_hub_commands(
+            "hub-1",
+            [{"name": "Launch Netflix", "activities": ["101"]}],
+            activity_labels={"101": "TV Renamed"},
+        )
+    )
+    assert replaced["activity_labels"] == {"101": "TV Renamed"}
+
+
+def test_command_store_activity_labels_do_not_affect_commands_hash() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    commands = [
+        {
+            "name": "Launch Netflix",
+            "activities": ["101"],
+            "action": {"action": "perform-action"},
+        }
+    ]
+
+    without_labels = _run(store.async_set_hub_commands("hub-1", commands))
+    with_labels = _run(
+        store.async_set_hub_commands(
+            "hub-1", commands, activity_labels={"101": "TV"}
+        )
+    )
+    assert without_labels["commands_hash"] == with_labels["commands_hash"]
+
+
+def test_normalize_commands_drops_orphaned_activities() -> None:
+    """An activities list on a slot with neither favorite nor hard button is
+    an editor artifact (auto-selected default, hidden when the toggles are
+    off) and must not survive normalization (issue #258)."""
+    normalized = normalize_commands(
+        [
+            {"name": "Orphan", "add_as_favorite": False, "activities": ["101", "102"]},
+            {"name": "Favorite", "add_as_favorite": True, "activities": ["101"]},
+            {"name": "Button", "add_as_favorite": False, "hard_button": "red", "activities": ["102"]},
+        ]
+    )
+    assert normalized[0]["activities"] == []
+    assert normalized[1]["activities"] == ["101"]
+    assert normalized[2]["activities"] == ["102"]

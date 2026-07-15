@@ -134,3 +134,18 @@ test("wifi commands drops a stale selected device session when that device no lo
   assert.equal(element._selectedDeviceKey, null);
   assert.equal(globalThis.localStorage?.getItem("sofabaton_x1s:wifi_commands:selected_device:hub-1"), null);
 });
+
+test("wifi commands save drops orphaned activities when favorite and button are off", () => {
+  const element = new WifiCommandsTabElement() as HTMLElement & Record<string, unknown>;
+  element.hub = { entry_id: "hub-1" };
+
+  const normalized = (element as any)._normalizeCommandsForStorage([
+    { name: "Orphan", add_as_favorite: false, hard_button: "", activities: ["101", "102"] },
+    { name: "Favorite", add_as_favorite: true, hard_button: "", activities: ["101"] },
+    { name: "Button", add_as_favorite: false, hard_button: "red", activities: ["102"] },
+  ]);
+
+  assert.deepEqual(normalized[0].activities, []);
+  assert.deepEqual(normalized[1].activities, ["101"]);
+  assert.deepEqual(normalized[2].activities, ["102"]);
+});

@@ -1572,18 +1572,26 @@ class SofabatonWifiCommandsTab extends LitElement {
         validActivityIds && rawInputActivityId && !validActivityIds.has(rawInputActivityId)
           ? ""
           : rawInputActivityId;
-      const rawActivities = Array.isArray(record.activities)
-        ? record.activities.map((id) => String(id)).filter((id) => id !== "")
-        : [];
+      const addAsFavorite =
+        record.add_as_favorite === undefined ? this._commandSlotDefault(idx).add_as_favorite : Boolean(record.add_as_favorite);
+      const hardButton = String(record.hard_button ?? "");
+      // The activities selection only exists for favorites and hard-button
+      // bindings; the editor hides (without clearing) it when both are off.
+      // Drop the orphaned list at save time so it cannot silently pull the
+      // wifi device into activities on deploy (issue #258).
+      const activitiesActive = addAsFavorite || Boolean(hardButton.trim());
+      const rawActivities =
+        activitiesActive && Array.isArray(record.activities)
+          ? record.activities.map((id) => String(id)).filter((id) => id !== "")
+          : [];
       const activities = validActivityIds
         ? rawActivities.filter((id) => validActivityIds.has(id))
         : rawActivities;
       return {
         ...this._commandSlotDefault(idx),
         name: this._sanitizeCommandName(record.name ?? `Command ${idx + 1}`),
-        add_as_favorite:
-          record.add_as_favorite === undefined ? this._commandSlotDefault(idx).add_as_favorite : Boolean(record.add_as_favorite),
-        hard_button: String(record.hard_button ?? ""),
+        add_as_favorite: addAsFavorite,
+        hard_button: hardButton,
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),
         is_power_on: normalizedPowerOnId === idx + 1,
         is_power_off: normalizedPowerOffId === idx + 1,

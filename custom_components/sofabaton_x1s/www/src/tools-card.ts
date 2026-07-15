@@ -847,6 +847,12 @@ class SofabatonControlPanelCard extends LitElement {
                   onToggle: () => this.toggleHubPicker(),
                   onSelect: (entryId) => {
                     this._hubPickerOpen = false;
+                    // The live editor is hub-specific: left open across a
+                    // switch it would keep editing the previous hub's
+                    // entity id against the new hub's cache.
+                    if (entryId !== this._snapshot.selectedHubEntryId) {
+                      this._editingEntity = null;
+                    }
                     this.resetActivityListInteractions();
                     this._store.selectHub(entryId);
                   },

@@ -309,4 +309,113 @@ test.describe("tools-card Hub list layout", () => {
     expect(deviceMetrics.iconCenterDelta).toBeLessThanOrEqual(0.5);
     expect(deviceMetrics.rowHeight).toBeLessThanOrEqual(50);
   });
+
+  test("ellipsizes long activity and device names in Backup edit details", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto("/tests/tools-card-harness.html");
+    await page.evaluate(async () => {
+      await window.__toolsCardHarness.loadScenario("backup-edit");
+      document.body.style.padding = "0";
+      document.querySelector(".controls")?.remove();
+      document.querySelector(".status-bar")?.remove();
+      const layout = document.querySelector(".harness-layout");
+      if (layout) layout.style.display = "block";
+    });
+
+    const measureDetail = (kind) => page.evaluate(async ({ kind: detailKind }) => {
+      const card = document.querySelector("sofabaton-control-panel");
+      const backup = card?.shadowRoot?.querySelector("sofabaton-backup-tab");
+      if (!card || !backup) return null;
+
+      const id = detailKind === "activity" ? 101 : 1;
+      backup._closeEditDetail();
+      backup.requestUpdate();
+      await backup.updateComplete;
+      backup._openEditDetail(detailKind, id, "");
+      backup.requestUpdate();
+      await backup.updateComplete;
+
+      const detail = backup.shadowRoot?.querySelector("sofabaton-edit-detail-view");
+      await detail?.updateComplete;
+      const root = detail?.shadowRoot;
+      const row = root?.querySelector(".detail-title-row");
+      const title = root?.querySelector(".detail-title");
+      const actions = root?.querySelector(".detail-title-actions");
+      const back = root?.querySelector(".back-btn");
+      if (!row || !title || !actions || !back) return null;
+
+      title.textContent = `${detailKind} — An exceptionally long living room entertainment system name that must never widen the card`;
+      const rowRect = row.getBoundingClientRect();
+      const actionsRect = actions.getBoundingClientRect();
+      const backRect = back.getBoundingClientRect();
+      return {
+        cardWidth: card.clientWidth,
+        cardScrollWidth: card.scrollWidth,
+        rowWidth: row.clientWidth,
+        rowScrollWidth: row.scrollWidth,
+        titleWidth: title.clientWidth,
+        titleScrollWidth: title.scrollWidth,
+        textOverflow: getComputedStyle(title).textOverflow,
+        whiteSpace: getComputedStyle(title).whiteSpace,
+        actionsInsideRow: actionsRect.right <= rowRect.right + 0.5,
+        backInsideRow: backRect.left >= rowRect.left - 0.5,
+      };
+    }, { kind });
+
+    for (const kind of ["activity", "device"]) {
+      const metrics = await measureDetail(kind);
+      expect(metrics).not.toBeNull();
+      expect(metrics.cardWidth).toBeLessThanOrEqual(320);
+      expect(metrics.cardScrollWidth).toBeLessThanOrEqual(metrics.cardWidth);
+      expect(metrics.rowScrollWidth).toBeLessThanOrEqual(metrics.rowWidth);
+      expect(metrics.titleScrollWidth).toBeGreaterThan(metrics.titleWidth);
+      expect(metrics.textOverflow).toBe("ellipsis");
+      expect(metrics.whiteSpace).toBe("nowrap");
+      expect(metrics.actionsInsideRow).toBe(true);
+      expect(metrics.backInsideRow).toBe(true);
+    }
+  });
+
+  test("uses the full Wifi Commands label and hides device-detail nav icons on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto("/tests/tools-card-harness.html");
+
+    const tabLabels = await page.evaluate(() => {
+      const root = document.querySelector("sofabaton-control-panel")?.shadowRoot;
+      return [...(root?.querySelectorAll(".tabs .tab-btn-label") ?? [])]
+        .map((label) => label.textContent?.trim());
+    });
+    expect(tabLabels).toContain("Wifi Commands");
+    expect(tabLabels).not.toContain("Wifi");
+
+    const assertTextOnlyDetailNav = async () => {
+      const icons = page.locator(".detail-section-nav-btn ha-icon");
+      const labels = page.locator(".detail-section-nav-label");
+      expect(await icons.count()).toBeGreaterThan(1);
+      expect(await labels.count()).toBeGreaterThan(1);
+      expect(await icons.evaluateAll((nodes) => nodes.map((node) => getComputedStyle(node).display)))
+        .toEqual(expect.arrayContaining(["none"]));
+      expect((await icons.evaluateAll((nodes) => nodes.every((node) => getComputedStyle(node).display === "none"))))
+        .toBe(true);
+      expect((await labels.evaluateAll((nodes) => nodes.every((node) => getComputedStyle(node).display !== "none"))))
+        .toBe(true);
+    };
+
+    await page.evaluate(() => window.__toolsCardHarness.loadScenario("device-editor"));
+    await assertTextOnlyDetailNav();
+
+    await page.evaluate(async () => {
+      await window.__toolsCardHarness.loadScenario("backup-edit");
+      const card = document.querySelector("sofabaton-control-panel");
+      const backup = card?.shadowRoot?.querySelector("sofabaton-backup-tab");
+      if (!backup) return;
+      backup._closeEditDetail();
+      backup.requestUpdate();
+      await backup.updateComplete;
+      backup._openEditDetail("device", 1, "");
+      backup.requestUpdate();
+      await backup.updateComplete;
+    });
+    await assertTextOnlyDetailNav();
+  });
 });

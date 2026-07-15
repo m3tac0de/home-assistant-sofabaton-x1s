@@ -1514,7 +1514,6 @@ var TOOLS_CARD_STRINGS = {
   tabs: {
     cache: "Hub",
     wifiCommands: "Wifi Commands",
-    wifiShort: "Wifi",
     backup: "Backup",
     settings: "Settings",
     logs: "Logs"
@@ -3764,13 +3763,16 @@ var SofabatonWifiCommandsTab = class _SofabatonWifiCommandsTab extends i3 {
       const record = item && typeof item === "object" ? item : {};
       const rawInputActivityId = String(record.input_activity_id ?? "");
       const inputActivityId = validActivityIds && rawInputActivityId && !validActivityIds.has(rawInputActivityId) ? "" : rawInputActivityId;
-      const rawActivities = Array.isArray(record.activities) ? record.activities.map((id) => String(id)).filter((id) => id !== "") : [];
+      const addAsFavorite = record.add_as_favorite === void 0 ? this._commandSlotDefault(idx).add_as_favorite : Boolean(record.add_as_favorite);
+      const hardButton = String(record.hard_button ?? "");
+      const activitiesActive = addAsFavorite || Boolean(hardButton.trim());
+      const rawActivities = activitiesActive && Array.isArray(record.activities) ? record.activities.map((id) => String(id)).filter((id) => id !== "") : [];
       const activities = validActivityIds ? rawActivities.filter((id) => validActivityIds.has(id)) : rawActivities;
       return {
         ...this._commandSlotDefault(idx),
         name: this._sanitizeCommandName(record.name ?? `Command ${idx + 1}`),
-        add_as_favorite: record.add_as_favorite === void 0 ? this._commandSlotDefault(idx).add_as_favorite : Boolean(record.add_as_favorite),
-        hard_button: String(record.hard_button ?? ""),
+        add_as_favorite: addAsFavorite,
+        hard_button: hardButton,
         long_press_enabled: Boolean(record.long_press_enabled) && Boolean(String(record.hard_button ?? "").trim()),
         is_power_on: normalizedPowerOnId === idx + 1,
         is_power_off: normalizedPowerOffId === idx + 1,
@@ -4733,4 +4735,16 @@ test("wifi commands drops a stale selected device session when that device no lo
   element._restoreSelectedDeviceSession();
   assert.equal(element._selectedDeviceKey, null);
   assert.equal(globalThis.localStorage?.getItem("sofabaton_x1s:wifi_commands:selected_device:hub-1"), null);
+});
+test("wifi commands save drops orphaned activities when favorite and button are off", () => {
+  const element = new WifiCommandsTabElement();
+  element.hub = { entry_id: "hub-1" };
+  const normalized = element._normalizeCommandsForStorage([
+    { name: "Orphan", add_as_favorite: false, hard_button: "", activities: ["101", "102"] },
+    { name: "Favorite", add_as_favorite: true, hard_button: "", activities: ["101"] },
+    { name: "Button", add_as_favorite: false, hard_button: "red", activities: ["102"] }
+  ]);
+  assert.deepEqual(normalized[0].activities, []);
+  assert.deepEqual(normalized[1].activities, ["101"]);
+  assert.deepEqual(normalized[2].activities, ["102"]);
 });

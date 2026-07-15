@@ -919,6 +919,39 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
 
     store = await _async_get_command_config_store(hass)
     roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+
+    # Snapshot the names of every referenced activity as the user saw them.
+    # Deploy-time validation compares this snapshot against a fresh hub read
+    # to catch hub-side id reuse (delete + recreate) between save and sync.
+    referenced_activity_keys: set[str] = set()
+    for slot in msg["commands"]:
+        if not isinstance(slot, dict):
+            continue
+        # Mirror the deploy-side rule: a slot's activities list only counts
+        # for favorites and hard-button bindings (orphaned lists are ignored).
+        slot_activities_active = bool(slot.get("add_as_favorite")) or bool(
+            str(slot.get("hard_button") or "").strip()
+        )
+        raw_activities = slot.get("activities")
+        if slot_activities_active and isinstance(raw_activities, list):
+            referenced_activity_keys.update(
+                str(act) for act in raw_activities if str(act).strip()
+            )
+        raw_input_activity_id = str(slot.get("input_activity_id") or "").strip()
+        if raw_input_activity_id:
+            referenced_activity_keys.add(raw_input_activity_id)
+    activity_labels: dict[str, str] = {}
+    for activity_key in referenced_activity_keys:
+        try:
+            activity_id = int(activity_key)
+        except (TypeError, ValueError):
+            continue
+        entry = hub.activities.get(activity_id)
+        if isinstance(entry, dict):
+            name = str(entry.get("name") or "").strip()
+            if name:
+                activity_labels[activity_key] = name
+
     payload = await store.async_set_hub_commands(
         hub.entry_id,
         msg["commands"],
@@ -926,6 +959,7 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
         roku_listen_port=roku_listen_port,
         power_on_command_id=msg.get("power_on_command_id"),
         power_off_command_id=msg.get("power_off_command_id"),
+        activity_labels=activity_labels,
     )
     connection.send_result(msg["id"], payload)
 

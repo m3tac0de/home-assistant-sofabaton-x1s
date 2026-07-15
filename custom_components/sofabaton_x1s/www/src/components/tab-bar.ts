@@ -8,9 +8,9 @@ export function renderTabBar(params: {
   onSelect: (tabId: TabId) => void;
   onToggleToolsMenu: () => void;
 }) {
-  const tabs: Array<{ id: TabId; label: string; shortLabel?: string; disabled: boolean }> = [
+  const tabs: Array<{ id: TabId; label: string; disabled: boolean }> = [
     { id: "cache", label: TOOLS_CARD_STRINGS.tabs.cache, disabled: false },
-    { id: "wifi_commands", label: TOOLS_CARD_STRINGS.tabs.wifiCommands, shortLabel: TOOLS_CARD_STRINGS.tabs.wifiShort, disabled: false },
+    { id: "wifi_commands", label: TOOLS_CARD_STRINGS.tabs.wifiCommands, disabled: false },
     { id: "backup", label: TOOLS_CARD_STRINGS.tabs.backup, disabled: false },
   ];
   const toolsMenuActive = params.selectedTab === "settings" || params.selectedTab === "logs";
@@ -21,13 +21,12 @@ export function renderTabBar(params: {
         ${tabs.map(
           (tab) => html`
             <button
-              class="tab-btn${tab.shortLabel ? " tab-btn--has-short-label" : ""}${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
+              class="tab-btn${params.selectedTab === tab.id ? " active" : ""}${tab.disabled ? " tab-disabled" : ""}"
               type="button"
               ?disabled=${tab.disabled}
               @click=${() => params.onSelect(tab.id)}
             >
               <span class="tab-btn-label">${tab.label}</span>
-              ${tab.shortLabel ? html`<span class="tab-btn-label-short">${tab.shortLabel}</span>` : null}
             </button>
           `,
         )}

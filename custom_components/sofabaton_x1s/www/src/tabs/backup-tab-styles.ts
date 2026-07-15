@@ -9,7 +9,10 @@ export const backupTabStyles = css`
     :host {
       display: flex;
       flex: 1;
+      min-width: 0;
       min-height: 0;
+      max-width: 100%;
+      overflow: hidden;
       --backup-radius-sm: calc(var(--ha-card-border-radius, 12px) * 0.85);
       --backup-radius-md: var(--ha-card-border-radius, 12px);
       --backup-radius-lg: calc(var(--ha-card-border-radius, 12px) * 1.33);
@@ -429,8 +432,9 @@ export const backupTabStyles = css`
       line-height: 1.45;
       padding: 8px 14px 0;
     }
-    .tab-panel--detail { padding: 0; }
+    .tab-panel--detail { min-width: 0; padding: 0; }
     .detail-view {
+      min-width: 0;
       min-height: 0;
       display: flex;
       flex-direction: column;
@@ -440,6 +444,7 @@ export const backupTabStyles = css`
     .sticky-header {
       position: sticky;
       z-index: 2;
+      min-width: 0;
       background: var(--ha-card-background, var(--card-background-color));
     }
     .sticky-header { top: 0; }
@@ -467,12 +472,14 @@ export const backupTabStyles = css`
       gap: 10px;
       min-width: 0;
       flex: 1;
+      overflow: hidden;
     }
     .detail-title-stack {
       display: flex;
       flex-direction: column;
       min-width: 0;
-      flex: 1 1 auto;
+      flex: 1 1 0;
+      overflow: hidden;
     }
     .detail-crumbs {
       display: flex;
@@ -518,6 +525,9 @@ export const backupTabStyles = css`
       flex: 0 0 auto;
     }
     .detail-title {
+      display: block;
+      width: 100%;
+      max-width: 100%;
       font-size: 18px;
       font-weight: 700;
       line-height: 1.15;
@@ -578,6 +588,10 @@ export const backupTabStyles = css`
       font-weight: 700;
       letter-spacing: 0.04em;
       text-transform: uppercase;
+    }
+    @media (max-width: 640px) {
+      .detail-section-nav-btn { gap: 0; }
+      .detail-section-nav-btn ha-icon { display: none; }
     }
     /* Match the Wifi Commands tab's detail-view back button so the
        affordance is identical across the card: padded pill with a

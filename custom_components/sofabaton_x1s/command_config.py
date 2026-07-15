@@ -83,23 +83,50 @@ def _normalize_slot(slot: Any, idx: int) -> dict[str, Any]:
     if not isinstance(slot, dict):
         return _default_slot(idx)
 
+    add_as_favorite = bool(slot.get("add_as_favorite", False))
+    hard_button = str(slot.get("hard_button", ""))
+    # The activities list only carries meaning for favorites and hard-button
+    # bindings. The command editor auto-selects a default activity and hides
+    # (without clearing) the selection when both toggles are off, so orphaned
+    # entries would otherwise silently pull the wifi device into activities
+    # the user never sees referenced (issue #258).
+    activities_active = add_as_favorite or bool(hard_button.strip())
     return {
         "name": str(slot.get("name", f"Command {idx + 1}")),
-        "add_as_favorite": bool(slot.get("add_as_favorite", False)),
-        "hard_button": str(slot.get("hard_button", "")),
+        "add_as_favorite": add_as_favorite,
+        "hard_button": hard_button,
         "long_press_enabled": bool(slot.get("long_press_enabled", False))
-        and bool(str(slot.get("hard_button", "")).strip()),
+        and bool(hard_button.strip()),
         "input_activity_id": str(slot.get("input_activity_id", "")),
         "activities": [
             str(activity)
             for activity in slot.get("activities", [])
             if str(activity) != ""
         ]
-        if isinstance(slot.get("activities"), list)
+        if activities_active and isinstance(slot.get("activities"), list)
         else [],
         "action": _normalize_action(slot.get("action")),
         "long_press_action": _normalize_action(slot.get("long_press_action")),
     }
+
+
+def _normalize_activity_labels(value: Any) -> dict[str, str]:
+    """Normalize the id->name snapshot taken when activities were selected.
+
+    Keys are activity ids as strings (matching the id strings stored in the
+    command slots); values are the activity names the user saw at
+    configuration time. Used at deploy time to detect hub-side id reuse.
+    """
+
+    if not isinstance(value, dict):
+        return {}
+    labels: dict[str, str] = {}
+    for key, name in value.items():
+        key_text = str(key).strip()
+        name_text = str(name).strip()
+        if key_text and name_text:
+            labels[key_text] = name_text
+    return labels
 
 
 def _normalize_action(action: Any) -> dict[str, Any]:
@@ -221,6 +248,7 @@ def _default_device_payload(
         "commands": default_commands(),
         "power_on_command_id": None,
         "power_off_command_id": None,
+        "activity_labels": {},
         "deployed_commands": [],
         "deployed_device_id": None,
         "deployed_commands_hash": "",
@@ -243,6 +271,7 @@ def _normalize_device_payload(
     payload["commands"] = normalize_commands(device.get("commands"))
     payload["power_on_command_id"] = normalize_power_command_id(device.get("power_on_command_id"))
     payload["power_off_command_id"] = normalize_power_command_id(device.get("power_off_command_id"))
+    payload["activity_labels"] = _normalize_activity_labels(device.get("activity_labels"))
     deployed = device.get("deployed_commands")
     payload["deployed_commands"] = deployed if isinstance(deployed, list) else []
     deployed_device_id = device.get("deployed_device_id")
@@ -350,6 +379,7 @@ class CommandConfigStore:
                 power_off_command_id=power_off_command_id,
             ),
             "configured_slot_count": count_configured_command_slots(commands),
+            "activity_labels": _normalize_activity_labels(device.get("activity_labels")),
             "deployed_device_id": device.get("deployed_device_id"),
             "deployed_commands_hash": str(device.get("deployed_commands_hash") or ""),
         }
@@ -609,6 +639,7 @@ class CommandConfigStore:
         roku_listen_port: int = DEFAULT_ROKU_LISTEN_PORT,
         power_on_command_id: Any = None,
         power_off_command_id: Any = None,
+        activity_labels: Any = None,
     ) -> dict[str, Any]:
         normalized = normalize_commands(commands)
         normalized_power_on = normalize_power_command_id(power_on_command_id)
@@ -617,6 +648,8 @@ class CommandConfigStore:
         device["commands"] = normalized
         device["power_on_command_id"] = normalized_power_on
         device["power_off_command_id"] = normalized_power_off
+        if activity_labels is not None:
+            device["activity_labels"] = _normalize_activity_labels(activity_labels)
         await self._store.async_save(self._data)
         return self._payload_for_device(device, roku_listen_port=roku_listen_port)
 
