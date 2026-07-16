@@ -7,6 +7,7 @@ await build({
   entryPoints: [
     "tests/frontend/activities-tab.test.ts",
     "tests/frontend/activity-diff.test.ts",
+    "tests/frontend/activity-reorder.test.ts",
     "tests/frontend/backup-state.test.ts",
     "tests/frontend/backup-tab.test.ts",
     "tests/frontend/control-panel-store.test.ts",

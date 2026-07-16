@@ -1575,6 +1575,15 @@ var ControlPanelApi = class {
       ordered_ids: orderedIds
     });
   }
+  // Immediate live write of the hub's stored device display order.
+  // ordered_ids is the full device id list in the desired order.
+  reorderDevices(entryId, orderedIds) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/reorder",
+      entry_id: entryId,
+      ordered_ids: orderedIds
+    });
+  }
   // Create a fresh, empty activity on the hub; resolves with the
   // hub-assigned activity id so the caller can open the live editor on it.
   createActivity(entryId, name) {
@@ -1732,24 +1741,22 @@ function selectedHubCache(snapshot) {
 function persistentCacheEnabled(snapshot) {
   return !!snapshot.state?.persistent_cache_enabled;
 }
-function sortByName(items = []) {
-  return [...items].sort(
-    (left, right) => String(left?.name ?? left?.label ?? "").localeCompare(String(right?.name ?? right?.label ?? ""))
-  );
-}
 function sortById(items = []) {
   return [...items].sort(
     (left, right) => Number(left?.id ?? left?.button_id ?? 0) - Number(right?.id ?? right?.button_id ?? 0)
   );
 }
-function hubActivities(hub) {
+function sortByHubOrder(items = []) {
   const bySort = (value) => Number(value ?? 0) > 0 ? Number(value) : Number.POSITIVE_INFINITY;
-  return [...hub?.activities ?? []].sort(
+  return [...items].sort(
     (left, right) => bySort(left?.sort) - bySort(right?.sort) || Number(left?.id ?? 0) - Number(right?.id ?? 0)
   );
 }
+function hubActivities(hub) {
+  return sortByHubOrder(hub?.activities ?? []);
+}
 function hubDevices(hub) {
-  return sortByName(hub?.devices_list ?? []);
+  return sortByHubOrder(hub?.devices_list ?? []);
 }
 function deviceClassIcon(deviceClass) {
   switch (String(deviceClass || "").trim().toLowerCase()) {
@@ -2578,6 +2585,26 @@ var ControlPanelStore = class {
     return null;
   }
   /**
+   * Immediate live write of the hub's stored device display order.
+   * ``orderedIds`` is the full device id list in the desired order.
+   * Resolves with `null` on success or a failure message for the caller's UI.
+   */
+  async reorderDevices(orderedIds) {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this.setExternalHubCommandBusy(true, "Reordering devices\u2026", hub.entry_id);
+    try {
+      await this.api().reorderDevices(hub.entry_id, orderedIds.map((id) => Number(id)));
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+  /**
    * Create a fresh, empty activity on the hub, then pull its cache entry so
    * the live editor can capture it right away. Resolves with the assigned
    * activity id or an error message.
@@ -3136,6 +3163,7 @@ var TOOLS_CARD_STRINGS = {
     reorderSync: "Sync to hub",
     reorderCancel: "Cancel",
     reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
     reorderSyncing: "Writing the new order to the hub\u2026",
     addActivityTitle: "Add Activity",
     addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
@@ -3799,7 +3827,7 @@ function renderCacheTab(params) {
   const renderActivity = (activity) => {
     const id = Number(activity.id);
     const key = `act-${id}`;
-    const reorder = params.reorderMode;
+    const reorder = params.reorderMode && params.reorderKind === "activity";
     const isOpen = !reorder && params.openEntity === key;
     const locked2 = params.hubCommandBusy || params.selectedHubProxyConnected || reorder;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
@@ -3843,16 +3871,17 @@ function renderCacheTab(params) {
   const renderDevice = (device) => {
     const id = Number(device.id);
     const key = `dev-${id}`;
-    const isOpen = params.openEntity === key;
-    const locked2 = params.hubCommandBusy || params.selectedHubProxyConnected;
+    const reorder = params.reorderMode && params.reorderKind === "device";
+    const isOpen = !reorder && params.openEntity === key;
+    const locked2 = params.hubCommandBusy || params.selectedHubProxyConnected || reorder;
     const isSpinning = params.refreshBusy && params.activeRefreshLabel === key;
     const commands = deviceCommands(params.hub, id);
     const icon = deviceClassIcon(device.device_class);
     return b2`
-      <div class="entity-block${isOpen ? " open" : ""}" id=${`entity-${key}`}>
-        <div class="entity-summary" @click=${() => params.onToggleEntity(key)}>
+      <div class="entity-block${isOpen ? " open" : ""}${reorder ? " entity-block--reorder" : ""}" id=${`entity-${key}`} data-device-id=${id}>
+        <div class="entity-summary" @click=${reorder ? null : () => params.onToggleEntity(key)}>
           <span class="entity-name">
-            <span class="entity-name-icon"><ha-icon icon=${icon}></ha-icon></span>
+            <span class="entity-name-icon"><ha-icon icon=${reorder ? "mdi:drag-vertical-variant" : icon}></ha-icon></span>
             <span class="entity-name-copy">
               <span class="entity-name-label">${device.name || TOOLS_CARD_STRINGS.cache.deviceFallback(id)}</span>
               <span class="entity-count">${TOOLS_CARD_STRINGS.cache.deviceCommandCount(Number(device.command_count || 0))}</span>
@@ -3868,7 +3897,7 @@ function renderCacheTab(params) {
       event.stopPropagation();
       params.onRefreshEntry("device", id, key);
     }}><ha-icon icon="mdi:refresh"></ha-icon></button>
-            <span class="entity-chevron">▼</span>
+            ${reorder ? null : b2`<span class="entity-chevron">▼</span>`}
           </span>
         </div>
         ${isOpen ? b2`<div class="entity-body">${commands.length ? commands.map((command) => b2`<div class="inner-row"><span class="inner-label">${command.label}</span><span class="inner-badges">${badge(TOOLS_CARD_STRINGS.cache.comIdBadge, command.id)}</span></div>`) : b2`<div class="inner-empty">${TOOLS_CARD_STRINGS.cache.noCachedCommands}</div>`}</div>` : null}
@@ -3880,10 +3909,14 @@ function renderCacheTab(params) {
   const selectedSection = params.selectedSection;
   const locked = params.hubCommandBusy || params.selectedHubProxyConnected || params.reorderMode;
   const S5 = TOOLS_CARD_STRINGS.cache;
-  const orderedActivities = params.reorderMode ? [
-    ...params.reorderIds.map((id) => activities.find((activity) => Number(activity.id) === Number(id))).filter((activity) => !!activity),
-    ...activities.filter((activity) => !params.reorderIds.includes(Number(activity.id)))
-  ] : activities;
+  const activityReorder = params.reorderMode && params.reorderKind === "activity";
+  const deviceReorder = params.reorderMode && params.reorderKind === "device";
+  const workingOrder = (rows) => [
+    ...params.reorderIds.map((id) => rows.find((row) => Number(row.id) === Number(id))).filter((row) => !!row),
+    ...rows.filter((row) => !params.reorderIds.includes(Number(row.id)))
+  ];
+  const orderedActivities = activityReorder ? workingOrder(activities) : activities;
+  const orderedDevices = deviceReorder ? workingOrder(devices) : devices;
   const containSortableEvent = (event) => {
     event.stopPropagation();
     event.stopImmediatePropagation();
@@ -3896,51 +3929,58 @@ function renderCacheTab(params) {
     if (!Number.isInteger(oldIndex) || !Number.isInteger(newIndex) || oldIndex === newIndex) return;
     params.onReorderMove(oldIndex, newIndex);
   };
+  const sortableList = (rows) => b2`
+    <ha-sortable
+      class="cache-reorder-sortable"
+      draggable-selector=".entity-block"
+      animation="180"
+      @item-moved=${handleSortableMove}
+      @item-added=${containSortableEvent}
+      @item-removed=${containSortableEvent}
+      @drag-start=${containSortableEvent}
+      @drag-end=${containSortableEvent}
+    >
+      <div class="cache-reorder-list">${rows}</div>
+    </ha-sortable>
+  `;
   const activityRows = orderedActivities.map(renderActivity);
-  const activitiesList = params.reorderMode ? b2`
-        <ha-sortable
-          class="cache-reorder-sortable"
-          draggable-selector=".entity-block"
-          animation="180"
-          @item-moved=${handleSortableMove}
-          @item-added=${containSortableEvent}
-          @item-removed=${containSortableEvent}
-          @drag-start=${containSortableEvent}
-          @drag-end=${containSortableEvent}
-        >
-          <div class="cache-reorder-list">${activityRows}</div>
-        </ha-sortable>
-      ` : activityRows;
+  const activitiesList = activityReorder ? sortableList(activityRows) : activityRows;
+  const deviceRows = orderedDevices.map(renderDevice);
+  const devicesList = deviceReorder ? sortableList(deviceRows) : deviceRows;
+  const reorderActions = (hint) => b2`
+    <div class="cache-reorder-hint">${hint}</div>
+    ${params.reorderError ? b2`<div class="cache-footer-error">${params.reorderError}</div>` : null}
+    <div class="cache-footer-actions">
+      <button
+        class="cache-footer-btn cache-footer-btn--primary"
+        ?disabled=${params.reorderSyncing}
+        @click=${params.onSyncReorder}
+      >
+        <ha-icon icon="mdi:upload-outline"></ha-icon>
+        <span>${params.reorderSyncing ? S5.reorderSyncing : S5.reorderSync}</span>
+      </button>
+      <button
+        class="cache-footer-btn"
+        ?disabled=${params.reorderSyncing}
+        @click=${params.onCancelReorder}
+      >${S5.reorderCancel}</button>
+    </div>
+  `;
+  const changeOrderButton = (kind, rowCount) => b2`
+    <button
+      class="cache-footer-btn"
+      ?disabled=${locked || rowCount < 2}
+      @click=${() => params.onStartReorder(kind)}
+    >
+      <ha-icon icon="mdi:swap-vertical"></ha-icon>
+      <span>${S5.changeOrder}</span>
+    </button>
+  `;
   const activitiesFooter = b2`
     <div class="cache-list-footer">
-      ${params.reorderMode ? b2`
-            <div class="cache-reorder-hint">${S5.reorderHint}</div>
-            ${params.reorderError ? b2`<div class="cache-footer-error">${params.reorderError}</div>` : null}
+      ${activityReorder ? reorderActions(S5.reorderHint) : b2`
             <div class="cache-footer-actions">
-              <button
-                class="cache-footer-btn cache-footer-btn--primary"
-                ?disabled=${params.reorderSyncing}
-                @click=${params.onSyncReorder}
-              >
-                <ha-icon icon="mdi:upload-outline"></ha-icon>
-                <span>${params.reorderSyncing ? S5.reorderSyncing : S5.reorderSync}</span>
-              </button>
-              <button
-                class="cache-footer-btn"
-                ?disabled=${params.reorderSyncing}
-                @click=${params.onCancelReorder}
-              >${S5.reorderCancel}</button>
-            </div>
-          ` : b2`
-            <div class="cache-footer-actions">
-              <button
-                class="cache-footer-btn"
-                ?disabled=${locked || activities.length < 2}
-                @click=${params.onStartReorder}
-              >
-                <ha-icon icon="mdi:swap-vertical"></ha-icon>
-                <span>${S5.changeOrder}</span>
-              </button>
+              ${changeOrderButton("activity", activities.length)}
               <button
                 class="cache-footer-btn"
                 ?disabled=${locked}
@@ -3953,7 +3993,12 @@ function renderCacheTab(params) {
           `}
     </div>
   `;
-  const activeBody = selectedSection === "activities" ? b2`${activitiesList}${activitiesFooter}` : devices.map(renderDevice);
+  const devicesFooter = b2`
+    <div class="cache-list-footer">
+      ${deviceReorder ? reorderActions(S5.reorderDevicesHint) : b2`<div class="cache-footer-actions">${changeOrderButton("device", devices.length)}</div>`}
+    </div>
+  `;
+  const activeBody = selectedSection === "activities" ? b2`${activitiesList}${activitiesFooter}` : b2`${devicesList}${devicesFooter}`;
   const confirmAddActivity = (event) => {
     const dialog = event.currentTarget.closest(".cache-dialog");
     const input = dialog?.querySelector(".cache-dialog-input");
@@ -15719,8 +15764,9 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     // Entity currently open in the live editor (wrench buttons in the Hub
     // tab); while set, the Hub tab renders the editor instead of the cache.
     this._editingEntity = null;
-    // Activity re-order mode ("Change order" under the Activities list).
+    // Re-order mode ("Change order" under the Activities / Devices list).
     this._reorderMode = false;
+    this._reorderKind = "activity";
     this._reorderIds = [];
     this._reorderSyncing = false;
     this._reorderError = null;
@@ -15871,14 +15917,15 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._addActivityBusy = false;
     this._addActivityError = null;
   }
-  // ── Activity re-order mode ─────────────────────────────────────────
-  startReorder() {
+  // ── Activity / Device re-order mode ────────────────────────────────
+  startReorder(kind) {
     if (this._reorderMode) return;
     const openEntity = this._snapshot.openEntity;
     if (openEntity) this._store.toggleEntity(openEntity);
     const cacheHub = selectedHubCache(this._snapshot);
-    this._reorderIds = hubActivities(cacheHub).map((activity) => Number(activity.id));
+    this._reorderIds = (kind === "activity" ? hubActivities(cacheHub) : hubDevices(cacheHub)).map((row) => Number(row.id));
     this._reorderMode = true;
+    this._reorderKind = kind;
     this._reorderSyncing = false;
     this._reorderError = null;
     this.requestUpdate();
@@ -15901,7 +15948,7 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
     this._reorderSyncing = true;
     this._reorderError = null;
     this.requestUpdate();
-    const failure = await this._store.reorderActivities(this._reorderIds);
+    const failure = this._reorderKind === "activity" ? await this._store.reorderActivities(this._reorderIds) : await this._store.reorderDevices(this._reorderIds);
     this._reorderSyncing = false;
     if (failure) {
       this._reorderError = failure;
@@ -16267,7 +16314,10 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
           enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
           onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
           onRefreshStale: () => void this._store.refreshStale(),
-          onSelectSection: (sectionId) => this._store.selectCacheSection(sectionId),
+          onSelectSection: (sectionId) => {
+            this.resetActivityListInteractions();
+            this._store.selectCacheSection(sectionId);
+          },
           onToggleEntity: (key) => this._store.toggleEntity(key),
           onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
           onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
@@ -16282,10 +16332,11 @@ var _SofabatonControlPanelCard = class _SofabatonControlPanelCard extends i4 {
             this.requestUpdate();
           },
           reorderMode: this._reorderMode,
+          reorderKind: this._reorderKind,
           reorderIds: this._reorderIds,
           reorderSyncing: this._reorderSyncing,
           reorderError: this._reorderError,
-          onStartReorder: () => this.startReorder(),
+          onStartReorder: (kind) => this.startReorder(kind),
           onCancelReorder: () => this.cancelReorder(),
           onReorderMove: (oldIndex, newIndex) => this.moveReorderItem(oldIndex, newIndex),
           onSyncReorder: () => void this.syncReorder(),

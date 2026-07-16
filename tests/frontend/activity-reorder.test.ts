@@ -5,7 +5,7 @@ import { setMaxListeners } from "node:events";
 // See control-panel-store.test.ts for why this is needed with node:test hooks.
 setMaxListeners(0);
 import { ControlPanelStore } from "../../custom_components/sofabaton_x1s/www/src/state/control-panel-store";
-import { hubActivities } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
+import { hubActivities, hubDevices } from "../../custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors";
 import type { CacheHubState, HassLike } from "../../custom_components/sofabaton_x1s/www/src/shared/ha-context";
 
 const baseState = {
@@ -131,6 +131,27 @@ test("hubActivities keeps id order when the hub never stored an order", () => {
   );
 });
 
+test("hubDevices follows the hub's stored sort order, ties and zeros by id", () => {
+  // Real hubs restamp the sort byte only on reorder, so lists carry ties
+  // (devices added since the last reorder share a value) and zeros.
+  const hub = {
+    entry_id: "hub-1",
+    devices_list: [
+      { id: 8, name: "testing", sort: 13 },
+      { id: 10, name: "Lights", sort: 8 },
+      { id: 9, name: "Sonytst", sort: 8 },
+      { id: 2, name: "Philips hue", sort: 2 },
+      { id: 1, name: "AWOLVision", sort: 1 },
+      { id: 3, name: "Zebra", sort: 0 },
+    ],
+  } as CacheHubState;
+
+  assert.deepEqual(
+    hubDevices(hub).map((device) => device.id),
+    [1, 2, 9, 10, 8, 3],
+  );
+});
+
 test("reorderActivities sends the full ordered id list and reloads state", async () => {
   const calls: Record<string, unknown>[] = [];
   const store = createStore();
@@ -167,6 +188,45 @@ test("reorderActivities surfaces the backend failure message", async () => {
   const failure = await store.reorderActivities([103, 101, 102]);
 
   assert.match(String(failure), /did not confirm the new activity order/);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
+});
+
+test("reorderDevices sends the full ordered id list and reloads state", async () => {
+  const calls: Record<string, unknown>[] = [];
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/device/reorder": (message) => {
+        calls.push(message);
+        return { status: "success", ordered_ids: message.ordered_ids };
+      },
+    }),
+  );
+  await store.loadState();
+
+  const failure = await store.reorderDevices([3, 1, 2]);
+
+  assert.equal(failure, null);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].entry_id, "hub-1");
+  assert.deepEqual(calls[0].ordered_ids, [3, 1, 2]);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
+});
+
+test("reorderDevices surfaces the backend failure message", async () => {
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/device/reorder": () => {
+        throw new Error("The hub did not confirm the new device order");
+      },
+    }),
+  );
+  await store.loadState();
+
+  const failure = await store.reorderDevices([3, 1, 2]);
+
+  assert.match(String(failure), /did not confirm the new device order/);
   assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
 

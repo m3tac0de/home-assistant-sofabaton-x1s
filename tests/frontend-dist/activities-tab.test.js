@@ -1274,6 +1274,7 @@ var TOOLS_CARD_STRINGS = {
     reorderSync: "Sync to hub",
     reorderCancel: "Cancel",
     reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
     reorderSyncing: "Writing the new order to the hub\u2026",
     addActivityTitle: "Add Activity",
     addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",
@@ -1935,6 +1936,15 @@ var ControlPanelApi = class {
   reorderActivities(entryId, orderedIds) {
     return this.hass.callWS({
       type: "sofabaton_x1s/activity/reorder",
+      entry_id: entryId,
+      ordered_ids: orderedIds
+    });
+  }
+  // Immediate live write of the hub's stored device display order.
+  // ordered_ids is the full device id list in the desired order.
+  reorderDevices(entryId, orderedIds) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/reorder",
       entry_id: entryId,
       ordered_ids: orderedIds
     });

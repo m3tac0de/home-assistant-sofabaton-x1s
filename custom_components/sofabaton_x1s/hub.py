@@ -1129,9 +1129,20 @@ class SofabatonHub:
         for device_id in self._cache_device_ids(data):
             commands = commands_raw.get(str(device_id), {})
             device_meta = _device_meta_for(device_id)
+            # Same shared record schema as activities: the hub stores the
+            # display order in the record body's sort byte (body[6]). Expose
+            # it so the frontend can mirror the remote's device-list order.
+            # raw_body is stripped from the hub-level device views, so read
+            # it straight from proxy state.
+            sort_value = 0
+            state_device = self._proxy.state.entities("device").get(device_id)
+            raw_body = state_device.get("raw_body") if isinstance(state_device, dict) else None
+            if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 6:
+                sort_value = int(raw_body[6])
             row = {
                 "id": device_id,
                 "name": self._get_cached_device_name(device_id) or f"Device {device_id}",
+                "sort": sort_value,
                 "command_count": len(commands) if isinstance(commands, dict) else 0,
                 "has_commands": bool(commands) if isinstance(commands, dict) else False,
             }
@@ -1970,6 +1981,14 @@ class SofabatonHub:
 
         return await self.hass.async_add_executor_job(
             self._proxy.reorder_activities,
+            list(ordered_ids),
+        )
+
+    async def async_reorder_devices(self, ordered_ids: list[int]) -> dict[str, Any] | None:
+        """Rewrite the hub's stored device display order to *ordered_ids*."""
+
+        return await self.hass.async_add_executor_job(
+            self._proxy.reorder_devices,
             list(ordered_ids),
         )
 

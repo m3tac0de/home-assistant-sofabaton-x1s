@@ -761,6 +761,35 @@ underlying family-0x37 create pipeline was already validated on X1 in
 the backup/restore program; the zero-member variant has only been
 exercised on X1S.
 
+## Validated: device display-order write — family 0x11 (X1 + X1S, 2026-07-16)
+
+The device list re-order (tools-card "Change order" under Hub → Devices)
+is validated with `bench_110_device_reorder_write.py` (our own write +
+read-back on both hubs):
+
+- **Frame** — the device-side analog of the family-`0x51` activity write:
+  ONE frame, family `0x11` (`FAMILY_DEVICE_SORT`), identical paged-write
+  body, except each row leads with the device record's kind byte
+  (record body[3], `0x00` on every record observed on X1/X1S — including
+  Wifi devices) instead of the activities' fixed `0x00`:
+  `(record_kind, device_id, sort_position)`. Hub answers
+  `STATUS_ACK 0x00`; followed by `REMOTE_SYNC (0x0064)`. Live X1 example
+  (reverse order 0x06→1 … 0x01→6):
+  `a5 5a 19 11 01 00 01 01 00 01 00 06 01 00 05 02 00 04 03 00 03 04 00 02 05 00 01 06 2c 83`.
+- **Sort byte read-back** — after the write, `CATALOG_ROW_DEVICE` rows
+  report the new positions in the record's sort byte (body[6]); the
+  persistent cache and the frontend list order follow it.
+- **Our writer (X1 + X1S)** — `X1Proxy.reorder_devices` golden-tested
+  against the live frame. X1: reverse → MATCH, restore → MATCH. X1S
+  (13 devices, IR + BLE + Wifi mix): permute → MATCH, restore → MATCH.
+- **Ties** — hubs that were never (or only partially) reordered carry
+  duplicate sort bytes (devices added since the last reorder all share
+  the next value); the write restamps every record with unique 1-based
+  positions, so a full-coverage write "normalizes" ties. Display-order
+  ties resolve by id, which matches the observed remote behavior.
+- **Guards** — same as activities: partial orders and unknown ids are
+  refused before any write.
+
 ## Role-page keymap slots are hub-derived and bistable (X1S, 2026-07-14)
 
 Investigation of UI-bench BUG #4 (activity 107, FWD `0xBD`, FireTV dev 4:

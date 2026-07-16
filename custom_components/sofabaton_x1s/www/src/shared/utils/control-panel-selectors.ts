@@ -54,34 +54,32 @@ export function persistentCacheEnabled(snapshot: ControlPanelSnapshot): boolean 
   return !!snapshot.state?.persistent_cache_enabled;
 }
 
-export function sortByName<T extends { name?: string; label?: string }>(items: T[] = []): T[] {
-  return [...items].sort((left, right) =>
-    String(left?.name ?? left?.label ?? "").localeCompare(String(right?.name ?? right?.label ?? "")),
-  );
-}
-
 export function sortById<T extends { id?: number; button_id?: number }>(items: T[] = []): T[] {
   return [...items].sort(
     (left, right) => Number(left?.id ?? left?.button_id ?? 0) - Number(right?.id ?? right?.button_id ?? 0),
   );
 }
 
-export function hubActivities(hub: CacheHubState | null) {
-  // Follow the hub's stored display order (the record's sort byte) when
-  // present. A sort of 0 means "never ordered" — those rows keep the legacy
-  // id order and land after explicitly ordered rows (so a freshly created
-  // activity appears at the end of an ordered list).
+// Follow the hub's stored display order (the record's sort byte) when
+// present. A sort of 0 means "never ordered" — those rows keep the legacy
+// id order and land after explicitly ordered rows (so a freshly created
+// entry appears at the end of an ordered list).
+function sortByHubOrder<T extends { id?: number; sort?: number }>(items: T[] = []): T[] {
   const bySort = (value?: number) =>
     Number(value ?? 0) > 0 ? Number(value) : Number.POSITIVE_INFINITY;
-  return [...(hub?.activities ?? [])].sort(
+  return [...items].sort(
     (left, right) =>
       bySort(left?.sort) - bySort(right?.sort)
       || Number(left?.id ?? 0) - Number(right?.id ?? 0),
   );
 }
 
+export function hubActivities(hub: CacheHubState | null) {
+  return sortByHubOrder(hub?.activities ?? []);
+}
+
 export function hubDevices(hub: CacheHubState | null) {
-  return sortByName(hub?.devices_list ?? []);
+  return sortByHubOrder(hub?.devices_list ?? []);
 }
 
 export function deviceClassIcon(deviceClass?: string | null) {

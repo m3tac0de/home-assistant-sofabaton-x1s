@@ -1631,12 +1631,45 @@ def test_async_get_cache_contents_includes_activity_workspace_payload() -> None:
         {
             "id": dev_id,
             "name": "Denon",
+            "sort": 0,
             "device_class": "ir",
             "device_class_code": 0x0D,
             "command_count": 2,
             "has_commands": True,
         }
     ]
+
+    loop.close()
+
+
+def test_cache_devices_list_reads_sort_byte_from_state_raw_body() -> None:
+    """Device rows expose the record's sort byte (body[6]) like activities do."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    dev_id = 0x04
+    raw_body = bytearray(32)
+    raw_body[6] = 0x05
+    hub.devices[dev_id] = {"name": "Denon"}
+    hub._proxy.state.devices[dev_id] = {"name": "Denon", "raw_body": bytes(raw_body)}
+
+    payload = loop.run_until_complete(hub.async_get_cache_contents())
+
+    assert [(row["id"], row["sort"]) for row in payload["devices_list"]] == [(dev_id, 0x05)]
 
     loop.close()
 

@@ -1,4 +1,4 @@
-// tests/frontend/control-panel-store.test.ts
+// tests/frontend/activity-reorder.test.ts
 import test, { afterEach, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { setMaxListeners } from "node:events";
@@ -1388,20 +1388,17 @@ function selectedHub(snapshot) {
 function persistentCacheEnabled(snapshot) {
   return !!snapshot.state?.persistent_cache_enabled;
 }
-function deviceClassIcon(deviceClass) {
-  switch (String(deviceClass || "").trim().toLowerCase()) {
-    case "ir":
-      return "mdi:remote";
-    case "bluetooth":
-      return "mdi:bluetooth";
-    case "wifi_roku":
-    case "wifi_hue":
-    case "wifi_mqtt":
-    case "wifi_ip":
-      return "mdi:wifi";
-    default:
-      return "mdi:radio-tower";
-  }
+function sortByHubOrder(items = []) {
+  const bySort = (value) => Number(value ?? 0) > 0 ? Number(value) : Number.POSITIVE_INFINITY;
+  return [...items].sort(
+    (left, right) => bySort(left?.sort) - bySort(right?.sort) || Number(left?.id ?? 0) - Number(right?.id ?? 0)
+  );
+}
+function hubActivities(hub) {
+  return sortByHubOrder(hub?.activities ?? []);
+}
+function hubDevices(hub) {
+  return sortByHubOrder(hub?.devices_list ?? []);
 }
 function isBackendUnavailableError(error, hass) {
   if (hass && hass.connected === false) return true;
@@ -1470,82 +1467,6 @@ function remoteEntities(hass) {
 function entityForHub(hass, hub) {
   if (!hub) return null;
   return remoteEntities(hass).find((id) => hass?.states?.[id]?.attributes?.entry_id === hub.entry_id) ?? null;
-}
-function remoteAttrsForHub(hass, hub) {
-  const entityId = entityForHub(hass, hub);
-  return (entityId ? hass?.states?.[entityId]?.attributes : void 0) ?? {};
-}
-function proxyClientConnected(hass, hub) {
-  const attrs = remoteAttrsForHub(hass, hub);
-  if (typeof attrs.proxy_client_connected === "boolean") return attrs.proxy_client_connected;
-  return !!hub?.proxy_client_connected;
-}
-function hubRefreshBusy(snapshot, entryId) {
-  return !!entryId && entryId in snapshot.refreshBusyByHub;
-}
-function hubExternalCommandLabel(snapshot, entryId) {
-  return entryId ? snapshot.externalHubCommandByHub[entryId] ?? null : null;
-}
-function resolveRuntimeState(snapshot) {
-  const hub = selectedHub(snapshot);
-  const entryId = hub?.entry_id ?? null;
-  const completionNotice = entryId ? snapshot.runtimeCompletionNoticeByHub[entryId] : void 0;
-  if (completionNotice) {
-    return {
-      kind: "completion",
-      tone: completionNotice.tone,
-      label: completionNotice.label,
-      detail: null
-    };
-  }
-  const hubRuntime = hub?.runtime_state;
-  if (hubRuntime?.kind === "operation_running") {
-    const total = Number(hubRuntime.total_steps || 0);
-    const current = Number(hubRuntime.current_step || 0);
-    const percent = total > 0 ? Math.max(0, Math.min(100, Math.round(Math.max(0, current) / total * 100))) : null;
-    return {
-      kind: "operation_running",
-      operation: hubRuntime.operation === "backup_restore" ? "backup_restore" : hubRuntime.operation === "backup_export" ? "backup_export" : hubRuntime.operation === "cache_refresh" ? "cache_refresh" : hubRuntime.operation === "entity_sync" ? "entity_sync" : "wifi_deploy",
-      label: String(hubRuntime.label || "Operation running"),
-      detail: String(hubRuntime.detail || hubRuntime.label || "Working..."),
-      progress: {
-        current: Number.isFinite(current) ? current : null,
-        total: Number.isFinite(total) && total > 0 ? total : null,
-        percent,
-        indeterminate: !total || total <= 0
-      }
-    };
-  }
-  if (hubRuntime?.kind === "app_connected") {
-    return {
-      kind: "app_connected",
-      label: String(hubRuntime.label || "Only Logs is available while the Sofabaton app is connected."),
-      detail: String(hubRuntime.detail || "")
-    };
-  }
-  if (hub && proxyClientConnected(snapshot.hass, hub)) {
-    return {
-      kind: "app_connected",
-      label: "Only Logs is available while the Sofabaton app is connected.",
-      detail: null
-    };
-  }
-  const externalLabel = hubExternalCommandLabel(snapshot, entryId);
-  if (externalLabel !== null) {
-    return {
-      kind: "notice",
-      label: externalLabel || "Hub command in progress...",
-      detail: null
-    };
-  }
-  if (hubRefreshBusy(snapshot, entryId)) {
-    return {
-      kind: "notice",
-      label: "Refreshing cache...",
-      detail: null
-    };
-  }
-  return null;
 }
 function cacheGenerationSnapshot(hass) {
   const snapshot = {};
@@ -2583,9 +2504,8 @@ var ControlPanelStore = class {
   }
 };
 
-// tests/frontend/control-panel-store.test.ts
+// tests/frontend/activity-reorder.test.ts
 setMaxListeners(0);
-var VIEW_STATE_STORAGE_KEY2 = "sofabaton_x1s:tools_card:view_state:v1";
 var baseState = {
   persistent_cache_enabled: true,
   tools_frontend_version: "dev",
@@ -2593,7 +2513,7 @@ var baseState = {
     {
       entry_id: "hub-1",
       name: "Living Room",
-      activity_count: 2,
+      activity_count: 3,
       device_count: 1,
       settings: {
         proxy_enabled: false,
@@ -2609,12 +2529,12 @@ var baseContents = {
     {
       entry_id: "hub-1",
       name: "Living Room",
-      activities: [{ id: 101, name: "Watch TV" }],
-      devices_list: [{ id: 1, name: "Television", command_count: 2 }],
-      buttons: { "101": [174, 175] },
-      commands: { "1": { "10": "Power Toggle" } },
-      activity_favorites: { "101": [{ button_id: 10, command_id: 10, device_id: 1, label: "Power" }] },
-      activity_macros: { "101": [{ command_id: 11, label: "Macro" }] }
+      activities: [
+        { id: 101, name: "Watch TV" },
+        { id: 102, name: "Play Xbox" },
+        { id: 103, name: "Listen Music" }
+      ],
+      devices_list: []
     }
   ]
 };
@@ -2637,30 +2557,11 @@ var MemoryStorage = class {
 };
 var originalWindowDescriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
 var originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
-function installStorage() {
-  const storage = new MemoryStorage();
-  Object.defineProperty(globalThis, "window", {
-    configurable: true,
-    writable: true,
-    value: { localStorage: storage }
-  });
-  Object.defineProperty(globalThis, "localStorage", {
-    configurable: true,
-    writable: true,
-    value: storage
-  });
-  return storage;
-}
-function restoreGlobal(name, descriptor) {
-  if (descriptor) {
-    Object.defineProperty(globalThis, name, descriptor);
-    return;
-  }
-  delete globalThis[name];
-}
 var liveStores = [];
 beforeEach(() => {
-  installStorage();
+  const storage = new MemoryStorage();
+  Object.defineProperty(globalThis, "window", { configurable: true, writable: true, value: { localStorage: storage } });
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, writable: true, value: storage });
 });
 afterEach(() => {
   while (liveStores.length) {
@@ -2670,360 +2571,181 @@ afterEach(() => {
     } catch {
     }
   }
-  restoreGlobal("window", originalWindowDescriptor);
-  restoreGlobal("localStorage", originalLocalStorageDescriptor);
+  for (const [name, descriptor] of [
+    ["window", originalWindowDescriptor],
+    ["localStorage", originalLocalStorageDescriptor]
+  ]) {
+    if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+    else delete globalThis[name];
+  }
 });
-function createHass(overrides = {}) {
-  const handlers = overrides.handlers ?? {};
+function createHass(handlers = {}) {
   return {
-    states: overrides.states ?? {},
+    states: {},
     async callWS(message) {
       const type = String(message.type ?? "");
       const handler = handlers[type];
       if (handler) return await handler(message);
       if (type === "sofabaton_x1s/control_panel/state") return baseState;
       if (type === "sofabaton_x1s/persistent_cache/contents") return baseContents;
-      if (type === "sofabaton_x1s/logs/get") return { lines: [] };
       return { ok: true };
     },
-    connection: overrides.subscribe ? {
-      subscribeMessage: overrides.subscribe
-    } : null
+    connection: null
   };
 }
 function createStore() {
-  const snapshots = [];
-  const store = new ControlPanelStore((snapshot) => snapshots.push(snapshot), {
-    loadedFrontendVersion: "dev"
-  });
+  const store = new ControlPanelStore(() => void 0, { loadedFrontendVersion: "dev" });
   liveStores.push(store);
-  return { store, snapshots };
+  return store;
 }
-function flush() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-test("cache tab is selectable even when persistent cache is disabled", async () => {
-  const { store } = createStore();
-  store.connected();
-  store.setHass(
-    createHass({
-      handlers: {
-        "sofabaton_x1s/control_panel/state": () => ({
-          ...baseState,
-          persistent_cache_enabled: false
-        })
-      }
-    })
-  );
-  await store.loadState();
-  store.selectTab("cache");
-  assert.equal(store.snapshot.selectedTab, "cache");
-  assert.equal(store.snapshot.state?.persistent_cache_enabled, false);
-});
-test("loadState restores the most recent hub and tab from local storage", async () => {
-  globalThis.localStorage?.setItem(
-    VIEW_STATE_STORAGE_KEY2,
-    JSON.stringify({
-      selectedHubEntryId: "hub-2",
-      selectedTab: "backup"
-    })
-  );
-  const store = new ControlPanelStore(() => void 0, {
-    loadedFrontendVersion: "dev"
-  });
-  liveStores.push(store);
-  store.connected();
-  store.setHass(
-    createHass({
-      handlers: {
-        "sofabaton_x1s/control_panel/state": () => ({
-          ...baseState,
-          hubs: [
-            ...baseState.hubs,
-            {
-              entry_id: "hub-2",
-              name: "Bedroom",
-              activity_count: 1,
-              device_count: 1,
-              settings: {
-                proxy_enabled: false,
-                hex_logging_enabled: false,
-                wifi_device_enabled: false
-              }
-            }
-          ]
-        })
-      },
-      subscribe: async () => () => void 0
-    })
-  );
-  await store.loadState();
-  assert.equal(store.snapshot.selectedHubEntryId, "hub-2");
-  assert.equal(store.snapshot.selectedTab, "backup");
-});
-test("loadState falls back to the first available hub when the saved hub no longer exists", async () => {
-  globalThis.localStorage?.setItem(
-    VIEW_STATE_STORAGE_KEY2,
-    JSON.stringify({
-      selectedHubEntryId: "missing-hub",
-      selectedTab: "settings"
-    })
-  );
-  const store = new ControlPanelStore(() => void 0, {
-    loadedFrontendVersion: "dev"
-  });
-  liveStores.push(store);
-  store.connected();
-  store.setHass(createHass());
-  await store.loadState();
-  assert.equal(store.snapshot.selectedHubEntryId, "hub-1");
-  assert.equal(
-    JSON.parse(globalThis.localStorage?.getItem(VIEW_STATE_STORAGE_KEY2) || "{}").selectedHubEntryId,
-    "hub-1"
-  );
-});
-test("selectHub and selectTab persist the updated view state", async () => {
-  const { store } = createStore();
-  store.connected();
-  store.setHass(
-    createHass({
-      handlers: {
-        "sofabaton_x1s/control_panel/state": () => ({
-          ...baseState,
-          hubs: [
-            ...baseState.hubs,
-            {
-              entry_id: "hub-2",
-              name: "Bedroom",
-              activity_count: 1,
-              device_count: 1,
-              settings: {
-                proxy_enabled: false,
-                hex_logging_enabled: false,
-                wifi_device_enabled: false
-              }
-            }
-          ]
-        })
-      }
-    })
-  );
-  await store.loadState();
-  store.selectHub("hub-2");
-  store.selectTab("wifi_commands");
-  assert.deepEqual(
-    JSON.parse(globalThis.localStorage?.getItem(VIEW_STATE_STORAGE_KEY2) || "{}"),
-    {
-      selectedHubEntryId: "hub-2",
-      selectedTab: "wifi_commands",
-      // Keys renamed from open* to selected* in the tools-card refactor; the
-      // store now persists the active per-tab section under selectedCacheSection
-      // (cache panel) and selectedBackupSection.
-      selectedCacheSection: "activities",
-      selectedBackupSection: "make"
-    }
-  );
-});
-test("loadState keeps tools card unblocked when frontend version matches backend", async () => {
-  const { store } = createStore();
-  store.connected();
-  store.setHass(createHass());
-  await store.loadState();
-  assert.equal(store.snapshot.toolsFrontendVersionLoaded, "dev");
-  assert.equal(store.snapshot.toolsFrontendVersionExpected, "dev");
-  assert.equal(store.snapshot.toolsFrontendVersionMismatch, false);
-});
-test("loadState blocks tools card when backend expects a different frontend version", async () => {
-  const store = new ControlPanelStore(() => void 0, {
-    loadedFrontendVersion: "2026.5.0"
-  });
-  liveStores.push(store);
-  store.connected();
-  store.setHass(
-    createHass({
-      handlers: {
-        "sofabaton_x1s/control_panel/state": () => ({
-          ...baseState,
-          tools_frontend_version: "2026.5.1"
-        })
-      }
-    })
-  );
-  await store.loadState();
-  assert.equal(store.snapshot.toolsFrontendVersionExpected, "2026.5.1");
-  assert.equal(store.snapshot.toolsFrontendVersionMismatch, true);
-});
-test("later control-panel refresh can transition tools card into blocked mismatch state", async () => {
-  const { store } = createStore();
-  let currentVersion = "dev";
-  store.connected();
-  store.setHass(
-    createHass({
-      handlers: {
-        "sofabaton_x1s/control_panel/state": () => ({
-          ...baseState,
-          tools_frontend_version: currentVersion
-        })
-      }
-    })
-  );
-  await store.loadState();
-  assert.equal(store.snapshot.toolsFrontendVersionMismatch, false);
-  currentVersion = "2026.5.1";
-  await store.loadControlPanelState();
-  assert.equal(store.snapshot.toolsFrontendVersionExpected, "2026.5.1");
-  assert.equal(store.snapshot.toolsFrontendVersionMismatch, true);
-});
-test("setSetting applies optimistic state and rolls back on failure", async () => {
-  const { store } = createStore();
-  store.connected();
-  store.setHass(
-    createHass({
-      handlers: {
-        "sofabaton_x1s/control_panel/set_setting": () => {
-          throw new Error("backend failed");
-        }
-      }
-    })
-  );
-  await store.loadState();
-  const pending = store.setSetting("proxy_enabled", true);
-  assert.equal(store.snapshot.pendingSettingKey, "proxy_enabled");
-  assert.equal(store.snapshot.state?.hubs[0].settings?.proxy_enabled, true);
-  await pending;
-  assert.equal(store.snapshot.pendingSettingKey, null);
-  assert.equal(store.snapshot.state?.hubs[0].settings?.proxy_enabled, false);
-});
-test("setHass marks cache as stale when generation changes outside refresh grace", async () => {
-  const { store } = createStore();
-  store.connected();
-  store.setHass(
-    createHass({
-      states: {
-        "remote.living_room": {
-          state: "on",
-          attributes: { entry_id: "hub-1", cache_generation: 1, proxy_client_connected: false }
-        }
-      }
-    })
-  );
-  await store.loadState();
-  store._refreshGraceUntil = 0;
-  store.setHass(
-    createHass({
-      states: {
-        "remote.living_room": {
-          state: "on",
-          attributes: { entry_id: "hub-1", cache_generation: 2, proxy_client_connected: false }
-        }
-      }
-    })
-  );
-  assert.equal(store.snapshot.staleData, true);
-});
-test("logs tab subscribes, loads history, and appends live lines", async () => {
-  const { store } = createStore();
-  let pushMessage = null;
-  store.connected();
-  store.setHass(
-    createHass({
-      subscribe: async (callback) => {
-        pushMessage = callback;
-        return () => void 0;
-      },
-      handlers: {
-        "sofabaton_x1s/logs/get": () => ({
-          lines: [{ time: "10:00:00", level: "info", message: "history" }]
-        })
-      }
-    })
-  );
-  await store.loadState();
-  store.selectTab("logs");
-  await flush();
-  await flush();
-  assert.equal(store.snapshot.logsSubscribedEntryId, "hub-1");
-  assert.equal(store.snapshot.logsLines.length >= 1, true);
-  pushMessage?.({ time: "10:00:01", level: "warning", message: "live" });
-  assert.equal(store.snapshot.logsLines.at(-1)?.message, "live");
-});
-test("refreshForHub uses entity_id when a matching remote entity exists", async () => {
-  const { store } = createStore();
-  const messages = [];
-  store.connected();
-  store.setHass(
-    createHass({
-      states: {
-        "remote.living_room": {
-          state: "on",
-          attributes: { entry_id: "hub-1", cache_generation: 1, proxy_client_connected: false }
-        }
-      },
-      handlers: {
-        "sofabaton_x1s/persistent_cache/refresh": (message) => {
-          messages.push(message);
-          return { ok: true };
-        }
-      }
-    })
-  );
-  await store.loadState();
-  await store.refreshForHub("activity", 101, "act-101");
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].entity_id, "remote.living_room");
-  assert.equal(messages[0].entry_id, void 0);
-});
-test("busy state and completion notices stay scoped to the hub they ran on", async () => {
-  const { store } = createStore();
-  const twoHubState = {
-    ...baseState,
-    hubs: [
-      baseState.hubs[0],
-      { ...baseState.hubs[0], entry_id: "hub-2", name: "Bedroom" }
+test("hubActivities follows the hub's stored sort order, zeros last by id", () => {
+  const hub = {
+    entry_id: "hub-1",
+    activities: [
+      { id: 101, name: "Watch TV", sort: 3 },
+      { id: 102, name: "Play Xbox", sort: 1 },
+      { id: 103, name: "Listen Music", sort: 2 },
+      { id: 105, name: "New Later" },
+      { id: 104, name: "New Earlier", sort: 0 }
     ]
   };
-  let progressCallback = null;
-  store.connected();
+  assert.deepEqual(
+    hubActivities(hub).map((activity) => activity.id),
+    [102, 103, 101, 104, 105]
+  );
+});
+test("hubActivities keeps id order when the hub never stored an order", () => {
+  const hub = {
+    entry_id: "hub-1",
+    activities: [
+      { id: 103, name: "C", sort: 0 },
+      { id: 101, name: "A", sort: 0 },
+      { id: 102, name: "B" }
+    ]
+  };
+  assert.deepEqual(
+    hubActivities(hub).map((activity) => activity.id),
+    [101, 102, 103]
+  );
+});
+test("hubDevices follows the hub's stored sort order, ties and zeros by id", () => {
+  const hub = {
+    entry_id: "hub-1",
+    devices_list: [
+      { id: 8, name: "testing", sort: 13 },
+      { id: 10, name: "Lights", sort: 8 },
+      { id: 9, name: "Sonytst", sort: 8 },
+      { id: 2, name: "Philips hue", sort: 2 },
+      { id: 1, name: "AWOLVision", sort: 1 },
+      { id: 3, name: "Zebra", sort: 0 }
+    ]
+  };
+  assert.deepEqual(
+    hubDevices(hub).map((device) => device.id),
+    [1, 2, 9, 10, 8, 3]
+  );
+});
+test("reorderActivities sends the full ordered id list and reloads state", async () => {
+  const calls = [];
+  const store = createStore();
   store.setHass(
     createHass({
-      handlers: {
-        "sofabaton_x1s/control_panel/state": () => twoHubState,
-        "sofabaton_x1s/cache/refresh_all": () => ({ operation_id: "op-1" })
-      },
-      subscribe: async (callback, message) => {
-        if (String(message.type) === "sofabaton_x1s/backup/progress_subscribe") {
-          progressCallback = callback;
-        }
-        return () => {
-        };
+      "sofabaton_x1s/activity/reorder": (message) => {
+        calls.push(message);
+        return { status: "success", ordered_ids: message.ordered_ids };
       }
     })
   );
   await store.loadState();
-  assert.equal(store.snapshot.selectedHubEntryId, "hub-1");
-  const refreshPromise = store.refreshAllForHub();
-  await flush();
-  await flush();
-  assert.ok("hub-1" in store.snapshot.refreshBusyByHub);
-  assert.equal(resolveRuntimeState(store.snapshot)?.kind, "notice");
-  store.selectHub("hub-2");
-  await flush();
-  assert.equal(resolveRuntimeState(store.snapshot), null);
-  progressCallback?.({ status: "success" });
-  await refreshPromise;
-  assert.deepEqual(store.snapshot.refreshBusyByHub, {});
-  assert.ok(store.snapshot.runtimeCompletionNoticeByHub["hub-1"]);
-  assert.equal(resolveRuntimeState(store.snapshot), null);
-  store.selectHub("hub-1");
-  assert.equal(resolveRuntimeState(store.snapshot)?.kind, "completion");
+  const failure = await store.reorderActivities([103, 101, 102]);
+  assert.equal(failure, null);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].entry_id, "hub-1");
+  assert.deepEqual(calls[0].ordered_ids, [103, 101, 102]);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });
-test("deviceClassIcon maps known cache device classes to the expected icons", () => {
-  assert.equal(deviceClassIcon("ir"), "mdi:remote");
-  assert.equal(deviceClassIcon("bluetooth"), "mdi:bluetooth");
-  assert.equal(deviceClassIcon("wifi_roku"), "mdi:wifi");
-  assert.equal(deviceClassIcon("wifi_hue"), "mdi:wifi");
-  assert.equal(deviceClassIcon("wifi_mqtt"), "mdi:wifi");
-  assert.equal(deviceClassIcon("wifi_ip"), "mdi:wifi");
-  assert.equal(deviceClassIcon("something_else"), "mdi:radio-tower");
-  assert.equal(deviceClassIcon(void 0), "mdi:radio-tower");
+test("reorderActivities surfaces the backend failure message", async () => {
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/activity/reorder": () => {
+        throw new Error("The hub did not confirm the new activity order");
+      }
+    })
+  );
+  await store.loadState();
+  const failure = await store.reorderActivities([103, 101, 102]);
+  assert.match(String(failure), /did not confirm the new activity order/);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
+});
+test("reorderDevices sends the full ordered id list and reloads state", async () => {
+  const calls = [];
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/device/reorder": (message) => {
+        calls.push(message);
+        return { status: "success", ordered_ids: message.ordered_ids };
+      }
+    })
+  );
+  await store.loadState();
+  const failure = await store.reorderDevices([3, 1, 2]);
+  assert.equal(failure, null);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].entry_id, "hub-1");
+  assert.deepEqual(calls[0].ordered_ids, [3, 1, 2]);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
+});
+test("reorderDevices surfaces the backend failure message", async () => {
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/device/reorder": () => {
+        throw new Error("The hub did not confirm the new device order");
+      }
+    })
+  );
+  await store.loadState();
+  const failure = await store.reorderDevices([3, 1, 2]);
+  assert.match(String(failure), /did not confirm the new device order/);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
+});
+test("createActivity resolves the assigned id and refreshes its cache entry", async () => {
+  const refreshCalls = [];
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/activity/create": (message) => {
+        assert.equal(message.name, "Movie Night");
+        return { status: "success", activity_id: 105 };
+      },
+      "sofabaton_x1s/persistent_cache/refresh": (message) => {
+        refreshCalls.push(message);
+        return { ok: true };
+      }
+    })
+  );
+  await store.loadState();
+  const result = await store.createActivity("Movie Night");
+  assert.deepEqual(result, { activityId: 105 });
+  assert.equal(refreshCalls.length, 1);
+  assert.equal(refreshCalls[0].kind, "activity");
+  assert.equal(refreshCalls[0].target_id, 105);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
+});
+test("createActivity reports the backend error without opening the editor id", async () => {
+  const store = createStore();
+  store.setHass(
+    createHass({
+      "sofabaton_x1s/activity/create": () => {
+        throw new Error("The hub did not confirm creation of the new activity");
+      }
+    })
+  );
+  await store.loadState();
+  const result = await store.createActivity("Movie Night");
+  assert.ok("error" in result);
+  assert.match(String(result.error), /did not confirm creation/);
+  assert.deepEqual(store.snapshot.externalHubCommandByHub, {});
 });

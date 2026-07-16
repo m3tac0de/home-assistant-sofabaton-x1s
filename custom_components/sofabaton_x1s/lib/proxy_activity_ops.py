@@ -34,6 +34,7 @@ from .protocol_const import (
     BUTTONNAME_BY_CODE,
     ButtonName,
     FAMILY_ACTIVITY_SORT,
+    FAMILY_DEVICE_SORT,
     FAMILY_FAV_DELETE,
     FAMILY_FAV_ORDER_REQ,
     OP_ACTIVITY_ASSIGN_FINALIZE,
@@ -246,24 +247,27 @@ class ActivityOpsMixin:
             time.sleep(0.01)
         return not self._burst.active
 
-    def _build_activity_sort_payload(self, ordered_ids: list[int]) -> bytes:
-        """Build the family-0x51 SET_ACTIVITY_ORDER payload.
+    def _build_entity_sort_payload(self, rows: list[tuple[int, int]]) -> bytes:
+        """Build a display-order write payload (families 0x51 / 0x11).
 
-        Canonical paged-write shape (single page): 3-byte outer wrapper
-        ``[01, page_be=1]``, body header ``[01, total_pages_be=1]``, one
-        ``(0x00, activity_id, sort_position)`` row per activity in display
-        order, and the trailing body checksum. Byte-verified against an app
-        capture on X1S (opcode ``0x1051``, bench 2026-07-14):
+        ``rows`` is ``(row_marker, entity_id)`` in display order; positions
+        are the 1-based row index. Canonical paged-write shape (single
+        page): 3-byte outer wrapper ``[01, page_be=1]``, body header
+        ``[01, total_pages_be=1]``, one ``(marker, entity_id,
+        sort_position)`` row per entity, and the trailing body checksum.
+        Activities use marker ``0x00``; devices lead with the record kind
+        byte (record body[3]). Byte-verified against an app capture on X1S
+        (opcode ``0x1051``, bench 2026-07-14):
 
             01 00 01 | 01 00 01 | 00 67 01 00 66 02 00 65 03 | 3a
         """
 
-        body = bytearray(3 + 3 * len(ordered_ids) + 1)
+        body = bytearray(3 + 3 * len(rows) + 1)
         body[0:3] = bytes([0x01, 0x00, 0x01])
-        for slot_index, act_lo in enumerate(ordered_ids):
+        for slot_index, (marker, ent_lo) in enumerate(rows):
             offset = 3 + slot_index * 3
-            body[offset] = 0x00
-            body[offset + 1] = act_lo & 0xFF
+            body[offset] = marker & 0xFF
+            body[offset + 1] = ent_lo & 0xFF
             body[offset + 2] = (slot_index + 1) & 0xFF
         body[-1] = sum(body[:-1]) & 0xFF
         return bytes([0x01, 0x00, 0x01]) + bytes(body)
@@ -314,7 +318,7 @@ class ActivityOpsMixin:
         _step = self._send_step(
             step_name=f"activity-sort[{','.join(f'0x{a:02X}' for a in ordered)}]",
             family=FAMILY_ACTIVITY_SORT,
-            payload=self._build_activity_sort_payload(ordered),
+            payload=self._build_entity_sort_payload([(0x00, act_lo) for act_lo in ordered]),
             ack_opcode=0x0103,
             ack_first_byte=0x00,
         )
@@ -336,6 +340,96 @@ class ActivityOpsMixin:
 
         if not self._request_activities_and_wait():
             self._log.warning("[ACT_REORDER] catalog refresh after reorder did not finish")
+
+        return {"status": "success", "ordered_ids": list(ordered)}
+
+    def _request_devices_and_wait(self, *, timeout: float = 15.0) -> bool:
+        """Kick a catalog refresh and block until the devices burst lands."""
+
+        if not self.request_devices():
+            return False
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self._burst.active and self._burst.kind == "devices":
+                break
+            time.sleep(0.01)
+        while time.monotonic() < deadline:
+            if not self._burst.active:
+                return True
+            time.sleep(0.01)
+        return not self._burst.active
+
+    def reorder_devices(self, ordered_ids: list[int]) -> dict[str, Any] | None:
+        """Write *ordered_ids* as the hub's stored device display order
+        (first element = sort position 1).
+
+        Device analog of :meth:`reorder_activities`: a single family-``0x11``
+        frame carrying the full new order, acked via STATUS_ACK, followed by
+        REMOTE_SYNC. Rows lead with each device record's kind byte (record
+        body[3]) where the activity write sends ``0x00``. ``ordered_ids``
+        must cover every device currently known to the catalog. A trailing
+        catalog refresh re-reads the rows so cached state (and the
+        persistent cache export) reflects the hub's stored order.
+        """
+
+        if not self.can_issue_commands():
+            self._log.info("[DEV_REORDER] ignored: proxy client is connected")
+            return None
+
+        known: dict[int, int] = {}
+        for dev_id, details in self.state.entities("device").items():
+            if not isinstance(details, dict):
+                continue
+            dev_lo = int(dev_id) & 0xFF
+            marker = 0x00
+            raw_body = details.get("raw_body")
+            if isinstance(raw_body, (bytes, bytearray)) and len(raw_body) > 3:
+                marker = int(raw_body[3])
+            known[dev_lo] = marker
+        ordered: list[int] = []
+        for raw_id in ordered_ids:
+            dev_lo = int(raw_id) & 0xFF
+            if dev_lo not in known:
+                self._log.warning("[DEV_REORDER] unknown device id=0x%02X", dev_lo)
+                return None
+            if dev_lo not in ordered:
+                ordered.append(dev_lo)
+        missing = set(known) - set(ordered)
+        if missing:
+            self._log.warning(
+                "[DEV_REORDER] ordered_ids is missing devices: %s",
+                ", ".join(f"0x{m:02X}" for m in sorted(missing)),
+            )
+            return None
+        if not ordered:
+            self._log.warning("[DEV_REORDER] no devices to reorder")
+            return None
+
+        self.reset_ack_queues()
+
+        _step = self._send_step(
+            step_name=f"device-sort[{','.join(f'0x{d:02X}' for d in ordered)}]",
+            family=FAMILY_DEVICE_SORT,
+            payload=self._build_entity_sort_payload([(known[dev_lo], dev_lo) for dev_lo in ordered]),
+            ack_opcode=0x0103,
+            ack_first_byte=0x00,
+        )
+        if not _step.ok:
+            self._log.warning("[DEV_REORDER] hub did not accept the new order")
+            return None
+
+        _step = self._send_step(
+            step_name="device-sort-remote-sync",
+            family=FAMILY_REMOTE_SYNC,
+            payload=b"",
+            ack_opcode=0x0103,
+            ack_first_byte=0x00,
+        )
+        if not _step.ok:
+            self._log.warning("[DEV_REORDER] REMOTE_SYNC after reorder was not acked")
+
+        if not self._request_devices_and_wait():
+            self._log.warning("[DEV_REORDER] catalog refresh after reorder did not finish")
 
         return {"status": "success", "ordered_ids": list(ordered)}
 

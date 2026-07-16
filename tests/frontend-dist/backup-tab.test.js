@@ -1554,6 +1554,15 @@ var ControlPanelApi = class {
       ordered_ids: orderedIds
     });
   }
+  // Immediate live write of the hub's stored device display order.
+  // ordered_ids is the full device id list in the desired order.
+  reorderDevices(entryId, orderedIds) {
+    return this.hass.callWS({
+      type: "sofabaton_x1s/device/reorder",
+      entry_id: entryId,
+      ordered_ids: orderedIds
+    });
+  }
   // Create a fresh, empty activity on the hub; resolves with the
   // hub-assigned activity id so the caller can open the live editor on it.
   createActivity(entryId, name) {
@@ -1669,13 +1678,14 @@ var ControlPanelApi = class {
 };
 
 // custom_components/sofabaton_x1s/www/src/shared/utils/control-panel-selectors.ts
-function sortByName(items = []) {
+function sortByHubOrder(items = []) {
+  const bySort = (value) => Number(value ?? 0) > 0 ? Number(value) : Number.POSITIVE_INFINITY;
   return [...items].sort(
-    (left, right) => String(left?.name ?? left?.label ?? "").localeCompare(String(right?.name ?? right?.label ?? ""))
+    (left, right) => bySort(left?.sort) - bySort(right?.sort) || Number(left?.id ?? 0) - Number(right?.id ?? 0)
   );
 }
 function hubDevices(hub) {
-  return sortByName(hub?.devices_list ?? []);
+  return sortByHubOrder(hub?.devices_list ?? []);
 }
 function formatError(error) {
   if (!error) return "Unknown error";
@@ -1800,6 +1810,7 @@ var TOOLS_CARD_STRINGS = {
     reorderSync: "Sync to hub",
     reorderCancel: "Cancel",
     reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
     reorderSyncing: "Writing the new order to the hub\u2026",
     addActivityTitle: "Add Activity",
     addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",

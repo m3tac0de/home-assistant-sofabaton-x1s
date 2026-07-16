@@ -57,6 +57,8 @@ These writes use opcode families whose high byte varies with payload length.
 | family `0x12` | `MACRO_WRITE` | fixed or paged macro record | All observed | Write one macro definition |
 | family `0x46` | `INPUTS_WRITE` | single- or multi-page inputs body | All observed | Write one device's inputs page |
 | family `0x61` | `KEY_SORT_WRITE` | paged sort payload | All observed | Write one device's key ordering payload |
+| family `0x51` | `ACTIVITY_SORT` | paged `(0x00, activity_id, position)` rows | X1, X1S validated | Rewrite the stored activity display order (see live-hub-testing.md) |
+| family `0x11` | `DEVICE_SORT` | paged `(record_kind, device_id, position)` rows | X1, X1S validated | Rewrite the stored device display order (see live-hub-testing.md) |
 
 ### IR blob playback (family `0x0F`)
 

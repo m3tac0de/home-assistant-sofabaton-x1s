@@ -5,6 +5,7 @@ import type { BackupSectionId, HassLike, HubAction, SettingKey, TabId } from "./
 import { ControlPanelStore, REFRESH_ALL_KEY } from "./state/control-panel-store";
 import {
   hubActivities,
+  hubDevices,
   hubConnected,
   hubIcon,
   persistentCacheEnabled,
@@ -164,8 +165,9 @@ class SofabatonControlPanelCard extends LitElement {
   // Entity currently open in the live editor (wrench buttons in the Hub
   // tab); while set, the Hub tab renders the editor instead of the cache.
   private _editingEntity: { kind: "activity" | "device"; id: number } | null = null;
-  // Activity re-order mode ("Change order" under the Activities list).
+  // Re-order mode ("Change order" under the Activities / Devices list).
   private _reorderMode = false;
+  private _reorderKind: "activity" | "device" = "activity";
   private _reorderIds: number[] = [];
   private _reorderSyncing = false;
   private _reorderError: string | null = null;
@@ -348,17 +350,19 @@ class SofabatonControlPanelCard extends LitElement {
     this._addActivityError = null;
   }
 
-  // ── Activity re-order mode ─────────────────────────────────────────
+  // ── Activity / Device re-order mode ────────────────────────────────
 
-  private startReorder() {
+  private startReorder(kind: "activity" | "device") {
     if (this._reorderMode) return;
     // Close any open drawer first, then snapshot the current display order
     // as the working order.
     const openEntity = this._snapshot.openEntity;
     if (openEntity) this._store.toggleEntity(openEntity);
     const cacheHub = selectedHubCache(this._snapshot);
-    this._reorderIds = hubActivities(cacheHub).map((activity) => Number(activity.id));
+    this._reorderIds = (kind === "activity" ? hubActivities(cacheHub) : hubDevices(cacheHub))
+      .map((row) => Number(row.id));
     this._reorderMode = true;
+    this._reorderKind = kind;
     this._reorderSyncing = false;
     this._reorderError = null;
     this.requestUpdate();
@@ -384,7 +388,9 @@ class SofabatonControlPanelCard extends LitElement {
     this._reorderSyncing = true;
     this._reorderError = null;
     this.requestUpdate();
-    const failure = await this._store.reorderActivities(this._reorderIds);
+    const failure = this._reorderKind === "activity"
+      ? await this._store.reorderActivities(this._reorderIds)
+      : await this._store.reorderDevices(this._reorderIds);
     this._reorderSyncing = false;
     if (failure) {
       this._reorderError = failure;
@@ -798,7 +804,12 @@ class SofabatonControlPanelCard extends LitElement {
           enablingPersistentCache: this._snapshot.pendingSettingKey === "persistent_cache",
           onEnablePersistentCache: () => this.handleSettingToggle("persistent_cache", true),
           onRefreshStale: () => void this._store.refreshStale(),
-          onSelectSection: (sectionId) => this._store.selectCacheSection(sectionId),
+          onSelectSection: (sectionId) => {
+            // Switching between the Activities / Devices lists abandons any
+            // pending re-order / add-activity interaction.
+            this.resetActivityListInteractions();
+            this._store.selectCacheSection(sectionId);
+          },
           onToggleEntity: (key) => this._store.toggleEntity(key),
           onRefreshSection: (sectionId) => void this._store.refreshSection(sectionId),
           onRefreshEntry: (kind, targetId, key) => void this._store.refreshForHub(kind, targetId, key),
@@ -814,10 +825,11 @@ class SofabatonControlPanelCard extends LitElement {
             this.requestUpdate();
           },
           reorderMode: this._reorderMode,
+          reorderKind: this._reorderKind,
           reorderIds: this._reorderIds,
           reorderSyncing: this._reorderSyncing,
           reorderError: this._reorderError,
-          onStartReorder: () => this.startReorder(),
+          onStartReorder: (kind) => this.startReorder(kind),
           onCancelReorder: () => this.cancelReorder(),
           onReorderMove: (oldIndex, newIndex) => this.moveReorderItem(oldIndex, newIndex),
           onSyncReorder: () => void this.syncReorder(),

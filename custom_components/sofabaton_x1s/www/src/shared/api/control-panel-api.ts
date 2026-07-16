@@ -161,6 +161,16 @@ export class ControlPanelApi {
     });
   }
 
+  // Immediate live write of the hub's stored device display order.
+  // ordered_ids is the full device id list in the desired order.
+  reorderDevices(entryId: string, orderedIds: number[]) {
+    return this.hass.callWS<{ status?: string; ordered_ids?: number[] }>({
+      type: "sofabaton_x1s/device/reorder",
+      entry_id: entryId,
+      ordered_ids: orderedIds,
+    });
+  }
+
   // Create a fresh, empty activity on the hub; resolves with the
   // hub-assigned activity id so the caller can open the live editor on it.
   createActivity(entryId: string, name: string) {

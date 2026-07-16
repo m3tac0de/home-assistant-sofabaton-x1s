@@ -88,6 +88,7 @@ export const TOOLS_CARD_STRINGS = {
     reorderSync: "Sync to hub",
     reorderCancel: "Cancel",
     reorderHint: "Drag activities into the desired order, then sync to the hub.",
+    reorderDevicesHint: "Drag devices into the desired order, then sync to the hub.",
     reorderSyncing: "Writing the new order to the hub…",
     addActivityTitle: "Add Activity",
     addActivityBody: "Name the new activity. It is created on the hub and opened in the editor.",

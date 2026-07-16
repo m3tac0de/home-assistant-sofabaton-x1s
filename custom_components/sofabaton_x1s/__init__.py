@@ -2120,9 +2120,10 @@ async def _ws_device_delete(hass: HomeAssistant, connection, msg: dict[str, Any]
 async def _resolve_hub_for_activity_write(
     hass: HomeAssistant, connection, msg: dict[str, Any], *, op_name: str
 ):
-    """Shared guard chain for the immediate activity-list writes
-    (reorder / create): resolve the hub, refuse while a backup-registry
-    operation is running, and honor the hub operation lock."""
+    """Shared guard chain for the immediate catalog writes (activity
+    reorder / create, device reorder): resolve the hub, refuse while a
+    backup-registry operation is running, and honor the hub operation
+    lock."""
 
     hub = await _async_resolve_hub_from_data(hass, {"entry_id": msg["entry_id"]})
     if hub is None:
@@ -2168,6 +2169,33 @@ async def _ws_activity_reorder(hass: HomeAssistant, connection, msg: dict[str, A
             msg["id"],
             "reorder_failed",
             "The hub did not confirm the new activity order",
+        )
+        return
+    connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/device/reorder",
+        vol.Required("entry_id"): str,
+        vol.Required("ordered_ids"): [vol.All(int, vol.Range(min=1, max=255))],
+    }
+)
+@websocket_api.async_response
+async def _ws_device_reorder(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    # Immediate live write of the hub's stored device display order.
+    hub = await _resolve_hub_for_activity_write(
+        hass, connection, msg, op_name="_ws_device_reorder"
+    )
+    if hub is None:
+        return
+
+    result = await hub.async_reorder_devices(list(msg["ordered_ids"]))
+    if not result or str(result.get("status")) != "success":
+        connection.send_error(
+            msg["id"],
+            "reorder_failed",
+            "The hub did not confirm the new device order",
         )
         return
     connection.send_result(msg["id"], result)
@@ -2689,6 +2717,7 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_activity_delete)
     websocket_api.async_register_command(hass, _ws_device_delete)
     websocket_api.async_register_command(hass, _ws_activity_reorder)
+    websocket_api.async_register_command(hass, _ws_device_reorder)
     websocket_api.async_register_command(hass, _ws_activity_create)
     websocket_api.async_register_command(hass, _ws_refresh_all_cache)
     websocket_api.async_register_command(hass, _ws_get_structural_bundle)

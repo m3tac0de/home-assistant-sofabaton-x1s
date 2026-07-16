@@ -680,6 +680,27 @@ export class ControlPanelStore {
   }
 
   /**
+   * Immediate live write of the hub's stored device display order.
+   * ``orderedIds`` is the full device id list in the desired order.
+   * Resolves with `null` on success or a failure message for the caller's UI.
+   */
+  async reorderDevices(orderedIds: number[]): Promise<string | null> {
+    if (this._isHubCommandBusy()) return "Another hub operation is already running.";
+    const hub = selectedHub(this._snapshot);
+    if (!hub) return "No hub selected.";
+    this.setExternalHubCommandBusy(true, "Reordering devices…", hub.entry_id);
+    try {
+      await this.api().reorderDevices(hub.entry_id, orderedIds.map((id) => Number(id)));
+    } catch (error) {
+      return formatError(error);
+    } finally {
+      this.setExternalHubCommandBusy(false, null, hub.entry_id);
+    }
+    await this.loadState({ silent: true });
+    return null;
+  }
+
+  /**
    * Create a fresh, empty activity on the hub, then pull its cache entry so
    * the live editor can capture it right away. Resolves with the assigned
    * activity id or an error message.

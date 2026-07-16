@@ -1,4 +1,5 @@
-"""Tests for the live activity-list writes: reorder_activities / create_activity."""
+"""Tests for the live catalog-order writes: reorder_activities /
+reorder_devices / create_activity."""
 from typing import Any
 
 from custom_components.sofabaton_x1s.const import HUB_VERSION_X1, HUB_VERSION_X1S
@@ -11,6 +12,7 @@ from custom_components.sofabaton_x1s.lib.hub_versions import (
 )
 from custom_components.sofabaton_x1s.lib.protocol_const import (
     FAMILY_ACTIVITY_SORT,
+    FAMILY_DEVICE_SORT,
 )
 from custom_components.sofabaton_x1s.lib.x1_proxy import X1Proxy
 import custom_components.sofabaton_x1s.lib.proxy_restore as proxy_restore_module
@@ -138,6 +140,117 @@ def test_reorder_activities_refused_while_proxy_client_connected(monkeypatch) ->
     _seed_x1s_activity(proxy, 0x65, "Watch TV")
 
     assert proxy.reorder_activities([0x65]) is None
+
+
+# ── reorder_devices ─────────────────────────────────────────────────────
+
+
+def _seed_device(proxy: X1Proxy, dev_lo: int, name: str, *, kind: int = 0x00) -> None:
+    raw_body = bytearray(120)
+    raw_body[3] = kind & 0xFF
+    raw_body[4] = dev_lo & 0xFF
+    proxy.state.devices[dev_lo] = {"name": name, "raw_body": bytes(raw_body)}
+
+
+def test_reorder_devices_sends_family_11_order_then_remote_sync(monkeypatch) -> None:
+    proxy = _make_proxy(HUB_VERSION_X1)
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    for dev_lo, name in enumerate(
+        ["TCL C8K", "Apple TV", "NVIDIA SHIELD", "Sonos Move 2", "Marantz", "Xbox"],
+        start=1,
+    ):
+        _seed_device(proxy, dev_lo, name)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: sent.append((family, payload)))
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, timeout=5.0, not_before=None: (0x0103, b"\x00"),
+    )
+    refreshed: list[bool] = []
+    monkeypatch.setattr(
+        proxy, "_request_devices_and_wait", lambda timeout=15.0: refreshed.append(True) or True
+    )
+
+    result = proxy.reorder_devices([6, 5, 4, 3, 2, 1])
+
+    assert result == {"status": "success", "ordered_ids": [6, 5, 4, 3, 2, 1]}
+    assert [family for family, _payload in sent] == [FAMILY_DEVICE_SORT, FAMILY_REMOTE_SYNC]
+    # Golden payload from the live X1 bench write (opcode 0x1011,
+    # bench 2026-07-16): reverse order 0x06→1 … 0x01→6; the hub acked and
+    # restamped every record's sort byte to match.
+    assert sent[0][1] == bytes.fromhex(
+        "01 00 01 01 00 01 00 06 01 00 05 02 00 04 03 00 03 04 00 02 05 00 01 06 2c"
+    )
+    assert sent[1][1] == b""
+    assert refreshed == [True]
+
+
+def test_reorder_devices_rows_lead_with_record_kind_byte(monkeypatch) -> None:
+    proxy = _make_proxy()
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    _seed_device(proxy, 0x01, "TV", kind=0x02)
+    _seed_device(proxy, 0x02, "Soundbar", kind=0x00)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: sent.append((family, payload)))
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, timeout=5.0, not_before=None: (0x0103, b"\x00"),
+    )
+    monkeypatch.setattr(proxy, "_request_devices_and_wait", lambda timeout=15.0: True)
+
+    result = proxy.reorder_devices([0x02, 0x01])
+
+    assert result == {"status": "success", "ordered_ids": [0x02, 0x01]}
+    payload = sent[0][1]
+    assert payload[6:12] == bytes([0x00, 0x02, 0x01, 0x02, 0x01, 0x02])
+    assert payload[-1] == sum(payload[3:-1]) & 0xFF
+
+
+def test_reorder_devices_rejects_unknown_and_partial_orders(monkeypatch) -> None:
+    proxy = _make_proxy()
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    _seed_device(proxy, 0x01, "TV")
+    _seed_device(proxy, 0x02, "Soundbar")
+
+    sent: list[Any] = []
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: sent.append(family))
+
+    # Unknown id refused.
+    assert proxy.reorder_devices([0x01, 0x02, 0x77]) is None
+    # Partial coverage refused (0x02 missing).
+    assert proxy.reorder_devices([0x01]) is None
+    assert sent == []
+
+
+def test_reorder_devices_aborts_on_missing_ack(monkeypatch) -> None:
+    proxy = _make_proxy()
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: True)
+    _seed_device(proxy, 0x01, "TV")
+    _seed_device(proxy, 0x02, "Soundbar")
+
+    sent: list[Any] = []
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: sent.append(family))
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, timeout=5.0, not_before=None: None,
+    )
+    monkeypatch.setattr(proxy, "_request_devices_and_wait", lambda timeout=15.0: True)
+
+    assert proxy.reorder_devices([0x02, 0x01]) is None
+    assert sent == [FAMILY_DEVICE_SORT]
+
+
+def test_reorder_devices_refused_while_proxy_client_connected(monkeypatch) -> None:
+    proxy = _make_proxy()
+    monkeypatch.setattr(proxy, "can_issue_commands", lambda: False)
+    _seed_device(proxy, 0x01, "TV")
+
+    assert proxy.reorder_devices([0x01]) is None
 
 
 # ── create_activity ─────────────────────────────────────────────────────

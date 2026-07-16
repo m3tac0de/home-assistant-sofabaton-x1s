@@ -46,6 +46,7 @@ export interface ControlPanelHubState {
   devices_list?: Array<{
     id: number;
     name?: string;
+    sort?: number;
     command_count?: number;
     device_class?: string;
     device_class_code?: number;
@@ -88,6 +89,7 @@ export interface CacheHubState {
   devices_list?: Array<{
     id: number;
     name?: string;
+    sort?: number;
     command_count?: number;
     device_class?: string;
     device_class_code?: number;
