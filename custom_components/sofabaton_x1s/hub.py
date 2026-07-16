@@ -3254,19 +3254,19 @@ class SofabatonHub:
                     raise HomeAssistantError(
                         "Unable to safely identify existing managed Wifi Device; multiple matches found"
                     )
-                self._set_command_sync_progress(
-                    device_key=normalized_device_key,
-                    current_step=2,
-                    message="Deleting existing managed Wifi Device",
-                )
-                for dev_id, _managed_key, _managed_hash, _brand in managed:
-                    result = await self.async_delete_device(dev_id)
-                    if not result:
-                        raise HomeAssistantError(
-                            f"Failed deleting managed device {dev_id}"
-                        )
-
                 if configured_slots == 0:
+                    self._set_command_sync_progress(
+                        device_key=normalized_device_key,
+                        current_step=2,
+                        message="Deleting existing managed Wifi Device",
+                    )
+                    for dev_id, _managed_key, _managed_hash, _brand in managed:
+                        result = await self.async_delete_device(dev_id)
+                        if not result:
+                            raise HomeAssistantError(
+                                f"Failed deleting managed device {dev_id}"
+                            )
+
                     if store is not None:
                         await store.async_save_deployed_wifi_commands(
                             self.entry_id,
@@ -3357,7 +3357,7 @@ class SofabatonHub:
 
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
-                    current_step=3,
+                    current_step=2,
                     message="Creating Wifi Device on Hub",
                 )
                 created = await self.async_create_wifi_device(
@@ -3407,7 +3407,7 @@ class SofabatonHub:
                 add_results: dict[int, bool] = {}
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
-                    current_step=4,
+                    current_step=3,
                     message="Adding Wifi Device to Activities",
                 )
                 for act_id in sorted(activity_ids):
@@ -3421,6 +3421,27 @@ class SofabatonHub:
                 if activity_ids and not all(add_results.values()):
                     await self.async_delete_device(wifi_device_id)
                     raise HomeAssistantError("Failed adding Wifi Device to all activities")
+
+                # Delete the previous managed device only now, after the
+                # replacement has joined its activities. The hub's delete
+                # sweep purges any activity left with zero member devices,
+                # so a delete-before-create order destroyed activities whose
+                # sole member was the managed Wifi Device.
+                self._set_command_sync_progress(
+                    device_key=normalized_device_key,
+                    current_step=4,
+                    message="Deleting existing managed Wifi Device",
+                )
+                for dev_id, _managed_key, _managed_hash, _brand in managed:
+                    result = await self.async_delete_device(dev_id)
+                    if not result:
+                        # Roll back to the pre-sync hub state: the store still
+                        # points at the old device id, so leaving the new
+                        # device behind would orphan it on the next sync.
+                        await self.async_delete_device(wifi_device_id)
+                        raise HomeAssistantError(
+                            f"Failed deleting managed device {dev_id}"
+                        )
 
                 # Warm the wifi-device command cache before activity refreshes
                 # so favorite-label resolution can reuse the full REQ_COMMANDS

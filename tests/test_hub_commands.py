@@ -3411,6 +3411,132 @@ def test_sync_command_config_refreshes_devices_before_managed_delete(monkeypatch
 
 
 
+def _make_sync_order_hub(monkeypatch, loop, call_order, *, fail_delete_ids=()):
+    """Build a hub whose sync-relevant methods record into *call_order*.
+
+    The hub snapshot contains one managed device (id 11) so the deploy runs
+    the full delete/create/add sequence.
+    """
+    hass = FakeHass(loop)
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    snapshot = {11: {"brand": "m3-default-oldhash", "name": "Managed Device"}}
+
+    async def _snapshot(*_args, **_kwargs):
+        return dict(snapshot)
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _snapshot)
+    monkeypatch.setattr(hub._proxy, "request_activity_mapping", lambda _act: True)
+    monkeypatch.setattr(hub._proxy, "get_buttons_for_entity", lambda *_args, **_kwargs: ([], True))
+    monkeypatch.setattr(hub._proxy, "clear_entity_cache", lambda *_, **__: None)
+    monkeypatch.setattr(hub._proxy, "get_macros_for_activity", lambda *_args, **_kwargs: ([], True))
+
+    async def _create(*_args, **_kwargs):
+        call_order.append("create")
+        return {"device_id": 9, "status": "success"}
+
+    async def _add_activity(act_id, dev_id, **_kwargs):
+        call_order.append(f"add:{act_id}:{dev_id}")
+        return {"status": "success"}
+
+    async def _delete(dev_id, *_args, **_kwargs):
+        call_order.append(f"delete:{dev_id}")
+        if dev_id in fail_delete_ids:
+            return None
+        return {"status": "success"}
+
+    async def _button(*_args, **_kwargs):
+        return {"status": "success"}
+
+    monkeypatch.setattr(hub, "async_create_wifi_device", _create)
+    monkeypatch.setattr(hub, "async_add_device_to_activity", _add_activity)
+    monkeypatch.setattr(hub, "async_delete_device", _delete)
+    monkeypatch.setattr(hub, "async_command_to_button", _button)
+    monkeypatch.setattr(
+        hub,
+        "async_fetch_device_commands",
+        lambda *_args, **_kwargs: asyncio.sleep(0),
+    )
+
+    async def _resync_remote():
+        return None
+
+    monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+    return hub
+
+
+_SYNC_ORDER_PAYLOAD = {
+    "commands": [
+        {
+            "name": "Command 1",
+            "add_as_favorite": False,
+            "hard_button": "ok",
+            "activities": ["101"],
+            "action": {"action": "perform-action"},
+        }
+    ],
+    "commands_hash": "abc",
+}
+
+
+def test_sync_command_config_deletes_managed_device_after_activity_add(monkeypatch):
+    """The old managed device is deleted only after the replacement joined
+    its activities: the hub purges activities left with zero member devices,
+    so the previous delete-first order destroyed any activity whose sole
+    member was the managed Wifi Device."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order)
+
+    result = loop.run_until_complete(
+        hub.async_sync_command_config(
+            command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+        )
+    )
+
+    assert call_order == ["create", "add:101:9", "delete:11"]
+    assert result["status"] == "success"
+    assert result["wifi_device_id"] == 9
+
+    loop.close()
+
+
+def test_sync_command_config_rolls_back_created_device_when_managed_delete_fails(monkeypatch):
+    """A failed delete of the old managed device removes the freshly created
+    replacement again; the store still points at the old device id, so
+    leaving the new one behind would orphan it on the next sync."""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    call_order: list[str] = []
+    hub = _make_sync_order_hub(monkeypatch, loop, call_order, fail_delete_ids=(11,))
+
+    with pytest.raises(Exception, match="Failed deleting managed device 11"):
+        loop.run_until_complete(
+            hub.async_sync_command_config(
+                command_payload=dict(_SYNC_ORDER_PAYLOAD), request_port=8060
+            )
+        )
+
+    assert call_order == ["create", "add:101:9", "delete:11", "delete:9"]
+
+    loop.close()
+
+
 def test_refresh_devices_snapshot_default_timeout_is_15_seconds():
     assert (
         SofabatonHub._async_refresh_devices_snapshot.__defaults__ == (15.0,)
