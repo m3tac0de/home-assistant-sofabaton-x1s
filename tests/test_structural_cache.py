@@ -186,6 +186,37 @@ def test_assemble_hub_bundle_from_state_is_pure_projection(monkeypatch) -> None:
     ]
 
 
+def test_favorites_order_projected_into_activity_bundle() -> None:
+    """The family-0x61 slot table (``activity_favorites_order``) is projected
+    onto the activity bundle as ``favorites_order`` — hub ids in slot order —
+    so the editor can render the real quick-access order even though a reorder
+    never renumbers the favorite/macro button_ids."""
+
+    proxy = _proxy()
+    _populate(proxy)
+    proxy.state.activity_favorite_slots[101] = [
+        {"button_id": 1, "device_id": 7, "command_id": 2, "source": "cache"},
+        {"button_id": 2, "device_id": 7, "command_id": 1, "source": "cache"},
+    ]
+    # Hub slot table: fav_id 2 shown first (slot 1), fav_id 1 second (slot 2).
+    proxy.state.activity_favorites_order[101] = [(2, 1), (1, 2)]
+
+    activity = proxy.assemble_activity_backup_from_state(101)
+    assert activity is not None
+    assert activity["favorites_order"] == [2, 1]
+
+
+def test_favorites_order_absent_when_never_fetched() -> None:
+    """No 0x61 read → no ``favorites_order`` key, so consumers fall back to
+    button_id order (the legacy behaviour for older cache snapshots)."""
+
+    proxy = _proxy()
+    _populate(proxy)
+    activity = proxy.assemble_activity_backup_from_state(101)
+    assert activity is not None
+    assert "favorites_order" not in activity
+
+
 def test_assemble_hub_bundle_refuses_never_refreshed_state() -> None:
     """Catalog names alone must not masquerade as an editable baseline."""
 

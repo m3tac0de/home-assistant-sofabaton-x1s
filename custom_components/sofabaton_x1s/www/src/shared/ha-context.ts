@@ -277,6 +277,11 @@ export interface BackupBundleActivityPayload {
   favorite_slots?: BackupBundleFavoriteSlot[] | null;
   macros?: BackupBundleMacroRow[] | null;
   button_bindings?: BackupBundleButtonBinding[] | null;
+  /** Quick-access display order: hub ids (favorite fav_ids / macro key ids,
+   * one shared namespace) in family-0x61 slot order. An advisory ordering
+   * hint, never an identity — a reorder rewrites this slot table WITHOUT
+   * renumbering button_ids. Absent on older bundles → button_id order. */
+  favorites_order?: number[] | null;
 }
 
 export interface BackupBundlePayload {

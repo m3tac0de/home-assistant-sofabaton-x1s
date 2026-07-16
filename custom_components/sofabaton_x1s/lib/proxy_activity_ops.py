@@ -706,11 +706,23 @@ class ActivityOpsMixin:
         self.reset_ack_queues()
         send_ts = time.monotonic()
         self._send_family_frame(FAMILY_FAV_ORDER_REQ, bytes([act_lo]))
-        # FavoritesOrderHandler fires synthetic ack 0xFF63 with first byte = act_lo
-        result = self.wait_for_ack_any([(0xFF63, act_lo)], timeout=5.0, not_before=send_ts)
+        # FavoritesOrderHandler fires synthetic ack 0xFF63 with first byte =
+        # act_lo. An activity with no quick-access entries never gets a 0x63
+        # row: the hub answers STATUS_ACK 0x07 instead (the same "empty
+        # reply" convention as empty macro tables, bench capture 2026-07-16),
+        # so accept that too rather than stalling to the 5s timeout.
+        result = self.wait_for_ack_any(
+            [(0xFF63, act_lo), (0x0103, 0x07)],
+            timeout=5.0,
+            not_before=send_ts,
+        )
         if result is None:
             self._log.warning("[FAV_ORDER] timeout waiting for hub response act=0x%02X", act_lo)
             return None
+        if (result[0] & 0xFFFF) == 0x0103:
+            self._log.debug("[FAV_ORDER] empty quick-access table act=0x%02X", act_lo)
+            self.state.activity_favorites_order[act_lo] = []
+            return []
         return self.state.activity_favorites_order.get(act_lo)
 
     def _validate_favorite_fav_id(

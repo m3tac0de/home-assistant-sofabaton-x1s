@@ -1923,20 +1923,28 @@ async def _run_entity_sync_operation(
         )
         return
 
-    registry.update(
-        operation_id,
-        status="success",
-        phase="completed",
-        message="Synced to hub.",
-        completed_steps=int((result or {}).get("total_steps") or 0),
-        total_steps=int((result or {}).get("total_steps") or 0),
-        result=result or {"status": "success"},
-    )
     # Success tail: refresh the persistent cache so cache_generation bumps and
     # the remote card / Hub tab pick up the new names, macros, and bindings
     # without a manual refresh (same path as catalog/refresh). The synced
     # entity's structural detail is re-fetched so on-demand bundles serve a
     # fresh baseline for the next edit instead of the pre-sync state.
+    #
+    # This runs BEFORE the success publish: the editor rebases its baseline
+    # from the structural bundle the moment it sees status == "success", and
+    # backup_activity/backup_device clears the entity's cached detail before
+    # refetching it — a projection taken mid-refresh captures a gutted
+    # baseline that fails the next sync's stale preflight. Keeping the
+    # operation "running" also keeps the busy-guard closed until on-demand
+    # bundles are trustworthy again.
+    completed_steps = int((result or {}).get("total_steps") or 0)
+    registry.update(
+        operation_id,
+        status="running",
+        phase="cache_refresh",
+        message="Refreshing the cached hub state…",
+        completed_steps=completed_steps,
+        total_steps=completed_steps,
+    )
     try:
         await hub.async_request_catalog("activities" if entity_kind == "activity" else "devices")
         await hub.async_refresh_entity_structure(kind=entity_kind, ent_id=entity_id)
@@ -1946,6 +1954,16 @@ async def _run_entity_sync_operation(
             await store.async_set_hub_cache(hub.entry_id, payload)
     except Exception:  # pragma: no cover - cache refresh is best-effort
         _LOGGER.exception("[%s_sync] post-sync cache refresh failed", entity_kind)
+
+    registry.update(
+        operation_id,
+        status="success",
+        phase="completed",
+        message="Synced to hub.",
+        completed_steps=completed_steps,
+        total_steps=completed_steps,
+        result=result or {"status": "success"},
+    )
 
 
 async def _handle_entity_sync_ws(

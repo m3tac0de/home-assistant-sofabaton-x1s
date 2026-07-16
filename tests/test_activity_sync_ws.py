@@ -455,6 +455,58 @@ def test_ws_entity_delete_busy(monkeypatch):
     assert hub.deleted is None
 
 
+# ── Success-tail ordering ────────────────────────────────────────────────
+
+
+def test_entity_sync_success_published_after_cache_refresh(monkeypatch):
+    """The editor rebases its baseline from the structural bundle the moment
+    it sees status == "success", but the success tail's backup fetch clears
+    the entity's cached detail before refetching it. Publishing success
+    before the tail therefore hands the editor a mid-refresh baseline that
+    fails the next sync's stale preflight — the operation must stay
+    "running" until the cache refresh has completed."""
+    tail_statuses = []
+
+    monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
+
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+    registry = integration._backup_operation_registry(hass)
+    operation_id = registry.create(
+        kind="activity_sync", entry_id="entry-1",
+        initial_state={"status": "pending", "phase": "queued"},
+    )
+
+    def _status():
+        return str(((registry.get(operation_id) or {}).get("state") or {}).get("status"))
+
+    class _SyncingHub(_Hub):
+        async def async_sync_activity(self, **_kwargs):
+            return {"status": "success", "completed_steps": 2, "total_steps": 2}
+
+        async def async_request_catalog(self, kind):
+            tail_statuses.append(("catalog", _status()))
+
+        async def async_refresh_entity_structure(self, *, kind, ent_id):
+            tail_statuses.append(("refresh", _status()))
+
+    class _DisabledStore:
+        enabled = False
+
+    async def fake_store(_hass):
+        return _DisabledStore()
+
+    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_store)
+
+    _run(integration._run_entity_sync_operation(
+        hass, operation_id, hub=_SyncingHub(),
+        baseline=_bundle([]), edited=_bundle([]),
+        entity_kind="activity", entity_id=101,
+    ))
+
+    assert tail_statuses == [("catalog", "running"), ("refresh", "running")]
+    assert _status() == "success"
+
+
 def test_ws_entity_delete_blocked_when_locked(monkeypatch):
     conn = _Conn()
     hub = _DeletingHub({"status": "success"})

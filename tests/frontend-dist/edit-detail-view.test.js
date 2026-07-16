@@ -3738,7 +3738,20 @@ function activityQuickAccessItems(bundle, activityId) {
       commandId: Number(row?.command_id || 0) || void 0
     });
   }
-  return items.sort((left, right) => left.buttonId - right.buttonId);
+  const order = activity.favorites_order ?? [];
+  const rankById = /* @__PURE__ */ new Map();
+  order.forEach((favId, index) => {
+    const bid = Number(favId) & 255;
+    if (!rankById.has(bid)) rankById.set(bid, index);
+  });
+  const rankOf = (buttonId) => {
+    const bid = Number(buttonId) & 255;
+    return rankById.has(bid) ? rankById.get(bid) : rankById.size + bid;
+  };
+  return items.sort((left, right) => {
+    const delta = rankOf(left.buttonId) - rankOf(right.buttonId);
+    return delta !== 0 ? delta : left.buttonId - right.buttonId;
+  });
 }
 function renameBundleActivityMacro(bundle, activityId, buttonId, name) {
   const normalizedButtonId = Number(buttonId);
@@ -3933,6 +3946,11 @@ function reorderBundleActivityQuickAccess(bundle, activityId, orderedItems) {
     ...current,
     macros: macroRows,
     favorite_slots: favoriteRows,
+    // Keep favorites_order in step with the new positional button_ids. The
+    // reordered items are renumbered 1..N in display order, so the slot table
+    // is exactly [1..N]; leaving the stale baseline order here would make
+    // activityQuickAccessItems (and the sync planner) re-derive the OLD order.
+    favorites_order: orderedItems.map((_item, index) => index + 1),
     // Macro-target bindings reference a macro by its button_id (with
     // device_id = the activity's own id). Renumbering the macros without
     // following those references would leave the bundle internally

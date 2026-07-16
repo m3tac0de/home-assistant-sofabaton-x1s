@@ -764,7 +764,27 @@ export function activityQuickAccessItems(
       commandId: Number(row?.command_id || 0) || undefined,
     });
   }
-  return items.sort((left, right) => left.buttonId - right.buttonId);
+  // Order by the hub's family-0x61 slot table (favorites_order) when present:
+  // favorites and macro shortcuts share one fav-id namespace and are shown in
+  // slot order, which a reorder rewrites WITHOUT renumbering button_ids — so
+  // button_id order alone can't reflect a reorder. An entry whose button_id is
+  // absent from favorites_order ranks after every listed one (a freshly-added
+  // shortcut appends at the tail). Absent/empty → pure button_id order, the
+  // legacy behaviour for older bundles and the device path.
+  const order = activity.favorites_order ?? [];
+  const rankById = new Map<number, number>();
+  order.forEach((favId, index) => {
+    const bid = Number(favId) & 0xFF;
+    if (!rankById.has(bid)) rankById.set(bid, index);
+  });
+  const rankOf = (buttonId: number): number => {
+    const bid = Number(buttonId) & 0xFF;
+    return rankById.has(bid) ? (rankById.get(bid) as number) : rankById.size + bid;
+  };
+  return items.sort((left, right) => {
+    const delta = rankOf(left.buttonId) - rankOf(right.buttonId);
+    return delta !== 0 ? delta : left.buttonId - right.buttonId;
+  });
 }
 
 export function renameBundleActivityMacro(
@@ -1131,6 +1151,11 @@ export function reorderBundleActivityQuickAccess(
     ...current,
     macros: macroRows,
     favorite_slots: favoriteRows,
+    // Keep favorites_order in step with the new positional button_ids. The
+    // reordered items are renumbered 1..N in display order, so the slot table
+    // is exactly [1..N]; leaving the stale baseline order here would make
+    // activityQuickAccessItems (and the sync planner) re-derive the OLD order.
+    favorites_order: orderedItems.map((_item, index) => index + 1),
     // Macro-target bindings reference a macro by its button_id (with
     // device_id = the activity's own id). Renumbering the macros without
     // following those references would leave the bundle internally

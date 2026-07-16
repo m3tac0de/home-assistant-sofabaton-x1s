@@ -134,6 +134,29 @@ def _editable_macro_rows(activity: Mapping[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def _quick_access_rank(activity: Mapping[str, Any]) -> dict[int, int]:
+    """Map ``button_id`` → display rank from the activity's ``favorites_order``
+    (hub ids in family-0x61 slot order).
+
+    Favorites and macro shortcuts share one fav-id namespace and are displayed
+    in slot order, which a reorder rewrites WITHOUT renumbering the button_ids.
+    ``favorites_order`` is that slot order; an entry whose button_id is absent
+    from it ranks after every listed one (see :func:`_quick_access_sort_key`).
+    Absent/empty (older baselines, the device path) → an empty map, i.e. pure
+    button_id ordering, matching the pre-order-aware behaviour.
+    """
+    order = activity.get("favorites_order") or []
+    return {_int(fav_id) & 0xFF: index for index, fav_id in enumerate(order)}
+
+
+def _quick_access_sort_key(button_id: int, rank: Mapping[int, int]) -> tuple[int, int]:
+    """Sort key ordering quick-access entries by their ``favorites_order`` rank,
+    then by button_id. Unranked entries (not in ``favorites_order``) sort after
+    every ranked one, so freshly-added shortcuts append at the tail."""
+    bid = _int(button_id) & 0xFF
+    return (rank.get(bid, len(rank) + bid), bid)
+
+
 class MacroPairing:
     """Baseline↔edit identity mapping for an activity's editable macros.
 
@@ -1038,12 +1061,15 @@ def _plan_favorites(
             return ("macro", base_id_by_edit_id[edit_button_id])
         return ("macro_new", edit_button_id)
 
+    edit_rank = _quick_access_rank(edit_activity)
+    base_rank = _quick_access_rank(base_activity)
+
     edit_entries: list[tuple[int, tuple[str, Any]]] = [
         (bid, ("favorite", content)) for bid, content, _row in edit
     ]
     for row in _editable_macro_rows(edit_activity):
         edit_entries.append((_int(row.get("button_id")), _macro_token(_int(row.get("button_id")))))
-    edit_entries.sort(key=lambda item: item[0])
+    edit_entries.sort(key=lambda item: _quick_access_sort_key(item[0], edit_rank))
     desired_order = [token for _bid, token in edit_entries]
 
     # What add/delete alone would produce: survivors kept in their baseline
@@ -1055,7 +1081,7 @@ def _plan_favorites(
         base_id = _int(row.get("button_id"))
         if base_id not in deleted_macro_ids:
             base_entries.append((base_id, ("macro", base_id)))
-    base_entries.sort(key=lambda item: item[0])
+    base_entries.sort(key=lambda item: _quick_access_sort_key(item[0], base_rank))
     survivor_tokens = [token for _bid, token in base_entries]
     added_tokens = [
         token

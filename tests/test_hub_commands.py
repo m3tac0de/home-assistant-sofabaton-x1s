@@ -2754,6 +2754,11 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
         resync_calls.append(True)
 
     monkeypatch.setattr(hub, "async_resync_remote", _resync_remote)
+    monkeypatch.setattr(
+        hub,
+        "async_request_favorites_order",
+        lambda *_a, **_k: asyncio.sleep(0, result=[(1, 1)]),
+    )
 
     payload = {
         "commands": [
@@ -2798,7 +2803,9 @@ def test_sync_command_config_omits_favorite_slot_to_avoid_overwrite(monkeypatch)
     assert favorite_calls == [(101, 9, 1, {"refresh_after_write": False})]
     assert requested_maps == [101]
     assert requested_buttons == [(101, True)]
-    assert cache_refresh_calls == [(101, True, False, True)]
+    # The post-deploy warm now runs the full per-activity refresh, which
+    # clears favorites too before refetching them from the keymap burst.
+    assert cache_refresh_calls == [(101, True, True, True)]
     assert macro_refresh_calls == [("clear", 101), ("fetch", 101)]
     assert resync_calls == [True]
 
@@ -3064,6 +3071,118 @@ def test_prime_buttons_requests_activity_map_before_favorite_command_resolution(
     loop.run_until_complete(hub._async_prime_buttons_for(act_id))
 
     assert call_order.index("request_activity_mapping") < call_order.index("ensure_commands_for_activity")
+
+    loop.close()
+
+
+def test_sync_command_config_rewarms_every_touched_activity(monkeypatch):
+    """A deploy must leave every touched activity's structural cache warm.
+
+    The write steps (managed-device delete, re-add, favorite/keymap writes,
+    family-0x61 reorder) each invalidate parts of the per-activity cache, so
+    step 7 has to run the full per-activity refresh for every activity the
+    deploy touched -- and re-read the favorites display order for activities
+    that had favorites reordered.
+    """
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+    hub.roku_server_enabled = True
+
+    async def _refresh_devices(_timeout=15.0):
+        return {}
+
+    monkeypatch.setattr(hub, "_async_refresh_devices_snapshot", _refresh_devices)
+    monkeypatch.setattr(
+        hub,
+        "async_create_wifi_device",
+        lambda *_a, **_k: asyncio.sleep(0, result={"device_id": 9, "status": "success"}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_add_device_to_activity",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_command_to_favorite",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success", "fav_id": 1}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_command_to_button",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_reorder_favorites",
+        lambda *_a, **_k: asyncio.sleep(0, result={"status": "success"}),
+    )
+    monkeypatch.setattr(
+        hub,
+        "async_fetch_device_commands",
+        lambda *_a, **_k: asyncio.sleep(0),
+    )
+    monkeypatch.setattr(hub, "async_resync_remote", lambda: asyncio.sleep(0))
+
+    order_reads: list[int] = []
+
+    def _order_read(act_id, *_a, **_k):
+        order_reads.append(int(act_id))
+        return asyncio.sleep(0, result=[(1, 1)])
+
+    monkeypatch.setattr(hub, "async_request_favorites_order", _order_read)
+
+    warmed: list[int] = []
+
+    async def _fetch_activity_commands(act_id: int):
+        warmed.append(int(act_id))
+
+    monkeypatch.setattr(hub, "_async_fetch_activity_commands", _fetch_activity_commands)
+
+    payload = {
+        "commands": [
+            {
+                "name": "Fav Command",
+                "add_as_favorite": True,
+                "hard_button": "",
+                "activities": ["101"],
+                "action": {"action": "perform-action"},
+            },
+            {
+                "name": "Button Command",
+                "add_as_favorite": False,
+                "hard_button": "menu",
+                "activities": ["102"],
+                "action": {"action": "perform-action"},
+            },
+        ],
+        "commands_hash": "abc",
+    }
+
+    loop.run_until_complete(
+        hub.async_sync_command_config(command_payload=payload, request_port=8060)
+    )
+
+    assert warmed == [101, 102]
+    # Only activity 101 got a favorite (and thus a reorder); the display
+    # order is re-read once by the reorder step and once by the warm.
+    assert order_reads == [101, 101]
 
     loop.close()
 

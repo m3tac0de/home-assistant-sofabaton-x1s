@@ -527,6 +527,7 @@ def assemble_activity_backup(
     referenced_source_device_ids: set[int],
     complete: bool,
     fetched_at: str | None = None,
+    favorites_order: list[int] | None = None,
 ) -> dict[str, Any]:
     payload = {
         "kind": "activity_backup",
@@ -543,6 +544,13 @@ def assemble_activity_backup(
     }
     if fetched_at:
         payload["fetched_at"] = fetched_at
+    # Quick-access display order (hub ids in family-0x61 slot order). An
+    # advisory ordering hint for the editor, never an identity: favorites and
+    # macro shortcuts share one fav-id namespace, and a reorder rewrites this
+    # slot table WITHOUT renumbering the button_ids. Consumers that lack it
+    # (older backups) fall back to button_id order. Omitted when empty.
+    if favorites_order:
+        payload["favorites_order"] = [int(fav_id) & 0xFF for fav_id in favorites_order]
     return payload
 
 

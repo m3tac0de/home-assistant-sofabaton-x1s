@@ -128,6 +128,26 @@ test("diffActivityForReview reports a shortcut reorder despite positional button
   assert.doesNotMatch(allText(groups), /Added|Removed/);
 });
 
+test("diffActivityForReview does not report a reorder when the net order matches the hub slot table", () => {
+  // The hub's family-0x61 slot table (favorites_order) shows Bar Power first
+  // even though its button_id (2) sorts last. The user makes a net-zero change:
+  // the editor renumbers positionally and writes favorites_order=[1,2]. Because
+  // the diff orders BOTH sides by favorites_order, the net order is unchanged —
+  // no phantom "Reordered". (Button_id order alone would falsely flag it.)
+  const base = baseBundle();
+  (base.activities[0] as any).favorites_order = [2, 1];
+  const edited = structuredClone(base);
+  const activity = edited.activities.find(
+    (a) => Number(a.device?.device_id) === ACTIVITY_ID,
+  )!;
+  activity.favorite_slots = [
+    { button_id: 1, device_id: 2, command_id: 20, name: "Bar Power" },
+    { button_id: 2, device_id: 1, command_id: 10, name: "TV Power" },
+  ] as any;
+  (activity as any).favorites_order = [1, 2];
+  assert.doesNotMatch(allText(diffActivityForReview(base, edited, ACTIVITY_ID)), /Reordered/);
+});
+
 test("diffActivityForReview reports a macro move as a reorder, not add+remove", () => {
   const base = baseBundle();
   const baseActivity = base.activities.find(

@@ -1761,7 +1761,20 @@ function activityQuickAccessItems(bundle, activityId) {
       commandId: Number(row?.command_id || 0) || void 0
     });
   }
-  return items.sort((left, right) => left.buttonId - right.buttonId);
+  const order = activity.favorites_order ?? [];
+  const rankById = /* @__PURE__ */ new Map();
+  order.forEach((favId, index) => {
+    const bid = Number(favId) & 255;
+    if (!rankById.has(bid)) rankById.set(bid, index);
+  });
+  const rankOf = (buttonId) => {
+    const bid = Number(buttonId) & 255;
+    return rankById.has(bid) ? rankById.get(bid) : rankById.size + bid;
+  };
+  return items.sort((left, right) => {
+    const delta = rankOf(left.buttonId) - rankOf(right.buttonId);
+    return delta !== 0 ? delta : left.buttonId - right.buttonId;
+  });
 }
 function renameBundleActivityFavorite(bundle, activityId, buttonId, name) {
   const normalizedButtonId = Number(buttonId);
@@ -2687,6 +2700,20 @@ test("diffActivityForReview reports a shortcut reorder despite positional button
   const groups = diffActivityForReview(base, edited, ACTIVITY_ID);
   assert.match(allText(groups), /Reordered/);
   assert.doesNotMatch(allText(groups), /Added|Removed/);
+});
+test("diffActivityForReview does not report a reorder when the net order matches the hub slot table", () => {
+  const base = baseBundle();
+  base.activities[0].favorites_order = [2, 1];
+  const edited = structuredClone(base);
+  const activity = edited.activities.find(
+    (a3) => Number(a3.device?.device_id) === ACTIVITY_ID
+  );
+  activity.favorite_slots = [
+    { button_id: 1, device_id: 2, command_id: 20, name: "Bar Power" },
+    { button_id: 2, device_id: 1, command_id: 10, name: "TV Power" }
+  ];
+  activity.favorites_order = [1, 2];
+  assert.doesNotMatch(allText(diffActivityForReview(base, edited, ACTIVITY_ID)), /Reordered/);
 });
 test("diffActivityForReview reports a macro move as a reorder, not add+remove", () => {
   const base = baseBundle();

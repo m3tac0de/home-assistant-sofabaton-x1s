@@ -4413,7 +4413,8 @@ def test_command_to_favorite_replays_sequence(monkeypatch) -> None:
     assert sent[2][1] == bytes([0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x66, 0x01, 0x01, 0x6A])
     assert sent[3][1] == b"f"
     assert ack_calls == [
-        [(0xFF63, 0x66)],                      # fav-order query for act=0x66
+        # fav-order query for act=0x66; STATUS_ACK 0x07 = empty quick-access table
+        [(0xFF63, 0x66), (0x0103, 0x07)],
         [(0x013E, None), (0x0103, None)],      # map
         [(0x0103, None)],                      # stage
         [(0x0103, None)],                      # commit
@@ -4608,6 +4609,50 @@ def test_delete_favorite_rejects_unknown_fav_id(monkeypatch) -> None:
     monkeypatch.setattr(proxy, "request_favorites_order", lambda act_id: [(0x02, 0x01), (0x04, 0x02), (0x06, 0x03)])
 
     assert proxy.delete_favorite(0x66, 0x09) is None
+
+
+def test_request_favorites_order_returns_empty_on_status_ack_07(monkeypatch) -> None:
+    """No quick-access entries -> the hub sends STATUS_ACK 0x07, not a 0x63 row.
+
+    That empty reply must resolve immediately as an empty order instead of
+    stalling to the 5s ack timeout (bench capture 2026-07-16).
+    """
+
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    sent: list[tuple[int, bytes]] = []
+    monkeypatch.setattr(
+        proxy,
+        "_send_family_frame",
+        lambda family, payload: sent.append((family, payload)),
+    )
+    monkeypatch.setattr(
+        proxy,
+        "wait_for_ack_any",
+        lambda candidates, *, timeout=5.0, not_before=None: (0x0103, b"\x07"),
+    )
+
+    # A stale cached order must be replaced by the known-empty result.
+    proxy.state.activity_favorites_order[0x66] = [(0x02, 0x01)]
+
+    assert proxy.request_favorites_order(0x66) == []
+    assert proxy.state.activity_favorites_order[0x66] == []
+    assert sent == [(0x62, b"\x66")]
+
+
+def test_request_favorites_order_returns_cached_order_on_63_response(monkeypatch) -> None:
+    proxy = X1Proxy("127.0.0.1", proxy_enabled=False, diag_dump=False, diag_parse=False)
+
+    monkeypatch.setattr(proxy, "_send_family_frame", lambda family, payload: None)
+
+    def _ack(candidates, *, timeout=5.0, not_before=None):
+        # Simulate FavoritesOrderHandler having parsed the 0x63 response.
+        proxy.state.activity_favorites_order[0x66] = [(0x02, 0x01), (0x04, 0x02)]
+        return (0xFF63, b"\x66")
+
+    monkeypatch.setattr(proxy, "wait_for_ack_any", _ack)
+
+    assert proxy.request_favorites_order(0x66) == [(0x02, 0x01), (0x04, 0x02)]
 
 
 def test_reorder_favorites_requires_explicit_fav_ids(monkeypatch) -> None:

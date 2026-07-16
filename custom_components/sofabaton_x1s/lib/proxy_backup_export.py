@@ -396,6 +396,17 @@ class BackupExportMixin:
             timeout=wait_timeout,
         )
 
+        # Quick-access display order (family-0x61 slot table). Best-effort: a
+        # reorder rewrites this table without renumbering button_ids, so it is
+        # the only source for the shortcut display order. A failed/absent read
+        # leaves the bundle without ``favorites_order`` and consumers fall back
+        # to button_id order. Runs after the buttons/macros bursts have settled
+        # so the 0x0162 request does not collide with an in-flight mapping.
+        try:
+            self.request_favorites_order(act_lo)
+        except Exception:  # noqa: BLE001 - ordering is advisory, never fatal
+            self._log.debug("[FAV_ORDER] backup_activity order read failed act=0x%02X", act_lo)
+
         self.state.detail_fetched_at["activity"][act_lo] = _bx.now_iso()
 
         return self.assemble_activity_backup_from_state(act_lo)
@@ -435,6 +446,15 @@ class BackupExportMixin:
         )
         referenced |= fav_refs
 
+        # Quick-access display order (hub ids sorted by their family-0x61 slot).
+        # Populated by a prior request_favorites_order(); absent when never
+        # fetched, in which case consumers fall back to button_id order.
+        order_pairs = self.state.activity_favorites_order.get(act_lo) or []
+        favorites_order = [
+            int(fav_id) & 0xFF
+            for fav_id, _slot in sorted(order_pairs, key=lambda pair: int(pair[1]))
+        ]
+
         activity_block = _bx.build_device_block(act_lo, activity_meta, activity_config)
 
         complete = all(
@@ -453,6 +473,7 @@ class BackupExportMixin:
             referenced_source_device_ids=referenced,
             complete=complete,
             fetched_at=self.state.detail_fetched_at["activity"].get(act_lo),
+            favorites_order=favorites_order,
         )
 
     # ------------------------------------------------------------------

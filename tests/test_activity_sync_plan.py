@@ -216,6 +216,63 @@ def test_favorite_add_then_reorder_emits_full_content_order() -> None:
     ]
 
 
+def test_favorites_order_baseline_prevents_spurious_reorder() -> None:
+    """The hub's family-0x61 slot order (``favorites_order``) shows the macro
+    first even though its button_id (3) sorts last. The user opens the editor
+    — the list already renders macro, TV Power, Bar Power — and makes a net-zero
+    change, so the editor renumbers positionally and writes
+    ``favorites_order=[1,2,3]``. Because the planner reads the BASELINE order
+    from ``favorites_order`` (not button_id), it sees no net move and emits no
+    order step. Without the slot-aware baseline, the button_id order (fav, fav,
+    macro) would look reordered against the edited (macro, fav, fav)."""
+    base = _bundle_with_user_macro()
+    _activity(base)["favorites_order"] = [3, 1, 2]
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"] = [
+        {"button_id": 1, "name": "Combo", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+            {"device_id": 2, "command_id": 21, "button_code": 0, "duration": 0, "delay": 255},
+        ]},
+        *[m for m in _activity(edited)["macros"] if m["button_id"] in (198, 199)],
+    ]
+    _activity(edited)["favorite_slots"] = [
+        {"button_id": 2, "device_id": 1, "command_id": 10, "name": "TV Power"},
+        {"button_id": 3, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+    ]
+    _activity(edited)["favorites_order"] = [1, 2, 3]
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    assert "favorite_order" not in _kinds(plan)
+
+
+def test_favorites_order_genuine_reorder_still_emits() -> None:
+    """A real reorder with ``favorites_order`` present still emits the order
+    step, addressing the macro by its baseline hub key id."""
+    base = _bundle_with_user_macro()
+    _activity(base)["favorites_order"] = [1, 2, 3]  # slot order == button order
+    edited = copy.deepcopy(base)
+    _activity(edited)["macros"] = [
+        {"button_id": 1, "name": "Combo", "steps": [
+            {"device_id": 1, "command_id": 10, "button_code": 0, "duration": 0, "delay": 255},
+            {"device_id": 2, "command_id": 21, "button_code": 0, "duration": 0, "delay": 255},
+        ]},
+        *[m for m in _activity(edited)["macros"] if m["button_id"] in (198, 199)],
+    ]
+    _activity(edited)["favorite_slots"] = [
+        {"button_id": 2, "device_id": 1, "command_id": 10, "name": "TV Power"},
+        {"button_id": 3, "device_id": 2, "command_id": 20, "name": "Bar Power"},
+    ]
+    _activity(edited)["favorites_order"] = [1, 2, 3]
+    plan = build_activity_sync_plan(base, edited, ACTIVITY_ID)
+    assert "favorite_order" in _kinds(plan)
+    assert "macro_write" not in _kinds(plan)
+    order = next(s for s in plan if s.kind == "favorite_order").payload["order"]
+    assert order == [
+        {"kind": "macro", "button_id": 3},
+        {"kind": "favorite", "device_id": 1, "command_id": 10},
+        {"kind": "favorite", "device_id": 2, "command_id": 20},
+    ]
+
+
 def test_macro_rename_only_still_emits_macro_write() -> None:
     base = base_bundle()
     edited = copy.deepcopy(base)

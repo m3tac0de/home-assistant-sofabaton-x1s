@@ -969,6 +969,9 @@ def test_async_restore_backup_replace_mode_proceeds_when_erase_succeeds() -> Non
         }
     )
 
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+
     bundle = {
         "kind": "hub_bundle",
         "schema_version": 5,
@@ -979,8 +982,11 @@ def test_async_restore_backup_replace_mode_proceeds_when_erase_succeeds() -> Non
     result = _run(hub.async_restore_backup(bundle))
 
     assert result["status"] == "success"
+    assert result["cache_warmed"] is True
     hub._proxy.erase_configuration.assert_called_once()
     hub._proxy.restore_hub_bundle.assert_called_once()
+    hub.async_refresh_hub_cache.assert_awaited_once()
+    hub._async_persist_cache_if_enabled.assert_awaited_once()
 
 
 def test_async_restore_backup_replace_mode_restores_hub_name_from_bundle() -> None:
@@ -1007,6 +1013,9 @@ def test_async_restore_backup_replace_mode_restores_hub_name_from_bundle() -> No
             "restored_activities": [],
         }
     )
+
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
 
     bundle = {
         "kind": "hub_bundle",
@@ -1050,6 +1059,9 @@ def test_async_restore_backup_replace_mode_restores_same_hub_name_without_identi
         }
     )
 
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+
     bundle = {
         "kind": "hub_bundle",
         "schema_version": 5,
@@ -1068,8 +1080,8 @@ def test_async_restore_backup_replace_mode_restores_same_hub_name_without_identi
     )
 
     assert result["status"] == "success"
-    assert result["_progress_completed_steps"] == 3
-    assert result["_progress_total_steps"] == 3
+    assert result["_progress_completed_steps"] == 4
+    assert result["_progress_total_steps"] == 4
     assert result["hub_name"] == "X1 - test"
     assert result["hub_name_restored"] is True
     hub.async_set_hub_name.assert_awaited_once_with("X1 - test", sync_identity=False)
@@ -1100,6 +1112,9 @@ def test_async_restore_backup_replace_mode_progress_counts_include_restored_step
         }
     )
 
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+
     bundle = {
         "kind": "hub_bundle",
         "schema_version": 5,
@@ -1118,11 +1133,57 @@ def test_async_restore_backup_replace_mode_progress_counts_include_restored_step
     )
 
     assert result["status"] == "success"
-    assert result["_progress_completed_steps"] == 4
-    assert result["_progress_total_steps"] == 4
-    assert progress_events[-1]["message"] == "Restored hub name."
-    assert progress_events[-1]["completed_steps"] == 4
-    assert progress_events[-1]["total_steps"] == 4
+    assert result["_progress_completed_steps"] == 5
+    assert result["_progress_total_steps"] == 5
+    rename_event = next(
+        event for event in progress_events if event["message"] == "Restored hub name."
+    )
+    assert rename_event["completed_steps"] == 4
+    assert progress_events[-1]["message"] == "Hub cache warmed."
+    assert progress_events[-1]["completed_steps"] == 5
+    assert progress_events[-1]["total_steps"] == 5
+
+
+def test_async_restore_backup_cache_warm_failure_keeps_restore_success() -> None:
+    """A failed post-restore cache warm must not fail the restore itself."""
+
+    from custom_components.sofabaton_x1s.hub import SofabatonHub
+
+    hub = SofabatonHub.__new__(SofabatonHub)
+    hub.entry_id = "entry-1"
+    hub.name = "Sofabaton"
+    hub.version = HUB_VERSION_X1S
+    hub._log = MagicMock()
+
+    class _FakeHass:
+        async def async_add_executor_job(self, func, *args, **kwargs):
+            return func(*args, **kwargs)
+
+    hub.hass = _FakeHass()
+    hub._proxy = MagicMock()
+    hub._proxy.restore_hub_bundle = MagicMock(
+        return_value={
+            "status": "success",
+            "device_id_map": {},
+            "restored_devices": [],
+            "restored_activities": [],
+        }
+    )
+    hub.async_refresh_hub_cache = AsyncMock(side_effect=RuntimeError("hub went away"))
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
+
+    bundle = {
+        "kind": "hub_bundle",
+        "schema_version": 5,
+        "devices": [],
+        "activities": [],
+    }
+
+    result = _run(hub.async_restore_backup(bundle, replace_mode=False))
+
+    assert result["status"] == "success"
+    assert result["cache_warmed"] is False
+    hub._async_persist_cache_if_enabled.assert_not_awaited()
 
 
 def test_async_restore_backup_merge_mode_skips_hub_name_restore() -> None:
@@ -1149,6 +1210,8 @@ def test_async_restore_backup_merge_mode_skips_hub_name_restore() -> None:
             "restored_activities": [],
         }
     )
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
 
     bundle = {
         "kind": "hub_bundle",
@@ -1161,6 +1224,7 @@ def test_async_restore_backup_merge_mode_skips_hub_name_restore() -> None:
     result = _run(hub.async_restore_backup(bundle, replace_mode=False))
 
     assert result["status"] == "success"
+    assert result["cache_warmed"] is True
     assert "hub_name_restored" not in result
     hub.async_set_hub_name.assert_not_awaited()
 
@@ -1185,6 +1249,8 @@ def test_async_restore_backup_merge_mode_skips_erase_even_with_activities() -> N
     hub._proxy.restore_hub_bundle = MagicMock(
         return_value={"status": "success", "device_id_map": {}, "restored_devices": [], "restored_activities": []}
     )
+    hub.async_refresh_hub_cache = AsyncMock(return_value={})
+    hub._async_persist_cache_if_enabled = AsyncMock(return_value=True)
 
     bundle = {
         "kind": "hub_bundle",

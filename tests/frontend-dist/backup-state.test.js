@@ -1453,6 +1453,67 @@ function commandLabelFor(bundle2, deviceId, commandId) {
   const command = (device?.commands ?? []).find((entry) => Number(entry?.command_id || 0) === Number(commandId));
   return String(command?.name || "").trim();
 }
+function favoriteLabel(bundle2, row) {
+  const explicit = String(row?.name || "").trim();
+  if (explicit) return explicit;
+  const deviceId = Number(row?.device_id || 0);
+  const commandId = Number(row?.command_id || 0);
+  const derived = commandLabelFor(bundle2, deviceId, commandId);
+  if (derived) return derived;
+  return `Favorite ${Number(row?.button_id || 0) || "?"}`;
+}
+function sortByButtonId(rows) {
+  return [...rows ?? []].sort((left, right) => Number(left?.button_id || 0) - Number(right?.button_id || 0));
+}
+function isEditableActivityMacro(row) {
+  const buttonId = Number(row?.button_id || 0);
+  const normalizedName = String(row?.name || "").trim().toUpperCase();
+  if (INTERNAL_POWER_MACRO_BUTTON_IDS.has(buttonId)) return false;
+  if (normalizedName === "POWER_ON" || normalizedName === "POWER_OFF") return false;
+  return true;
+}
+function activityQuickAccessItems(bundle2, activityId) {
+  if (!bundle2) return [];
+  const activity = (bundle2.activities ?? []).find((entry) => Number(entry?.device?.device_id || 0) === Number(activityId));
+  if (!activity) return [];
+  const items = [];
+  for (const row of sortByButtonId(activity.macros).filter(isEditableActivityMacro)) {
+    const buttonId = Number(row?.button_id || 0);
+    if (buttonId <= 0) continue;
+    items.push({
+      kind: "macro",
+      activityId: Number(activityId),
+      buttonId,
+      label: String(row?.name || `Macro ${buttonId}`)
+    });
+  }
+  for (const row of sortByButtonId(activity.favorite_slots)) {
+    const buttonId = Number(row?.button_id || 0);
+    if (buttonId <= 0) continue;
+    items.push({
+      kind: "favorite",
+      activityId: Number(activityId),
+      buttonId,
+      label: favoriteLabel(bundle2, row),
+      deviceId: Number(row?.device_id || 0) || void 0,
+      commandId: Number(row?.command_id || 0) || void 0
+    });
+  }
+  const order = activity.favorites_order ?? [];
+  const rankById = /* @__PURE__ */ new Map();
+  order.forEach((favId, index) => {
+    const bid = Number(favId) & 255;
+    if (!rankById.has(bid)) rankById.set(bid, index);
+  });
+  const rankOf = (buttonId) => {
+    const bid = Number(buttonId) & 255;
+    return rankById.has(bid) ? rankById.get(bid) : rankById.size + bid;
+  };
+  return items.sort((left, right) => {
+    const delta = rankOf(left.buttonId) - rankOf(right.buttonId);
+    return delta !== 0 ? delta : left.buttonId - right.buttonId;
+  });
+}
 var IDLE_BEHAVIOR_DISABLED = 4;
 function deviceIdleBehavior(bundle2, deviceId) {
   if (!bundle2) return null;
@@ -1566,6 +1627,11 @@ function reorderBundleActivityQuickAccess(bundle2, activityId, orderedItems) {
     ...current,
     macros: macroRows,
     favorite_slots: favoriteRows,
+    // Keep favorites_order in step with the new positional button_ids. The
+    // reordered items are renumbered 1..N in display order, so the slot table
+    // is exactly [1..N]; leaving the stale baseline order here would make
+    // activityQuickAccessItems (and the sync planner) re-derive the OLD order.
+    favorites_order: orderedItems.map((_item, index) => index + 1),
     // Macro-target bindings reference a macro by its button_id (with
     // device_id = the activity's own id). Renumbering the macros without
     // following those references would leave the bundle internally
@@ -3174,6 +3240,36 @@ test("reorderBundleActivityQuickAccess follows macro-target binding refs", () =>
   assert.equal(bindings[0].command_id, 1);
   assert.equal(bindings[1].long_press_command_id, 1);
   assert.equal(bindings[2].command_id, 3);
+});
+test("activityQuickAccessItems orders by favorites_order (slot table) when present", () => {
+  const b3 = editableBundle();
+  b3.activities[0].favorites_order = [3, 1, 2];
+  const items = activityQuickAccessItems(b3, 101);
+  assert.deepEqual(items.map((i4) => i4.buttonId), [3, 1, 2]);
+  assert.deepEqual(items.map((i4) => i4.kind), ["macro", "favorite", "favorite"]);
+});
+test("activityQuickAccessItems appends ids missing from favorites_order at the tail", () => {
+  const b3 = editableBundle();
+  b3.activities[0].favorites_order = [2, 1];
+  assert.deepEqual(activityQuickAccessItems(b3, 101).map((i4) => i4.buttonId), [2, 1, 3]);
+});
+test("activityQuickAccessItems tolerates stale ids in favorites_order", () => {
+  const b3 = editableBundle();
+  b3.activities[0].favorites_order = [9, 1, 2, 3];
+  assert.deepEqual(activityQuickAccessItems(b3, 101).map((i4) => i4.buttonId), [1, 2, 3]);
+});
+test("activityQuickAccessItems falls back to button_id order without favorites_order", () => {
+  assert.deepEqual(activityQuickAccessItems(editableBundle(), 101).map((i4) => i4.buttonId), [1, 2, 3]);
+});
+test("reorderBundleActivityQuickAccess writes favorites_order matching the new order", () => {
+  const next = reorderBundleActivityQuickAccess(editableBundle(), 101, [
+    { kind: "macro", buttonId: 3 },
+    { kind: "favorite", buttonId: 1 },
+    { kind: "favorite", buttonId: 2 }
+  ]);
+  const act = activity101(next);
+  assert.deepEqual(act.favorites_order, [1, 2, 3]);
+  assert.deepEqual(activityQuickAccessItems(next, 101).map((i4) => i4.kind), ["macro", "favorite", "favorite"]);
 });
 test("applyBundleDelete dispatches by target kind", () => {
   const next = applyBundleDelete(editableBundle(), { kind: "command", deviceId: 1, commandId: 10 });

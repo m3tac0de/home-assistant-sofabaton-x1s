@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   activityAddableDevices,
   activityButtonBindingItems,
+  activityQuickAccessItems,
   activityChainDependencyIds,
   activityRoleAssignments,
   bundleEditableDeviceOptions,
@@ -463,6 +464,49 @@ test("reorderBundleActivityQuickAccess follows macro-target binding refs", () =>
   assert.equal(bindings[1].long_press_command_id, 1);
   // …but a device command that merely shares the numeric id does not.
   assert.equal(bindings[2].command_id, 3);
+});
+
+test("activityQuickAccessItems orders by favorites_order (slot table) when present", () => {
+  // favorites (bid 1, 2) + macro (bid 3). The hub's 0x61 slot table puts the
+  // macro first — a reorder that never renumbered the button_ids. Display must
+  // follow the slot table, not the button_ids.
+  const b = editableBundle() as any;
+  b.activities[0].favorites_order = [3, 1, 2];
+  const items = activityQuickAccessItems(b, 101);
+  assert.deepEqual(items.map((i) => i.buttonId), [3, 1, 2]);
+  assert.deepEqual(items.map((i) => i.kind), ["macro", "favorite", "favorite"]);
+});
+
+test("activityQuickAccessItems appends ids missing from favorites_order at the tail", () => {
+  // A freshly-added shortcut (macro 3) isn't in the slot table yet → it must
+  // sort after every listed entry, in button_id order, not vanish or lead.
+  const b = editableBundle() as any;
+  b.activities[0].favorites_order = [2, 1];
+  assert.deepEqual(activityQuickAccessItems(b, 101).map((i) => i.buttonId), [2, 1, 3]);
+});
+
+test("activityQuickAccessItems tolerates stale ids in favorites_order", () => {
+  // A deleted favorite still named in the slot table (id 9) is a harmless gap.
+  const b = editableBundle() as any;
+  b.activities[0].favorites_order = [9, 1, 2, 3];
+  assert.deepEqual(activityQuickAccessItems(b, 101).map((i) => i.buttonId), [1, 2, 3]);
+});
+
+test("activityQuickAccessItems falls back to button_id order without favorites_order", () => {
+  assert.deepEqual(activityQuickAccessItems(editableBundle(), 101).map((i) => i.buttonId), [1, 2, 3]);
+});
+
+test("reorderBundleActivityQuickAccess writes favorites_order matching the new order", () => {
+  const next = reorderBundleActivityQuickAccess(editableBundle(), 101, [
+    { kind: "macro", buttonId: 3 },
+    { kind: "favorite", buttonId: 1 },
+    { kind: "favorite", buttonId: 2 },
+  ]) as any;
+  const act = activity101(next)!;
+  // Slot table is the dense positional order the renumbered button_ids use.
+  assert.deepEqual((act as any).favorites_order, [1, 2, 3]);
+  // Re-reading the display list reflects the move (macro now leads).
+  assert.deepEqual(activityQuickAccessItems(next, 101).map((i) => i.kind), ["macro", "favorite", "favorite"]);
 });
 
 test("applyBundleDelete dispatches by target kind", () => {

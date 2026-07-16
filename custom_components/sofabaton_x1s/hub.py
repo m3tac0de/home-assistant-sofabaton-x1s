@@ -1753,6 +1753,46 @@ class SofabatonHub:
                     self.entry_id,
                     bundle_hub_name,
                 )
+        if isinstance(result, dict) and result.get("status") == "success":
+            # Restore clears the per-entity structural caches for every
+            # rewritten device and activity and used to leave them cold.
+            # Finish with the blob-free whole-hub structural refresh (the
+            # same fetch as the Hub tab's "Refresh all") so the cache view
+            # and the live activity editor come back warm.
+            total_steps += 1
+            _progress(
+                status="running",
+                phase="cache_warm",
+                message="Restore complete -- warming the hub cache...",
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+            )
+            cache_warmed = True
+            try:
+                await self.async_refresh_hub_cache()
+                await self._async_persist_cache_if_enabled()
+            except Exception:  # noqa: BLE001 - warm is best-effort tail work
+                cache_warmed = False
+                self._log.warning(
+                    "[%s] restore finished, but the post-restore cache warm failed",
+                    self.entry_id,
+                    exc_info=True,
+                )
+            completed_steps += 1
+            result = dict(result)
+            result["cache_warmed"] = cache_warmed
+            _progress(
+                status="running",
+                phase="cache_warm",
+                message=(
+                    "Hub cache warmed."
+                    if cache_warmed
+                    else "Restore finished, but warming the hub cache failed; "
+                    "run Refresh all from the Hub tab to re-warm it."
+                ),
+                completed_steps=completed_steps,
+                total_steps=total_steps,
+            )
         if isinstance(result, dict):
             result = dict(result)
             result["_progress_completed_steps"] = completed_steps
@@ -3429,39 +3469,34 @@ class SofabatonHub:
                     current_step=7,
                     message="Refreshing activity maps and buttons",
                 )
+                # Re-warm every touched activity with the same clear-then-fetch
+                # sequence as the Hub tab's per-activity refresh. The write
+                # steps above (managed-device delete, activity re-add, favorite
+                # writes, the family-0x61 reorder and keymap writes) each
+                # invalidate parts of the per-activity cache, and a partial
+                # refetch here used to leave favorites and buttons cold after
+                # every deploy.
                 for act_id in sorted(activity_ids):
                     if not add_results.get(act_id, False):
                         continue
-                    self._reset_entity_cache(
-                        act_id,
-                        clear_buttons=True,
-                        clear_favorites=False,
-                        clear_macros=True,
-                    )
-                    await self.hass.async_add_executor_job(self._proxy.request_activity_mapping, act_id)
-                    _, buttons_ready = await self.hass.async_add_executor_job(
-                        partial(self._proxy.get_buttons_for_entity, act_id, fetch_if_missing=True)
-                    )
-                    await self.hass.async_add_executor_job(
-                        self._proxy.clear_entity_cache,
-                        act_id,
-                        True,
-                        False,
-                        True,
-                    )
-                    if not buttons_ready:
-                        await self._async_wait_for_buttons_ready(act_id)
-                    await self._async_wait_for_activity_map_ready(act_id)
-                    await self.hass.async_add_executor_job(
-                        partial(self._proxy.ensure_commands_for_activity, act_id, fetch_if_missing=True)
-                    )
-                    await self.hass.async_add_executor_job(
-                        partial(self._proxy.get_macros_for_activity, act_id, fetch_if_missing=True)
-                    )
+                    await self._async_fetch_activity_commands(act_id)
+                    if act_id in activities_with_favorites:
+                        # reorder_favorites dropped the cached family-0x61
+                        # display order; re-read it so the cache view sorts
+                        # favorites the way the remote now shows them.
+                        await self.async_request_favorites_order(act_id)
 
                 if activity_ids:
                     self._bump_cache_generation()
                     async_dispatcher_send(self.hass, signal_commands(self.entry_id))
+                    try:
+                        await self._async_persist_cache_if_enabled()
+                    except Exception:  # noqa: BLE001 - persist is best-effort
+                        self._log.debug(
+                            "[%s] post-deploy cache persist failed",
+                            self.entry_id,
+                            exc_info=True,
+                        )
 
                 self._set_command_sync_progress(
                     device_key=normalized_device_key,
