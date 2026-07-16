@@ -4,9 +4,10 @@
 #   .\scripts\deploy-ha.ps1 -SkipBuild   copy + restart only (backend-only change)
 #   .\scripts\deploy-ha.ps1 -NoRestart   copy only (e.g. batching several deploys)
 #
-# The HA API token lives in scripts\.ha-token (gitignored). After a deploy
-# that touches www/, the browser needs a hard refresh (Ctrl+Shift+R) to pick
-# up the new card bundle.
+# The HA API token lives in scripts\.ha-token and the instance URL / deploy
+# target in scripts\.ha-config.json (both gitignored; see
+# scripts\.ha-config.example.json). After a deploy that touches www/, the
+# browser needs a hard refresh (Ctrl+Shift+R) to pick up the new card bundle.
 
 param(
     [switch]$SkipBuild,
@@ -17,9 +18,18 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $source = Join-Path $repoRoot "custom_components\sofabaton_x1s"
-$target = "Z:\path\to\custom_components\sofabaton_x1s"
-$baseUrl = "https://YOUR-HA-HOST:8123"
 $tokenFile = Join-Path $PSScriptRoot ".ha-token"
+
+$configFile = Join-Path $PSScriptRoot ".ha-config.json"
+if (-not (Test-Path $configFile)) {
+    throw "Missing $configFile - copy scripts\.ha-config.example.json and fill in your instance."
+}
+$config = Get-Content $configFile -Raw | ConvertFrom-Json
+$target = $config.deploy_target
+$baseUrl = $config.base_url
+if (-not $target -or -not $baseUrl) {
+    throw "$configFile must define deploy_target and base_url."
+}
 
 if (-not (Test-Path $target)) {
     throw "Deploy target not reachable: $target (is the Z: network drive mapped?)"

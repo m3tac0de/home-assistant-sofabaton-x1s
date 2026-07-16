@@ -2,7 +2,7 @@
 
 Used to honor the single-client rule before a bench session (the harness
 cannot connect while HA owns the hub connection). Token comes from
-scripts/.ha-token.
+scripts/.ha-token; the instance URL from scripts/.ha-config.json.
 
 Usage:
     python ha_entry.py list
@@ -20,8 +20,10 @@ from pathlib import Path
 
 import websockets
 
-BASE = "wss://YOUR-HA-HOST:8123/api/websocket"
-TOKEN = (Path(__file__).resolve().parents[1] / ".ha-token").read_text(encoding="utf-8").strip()
+_SCRIPTS = Path(__file__).resolve().parents[1]
+_CONFIG = json.loads((_SCRIPTS / ".ha-config.json").read_text(encoding="utf-8"))
+BASE = _CONFIG["base_url"].replace("https://", "wss://", 1).replace("http://", "ws://", 1) + "/api/websocket"
+TOKEN = (_SCRIPTS / ".ha-token").read_text(encoding="utf-8").strip()
 
 
 async def _call(ws, msg_id: int, payload: dict) -> dict:

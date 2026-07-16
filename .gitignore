@@ -27,3 +27,4 @@ docs/internal/
 pytest.cmd
 dist/
 scripts/.ha-token
+scripts/.ha-config.json
