@@ -518,3 +518,72 @@ def test_ws_delete_command_device_keeps_listener_when_another_deployed_device_re
     assert conn.error is None
     assert conn.result == (22, {"deleted_config": True, "deleted_hub_device": True})
     assert hub.disable_calls == []
+
+
+class _EventActionStore:
+    def __init__(self):
+        from custom_components.sofabaton_x1s.command_config import (
+            normalize_hub_event_actions,
+        )
+        self._normalize = normalize_hub_event_actions
+        self.saved = None
+        self.actions = normalize_hub_event_actions(None)
+
+    def get_hub_event_actions(self, _entry_id):
+        return dict(self.actions)
+
+    async def async_set_hub_event_actions(self, _entry_id, actions):
+        self.actions = self._normalize(actions)
+        self.saved = dict(self.actions)
+        return dict(self.actions)
+
+
+def test_ws_hub_event_actions_roundtrip(monkeypatch):
+    conn = _Conn()
+    hub = _Hub()
+    store = _EventActionStore()
+
+    async def fake_resolve(_hass, _data):
+        return hub
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(integration, "_async_resolve_hub_from_data", fake_resolve)
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(
+            integration._ws_get_hub_event_actions(
+                SimpleNamespace(), conn, {"id": 11, "entity_id": "remote.living_room"}
+            )
+        )
+        assert conn.error is None
+        default_actions = conn.result[1]["actions"]
+        assert set(default_actions) == {"power_off", "redundant_off", "activity_start"}
+
+        loop.run_until_complete(
+            integration._ws_set_hub_event_actions(
+                SimpleNamespace(),
+                conn,
+                {
+                    "id": 12,
+                    "entity_id": "remote.living_room",
+                    "actions": {
+                        "redundant_off": {
+                            "action": "perform-action",
+                            "perform_action": "light.toggle",
+                            "target": {"entity_id": "light.hallway"},
+                        }
+                    },
+                },
+            )
+        )
+        assert conn.error is None
+        saved_actions = conn.result[1]["actions"]
+        assert saved_actions["redundant_off"]["perform_action"] == "light.toggle"
+        assert saved_actions["power_off"] == {"action": "perform-action"}
+        assert store.saved is not None
+    finally:
+        loop.close()

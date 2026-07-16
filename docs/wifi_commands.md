@@ -6,7 +6,7 @@ In the **Sofabaton Control Panel** card, open the **Wifi Commands** tab. Up to *
 
 1. **Add a Wifi Device**: Give it a name. Multiple devices are useful if you want separate logical groups of commands or separate power/input configurations per device.
 2. **Make a new command**: Give it a name, assign it to a physical button and/or make it a favorite. Decide which Activities to deploy it to.
-3. **Configure power / input** (optional): Mark a command as the device's Power ON or Power OFF command. Alternatively, a command can be configured to be an INPUT of the Wifi Device, and assigned to an Activity. The commands become part of the Activity's startup and shutdown sequences.
+3. **Configure power / activity start** (optional): On the device's slot page, choose which command runs when the hub turns the device on or off. Alternatively, a command can be set to run when an Activity starts (it becomes the Wifi Device's input for that Activity on the hub). These commands become part of the Activity's startup and shutdown sequences.
 4. **Configure an Action** to run whenever a key with the new command is pressed. These Actions run within the Home Assistant backend, the card is only there for configuration. **Configuring an Action is optional**: all Wifi Commands update status in `sensor.<hub>_wifi_commands`, so automations can be built to trigger from it.
 5. **Sync to hub** once configuration is completed. This will deploy the configuration directly to the hub.
 
@@ -37,19 +37,36 @@ Up to **5 Wifi Devices** can be created per hub. Each device has its own name, i
 
 Devices are managed in the **Wifi Commands** tab of the Control Panel card. Each device is independent: syncing one device does not affect the others.
 
+Renaming a deployed Wifi Device through the device editor (**Hub tab → Devices → Edit**) carries over automatically: the Wifi Commands configuration picks up the new name and the device stays in sync — no redeploy needed.
+
 ## Power control
 
-Each Wifi Device can have a dedicated **Power ON** command and a **Power OFF** command.
+Each Wifi Device can have a dedicated power **on** and power **off** command. These are configured at the top of the device's slot page:
+
+- *When the hub turns this device on, perform: `<command>`*
+- *When the hub turns this device off, perform: `<command>`*
 
 The hub treats the Wifi Device as a real device, and will trigger power commands whenever an Activity change requires it.  
 The commands are called in the startup and shutdown sequences of any Activity that has a command assigned from the Wifi Device.  
-A single Power ON and Power OFF command may be assigned per Wifi Device. The Wifi Commands UI enforces this.
+A single on and off command may be assigned per Wifi Device; the dropdowns list the device's configured commands and default to **Nothing**.
 
-## Input control
+## Perform a command when an Activity starts
 
-One or more commands in a Wifi Device can be designated as **INPUTS** and assigned an Activity.  
-These commands are called whenever the Activity is started, as part of its startup sequence.  
-Each Wifi Device may assign a single INPUT per Activity. The Wifi Commands UI enforces this.
+A command can be set (in its editor, under **Advanced**) to run whenever a chosen Activity starts.  
+Under the hood the command becomes the Wifi Device's INPUT for that Activity on the hub, so it is called as part of the Activity's startup sequence.  
+Each Wifi Device may assign a single command per Activity this way. The Wifi Commands UI enforces this. A command cannot be both a power command and an Activity-start command.
+
+## Hub Events
+
+At the bottom of the Wifi Devices list you can attach a Home Assistant Action to hub state changes:
+
+- **When the hub is switched OFF** — the hub left an Activity and is now powered off.
+- **When OFF is pressed while the hub is already OFF** — the OFF button was pressed with nothing left to turn off. Useful as a "force everything off" hook.
+- **When an Activity starts** — the hub switched into any Activity.
+
+Each line shows its configured Action; click it to change, or use the small ✕ to reset it to *do nothing*.
+
+Unlike Wifi Commands, these hooks live entirely in Home Assistant: they are never synced to the hub and no sync is needed after changing them. They also require no Wifi Device or command slots — they work purely from the hub's reported activity state.
 
 ## Configuration
 

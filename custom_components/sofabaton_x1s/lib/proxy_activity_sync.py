@@ -1291,6 +1291,7 @@ class ActivitySyncMixin:
         device_id = int(payload.get("device_id") or 0)
         dev_lo = device_id & 0xFF
         new_name = str(payload.get("name") or "")
+        new_brand = payload.get("brand")
         if not dev_lo:
             return False
 
@@ -1303,6 +1304,10 @@ class ActivitySyncMixin:
         try:
             config = parse_device_record(bytes(raw), hub_version=self.hub_version, entity_kind="device")
             renamed = replace(config, name=new_name, device_id=dev_lo)
+            if new_brand is not None:
+                # Managed Wifi Devices carry their command-config identity in
+                # the brand slot; a rename refreshes it in the same rewrite.
+                renamed = replace(renamed, brand=str(new_brand))
             body = build_device_create_payload(renamed, hub_version=self.hub_version)
         except (ValueError, TypeError):
             self._log.exception("[DEVICE_SYNC] device_rename: could not rebuild record dev=0x%02X", dev_lo)
@@ -1322,6 +1327,8 @@ class ActivitySyncMixin:
             return False
         if isinstance(device, dict):
             device["name"] = new_name
+            if new_brand is not None:
+                device["brand"] = str(new_brand)
             # A later head-record step in the same plan (device_ip) rebuilds
             # from this cached body; keep it current so the writes compose.
             device["raw_body"] = body[3:]

@@ -938,6 +938,96 @@ def test_command_rename_fetches_current_payload_and_relabels():
     assert kw["library_type"] == 0x0D
 
 
+def test_device_rename_step_rewrites_brand_when_supplied(monkeypatch):
+    """A managed Wifi Device rename refreshes the brand slot in the same
+    record rewrite (the HA layer stamps the new m3-<key>-<hash> brand into
+    the edited bundle; the executor must carry it onto the wire)."""
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    import custom_components.sofabaton_x1s.lib.proxy_activity_sync as pas
+
+    original = DeviceConfig(name="Lights", brand="m3-abcd1234-000000000000001", device_id=1)
+    raw_body = build_device_create_payload(original, hub_version="X1S")[3:]
+    cached = {"raw_body": raw_body, "name": "Lights", "brand": original.brand}
+
+    class RenameProxy(ActivitySyncMixin):
+        def __init__(self):
+            self._log = logging.getLogger("test.device_rename")
+            self.hub_version = "X1S"
+            self.state = SimpleNamespace(entities=lambda kind: {1: cached})
+
+        def reset_ack_queues(self):
+            pass
+
+    captured: list = []
+
+    def fake_run_create_sequence(proxy, steps):
+        captured.extend(steps)
+        return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(pas, "run_create_sequence", fake_run_create_sequence)
+
+    proxy = RenameProxy()
+    new_brand = "m3-abcd1234-000000000000002"
+    ok = proxy._sync_step_device_rename(
+        {"device_id": 1, "name": "Lampen", "brand": new_brand}
+    )
+
+    assert ok is True
+    assert len(captured) == 1
+    written = parse_device_record(
+        bytes(captured[0].payload[3:]), hub_version="X1S", entity_kind="device"
+    )
+    assert written.name == "Lampen"
+    assert written.brand == new_brand
+    # The cached entity follows so later steps and the burst-free view agree.
+    assert cached["name"] == "Lampen"
+    assert cached["brand"] == new_brand
+
+
+def test_device_rename_step_without_brand_preserves_the_brand(monkeypatch):
+    from custom_components.sofabaton_x1s.lib.devices import (
+        DeviceConfig,
+        build_device_create_payload,
+        parse_device_record,
+    )
+    import custom_components.sofabaton_x1s.lib.proxy_activity_sync as pas
+
+    original = DeviceConfig(name="Lights", brand="m3-abcd1234-000000000000001", device_id=1)
+    raw_body = build_device_create_payload(original, hub_version="X1S")[3:]
+    cached = {"raw_body": raw_body, "name": "Lights", "brand": original.brand}
+
+    class RenameProxy(ActivitySyncMixin):
+        def __init__(self):
+            self._log = logging.getLogger("test.device_rename")
+            self.hub_version = "X1S"
+            self.state = SimpleNamespace(entities=lambda kind: {1: cached})
+
+        def reset_ack_queues(self):
+            pass
+
+    captured: list = []
+
+    def fake_run_create_sequence(proxy, steps):
+        captured.extend(steps)
+        return SimpleNamespace(success=True)
+
+    monkeypatch.setattr(pas, "run_create_sequence", fake_run_create_sequence)
+
+    ok = RenameProxy()._sync_step_device_rename({"device_id": 1, "name": "Lampen"})
+
+    assert ok is True
+    written = parse_device_record(
+        bytes(captured[0].payload[3:]), hub_version="X1S", entity_kind="device"
+    )
+    assert written.name == "Lampen"
+    assert written.brand == original.brand
+    assert cached["brand"] == original.brand
+
+
 def test_command_rename_refuses_when_payload_unreadable():
     base = device_base_bundle()
     edited = copy.deepcopy(base)

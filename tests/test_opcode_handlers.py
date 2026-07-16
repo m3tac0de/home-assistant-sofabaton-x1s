@@ -1637,3 +1637,73 @@ def test_ack_ready_prefetches_when_cache_missing() -> None:
     assert OP_REQ_ACTIVITIES in opcodes
     assert OP_REQ_BUTTONS in opcodes
     assert OP_REQ_COMMANDS not in opcodes
+
+
+def _redundant_off_proxy() -> tuple[X1Proxy, list[str]]:
+    proxy = X1Proxy(
+        "127.0.0.1", proxy_udp_port=0, proxy_enabled=False, diag_dump=False, diag_parse=False
+    )
+    proxy.enqueue_cmd = lambda *args, **kwargs: True  # type: ignore[assignment]
+    fired: list[str] = []
+    proxy.on_redundant_off_press(lambda: fired.append("off"))
+    return proxy, fired
+
+
+def test_ack_ready_while_off_fires_redundant_off_after_state_stays_off() -> None:
+    proxy, fired = _redundant_off_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+    proxy._activities_catalog_ready = True
+    assert proxy.state.current_activity is None
+
+    handler = AckReadyHandler()
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+    assert fired == []  # armed, not fired yet
+
+    # The auto REQ_ACTIVITIES burst completes and the hub is still off.
+    proxy.handle_active_state("activities")
+    assert fired == ["off"]
+
+    # A later burst without a fresh ACK_READY must not fire again.
+    proxy.handle_active_state("activities")
+    assert fired == ["off"]
+
+
+def test_ack_ready_while_off_does_not_fire_when_an_activity_started() -> None:
+    proxy, fired = _redundant_off_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+    proxy._activities_catalog_ready = True
+
+    changes: list[tuple] = []
+    proxy.on_activity_change(lambda new_id, old_id, name: changes.append((new_id, old_id)))
+
+    handler = AckReadyHandler()
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+
+    # The refresh reveals an activity actually started.
+    proxy.state.set_hint(0x68)
+    proxy.handle_active_state("activities")
+    assert fired == []
+    assert changes == [(0x68, None)]
+
+
+def test_ack_ready_while_off_requires_known_catalog() -> None:
+    # At session start the state is None because it was never fetched;
+    # that must not arm the redundant-OFF check.
+    proxy, fired = _redundant_off_proxy()
+    proxy.can_issue_commands = lambda: True  # type: ignore[assignment]
+    assert proxy._activities_catalog_ready is False
+
+    handler = AckReadyHandler()
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+    proxy.handle_active_state("activities")
+    assert fired == []
+
+
+def test_ack_ready_with_proxy_client_fires_redundant_off_directly() -> None:
+    proxy, fired = _redundant_off_proxy()
+    proxy.can_issue_commands = lambda: False  # type: ignore[assignment]
+    proxy._activities_catalog_ready = True
+
+    handler = AckReadyHandler()
+    handler.handle(_build_payload_context(proxy, OP_ACK_READY, b"\x00", "ACK_READY"))
+    assert fired == ["off"]

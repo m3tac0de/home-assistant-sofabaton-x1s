@@ -191,6 +191,10 @@ class SofabatonHub:
         self.activities: Dict[int, Dict[str, Any]] = {}
         self.devices: Dict[int, Dict[str, Any]] = {}
         self.current_activity: Optional[int] = None
+        # Hub-level event hooks stay disarmed until the first activity-state
+        # resolution after (re)creating the proxy, so a restart that merely
+        # discovers an already-running activity doesn't fire user actions.
+        self._hub_event_hooks_armed = False
         self.client_connected: bool = False
         self.hub_connected: bool = False
         self.banner_model: str | None = None
@@ -461,7 +465,9 @@ class SofabatonHub:
         proxy.on_burst_end("commands", self._on_commands_burst)
         proxy.on_burst_end("macros", self._on_macros_burst)
         proxy.on_app_activation(self._on_app_activation)
+        proxy.on_redundant_off_press(self._on_redundant_off_press)
         proxy.transport.set_busy_gate(self.is_long_running_task_active)
+        self._hub_event_hooks_armed = False
         return proxy
 
     async def async_start(self) -> None:
@@ -532,10 +538,54 @@ class SofabatonHub:
             self.current_activity = new_id
             async_dispatcher_send(self.hass, signal_activity(self.entry_id))
 
+            hooks_armed = self._hub_event_hooks_armed
+            self._hub_event_hooks_armed = True
+
             if new_id is not None:
                 # ask for buttons, but dedup
                 self.hass.async_create_task(self._async_prime_buttons_for(new_id))
+                if hooks_armed:
+                    # Hub-level hook: an activity started.
+                    self.hass.async_create_task(
+                        self._async_run_hub_event_action("activity_start")
+                    )
+            elif old_id is not None and hooks_armed:
+                # Hub-level hook: the hub switched into POWERED OFF.
+                self.hass.async_create_task(
+                    self._async_run_hub_event_action("power_off")
+                )
         self.hass.loop.call_soon_threadsafe(_inner)
+
+    def _on_redundant_off_press(self) -> None:
+        def _inner() -> None:
+            self._log.debug(
+                "[%s] OFF pressed while hub already powered off",
+                self.entry_id,
+            )
+            self.hass.async_create_task(
+                self._async_run_hub_event_action("redundant_off")
+            )
+        self.hass.loop.call_soon_threadsafe(_inner)
+
+    async def _async_run_hub_event_action(self, event_key: str) -> None:
+        """Execute the user-configured action for a hub-level event hook.
+
+        These actions live only in the HA-side config store (never synced to
+        the hub); an unset hook carries the default no-op action payload,
+        which the executor ignores.
+        """
+
+        try:
+            store = await async_get_command_config_store(self.hass)
+            action = store.get_hub_event_actions(self.entry_id).get(event_key) or {}
+            await self._async_execute_action_config(action)
+        except Exception as err:  # pragma: no cover - service boundary
+            self._log.warning(
+                "[%s] Failed executing hub event action '%s': %s",
+                self.entry_id,
+                event_key,
+                err,
+            )
 
 
     def _sync_current_activity_from_cache(self, *, clear_when_unknown: bool = True) -> None:
@@ -2959,7 +3009,7 @@ class SofabatonHub:
         return sorted(hashes)
 
     async def _async_execute_action_config(self, action_config: dict[str, Any]) -> None:
-        self._log.warning("[WIFI_ACTION_DEBUG] action_config=%r", action_config)
+        self._log.debug("[WIFI_ACTION] action_config=%r", action_config)
         action = str(action_config.get("action") or "").lower().strip()
         implicit_service = (not action or action == "default") and (
             action_config.get("service") or action_config.get("perform_action")

@@ -21,7 +21,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse, cal
 from homeassistant.helpers import config_validation as cv
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later
-from homeassistant.helpers.dispatcher import async_dispatcher_connect
+from homeassistant.helpers.dispatcher import async_dispatcher_connect, async_dispatcher_send
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import (
@@ -39,6 +39,7 @@ from .const import (
     CONF_ROKU_LISTEN_PORT,
     DEFAULT_ROKU_LISTEN_PORT,
     format_hub_entry_title,
+    signal_command_sync,
     signal_ip_commands,
     HVER_BY_HUB_VERSION,
     HUB_VERSION_BY_HVER,
@@ -50,12 +51,15 @@ from .diagnostics import (
     async_setup_diagnostics,
     async_teardown_diagnostics,
 )
-from .hub import SofabatonHub, get_hub_model
+from .hub import SofabatonHub, _parse_managed_wifi_brand, get_hub_model
 from .command_config import (
+    COMMAND_BRAND_PREFIX,
     CommandConfigStore,
     MAX_WIFI_DEVICES,
     async_get_command_config_store,
+    compute_commands_hash,
     count_configured_command_slots,
+    normalize_hub_event_actions,
     normalize_command_id_list,
     normalize_power_command_id,
     wifi_device_requires_listener,
@@ -966,6 +970,44 @@ async def _ws_set_command_config(hass: HomeAssistant, connection, msg: dict[str,
 
 @websocket_api.websocket_command(
     {
+        vol.Required("type"): f"{DOMAIN}/hub_event_actions/get",
+        vol.Required("entity_id"): cv.entity_id,
+    }
+)
+@websocket_api.async_response
+async def _ws_get_hub_event_actions(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    store = await _async_get_command_config_store(hass)
+    connection.send_result(msg["id"], {"actions": store.get_hub_event_actions(hub.entry_id)})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/hub_event_actions/set",
+        vol.Required("entity_id"): cv.entity_id,
+        vol.Required("actions"): dict,
+    }
+)
+@websocket_api.async_response
+async def _ws_set_hub_event_actions(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    hub = await _async_resolve_hub_from_data(hass, {"entity_id": msg["entity_id"]})
+    if hub is None:
+        connection.send_error(msg["id"], "not_found", "Could not resolve Sofabaton hub")
+        return
+
+    store = await _async_get_command_config_store(hass)
+    actions = await store.async_set_hub_event_actions(
+        hub.entry_id, normalize_hub_event_actions(msg["actions"])
+    )
+    connection.send_result(msg["id"], {"actions": actions})
+
+
+@websocket_api.websocket_command(
+    {
         vol.Required("type"): f"{DOMAIN}/command_sync/progress",
         vol.Required("entity_id"): cv.entity_id,
         vol.Optional("device_key"): str,
@@ -1853,6 +1895,95 @@ def _validate_entity_sync_inputs(
     return baseline, edited, entity_id
 
 
+def _find_bundle_device_block(bundle: dict[str, Any], entity_id: int) -> dict[str, Any] | None:
+    for entry in bundle.get("devices") or []:
+        if not isinstance(entry, dict):
+            continue
+        block = entry.get("device")
+        if isinstance(block, dict) and int(block.get("device_id") or 0) == entity_id:
+            return block
+    return None
+
+
+async def _async_prepare_managed_wifi_rename(
+    hass: HomeAssistant,
+    hub: SofabatonHub,
+    *,
+    baseline: dict[str, Any],
+    edited: dict[str, Any],
+    entity_id: int,
+) -> dict[str, Any] | None:
+    """Detect a live-editor rename of a deployed managed Wifi Device.
+
+    When the renamed hub device carries a managed ``m3-<key>-<hash>`` brand,
+    the command-config store must follow the new name — otherwise the Wifi
+    Commands tab keeps showing the old name and the next deploy silently
+    reverts the rename. The commands hash covers the device name, so for a
+    record that is currently in sync the refreshed hash is stamped into the
+    edited bundle's brand slot here (the rename record-rewrite carries it to
+    the hub) and returned for the post-sync store update; the record then
+    stays in sync instead of demanding a redeploy for a mere rename.
+
+    Returns the pending store update (applied only after the sync succeeds),
+    or None when the edit is not a managed Wifi Device rename.
+    """
+
+    base_block = _find_bundle_device_block(baseline, entity_id)
+    edit_block = _find_bundle_device_block(edited, entity_id)
+    if base_block is None or edit_block is None:
+        return None
+    old_name = str(base_block.get("name") or "").strip()
+    new_name = str(edit_block.get("name") or "").strip()
+    if not new_name or new_name == old_name:
+        return None
+
+    device_key, _brand_hash = _parse_managed_wifi_brand(str(base_block.get("brand") or ""))
+
+    store = await _async_get_command_config_store(hass)
+    roku_listen_port = _resolve_roku_listen_port(hass, hub.entry_id)
+    stored_devices = await store.async_list_hub_devices(
+        hub.entry_id, roku_listen_port=roku_listen_port
+    )
+    record = None
+    if device_key:
+        record = next(
+            (item for item in stored_devices if str(item.get("device_key") or "") == device_key),
+            None,
+        )
+    if record is None:
+        matches = [
+            item for item in stored_devices if item.get("deployed_device_id") == entity_id
+        ]
+        record = matches[0] if len(matches) == 1 else None
+    if record is None:
+        return None
+
+    record_key = str(record.get("device_key") or "")
+    commands_hash = str(record.get("commands_hash") or "").strip()
+    deployed_hash = str(record.get("deployed_commands_hash") or "").strip()
+    in_sync = bool(deployed_hash) and commands_hash == deployed_hash
+    new_hash: str | None = None
+    if in_sync:
+        new_hash = compute_commands_hash(
+            list(record.get("commands") or []),
+            device_name=new_name,
+            roku_listen_port=roku_listen_port,
+            power_on_command_id=record.get("power_on_command_id"),
+            power_off_command_id=record.get("power_off_command_id"),
+        )
+        # The reconcile pass mirrors the hub-side brand hash back into the
+        # store on every device burst, so the brand must be rewritten along
+        # with the name or the refreshed store hash would be clobbered and
+        # the device flagged out of sync again.
+        edit_block["brand"] = f"{COMMAND_BRAND_PREFIX}-{record_key}-{new_hash}"
+
+    return {
+        "device_key": record_key,
+        "device_name": new_name,
+        "deployed_commands_hash": new_hash,
+    }
+
+
 async def _run_entity_sync_operation(
     hass: HomeAssistant,
     operation_id: str,
@@ -1864,6 +1995,19 @@ async def _run_entity_sync_operation(
     entity_id: int,
 ) -> None:
     registry = _backup_operation_registry(hass)
+
+    pending_wifi_rename: dict[str, Any] | None = None
+    if entity_kind == "device":
+        try:
+            pending_wifi_rename = await _async_prepare_managed_wifi_rename(
+                hass,
+                hub,
+                baseline=baseline,
+                edited=edited,
+                entity_id=entity_id,
+            )
+        except Exception:  # pragma: no cover - propagation must never block a sync
+            _LOGGER.exception("[device_sync] managed wifi rename detection failed")
 
     def _progress(**payload: Any) -> None:
         registry.update_from_thread(operation_id, **payload)
@@ -1936,6 +2080,22 @@ async def _run_entity_sync_operation(
     # baseline that fails the next sync's stale preflight. Keeping the
     # operation "running" also keeps the busy-guard closed until on-demand
     # bundles are trustworthy again.
+    if pending_wifi_rename is not None:
+        # The hub-side rename is committed; make the wifi-commands store
+        # follow so the Wifi Commands tab shows the new name and the next
+        # deploy doesn't revert it. Best-effort: the sync itself succeeded.
+        try:
+            store = await _async_get_command_config_store(hass)
+            await store.async_rename_hub_device(
+                hub.entry_id,
+                pending_wifi_rename["device_key"],
+                pending_wifi_rename["device_name"],
+                deployed_commands_hash=pending_wifi_rename["deployed_commands_hash"],
+            )
+            async_dispatcher_send(hass, signal_command_sync(hub.entry_id))
+        except Exception:  # pragma: no cover - propagation must never fail the sync
+            _LOGGER.exception("[device_sync] managed wifi rename propagation failed")
+
     completed_steps = int((result or {}).get("total_steps") or 0)
     registry.update(
         operation_id,
@@ -2699,6 +2859,8 @@ def _register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, _ws_list_command_devices)
     websocket_api.async_register_command(hass, _ws_create_command_device)
     websocket_api.async_register_command(hass, _ws_delete_command_device)
+    websocket_api.async_register_command(hass, _ws_get_hub_event_actions)
+    websocket_api.async_register_command(hass, _ws_set_hub_event_actions)
     websocket_api.async_register_command(hass, _ws_get_control_panel_state)
     websocket_api.async_register_command(hass, _ws_control_panel_set_setting)
     websocket_api.async_register_command(hass, _ws_control_panel_run_action)

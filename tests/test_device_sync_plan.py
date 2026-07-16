@@ -209,6 +209,34 @@ def test_device_rename_emits_a_rename_step() -> None:
     assert plan[0].payload == {"device_id": DEVICE_ID, "name": "TV"}
 
 
+def test_device_rename_with_brand_change_carries_the_brand() -> None:
+    # A managed Wifi Device rename refreshes the m3-<key>-<hash> brand in
+    # the same record rewrite (the hash covers the device name).
+    base = base_bundle()
+    _device(base)["device"]["brand"] = "m3-abcd1234-000000000000001"
+    edited = copy.deepcopy(base)
+    _device(edited)["device"]["name"] = "TV"
+    _device(edited)["device"]["brand"] = "m3-abcd1234-000000000000002"
+    plan = build_device_sync_plan(base, edited, DEVICE_ID)
+    assert _kinds(plan) == ["device_rename"]
+    assert plan[0].payload == {
+        "device_id": DEVICE_ID,
+        "name": "TV",
+        "brand": "m3-abcd1234-000000000000002",
+    }
+
+
+def test_brand_only_change_is_in_scope_and_plans_a_rename_step() -> None:
+    base = base_bundle()
+    _device(base)["device"]["brand"] = "m3-abcd1234-000000000000001"
+    edited = copy.deepcopy(base)
+    _device(edited)["device"]["brand"] = "m3-abcd1234-000000000000002"
+    plan = build_device_sync_plan(base, edited, DEVICE_ID)
+    assert _kinds(plan) == ["device_rename"]
+    assert plan[0].payload["brand"] == "m3-abcd1234-000000000000002"
+    assert plan[0].payload["name"] == "Television"
+
+
 def test_device_ip_change_emits_a_device_ip_step() -> None:
     base = base_bundle()
     _device(base)["device"]["ip_address"] = "192.168.1.40"

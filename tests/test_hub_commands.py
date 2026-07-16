@@ -5063,3 +5063,91 @@ def test_sync_command_config_ignores_orphaned_activities(monkeypatch):
     assert add_calls == []
 
     loop.close()
+
+
+def _make_event_hook_hub(monkeypatch):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    hass = FakeHass(loop)
+
+    hub = SofabatonHub(
+        hass,
+        "entry-id",
+        "hub-name",
+        "127.0.0.1",
+        1234,
+        {},
+        9999,
+        10000,
+        True,
+        False,
+    )
+
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.hub.async_dispatcher_send", lambda *_: None
+    )
+
+    async def _noop_prime(_activity_id):
+        return None
+
+    monkeypatch.setattr(hub, "_async_prime_buttons_for", _noop_prime)
+
+    executed: list[dict] = []
+
+    async def _record_action(action_config):
+        executed.append(dict(action_config))
+
+    monkeypatch.setattr(hub, "_async_execute_action_config", _record_action)
+
+    class _EventStore:
+        def get_hub_event_actions(self, _entry_id):
+            return {
+                "power_off": {"action": "perform-action", "perform_action": "script.hub_off"},
+                "redundant_off": {"action": "perform-action", "perform_action": "script.still_off"},
+                "activity_start": {"action": "perform-action", "perform_action": "script.started"},
+            }
+
+    async def _fake_store(_hass):
+        return _EventStore()
+
+    monkeypatch.setattr(
+        "custom_components.sofabaton_x1s.hub.async_get_command_config_store", _fake_store
+    )
+
+    def _drain():
+        loop.run_until_complete(asyncio.sleep(0))
+        loop.run_until_complete(asyncio.sleep(0))
+
+    return hub, loop, executed, _drain
+
+
+def test_hub_event_actions_fire_on_activity_transitions(monkeypatch):
+    hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
+    try:
+        # First resolution after startup only arms the hooks.
+        hub._on_activity_change(5, None, "Movie")
+        drain()
+        assert executed == []
+
+        hub._on_activity_change(None, 5, None)
+        drain()
+        assert [a.get("perform_action") for a in executed] == ["script.hub_off"]
+
+        hub._on_activity_change(7, None, "Music")
+        drain()
+        assert [a.get("perform_action") for a in executed] == [
+            "script.hub_off",
+            "script.started",
+        ]
+    finally:
+        loop.close()
+
+
+def test_hub_event_actions_redundant_off_press(monkeypatch):
+    hub, loop, executed, drain = _make_event_hook_hub(monkeypatch)
+    try:
+        hub._on_redundant_off_press()
+        drain()
+        assert [a.get("perform_action") for a in executed] == ["script.still_off"]
+    finally:
+        loop.close()

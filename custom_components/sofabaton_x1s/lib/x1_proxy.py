@@ -460,6 +460,11 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
         self._client_state_listeners: list[callable] = []
         self._ota_update_listeners: list[callable] = []
         self._activation_listeners: list[callable] = []
+        self._redundant_off_listeners: list[Callable[[], None]] = []
+        # Set when ACK_READY arrives while the hub is already powered off;
+        # resolved by the next active-state evaluation (see
+        # handle_active_state). A no-op OFF press is the only known trigger.
+        self._pending_redundant_off_check = False
         self._app_devices_deadline: float | None = None
         self._app_devices_retry_sent = False
         self._pending_virtual: dict[str, Any] | None = None
@@ -617,11 +622,28 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
 
     def handle_active_state(self, trigger: str) -> None:
         new_id, old_id = self.state.update_activity_state()
+        pending_redundant_off = self._pending_redundant_off_check
+        self._pending_redundant_off_check = False
         if new_id != old_id:
             if new_id is not None:
                 self._notify_activity_change(new_id & 0xFF, old_id & 0xFF if old_id is not None else None)
             else:
                 self._notify_activity_change(None, old_id & 0xFF if old_id is not None else None)
+        elif pending_redundant_off and new_id is None:
+            # ACK_READY fired while the hub was already powered off and the
+            # refreshed state confirms nothing changed: the only known cause
+            # is an OFF press on the remote while everything was already off.
+            self._log.info("[HINT] OFF pressed while hub already powered off")
+            self._notify_redundant_off_press()
+
+    def flag_pending_redundant_off_check(self) -> None:
+        """Arm the redundant-OFF check for the next active-state evaluation.
+
+        Called when ACK_READY arrives while the cached state says the hub is
+        already powered off (see :class:`AckReadyHandler`).
+        """
+
+        self._pending_redundant_off_check = True
     
     def enable_proxy(self) -> None:
         self._proxy_enabled = True
@@ -863,6 +885,17 @@ class X1Proxy(FrameDecodeMixin, IrBlobMixin, CatalogMixin, AckWaitersMixin, Acti
     def on_activity_change(self, cb) -> None:
         """cb(new_id: int | None, old_id: int | None, name: str | None)"""
         self._activity_listeners.append(cb)
+
+    def on_redundant_off_press(self, cb: Callable[[], None]) -> None:
+        """cb() fired when OFF is pressed while the hub is already powered off."""
+        self._redundant_off_listeners.append(cb)
+
+    def _notify_redundant_off_press(self) -> None:
+        for cb in self._redundant_off_listeners:
+            try:
+                cb()
+            except Exception:
+                self._log.exception("redundant off-press listener failed")
 
     def on_app_activation(self, cb) -> None:
         """cb(record: dict[str, Any])"""

@@ -507,6 +507,165 @@ def test_entity_sync_success_published_after_cache_refresh(monkeypatch):
     assert _status() == "success"
 
 
+# ── Managed Wifi Device rename propagation ──────────────────────────────
+
+
+def _wifi_rename_env(monkeypatch, *, in_sync):
+    """Seed a command-config store with one deployed Wifi Device and build
+    baseline/edited device bundles renaming it. Returns (hass, store,
+    device_key, baseline, edited, dispatched, hub)."""
+    from custom_components.sofabaton_x1s.command_config import (
+        CommandConfigStore,
+        compute_commands_hash,
+    )
+
+    monkeypatch.setattr(integration, "async_call_later", lambda *_a, **_k: (lambda: None))
+
+    hass = SimpleNamespace(data={integration.DOMAIN: {}})
+
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+    created = _run(store.async_create_hub_device("entry-1", "Lights"))
+    device_key = created["device_key"]
+    commands = [{"name": "Toggle", "add_as_favorite": True, "activities": ["101"]}]
+    payload = _run(store.async_set_hub_commands("entry-1", commands, device_key=device_key))
+    deployed_hash = payload["commands_hash"] if in_sync else "feedfeedfeedfee"
+    _run(store.async_save_deployed_wifi_commands(
+        "entry-1", device_key, payload["commands"],
+        deployed_device_id=5, commands_hash=deployed_hash,
+    ))
+
+    async def fake_store(_hass):
+        return store
+
+    monkeypatch.setattr(integration, "_async_get_command_config_store", fake_store)
+
+    class _DisabledStore:
+        enabled = False
+
+    async def fake_cache_store(_hass):
+        return _DisabledStore()
+
+    monkeypatch.setattr(integration, "_async_get_persistent_cache_store", fake_cache_store)
+
+    dispatched = []
+    monkeypatch.setattr(
+        integration, "async_dispatcher_send",
+        lambda _hass, signal, *args: dispatched.append(signal),
+    )
+
+    brand = f"m3-{device_key}-{deployed_hash}"
+
+    def _dev_bundle(name):
+        return {
+            "kind": "hub_bundle",
+            "schema_version": integration.HUB_BUNDLE_SCHEMA_VERSION,
+            "hub": {"name": "Living Room", "version": "X1S"},
+            "devices": [{
+                "device": {"device_id": 5, "name": name, "brand": brand},
+                "commands": [{"command_id": 1, "name": "Toggle"}],
+            }],
+            "activities": [],
+        }
+
+    class _SyncingHub(_Hub):
+        synced_edited = None
+
+        async def async_sync_device(self, *, baseline, edited, device_id, progress_callback=None):
+            self.synced_edited = edited
+            return {"status": "success", "completed_steps": 1, "total_steps": 1}
+
+        async def async_request_catalog(self, kind):
+            pass
+
+        async def async_refresh_entity_structure(self, *, kind, ent_id):
+            pass
+
+    hub = _SyncingHub()
+    return hass, store, device_key, _dev_bundle("Lights"), _dev_bundle("Lampen"), dispatched, hub
+
+
+def test_device_sync_rename_propagates_to_wifi_store_and_stays_in_sync(monkeypatch):
+    from custom_components.sofabaton_x1s.command_config import compute_commands_hash
+
+    hass, store, device_key, baseline, edited, dispatched, hub = _wifi_rename_env(
+        monkeypatch, in_sync=True
+    )
+    registry = integration._backup_operation_registry(hass)
+    operation_id = registry.create(
+        kind="device_sync", entry_id="entry-1",
+        initial_state={"status": "pending", "phase": "queued"},
+    )
+
+    _run(integration._run_entity_sync_operation(
+        hass, operation_id, hub=hub,
+        baseline=baseline, edited=edited,
+        entity_kind="device", entity_id=5,
+    ))
+
+    record = _run(store.async_get_hub_config("entry-1", device_key=device_key))
+    assert record["device_name"] == "Lampen"
+    # The hash covers the device name; the deployed hash follows so a mere
+    # rename does not demand a redeploy.
+    assert record["commands_hash"] == record["deployed_commands_hash"]
+    new_hash = record["commands_hash"]
+    # The hub-side brand was refreshed in the same sync, so the reconcile
+    # pass (which mirrors the brand hash back into the store) agrees too.
+    synced_brand = hub.synced_edited["devices"][0]["device"]["brand"]
+    assert synced_brand == f"m3-{device_key}-{new_hash}"
+    assert integration.signal_command_sync("entry-1") in dispatched
+
+
+def test_device_sync_rename_of_out_of_sync_record_updates_name_only(monkeypatch):
+    hass, store, device_key, baseline, edited, dispatched, hub = _wifi_rename_env(
+        monkeypatch, in_sync=False
+    )
+    registry = integration._backup_operation_registry(hass)
+    operation_id = registry.create(
+        kind="device_sync", entry_id="entry-1",
+        initial_state={"status": "pending", "phase": "queued"},
+    )
+
+    _run(integration._run_entity_sync_operation(
+        hass, operation_id, hub=hub,
+        baseline=baseline, edited=edited,
+        entity_kind="device", entity_id=5,
+    ))
+
+    record = _run(store.async_get_hub_config("entry-1", device_key=device_key))
+    assert record["device_name"] == "Lampen"
+    # Already out of sync before the rename: the deployed hash (and the
+    # hub-side brand) stay untouched; the pending redeploy applies the rest.
+    assert record["deployed_commands_hash"] == "feedfeedfeedfee"
+    synced_brand = hub.synced_edited["devices"][0]["device"]["brand"]
+    assert synced_brand == f"m3-{device_key}-feedfeedfeedfee"
+
+
+def test_device_sync_rename_of_unmanaged_device_leaves_store_alone(monkeypatch):
+    hass, store, device_key, baseline, edited, dispatched, hub = _wifi_rename_env(
+        monkeypatch, in_sync=True
+    )
+    # Strip the managed brand and any deployed-id match: a plain IR device.
+    for bundle in (baseline, edited):
+        bundle["devices"][0]["device"]["brand"] = "Sony"
+        bundle["devices"][0]["device"]["device_id"] = 9
+    registry = integration._backup_operation_registry(hass)
+    operation_id = registry.create(
+        kind="device_sync", entry_id="entry-1",
+        initial_state={"status": "pending", "phase": "queued"},
+    )
+
+    _run(integration._run_entity_sync_operation(
+        hass, operation_id, hub=hub,
+        baseline=baseline, edited=edited,
+        entity_kind="device", entity_id=9,
+    ))
+
+    record = _run(store.async_get_hub_config("entry-1", device_key=device_key))
+    assert record["device_name"] == "Lights"
+    assert hub.synced_edited["devices"][0]["device"]["brand"] == "Sony"
+
+
 def test_ws_entity_delete_blocked_when_locked(monkeypatch):
     conn = _Conn()
     hub = _DeletingHub({"status": "success"})

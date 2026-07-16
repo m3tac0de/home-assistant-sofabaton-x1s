@@ -368,7 +368,7 @@ def build_device_sync_plan(
     including the power-on/off sequences — and button bindings), its
     idle/power byte, its input records, its command records (payload
     overwrites, renames, and additions flagged ``restore_data.new``),
-    its name, and its head ``ip_address``. Everything else (other head
+    its name and brand, and its head ``ip_address``. Everything else (other head
     config, other devices, every activity) must be byte-identical
     between the two bundles.
 
@@ -427,13 +427,22 @@ def build_device_sync_plan(
 
     base_name = str((base_dev.get("device") or {}).get("name") or "")
     edit_name = str((edit_dev.get("device") or {}).get("name") or "")
-    if base_name != edit_name:
+    base_brand = str((base_dev.get("device") or {}).get("brand") or "")
+    edit_brand = str((edit_dev.get("device") or {}).get("brand") or "")
+    if base_name != edit_name or base_brand != edit_brand:
+        # The brand slot rides along in the same record rewrite: for managed
+        # Wifi Devices the HA layer stamps a refreshed m3-<key>-<hash> brand
+        # into the edited bundle so a rename keeps the hub-side brand hash in
+        # step with the command-config store.
+        payload: dict[str, Any] = {"device_id": device_id, "name": edit_name}
+        if base_brand != edit_brand:
+            payload["brand"] = edit_brand
         rename.append(
             SyncStep(
                 kind="device_rename",
                 label="Renaming the device…",
                 target_device_id=device_id,
-                payload={"device_id": device_id, "name": edit_name},
+                payload=payload,
             )
         )
 
@@ -501,10 +510,11 @@ def _device_immutable_signature(device: Mapping[str, Any]) -> str:
     block = dict(trimmed.get("device") or {})
     block.pop("idle_behavior", None)
     block.pop("power_mode", None)
-    # The name (device_rename step) and head IP (device_ip step) are
-    # live-editable fields; exclude them from the signature so an edit to
-    # either stays in scope.
+    # The name and brand (device_rename step) and head IP (device_ip step)
+    # are live-editable fields; exclude them from the signature so an edit
+    # to any of them stays in scope.
     block.pop("name", None)
+    block.pop("brand", None)
     block.pop("ip_address", None)
     trimmed["device"] = block
     # A command's *payload* (command_payload step) and *name* (command_rename

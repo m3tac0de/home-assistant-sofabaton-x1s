@@ -535,3 +535,107 @@ def test_normalize_commands_drops_orphaned_activities() -> None:
     assert normalized[0]["activities"] == []
     assert normalized[1]["activities"] == ["101"]
     assert normalized[2]["activities"] == ["102"]
+
+
+def test_hub_event_actions_default_to_noop_payloads() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    actions = store.get_hub_event_actions("hub-1")
+    assert set(actions) == {"power_off", "redundant_off", "activity_start"}
+    for payload in actions.values():
+        assert payload == {"action": "perform-action"}
+
+
+def test_hub_event_actions_persist_and_normalize() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    saved = _run(
+        store.async_set_hub_event_actions(
+            "hub-1",
+            {
+                "power_off": {
+                    "action": "perform-action",
+                    "perform_action": "light.turn_off",
+                    "target": {"entity_id": "light.living_room"},
+                },
+                "activity_start": {"perform_action": "scene.turn_on"},
+                "unknown_key": {"perform_action": "ignored.service"},
+            },
+        )
+    )
+
+    assert set(saved) == {"power_off", "redundant_off", "activity_start"}
+    assert saved["power_off"]["perform_action"] == "light.turn_off"
+    # Missing hooks come back as the default no-op payload.
+    assert saved["redundant_off"] == {"action": "perform-action"}
+    # Actions without an explicit `action` gain the default marker.
+    assert saved["activity_start"]["action"] == "perform-action"
+    assert saved["activity_start"]["perform_action"] == "scene.turn_on"
+    # Unknown keys are dropped.
+    assert "unknown_key" not in saved
+
+    loaded = store.get_hub_event_actions("hub-1")
+    assert loaded == saved
+
+
+def test_hub_event_actions_do_not_leak_into_device_payloads() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    baseline = _run(store.async_get_hub_config("hub-1"))
+    _run(
+        store.async_set_hub_event_actions(
+            "hub-1",
+            {"power_off": {"perform_action": "light.turn_off"}},
+        )
+    )
+    after = _run(store.async_get_hub_config("hub-1"))
+    assert after["commands_hash"] == baseline["commands_hash"]
+    assert "event_actions" not in after
+
+
+def test_rename_hub_device_updates_name_and_optional_deployed_hash() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    created = _run(store.async_create_hub_device("hub-1", "Lights"))
+    device_key = created["device_key"]
+    _run(
+        store.async_save_deployed_wifi_commands(
+            "hub-1", device_key, [], deployed_device_id=5, commands_hash="oldhash"
+        )
+    )
+
+    # Name-only rename leaves the deployed hash untouched.
+    assert _run(store.async_rename_hub_device("hub-1", device_key, "Lampen")) is True
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["device_name"] == "Lampen"
+    assert record["deployed_commands_hash"] == "oldhash"
+
+    # Rename with a refreshed deployed hash (in-sync rename) updates both.
+    assert _run(
+        store.async_rename_hub_device(
+            "hub-1", device_key, "Verlichting", deployed_commands_hash="newhash"
+        )
+    ) is True
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["device_name"] == "Verlichting"
+    assert record["deployed_commands_hash"] == "newhash"
+
+    # No-op rename reports no change.
+    assert _run(store.async_rename_hub_device("hub-1", device_key, "Verlichting")) is False
+
+
+def test_rename_hub_device_rejects_unknown_key_and_empty_name() -> None:
+    store = CommandConfigStore(SimpleNamespace())
+    _run(store.async_load())
+
+    created = _run(store.async_create_hub_device("hub-1", "Lights"))
+    device_key = created["device_key"]
+
+    assert _run(store.async_rename_hub_device("hub-1", "nosuchkey", "X")) is False
+    assert _run(store.async_rename_hub_device("hub-1", device_key, "   ")) is False
+    record = _run(store.async_get_hub_config("hub-1", device_key=device_key))
+    assert record["device_name"] == "Lights"

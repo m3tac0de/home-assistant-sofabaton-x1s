@@ -26,6 +26,13 @@ DEFAULT_WIFI_DEVICE_NAME = "Home Assistant"
 
 DEFAULT_COMMAND_ACTION = {"action": "perform-action"}
 
+# Hub-level event hooks. These live only in the HA-side config store and are
+# never synced to the hub:
+#   power_off      - the hub switched from an activity into POWERED OFF
+#   redundant_off  - OFF was pressed while the hub was already POWERED OFF
+#   activity_start - the hub switched into an activity
+HUB_EVENT_ACTION_KEYS = ("power_off", "redundant_off", "activity_start")
+
 _SPACE_RE = re.compile(r"\s+")
 
 
@@ -143,6 +150,20 @@ def _normalize_action(action: Any) -> dict[str, Any]:
         return dict(action) if action.get("action") else {**action, **DEFAULT_COMMAND_ACTION}
 
     return dict(DEFAULT_COMMAND_ACTION)
+
+
+def normalize_hub_event_actions(raw: Any) -> dict[str, dict[str, Any]]:
+    """Normalize the hub-level event-action mapping.
+
+    Always returns every key in :data:`HUB_EVENT_ACTION_KEYS`; unset hooks
+    carry the default (no-op) action payload.
+    """
+
+    source = raw if isinstance(raw, dict) else {}
+    return {
+        key: _normalize_action(source.get(key))
+        for key in HUB_EVENT_ACTION_KEYS
+    }
 
 
 def normalize_commands(raw: Any) -> list[dict[str, Any]]:
@@ -412,6 +433,7 @@ class CommandConfigStore:
                 "hubs": {
                     entry_id: {
                         "devices": deepcopy(devices),
+                        "event_actions": self.get_hub_event_actions(entry_id),
                     }
                 }
             },
@@ -451,6 +473,48 @@ class CommandConfigStore:
         devices.append(payload)
         await self._store.async_save(self._data)
         return self._payload_for_device(payload, roku_listen_port=roku_listen_port)
+
+    async def async_rename_hub_device(
+        self,
+        entry_id: str,
+        device_key: str,
+        device_name: str,
+        *,
+        deployed_commands_hash: str | None = None,
+    ) -> bool:
+        """Rename an existing Wifi Device record in place.
+
+        Used when a deployed managed device is renamed through the live
+        device editor: the hub already carries the new name, so the store
+        must follow instead of flagging (or later reverting) the rename.
+        When the record was in sync at rename time the caller passes the
+        recomputed *deployed_commands_hash* (the hash covers the device
+        name) so the record stays in sync.
+        """
+
+        devices = self._hub_device_records(entry_id)
+        normalized_key = _normalize_device_key(device_key)
+        device = next(
+            (item for item in devices if item["device_key"] == normalized_key),
+            None,
+        )
+        if device is None:
+            return False
+        normalized_name = str(device_name or "").strip()
+        if not normalized_name:
+            return False
+        changed = False
+        if device.get("device_name") != normalized_name:
+            device["device_name"] = normalized_name
+            changed = True
+        if deployed_commands_hash is not None:
+            normalized_hash = str(deployed_commands_hash or "").strip()
+            if str(device.get("deployed_commands_hash") or "").strip() != normalized_hash:
+                device["deployed_commands_hash"] = normalized_hash
+                changed = True
+        if changed:
+            await self._store.async_save(self._data)
+        return changed
 
     async def async_delete_hub_device(self, entry_id: str, device_key: str) -> bool:
         devices = self._hub_device_records(entry_id)
@@ -629,6 +693,22 @@ class CommandConfigStore:
         if 0 <= command_index < len(commands):
             return commands[command_index]
         return None
+
+    def get_hub_event_actions(self, entry_id: str) -> dict[str, dict[str, Any]]:
+        """Return the hub-level event actions (HA-side only, never synced)."""
+
+        hub = self._hub_record(entry_id)
+        return normalize_hub_event_actions(hub.get("event_actions"))
+
+    async def async_set_hub_event_actions(
+        self,
+        entry_id: str,
+        actions: Any,
+    ) -> dict[str, dict[str, Any]]:
+        hub = self._hub_record(entry_id)
+        hub["event_actions"] = normalize_hub_event_actions(actions)
+        await self._store.async_save(self._data)
+        return normalize_hub_event_actions(hub.get("event_actions"))
 
     async def async_set_hub_commands(
         self,
